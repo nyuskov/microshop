@@ -2,23 +2,23 @@
 name = "microshop"
 version = "0.1.0"
 description = "Shop for different products"
-authors = [
-    {name = "Nikita",email = "nyuskov@gmail.com"}
-]
-license = {text = "MIT"}
+authors = [{ name = "Nikita", email = "nyuskov@gmail.com" }]
+license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi (>=0.117.1,<0.118.0)",
-    "uvicorn[standard] (>=0.37.0,<0.38.0)"
+    "uvicorn[standard] (>=0.37.0,<0.38.0)",
+    "pydantic[email] (>=2.11.9,<3.0.0)",
 ]
 
 [dependency-groups]
-dev = [
-    "pytest (>=8.4.2,<9.0.0)"
-]
+dev = ["pytest (>=8.4.2,<9.0.0)"]
 
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+package-mode = false
