@@ -1,10 +1,15 @@
 import uvicorn
 
 from typing import Union
-from fastapi import Body, FastAPI
-from pydantic import EmailStr
+from fastapi import FastAPI
+from pydantic import BaseModel, EmailStr
 
 app = FastAPI()
+
+
+class CreateUser(BaseModel):
+    email: EmailStr
+    name: str
 
 
 @app.get(
@@ -43,7 +48,7 @@ async def read_item(item_id: int, q: Union[str, None] = None):
     tags=["Пользователи"],
     summary="Создание пользователя",
 )
-async def create_user(email: EmailStr = Body(), name: str = Body()):
+async def create_user(new_user: CreateUser):
     return {"success": True, "message": "Пользователь создан успешно!", }
 
 
