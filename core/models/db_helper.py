@@ -31,9 +31,9 @@ class DatabaseHelper:
         return session
 
     async def session_dependency(self) -> AsyncGenerator[AsyncSession]:
-        async with self.get_scoped_session() as session:
-            yield session
-            await session.remove()
+        session = self.get_scoped_session()
+        yield session
+        await session.close()
 
 
 db_helper = DatabaseHelper(

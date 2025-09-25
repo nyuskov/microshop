@@ -4,7 +4,7 @@ from core.models import db_helper
 from . import crud
 from .schemas import Product, ProductCreate
 
-router = APIRouter(prefix="/users", tags=["Товары"],)
+router = APIRouter(tags=["Товары"],)
 
 
 @router.get(

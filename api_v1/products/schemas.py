@@ -12,5 +12,5 @@ class Product(ProductBase):
     id: int
 
 
-class ProductCreate(Product):
+class ProductCreate(ProductBase):
     pass
