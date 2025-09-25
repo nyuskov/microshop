@@ -33,8 +33,8 @@ async def update_product(
 ) -> Product:
     for name, value in product_up.model_dump(exclude_unset=partial).items():
         setattr(product, name, value)
-        await session.commit()
-        return product
+    await session.commit()
+    return product
 
 
 async def delete_product(
@@ -42,3 +42,4 @@ async def delete_product(
     product: Product,
 ) -> None:
     await session.delete(product)
+    await session.commit()

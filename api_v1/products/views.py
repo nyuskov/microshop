@@ -35,6 +35,7 @@ async def get_product(
     "/",
     summary="Создание товара",
     response_model=Product,
+    status_code=status.HTTP_201_CREATED,
 )
 async def create_product(
     product_in: ProductCreate,
@@ -71,3 +72,17 @@ async def update_product_partial(
     return await crud.update_product(
         session=session, product=product,
         product_up=product_up, partial=True)
+
+
+@router.delete(
+    "/{product_id}/",
+    summary="Удаление товара",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_product(
+    session: AsyncSession = Depends(db_helper.session_dependency),
+    product: Product = Depends(product_by_id),
+) -> None:
+    await crud.delete_product(
+        session=session, product=product,
+    )
