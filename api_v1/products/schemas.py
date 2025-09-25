@@ -14,3 +14,13 @@ class Product(ProductBase):
 
 class ProductCreate(ProductBase):
     pass
+
+
+class ProductUpdate(ProductCreate):
+    pass
+
+
+class ProductUpdatePartial(ProductCreate):
+    description: str | None = None
+    name: str | None = None
+    price: int | None = None
