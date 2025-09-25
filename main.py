@@ -1,15 +1,23 @@
 import uvicorn
 
-from typing import Union
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from pydantic import BaseModel, EmailStr
+from api_v1 import router_v1
+from core.models import Base, db_helper
+from core.config import settings
+from users.views import router as users_router
 
-app = FastAPI()
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with db_helper.engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
-class CreateUser(BaseModel):
-    email: EmailStr
-    name: str
+    yield
+
+app = FastAPI(lifespan=lifespan)
+app.include_router(router=router_v1, prefix=settings.api_v1_prefix)
+app.include_router(users_router)
 
 
 @app.get(
@@ -19,37 +27,6 @@ class CreateUser(BaseModel):
 )
 async def read_root():
     return {"Hello": "World"}
-
-
-@app.get(
-    "/items/",
-    tags=["Товары"],
-    summary="Все товары",
-)
-async def read_items(item_id: int, q: Union[str, None] = None):
-    return [
-        "Товар 1",
-        "Товар 2",
-        "Товар 3",
-    ]
-
-
-@app.get(
-    "/items/{item_id}/",
-    tags=["Товары"],
-    summary="Конкретный товар",
-)
-async def read_item(item_id: int, q: Union[str, None] = None):
-    return {"item_id": item_id, "q": q, }
-
-
-@app.post(
-    "/users/",
-    tags=["Пользователи"],
-    summary="Создание пользователя",
-)
-async def create_user(new_user: CreateUser):
-    return {"success": True, "message": "Пользователь создан успешно!", }
 
 
 if __name__ == "__main__":
