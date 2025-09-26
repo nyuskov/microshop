@@ -8,6 +8,8 @@ services:
           action: rebuild
     ports:
       - "8888:8888"
+    env_file:
+      - ./.env.dev
     # Optional: Add environment variables, volumes, or links to other services
     # environment:
     #   DEBUG: "true"
