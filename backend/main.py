@@ -1,4 +1,6 @@
-import uvicorn
+import asyncio
+
+# import uvicorn
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -10,6 +12,7 @@ from users.views import router as users_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
+
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(router=router_v1, prefix=settings.api_v1_prefix)
@@ -26,4 +29,5 @@ async def read_root():
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", reload=True)
+    # uvicorn.run("main:app", reload=True)
+    asyncio.run(app())

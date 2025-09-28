@@ -1,5 +1,5 @@
    # develop stage
-   FROM node:18.12.1-alpine as develop-stage
+   FROM node:lts-alpine AS develop-stage
    WORKDIR /app
 
    # Copy the package.json and install dependencies
@@ -12,8 +12,7 @@
    # Build the project
    RUN npm run build
 
-
-   FROM nginx:alpine as production-build
+   FROM nginx:alpine AS production-build
    COPY ./nginx/production.conf /etc/nginx/nginx.conf
 
    ## Remove default nginx index page
