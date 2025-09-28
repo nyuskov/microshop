@@ -1,12 +1,12 @@
 # Use a alpine Python image
-FROM python:3.11-alpine
+FROM python:3.13-alpine
 
 # Set the working directory inside the container
 WORKDIR /app
 
 # Copy the requirements file and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY pyproject.toml .
+RUN pip install poetry && poetry install 
 
 # Copy the application code
 COPY . .
@@ -15,7 +15,7 @@ COPY . .
 EXPOSE 8888
 
 # Command to run the application when the container starts
-CMD ["python", "main.py"]
+CMD ["python", "backend/main.py"]
 
 
 

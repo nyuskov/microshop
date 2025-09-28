@@ -1,6 +1,6 @@
 # docker-compose.yml
 services:
-  backend:
+  web:
     build: .
     develop:
       watch:
@@ -10,15 +10,31 @@ services:
       - "8888:8888"
     env_file:
       - ./.env.dev
-    # Optional: Add environment variables, volumes, or links to other services
-    # environment:
-    #   DEBUG: "true"
-    # volumes:
-    #   - ./app:/app
-    # depends_on:
-    #   - redis_service
-  # redis_service:
-  #   image: "redis:latest"
-  #   ports:
-  #     - "6379:6379"
-    
+    depends_on:
+      - db
+  db:
+    image: postgres:latest
+    volumes:
+        - postgres_data:/var/lib/postgresql/data/
+    environment:
+        - POSTGRES_URL=postgres
+        - POSTGRES_PASSWORD=Xx123456
+        - POSTGRES_DB=postgres
+  nginx:
+    image: nginx:latest
+    build:
+      context: .
+      dockerfile: ./nginx/Dockerfile
+    ports:
+      - 8080:80
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+    depends_on:
+      - web
+    networks:
+      - nginx_network
+networks:
+  nginx_network:
+    driver: bridge
+volumes:
+  postgres_data:
