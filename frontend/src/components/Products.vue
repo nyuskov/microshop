@@ -22,7 +22,7 @@ async function getProductsList() {
     credentials: 'include',
   }).then(async function (response) {
     products.value = await response.json();
-    console.log(products);
+    console.log(products.value);
   }).catch((err) => {
     let error: string = 'An error occurred during get products list : ' + err;
     console.log(error);

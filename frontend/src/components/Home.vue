@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Products from './Products.vue';
+import Users from './Users.vue';
 import {
   getAddress,
   getCSRFToken
@@ -18,6 +19,10 @@ console.log(saySomething)
 
 <template>
   <h1>Hello!</h1>
+
+  <h3>Users:</h3>
+  <Users :backendServer="backendServer"></Users>
+
   <h3>Products:</h3>
   <Products :backendServer="backendServer"></Products>
 </template>
