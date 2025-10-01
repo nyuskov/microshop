@@ -5,6 +5,8 @@ import asyncio
 # import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.openapi.docs import get_swagger_ui_html
 
 from api_v1 import router_v1
 from core.config import settings
@@ -16,9 +18,10 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI()
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    lifespan=lifespan,
+    swagger_ui_parameters={"favicon_url": "/favicon.ico"},
+)
 app.include_router(router=router_v1, prefix=settings.api_v1_prefix)
 app.include_router(users_router)
 
@@ -31,6 +34,14 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods (GET, POST, PUT, DELETE, etc.)
     allow_headers=["*"],  # Allows all headers
 )
+
+
+favicon_path = "favicon.ico"
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(favicon_path)
 
 
 @app.get(

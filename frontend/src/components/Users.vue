@@ -10,23 +10,25 @@ const props = defineProps({
 let users: Ref<null, null> = ref(null)
 
 async function getUsersList() {
-  await fetch(
-    'http://' + props.backendServer.address + '/users/', {
-    method: 'GET',
-    cache: "reload",
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': props.backendServer.csrfToken
-    },
+  if (props.backendServer != undefined) {
+    await fetch(
+      'https://' + props.backendServer.address + '/users/', {
+      method: 'GET',
+      cache: "reload",
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': props.backendServer.csrfToken
+      },
 
-    credentials: 'include',
-  }).then(async function (response) {
-    users.value = await response.json();
-    console.log(users.value);
-  }).catch((err) => {
-    let error: string = 'An error occurred during get users list : ' + err;
-    console.log(error);
-  });
+      credentials: 'include',
+    }).then(async function (response) {
+      users.value = await response.json();
+      console.log(users.value);
+    }).catch((err) => {
+      let error: string = 'An error occurred during get users list : ' + err;
+      console.log(error);
+    });
+  }
 }
 onMounted(async function () {
   // await getUsersList();

@@ -13,6 +13,7 @@ const backendServer: BackendServer = {
   address: getAddress(),
   csrfToken: getCSRFToken(),
 }
+const api_prefix: string = "/api/v1"
 let saySomething: string = "Ебал я это ваше программирование!"
 console.log(saySomething)
 </script>
@@ -24,7 +25,7 @@ console.log(saySomething)
   <Users :backendServer="backendServer"></Users>
 
   <h3>Products:</h3>
-  <Products :backendServer="backendServer"></Products>
+  <Products :backendServer="backendServer" :api_prefix="api_prefix"></Products>
 </template>
 
 <style scoped></style>

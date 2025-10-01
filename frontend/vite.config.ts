@@ -5,6 +5,7 @@ import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import checker from 'vite-plugin-checker'
+import mkcert from 'vite-plugin-mkcert'
 
 
 // https://vite.dev/config/
@@ -17,6 +18,7 @@ export default defineConfig({
       // e.g. use TypeScript check
       typescript: true,
     }),
+    mkcert(),
   ],
   resolve: {
     alias: {

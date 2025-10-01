@@ -5,28 +5,31 @@ import Column from 'primevue/column';
 
 const props = defineProps({
   backendServer: Object,
+  api_prefix: String
 })
 
 let products: Ref<null, null> = ref(null)
 
 async function getProductsList() {
-  await fetch(
-    'http://' + props.backendServer.address + '/api/v1/products/', {
-    method: 'GET',
-    cache: "reload",
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': props.backendServer.csrfToken
-    },
+  if (props.backendServer != undefined) {
+    await fetch(
+      'https://' + props.backendServer.address + props.api_prefix + '/products/', {
+      method: 'GET',
+      cache: "reload",
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': props.backendServer.csrfToken
+      },
 
-    credentials: 'include',
-  }).then(async function (response) {
-    products.value = await response.json();
-    console.log(products.value);
-  }).catch((err) => {
-    let error: string = 'An error occurred during get products list : ' + err;
-    console.log(error);
-  });
+      credentials: 'include',
+    }).then(async function (response) {
+      products.value = await response.json();
+      console.log(products.value);
+    }).catch((err) => {
+      let error: string = 'An error occurred during get products list : ' + err;
+      console.log(error);
+    });
+  }
 }
 onMounted(async function () {
   // await getUsersList();
