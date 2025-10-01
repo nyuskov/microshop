@@ -5,4 +5,5 @@ from pydantic import BaseModel, EmailStr
 
 class CreateUser(BaseModel):
     email: EmailStr
-    name: str = Annotated[str, MinLen(3), MaxLen(20)]
+    username: str = Annotated[str, MinLen(3), MaxLen(32)]
+    password: str = Annotated[str, MinLen(8), MaxLen(32)]
