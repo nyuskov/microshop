@@ -1,9 +1,11 @@
+from passlib.context import CryptContext
+
 from sqlalchemy import Result, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, joinedload
 
 from core.models.user import User
-from users.schemas import CreateUser
+from users.schemas import User as CreateUser
 
 
 async def get_users(session: AsyncSession) -> list[User]:
@@ -13,22 +15,15 @@ async def get_users(session: AsyncSession) -> list[User]:
     return list(users)
 
 
-# async def get_user_by_username(
-#     session: AsyncSession,
-#     username: str,
-# ) -> User | None:
-#     stmt = select(User).where(User.username == username)
-#     # result: Result = await session.execute(stmt)
-#     # user: User | None = result.scalar_one_or_none()
-#     user: User | None = await session.scalar(stmt)
-#     user_data: object = (
-#         {
-#             "username": user.username,
-#         }
-#         if user is not None
-#         else {}
-#     )
-#     return user_data
+async def get_user_by_username(
+    session: AsyncSession,
+    username: str,
+) -> User | None:
+    stmt = select(User).where(User.username == username)
+    # result: Result = await session.execute(stmt)
+    # user: User | None = result.scalar_one_or_none()
+    user: User | None = await session.scalar(stmt)
+    return user
 
 
 # async def get_users_with_posts(
@@ -71,6 +66,7 @@ async def get_users_with_posts_and_profiles(
         users.append(
             {
                 "username": user.username,
+                "hashed_password": user.hashed_password,
                 "bio": user.profile and user.profile.bio,
                 "first_name": user.profile and user.profile.first_name,
                 "last_name": user.profile and user.profile.last_name,
@@ -81,9 +77,15 @@ async def get_users_with_posts_and_profiles(
     return list(users)
 
 
-def create_user(new_user: CreateUser) -> dict:
-    user = new_user.model_dump()
-    return {
-        "success": True,
-        "user": user,
-    }
+async def create_user(new_user: CreateUser, session: AsyncSession) -> None:
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    hashed_password = pwd_context.hash(new_user.password)
+    del new_user.password
+    del new_user.disabled
+
+    user = User(**new_user.model_dump(), hashed_password=hashed_password)
+    session.add(user)
+
+    await session.commit()
+
+    return {"message": "User was created successfully!"}
