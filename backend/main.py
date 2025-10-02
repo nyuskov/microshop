@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 
 from api_v1 import router_v1
 from core.config import settings
+from core.middleware import SimpleMiddleware
 from users.views import router as users_router
 
 
@@ -25,6 +26,7 @@ app.include_router(users_router)
 
 origins = ["*"]  # Allows all origins
 
+app.add_middleware(SimpleMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
