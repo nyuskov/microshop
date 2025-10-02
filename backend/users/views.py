@@ -27,7 +27,7 @@ async def get_users(
     summary="Создание пользователя",
 )
 async def create_user(
-    new_user: User,
+    new_user: Annotated[User, Depends()],
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> dict:
     return await crud.create_user(new_user, session)

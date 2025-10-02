@@ -15,7 +15,10 @@
     "type-check": "vue-tsc --build"
   },
   "dependencies": {
+    "@primevue/forms": "^4.4.0",
     "@primevue/themes": "^4.3.9",
+    "@vuelidate/core": "^2.0.3",
+    "@vuelidate/validators": "^2.0.4",
     "pinia": "^3.0.3",
     "primeicons": "^7.0.0",
     "primevue": "^4.3.9",
@@ -33,6 +36,7 @@
     "@vue/tsconfig": "^0.7.0",
     "jsdom": "^26.1.0",
     "npm-run-all2": "^8.0.4",
+    "sass-embedded": "^1.93.2",
     "typescript": "~5.8.0",
     "vite": "^7.0.6",
     "vite-plugin-mkcert": "^1.17.8",

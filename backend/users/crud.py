@@ -81,7 +81,6 @@ async def create_user(new_user: CreateUser, session: AsyncSession) -> None:
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
     hashed_password = pwd_context.hash(new_user.password)
     del new_user.password
-    del new_user.disabled
 
     user = User(**new_user.model_dump(), hashed_password=hashed_password)
     session.add(user)

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.models import db_helper
 from core.models.user import User
 from users.crud import get_user_by_username
+from users.schemas import CurrentUser
 from tokens.schemas import Token, TokenData
 
 router = APIRouter(prefix="/auth", tags=["Аутентификация"])
@@ -142,13 +143,13 @@ async def get_current_user(
 
 
 async def get_current_active_user(
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
 ):
     """Проверяет запись пользователя по полю `disabled`"""
 
     if current_user.disabled:
         # если пользователь отключен, то => HTTP=ошибка
-        raise HTTPException(status_code=400, detail="Inactive user")
+        raise HTTPException(status_code=400, detail="Неактивный пользователь")
     return current_user
 
 
