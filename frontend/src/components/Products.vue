@@ -4,16 +4,16 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 
 const props = defineProps({
-  backendServer: Object,
-  api_prefix: String
+  backendServer: Object
 })
 
+const api_prefix: string = "/api/v1";
 let products: Ref<null, null> = ref(null)
 
 async function getProductsList() {
   if (props.backendServer != undefined) {
     await fetch(
-      'https://' + props.backendServer.address + props.api_prefix + '/products/', {
+      'https://' + props.backendServer.address + api_prefix + '/products/', {
       method: 'GET',
       cache: "reload",
       headers: {

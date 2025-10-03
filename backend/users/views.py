@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models import db_helper
 from users import crud
-from users.schemas import User
+from users.schemas import CreateUser
 
 router = APIRouter(
     prefix="/users",
@@ -27,7 +27,7 @@ async def get_users(
     summary="Создание пользователя",
 )
 async def create_user(
-    new_user: User,
+    new_user: CreateUser,
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
     return await crud.create_user(new_user, session)

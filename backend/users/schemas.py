@@ -11,5 +11,13 @@ class User(BaseModel):
 
 
 class CurrentUser(User):
-    email: EmailStr
+    email: EmailStr | None = None
     disabled: bool | None = False
+
+
+class CreateUser(User):
+    password2: Annotated[str, MinLen(8), MaxLen(32)]
+    email: EmailStr | None = None
+    first_name: Annotated[str | None, MaxLen(40)] = None
+    last_name: Annotated[str | None, MaxLen(40)] = None
+    bio: Annotated[str | None, MaxLen(256)] = None

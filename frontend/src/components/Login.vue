@@ -4,73 +4,64 @@ import { FormField } from '@primevue/forms';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
-import Textarea from 'primevue/textarea';
 import Password from 'primevue/password';
+import { zodResolver } from "@primevue/forms/resolvers/zod";
+import { z } from 'zod';
+import {
+  backendServer
+} from '../stores/auth.ts';
 
-const props = defineProps({
-  backendServer: Object,
+const formSchema = z.object({
+  username: z.string().min(2, { message: "Имя пользователя должно быть больше 3 символов." }),
+  password: z.string().min(8, { message: "Пароль должен содержать не меньше 8 символов." }),
 });
+const resolver = zodResolver(formSchema);
+const api_prefix: string = "/api/v1";
 
-async function registerUser(e) {
-  if (props.backendServer != undefined) {
+async function loginUser(e: Object) {
+  if (backendServer != undefined) {
     await fetch(
-      'https://' + props.backendServer.address + '/users/', {
+      'https://' + backendServer.address + api_prefix + '/auth/token/', {
       method: 'POST',
       cache: "reload",
-      body: JSON.stringify(e.values),
+      body: new URLSearchParams(e.values),
       headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': props.backendServer.csrfToken
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRFToken': backendServer.csrfToken
       },
       credentials: 'include',
     }).then(async function (response) {
       let result = await response.json();
-      console.log(result);
     }).catch((err) => {
       let error: string = 'An error occurred during get users list : ' + err;
       console.log(error);
     });
   }
 }
-async function onFormSubmit(e) {
-  await registerUser(e);
+async function onFormSubmit(e: Object) {
+  if (Object.keys(e.errors).length) {
+    return;
+  }
+  await loginUser(e);
 }
 </script>
 
 <template>
-  <Form @submit="onFormSubmit" class="frm-login flex flex-col gap-4 w-full sm:w-80">
-    <FormField v-slot="$field" name="username" initialValue="" class="flex txt-login flex-col gap-1">
-      <InputText type="text" class="txt-login" placeholder="Логин" required />
-      <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
-      </Message>
-    </FormField>
-    <FormField v-slot="$field" name="password" initialValue="" class="flex flex-col gap-1">
-      <Password type="text" placeholder="Пароль" :feedback="false" toggleMask fluid required />
-      <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
-      </Message>
-    </FormField>
-    <FormField v-slot="$field" name="password2" initialValue="" class="flex flex-col gap-1">
-      <Password type="text" placeholder="Повторите пароль" :feedback="false" toggleMask fluid required />
-      <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
-      </Message>
-    </FormField>
-    <FormField v-slot="$field" name="firstname" initialValue="" class="flex txt-login flex-col gap-1">
-      <InputText type="text" class="txt-login" placeholder="Имя" />
-      <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
-      </Message>
-    </FormField>
-    <FormField v-slot="$field" name="lastname" initialValue="" class="flex txt-login flex-col gap-1">
-      <InputText type="text" class="txt-login" placeholder="Фамилия" />
-      <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
-      </Message>
-    </FormField>
-    <FormField v-slot="$field" name="details" class="flex txt-login flex-col gap-1">
-      <Textarea class="txt-login" placeholder="Биография" />
-      <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
-      </Message>
-    </FormField>
-    <Button type="submit" severity="secondary" class="btn-login" label="Зарегистрироваться" />
-  </Form>
+  <div class="cnt-login">
+    <Form @submit="onFormSubmit" :resolver class="frm-login flex flex-col gap-4 w-full sm:w-80">
+      <FormField v-slot="$field" name="username" initialValue="" class="flex txt-login flex-col gap-1">
+        <InputText type="text" class="txt-login" placeholder="Имя пользователя" />
+        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
+        </Message>
+      </FormField>
+      <FormField v-slot="$field" name="password" initialValue="" class="flex flex-col gap-1">
+        <Password type="text" placeholder="Пароль" :feedback="false" toggleMask fluid />
+        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
+        </Message>
+      </FormField>
+      <Button type="submit" severity="secondary" class="btn-login" label="Войти" />
+    </Form>
+  </div>
 </template>
 
 <style scoped>
@@ -83,10 +74,18 @@ async function onFormSubmit(e) {
   flex-direction: column;
   gap: 10px;
   padding: 5px;
+  width: 250px;
 }
 
 .btn-login {
   width: 100%;
+}
+
+.cnt-login {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  height: 100vh;
 }
 
 .txt-login {

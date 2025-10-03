@@ -14,9 +14,8 @@ from fastapi.security import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models import db_helper
-from core.models.user import User
 from users.crud import get_user_by_username
-from users.schemas import CurrentUser
+from users.schemas import CurrentUser, User
 from tokens.schemas import Token, TokenData
 
 router = APIRouter(prefix="/auth", tags=["Аутентификация"])
@@ -154,14 +153,18 @@ async def get_current_active_user(
 
 
 @router.post("/token/")
-def login_for_access_token(
+async def login_for_access_token(
     # аннотируем данные формы авторизации
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
-    user: User | None = Depends(authenticate_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> Token:
     """Функция авторизации пользователя. В случае успеха возвращает токен доступа"""
-
     # проходим проверку подлинности
+    user = await authenticate_user(
+        form_data.username,
+        form_data.password,
+        session,
+    )
     if not user:
         # не прошли проверку, отдаем HTTP-ошибку
         raise HTTPException(

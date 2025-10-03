@@ -151,3 +151,12 @@ export function getAddress() {
   }
   return hostValue
 }
+
+type BackendServer = {
+  address: string | null,
+  csrfToken: string,
+}
+export const backendServer: BackendServer = {
+  address: getAddress(),
+  csrfToken: getCSRFToken(),
+}

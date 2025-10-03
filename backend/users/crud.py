@@ -1,11 +1,12 @@
+from fastapi import HTTPException, status
 from passlib.context import CryptContext
-
 from sqlalchemy import Result, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, joinedload
 
+from core.models.profile import Profile
 from core.models.user import User
-from users.schemas import User as CreateUser
+from users.schemas import CreateUser
 
 
 async def get_users(session: AsyncSession) -> list[User]:
@@ -79,11 +80,21 @@ async def get_users_with_posts_and_profiles(
 
 async def create_user(new_user: CreateUser, session: AsyncSession) -> None:
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    hashed_password = pwd_context.hash(new_user.password)
-    del new_user.password
+    if new_user.password != new_user.password2:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
 
-    user = User(**new_user.model_dump(), hashed_password=hashed_password)
+    hashed_password = pwd_context.hash(new_user.password)
+
+    user = User(username=new_user.username, hashed_password=hashed_password)
     session.add(user)
+
+    profile = Profile(
+        user=user,
+        first_name=new_user.first_name,
+        last_name=new_user.last_name,
+        bio=new_user.bio,
+    )
+    session.add(profile)
 
     await session.commit()
 
