@@ -21,10 +21,4 @@ console.log(saySomething);
   </div>
 </template>
 
-<style scoped>
-.content {
-  align-items: center;
-  display: flex;
-  flex-direction: column;
-}
-</style>
+<style src="../assets/css/style.css" scoped></style>

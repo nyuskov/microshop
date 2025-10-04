@@ -36,14 +36,6 @@ app.add_middleware(
 )
 
 
-favicon_path = "favicon.ico"
-
-
-@app.get("/favicon.ico", include_in_schema=False)
-async def favicon():
-    return FileResponse(favicon_path)
-
-
 @app.get(
     "/",
     tags=["Базовый функционал"],

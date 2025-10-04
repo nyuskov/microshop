@@ -7,16 +7,19 @@ import Message from 'primevue/message';
 import Password from 'primevue/password';
 import { zodResolver } from "@primevue/forms/resolvers/zod";
 import { z } from 'zod';
+import { useRouter } from 'vue-router';
 import {
   backendServer
 } from '../stores/auth.ts';
 
+const router = useRouter();
 const formSchema = z.object({
   username: z.string().min(2, { message: "Имя пользователя должно быть больше 3 символов." }),
   password: z.string().min(8, { message: "Пароль должен содержать не меньше 8 символов." }),
 });
 const resolver = zodResolver(formSchema);
 const api_prefix: string = "/api/v1";
+const redirect = "/auth/registration/";
 
 async function loginUser(e: Object) {
   if (backendServer != undefined) {
@@ -31,7 +34,7 @@ async function loginUser(e: Object) {
       },
       credentials: 'include',
     }).then(async function (response) {
-      let result = await response.json();
+      router.push('/');
     }).catch((err) => {
       let error: string = 'An error occurred during get users list : ' + err;
       console.log(error);
@@ -49,6 +52,7 @@ async function onFormSubmit(e: Object) {
 <template>
   <div class="cnt-login">
     <Form @submit="onFormSubmit" :resolver class="frm-login flex flex-col gap-4 w-full sm:w-80">
+      <h3>Вход</h3>
       <FormField v-slot="$field" name="username" initialValue="" class="flex txt-login flex-col gap-1">
         <InputText type="text" class="txt-login" placeholder="Имя пользователя" />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
@@ -59,36 +63,11 @@ async function onFormSubmit(e: Object) {
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <Button type="submit" severity="secondary" class="btn-login" label="Войти" />
+      <Button type="submit" class="btn-login" label="Войти" />
+      <Button @click="router.push(redirect)" class="btn-login" label="Зарегистрироваться" severity="secondary"
+        variant="text" />
     </Form>
   </div>
 </template>
 
-<style scoped>
-.frm-login {
-  -webkit-box-shadow: 0px 0px 8px 0px rgba(34, 60, 80, 0.2);
-  -moz-box-shadow: 0px 0px 8px 0px rgba(34, 60, 80, 0.2);
-  align-items: center;
-  box-shadow: 0px 0px 8px 0px rgba(34, 60, 80, 0.2);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 5px;
-  width: 250px;
-}
-
-.btn-login {
-  width: 100%;
-}
-
-.cnt-login {
-  align-items: center;
-  display: flex;
-  justify-content: center;
-  height: 100vh;
-}
-
-.txt-login {
-  width: 100%;
-}
-</style>
+<style src="../assets/css/style.css" scoped></style>

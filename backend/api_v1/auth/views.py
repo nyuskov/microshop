@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models import db_helper
 from users.crud import get_user_by_username
-from users.schemas import CurrentUser, User
+from users.schemas import CurrentUser
 from tokens.schemas import Token, TokenData
 
 router = APIRouter(prefix="/auth", tags=["Аутентификация"])
@@ -29,30 +29,12 @@ ALGORITHM = "HS256"
 # срок действия токена JWT-токена
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# фейковая запись пользователя из своеобразной `базы данных`
-fake_users_db = {
-    "johndoe": {
-        # логин (для проверки авторизации)
-        "username": "johndoe",
-        "full_name": "John Doe",
-        "email": "johndoe@example.com",
-        # хеш пароля был получен выше
-        "hashed_password": "$2b$12$9QNPD4oCa3zVlIm4LTfHKeHCdw02dDOdo4Vbbcta4.3gTAr62JYea",
-        "disabled": False,
-    }
-}
-
-
-#  функция для хэширования пароля, поступающего от пользователя.
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-# `oauth2_scheme` является "вызываемой" и следовательно ее можно
-# использовать в зависимости `fastapi.Depends` в функции `get_current_user()`
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
 
 def verify_password(plain_password, hashed_password):
     """Функция для проверки, соответствует ли полученный пароль сохраненному хэшу"""
-    return pwd_context.verify(plain_password, hashed_password)
+    return CryptContext(schemes=["bcrypt"], deprecated="auto").verify(
+        plain_password, hashed_password
+    )
 
 
 async def authenticate_user(
@@ -110,7 +92,7 @@ async def get_auth_user_username(
 
 
 async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
+    token: Annotated[str, Depends(OAuth2PasswordBearer(tokenUrl="token"))],
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
     """Получение текущего пользователя из токена"""

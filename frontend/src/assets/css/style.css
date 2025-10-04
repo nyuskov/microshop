@@ -1,0 +1,43 @@
+.content {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+}
+
+.frm-login {
+    -webkit-box-shadow: 0px 0px 8px 0px rgba(34, 60, 80, 0.2);
+    -moz-box-shadow: 0px 0px 8px 0px rgba(34, 60, 80, 0.2);
+    align-items: center;
+    box-shadow: 0px 0px 8px 0px rgba(34, 60, 80, 0.2);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+}
+
+.btn-login {
+    width: 100%;
+}
+
+.cnt-login {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    height: 100vh;
+}
+
+.cnt-register {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    height: 100vh;
+}
+
+.cnt-register .frm-login {
+    width: 50%;
+}
+
+.txt-login {
+    resize: none;
+    width: 100%;
+}
