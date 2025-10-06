@@ -28,6 +28,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("username"),
+        if_not_exists=True,
     )
     # ### end Alembic commands ###
 

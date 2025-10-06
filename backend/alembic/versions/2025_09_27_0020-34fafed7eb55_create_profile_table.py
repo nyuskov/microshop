@@ -35,6 +35,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("user_id"),
+        if_not_exists=True,
     )
     # ### end Alembic commands ###
 

@@ -33,6 +33,7 @@ def upgrade() -> None:
             ["user.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
+        if_not_exists=True,
     )
     # ### end Alembic commands ###
 

@@ -11,6 +11,7 @@ import { useRouter } from 'vue-router';
 import {
   backendServer
 } from '../stores/auth.ts';
+import { ref } from 'vue';
 
 const router = useRouter();
 const formSchema = z.object({
@@ -20,11 +21,13 @@ const formSchema = z.object({
 const resolver = zodResolver(formSchema);
 const api_prefix: string = "/api/v1";
 const redirect = "/auth/registration/";
+const severity = ref("success");
+const result = ref("");
 
 async function loginUser(e: Object) {
   if (backendServer != undefined) {
     await fetch(
-      'https://' + backendServer.address + api_prefix + '/auth/token/', {
+      'https://' + backendServer.address + api_prefix + '/jwt/login/', {
       method: 'POST',
       cache: "reload",
       body: new URLSearchParams(e.values),
@@ -34,10 +37,16 @@ async function loginUser(e: Object) {
       },
       credentials: 'include',
     }).then(async function (response) {
-      router.push('/');
+      result.value = (await response).statusText;
+      if (response.status == 200) {
+        router.push('/');
+      } else {
+        severity.value = "error";
+      }
     }).catch((err) => {
       let error: string = 'An error occurred during get users list : ' + err;
-      console.log(error);
+      result.value = error;
+      severity.value = "error";
     });
   }
 }
@@ -58,11 +67,12 @@ async function onFormSubmit(e: Object) {
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="password" initialValue="" class="flex flex-col gap-1">
-        <Password type="text" placeholder="Пароль" :feedback="false" toggleMask fluid />
+      <FormField v-slot="$field" name="password" initialValue="" class="flex txt-login flex-col gap-1">
+        <Password type="text" class="txt-login" placeholder="Пароль" :feedback="false" toggleMask fluid />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
+      <Message size="small" :severity variant="simple">{{ result }}</Message>
       <Button type="submit" class="btn-login" label="Войти" />
       <Button @click="router.push(redirect)" class="btn-login" label="Зарегистрироваться" severity="secondary"
         variant="text" />

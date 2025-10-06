@@ -10,6 +10,7 @@ import { zodResolver } from "@primevue/forms/resolvers/zod";
 import { z } from 'zod';
 import { backendServer } from '@/stores/auth';
 import { useRouter } from 'vue-router';
+import { ref } from 'vue';
 
 const formSchema = z.object({
   username: z.string().min(2, { message: "Имя пользователя должно быть больше 3 символов." }),
@@ -19,6 +20,9 @@ const formSchema = z.object({
 });
 const resolver = zodResolver(formSchema);
 const router = useRouter();
+const result = ref("");
+const severity = ref("success");
+const redirect = "/auth/login/";
 
 async function registerUser(e: Object) {
   if (backendServer != undefined) {
@@ -33,10 +37,15 @@ async function registerUser(e: Object) {
       },
       credentials: 'include',
     }).then(async function (response) {
-      router.push('/auth/login/');
+      result.value = (await response).statusText;
+      severity.value = "success";
+      // if (result.status == 200) {
+      //   router.push('/auth/login/');
+      // }
     }).catch((err) => {
       let error: string = 'An error occurred during get users list : ' + err;
-      console.log(error);
+      result.value = error;
+      severity.value = "error";
     });
   }
 }
@@ -87,7 +96,9 @@ async function onFormSubmit(e: Object) {
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
+      <Message size="small" :severity variant="simple">{{ result }}</Message>
       <Button type="submit" class="btn-login" label="Зарегистрироваться" />
+      <Button @click="router.push(redirect)" class="btn-login" label="Войти" severity="secondary" variant="text" />
     </Form>
   </div>
 </template>

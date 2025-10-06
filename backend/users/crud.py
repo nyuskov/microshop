@@ -1,5 +1,5 @@
+import bcrypt
 from fastapi import HTTPException, status
-from passlib.context import CryptContext
 from sqlalchemy import Result, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, joinedload
@@ -7,6 +7,14 @@ from sqlalchemy.orm import selectinload, joinedload
 from core.models.profile import Profile
 from core.models.user import User
 from users.schemas import CreateUser
+
+
+def hash_password(
+    password: str,
+) -> bytes:
+    """Вспомогательная функция для хеширования пароля"""
+    salt: bytes = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode(), salt)
 
 
 async def get_users(session: AsyncSession) -> list[User]:
@@ -79,11 +87,10 @@ async def get_users_with_posts_and_profiles(
 
 
 async def create_user(new_user: CreateUser, session: AsyncSession) -> None:
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
     if new_user.password != new_user.password2:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
 
-    hashed_password = pwd_context.hash(new_user.password)
+    hashed_password = hash_password(new_user.password)
 
     user = User(username=new_user.username, hashed_password=hashed_password)
     session.add(user)
@@ -92,6 +99,7 @@ async def create_user(new_user: CreateUser, session: AsyncSession) -> None:
         user=user,
         first_name=new_user.first_name,
         last_name=new_user.last_name,
+        email=new_user.email,
         bio=new_user.bio,
     )
     session.add(profile)

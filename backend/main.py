@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 # import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 
 from api_v1 import router_v1
 from core.config import settings

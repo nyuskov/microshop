@@ -29,6 +29,7 @@ def upgrade() -> None:
         sa.Column("description", sa.String(), nullable=False),
         sa.Column("id", sa.Integer(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
+        if_not_exists=True,
     )
     # ### end Alembic commands ###
 
