@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import String, LargeBinary
+from sqlalchemy import Boolean, String, LargeBinary
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -14,6 +14,12 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(32), unique=True)
     hashed_password: Mapped[bytes] = mapped_column(LargeBinary,
                                                    server_default="Xx123456")
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default='TRUE',
+        nullable=False,
+    )
     posts: Mapped[list["Post"]] = relationship(back_populates="user")
     profile: Mapped["Profile"] = relationship(back_populates="user")
 

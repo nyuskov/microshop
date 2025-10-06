@@ -19,7 +19,7 @@ from ..tokens.schemas import Token
 router = APIRouter(prefix="/jwt", tags=["JSON Web Tokens"])
 
 # http_bearer = HTTPBearer()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/jwt/login/")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/jwt/login/")
 
 
 async def validate_auth_user(
@@ -40,11 +40,11 @@ async def validate_auth_user(
     ):
         raise unauthed_exc
 
-    # if not user.active:
-    #     raise HTTPException(
-    #         status_code=status.HTTP_403_FORBIDDEN,
-    #         detail="Пользователь неактивен",
-    #     )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Пользователь неактивен",
+        )
 
     return user
 
@@ -81,7 +81,7 @@ async def get_current_auth_user(
 def get_current_active_auth_user(
     user: UserSchema = Depends(get_current_auth_user),
 ):
-    if user.active:
+    if user.is_active:
         return user
     raise HTTPException(
         status.HTTP_403_FORBIDDEN,
@@ -107,13 +107,13 @@ async def auth_user_issue_jwt(
 
 
 @router.get("/users/me/")
-def auth_user_check_self_info(
+async def auth_user_check_self_info(
     payload: dict = Depends(get_current_token_payload),
     user: UserSchema = Depends(get_current_active_auth_user),
 ) -> dict:
     OAuth2PasswordBearer
     return {
         "username": user.username,
-        "email": user.email,
+        "email": (await user.awaitable_attrs.profile).email,
         "logged_in_at": payload.get("iat"),
     }

@@ -29,4 +29,4 @@ class UserSchema(BaseModel):
     username: str
     password: str
     awaitable_attrs: Type[AsyncAttrs]
-    active: bool = True
+    is_active: bool = True
