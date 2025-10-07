@@ -27,24 +27,24 @@ router = APIRouter(
 
 
 @router.get("/users/me/")
-async def auth_user_check_self_info(
+def auth_user_check_self_info(
     payload: dict = Depends(get_current_token_payload),
     user: UserSchema = Depends(get_current_active_auth_user),
 ) -> dict:
     OAuth2PasswordBearer
     return {
         "username": user.username,
-        "email": (await user.awaitable_attrs.profile).email,
+        "email": user.email,
         "logged_in_at": payload.get("iat"),
     }
 
 
 @router.post("/login/", response_model=Token)
-async def auth_user_issue_jwt(
+def auth_user_issue_jwt(
     user: UserSchema = Depends(validate_auth_user),
 ) -> Token:
-    access_token = await create_access_token(user)
-    refresh_token = await create_refresh_token(user)
+    access_token = create_access_token(user)
+    refresh_token = create_refresh_token(user)
     return Token(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -56,10 +56,10 @@ async def auth_user_issue_jwt(
     response_model=Token,
     response_model_exclude_none=True,
 )
-async def auth_refresh_jwt(
+def auth_refresh_jwt(
     user: UserSchema = Depends(get_current_auth_user_for_refresh),
 ) -> Token:
-    access_token = await create_access_token(user)
+    access_token = create_access_token(user)
 
     return Token(
         access_token=access_token,

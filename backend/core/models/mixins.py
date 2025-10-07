@@ -7,6 +7,10 @@ from sqlalchemy.orm import (
 )
 
 
+class IdIntPkMixin:
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+
 class UserRelationMixin:
     _user_id_nullable: bool = False
     _user_id_unique: bool = False
@@ -17,10 +21,9 @@ class UserRelationMixin:
         return mapped_column(
             ForeignKey("user.id"),
             unique=cls._user_id_unique,
-            nullable=cls._user_id_nullable)
+            nullable=cls._user_id_nullable,
+        )
 
     @declared_attr
     def user(cls) -> Mapped["User"]:
-        return relationship(
-            "User",
-            back_populates=cls._user_back_populates)
+        return relationship("User", back_populates=cls._user_back_populates)

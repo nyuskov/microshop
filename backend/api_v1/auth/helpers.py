@@ -27,11 +27,11 @@ def create_jwt(
     )
 
 
-async def create_access_token(user: UserSchema) -> str:
+def create_access_token(user: UserSchema) -> str:
     jwt_payload = {
         "sub": user.username,
         "username": user.username,
-        "email": (await user.awaitable_attrs.profile).email,
+        "email": user.email,
     }
     return create_jwt(
         token_type=ACCESS_TOKEN_TYPE,
@@ -40,11 +40,11 @@ async def create_access_token(user: UserSchema) -> str:
     )
 
 
-async def create_refresh_token(user: UserSchema) -> str:
+def create_refresh_token(user: UserSchema) -> str:
     jwt_payload = {
         "sub": user.username,
         "username": user.username,
-        "email": (await user.awaitable_attrs.profile).email,
+        "email": user.email,
     }
     return create_jwt(
         token_type=REFRESH_TOKEN_TYPE,

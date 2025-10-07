@@ -93,14 +93,17 @@ async def create_user(new_user: CreateUser, session: AsyncSession) -> None:
 
     hashed_password = hash_password(new_user.password)
 
-    user = User(username=new_user.username, hashed_password=hashed_password)
+    user = User(
+        username=new_user.username,
+        hashed_password=hashed_password,
+        email=new_user.email,
+    )
     session.add(user)
 
     profile = Profile(
         user=user,
         first_name=new_user.first_name,
         last_name=new_user.last_name,
-        email=new_user.email,
         bio=new_user.bio,
     )
     session.add(profile)

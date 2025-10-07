@@ -23,6 +23,7 @@ const formSchema = z.object({
 });
 const resolver = zodResolver(formSchema);
 const router = useRouter();
+const api_prefix: string = "/api/v1";
 const result = ref("");
 const severity = ref("success");
 const redirect = "/auth/login/";
@@ -30,7 +31,7 @@ const redirect = "/auth/login/";
 async function registerUser(e: Object) {
   if (backendServer != undefined) {
     await fetch(
-      'https://' + backendServer.address + '/users/', {
+      'https://' + backendServer.address + api_prefix + '/users/', {
       method: 'POST',
       cache: "reload",
       body: JSON.stringify(e.values),
