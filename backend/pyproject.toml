@@ -19,6 +19,7 @@ dependencies = [
     "passlib[bcrypt] (>=1.7.4,<2.0.0)",
     "bcrypt (==4.3.0,<6.0.0)",
     "python-multipart (>=0.0.20,<0.0.21)",
+    "fastapi-users[sqlalchemy] (>=14.0.1,<15.0.0)",
 ]
 
 [dependency-groups]
