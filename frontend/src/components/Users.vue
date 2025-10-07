@@ -5,14 +5,16 @@ import Column from 'primevue/column';
 
 const props = defineProps({
   backendServer: Object,
+  isActiveUsers: Boolean,
 })
 
-let users: Ref<null, null> = ref(null)
+let users: Ref<null, null> = ref(null);
+const api_prefix: string = "/api/v1";
 
 async function getUsersList() {
   if (props.backendServer != undefined) {
     await fetch(
-      'https://' + props.backendServer.address + '/users/', {
+      'https://' + props.backendServer.address + api_prefix + '/users/', {
       method: 'GET',
       cache: "reload",
       headers: {
@@ -37,7 +39,8 @@ onMounted(async function () {
 </script>
 
 <template>
-  <DataTable :value="users" tableStyle="min-width: 50rem">
+  <h3 v-if="isActiveUsers">Пользователи:</h3>
+  <DataTable v-if="isActiveUsers" :value="users" tableStyle="min-width: 50rem">
     <Column field="username" header="Username"></Column>
     <Column field="email" header="Email"></Column>
     <Column field="first_name" header="First name"></Column>

@@ -15,8 +15,8 @@ import { ref } from 'vue';
 
 const router = useRouter();
 const formSchema = z.object({
-  username: z.string().min(2, { message: "Имя пользователя должно быть больше 3 символов." }),
-  password: z.string().min(8, { message: "Пароль должен содержать не меньше 8 символов." }),
+  username: z.string(),
+  password: z.string(),
 });
 const resolver = zodResolver(formSchema);
 const api_prefix: string = "/api/v1";

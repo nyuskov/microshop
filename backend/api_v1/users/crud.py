@@ -76,8 +76,8 @@ async def get_users_with_posts_and_profiles(
             {
                 "username": user.username,
                 "hashed_password": user.hashed_password,
+                "email": user.email,
                 "bio": user.profile and user.profile.bio,
-                "email": user.profile and user.profile.email,
                 "first_name": user.profile and user.profile.first_name,
                 "last_name": user.profile and user.profile.last_name,
                 "posts": ", ".join([post.title for post in user.posts]),
