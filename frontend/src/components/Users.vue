@@ -39,6 +39,7 @@ onMounted(async function () {
 <template>
   <DataTable :value="users" tableStyle="min-width: 50rem">
     <Column field="username" header="Username"></Column>
+    <Column field="email" header="Email"></Column>
     <Column field="first_name" header="First name"></Column>
     <Column field="last_name" header="Last name"></Column>
     <Column field="bio" header="Biography"></Column>

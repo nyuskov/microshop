@@ -1,109 +1,29 @@
-from fastapi import APIRouter, Depends, Form, HTTPException, status
+from fastapi import APIRouter, Depends
 from fastapi.security import (
+    HTTPBearer,
     OAuth2PasswordBearer,
 )
-from jwt.exceptions import InvalidTokenError
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.models import db_helper
-from .utils import (
-    validate_password,
-    encode_jwt,
-    decode_jwt,
+from .helpers import (
+    create_access_token,
+    create_refresh_token,
 )
-from users.schemas import UserSchema
-from users.crud import get_user_by_username
 from ..tokens.schemas import Token
+from ..users.schemas import UserSchema
+from .validation import (
+    get_current_active_auth_user,
+    get_current_auth_user_for_refresh,
+    get_current_token_payload,
+    validate_auth_user,
+)
 
 
-router = APIRouter(prefix="/jwt", tags=["JSON Web Tokens"])
-
-# http_bearer = HTTPBearer()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/jwt/login/")
-
-
-async def validate_auth_user(
-    session: AsyncSession = Depends(db_helper.session_dependency),
-    username: str = Form(),
-    password: str = Form(),
-):
-    unauthed_exc = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Неверное имя пользователя или пароль",
-    )
-    if not (user := await get_user_by_username(session, username)):
-        raise unauthed_exc
-
-    if not validate_password(
-        password=password,
-        hashed_password=user.hashed_password,
-    ):
-        raise unauthed_exc
-
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Пользователь неактивен",
-        )
-
-    return user
-
-
-def get_current_token_payload(
-    token: str = Depends(oauth2_scheme),
-):
-    error = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Неверный токен доступа",
-    )
-    try:
-        payload = decode_jwt(token=token)
-    except InvalidTokenError:
-        raise error
-
-    return payload
-
-
-async def get_current_auth_user(
-    session: AsyncSession = Depends(db_helper.session_dependency),
-    payload: dict = Depends(get_current_token_payload),
-) -> UserSchema:
-    username: str | None = payload.get("sub")
-    error = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Неверный токен доступа",
-    )
-    if not (user := await get_user_by_username(session, username)):
-        raise error
-    return user
-
-
-def get_current_active_auth_user(
-    user: UserSchema = Depends(get_current_auth_user),
-):
-    if user.is_active:
-        return user
-    raise HTTPException(
-        status.HTTP_403_FORBIDDEN,
-        detail="Пользователь неактивен",
-    )
-
-
-@router.post("/login/", response_model=Token)
-async def auth_user_issue_jwt(
-    user: UserSchema = Depends(validate_auth_user),
-) -> Token:
-    jwt_payload = {
-        "sub": user.username,
-        "username": user.username,
-        "email": (await user.awaitable_attrs.profile).email,
-        # "logged_in_at":,
-    }
-    token = encode_jwt(jwt_payload)
-    return Token(
-        access_token=token,
-        token_type="Bearer",
-    )
+http_bearer = HTTPBearer(auto_error=False)
+router = APIRouter(
+    prefix="/jwt",
+    tags=["JSON Web Tokens"],
+    dependencies=[Depends(http_bearer)],
+)
 
 
 @router.get("/users/me/")
@@ -117,3 +37,30 @@ async def auth_user_check_self_info(
         "email": (await user.awaitable_attrs.profile).email,
         "logged_in_at": payload.get("iat"),
     }
+
+
+@router.post("/login/", response_model=Token)
+async def auth_user_issue_jwt(
+    user: UserSchema = Depends(validate_auth_user),
+) -> Token:
+    access_token = await create_access_token(user)
+    refresh_token = await create_refresh_token(user)
+    return Token(
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
+
+
+@router.post(
+    "/refresh/",
+    response_model=Token,
+    response_model_exclude_none=True,
+)
+async def auth_refresh_jwt(
+    user: UserSchema = Depends(get_current_auth_user_for_refresh),
+) -> Token:
+    access_token = await create_access_token(user)
+
+    return Token(
+        access_token=access_token,
+    )

@@ -17,6 +17,9 @@ const formSchema = z.object({
   email: z.string().email({ message: "Неверный email-адрес." }),
   password: z.string().min(8, { message: "Пароль должен содержать не меньше 8 символов." }),
   password2: z.string().min(8, { message: "Пароль должен содержать не меньше 8 символов." }),
+  first_name: z.string(),
+  last_name: z.string(),
+  bio: z.string(),
 });
 const resolver = zodResolver(formSchema);
 const router = useRouter();

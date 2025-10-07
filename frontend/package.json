@@ -15,13 +15,15 @@
     "type-check": "vue-tsc --build"
   },
   "dependencies": {
+    "@primeuix/themes": "^1.2.5",
     "@primevue/forms": "^4.4.0",
     "@primevue/themes": "^4.3.9",
     "@vuelidate/core": "^2.0.3",
     "@vuelidate/validators": "^2.0.4",
     "pinia": "^3.0.3",
+    "primeflex": "^4.0.0",
     "primeicons": "^7.0.0",
-    "primevue": "^4.3.9",
+    "primevue": "^4.4.0",
     "vite-plugin-checker": "^0.10.3",
     "vue": "^3.5.18",
     "vue-router": "^4.5.1",

@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import settings
 from core.models import db_helper
 from ..tokens.schemas import TokenData
-from users.crud import get_user_by_username
-from users.schemas import CurrentUser
+from ..users.crud import get_user_by_username
+from ..users.schemas import CurrentUser
 
 security = HTTPBasic()
 
@@ -28,7 +28,7 @@ def encode_jwt(
     algorithm: str = settings.auth_jwt.algorithm,
     expire_minutes: int = settings.auth_jwt.access_token_expire_minutes,
     expire_timedelta: timedelta | None = None,
-):
+) -> str:
     """Служебная функция для генерации нового токена"""
     to_encode = payload.copy()
     now = datetime.now(timezone.utc)
@@ -52,7 +52,7 @@ def decode_jwt(
     token: str | bytes,
     public_key: str = settings.auth_jwt.public_key_path.read_text(),
     algorithm: str = settings.auth_jwt.algorithm,
-):
+) -> str:
     """Служебная функция для получения декодированного токена"""
     decoded = jwt.decode(
         token,

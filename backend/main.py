@@ -8,7 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from api_v1 import router_v1
 from core.config import settings
 from core.middleware import SimpleMiddleware
-from users.views import router as users_router
 
 
 @asynccontextmanager
@@ -21,7 +20,6 @@ app = FastAPI(
     swagger_ui_parameters={"favicon_url": "/favicon.ico"},
 )
 app.include_router(router=router_v1, prefix=settings.api_v1_prefix)
-app.include_router(users_router)
 
 origins = ["*"]  # Allows all origins
 

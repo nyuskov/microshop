@@ -5,7 +5,8 @@ class Token(BaseModel):
     """Модель, используемая для ответа токеном при авторизации"""
 
     access_token: str
-    token_type: str
+    refresh_token: str | None = None
+    token_type: str = "Bearer"
 
 
 class TokenData(BaseModel):

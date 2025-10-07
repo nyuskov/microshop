@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models import db_helper
-from users import crud
-from users.schemas import CreateUser
+from . import crud
+from .schemas import CreateUser
 
 router = APIRouter(
     prefix="/users",

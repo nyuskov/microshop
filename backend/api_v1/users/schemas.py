@@ -1,8 +1,9 @@
-from typing import Annotated, Type
+from typing import Annotated, Awaitable
 from annotated_types import MinLen, MaxLen
 
 from pydantic import BaseModel, ConfigDict, EmailStr
-from sqlalchemy.ext.asyncio import AsyncAttrs
+
+from core.models.profile import Profile
 
 
 class User(BaseModel):
@@ -25,8 +26,8 @@ class CreateUser(User):
 
 
 class UserSchema(BaseModel):
-    model_config = ConfigDict(strict=True)
+    model_config = ConfigDict(strict=True, arbitrary_types_allowed=True)
     username: str
     password: str
-    awaitable_attrs: Type[AsyncAttrs]
+    awaitable_attrs: Awaitable[Profile]
     is_active: bool = True

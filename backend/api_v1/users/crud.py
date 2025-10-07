@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload, joinedload
 
 from core.models.profile import Profile
 from core.models.user import User
-from users.schemas import CreateUser
+from ..users.schemas import CreateUser
 
 
 def hash_password(
@@ -77,6 +77,7 @@ async def get_users_with_posts_and_profiles(
                 "username": user.username,
                 "hashed_password": user.hashed_password,
                 "bio": user.profile and user.profile.bio,
+                "email": user.profile and user.profile.email,
                 "first_name": user.profile and user.profile.first_name,
                 "last_name": user.profile and user.profile.last_name,
                 "posts": ", ".join([post.title for post in user.posts]),
