@@ -8,11 +8,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from api_v1 import router_v1
 from core.config import settings
 from core.middleware import SimpleMiddleware
+from core.models import db_helper
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
+    await db_helper.dispose()
 
 
 app = FastAPI(

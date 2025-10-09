@@ -30,6 +30,9 @@ class DatabaseHelper:
         )
         return session
 
+    async def dispose(self) -> None:
+        await self.engine.dispose()
+
     async def session_dependency(self) -> AsyncGenerator[AsyncSession]:
         session = self.get_scoped_session()
         yield session
