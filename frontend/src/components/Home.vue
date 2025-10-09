@@ -12,20 +12,25 @@ import { useRouter } from 'vue-router';
 const router = useRouter();
 const redirectReg = "/auth/registration/";
 const redirectLogin = "/auth/login/";
-let isActiveUsers: Ref<boolean, boolean> = ref(false);
-let isActiveProducts: Ref<boolean, boolean> = ref(false);
+let isActive: Ref<Object, Object> = ref(
+  {
+    "users": false,
+    "products": false,
+  },
+);
 let isAuthorized: Ref<boolean, boolean> = ref(false);
 let popup: Ref<boolean, boolean> = ref(true);
 let saySomething: string = "Ебал я это ваше программирование!";
-console.log(saySomething);
 
 const items: Array<Object> = [
   {
     label: 'Пользователи',
     icon: 'pi pi-fw pi-user',
     command: () => {
-      isActiveUsers.value = true;
-      isActiveProducts.value = false;
+      isActive.value = {
+        "users": true,
+        "products": false,
+      };
       popup.value = !popup.value;
     }
   },
@@ -33,8 +38,10 @@ const items: Array<Object> = [
     label: 'Товары',
     icon: 'pi pi-fw pi-cart-arrow-down',
     command: () => {
-      isActiveUsers.value = false;
-      isActiveProducts.value = true;
+      isActive.value = {
+        "users": false,
+        "products": true,
+      };
       popup.value = !popup.value;
     }
   },
@@ -45,8 +52,10 @@ const items: Array<Object> = [
     label: 'Выйти',
     icon: 'pi pi-fw pi-sign-out',
     command: () => {
-      isActiveUsers.value = false;
-      isActiveProducts.value = false;
+      isActive.value = {
+        "users": false,
+        "products": false,
+      };
       isAuthorized.value = false;
       popup.value = !popup.value;
     }
@@ -76,14 +85,15 @@ function toggle() {
   </div>
   <div class="content">
     <h1>Hello!</h1>
-    <div v-if="!isAuthorized">
+    <p>{{ saySomething }}</p>
+    <div class="content" v-if="!isAuthorized">
       <Button severity="secondary" @click="router.push(redirectReg)">Зарегистрироваться</Button>
       <span>или</span>
       <Button severity="secondary" @click="router.push(redirectLogin)">Войти</Button>
     </div>
-    <div v-if="isAuthorized">
-      <Users :isActiveUsers :backendServer></Users>
-      <Products :isActiveProducts :backendServer></Products>
+    <div class="content" v-if="isAuthorized">
+      <Users v-if="isActive['users']" :backendServer></Users>
+      <Products v-if="isActive['products']" :backendServer></Products>
     </div>
   </div>
 </template>

@@ -5,7 +5,6 @@ import Column from 'primevue/column';
 
 const props = defineProps({
   backendServer: Object,
-  isActiveProducts: Boolean,
 })
 
 const api_prefix: string = "/api/v1";
@@ -39,8 +38,8 @@ onMounted(async function () {
 </script>
 
 <template>
-  <h3 v-if="isActiveProducts">Товары:</h3>
-  <DataTable v-if="isActiveProducts" :value="products" tableStyle="min-width: 50rem">
+  <h3>Товары:</h3>
+  <DataTable :value="products" tableStyle="min-width: 50rem">
     <Column field="name" header="Name"></Column>
     <Column field="price" header="Price"></Column>
     <Column field="description" header="Description"></Column>

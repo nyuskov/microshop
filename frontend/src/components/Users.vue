@@ -5,7 +5,6 @@ import Column from 'primevue/column';
 
 const props = defineProps({
   backendServer: Object,
-  isActiveUsers: Boolean,
 })
 
 let users: Ref<null, null> = ref(null);
@@ -39,8 +38,8 @@ onMounted(async function () {
 </script>
 
 <template>
-  <h3 v-if="isActiveUsers">Пользователи:</h3>
-  <DataTable v-if="isActiveUsers" :value="users" tableStyle="min-width: 50rem">
+  <h3>Пользователи:</h3>
+  <DataTable :value="users" tableStyle="min-width: 50rem">
     <Column field="username" header="Username"></Column>
     <Column field="email" header="Email"></Column>
     <Column field="first_name" header="First name"></Column>
