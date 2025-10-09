@@ -15,9 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from core.models import db_helper
-from ..tokens.schemas import TokenData
-from ..users.crud import get_user_by_username
-from ..users.schemas import CurrentUser
+from api_v1.tokens.schemas import TokenData
+from api_v1.users.crud import get_user_by_username
+from api_v1.users.schemas import CurrentUser
 
 security = HTTPBasic()
 

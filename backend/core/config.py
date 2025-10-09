@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from pydantic import BaseModel
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).parent.parent
 
@@ -24,6 +24,12 @@ class AuthJWT(BaseModel):
 
 class AccessToken(BaseModel):
     lifetime_seconds: int = 3600
+    reset_password_token_secret: str = (
+        "bc7489b3d5c3fb681ae66c0b7782dfd2232e98c1f7501f8d6907d833566bb35d"
+    )
+    verification_token_secret: str = (
+        "5a75baedbfe91ea0f34b91ef9d7bf3de50e0eb068aff17170d4c9029f6cdbb3c"
+    )
 
 
 class Settings(BaseSettings):

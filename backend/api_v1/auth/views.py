@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from core.models import db_helper
-from ..tokens.schemas import Token
+from api_v1.tokens.schemas import Token
 from .utils import (
     authenticate_user,
     create_access_token,

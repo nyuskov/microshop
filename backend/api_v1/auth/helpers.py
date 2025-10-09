@@ -1,10 +1,9 @@
 from datetime import timedelta
 
+from api_v1.users.schemas import UserSchema
 from core.config import settings
 from .utils import encode_jwt
-from ..users.schemas import UserSchema
 
-settings
 TOKEN_TYPE_FIELD = "type"
 ACCESS_TOKEN_TYPE = "access"
 REFRESH_TOKEN_TYPE = "refresh"

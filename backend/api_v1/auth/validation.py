@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models import db_helper
 from .helpers import ACCESS_TOKEN_TYPE, REFRESH_TOKEN_TYPE, TOKEN_TYPE_FIELD
-from ..users.crud import get_user_by_username
-from ..users.schemas import UserSchema
+from api_v1.users.crud import get_user_by_username
+from api_v1.users.schemas import UserSchema
 from .utils import decode_jwt, validate_password
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/jwt/login/")

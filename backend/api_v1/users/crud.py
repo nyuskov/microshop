@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload, joinedload
 
 from core.models.profile import Profile
 from core.models.user import User
-from ..users.schemas import CreateUser
+from api_v1.users.schemas import CreateUser
 
 
 def hash_password(

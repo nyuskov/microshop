@@ -4,12 +4,12 @@ from fastapi.security import (
     OAuth2PasswordBearer,
 )
 
+from api_v1.users.schemas import UserSchema
+from api_v1.tokens.schemas import Token
 from .helpers import (
     create_access_token,
     create_refresh_token,
 )
-from ..tokens.schemas import Token
-from ..users.schemas import UserSchema
 from .validation import (
     get_current_active_auth_user,
     get_current_auth_user_for_refresh,
