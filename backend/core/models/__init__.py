@@ -1,4 +1,5 @@
 __all__ = {
+    "AccessToken",
     "Base",
     "DatabaseHelper",
     "db_helper",
@@ -16,3 +17,4 @@ from .post import Post
 from .product import Product
 from .profile import Profile
 from .user import User
+from .access_token import AccessToken

@@ -12,10 +12,10 @@ from .mixins import IdIntPkMixin
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
-    
+
     from .post import Post
     from .profile import Profile
-    
+
 
 class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
     username: Mapped[str] = mapped_column(String(32), unique=True)
@@ -25,8 +25,8 @@ class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
 
     @classmethod
     def get_db(cls, session: "AsyncSession"):
-        return SQLAlchemyUserDatabase(session, User)
-    
+        return SQLAlchemyUserDatabase(session, cls)
+
     def __str__(self):
         return f"{self.__class__.__name__}(id={self.id}, username={
             self.username!r})"
