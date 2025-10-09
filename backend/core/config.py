@@ -22,10 +22,15 @@ class AuthJWT(BaseModel):
     public_key_path: Path = BASE_DIR / "certs" / "jwt-public.pem"
 
 
+class AccessToken(BaseModel):
+    lifetime_seconds: int = 3600
+
+
 class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     db: DBSettings = DBSettings()
     auth_jwt: AuthJWT = AuthJWT()
+    access_token: AccessToken = AccessToken()
 
 
 settings = Settings()
