@@ -19,7 +19,7 @@ from .utils import (
 )
 
 
-router = APIRouter(prefix="/auth", tags=["Аутентификация"])
+router = APIRouter(prefix=settings.api_v1_auth_prefix, tags=["Аутентификация"])
 
 security = HTTPBasic()
 

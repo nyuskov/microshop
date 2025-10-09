@@ -34,6 +34,7 @@ class AccessToken(BaseModel):
 
 class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
+    api_v1_auth_prefix: str = "/auth"
     db: DBSettings = DBSettings()
     auth_jwt: AuthJWT = AuthJWT()
     access_token: AccessToken = AccessToken()
