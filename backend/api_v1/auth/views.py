@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from core.models import db_helper
+from api_v1.dependencies.fastapi_users import fastapi_users
+from api_v1.dependencies.backend import authentication_backend
 from api_v1.tokens.schemas import Token
 from .utils import (
     authenticate_user,
@@ -20,6 +22,10 @@ from .utils import (
 
 
 router = APIRouter(prefix=settings.api_v1_auth_prefix, tags=["Аутентификация"])
+
+router.include_router(
+    router=fastapi_users.get_auth_router(authentication_backend),
+)
 
 security = HTTPBasic()
 
