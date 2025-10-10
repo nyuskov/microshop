@@ -23,20 +23,24 @@ from .utils import (
 
 
 router = APIRouter(prefix=settings.api_v1_auth_prefix, tags=["Аутентификация"])
-
-# /login, /logout
+# /login
+# /logout
 router.include_router(
     router=fastapi_users.get_auth_router(authentication_backend),
 )
-
 # /register
 router.include_router(
     router=fastapi_users.get_register_router(UserRead, UserCreate),
 )
-
 # /verify
+# /request-verify-token
 router.include_router(
     router=fastapi_users.get_verify_router(UserRead),
+)
+# /reset-password
+# /forgot-password
+router.include_router(
+    router=fastapi_users.get_reset_password_router(),
 )
 
 security = HTTPBasic()
