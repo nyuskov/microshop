@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
-class AccessToken(IdIntPkMixin, SQLAlchemyBaseAccessTokenTable[int], Base):
+class AccessToken(SQLAlchemyBaseAccessTokenTable[int], Base):
     user_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("user.id", ondelete="cascade"),
