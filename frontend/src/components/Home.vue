@@ -12,7 +12,13 @@ import { useRouter } from 'vue-router';
 const router = useRouter();
 const redirectReg = "/auth/registration/";
 const redirectLogin = "/auth/login/";
-let isActive: Ref<Object, Object> = ref(
+let isActive: Ref<{
+  users: boolean;
+  products: boolean;
+}, {
+  users: boolean;
+  products: boolean;
+}> = ref(
   {
     "users": false,
     "products": false,

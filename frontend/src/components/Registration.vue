@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Form } from '@primevue/forms';
+import { Form, type FormSubmitEvent } from '@primevue/forms';
 import { FormField } from '@primevue/forms';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
@@ -28,7 +28,7 @@ const result = ref("");
 const severity = ref("success");
 const redirect = "/auth/login/";
 
-async function registerUser(e: Object) {
+async function registerUser(e: FormSubmitEvent<Record<string, any>>) {
   if (backendServer != undefined) {
     await fetch(
       'https://' + backendServer.address + api_prefix + '/users/', {
@@ -53,7 +53,7 @@ async function registerUser(e: Object) {
     });
   }
 }
-async function onFormSubmit(e: Object) {
+async function onFormSubmit(e: FormSubmitEvent<Record<string, any>>) {
   if (Object.keys(e.errors).length) {
     return;
   }

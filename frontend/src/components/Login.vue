@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Form } from '@primevue/forms';
+import { Form, type FormSubmitEvent } from '@primevue/forms';
 import { FormField } from '@primevue/forms';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
@@ -24,7 +24,7 @@ const redirect = "/auth/registration/";
 const severity = ref("success");
 const result = ref("");
 
-async function loginUser(e: Object) {
+async function loginUser(e: FormSubmitEvent<Record<string, any>>) {
   if (backendServer != undefined) {
     await fetch(
       'https://' + backendServer.address + api_prefix + '/jwt/login/', {
@@ -50,7 +50,8 @@ async function loginUser(e: Object) {
     });
   }
 }
-async function onFormSubmit(e: Object) {
+async function onFormSubmit(e: FormSubmitEvent<Record<string, any>>) {
+  console.log(e);
   if (Object.keys(e.errors).length) {
     return;
   }
