@@ -1,13 +1,13 @@
 from pathlib import Path
 
 from pydantic import BaseModel
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings
 
 BASE_DIR = Path(__file__).parent.parent
 
 
 class DBSettings(BaseModel):
-    url: str = "postgresql+asyncpg://postgres:Xx123456@localhost:5432/microshop"
+    url: str = "postgresql+asyncpg://postgres:Xx123456@db:5432/microshop"
     echo: bool = True
 
 

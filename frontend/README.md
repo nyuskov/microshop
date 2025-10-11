@@ -37,7 +37,3 @@ npm run build
 ```sh
 npm run test:unit
 ```
-
-```sh
-python -c 'import secrets; print(secrets.token_hex())'
-```

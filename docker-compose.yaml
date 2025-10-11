@@ -24,6 +24,8 @@ services:
         - POSTGRES_URL=postgres
         - POSTGRES_PASSWORD=Xx123456
         - POSTGRES_DB=microshop
+    networks:
+      - server_network
   nginx:
     image: nginx:latest
     build:

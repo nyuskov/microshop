@@ -14,6 +14,7 @@
 
    FROM nginx:alpine AS production-build
    COPY ./nginx/production.conf /etc/nginx/nginx.conf
+   COPY ./nginx/certificates /etc/nginx/certificates
 
    ## Remove default nginx index page
    RUN rm -rf /usr/share/nginx/html/*
@@ -21,5 +22,5 @@
    # Copy from the stage 1
    COPY --from=develop-stage /app/dist /usr/share/nginx/html
 
-   EXPOSE 80
+   EXPOSE 443
    # ENTRYPOINT ["nginx", "-g", "daemon off;"]

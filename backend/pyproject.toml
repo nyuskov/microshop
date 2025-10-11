@@ -20,6 +20,7 @@ dependencies = [
     "bcrypt (==4.3.0,<6.0.0)",
     "python-multipart (>=0.0.20,<0.0.21)",
     "fastapi-users[sqlalchemy] (>=14.0.1,<15.0.0)",
+    "gunicorn (>=23.0.0,<24.0.0)",
 ]
 
 # TODO: error during install?
