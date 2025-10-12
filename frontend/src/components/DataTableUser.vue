@@ -26,7 +26,7 @@ async function getUsersList() {
       users.value = await response.json();
       console.log(users.value);
     }).catch((err) => {
-      let error: string = 'An error occurred during get users list : ' + err;
+      let error: string = 'Ошибка при выполнении запроса: ' + err;
       console.log(error);
     });
   }

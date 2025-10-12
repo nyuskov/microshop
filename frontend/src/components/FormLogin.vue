@@ -20,7 +20,7 @@ const formSchema = z.object({
 });
 const resolver = zodResolver(formSchema);
 const api_prefix: string = "/api/v1";
-const redirect = "/auth/registration/";
+const redirectPath = "/auth/register/";
 const severity = ref("success");
 const result = ref("");
 
@@ -43,8 +43,7 @@ async function loginUser(e: FormSubmitEvent<Record<string, any>>) {
       } else {
         severity.value = "error";
       }
-    }).catch((err) => {
-      let error: string = 'An error occurred during get users list : ' + err;
+    }).catch((error) => {
       result.value = error;
       severity.value = "error";
     });
@@ -75,10 +74,38 @@ async function onFormSubmit(e: FormSubmitEvent<Record<string, any>>) {
       </FormField>
       <Message size="small" :severity variant="simple">{{ result }}</Message>
       <Button type="submit" class="btn-login" label="Войти" />
-      <Button @click="router.push(redirect)" class="btn-login" label="Зарегистрироваться" severity="secondary"
+      <Button @click="router.push(redirectPath)" class="btn-login" label="Зарегистрироваться" severity="secondary"
         variant="text" />
     </Form>
   </div>
 </template>
 
-<style src="../assets/css/style.css" scoped></style>
+<style scoped>
+/* Form */
+.frm-login {
+  -webkit-box-shadow: 0px 0px 8px 0px rgba(34, 60, 80, 0.2);
+  -moz-box-shadow: 0px 0px 8px 0px rgba(34, 60, 80, 0.2);
+  align-items: center;
+  box-shadow: 0px 0px 8px 0px rgba(34, 60, 80, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.btn-login {
+  width: 100%;
+}
+
+.cnt-login {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  height: 100vh;
+}
+
+.txt-login {
+  resize: none;
+  width: 100%;
+}
+</style>

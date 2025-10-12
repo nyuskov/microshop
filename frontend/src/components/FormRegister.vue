@@ -7,20 +7,22 @@ import Message from 'primevue/message';
 import Textarea from 'primevue/textarea';
 import Password from 'primevue/password';
 import { zodResolver } from "@primevue/forms/resolvers/zod";
-import { z } from 'zod';
+import { nullable, z } from 'zod';
 import { backendServer } from '@/stores/auth';
 import { useRouter } from 'vue-router';
 import { ref } from 'vue';
 
 const formSchema = z.object({
   username: z.string().min(2, { message: "Имя пользователя должно быть больше 3 символов." }),
-  email: z.string().email({ message: "Неверный email-адрес." }),
+  email: z.email({ message: "Неверный email-адрес." }),
   password: z.string().min(8, { message: "Пароль должен содержать не меньше 8 символов." }),
   password2: z.string().min(8, { message: "Пароль должен содержать не меньше 8 символов." }),
-  first_name: z.string(),
-  last_name: z.string(),
-  bio: z.string(),
-});
+  first_name: z.string().nullable(),
+  last_name: z.string().nullable(),
+  bio: z.string().nullable(),
+}).refine(
+  data => data.password !== data.password2 ? false : true,
+  { "message": "Пароли не совпадают.", path: ["password2"] });
 const resolver = zodResolver(formSchema);
 const router = useRouter();
 const api_prefix: string = "/api/v1";
@@ -46,8 +48,7 @@ async function registerUser(e: FormSubmitEvent<Record<string, any>>) {
       // if (result.status == 200) {
       //   router.push('/auth/login/');
       // }
-    }).catch((err) => {
-      let error: string = 'An error occurred during get users list : ' + err;
+    }).catch((error) => {
       result.value = error;
       severity.value = "error";
     });
@@ -63,48 +64,80 @@ async function onFormSubmit(e: FormSubmitEvent<Record<string, any>>) {
 
 <template>
   <div class="cnt-register">
-    <Form @submit="onFormSubmit" :resolver class="frm-login flex flex-col gap-4 w-full sm:w-80">
+    <Form @submit="onFormSubmit" :resolver class="frm-register flex flex-col gap-4 w-full sm:w-80">
       <h3>Регистрация</h3>
-      <FormField v-slot="$field" name="username" initialValue="" class="flex txt-login flex-col gap-1">
-        <InputText type="text" class="txt-login" placeholder="Имя пользователя" />
+      <FormField v-slot="$field" name="username" initialValue="" class="flex txt-register flex-col gap-1">
+        <InputText type="text" class="txt-register" placeholder="Имя пользователя" />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="password" initialValue="" class="flex txt-login flex-col gap-1">
-        <Password type="text" placeholder="Пароль" :feedback="false" class="txt-login" toggleMask fluid />
+      <FormField v-slot="$field" name="password" initialValue="" class="flex txt-register flex-col gap-1">
+        <Password type="text" placeholder="Пароль" :feedback="false" class="txt-register" toggleMask fluid />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="password2" initialValue="" class="flex txt-login flex-col gap-1">
-        <Password type="text" placeholder="Повторите пароль" class="txt-login" :feedback="false" toggleMask fluid />
+      <FormField v-slot="$field" name="password2" initialValue="" class="flex txt-register flex-col gap-1">
+        <Password type="text" placeholder="Повторите пароль" class="txt-register" :feedback="false" toggleMask fluid />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="email" initialValue="" class="flex txt-login flex-col gap-1">
-        <InputText type="text" class="txt-login" placeholder="Почта@gmail.com" />
+      <FormField v-slot="$field" name="email" initialValue="" class="flex txt-register flex-col gap-1">
+        <InputText type="text" class="txt-register" placeholder="Почта@gmail.com" />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="first_name" initialValue="" class="flex txt-login flex-col gap-1">
-        <InputText type="text" class="txt-login" placeholder="Имя" />
+      <FormField v-slot="$field" name="first_name" initialValue="" class="flex txt-register flex-col gap-1">
+        <InputText type="text" class="txt-register" placeholder="Имя" />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="last_name" initialValue="" class="flex txt-login flex-col gap-1">
-        <InputText type="text" class="txt-login" placeholder="Фамилия" />
+      <FormField v-slot="$field" name="last_name" initialValue="" class="flex txt-register flex-col gap-1">
+        <InputText type="text" class="txt-register" placeholder="Фамилия" />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="bio" class="flex txt-login flex-col gap-1">
-        <Textarea class="txt-login" placeholder="Биография" />
+      <FormField v-slot="$field" name="bio" class="flex txt-register flex-col gap-1">
+        <Textarea class="txt-register" placeholder="Биография" />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
       <Message size="small" :severity variant="simple">{{ result }}</Message>
-      <Button type="submit" class="btn-login" label="Зарегистрироваться" />
-      <Button @click="router.push(redirect)" class="btn-login" label="Войти" severity="secondary" variant="text" />
+      <Button type="submit" class="btn-register" label="Зарегистрироваться" />
+      <Button @click="router.push(redirect)" class="btn-register" label="Войти" severity="secondary" variant="text" />
     </Form>
   </div>
 </template>
 
-<style src="../assets/css/style.css" scoped></style>
+<style scoped>
+/* Form */
+.frm-register {
+  -webkit-box-shadow: 0px 0px 8px 0px rgba(34, 60, 80, 0.2);
+  -moz-box-shadow: 0px 0px 8px 0px rgba(34, 60, 80, 0.2);
+  align-items: center;
+  box-shadow: 0px 0px 8px 0px rgba(34, 60, 80, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.btn-register {
+  width: 100%;
+}
+
+.cnt-register {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  height: 100vh;
+}
+
+.cnt-register .frm-register {
+  width: 50%;
+}
+
+.txt-register {
+  resize: none;
+  width: 100%;
+}
+</style>

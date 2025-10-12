@@ -26,7 +26,7 @@ async function getProductsList() {
       products.value = await response.json();
       console.log(products.value);
     }).catch((err) => {
-      let error: string = 'An error occurred during get products list : ' + err;
+      let error: string = 'Ошибка при выполнении запроса: ' + err;
       console.log(error);
     });
   }
