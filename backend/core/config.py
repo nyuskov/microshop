@@ -33,9 +33,13 @@ class AccessToken(BaseModel):
 
 
 class Settings(BaseSettings):
+    class Config:
+        env_file = ".env"
+        env_nested_delimiter = "__"
+
     api_v1_prefix: str = "/api/v1"
     api_v1_auth_prefix: str = "/auth"
-    db: DBSettings = DBSettings()
+    db: DBSettings | None = None
     auth_jwt: AuthJWT = AuthJWT()
     access_token: AccessToken = AccessToken()
 
