@@ -31,6 +31,7 @@ async function getProductsList() {
     });
   }
 }
+
 onMounted(async function () {
   // await getUsersList();
   await getProductsList();

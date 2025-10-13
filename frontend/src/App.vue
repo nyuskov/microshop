@@ -14,6 +14,7 @@ const router: Router = useRouter();
 const routes: RouteRecordNormalized[] = router.getRoutes();
 const redirectRegPath = "/auth/register/";
 const redirectLoginPath = "/auth/login/";
+
 let isActive: Ref<{
   users: boolean;
   products: boolean;
@@ -26,6 +27,7 @@ let isActive: Ref<{
     "products": false,
   },
 );
+
 let isAuthorized: Ref<boolean, boolean> = ref(false);
 let popup: Ref<boolean, boolean> = ref(true);
 let saySomething: string = "Ебал я это ваше программирование!";
@@ -34,24 +36,12 @@ const items: Array<Object> = [
   {
     label: 'Пользователи',
     icon: 'pi pi-fw pi-user',
-    command: () => {
-      isActive.value = {
-        "users": true,
-        "products": false,
-      };
-      popup.value = !popup.value;
-    }
+    command: toggleMenuItem('Пользователи')
   },
   {
     label: 'Товары',
     icon: 'pi pi-fw pi-cart-arrow-down',
-    command: () => {
-      isActive.value = {
-        "users": false,
-        "products": true,
-      };
-      popup.value = !popup.value;
-    }
+    command: toggleMenuItem('Товары')
   },
   {
     separator: true,
@@ -59,18 +49,11 @@ const items: Array<Object> = [
   {
     label: 'Выйти',
     icon: 'pi pi-fw pi-sign-out',
-    command: () => {
-      isActive.value = {
-        "users": false,
-        "products": false,
-      };
-      isAuthorized.value = false;
-      popup.value = !popup.value;
-    }
+    command: toggleMenuItem('Выйти')
   },
 ];
 
-function toggleItem() {
+function toggleMenu() {
   popup.value = !popup.value;
 }
 
@@ -83,12 +66,22 @@ function toggleContent(name: string) {
   }
 }
 
+function toggleMenuItem(label: string) {
+  if (label === "Выйти") {
+    isAuthorized.value = false;
+  }
+  isActive.value.users = (label === "Пользователи") ? true : false;
+  isActive.value.products = (label === "Товары") ? true : false;
+
+  popup.value = !popup.value;
+}
+
 </script>
 
 <template>
-  <div v-if="toggleContent('Home')">
+  <section v-if="toggleContent('Home')">
     <div v-if="isAuthorized">
-      <Button type="button" icon="pi pi-ellipsis-v" @click="toggleItem" aria-haspopup="true"
+      <Button type="button" icon="pi pi-ellipsis-v" @click="toggleMenu" aria-haspopup="true"
         aria-controls="overlay_menu" />
       <Menu ref="menu" id="overlay_menu" :model="items" :popup="popup">
         <template #item="{ item, props }">
@@ -111,13 +104,17 @@ function toggleContent(name: string) {
         <Button severity="secondary" @click="router.push(redirectLoginPath)">Войти</Button>
       </div>
       <div class="content" v-if="isAuthorized">
-        <DataTableUser v-if="isActive['users']" :backendServer></DataTableUser>
-        <DataTableProduct v-if="isActive['products']" :backendServer></DataTableProduct>
+        <DataTableUser v-if="isActive['users']" :backendServer />
+        <DataTableProduct v-if="isActive['products']" :backendServer />
       </div>
     </div>
-  </div>
-  <FormLogin v-if="toggleContent('Login')"></FormLogin>
-  <FormRegister v-if="toggleContent('Register')"></FormRegister>
+  </section>
+  <section v-if="toggleContent('Login')">
+    <FormLogin />
+  </section>
+  <section v-if="toggleContent('Register')">
+    <FormRegister />
+  </section>
 </template>
 
 <style scoped>

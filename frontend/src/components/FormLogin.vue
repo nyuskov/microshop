@@ -49,6 +49,7 @@ async function loginUser(e: FormSubmitEvent<Record<string, any>>) {
     });
   }
 }
+
 async function onFormSubmit(e: FormSubmitEvent<Record<string, any>>) {
   console.log(e);
   if (Object.keys(e.errors).length) {
@@ -62,12 +63,12 @@ async function onFormSubmit(e: FormSubmitEvent<Record<string, any>>) {
   <div class="cnt-login">
     <Form @submit="onFormSubmit" :resolver class="frm-login flex flex-col gap-4 w-full sm:w-80">
       <h3>Вход</h3>
-      <FormField v-slot="$field" name="username" initialValue="" class="flex txt-login flex-col gap-1">
+      <FormField #="$field" name="username" initialValue="" class="flex txt-login flex-col gap-1">
         <InputText type="text" class="txt-login" placeholder="Имя пользователя" />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="password" initialValue="" class="flex txt-login flex-col gap-1">
+      <FormField #="$field" name="password" initialValue="" class="flex txt-login flex-col gap-1">
         <Password type="text" class="txt-login" placeholder="Пароль" :feedback="false" toggleMask fluid />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>

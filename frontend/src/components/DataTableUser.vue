@@ -31,6 +31,7 @@ async function getUsersList() {
     });
   }
 }
+
 onMounted(async function () {
   // await getUsersList();
   await getUsersList();

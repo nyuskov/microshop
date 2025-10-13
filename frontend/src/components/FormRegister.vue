@@ -7,7 +7,7 @@ import Message from 'primevue/message';
 import Textarea from 'primevue/textarea';
 import Password from 'primevue/password';
 import { zodResolver } from "@primevue/forms/resolvers/zod";
-import { nullable, z } from 'zod';
+import { z } from 'zod';
 import { backendServer } from '@/stores/auth';
 import { useRouter } from 'vue-router';
 import { ref } from 'vue';
@@ -23,6 +23,7 @@ const formSchema = z.object({
 }).refine(
   data => data.password !== data.password2 ? false : true,
   { "message": "Пароли не совпадают.", path: ["password2"] });
+
 const resolver = zodResolver(formSchema);
 const router = useRouter();
 const api_prefix: string = "/api/v1";
@@ -54,6 +55,7 @@ async function registerUser(e: FormSubmitEvent<Record<string, any>>) {
     });
   }
 }
+
 async function onFormSubmit(e: FormSubmitEvent<Record<string, any>>) {
   if (Object.keys(e.errors).length) {
     return;
@@ -66,37 +68,37 @@ async function onFormSubmit(e: FormSubmitEvent<Record<string, any>>) {
   <div class="cnt-register">
     <Form @submit="onFormSubmit" :resolver class="frm-register flex flex-col gap-4 w-full sm:w-80">
       <h3>Регистрация</h3>
-      <FormField v-slot="$field" name="username" initialValue="" class="flex txt-register flex-col gap-1">
+      <FormField #="$field" name="username" initialValue="" class="flex txt-register flex-col gap-1">
         <InputText type="text" class="txt-register" placeholder="Имя пользователя" />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="password" initialValue="" class="flex txt-register flex-col gap-1">
+      <FormField #="$field" name="password" initialValue="" class="flex txt-register flex-col gap-1">
         <Password type="text" placeholder="Пароль" :feedback="false" class="txt-register" toggleMask fluid />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="password2" initialValue="" class="flex txt-register flex-col gap-1">
+      <FormField #="$field" name="password2" initialValue="" class="flex txt-register flex-col gap-1">
         <Password type="text" placeholder="Повторите пароль" class="txt-register" :feedback="false" toggleMask fluid />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="email" initialValue="" class="flex txt-register flex-col gap-1">
+      <FormField #="$field" name="email" initialValue="" class="flex txt-register flex-col gap-1">
         <InputText type="text" class="txt-register" placeholder="Почта@gmail.com" />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="first_name" initialValue="" class="flex txt-register flex-col gap-1">
+      <FormField #="$field" name="first_name" initialValue="" class="flex txt-register flex-col gap-1">
         <InputText type="text" class="txt-register" placeholder="Имя" />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="last_name" initialValue="" class="flex txt-register flex-col gap-1">
+      <FormField #="$field" name="last_name" initialValue="" class="flex txt-register flex-col gap-1">
         <InputText type="text" class="txt-register" placeholder="Фамилия" />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="bio" class="flex txt-register flex-col gap-1">
+      <FormField #="$field" name="bio" class="flex txt-register flex-col gap-1">
         <Textarea class="txt-register" placeholder="Биография" />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
