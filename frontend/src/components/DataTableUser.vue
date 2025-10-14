@@ -4,30 +4,28 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 
 const props = defineProps({
-  backendServer: Object,
+  backend_server: Object,
 })
-
-let users: Ref<null, null> = ref(null);
-const api_prefix: string = "/api/v1";
+let _users: Ref<null, null> = ref(null);
+let _result: Ref<string, string> = ref("");
+const request_path: string = "/api/v1/users/";
 
 async function getUsersList() {
-  if (props.backendServer != undefined) {
+  if (props.backend_server != undefined) {
     await fetch(
-      'https://' + props.backendServer.address + api_prefix + '/users/', {
+      'https://' + props.backend_server.address + request_path, {
       method: 'GET',
       cache: "reload",
       headers: {
         'Content-Type': 'application/json',
-        'X-CSRFToken': props.backendServer.csrfToken
+        'X-CSRFToken': props.backend_server.csrf_token
       },
 
       credentials: 'include',
     }).then(async function (response) {
-      users.value = await response.json();
-      console.log(users.value);
-    }).catch((err) => {
-      let error: string = 'Ошибка при выполнении запроса: ' + err;
-      console.log(error);
+      _users.value = await response.json();
+    }).catch((error) => {
+      _result.value = 'Ошибка при выполнении запроса: ' + error;
     });
   }
 }
@@ -40,7 +38,7 @@ onMounted(async function () {
 
 <template>
   <h3>Пользователи:</h3>
-  <DataTable :value="users" tableStyle="min-width: 50rem">
+  <DataTable :value="_users" tableStyle="min-width: 50rem">
     <Column field="username" header="Username"></Column>
     <Column field="email" header="Email"></Column>
     <Column field="first_name" header="First name"></Column>
@@ -48,6 +46,7 @@ onMounted(async function () {
     <Column field="bio" header="Biography"></Column>
     <Column field="posts" header="Posts"></Column>
   </DataTable>
+  <Message severity="error">{{ _result }}</Message>
 </template>
 
 <style scoped></style>

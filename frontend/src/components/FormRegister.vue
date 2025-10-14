@@ -8,11 +8,11 @@ import Textarea from 'primevue/textarea';
 import Password from 'primevue/password';
 import { zodResolver } from "@primevue/forms/resolvers/zod";
 import { z } from 'zod';
-import { backendServer } from '@/stores/auth';
+import { backend_server } from '@/stores/auth';
 import { useRouter } from 'vue-router';
 import { ref } from 'vue';
 
-const formSchema = z.object({
+const form_schema = z.object({
   username: z.string().min(2, { message: "Имя пользователя должно быть больше 3 символов." }),
   email: z.email({ message: "Неверный email-адрес." }),
   password: z.string().min(8, { message: "Пароль должен содержать не меньше 8 символов." }),
@@ -24,34 +24,31 @@ const formSchema = z.object({
   data => data.password !== data.password2 ? false : true,
   { "message": "Пароли не совпадают.", path: ["password2"] });
 
-const resolver = zodResolver(formSchema);
-const router = useRouter();
-const api_prefix: string = "/api/v1";
-const result = ref("");
-const severity = ref("success");
-const redirect = "/auth/login/";
+const resolver = zodResolver(form_schema);
+const $router = useRouter();
+const request_path: string = "/api/v1/users/";
+const _result = ref("");
+const _severity = ref("success");
+const redirect_path = "/auth/login/";
 
 async function registerUser(e: FormSubmitEvent<Record<string, any>>) {
-  if (backendServer != undefined) {
+  if (backend_server != undefined) {
     await fetch(
-      'https://' + backendServer.address + api_prefix + '/users/', {
+      'https://' + backend_server.address + request_path, {
       method: 'POST',
       cache: "reload",
       body: JSON.stringify(e.values),
       headers: {
         'Content-Type': 'application/json',
-        'X-CSRFToken': backendServer.csrfToken
+        'X-CSRFToken': backend_server.csrf_token
       },
       credentials: 'include',
     }).then(async function (response) {
-      result.value = (await response).statusText;
-      severity.value = "success";
-      // if (result.status == 200) {
-      //   router.push('/auth/login/');
-      // }
+      _result.value = (await response).statusText;
+      _severity.value = "success";
     }).catch((error) => {
-      result.value = error;
-      severity.value = "error";
+      _result.value = error;
+      _severity.value = "error";
     });
   }
 }
@@ -103,9 +100,10 @@ async function onFormSubmit(e: FormSubmitEvent<Record<string, any>>) {
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <Message size="small" :severity variant="simple">{{ result }}</Message>
+      <Message size="small" :severity="_severity" variant="simple">{{ _result }}</Message>
       <Button type="submit" class="btn-register" label="Зарегистрироваться" />
-      <Button @click="router.push(redirect)" class="btn-register" label="Войти" severity="secondary" variant="text" />
+      <Button @click="$router.push(redirect_path)" class="btn-register" label="Войти" severity="secondary"
+        variant="text" />
     </Form>
   </div>
 </template>

@@ -9,10 +9,10 @@ const routes: Record<string, string> = {
 
 export const useAuthStore = defineStore('auth', {
   state: () => {
-    const storedState = localStorage.getItem('authState');
+    const $stored_state = localStorage.getItem('authState');
     return Object.assign(
-      storedState ? JSON.parse(storedState) : {
-        user: null, isAuthenticated: false, currentUser: null,
+      $stored_state ? JSON.parse($stored_state) : {
+        user: null, is_authenticated: false, current_user: null,
         token: null, result: null,
       })
   },
@@ -26,7 +26,7 @@ export const useAuthStore = defineStore('auth', {
         }),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'X-CSRFToken': backendServer.csrfToken,
+          'X-CSRFToken': backend_server.csrf_token,
         },
         credentials: 'include',
       }).then(async (response) => {
@@ -34,20 +34,20 @@ export const useAuthStore = defineStore('auth', {
 
         if (this.token["access_token"]) {
           this.result = { "message": "OK", "status": true };
-          this.isAuthenticated = true;
+          this.is_authenticated = true;
           this.saveState();
 
           await this.fetchUser();
         } else {
           this.result = { "message": "Ошибка: Неверные данные", "status": false };
-          this.currentUser = null;
-          this.isAuthenticated = false;
+          this.current_user = null;
+          this.is_authenticated = false;
           this.saveState();
         }
       }).catch((error) => {
         this.result = { "message": error, "status": false };
-        this.currentUser = null;
-        this.isAuthenticated = false;
+        this.current_user = null;
+        this.is_authenticated = false;
         this.saveState();
       });
     },
@@ -62,8 +62,8 @@ export const useAuthStore = defineStore('auth', {
         },
         credentials: 'include',
       }).then((response) => {
-        this.currentUser = null;
-        this.isAuthenticated = false;
+        this.current_user = null;
+        this.is_authenticated = false;
         this.user = null;
         this.saveState();
       }).catch((error) => {
@@ -81,13 +81,13 @@ export const useAuthStore = defineStore('auth', {
         },
       }).then(async (response) => {
         this.user = await response.json();
-        this.isAuthenticated = true
-        this.currentUser = this.user;
+        this.is_authenticated = true
+        this.current_user = this.user;
       }).catch((error) => {
         console.error('Ошибка: ', error)
         this.user = null
-        this.isAuthenticated = false
-        this.currentUser = null
+        this.is_authenticated = false
+        this.current_user = null
       });
 
       this.saveState()
@@ -105,8 +105,8 @@ export const useAuthStore = defineStore('auth', {
         'authState',
         JSON.stringify({
           user: this.user,
-          isAuthenticated: this.isAuthenticated,
-          currentUser: this.currentUser,
+          is_authenticated: this.is_authenticated,
+          current_user: this.current_user,
           token: this.token, result: this.result,
         }),
       )
@@ -120,36 +120,36 @@ export function getCSRFToken() {
     This is necessary for CSRF protection in Django.
      */
   const name = 'csrftoken'
-  let cookieValue = null
+  let cookie_value = null
   if (document.cookie && document.cookie !== '') {
     const cookies = document.cookie.split(';')
     for (let i = 0; i < cookies.length; i++) {
       const cookie = cookies[i].trim()
       if (cookie.substring(0, name.length + 1) === name + '=') {
-        cookieValue = decodeURIComponent(cookie.substring(name.length + 1))
+        cookie_value = decodeURIComponent(cookie.substring(name.length + 1))
         break
       }
     }
   }
-  if (cookieValue === null) {
+  if (cookie_value === null) {
     throw 'Отсутствует CSRF cookie.'
   }
-  return cookieValue
+  return cookie_value
 }
 
 export function getAddress() {
-  let hostValue: string | null = null;
+  let host_value: string | null = null;
   if (window.location.host && window.location.host !== '') {
-    hostValue = window.location.host.split(':')[0] + ":8000";
+    host_value = window.location.host.split(':')[0] + ":8000";
   }
-  return hostValue
+  return host_value
 }
 
 type BackendServer = {
   address: string | null,
-  csrfToken: string,
+  csrf_token: string,
 }
-export const backendServer: BackendServer = {
+export const backend_server: BackendServer = {
   address: getAddress(),
-  csrfToken: getCSRFToken(),
+  csrf_token: getCSRFToken(),
 }

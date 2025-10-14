@@ -13,39 +13,43 @@ import {
 } from '../stores/auth.ts';
 import { ref, type Ref } from 'vue';
 
-const authStore = useAuthStore();
-const router = useRouter();
-const formSchema = z.object({
+const $auth_store = useAuthStore();
+const $router = useRouter();
+const form_schema = z.object({
   username: z.string(),
   password: z.string(),
 });
-const resolver = zodResolver(formSchema);
-const redirectPath: string = "/auth/register/";
-const severity: Ref<string, string> = ref("success");
-const result: Ref<string, string> = ref("");
+const resolver = zodResolver(form_schema);
+const redirect_path: string = "/auth/register/";
+const _severity: Ref<string, string> = ref("success");
+const _result: Ref<string, string> = ref("");
 
 async function onFormSubmit(e: FormSubmitEvent<Record<string, any>>) {
   if (Object.keys(e.errors).length) {
     return;
   }
-  await authStore.login(
+  await $auth_store.login(
     e.values["username"],
     e.values["password"],
   );
-  result.value = authStore.result["message"];
-  if (authStore.result["status"]) {
-    severity.value = "success";
-    authStore.result = null;
-    router.push("/");
+  _result.value = $auth_store.result["message"];
+  if ($auth_store.result["status"]) {
+    _severity.value = "success";
+    $auth_store.result = null;
+    $router.push("/");
   } else {
-    severity.value = "error";
-    authStore.result = null;
+    _severity.value = "error";
+    $auth_store.result = null;
   }
+}
+
+async function logout() {
+  await $auth_store.logout();
 }
 </script>
 
 <template>
-  <div class="cnt-login">
+  <div class="cnt-login" v-if="!$auth_store.is_authenticated">
     <Form @submit="onFormSubmit" :resolver class="frm-login flex flex-col gap-4 w-full sm:w-80">
       <h3>Вход</h3>
       <FormField #="$field" name="username" initialValue="" class="flex txt-login flex-col gap-1">
@@ -58,11 +62,14 @@ async function onFormSubmit(e: FormSubmitEvent<Record<string, any>>) {
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
         </Message>
       </FormField>
-      <Message size="small" :severity variant="simple">{{ result }}</Message>
+      <Message size="small" :severity="_severity" variant="simple">{{ _result }}</Message>
       <Button type="submit" class="btn-login" label="Войти" />
-      <Button @click="router.push(redirectPath)" class="btn-login" label="Зарегистрироваться" severity="secondary"
+      <Button @click="$router.push(redirect_path)" class="btn-login" label="Зарегистрироваться" severity="secondary"
         variant="text" />
     </Form>
+  </div>
+  <div class="cnt-login" v-if="$auth_store.is_authenticated">
+    <Button @click="logout" class="btn-login" label="Выйти" severity="secondary" variant="text" />
   </div>
 </template>
 

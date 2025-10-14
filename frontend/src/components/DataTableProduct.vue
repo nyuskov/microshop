@@ -4,30 +4,28 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 
 const props = defineProps({
-  backendServer: Object,
+  backend_server: Object,
 })
-
-const api_prefix: string = "/api/v1";
-let products: Ref<null, null> = ref(null)
+const request_path: string = "/api/v1/products/";
+let _products: Ref<null, null> = ref(null);
+let _result: Ref<string, string> = ref("");
 
 async function getProductsList() {
-  if (props.backendServer != undefined) {
+  if (props.backend_server != undefined) {
     await fetch(
-      'https://' + props.backendServer.address + api_prefix + '/products/', {
+      'https://' + props.backend_server.address + request_path, {
       method: 'GET',
       cache: "reload",
       headers: {
         'Content-Type': 'application/json',
-        'X-CSRFToken': props.backendServer.csrfToken
+        'X-CSRFToken': props.backend_server.csrf_token
       },
 
       credentials: 'include',
     }).then(async function (response) {
-      products.value = await response.json();
-      console.log(products.value);
-    }).catch((err) => {
-      let error: string = 'Ошибка при выполнении запроса: ' + err;
-      console.log(error);
+      _products.value = await response.json();
+    }).catch((error) => {
+      _result.value = 'Ошибка при выполнении запроса: ' + error;
     });
   }
 }
@@ -40,11 +38,12 @@ onMounted(async function () {
 
 <template>
   <h3>Товары:</h3>
-  <DataTable :value="products" tableStyle="min-width: 50rem">
+  <DataTable :value="_products" tableStyle="min-width: 50rem">
     <Column field="name" header="Name"></Column>
     <Column field="price" header="Price"></Column>
     <Column field="description" header="Description"></Column>
   </DataTable>
+  <Message severity="error">{{ _result }}</Message>
 </template>
 
 <style scoped></style>
