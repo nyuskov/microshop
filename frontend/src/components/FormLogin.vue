@@ -9,53 +9,38 @@ import { zodResolver } from "@primevue/forms/resolvers/zod";
 import { z } from 'zod';
 import { useRouter } from 'vue-router';
 import {
-  backendServer
+  useAuthStore
 } from '../stores/auth.ts';
-import { ref } from 'vue';
+import { ref, type Ref } from 'vue';
 
+const authStore = useAuthStore();
 const router = useRouter();
 const formSchema = z.object({
   username: z.string(),
   password: z.string(),
 });
 const resolver = zodResolver(formSchema);
-const api_prefix: string = "/api/v1";
-const redirectPath = "/auth/register/";
-const severity = ref("success");
-const result = ref("");
-
-async function loginUser(e: FormSubmitEvent<Record<string, any>>) {
-  if (backendServer != undefined) {
-    await fetch(
-      'https://' + backendServer.address + api_prefix + '/jwt/login/', {
-      method: 'POST',
-      cache: "reload",
-      body: new URLSearchParams(e.values),
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'X-CSRFToken': backendServer.csrfToken
-      },
-      credentials: 'include',
-    }).then(async function (response) {
-      result.value = (await response).statusText;
-      if (response.status == 200) {
-        router.push('/');
-      } else {
-        severity.value = "error";
-      }
-    }).catch((error) => {
-      result.value = error;
-      severity.value = "error";
-    });
-  }
-}
+const redirectPath: string = "/auth/register/";
+const severity: Ref<string, string> = ref("success");
+const result: Ref<string, string> = ref("");
 
 async function onFormSubmit(e: FormSubmitEvent<Record<string, any>>) {
-  console.log(e);
   if (Object.keys(e.errors).length) {
     return;
   }
-  await loginUser(e);
+  await authStore.login(
+    e.values["username"],
+    e.values["password"],
+  );
+  result.value = authStore.result["message"];
+  if (authStore.result["status"]) {
+    severity.value = "success";
+    authStore.result = null;
+    router.push("/");
+  } else {
+    severity.value = "error";
+    authStore.result = null;
+  }
 }
 </script>
 

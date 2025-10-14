@@ -1,120 +1,113 @@
-import { defineStore } from 'pinia'
-import type { Router } from 'vue-router'
+import { defineStore } from 'pinia';
+import type { Router } from 'vue-router';
+
+const routes: Record<string, string> = {
+  "login": "/api/v1/auth/login",
+  "logout": "/api/v1/auth/logout",
+  "user": "/api/v1/users/me",
+}
 
 export const useAuthStore = defineStore('auth', {
   state: () => {
-    const storedState = localStorage.getItem('authState')
-    return Object.assign(storedState ? JSON.parse(storedState) : { user: null, isAuthenticated: false, current_user: null, })
+    const storedState = localStorage.getItem('authState');
+    return Object.assign(
+      storedState ? JSON.parse(storedState) : {
+        user: null, isAuthenticated: false, currentUser: null,
+        token: null, result: null,
+      })
   },
   actions: {
-    async setCsrfToken() {
-      await fetch('http://' + getAddress() + '/api/set-csrf-token', {
-        method: 'GET',
-        credentials: 'include',
-      })
-    },
-
-    async login(username: string, password: string, router: Router | null = null) {
-
-      const response = await fetch('http://' + getAddress() + '/api/login', {
+    async login(username: string, password: string) {
+      await fetch('https://' + getAddress() + routes['login'], {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCSRFToken(),
-        },
-        body: JSON.stringify({
-          username,
-          password
+        body: new URLSearchParams({
+          'username': username,
+          'password': password,
         }),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': backendServer.csrfToken,
+        },
         credentials: 'include',
-      })
-      const data = await response.json()
-      if (data.success) {
-        this.isAuthenticated = true
-        this.saveState()
-        if (router) {
-          await this.fetchUser()
-          if (this.current_user !== null) {
-            await router.push({
-              name: 'home',
-            })
-          }
+      }).then(async (response) => {
+        this.token = await response.json();
+
+        if (this.token["access_token"]) {
+          this.result = { "message": "OK", "status": true };
+          this.isAuthenticated = true;
+          this.saveState();
+
+          await this.fetchUser();
+        } else {
+          this.result = { "message": "Ошибка: Неверные данные", "status": false };
+          this.currentUser = null;
+          this.isAuthenticated = false;
+          this.saveState();
         }
-      } else {
-        this.current_user = null
-        this.isAuthenticated = false
-        this.saveState()
-      }
+      }).catch((error) => {
+        this.result = { "message": error, "status": false };
+        this.currentUser = null;
+        this.isAuthenticated = false;
+        this.saveState();
+      });
     },
 
     async logout(router: Router | null = null) {
-      try {
-        const response = await fetch('http://' + getAddress() + '/api/logout', {
-          method: 'POST',
-          headers: {
-            'X-CSRFToken': getCSRFToken(),
-          },
-          credentials: 'include',
-        })
-        if (response.ok) {
-          this.current_user = null
-          this.isAuthenticated = false
-          this.user = null
-          this.saveState()
-          if (router) {
-            await router.push({
-              name: 'login',
-            })
-          }
-        }
-      } catch (error) {
-        console.error('Logout failed', error)
-        throw error
-      }
+      await fetch('https://' + getAddress() + routes['logout'], {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': getCSRFToken(),
+          'Authorization': this.token['token_type'] + ' ' + this.token['access_token'],
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      }).then((response) => {
+        this.currentUser = null;
+        this.isAuthenticated = false;
+        this.user = null;
+        this.saveState();
+      }).catch((error) => {
+        console.error('Ошибка: ', error)
+      });
     },
 
     async fetchUser() {
-      try {
-        const response = await fetch('http://' + getAddress() + '/api/user', {
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCSRFToken(),
-          },
-        })
-        if (response.ok) {
-          const data = await response.json()
-          this.user = data
-          this.isAuthenticated = true
-          this.current_user = data
-        } else {
-          this.user = null
-          this.isAuthenticated = false
-          this.current_user = null
-        }
-      } catch (error) {
-        console.error('Failed to fetch user', error)
+      await fetch('https://' + getAddress() + routes["user"], {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': this.token['token_type'] + ' ' + this.token['access_token'],
+          'X-CSRFToken': getCSRFToken(),
+        },
+      }).then(async (response) => {
+        this.user = await response.json();
+        this.isAuthenticated = true
+        this.currentUser = this.user;
+      }).catch((error) => {
+        console.error('Ошибка: ', error)
         this.user = null
         this.isAuthenticated = false
-        this.current_user = null
-      }
+        this.currentUser = null
+      });
+
       this.saveState()
     },
 
     saveState() {
       /*
-            We save state to local storage to keep the
-            state when the user reloads the page.
+      We save state to local storage to keep the
+      state when the user reloads the page.
 
-            This is a simple way to persist state. For a more robust solution,
-            use pinia-persistent-state.
-             */
+      This is a simple way to persist state. For a more robust solution,
+      use pinia-persistent-state.
+        */
       localStorage.setItem(
         'authState',
         JSON.stringify({
           user: this.user,
           isAuthenticated: this.isAuthenticated,
-          current_user: this.current_user,
+          currentUser: this.currentUser,
+          token: this.token, result: this.result,
         }),
       )
     },
@@ -139,7 +132,7 @@ export function getCSRFToken() {
     }
   }
   if (cookieValue === null) {
-    throw 'Missing CSRF cookie.'
+    throw 'Отсутствует CSRF cookie.'
   }
   return cookieValue
 }

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import {
-  backendServer
+  backendServer,
+  useAuthStore
 } from './stores/auth.ts';
-import { Badge, Menu, Button } from 'primevue';
+import { Badge, Menu, Button, MenuItem } from 'primevue';
 import { ref, type Ref } from 'vue';
 import { useRouter, type Router, type RouteRecordNormalized } from 'vue-router';
 import FormLogin from './components/FormLogin.vue';
@@ -10,6 +11,7 @@ import FormRegister from './components/FormRegister.vue';
 import DataTableProduct from './components/DataTableProduct.vue';
 import DataTableUser from './components/DataTableUser.vue';
 
+const authStore = useAuthStore();
 const router: Router = useRouter();
 const routes: RouteRecordNormalized[] = router.getRoutes();
 const redirectRegPath = "/auth/register/";
@@ -28,7 +30,6 @@ let isActive: Ref<{
   },
 );
 
-let isAuthorized: Ref<boolean, boolean> = ref(false);
 let popup: Ref<boolean, boolean> = ref(true);
 let saySomething: string = "Ебал я это ваше программирование!";
 
@@ -36,12 +37,10 @@ const items: Array<Object> = [
   {
     label: 'Пользователи',
     icon: 'pi pi-fw pi-user',
-    command: toggleMenuItem('Пользователи')
   },
   {
     label: 'Товары',
     icon: 'pi pi-fw pi-cart-arrow-down',
-    command: toggleMenuItem('Товары')
   },
   {
     separator: true,
@@ -49,7 +48,6 @@ const items: Array<Object> = [
   {
     label: 'Выйти',
     icon: 'pi pi-fw pi-sign-out',
-    command: toggleMenuItem('Выйти')
   },
 ];
 
@@ -66,12 +64,17 @@ function toggleContent(name: string) {
   }
 }
 
-function toggleMenuItem(label: string) {
-  if (label === "Выйти") {
-    isAuthorized.value = false;
+async function toggleMenuItem(item: MenuItem) {
+  isActive.value.users = false;
+  isActive.value.products = false;
+
+  if (item["label"] === "Выйти") {
+    await authStore.logout();
+  } else if (item["label"] === "Пользователи") {
+    isActive.value.users = true;
+  } else if (item["label"] === "Товары") {
+    isActive.value.products = true;
   }
-  isActive.value.users = (label === "Пользователи") ? true : false;
-  isActive.value.products = (label === "Товары") ? true : false;
 
   popup.value = !popup.value;
 }
@@ -80,12 +83,12 @@ function toggleMenuItem(label: string) {
 
 <template>
   <section v-if="toggleContent('Home')">
-    <div v-if="isAuthorized">
+    <div v-if="authStore.isAuthenticated">
       <Button type="button" icon="pi pi-ellipsis-v" @click="toggleMenu" aria-haspopup="true"
         aria-controls="overlay_menu" />
       <Menu ref="menu" id="overlay_menu" :model="items" :popup="popup">
         <template #item="{ item, props }">
-          <a v-ripple class="flex align-items-center" v-bind="props.action">
+          <a v-ripple class="flex align-items-center" @click="toggleMenuItem(item)" v-bind="props.action">
             <span :class="item.icon" />
             <span class="ml-2">{{ item.label }}</span>
             <Badge v-if="item.badge" class="ml-auto" :value="item.badge" />
@@ -98,12 +101,12 @@ function toggleMenuItem(label: string) {
     <div class="content">
       <h1>Hello!</h1>
       <p>{{ saySomething }}</p>
-      <div class="content" v-if="!isAuthorized">
+      <div class="content" v-if="!authStore.isAuthenticated">
         <Button severity="secondary" @click="router.push(redirectRegPath)">Зарегистрироваться</Button>
         <span>или</span>
         <Button severity="secondary" @click="router.push(redirectLoginPath)">Войти</Button>
       </div>
-      <div class="content" v-if="isAuthorized">
+      <div class="content" v-if="authStore.isAuthenticated">
         <DataTableUser v-if="isActive['users']" :backendServer />
         <DataTableProduct v-if="isActive['products']" :backendServer />
       </div>
