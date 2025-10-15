@@ -8,9 +8,10 @@ import { ref, type Ref } from 'vue';
 import { useRouter, type Router, type RouteRecordNormalized } from 'vue-router';
 import FormLogin from './components/FormLogin.vue';
 import FormRegister from './components/FormRegister.vue';
-import DataTableProduct from './components/DataTableProduct.vue';
-import DataTableUser from './components/DataTableUser.vue';
+import DataTableProducts from './components/DataTableProducts.vue';
+import DataTableUsers from './components/DataTableUsers.vue';
 import type { MenuItem } from 'primevue/menuitem';
+import ToDos from "./components/ToDos.vue";
 
 const $auth_store = useAuthStore();
 const $router: Router = useRouter();
@@ -38,18 +39,18 @@ let _popup: Ref<boolean, boolean> = ref(true);
 const items: Array<Object> = [
   {
     label: 'Пользователи',
-    icon: 'pi pi-fw pi-user',
+    icon: 'fa-solid fa-user',
   },
   {
     label: 'Товары',
-    icon: 'pi pi-fw pi-cart-arrow-down',
+    icon: 'fa-solid fa-cart-shopping',
   },
   {
     separator: true,
   },
   {
     label: 'Выйти',
-    icon: 'pi pi-fw pi-sign-out',
+    icon: 'fa-solid fa-right-from-bracket',
   },
 ];
 
@@ -83,45 +84,55 @@ async function toggleMenuItem(item: MenuItem) {
 </script>
 
 <template>
-  <section v-if="toggleContent('Home')">
-    <div v-if="$auth_store.is_authenticated">
-      <Button type="button" icon="pi pi-ellipsis-v" @click="toggleMenu()" aria-haspopup="true"
-        aria-controls="overlay_menu" />
-      <Menu ref="menu" id="overlay_menu" :model="items" :popup="_popup">
-        <template #item="{ item, props }">
-          <a v-ripple class="flex align-items-center" @click="toggleMenuItem(item)" v-bind="props.action">
-            <span :class="item.icon" />
-            <span class="ml-2">{{ item.label }}</span>
-            <Badge v-if="item.badge" class="ml-auto" :value="item.badge" />
-            <span v-if="item.shortcut" class="ml-auto border-1 surface-border border-round surface-100 text-xs p-1">{{
-              item.shortcut }}</span>
-          </a>
-        </template>
-      </Menu>
-    </div>
-    <div class="content">
-      <h1>Hello!</h1>
-      <div class="content" v-if="!$auth_store.is_authenticated">
-        <Button severity="secondary" @click="$router.push(redirect_paths['register'])">Зарегистрироваться</Button>
-        <span>или</span>
-        <Button severity="secondary" @click="$router.push(redirect_paths['login'])">Войти</Button>
+  <div class="app w3-blue-gray">
+    <section v-if="toggleContent('Home')">
+      <div v-if="$auth_store.is_authenticated">
+        <Button type="button" icon="pi pi-ellipsis-v" @click="toggleMenu()" aria-haspopup="true"
+          aria-controls="overlay_menu" />
+        <Menu ref="menu" id="overlay_menu" :model="items" :popup="_popup">
+          <template #item="{ item, props }">
+            <a v-ripple class="flex align-items-center" @click="toggleMenuItem(item)" v-bind="props.action">
+              <span :class="item.icon" />
+              <span class="ml-2">{{ item.label }}</span>
+              <Badge v-if="item.badge" class="ml-auto" :value="item.badge" />
+              <span v-if="item.shortcut" class="ml-auto border-1 surface-border border-round surface-100 text-xs p-1">{{
+                item.shortcut }}</span>
+            </a>
+          </template>
+        </Menu>
       </div>
-      <div class="content" v-if="$auth_store.is_authenticated">
-        <DataTableUser v-if="_is_active['users']" :backend_server />
-        <DataTableProduct v-if="_is_active['products']" :backend_server />
+      <div class="content">
+        <h1>Hello!</h1>
+        <div class="content" v-if="!$auth_store.is_authenticated">
+          <Button severity="secondary" @click="$router.push(redirect_paths['register'])">Зарегистрироваться</Button>
+          <span>или</span>
+          <Button severity="secondary" @click="$router.push(redirect_paths['login'])">Войти</Button>
+        </div>
+        <div class="content" v-if="$auth_store.is_authenticated">
+          <DataTableUsers v-if="_is_active['users']" />
+          <DataTableProducts v-if="_is_active['products']" />
+        </div>
       </div>
-    </div>
-  </section>
-  <section v-if="toggleContent('Login')">
-    <FormLogin />
-  </section>
-  <section v-if="toggleContent('Register')">
-    <FormRegister />
-  </section>
+    </section>
+    <section v-if="toggleContent('Login')">
+      <FormLogin />
+    </section>
+    <section v-if="toggleContent('Register')">
+      <FormRegister />
+    </section>
+    <section>
+      <ToDos />
+    </section>
+  </div>
 </template>
 
 <style scoped>
 /* Content */
+.app {
+  min-height: 100vh;
+  width: 100vw;
+}
+
 .content {
   align-items: center;
   display: flex;

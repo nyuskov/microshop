@@ -8,9 +8,9 @@ import Textarea from 'primevue/textarea';
 import Password from 'primevue/password';
 import { zodResolver } from "@primevue/forms/resolvers/zod";
 import { z } from 'zod';
-import { backend_server } from '@/stores/auth';
-import { useRouter } from 'vue-router';
-import { ref } from 'vue';
+import { useRouter, type Router } from 'vue-router';
+import { ref, type Ref } from 'vue';
+import { register } from '../api/register';
 
 const form_schema = z.object({
   username: z.string().min(2, { message: "Имя пользователя должно быть больше 3 символов." }),
@@ -25,39 +25,17 @@ const form_schema = z.object({
   { "message": "Пароли не совпадают.", path: ["password2"] });
 
 const resolver = zodResolver(form_schema);
-const $router = useRouter();
+const $router: Router = useRouter();
 const request_path: string = "/api/v1/users/";
-const _result = ref("");
-const _severity = ref("success");
-const redirect_path = "/auth/login/";
-
-async function registerUser(e: FormSubmitEvent<Record<string, any>>) {
-  if (backend_server != undefined) {
-    await fetch(
-      'https://' + backend_server.address + request_path, {
-      method: 'POST',
-      cache: "reload",
-      body: JSON.stringify(e.values),
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': backend_server.csrf_token
-      },
-      credentials: 'include',
-    }).then(async function (response) {
-      _result.value = (await response).statusText;
-      _severity.value = "success";
-    }).catch((error) => {
-      _result.value = error;
-      _severity.value = "error";
-    });
-  }
-}
+const redirect_path: string = "/auth/login/";
+const _result: Ref<string, string> = ref("");
+const _severity: Ref<string, string> = ref("success");
 
 async function onFormSubmit(e: FormSubmitEvent<Record<string, any>>) {
   if (Object.keys(e.errors).length) {
     return;
   }
-  await registerUser(e);
+  await register(e, request_path, _result, _severity);
 }
 </script>
 

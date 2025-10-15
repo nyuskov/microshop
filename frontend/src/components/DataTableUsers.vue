@@ -2,37 +2,15 @@
 import { onMounted, ref, type Ref } from 'vue'
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
+import { Message } from 'primevue';
+import { getItems } from '../api/items';
 
-const props = defineProps({
-  backend_server: Object,
-})
-let _users: Ref<null, null> = ref(null);
+let _users: Ref<Array<Record<string, string>>, Array<Record<string, string>>> = ref([]);
 let _result: Ref<string, string> = ref("");
 const request_path: string = "/api/v1/users/";
 
-async function getUsersList() {
-  if (props.backend_server != undefined) {
-    await fetch(
-      'https://' + props.backend_server.address + request_path, {
-      method: 'GET',
-      cache: "reload",
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': props.backend_server.csrf_token
-      },
-
-      credentials: 'include',
-    }).then(async function (response) {
-      _users.value = await response.json();
-    }).catch((error) => {
-      _result.value = 'Ошибка при выполнении запроса: ' + error;
-    });
-  }
-}
-
 onMounted(async function () {
-  // await getUsersList();
-  await getUsersList();
+  await getItems(request_path, _users, _result);
 })
 </script>
 
@@ -46,7 +24,7 @@ onMounted(async function () {
     <Column field="bio" header="Biography"></Column>
     <Column field="posts" header="Posts"></Column>
   </DataTable>
-  <Message severity="error">{{ _result }}</Message>
+  <Message severity="error" v-show="_result">{{ _result }}</Message>
 </template>
 
 <style scoped></style>

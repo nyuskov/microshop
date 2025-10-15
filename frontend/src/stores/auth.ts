@@ -1,3 +1,4 @@
+import { backend_server } from '@/utils/network';
 import { defineStore } from 'pinia';
 import type { Router } from 'vue-router';
 
@@ -18,7 +19,7 @@ export const useAuthStore = defineStore('auth', {
   },
   actions: {
     async login(username: string, password: string) {
-      await fetch('https://' + getAddress() + routes['login'], {
+      await fetch('https://' + backend_server.address + routes['login'], {
         method: 'POST',
         body: new URLSearchParams({
           'username': username,
@@ -53,10 +54,10 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async logout(router: Router | null = null) {
-      await fetch('https://' + getAddress() + routes['logout'], {
+      await fetch('https://' + backend_server.address + routes['logout'], {
         method: 'POST',
         headers: {
-          'X-CSRFToken': getCSRFToken(),
+          'X-CSRFToken': backend_server.csrf_token,
           'Authorization': this.token['token_type'] + ' ' + this.token['access_token'],
           'Content-Type': 'application/json',
         },
@@ -72,25 +73,25 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async fetchUser() {
-      await fetch('https://' + getAddress() + routes["user"], {
+      await fetch('https://' + backend_server.address + routes["user"], {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': this.token['token_type'] + ' ' + this.token['access_token'],
-          'X-CSRFToken': getCSRFToken(),
+          'X-CSRFToken': backend_server.csrf_token,
         },
       }).then(async (response) => {
         this.user = await response.json();
-        this.is_authenticated = true
+        this.is_authenticated = true;
         this.current_user = this.user;
       }).catch((error) => {
-        console.error('Ошибка: ', error)
-        this.user = null
-        this.is_authenticated = false
-        this.current_user = null
+        console.error('Ошибка: ', error);
+        this.user = null;
+        this.is_authenticated = false;
+        this.current_user = null;
       });
 
-      this.saveState()
+      this.saveState();
     },
 
     saveState() {
@@ -113,43 +114,3 @@ export const useAuthStore = defineStore('auth', {
     },
   },
 })
-
-export function getCSRFToken() {
-  /*
-    We get the CSRF token from the cookie to include in our requests.
-    This is necessary for CSRF protection in Django.
-     */
-  const name = 'csrftoken'
-  let cookie_value = null
-  if (document.cookie && document.cookie !== '') {
-    const cookies = document.cookie.split(';')
-    for (let i = 0; i < cookies.length; i++) {
-      const cookie = cookies[i].trim()
-      if (cookie.substring(0, name.length + 1) === name + '=') {
-        cookie_value = decodeURIComponent(cookie.substring(name.length + 1))
-        break
-      }
-    }
-  }
-  if (cookie_value === null) {
-    throw 'Отсутствует CSRF cookie.'
-  }
-  return cookie_value
-}
-
-export function getAddress() {
-  let host_value: string | null = null;
-  if (window.location.host && window.location.host !== '') {
-    host_value = window.location.host.split(':')[0] + ":8000";
-  }
-  return host_value
-}
-
-type BackendServer = {
-  address: string | null,
-  csrf_token: string,
-}
-export const backend_server: BackendServer = {
-  address: getAddress(),
-  csrf_token: getCSRFToken(),
-}
