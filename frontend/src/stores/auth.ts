@@ -1,6 +1,7 @@
 import { backend_server } from '@/utils/network';
 import { defineStore } from 'pinia';
-import type { Router } from 'vue-router';
+import { ref, type Ref } from 'vue';
+import { type Router } from 'vue-router';
 
 const routes: Record<string, string> = {
   "login": "/api/v1/auth/login",
@@ -14,12 +15,18 @@ export const useAuthStore = defineStore('auth', {
     return Object.assign(
       $stored_state ? JSON.parse($stored_state) : {
         user: null, is_authenticated: false, current_user: null,
-        token: null, result: null,
+        token: null,
       })
   },
   actions: {
-    async login(username: string, password: string) {
-      await fetch('https://' + backend_server.address + routes['login'], {
+    async login(
+      username: string,
+      password: string,
+      result: Ref<string, string> = ref(""),
+      severity: Ref<string, string> = ref(""),
+      router: Router,
+    ) {
+      await fetch(`https://${backend_server.address}${routes["login"]}`, {
         method: 'POST',
         body: new URLSearchParams({
           'username': username,
@@ -34,31 +41,34 @@ export const useAuthStore = defineStore('auth', {
         this.token = await response.json();
 
         if (this.token["access_token"]) {
-          this.result = { "message": "OK", "status": true };
+          result.value = "OK";
+          severity.value = "success";
           this.is_authenticated = true;
           this.saveState();
 
           await this.fetchUser();
+          router.push("/");
         } else {
-          this.result = { "message": "Ошибка: Неверные данные", "status": false };
+          result.value = "Ошибка: Неверные данные";
+          severity.value = "success";
           this.current_user = null;
           this.is_authenticated = false;
           this.saveState();
         }
       }).catch((error) => {
-        this.result = { "message": error, "status": false };
+        result.value = `Ошибка: ${error}`;
         this.current_user = null;
         this.is_authenticated = false;
         this.saveState();
       });
     },
 
-    async logout(router: Router | null = null) {
-      await fetch('https://' + backend_server.address + routes['logout'], {
+    async logout() {
+      await fetch(`https://${backend_server.address}${routes["logout"]}`, {
         method: 'POST',
         headers: {
           'X-CSRFToken': backend_server.csrf_token,
-          'Authorization': this.token['token_type'] + ' ' + this.token['access_token'],
+          'Authorization': `${this.token['token_type']} ${this.token['access_token']}`,
           'Content-Type': 'application/json',
         },
         credentials: 'include',
@@ -73,11 +83,11 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async fetchUser() {
-      await fetch('https://' + backend_server.address + routes["user"], {
+      await fetch(`https://${backend_server.address}${routes["user"]}`, {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': this.token['token_type'] + ' ' + this.token['access_token'],
+          'Authorization': `${this.token['token_type']} ${this.token['access_token']}`,
           'X-CSRFToken': backend_server.csrf_token,
         },
       }).then(async (response) => {
@@ -108,7 +118,7 @@ export const useAuthStore = defineStore('auth', {
           user: this.user,
           is_authenticated: this.is_authenticated,
           current_user: this.current_user,
-          token: this.token, result: this.result,
+          token: this.token,
         }),
       )
     },

@@ -10,7 +10,7 @@ import { zodResolver } from "@primevue/forms/resolvers/zod";
 import { z } from 'zod';
 import { useRouter, type Router } from 'vue-router';
 import { ref, type Ref } from 'vue';
-import { register } from '../api/register';
+import { register } from '@/api/register';
 
 const form_schema = z.object({
   username: z.string().min(2, { message: "Имя пользователя должно быть больше 3 символов." }),

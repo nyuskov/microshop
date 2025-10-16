@@ -3,7 +3,7 @@ import { onMounted, ref, type Ref } from 'vue'
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import { Message } from 'primevue';
-import { getItems } from '../api/items';
+import { getItems } from '@/api/items';
 
 let _users: Ref<Array<Record<string, string>>, Array<Record<string, string>>> = ref([]);
 let _result: Ref<string, string> = ref("");

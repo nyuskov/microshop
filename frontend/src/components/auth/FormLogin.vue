@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { useRouter } from 'vue-router';
 import {
   useAuthStore
-} from '../stores/auth.ts';
+} from '@/stores/auth';
 import { ref, type Ref } from 'vue';
 
 const $auth_store = useAuthStore();
@@ -31,16 +31,10 @@ async function onFormSubmit(e: FormSubmitEvent<Record<string, any>>) {
   await $auth_store.login(
     e.values["username"],
     e.values["password"],
+    _result,
+    _severity,
+    $router
   );
-  _result.value = $auth_store.result["message"];
-  if ($auth_store.result["status"]) {
-    _severity.value = "success";
-    $auth_store.result = null;
-    $router.push("/");
-  } else {
-    _severity.value = "error";
-    $auth_store.result = null;
-  }
 }
 
 async function logout() {
@@ -49,6 +43,9 @@ async function logout() {
 </script>
 
 <template>
+  <div v-if="$auth_store.is_authenticated">
+    <Button @click="$router.push('/')" label="На главную" icon="fa fa-home" severity="secondary" variant="text" />
+  </div>
   <div class="cnt-login" v-if="!$auth_store.is_authenticated">
     <Form @submit="onFormSubmit" :resolver class="frm-login flex flex-col gap-4 w-full sm:w-80">
       <h3>Вход</h3>

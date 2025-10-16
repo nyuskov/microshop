@@ -1,20 +1,22 @@
-import { createApp } from 'vue'
-import { createPinia } from 'pinia'
+import { createApp } from 'vue';
+import { createPinia } from 'pinia';
 
-import App from './App.vue'
-import router from './router'
+import App from './App.vue';
+import router from './router';
 
 import PrimeVue from 'primevue/config';
 import Theme from '@primevue/themes/nora';
 import { Ripple } from 'primevue';
 import 'primeicons/primeicons.css';
+import Modals from './plugins/modals';
 
 
-const app = createApp(App)
+const app = createApp(App);
 
-app.directive('ripple', Ripple)
-app.use(createPinia())
-app.use(router)
+app.directive('ripple', Ripple);
+app.use(createPinia());
+app.use(router);
+app.use(Modals);
 
 app.use(PrimeVue, {
     theme: {
@@ -28,4 +30,4 @@ app.use(PrimeVue, {
     ripple: true,
 });
 
-app.mount('#app')
+app.mount('#app');

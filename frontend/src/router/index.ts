@@ -1,21 +1,29 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import App from '@/App.vue';
+import FormRegister from '@/components/auth/FormRegister.vue';
+import FormLogin from '@/components/auth/FormLogin.vue';
+import ToDos from '@/components/todo/ToDos.vue';
+import ContentMain from '@/components/content/ContentMain.vue';
 
 const routes = [
   {
     path: '/',
     name: 'Home',
-    component: App,
+    component: ContentMain,
   },
   {
     path: '/auth/register/',
     name: 'Register',
-    component: App,
+    component: FormRegister,
   },
   {
     path: '/auth/login/',
     name: 'Login',
-    component: App,
+    component: FormLogin,
+  },
+  {
+    path: '/todo/',
+    name: 'Todo',
+    component: ToDos,
   },
 ];
 
