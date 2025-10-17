@@ -1,5 +1,5 @@
 <script setup>
-import { inject, computed } from "vue"
+import { inject, computed } from "vue";
 const
     $props = defineProps({
         name: { type: String, default: "" },
@@ -7,16 +7,16 @@ const
     }),
     $modals = inject("$modals"),
     _show = computed(() => {
-        return $modals.active() == $props.name
+        return $modals.active() == $props.name;
     })
 
 function closeModal(accept = false) {
-    accept ? $modals.accept() : $modals.cancel()
+    accept ? $modals.accept() : $modals.cancel();
 }
 </script>
 
 <template>
-    <div class="viewport-wrapper " v-if="_show">
+    <div class="viewport-wrapper" v-if="_show">
         <div class="dialog-wrapper w3-animate-top">
             <header class="w3-indigo w3-padding">
                 {{ $props.title }}
