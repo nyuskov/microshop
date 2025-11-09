@@ -4,7 +4,9 @@ WORKDIR /app
 
 # Copy the package.json and install dependencies
 COPY ./frontend/package.json ./frontend/pnpm-lock.yaml ./
-RUN npm install -g pnpm & pnpm install
+
+# Enable Corepack and pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Copy rest of the files
 COPY ./frontend/ .

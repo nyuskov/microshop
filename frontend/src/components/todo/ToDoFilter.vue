@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from "vue";
 const
     $props = defineProps(["modelValue"]),
@@ -6,7 +6,7 @@ const
     _value = ref("");
 
 onMounted(() => {
-    _value.text = $props.modelValue;
+    _value.value = $props.modelValue;
 })
 
 function clear() {

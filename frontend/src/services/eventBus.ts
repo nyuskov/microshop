@@ -1,5 +1,5 @@
-import mitt from "mitt"
+import mitt from "mitt";
 
-const eventBus = new mitt()
+const eventBus = mitt<Record<string | symbol, unknown>>();
 
-export default eventBus
+export default eventBus;

@@ -1,21 +1,27 @@
-<script setup>
+<script setup lang="ts">
 import { ref, computed } from "vue";
 import todoService from "@/services/todo";
 
-const
-    $props = defineProps({
-        items: { type: Array, default: () => [] }
-    }),
-    _status = computed(() => {
-        let status = {};
-        todoService.getStatusList().forEach(stat => {
-            status[stat.id] = 0;
-        })
-        $props.items.forEach(todo => {
-            status[todo.status] += 1;
-        })
-        return status;
-    })
+const $props = defineProps({
+    items: { type: Array, default: () => [] }
+});
+interface ToDoItem {
+    status: string;
+}
+
+const _status = computed(() => {
+    let status: Record<string, number> = {};
+    todoService.getStatusList().forEach(stat => {
+        status[stat.id] = 0;
+    });
+    const $props = defineProps({
+        items: {
+            type: Array as () => ToDoItem[],
+            default: () => []
+        }
+    });
+    return status;
+});
 </script>
 
 <template>

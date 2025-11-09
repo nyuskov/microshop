@@ -1,10 +1,10 @@
-<script setup>
+<script setup lang="ts">
 import { ref, inject, onMounted, onBeforeUnmount } from "vue";
 import eventBus from "@/services/eventBus";
-import todoService from "@/services/todo";
+import todoService, { type Project } from "@/services/todo";
 
 const
-  _projects = ref([]);
+  _projects = ref<Project[]>([]);
 
 updateProjects();
 

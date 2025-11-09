@@ -1,14 +1,18 @@
-<script setup>
+<script setup lang="ts">
 import { ref } from "vue";
 import todoService from "@/services/todo";
+
+interface TodoItem {
+    text?: string;
+    status?: string;
+}
+
 const
     $props = defineProps({
         modelValue: { type: Object, default: () => { return {} } }
     }),
     $emit = defineEmits(["update:modelValue"]),
-    _item = ref({});
-
-_item.value = { ...$props.modelValue }
+    _item = ref<TodoItem>({ ...$props.modelValue });
 
 function emitUpdate() {
     $emit("update:modelValue", _item.value);

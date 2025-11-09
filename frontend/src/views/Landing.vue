@@ -1,23 +1,32 @@
-<script setup>
+<script setup lang="ts">
 import { inject, ref } from "vue";
 import eventBus from "@/services/eventBus";
 import todoService from "@/services/todo";
 import Sidebar from "@/components/sidebar/Sidebar.vue";
 
+// Define the shape of the $modals object
+interface Modals {
+    active: () => string | null;
+    accept: () => void;
+    cancel: () => void;
+    show: (name: string) => Promise<void>;
+}
+
 const
-    $modals = inject("$modals"),
+    $modals = inject<Modals>("$modals"),
     _project_name = ref("");
 
 function newProject() {
     _project_name.value = "";
-    $modals
-        .show("#NewProject")
-        .then(() => {
-            if (_project_name.value != "") {
-                todoService.createTodoProject(_project_name.value);
-                eventBus.emit("#UpdateProjects");
-            }
-        }, () => { })
+    if ($modals) {
+        $modals.show("#NewProject")
+            .then(() => {
+                if (_project_name.value != "") {
+                    todoService.createTodoProject(_project_name.value);
+                    eventBus.emit("#UpdateProjects");
+                }
+            }, () => { });
+    }
 }
 </script>
 

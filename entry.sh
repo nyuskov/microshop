@@ -1,3 +1,3 @@
-docker compose down -v --rmi all
-docker compose build
-docker compose up
+sudo docker compose down -v --rmi all
+sudo docker compose build
+sudo docker compose up

@@ -4,7 +4,7 @@ interface TodoItem {
     status: string;
 }
 
-interface Project {
+export interface Project {
     id: number;
     name: string;
 }
@@ -37,7 +37,7 @@ const service = {
         // Simple copy of a JSON object
         return JSON.parse(JSON.stringify(item))
     },
-    toggleStatus(status: string) {
+    toggleStatus(status: string | undefined) {
         // An extremely simple implementation of a state machine
         switch (status) {
             case "not_started":
@@ -113,9 +113,9 @@ const service = {
             return [];
         }
     },
-    saveProject(project_id: number, data: TodoItem) {
+    saveProject(projectId: string, items: TodoItem[]): void {
         // Store the item as string in localStorage
-        localStorage.setItem(`project.${project_id}`, JSON.stringify(data))
+        localStorage.setItem(`project.${projectId}`, JSON.stringify(items))
     },
     getProjectName(project_id: number) {
         // Retrieve the project from the manifest and return the name

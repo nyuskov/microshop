@@ -1,7 +1,7 @@
-<script setup>
-import { ref, inject, onMounted, watch } from "vue";
+<script setup lang="ts">
+import { ref, inject, onMounted, watch, type Ref } from "vue";
 import { useRouter } from "vue-router";
-import TodoItemForm from "@/components/todo/ToDoItemForm.vue";
+import ToDoItemForm from "@/components/todo/ToDoItemForm.vue";
 import TodoList from "@/components/todo/ToDoList.vue";
 import TodoFilter from "@/components/todo/ToDoFilter.vue";
 import TodoSummary from "@/components/todo/ToDoSummary.vue";
@@ -9,13 +9,19 @@ import todoService from "@/services/todo";
 import eventBus from "@/services/eventBus";
 import Sidebar from "@/components/sidebar/Sidebar.vue";
 
+interface ToDoItem {
+    id: string;
+    text: string;
+    status: string;
+}
+
 const
     $props = defineProps(["id"]),
-    $modals = inject("$modals"),
+    $modals = inject<{ show: (name: string) => Promise<void> }>("$modals")!,
     $router = useRouter(),
     _filter = ref(""),
     _item = ref(todoService.getDefault()),
-    _items = ref([]),
+    _items: Ref<ToDoItem[], ToDoItem[]> = ref<ToDoItem[]>([]),
     _project_name = ref("");
 
 // First time mounted
@@ -26,24 +32,23 @@ watch(() => $props.id, loadProject);
 
 
 // Shows a modal to create or edit a to-do item
-function showModal(new_item = true, item = {}) {
-
+function showModal(new_item = true, item: Partial<ToDoItem> = {}) {
     if (new_item) {
-        // Prepare a new item
         _item.value = todoService.getDefault();
     } else {
-        // Make a copy of the item for editing
-        _item.value = todoService.makeCopy(item);
+        // Ensure id is treated as string
+        const safeItem = {
+            ...item,
+            id: String(item.id) // Convert id to string
+        };
+        _item.value = todoService.makeCopy(safeItem as ToDoItem);
     }
 
-    // Open the modal
     $modals.show("newEditItem").then(() => {
         if (new_item) {
-            // Add to the list
             _items.value.push(_item.value);
         } else {
-            // Replace item
-            let index = getIndex(item);
+            let index = getIndex(_item.value);
             if (index >= 0) {
                 _items.value[index] = _item.value;
             } else {
@@ -51,12 +56,10 @@ function showModal(new_item = true, item = {}) {
             }
         }
         saveProject();
-    }, () => {
-        // Handle cancellation, in this case, just ignore.
-    })
+    }, () => { });
 }
 
-function deleteItem(item) {
+function deleteItem(item: Partial<ToDoItem>) {
     $modals.show("deleteItem").then(() => {
         let index = getIndex(item);
         if (index >= 0) {
@@ -67,18 +70,10 @@ function deleteItem(item) {
 }
 
 // Auxiliar function 
-function getIndex(item) {
-    let index = _items.value.findIndex(it => {
-        return it.id == item.id;
-    })
-    if (index == -1) {
-        return false;
-    } else {
-        return index;
-    }
+function getIndex(item: Partial<ToDoItem>) {
+    return _items.value.findIndex(it => it.id === String(item.id));
 }
-
-function toggleStatus(item) {
+function toggleStatus(item: Partial<ToDoItem>) {
     item.status = todoService.toggleStatus(item.status);
     saveProject();
 }
@@ -129,8 +124,8 @@ function saveProject() {
                 </div>
 
                 <!-- Todo list -->
-                <TodoList v-model="_items" :filter="_filter" @toggle="toggleStatus" @edit="showModal(false, $event)"
-                    @delete="deleteItem">
+                <TodoList v-model="_items" :filter="_filter" @toggle="toggleStatus"
+                    @edit="(item) => showModal(false, { ...item, id: String(item.id) })" @delete="deleteItem">
                     <button @click="showModal(true)" class="w3-button w3-blue w3-round-xxlarge">
                         <i class="fa-solid fa-square-plus"></i>
                         New item
@@ -139,7 +134,7 @@ function saveProject() {
 
                 <!-- Modals -->
                 <Modal name="newEditItem" title="To Do Item">
-                    <TodoItemForm v-model="_item"></TodoItemForm>
+                    <ToDoItemForm v-model="_item"></ToDoItemForm>
                 </Modal>
 
                 <Modal name="deleteItem" title="Delete To-Do Item">

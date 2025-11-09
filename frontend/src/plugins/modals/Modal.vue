@@ -1,16 +1,28 @@
-<script setup>
+<script setup lang="ts">
 import { inject, computed } from "vue";
-const
-    $props = defineProps({
-        name: { type: String, default: "" },
-        title: { type: String, default: "Modal dialog" }
-    }),
-    $modals = inject("$modals"),
-    _show = computed(() => {
-        return $modals.active() == $props.name;
-    })
+
+// Define the shape of the $modals object
+interface Modals {
+    active: () => string | null;
+    accept: () => void;
+    cancel: () => void;
+}
+
+const $props = defineProps({
+    name: { type: String, default: "" },
+    title: { type: String, default: "Modal dialog" }
+});
+
+// Inject with explicit type
+const $modals = inject<Modals>("$modals");
+
+// Ensure $modals exists before accessing
+const _show = computed(() => {
+    return $modals?.active() === $props.name;
+});
 
 function closeModal(accept = false) {
+    if (!$modals) return;
     accept ? $modals.accept() : $modals.cancel();
 }
 </script>
@@ -25,12 +37,8 @@ function closeModal(accept = false) {
                 <slot></slot>
             </main>
             <footer class="w3-right-align w3-indigo">
-                <button class="w3-button" @click="closeModal(true)">
-                    Accept
-                </button>
-                <button class="w3-button" @click="closeModal(false)">
-                    Cancel
-                </button>
+                <button class="w3-button" @click="closeModal(true)">Accept</button>
+                <button class="w3-button" @click="closeModal(false)">Cancel</button>
             </footer>
         </div>
     </div>
