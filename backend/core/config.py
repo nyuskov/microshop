@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from pydantic import BaseModel
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).parent.parent
 
@@ -33,9 +33,12 @@ class AccessToken(BaseModel):
 
 
 class Settings(BaseSettings):
-    class Config:
-        env_file = ".env"
-        env_nested_delimiter = "__"
+    model_config = SettingsConfigDict(
+        env_file_encoding="utf-8",
+        env_file=".env",
+        env_nested_delimiter="__",
+        arbitrary_types_allowed=True,
+    )
 
     api_v1_prefix: str = "/api/v1"
     api_v1_auth_prefix: str = "/auth"
