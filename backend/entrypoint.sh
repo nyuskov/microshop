@@ -11,6 +11,6 @@ then
     echo "PostgreSQL started"
 fi
 
-poetry run alembic -x DATABASE_UTL=$DB_URL upgrade head
+poetry run alembic -x DATABASE_URL=$DB_URL upgrade head
 
 exec "$@"
