@@ -6,8 +6,11 @@ services:
       dockerfile: ./backend/Dockerfile
     develop:
       watch:
-        - path: .
-          action: rebuild
+        - path: ./backend
+          action: sync
+          target: /app
+          ignore:
+            - .git/
     ports:
       - 8000:8000
     env_file:
@@ -16,6 +19,10 @@ services:
       - db
     networks:
       - server_network
+    # Монтируем исходный код backend внутрь контейнера поверх образа
+    volumes:
+      - ./backend:/app
+
   db:
     image: postgres:latest
     volumes:
@@ -24,6 +31,7 @@ services:
         - POSTGRES_URL=postgres
         - POSTGRES_PASSWORD=Xx123456
         - POSTGRES_DB=microshop
+
   nginx:
     image: nginx:latest
     build:
@@ -32,11 +40,32 @@ services:
     ports:
       - 8080:80
     volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d
+      # Монтируем директорию dist как корень html для nginx
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      # Можно также смонтировать conf.d, если нужно часто менять конфиг
+      # - ./nginx/conf.d:/etc/nginx/conf.d
     depends_on:
       - web
     networks:
       - server_network
+    # Для nginx сложно применить 'action: rebuild', так как он не компилирует код.
+    # Его перезагрузка обычно происходит вручную или через другие механизмы.
+    # Но мы можем указать watch для перезапуска контейнера при изменении конфига.
+    develop:
+      watch:
+        - path: ./nginx/dev.conf
+          action: rebuild
+          # Этот rebuild пересоберет и перезапустит контейнер nginx при изменении dev.conf.
+          # Он не будет перезапускать nginx при изменении файлов в ./frontend/dist
+          # без перезапуска всего контейнера.
+        - path: ./frontend/dist
+          action: sync
+          target: /usr/share/nginx/html
+          # Sync может быть полезен, если сборка происходит вне контейнера
+          # и мы хотим синхронизировать файлы внутрь контейнера.
+          # Однако, если сборка происходит внутри контейнера (что менее желательно),
+          # то mount (ниже) будет предпочтительнее.
+
 networks:
   server_network:
     driver: bridge

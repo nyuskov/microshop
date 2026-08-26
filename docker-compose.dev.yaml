@@ -1,0 +1,53 @@
+# docker-compose.dev.yml
+services:
+  web:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile.dev
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./.env.dev
+    depends_on:
+      - db
+    networks:
+      - server_network
+    volumes:
+      # Монтируем исходный код backend в контейнер
+      - ./backend:/app
+      # Не монтируем poetry.lock и pyproject.toml снова, они уже скопированы в образе для установки зависимостей
+      # Но мы можем смонтировать .venv если хотим, но обычно poetry сам управляет этим в образе, а код обновляется через volume
+    # Для nodemon или hot-reload в python (uvicorn --reload) команда уже указана в Dockerfile.dev
+
+  db:
+    image: postgres:latest
+    volumes:
+      - postgres_data:/var/lib/postgresql/
+    environment:
+      - POSTGRES_URL=postgres
+      - POSTGRES_PASSWORD=Xx123456
+      - POSTGRES_DB=microshop
+
+  nginx:
+    build:
+      context: .
+      dockerfile: ./nginx/Dockerfile.dev
+    ports:
+      - "8080:80"
+    depends_on:
+      - web
+    networks:
+      - server_network
+    volumes:
+      # Монтируем собранную директорию frontend в nginx
+      # Предполагается, что разработчик запускает сборку frontend (npm run build) или dev server отдельно,
+      # либо использует proxy к dev server (см. ниже). Пока смонтируем dist.
+      - ./frontend/dist:/usr/share/nginx/html
+      # Если используется Vite dev server, то этот volume не нужен, а конфиг nginx меняется.
+
+networks:
+  server_network:
+    driver: bridge
+
+volumes:
+  postgres_data:

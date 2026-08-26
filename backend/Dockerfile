@@ -13,8 +13,8 @@ RUN pip install poetry && poetry install --no-root
 # Expose the port your FastAPI app listens on
 EXPOSE 8000
 
-# Command to run the application when the container starts
-CMD ["poetry", "run", "uvicorn", "main:app"]
+# Command to run the application when the container starts, with reload for development
+CMD ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 
 
