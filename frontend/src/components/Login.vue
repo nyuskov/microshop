@@ -24,7 +24,13 @@ const redirect = "/auth/registration/";
 const severity = ref("success");
 const result = ref("");
 
-async function loginUser(e: Object) {
+interface FormEventObject {
+  values: Record<string, any>;
+  errors: Record<string, any>;
+  [key: string]: any; // Allow other properties
+}
+
+async function loginUser(e: FormEventObject) {
   if (backendServer != undefined) {
     await fetch(
       'https://' + backendServer.address + api_prefix + '/jwt/login/', {
@@ -50,7 +56,7 @@ async function loginUser(e: Object) {
     });
   }
 }
-async function onFormSubmit(e: Object) {
+async function onFormSubmit(e: FormEventObject) {
   if (Object.keys(e.errors).length) {
     return;
   }

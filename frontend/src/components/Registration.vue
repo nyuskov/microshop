@@ -28,7 +28,13 @@ const result = ref("");
 const severity = ref("success");
 const redirect = "/auth/login/";
 
-async function registerUser(e: Object) {
+interface FormEventObject {
+  values: Record<string, any>;
+  errors: Record<string, any>;
+  [key: string]: any; // Allow other properties
+}
+
+async function registerUser(e: FormEventObject) {
   if (backendServer != undefined) {
     await fetch(
       'https://' + backendServer.address + api_prefix + '/users/', {
@@ -53,7 +59,7 @@ async function registerUser(e: Object) {
     });
   }
 }
-async function onFormSubmit(e: Object) {
+async function onFormSubmit(e: FormEventObject) {
   if (Object.keys(e.errors).length) {
     return;
   }
