@@ -32,39 +32,59 @@ services:
         - POSTGRES_PASSWORD=Xx123456
         - POSTGRES_DB=microshop
 
+  # НОВЫЙ СЕРВИС FRONTEND
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      # Монтируем исходный код frontend внутрь контейнера
+      - ./frontend:/app
+      # Не монтируем node_modules из хоста, он будет внутри контейнера
+    ports:
+      # Открываем порт vite для отладки, если нужно. Важно: vite должен слушать 0.0.0.0
+      - "5173:5173"
+    networks:
+      - server_network
+    # Возможность наблюдать за изменениями в исходниках и перезапускать контейнер или синхронизировать файлы
+    # зависит от реализации в Dockerfile.dev (npm run dev -- --host уже там)
+    develop:
+      watch:
+        - path: ./frontend
+          action: sync
+          target: /app
+          ignore:
+            - node_modules/
+            - dist/
+            - .git/
+
+
   nginx:
     image: nginx:latest
     build:
       context: .
-      dockerfile: ./nginx/Dockerfile
+      dockerfile: ./nginx/Dockerfile # Этот файл копирует dev.conf как default.conf
     ports:
       - 8080:80
     volumes:
-      # Монтируем директорию dist как корень html для nginx
-      - ./frontend/dist:/usr/share/nginx/html:ro
+      # УБИРАЕМ монтирование dist, так как frontend обслуживается отдельным контейнером
+      # - ./frontend/dist:/usr/share/nginx/html:ro
+      # Монтируем dev.conf как default.conf, чтобы он использовался как основная конфигурация
+      # Это переопределяет копирование из Dockerfile, если нужно использовать compose для dev.
+      - ./nginx/dev.conf:/etc/nginx/conf.d/default.conf:ro
       # Можно также смонтировать conf.d, если нужно часто менять конфиг
       # - ./nginx/conf.d:/etc/nginx/conf.d
     depends_on:
       - web
+      - frontend # Теперь зависит и от frontend
     networks:
       - server_network
-    # Для nginx сложно применить 'action: rebuild', так как он не компилирует код.
-    # Его перезагрузка обычно происходит вручную или через другие механизмы.
-    # Но мы можем указать watch для перезапуска контейнера при изменении конфига.
-    develop:
-      watch:
-        - path: ./nginx/dev.conf
-          action: rebuild
-          # Этот rebuild пересоберет и перезапустит контейнер nginx при изменении dev.conf.
-          # Он не будет перезапускать nginx при изменении файлов в ./frontend/dist
-          # без перезапуска всего контейнера.
-        - path: ./frontend/dist
-          action: sync
-          target: /usr/share/nginx/html
-          # Sync может быть полезен, если сборка происходит вне контейнера
-          # и мы хотим синхронизировать файлы внутрь контейнера.
-          # Однако, если сборка происходит внутри контейнера (что менее желательно),
-          # то mount (ниже) будет предпочтительнее.
+    # Убираем watch для nginx, так как конфиг меняется редко в dev, и мы используем volume mount
+    # develop:
+    #   watch:
+    #     - path: ./nginx/dev.conf
+    #       action: rebuild
+    #       target: /etc/nginx/conf.d/default.conf
 
 networks:
   server_network:

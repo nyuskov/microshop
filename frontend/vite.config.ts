@@ -25,4 +25,15 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  // Server configuration options go here if needed
+  // Example: port, host, proxy
+  // SPA fallback is handled automatically by Vite's serveStatic middleware for the dist directory,
+  // or implicitly during development for the index.html entry point.
+  server: {
+    // Указываем хост 0.0.0.0, чтобы сервер был доступен снаружи контейнера
+    host: '0.0.0.0',
+    // Указываем порт 5173 (по умолчанию, можно опустить, но для ясности оставим)
+    port: 5173,
+    // Сертификаты mkcert будут автоматически использованы благодаря плагину
+  },
 })

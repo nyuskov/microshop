@@ -1,0 +1,20 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Копируем package.json и package-lock.json (если есть) - НЕ для установки здесь, а для кеширования слоя
+COPY package*.json ./
+
+# Устанавливаем зависимости
+# Это создает node_modules в образе, но они будут перезаписаны при монтировании volume
+RUN npm install
+
+# Копируем исходный код (это будет переопределено volume в compose)
+# Это также копирует vite.config.ts в образ
+COPY . .
+
+EXPOSE 5173
+
+# Запускаем shell-скрипт, который обновляет зависимости и затем запускает vite
+# npm ci быстрее и надежнее устанавливает зависимости строго по package-lock.json
+CMD ["sh", "-c", "npm ci --silent && npx vite --host --port 5173"]
