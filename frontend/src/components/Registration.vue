@@ -8,7 +8,7 @@ import Textarea from 'primevue/textarea';
 import Password from 'primevue/password';
 import { zodResolver } from "@primevue/forms/resolvers/zod";
 import { z } from 'zod';
-import { backendServer } from '@/stores/auth';
+import { backendServer, getCSRFToken } from '@/stores/auth';
 import { useRouter } from 'vue-router';
 import { ref } from 'vue';
 
@@ -36,15 +36,22 @@ interface FormEventObject {
 
 async function registerUser(e: FormEventObject) {
   if (backendServer != undefined) {
+    const csrfToken = getCSRFToken(); // Get the CSRF token
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    // Add the CSRF token to headers if it exists
+    if (csrfToken) {
+      headers['X-CSRFToken'] = csrfToken;
+    }
+
     await fetch(
-      'https://' + backendServer.address + api_prefix + '/users/', {
+      backendServer + api_prefix + '/users/', {
       method: 'POST',
       cache: "reload",
       body: JSON.stringify(e.values),
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': backendServer.csrfToken
-      },
+      headers: headers,
       credentials: 'include',
     }).then(async function (response) {
       result.value = (await response).statusText;

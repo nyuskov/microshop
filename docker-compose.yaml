@@ -13,8 +13,8 @@ services:
             - .git/
     ports:
       - 8000:8000
-    env_file:
-      - ./.env.dev
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:Xx123456@db:5432/microshop
     depends_on:
       - db
     networks:
@@ -31,6 +31,8 @@ services:
         - POSTGRES_URL=postgres
         - POSTGRES_PASSWORD=Xx123456
         - POSTGRES_DB=microshop
+    networks:
+      - server_network
 
   # НОВЫЙ СЕРВИС FRONTEND
   frontend:
