@@ -4,7 +4,9 @@ from fastapi_users.db import (
     SQLAlchemyBaseUserTable,
     SQLAlchemyUserDatabase,
 )
-from sqlalchemy import LargeBinary, String
+# Убираем импорт LargeBinary, если не используется больше
+# from sqlalchemy import LargeBinary, String
+from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -17,7 +19,8 @@ if TYPE_CHECKING:
 
 class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
     username: Mapped[str] = mapped_column(String(32), unique=True)
-    hashed_password: Mapped[bytes] = mapped_column(LargeBinary(1024))
+    # Изменяем тип на строку
+    hashed_password: Mapped[str] = mapped_column(String(255)) # String(255) обычно достаточно для хеша argon2
     posts: Mapped[list["Post"]] = relationship(back_populates="user")
     profile: Mapped["Profile"] = relationship(back_populates="user")
 

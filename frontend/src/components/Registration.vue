@@ -54,11 +54,15 @@ async function registerUser(e: FormEventObject) {
       headers: headers,
       credentials: 'include',
     }).then(async function (response) {
+      // Получаем статус ответа
+      const status = response.status;
       result.value = (await response).statusText;
       severity.value = "success";
-      // if (result.status == 200) {
-      //   router.push('/auth/login/');
-      // }
+      
+      // Если статус 200 (OK), выполняем перенаправление
+      if (status === 200) {
+        router.push('/auth/login/');
+      }
     }).catch((err) => {
       let error: string = 'An error occurred during get users list : ' + err;
       result.value = error;

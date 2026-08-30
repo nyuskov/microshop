@@ -1,16 +1,19 @@
 import secrets
+import jwt # Добавляем импорт jwt
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-import bcrypt
-import jwt
+# Убираем импорт bcrypt и passlib
+# import bcrypt
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 from fastapi import Depends, HTTPException, status
 from fastapi.security import (
     HTTPBasic,
     HTTPBasicCredentials,
     OAuth2PasswordBearer,
 )
-from passlib.context import CryptContext
+# from passlib.context import CryptContext # Не импортируем CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
@@ -19,65 +22,75 @@ from ..tokens.schemas import TokenData
 from ..users.crud import get_user_by_username
 from ..users.schemas import CurrentUser
 
+# Убираем импорт констант из helpers.py, чтобы избежать циклической зависимости
+# from .helpers import ACCESS_TOKEN_TYPE, TOKEN_TYPE_FIELD
+ACCESS_TOKEN_TYPE = "access"
+TOKEN_TYPE_FIELD = "type"
+
+# Создаем глобальный экземпляр PasswordHash, использующий argon2
+password_hasher = PasswordHash(hashers=[Argon2Hasher()])
+
 security = HTTPBasic()
 
 
 def encode_jwt(
     payload: dict,
-    private_key: str = settings.auth_jwt.private_key_path.read_text(),
-    algorithm: str = settings.auth_jwt.algorithm,
-    expire_minutes: int = settings.auth_jwt.access_token_expire_minutes,
+    # Убираем параметры, связанные с файлами сертификатов
+    # private_key: str = settings.auth_jwt.private_key_path.read_text(),
+    # algorithm: str = settings.auth_jwt.algorithm,
+    # expire_minutes: int = settings.auth_jwt.access_token_expire_minutes,
     expire_timedelta: timedelta | None = None,
 ) -> str:
     """Служебная функция для генерации нового токена"""
     to_encode = payload.copy()
     now = datetime.now(timezone.utc)
+    # expire_minutes = settings.auth_jwt.access_token_expire_minutes
     if expire_timedelta:
         expire = now + expire_timedelta
     else:
-        expire = now + timedelta(minutes=expire_minutes)
+        expire = now + timedelta(minutes=settings.auth_jwt.access_token_expire_minutes)
     to_encode.update(
         exp=expire,
         iat=now,
     )
+    # Используем secret_key и algorithm из настроек
     encoded = jwt.encode(
         to_encode,
-        private_key,
-        algorithm,
+        settings.auth_jwt.secret_key,
+        algorithm=settings.auth_jwt.algorithm, # settings.auth_jwt.algorithm
     )
     return encoded
 
 
 def decode_jwt(
     token: str | bytes,
-    public_key: str = settings.auth_jwt.public_key_path.read_text(),
-    algorithm: str = settings.auth_jwt.algorithm,
+    # Убираем параметры, связанные с файлами сертификатов
+    # public_key: str = settings.auth_jwt.public_key_path.read_text(),
+    # algorithm: str = settings.auth_jwt.algorithm,
 ) -> str:
     """Служебная функция для получения декодированного токена"""
+    # Используем secret_key и algorithm из настроек
     decoded = jwt.decode(
         token,
-        public_key,
-        algorithms=[algorithm],
+        settings.auth_jwt.secret_key,
+        algorithms=[settings.auth_jwt.algorithm], # settings.auth_jwt.algorithm
     )
     return decoded
 
 
 def validate_password(
     password: str,
-    hashed_password: bytes,
+    hashed_password: str, # pwdlib возвращает строку, а не байты
 ) -> bool:
-    return bcrypt.checkpw(
-        password=password.encode(),
-        hashed_password=hashed_password,
-    )
+    # Используем pwdlib для проверки пароля
+    return password_hasher.verify(password, hashed_password)
 
 
-def verify_password(plain_password: str, hashed_password: bytes) -> bool:
+def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Функция для проверки, соответствует ли полученный
     пароль сохраненному хэшу"""
-    return CryptContext(schemes=["bcrypt"], deprecated="auto").verify(
-        plain_password, hashed_password
-    )
+    # Используем pwdlib вместо CryptContext
+    return password_hasher.verify(plain_password, hashed_password)
 
 
 async def authenticate_user(
@@ -99,17 +112,24 @@ async def authenticate_user(
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
     """Служебная функция для генерации нового токена"""
-
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
+    
+    # Добавляем поля 'type' и 'sub' для совместимости с fastapi-users
+    to_encode.update({
+        "exp": expire,
+        TOKEN_TYPE_FIELD: ACCESS_TOKEN_TYPE, # type: "access"
+        # "sub": data.get("sub"), # sub уже должен быть в data
+    })
+    
+    # Используем secret_key и algorithm из настроек
     encoded_jwt = jwt.encode(
         to_encode,
         settings.auth_jwt.secret_key,
-        algorithm=settings.auth_jwt.algorithm,
+        algorithm=settings.auth_jwt.algorithm, # settings.auth_jwt.algorithm
     )
     return encoded_jwt
 
@@ -151,10 +171,11 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:  # расшифруем и проверим полученный токен
+        # Используем secret_key и algorithm из настроек
         payload = jwt.decode(
             token,
             settings.auth_jwt.secret_key,
-            algorithms=[settings.auth_jwt.algorithm],
+            algorithms=[settings.auth_jwt.algorithm], # settings.auth_jwt.algorithm
         )
         # вернем пользователя, зашитого в ключе
         username: str = payload.get("sub")

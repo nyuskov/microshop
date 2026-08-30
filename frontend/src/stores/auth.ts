@@ -1,132 +1,162 @@
 import { defineStore } from 'pinia'
 import type { Router } from 'vue-router'
+import axios from 'axios';
 
-// Define backendServer constant, using HTTPS to match frontend protocol
-export const backendServer = `https://${window.location.hostname}:8000`;
+// Define backendServer constant as the direct address to the backend service, including port 8000.
+// This bypasses the nginx proxy for API calls.
+export const backendServer = `${window.location.protocol}//${window.location.hostname}:8000`;
 
 export const useAuthStore = defineStore('auth', {
+  // Add accessToken and refreshToken to the state
   state: () => {
     const storedState = localStorage.getItem('authState')
-    return Object.assign(storedState ? JSON.parse(storedState) : { user: null, isAuthenticated: false, current_user: null, })
+    const parsedState = storedState ? JSON.parse(storedState) : { user: null, isAuthenticated: false, current_user: null, accessToken: null, refreshToken: null };
+    // Initialize axios default headers with the stored token if available
+    if (parsedState.accessToken) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${parsedState.accessToken}`;
+    }
+    return parsedState;
   },
   actions: {
     async initializeApp() {
-      // Вызываем setCsrfToken при инициализации приложения, чтобы получить куки
-      await this.setCsrfToken();
-    },
-
-    async setCsrfToken() {
-      // Используем адрес с фиксированным портом 8000, предполагая, что бэкенд там
-      // const backendHost = window.location.hostname; // Получаем текущий хост
-      // const backendUrl = `http://${backendHost}:8000/api/set-csrf-token`; // Формируем URL
-      const backendUrl = `${backendServer}/api/set-csrf-token`; // Формируем URL
-      console.log("Fetching CSRF token from:", backendUrl); // Лог для отладки
-      await fetch(backendUrl, {
-        method: 'GET',
-        credentials: 'include', // Критично: позволяет отправлять/получать куки
-      }).catch(error => {
-        console.error("Failed to fetch CSRF token:", error);
-      });
+      // Check if we have a valid token on app start
+      if (this.accessToken) {
+        await this.fetchUser();
+      }
     },
 
     async login(username: string, password: string, router: Router | null = null) {
-      const csrfToken = getCSRFToken(); // Получаем токен
-      const headers: Record<string, string> = { // Определяем заголовки как Record
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) { // Проверяем, есть ли токен, прежде чем добавлять его в заголовки
-        headers['X-CSRFToken'] = csrfToken;
-      }
+      try {
+        // Create FormData object to send credentials as form data
+        const formData = new FormData();
+        formData.append('username', username);
+        formData.append('password', password);
 
-      const response = await fetch(`${backendServer}/api/login`, {
-        method: 'POST',
-        headers, // Используем подготовленный объект заголовков
-        body: JSON.stringify({
-          username,
-          password
-        }),
-        credentials: 'include',
-      })
-      const data = await response.json()
-      if (data.success) {
-        this.isAuthenticated = true
-        this.saveState()
+        const response = await axios.post(`${backendServer}/api/v1/auth/token/`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+
+        // Проверяем, что в ответе действительно есть токены
+        if (!response.data || !response.data.access_token) {
+          console.error('Login failed: No access token received from server.');
+          throw new Error('Server response did not contain access token.');
+        }
+
+        this.accessToken = response.data.access_token;
+        // Refresh token может быть не всегда
+        if (response.data.refresh_token) {
+            this.refreshToken = response.data.refresh_token;
+        }
+
+        // Set the Authorization header for subsequent requests
+        axios.defaults.headers.common['Authorization'] = `Bearer ${this.accessToken}`;
+
+        // Save state to localStorage
+        this.isAuthenticated = true;
+        this.saveState();
+
         if (router) {
-          await this.fetchUser()
+          await this.fetchUser();
           if (this.current_user !== null) {
-            await router.push({
-              name: 'home',
-            })
+            await router.push({ name: 'Home' });
           }
         }
-      } else {
-        this.current_user = null
-        this.isAuthenticated = false
-        this.saveState()
+      } catch (error) {
+        console.error('Login error:', error);
+        // Убедимся, что состояние очищено при любой ошибке входа
+        this.current_user = null;
+        this.isAuthenticated = false;
+        this.user = null;
+        this.accessToken = null;
+        this.refreshToken = null;
+        delete axios.defaults.headers.common['Authorization'];
+        this.saveState();
+        throw error; // Перебросим ошибку наверх
       }
     },
 
     async logout(router: Router | null = null) {
-      try {
-        const csrfToken = getCSRFToken(); // Получаем токен
-        const headers: Record<string, string> = {}; // Определяем заголовки как Record
-        if (csrfToken) { // Проверяем, есть ли токен, прежде чем добавлять его в заголовки
-          headers['X-CSRFToken'] = csrfToken;
-        }
+      // Clear tokens from state and localStorage
+      this.current_user = null;
+      this.isAuthenticated = false;
+      this.user = null;
+      this.accessToken = null;
+      this.refreshToken = null;
+      delete axios.defaults.headers.common['Authorization'];
 
-        const response = await fetch(`${backendServer}/api/logout`, {
-          method: 'POST',
-          headers, // Используем подготовленный объект заголовков
-          credentials: 'include',
-        })
-        if (response.ok) {
-          this.current_user = null
-          this.isAuthenticated = false
-          this.user = null
-          this.saveState()
-          if (router) {
-            await router.push({
-              name: 'login',
-            })
-          }
-        }
+      this.saveState();
+
+      if (router) {
+        await router.push({ name: 'login' });
+      }
+    },
+
+    async refreshToken() {
+      if (!this.refreshToken) {
+        throw new Error('No refresh token available');
+      }
+
+      try {
+        const response = await axios.post(`${backendServer}/api/v1/jwt/refresh/`, {
+          refresh_token: this.refreshToken,
+        });
+
+        this.accessToken = response.data.access_token;
+
+        // Update the Authorization header
+        axios.defaults.headers.common['Authorization'] = `Bearer ${this.accessToken}`;
+
+        // Save the new access token
+        this.saveState();
+
+        return response.data;
       } catch (error) {
-        console.error('Logout failed', error)
-        throw error
+        console.error('Refresh token error:', error);
+        // If refresh fails, log out the user
+        this.logout();
+        throw error;
       }
     },
 
     async fetchUser() {
       try {
-        const csrfToken = getCSRFToken(); // Получаем токен
-        const headers: Record<string, string> = { // Определяем заголовки как Record
-          'Content-Type': 'application/json',
-        };
-        if (csrfToken) { // Проверяем, есть ли токен, прежде чем добавлять его в заголовки
-          headers['X-CSRFToken'] = csrfToken;
-        }
-
-        const response = await fetch(`${backendServer}/api/user`, {
-          credentials: 'include',
-          headers, // Используем подготовленный объект заголовков
-        })
-        if (response.ok) {
-          const data = await response.json()
-          this.user = data
-          this.isAuthenticated = true
-          this.current_user = data
-        } else {
-          this.user = null
-          this.isAuthenticated = false
-          this.current_user = null
-        }
+        const response = await axios.get(`${backendServer}/api/v1/jwt/users/me/`);
+        this.user = response.data;
+        this.isAuthenticated = true;
+        this.current_user = response.data;
       } catch (error) {
-        console.error('Failed to fetch user', error)
-        this.user = null
-        this.isAuthenticated = false
-        this.current_user = null
+        console.error('Failed to fetch user:', error);
+        // If fetching user fails, it might be due to an invalid token.
+        // In this case, we'll attempt to refresh the token.
+        // Проверим, есть ли refresh_token перед попыткой обновления
+        if (error.response?.status === 401 && this.refreshToken) {
+          try {
+            // Attempt to refresh the token
+            await this.refreshToken();
+            // After successful refresh, retry fetching user
+            const response = await axios.get(`${backendServer}/api/v1/jwt/users/me/`);
+            this.user = response.data;
+            this.isAuthenticated = true;
+            this.current_user = response.data;
+          } catch (refreshError) {
+            // If refresh also fails, log out the user
+            console.error('Token refresh failed, logging out.', refreshError);
+            this.logout();
+          }
+        } else if (error.response?.status === 401) {
+          // Если статус 401 и refresh_token нет, сразу логаут
+          console.error('Access token invalid and no refresh token, logging out.');
+          this.logout();
+        } else {
+          // For other errors, just reset user info
+          this.user = null;
+          this.isAuthenticated = false;
+          this.current_user = null;
+        }
       }
-      this.saveState()
+      this.saveState();
     },
 
     saveState() {
@@ -143,6 +173,8 @@ export const useAuthStore = defineStore('auth', {
           user: this.user,
           isAuthenticated: this.isAuthenticated,
           current_user: this.current_user,
+          accessToken: this.accessToken,
+          refreshToken: this.refreshToken,
         }),
       )
     },
@@ -155,12 +187,14 @@ export function getAddress(): string {
   return window.location.hostname;
 }
 
+// Restore the getCSRFToken function for other parts of the app that might need it
 export function getCSRFToken(): string | null {
   /*
     We get the CSRF token from the cookie to include in our requests.
     This is necessary for CSRF protection in Django.
      */
-  const name = 'csrftoken'
+  // FIXED: Change the cookie name to match what the backend sets
+  const name = 'csrf_token'
   let cookieValue = null
   if (document.cookie && document.cookie !== '') {
     const cookies = document.cookie.split(';')
@@ -178,3 +212,5 @@ export function getCSRFToken(): string | null {
   return cookieValue
 }
 
+// Export axios instance for use in other parts of the application
+export { axios };

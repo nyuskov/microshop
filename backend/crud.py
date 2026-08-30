@@ -134,6 +134,47 @@ async def create_user_profile(
     return profile
 
 
+# --- Новые CRUD-функции для Post ---
+async def create_post(session: AsyncSession, user_id: int, title: str, body: str) -> Post:
+    """Создает новый пост."""
+    post = Post(user_id=user_id, title=title, body=body)
+    session.add(post)
+    await session.commit()
+    await session.refresh(post)  # Обновляем объект, чтобы получить его ID и другие данные
+    return post
+
+
+async def get_post_by_id(session: AsyncSession, post_id: int) -> Post | None:
+    """Получает пост по его ID."""
+    stmt = select(Post).where(Post.id == post_id)
+    return await session.scalar(stmt)
+
+
+async def get_posts_by_user_id(session: AsyncSession, user_id: int) -> list[Post]:
+    """Получает все посты пользователя по его ID."""
+    stmt = select(Post).where(Post.user_id == user_id).order_by(Post.id.desc())
+    return await session.scalars(stmt).all()
+
+
+async def update_post(session: AsyncSession, post: Post, title: str = None, body: str = None) -> Post:
+    """Обновляет существующий пост."""
+    if title is not None:
+        post.title = title
+    if body is not None:
+        post.body = body
+    await session.commit()
+    await session.refresh(post)
+    return post
+
+
+async def delete_post(session: AsyncSession, post: Post) -> None:
+    """Удаляет существующий пост."""
+    await session.delete(post)
+    await session.commit()
+
+
+# --- Конец новых CRUD-функций ---
+
 async def main_relations(session: AsyncSession):
     # await create_user(session=session, username="bob")
     # await create_user(session=session, username="john")

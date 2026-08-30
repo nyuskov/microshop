@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import Products from "./Products.vue";
+import Posts from "./Posts.vue"; // Изменили импорт
 import Users from "./Users.vue";
 // Удаляем импорт backendServer
 // import { backendServer } from '../stores/auth.ts';
 import Menubar from "primevue/menubar";
 import { InputText, Badge, Menu, Button } from "primevue";
-import { ref, type Ref } from "vue";
+import { ref, type Ref, computed } from "vue"; // Добавлен import computed
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth"; // Импортируем хранилище
 
@@ -16,10 +16,15 @@ authStore.initializeApp(); // Вызываем инициализацию
 const router = useRouter();
 const redirectReg = "/auth/registration/";
 const redirectLogin = "/auth/login/";
-let isActiveUsers: Ref<boolean, boolean> = ref(false);
-let isActiveProducts: Ref<boolean, boolean> = ref(false);
-let isAuthorized: Ref<boolean, boolean> = ref(false);
-let popup: Ref<boolean, boolean> = ref(true);
+
+let isActiveUsers: Ref<boolean> = ref(false);
+let isActivePosts: Ref<boolean> = ref(false); // Изменили имя переменной
+// let isActiveProducts: Ref<boolean> = ref(false); // Закомментировали старую
+
+// Создаем вычисляемую переменную, связанную с состоянием аутентификации
+const isAuthorized = computed(() => authStore.isAuthenticated);
+
+let popup: Ref<boolean> = ref(true);
 let saySomething: string = "Ебал я это ваше программирование!";
 console.log(saySomething);
 
@@ -29,16 +34,18 @@ const items: Array<Object> = [
     icon: "pi pi-fw pi-user",
     command: () => {
       isActiveUsers.value = true;
-      isActiveProducts.value = false;
+      isActivePosts.value = false; // Изменили логику
+      // isActiveProducts.value = false;
       popup.value = !popup.value;
     },
   },
   {
-    label: "Товары",
-    icon: "pi pi-fw pi-cart-arrow-down",
+    label: "Посты", // Изменили название пункта меню
+    icon: "pi pi-fw pi-file-edit", // Выбрали подходящую иконку
     command: () => {
       isActiveUsers.value = false;
-      isActiveProducts.value = true;
+      isActivePosts.value = true; // Изменили логику
+      // isActiveProducts.value = true;
       popup.value = !popup.value;
     },
   },
@@ -48,11 +55,12 @@ const items: Array<Object> = [
   {
     label: "Выйти",
     icon: "pi pi-fw pi-sign-out",
-    command: () => {
+    command: async () => { // Сделан асинхронным
       isActiveUsers.value = false;
-      isActiveProducts.value = false;
-      isAuthorized.value = false;
-      popup.value = !popup.value;
+      isActivePosts.value = false; // Изменили логику
+      // isActiveProducts.value = false;
+      // popup.value = !popup.value; // Не меняем popup здесь, если не нужно
+      await authStore.logout(router); // Вызов действия logout из стора
     },
   },
 ];
@@ -102,9 +110,9 @@ function toggle() {
       >
     </div>
     <div v-if="isAuthorized">
-      <!-- Компоненты Users и Products больше не получают backendServer -->
+      <!-- Компонент Users и новый компонент Posts -->
       <Users :isActiveUsers></Users>
-      <Products :isActiveProducts></Products>
+      <Posts v-if="isActivePosts"></Posts> <!-- Отображаем Posts вместо Products -->
     </div>
   </div>
 </template>

@@ -66,16 +66,16 @@ onMounted(async function () {
 </script>
 
 <template>
-  <h3 v-if="isActiveProducts">Товары:</h3>
-  <DataTable
-    v-if="isActiveProducts"
-    :value="products"
-    tableStyle="min-width: 50rem"
-  >
-    <Column field="name" header="Name"></Column>
-    <Column field="price" header="Price"></Column>
-    <Column field="description" header="Description"></Column>
-  </DataTable>
+  <div class="products-container">
+    <h2>Продукты</h2>
+    <p>Функционал для продуктов будет добавлен позже.</p>
+  </div>
 </template>
 
-<style scoped></style>
+<style scoped>
+.products-container {
+  padding: 20px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+</style>

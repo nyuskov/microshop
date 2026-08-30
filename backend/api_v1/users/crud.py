@@ -1,8 +1,14 @@
-import bcrypt
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 from fastapi import HTTPException, status
 from sqlalchemy import Result, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, joinedload
+
+# Создаем экземпляр PasswordHash, использующий argon2
+password_hasher_crud = PasswordHash(hashers=[Argon2Hasher()])
+
 
 from core.models.profile import Profile
 from core.models.user import User
@@ -11,10 +17,10 @@ from ..users.schemas import CreateUser
 
 def hash_password(
     password: str,
-) -> bytes:
+) -> str:
     """Вспомогательная функция для хеширования пароля"""
-    salt: bytes = bcrypt.gensalt()
-    return bcrypt.hashpw(password.encode(), salt)
+    # Используем pwdlib для хеширования пароля
+    return password_hasher_crud.hash(password)
 
 
 async def get_users(session: AsyncSession) -> list[User]:
@@ -87,9 +93,9 @@ async def get_users_with_posts_and_profiles(
     return list(users)
 
 
-async def create_user(new_user: CreateUser, session: AsyncSession) -> None:
+async def create_user(new_user: CreateUser, session: AsyncSession) -> dict:
     if new_user.password != new_user.password2:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
     hashed_password = hash_password(new_user.password)
 
@@ -108,6 +114,12 @@ async def create_user(new_user: CreateUser, session: AsyncSession) -> None:
     )
     session.add(profile)
 
-    await session.commit()
-
-    return {"message": "User was created successfully!"}
+    try:
+        await session.commit()
+        return {"message": "User was created successfully!"}
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A user with that username or email already exists.",
+        )
