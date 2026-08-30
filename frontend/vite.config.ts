@@ -1,11 +1,11 @@
 import { fileURLToPath, URL } from 'node:url'
+import { readFileSync } from 'fs';
 
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import checker from 'vite-plugin-checker'
-import mkcert from 'vite-plugin-mkcert'
 
 
 // https://vite.dev/config/
@@ -18,7 +18,6 @@ export default defineConfig({
       // e.g. use TypeScript check
       typescript: true,
     }),
-    mkcert(),
   ],
   resolve: {
     alias: {
@@ -34,6 +33,11 @@ export default defineConfig({
     host: '0.0.0.0',
     // Указываем порт 5173 (по умолчанию, можно опустить, но для ясности оставим)
     port: 5173,
-    // Сертификаты mkcert будут автоматически использованы благодаря плагину
+    // Настраиваем HTTPS вручную, используя готовые сертификаты
+    https: {
+      // Предполагаем, что сертификаты будут смонтированы в /app/certs_from_backend в контейнере
+      key: readFileSync('/app/certs_from_backend/server.key'),
+      cert: readFileSync('/app/certs_from_backend/server.crt'),
+    }
   },
 })

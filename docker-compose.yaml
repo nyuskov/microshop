@@ -19,7 +19,7 @@ services:
       - db
     networks:
       - server_network
-    # Монтируем исходный код backend внутрь контейнера поверх образа
+    # Монтируем исходный код backend внутрь контейнера
     volumes:
       - ./backend:/app
 
@@ -42,6 +42,8 @@ services:
     volumes:
       # Монтируем исходный код frontend внутрь контейнера
       - ./frontend:/app
+      # Монтируем папку с сертификатами из backend внутрь контейнера в /app/certs_from_backend
+      - ./backend/certs:/app/certs_from_backend:ro
       # Не монтируем node_modules из хоста, он будет внутри контейнера
     ports:
       # Открываем порт vite для отладки, если нужно. Важно: vite должен слушать 0.0.0.0
