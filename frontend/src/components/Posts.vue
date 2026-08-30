@@ -8,15 +8,15 @@
         type="text"
         placeholder="Заголовок поста"
         required
-        class="post-input"
+        class="form-control-alt"
       />
       <textarea
         v-model="newPostBody"
         placeholder="Текст поста"
         required
-        class="post-textarea"
+        class="form-control-alt"
       ></textarea>
-      <button type="submit" class="btn-primary">Опубликовать</button>
+      <button type="submit" class="btn-primary">Опубликовать</button> <!-- Reverted to btn-primary (orange) -->
     </form>
 
     <!-- Список постов -->
@@ -122,65 +122,77 @@ const deletePost = async (postId: number) => {
 </script>
 
 <style scoped>
-/* Простые стили для демонстрации */
+/* Простые стили для демонстрации, используя глобальные переменные */
 .posts-container {
-  padding: 20px;
+  padding: var(--spacing-large);
   max-width: 800px;
   margin: 0 auto;
+  background-color: var(--surface-color);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-medium);
 }
 .post-form {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 20px;
-  padding: 15px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+  gap: var(--spacing-medium);
+  margin-bottom: var(--spacing-large);
 }
-.post-input, .post-textarea {
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+.form-control-alt {
+  padding: var(--spacing-small);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--border-radius);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+  margin-bottom: var(--spacing-small);
 }
-.post-textarea {
-  min-height: 100px;
-  resize: vertical;
+.form-control-alt:focus {
+  outline: none;
+  border-color: var(--primary-light);
+  box-shadow: 0 0 0 3px rgba(72, 149, 239, 0.25);
 }
 .posts-list {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: var(--spacing-medium);
 }
 .post-card {
-  padding: 15px;
-  border: 1px solid #eee;
-  border-radius: 4px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  padding: var(--spacing-large);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-small);
 }
 .post-card h3 {
   margin-top: 0;
+  color: var(--text-color);
 }
 .post-meta {
-  color: #666;
+  color: var(--text-light);
   font-size: 0.9em;
-  margin-top: 10px;
+  margin-top: var(--spacing-small);
 }
 .btn-primary, .btn-danger {
-  padding: 6px 12px;
+  padding: var(--spacing-small) var(--spacing-medium);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--border-radius);
   cursor: pointer;
+  font-weight: var(--font-weight-bold);
 }
 .btn-primary {
-  background-color: #007bff;
+  background-color: var(--primary-color);
   color: white;
+}
+.btn-primary:hover {
+  background-color: var(--secondary-color);
 }
 .btn-danger {
-  background-color: #dc3545;
+  background-color: var(--danger-color);
   color: white;
 }
+.btn-danger:hover {
+  background-color: #d90429;
+}
 .btn-sm {
-  font-size: 0.8em;
-  padding: 4px 8px;
+  font-size: var(--font-size-small);
+  padding: calc(var(--spacing-small) * 0.75) var(--spacing-small);
 }
 </style>

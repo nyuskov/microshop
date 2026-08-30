@@ -4,7 +4,7 @@ import { readFileSync } from 'fs';
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
-import vueDevTools from 'vite-plugin-vue-devtools'
+// import vueDevTools from 'vite-plugin-vue-devtools' // Comment out vueDevTools
 import checker from 'vite-plugin-checker'
 
 
@@ -13,7 +13,7 @@ export default defineConfig({
   plugins: [
     vue(),
     vueJsx(),
-    vueDevTools(),
+    // vueDevTools(), // Disabled to potentially remove vite-plugin-vue-inspector
     checker({
       // e.g. use TypeScript check
       typescript: true,
@@ -38,6 +38,9 @@ export default defineConfig({
       // Предполагаем, что сертификаты будут смонтированы в /app/certs_from_backend в контейнере
       key: readFileSync('/app/certs_from_backend/server.key'),
       cert: readFileSync('/app/certs_from_backend/server.crt'),
+    },
+    hmr: {
+      overlay: false // Disable the HMR error overlay
     }
   },
 })

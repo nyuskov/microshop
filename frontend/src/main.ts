@@ -4,11 +4,15 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 
+// Import global styles first
+import './assets/style.css'
+
 import PrimeVue from 'primevue/config';
 import Theme from '@primevue/themes/nora';
 import { Ripple } from 'primevue';
 import 'primeicons/primeicons.css';
-
+// Import the new theme store
+import { useThemeStore } from './stores/theme';
 
 const app = createApp(App)
 
@@ -21,11 +25,16 @@ app.use(PrimeVue, {
         preset: Theme, // Set your theme preset here
         options: {
             prefix: 'p', // Example prefix option
-            darkModeSelector: 'system', // Example darkModeSelector option
+            darkModeSelector: 'data-theme=dark', // Tell PrimeVue to use our custom dark mode selector
             cssLayer: false // Example cssLayer option
         }
     },
     ripple: true,
 });
+
+// Initialize the theme and sidebar state after app creation
+const themeStore = useThemeStore();
+themeStore.initializeTheme();
+themeStore.initializeSidebarState(); // Initialize sidebar state
 
 app.mount('#app')
