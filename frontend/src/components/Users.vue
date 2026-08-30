@@ -3,6 +3,7 @@ import { onMounted, ref, type Ref } from "vue";
 import DataTable from "primevue/datatable";
 import Column from "primevue/column";
 import { useAuthStore } from "../stores/auth"; // Импортируем хранилище
+// Удаляем импорт getCSRFToken
 
 // Удаляем пропсы, связанные с backendServer
 defineProps({
@@ -20,51 +21,39 @@ async function getUsersList() {
   // Получаем экземпляр хранилища
   const authStore = useAuthStore();
 
-  // Убеждаемся, что CSRF токен установлен
-  await authStore.setCsrfToken();
+  // Получаем JWT-токен из хранилища
+  const accessToken = authStore.accessToken;
 
-  // Получаем токен
-  const csrfToken = getCSRFToken(); // Используем функцию из auth.ts
-
-  if (csrfToken) {
-    await fetch(`${backendUrl}${api_prefix}/users/`, {
-      method: "GET",
-      cache: "reload",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRFToken": csrfToken,
-      },
-      credentials: "include",
-    })
-      .then(async function (response) {
-        users.value = await response.json();
-        console.log(users.value);
-      })
-      .catch((err) => {
-        let error: string = "An error occurred during get users list : " + err;
-        console.log(error);
-      });
-  } else {
-    console.error("Cannot fetch users: CSRF token is missing.");
+  // Проверяем, есть ли токен
+  if (!accessToken) {
+    console.error("Cannot fetch users: Access token is missing.");
+    return;
   }
-}
 
-// Функция для получения CSRF токена, скопирована из auth.ts
-function getCSRFToken() {
-  const name = "csrftoken";
-  let cookieValue = null;
-  if (document.cookie && document.cookie !== "") {
-    const cookies = document.cookie.split(";");
-    for (let i = 0; i < cookies.length; i++) {
-      const cookie = cookies[i].trim();
-      if (cookie.substring(0, name.length + 1) === name + "=") {
-        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-        break;
+  // Выполняем fetch с Authorization заголовком
+  await fetch(`${backendUrl}${api_prefix}/users/`, {
+    method: "GET",
+    cache: "reload",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`, // Используем JWT-токен
+    },
+    credentials: "include", // Оставляем, если нужны куки
+  })
+    .then(async function (response) {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-    }
-  }
-  return cookieValue;
+      users.value = await response.json();
+      console.log(users.value);
+    })
+    .catch((err) => {
+      let error: string = "An error occurred during get users list : " + err;
+      console.log(error);
+    });
 }
+
+// Удаляем локальную копию функции getCSRFToken
 
 onMounted(async function () {
   await getUsersList();

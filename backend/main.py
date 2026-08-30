@@ -21,7 +21,11 @@ app = FastAPI(
 )
 app.include_router(router=router_v1, prefix=settings.api_v1_prefix)
 
-origins = ["*"]  # Allows all origins
+origins = [
+    "https://localhost:5173",  # Добавляем источник фронтенда
+    "http://127.0.0.1:5173",
+    # При необходимости можно добавить продакшен URL
+]
 
 app.add_middleware(SimpleMiddleware)
 app.add_middleware(

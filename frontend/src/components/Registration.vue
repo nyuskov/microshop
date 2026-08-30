@@ -46,28 +46,38 @@ async function registerUser(e: FormEventObject) {
       headers['X-CSRFToken'] = csrfToken;
     }
 
-    await fetch(
-      backendServer + api_prefix + '/users/', {
-      method: 'POST',
-      cache: "reload",
-      body: JSON.stringify(e.values),
-      headers: headers,
-      credentials: 'include',
-    }).then(async function (response) {
-      // Получаем статус ответа
-      const status = response.status;
-      result.value = (await response).statusText;
-      severity.value = "success";
-      
-      // Если статус 200 (OK), выполняем перенаправление
-      if (status === 200) {
+    try {
+      const response = await fetch(
+        backendServer + api_prefix + '/users/', {
+        method: 'POST',
+        cache: "reload",
+        body: JSON.stringify(e.values),
+        headers: headers,
+        credentials: 'include',
+      });
+
+      console.log('Response status:', response.status); // Логирование статуса
+      console.log('Response ok:', response.ok); // Логирование флага ok
+
+      // Читаем тело ответа, чтобы получить потенциальные сообщения об ошибках
+      const responseBody = await response.text();
+      console.log('Response body:', responseBody); // Логирование тела ответа
+
+      // Обновляем результат в зависимости от статуса
+      result.value = `${response.status} ${response.statusText}`.trim();
+      severity.value = response.ok ? "success" : "error";
+
+      // Если статус 2xx (успешный), выполняем перенаправление
+      if (response.ok) {
+        console.log('Navigation to login triggered.'); // Логирование перехода
         router.push('/auth/login/');
       }
-    }).catch((err) => {
-      let error: string = 'An error occurred during get users list : ' + err;
+    } catch (err) {
+      console.error('Fetch error:', err); // Логирование ошибки fetch
+      let error: string = 'An error occurred during registration : ' + (err instanceof Error ? err.message : String(err));
       result.value = error;
       severity.value = "error";
-    });
+    }
   }
 }
 async function onFormSubmit(e: FormEventObject) {
