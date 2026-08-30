@@ -3,12 +3,22 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from crud import create_post, get_post_by_id, update_post, delete_post, get_posts_by_user_id
+from crud import create_post, get_post_by_id, update_post, delete_post, get_posts_by_user_id, get_all_posts
 from api_v1.auth.utils import get_current_user
 from core.models import Post, db_helper, User
 from .schemas import PostCreate, PostUpdate, PostBase
 
 router = APIRouter(tags=["Posts"])
+
+
+# New endpoint to get all posts
+@router.get("/", response_model=list[PostBase])
+async def get_all_posts_endpoint(
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Получить все посты."""
+    posts = await get_all_posts(session=session)
+    return posts
 
 
 @router.post("/", response_model=PostBase)

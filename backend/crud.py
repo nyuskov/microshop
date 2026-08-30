@@ -86,6 +86,13 @@ async def get_posts_with_authors(
         print("post", post)
         print("author", post.user)
 
+# New function to get all posts for the API endpoint
+async def get_all_posts(
+    session: AsyncSession,
+) -> list[Post]:
+    stmt = select(Post).order_by(Post.id.desc())
+    result = await session.scalars(stmt)
+    return list(result)
 
 async def show_users_with_profiles(
     session: AsyncSession,

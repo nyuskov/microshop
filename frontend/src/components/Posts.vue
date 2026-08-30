@@ -1,6 +1,6 @@
 <template>
   <div class="posts-container">
-    <h2>Мои Посты</h2>
+    <h2>Все Посты</h2>
     <!-- Форма для создания нового поста -->
     <form @submit.prevent="createPost" class="post-form">
       <input
@@ -27,7 +27,8 @@
         <div class="post-meta">
           <small>Автор: {{ post.user_id }} | ID: {{ post.id }}</small>
         </div>
-        <button @click="deletePost(post.id)" class="btn-danger btn-sm">Удалить</button>
+        <!-- Кнопка удаления доступна только владельцу поста -->
+        <button v-if="isOwner(post.user_id)" @click="deletePost(post.id)" class="btn-danger btn-sm">Удалить</button>
       </div>
     </div>
     <p v-else>Пока нет постов.</p>
@@ -45,16 +46,20 @@ const posts = ref<any[]>([]);
 const newPostTitle = ref('');
 const newPostBody = ref('');
 
-// Загрузка постов текущего пользователя при монтировании
+// Helper function to check if the current user is the owner of a post
+const isOwner = (postUserId: number) => {
+  return userId.value === postUserId;
+};
+
+// Загрузка всех постов при монтировании
 onMounted(() => {
-  if (userId.value) {
-    fetchPosts(userId.value);
-  }
+  fetchAllPosts();
 });
 
-const fetchPosts = async (userId: number) => {
+const fetchAllPosts = async () => {
   try {
-    const response = await fetch(`${backendServer}/api/v1/posts/by_user/${userId}/`);
+    // Changed the API call to fetch all posts
+    const response = await fetch(`${backendServer}/api/v1/posts/`);
     if (response.ok) {
       posts.value = await response.json();
     } else {
