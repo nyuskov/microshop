@@ -2,36 +2,62 @@
 
 :root {
   /* Light Theme Colors - Black, Orange, Grey/Brown/Blue Palette */
-  --primary-color: #f4a261; /* Orange */
-  --primary-light: #f5bb74; /* Lighter Orange */
-  --secondary-color: #e9c46a; /* Yellowy-Orange/Gold */
-  --accent-color: #e76f51; /* Reddish Orange */
-  --background-color: #ffffff; /* Pure White */
-  --surface-color: #f8f9fa; /* Very light grey */
-  --text-color: #000000; /* Pure Black */
-  --text-light: #6c757d; /* Medium Grey */
-  --border-color: #ced4da; /* Light Grey */
-  --success-color: #6c757d; /* Grey (for success, if needed) */
-  --warning-color: #f4a261; /* Orange (for warnings) */
-  --danger-color: #e63946; /* Red */
-  --info-color: #457b9d; /* Blue (for info/publish button) */
+  --primary-color: #f4a261;
+  /* Orange */
+  --primary-light: #f5bb74;
+  /* Lighter Orange */
+  --secondary-color: #e9c46a;
+  /* Yellowy-Orange/Gold */
+  --accent-color: #e76f51;
+  /* Reddish Orange */
+  --background-color: #ffffff;
+  /* Pure White */
+  --surface-color: #f8f9fa;
+  /* Very light grey */
+  --text-color: #000000;
+  /* Pure Black */
+  --text-light: #6c757d;
+  /* Medium Grey */
+  --border-color: #8b4513;
+  /* Brown */
+  --success-color: #8b4513;
+  /* Brown (for success, if needed) */
+  --warning-color: #f4a261;
+  /* Orange (for warnings) */
+  --danger-color: #e63946;
+  /* Red */
+  --info-color: #457b9d;
+  /* Blue (for info/publish button) */
 }
 
 /* Dark Theme Colors - Black, Orange, Grey/Brown/Blue Palette */
 html[data-theme="dark"] {
-  --primary-color: #f4a261; /* Orange */
-  --primary-light: #f5bb74; /* Lighter Orange */
-  --secondary-color: #e9c46a; /* Yellowy-Orange/Gold */
-  --accent-color: #e76f51; /* Reddish Orange */
-  --background-color: #000000; /* Pure Black */
-  --surface-color: #262626; /* Dark Grey */
-  --text-color: #ffffff; /* Pure White */
-  --text-light: #a9a9a9; /* Light Grey */
-  --border-color: #4a4a4a; /* Medium Grey */
-  --success-color: #6c757d; /* Grey */
-  --warning-color: #f4a261; /* Orange */
-  --danger-color: #e63946; /* Red */
-  --info-color: #457b9d; /* Blue */
+  --primary-color: #f4a261;
+  /* Orange */
+  --primary-light: #f5bb74;
+  /* Lighter Orange */
+  --secondary-color: #e9c46a;
+  /* Yellowy-Orange/Gold */
+  --accent-color: #e76f51;
+  /* Reddish Orange */
+  --background-color: #000000;
+  /* Pure Black */
+  --surface-color: #262626;
+  /* Dark Grey */
+  --text-color: #ffffff;
+  /* Pure White */
+  --text-light: #a9a9a9;
+  /* Light Grey */
+  --border-color: #8b4513;
+  /* Brown */
+  --success-color: #8b4513;
+  /* Brown */
+  --danger-color: #e63946;
+  /* Red */
+  --warning-color: #f4a261;
+  /* Orange */
+  --info-color: #457b9d;
+  /* Blue */
 }
 
 /* Base styles */
@@ -42,7 +68,10 @@ body {
   color: var(--text-color);
   background-color: var(--background-color);
   line-height: 1.6;
-  transition: background-color, color 0.3s ease; /* Smooth transition for theme change */
+  transition:
+    background-color,
+    color 0.3s ease;
+  /* Smooth transition for theme change */
 }
 
 /* Common utility classes */
@@ -59,7 +88,8 @@ body {
   padding: var(--spacing-large);
   margin-bottom: var(--spacing-medium);
   border: var(--border-width) var(--border-style) var(--border-color);
-  color: var(--text-color); /* Ensure text color is applied */
+  color: var(--text-color);
+  /* Ensure text color is applied */
 }
 
 .btn {
@@ -73,9 +103,12 @@ body {
   border: none;
   border-radius: var(--border-radius);
   cursor: pointer;
-  transition: background-color 0.2s ease-in-out, transform 0.1s ease;
+  transition:
+    background-color 0.2s ease-in-out,
+    transform 0.1s ease;
   line-height: 1.5;
-  color: white; /* Ensure button text is white */
+  color: white;
+  /* Ensure button text is white */
 }
 
 .btn:hover {
@@ -100,19 +133,24 @@ body {
 }
 
 .btn-danger:hover {
-  background-color: #d90429; /* Darker shade of danger color */
+  background-color: #d90429;
+  /* Darker shade of danger color */
 }
 
-.btn-warning { /* Explicitly define warning button style */
+.btn-warning {
+  /* Explicitly define warning button style */
   background-color: var(--warning-color);
-  color: var(--text-color); /* Ensure text contrasts well */
+  color: var(--text-color);
+  /* Ensure text contrasts well */
 }
 
 .btn-warning:hover {
-  background-color: color-mix(in srgb, var(--warning-color) 80%, white); /* Slightly lighter on hover */
+  background-color: color-mix(in srgb, var(--warning-color) 80%, white);
+  /* Slightly lighter on hover */
 }
 
-.btn-info { /* Define info button style for 'publish' */
+.btn-info {
+  /* Define info button style for 'publish' */
   background-color: var(--info-color);
   color: var(--text-color);
 }
@@ -142,7 +180,8 @@ body {
 .form-control:focus {
   outline: none;
   border-color: var(--primary-light);
-  box-shadow: 0 0 0 3px rgba(244, 162, 97, 0.25); /* Glow effect using primary */
+  box-shadow: 0 0 0 3px rgba(244, 162, 97, 0.25);
+  /* Glow effect using primary */
 }
 
 .text-muted {
@@ -154,8 +193,9 @@ body {
 }
 
 /* Typography */
-:root, html[data-theme="dark"] {
-  --font-family-base: 'Inter', 'Segoe UI', Roboto, sans-serif;
+:root,
+html[data-theme="dark"] {
+  --font-family-base: "Inter", "Segoe UI", Roboto, sans-serif;
   --font-size-base: 1rem;
   --font-size-small: 0.875rem;
   --font-size-large: 1.25rem;
@@ -164,7 +204,8 @@ body {
 }
 
 /* Spacing */
-:root, html[data-theme="dark"] {
+:root,
+html[data-theme="dark"] {
   --spacing-tiny: 0.25rem;
   --spacing-small: 0.5rem;
   --spacing-medium: 1rem;
@@ -173,21 +214,24 @@ body {
 }
 
 /* Borders */
-:root, html[data-theme="dark"] {
+:root,
+html[data-theme="dark"] {
   --border-radius: 0.5rem;
   --border-width: 1px;
   --border-style: solid;
 }
 
 /* Shadows */
-:root, html[data-theme="dark"] {
+:root,
+html[data-theme="dark"] {
   --shadow-small: 0 2px 4px rgba(0, 0, 0, 0.1);
   --shadow-medium: 0 4px 8px rgba(0, 0, 0, 0.1);
   --shadow-large: 0 8px 16px rgba(0, 0, 0, 0.1);
 }
 
 /* Layout */
-:root, html[data-theme="dark"] {
+:root,
+html[data-theme="dark"] {
   --container-max-width: 1200px;
   --sidebar-width: 250px;
 }
@@ -205,9 +249,35 @@ body {
 
 /* Sidebar - Specific override for dark theme */
 html[data-theme="dark"] .p-sidebar {
-  background-color: var(--surface-color) !important; /* Ensure dark surface color */
-  color: var(--text-color) !important;             /* Ensure text color is correct */
-  border: 1px solid var(--border-color) !important; /* Ensure border color is correct */
+  background-color: var(--surface-color) !important;
+  /* Ensure dark surface color */
+  color: var(--text-color) !important;
+  /* Ensure text color is correct */
+  border: 1px solid var(--border-color) !important;
+  /* Ensure border color is correct */
+}
+
+я
+
+/* NEW: PanelMenu - Base background and text color for dark theme */
+html[data-theme="dark"] .p-panelmenu {
+  background: var(--surface-color) !important;
+  color: var(--text-color) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+/* NEW: PanelMenu Panel - Specific override for dark theme */
+html[data-theme="dark"] .p-panelmenu .p-panelmenu-panel {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+/* NEW: PanelMenu Panel - Light theme override to ensure consistency */
+.p-panelmenu .p-panelmenu-panel {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+  border: 1px solid var(--border-color) !important;
 }
 
 /* Generic PrimeVue Component Text Color */
@@ -220,7 +290,8 @@ html[data-theme="dark"] .p-sidebar {
 .p-button {
   background-color: var(--primary-color) !important;
   border-color: var(--primary-color) !important;
-  color: var(--text-color) !important; /* Text color, white on dark bg, black on light bg */
+  color: var(--text-color) !important;
+  /* Text color, white on dark bg, black on light bg */
 }
 
 .p-button:hover {
@@ -229,17 +300,21 @@ html[data-theme="dark"] .p-sidebar {
 }
 
 .p-button.p-button-secondary {
-  background-color: var(--warning-color) !important; /* Map secondary to our orange */
+  background-color: var(--warning-color) !important;
+  /* Map secondary to our orange */
   border-color: var(--warning-color) !important;
   color: var(--text-color) !important;
 }
 
 .p-button.p-button-secondary:hover {
-  background-color: color-mix(in srgb, var(--warning-color) 80%, white) !important;
+  background-color: color-mix(in srgb,
+      var(--warning-color) 80%,
+      white) !important;
   border-color: color-mix(in srgb, var(--warning-color) 80%, white) !important;
 }
 
-.p-button.p-button-info { /* Specific style for info button */
+.p-button.p-button-info {
+  /* Specific style for info button */
   background-color: var(--info-color) !important;
   border-color: var(--info-color) !important;
   color: var(--text-color) !important;
@@ -278,56 +353,217 @@ html[data-theme="dark"] .p-sidebar {
 }
 
 .p-inputtext:focus {
-  box-shadow: 0 0 0 3px rgba(244, 162, 97, 0.25) !important; /* Use our primary */
+  box-shadow: 0 0 0 3px rgba(244, 162, 97, 0.25) !important;
+  /* Use our primary */
   border-color: var(--primary-light) !important;
 }
 
 /* DataTable */
-.p-datatable .p-datatable-tbody > tr > td {
+.p-datatable .p-datatable-tbody>tr>td {
   color: var(--text-color) !important;
   border: 1px solid var(--border-color) !important;
 }
 
-.p-datatable .p-datatable-thead > tr > th {
+.p-datatable .p-datatable-thead>tr>th {
   color: var(--text-color) !important;
   background-color: var(--surface-color) !important;
   border: 1px solid var(--border-color) !important;
 }
 
 /* DataTable text color in DARK theme specifically for better contrast on black */
-html[data-theme="dark"] .p-datatable .p-datatable-tbody > tr > td,
-html[data-theme="dark"] .p-datatable .p-datatable-thead > tr > th {
-  color: var(--text-light) !important; /* Use light grey text for better contrast on dark surface */
+html[data-theme="dark"] .p-datatable .p-datatable-tbody>tr>td,
+html[data-theme="dark"] .p-datatable .p-datatable-thead>tr>th {
+  color: var(--text-light) !important;
+  /* Use light grey text for better contrast on dark surface */
 }
 
-/* PanelMenu - Specific override for dark theme */
-html[data-theme="dark"] .p-panelmenu .p-panelmenu-header .p-panelmenu-header-content,
-html[data-theme="dark"] .p-panelmenu .p-panelmenu-content {
-  background-color: var(--surface-color) !important; /* Ensure dark surface color for headers and content */
-  border: 1px solid var(--border-color) !important; /* Ensure border color is correct */
+/* PanelMenu - Specific override for dark theme - Headers and Content backgrounds */
+.p-panelmenu .p-panelmenu-header .p-panelmenu-header-content,
+.p-panelmenu .p-panelmenu-content {
+  background-color: var(--surface-color) !important;
+  /* Ensure dark surface color for headers and content */
 }
 
-html[data-theme="dark"] .p-panelmenu .p-panelmenu-header .p-panelmenu-header-content .p-panelmenu-header-action,
-html[data-theme="dark"] .p-panelmenu .p-panelmenu-content .p-menuitem .p-menuitem-link {
-  color: var(--text-color) !important; /* Ensure text color is correct */
-  border: 1px solid transparent !important; /* Add transparent border for consistent height if needed */
+.p-panelmenu .p-panelmenu-header .p-panelmenu-header-content:hover,
+.p-panelmenu .p-panelmenu-content:hover {
+  background-color: var(--warning-color) !important;
+  /* Ensure dark surface color for headers and content */
 }
 
-html[data-theme="dark"] .p-panelmenu .p-panelmenu-header .p-panelmenu-header-content .p-panelmenu-header-action .p-menuitem-icon,
-html[data-theme="dark"] .p-panelmenu .p-panelmenu-content .p-menuitem .p-menuitem-link .p-menuitem-icon {
-  color: var(--warning-color) !important; /* Icon color to orange */
+.p-panelmenu .p-panelmenu-header .p-panelmenu-header-content .p-panelmenu-header-action,
+.p-panelmenu .p-panelmenu-content .p-menuitem .p-menuitem-link {
+  color: var(--text-color) !important;
+  /* Ensure text color is correct */
 }
 
-html[data-theme="dark"] .p-panelmenu .p-panelmenu-content .p-menuitem .p-menuitem-link:hover {
-  background-color: color-mix(in srgb, var(--warning-color) 20%, black) !important; /* Darker orange hover */
-  /* Ensure text color remains correct on hover */
+.p-panelmenu .p-panelmenu-header .p-panelmenu-header-content .p-panelmenu-header-action .p-menuitem-icon,
+.p-panelmenu .p-panelmenu-content .p-menuitem .p-menuitem-link .p-menuitem-icon {
+  color: var(--warning-color) !important;
+  /* Icon color to orange */
+}
+
+/* UPDATED rule for dark theme menu item hover - Increased specificity */
+.p-panelmenu .p-panelmenu .p-panelmenu-content .p-menuitem .p-menuitem-link:hover {
+  background: color-mix(in srgb, #8b4513 20%, black) !important;
+  /* Darker brown hover using 'background' */
+  color: var(--text-color) !important;
+  /* Ensure text color is correct on hover */
+}
+
+/* Updated rule for dark theme panel header hover with higher specificity - using background */
+.p-panelmenu .p-panelmenu-header .p-panelmenu-header-content .p-panelmenu-header-action:hover {
+  background: color-mix(in srgb, #8b4513 20%, black) !important;
+  /* Darker brown hover for headers using 'background' */
+  color: var(--text-color) !important;
+}
+
+/* Updated NEW rule for dark theme panel header link hover - using background */
+body .p-panelmenu .p-panelmenu-header .p-panelmenu-header-content .p-panelmenu-header-action .p-panelmenu-header-link:hover {
+  background: color-mix(in srgb, #8b4513 20%, black) !important;
+  /* Darker brown hover for header links using 'background' */
+  color: var(--text-color) !important;
+}
+
+/* Updated rule for light theme menu item hover with higher specificity - using background */
+body .p-panelmenu .p-panelmenu .p-menuitem .p-menuitem-link:hover {
+  background: color-mix(in srgb, #8b4513 20%, white) !important;
+  /* Lighter brown hover for light theme using 'background' */
+  color: var(--text-color) !important;
+}
+
+/* NEW: Specific rule for anchor tags within panelmenu items to ensure consistent hover styling */
+body .p-panelmenu .p-panelmenu .p-menuitem a.p-menuitem-link:hover {
+  background: color-mix(in srgb, #8b4513 20%, white) !important;
+  /* Lighter brown hover for light theme */
+  color: var(--text-color) !important;
+}
+
+a.p-panelmenu-item-link:hover {
+  background-color: var(--warning-color);
+}
+
+/* Updated rule for light theme panel header hover with higher specificity - using background */
+body .p-panelmenu .p-panelmenu .p-panelmenu-header .p-panelmenu-header-content .p-panelmenu-header-action:hover {
+  background: color-mix(in srgb, #8b4513 20%, white) !important;
+  /* Lighter brown hover for light theme headers using 'background' */
+  color: var(--text-color) !important;
+}
+
+/* Updated NEW rule for light theme panel header link hover - using background */
+body .p-panelmenu .p-panelmenu .p-panelmenu-header .p-panelmenu-header-content .p-panelmenu-header-action .p-panelmenu-header-link:hover {
+  background: color-mix(in srgb, #8b4513 20%, white) !important;
+  /* Lighter brown hover for light theme header links using 'background' */
   color: var(--text-color) !important;
 }
 
 /* General Surface and Background for PrimeVue containers */
-.p-card, .p-dialog, .p-overlaypanel {
+.p-card,
+.p-dialog,
+.p-overlaypanel {
   background-color: var(--surface-color) !important;
   color: var(--text-color) !important;
   border: 1px solid var(--border-color) !important;
   border-radius: var(--border-radius) !important;
+}
+
+/* NEW: Custom sidebar content styling */
+.custom-sidebar-content {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+  padding: var(--spacing-medium) !important;
+  height: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Specific styling for dark theme */
+html[data-theme="dark"] .custom-sidebar-content {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+}
+
+/* NEW: Additional styling for the top part of sidebar to ensure proper theming */
+.custom-sidebar-content> :first-child {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+}
+
+/* Specific styling for dark theme - top part of sidebar */
+html[data-theme="dark"] .custom-sidebar-content> :first-child {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+}
+
+/* NEW: More specific selector for the entire sidebar container to ensure proper theming */
+.p-sidebar .custom-sidebar-content {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+}
+
+/* NEW: Specific styling for any direct children in the sidebar to ensure proper theming */
+.custom-sidebar-content>div,
+.custom-sidebar-content>section,
+.custom-sidebar-content>header {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+}
+
+/* NEW: Even more specific rule for dark theme to ensure all elements in sidebar are styled correctly */
+html[data-theme="dark"] .custom-sidebar-content>div,
+html[data-theme="dark"] .custom-sidebar-content>section,
+html[data-theme="dark"] .custom-sidebar-content>header {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+}
+
+/* NEW: More comprehensive sidebar styling to ensure all parts are properly themed */
+html[data-theme="dark"] .p-sidebar,
+html[data-theme="dark"] .p-sidebar .p-sidebar-content,
+html[data-theme="dark"] .p-sidebar .p-sidebar-header,
+html[data-theme="dark"] .p-sidebar .p-sidebar-footer {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* NEW: Ensure the main container inside sidebar gets proper dark theme */
+html[data-theme="dark"] .p-sidebar .p-sidebar-content>* {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+}
+
+/* NEW: Even more specific rule to target the very top element in sidebar */
+.p-sidebar[style*="display: block"] {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+}
+
+html[data-theme="dark"] .p-sidebar[style*="display: block"] {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+}
+
+/* NEW: Drawer component styling for both themes */
+.p-drawer {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+/* Specific styling for dark theme */
+html[data-theme="dark"] .p-drawer {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+
+/* NEW: Ensure drawer content also follows theme */
+.p-drawer .p-drawer-content {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+}
+
+html[data-theme="dark"] .p-drawer .p-drawer-content {
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
 }

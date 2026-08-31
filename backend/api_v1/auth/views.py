@@ -18,7 +18,6 @@ from .utils import (
     get_auth_user_username,
 )
 
-
 router = APIRouter(prefix="/auth", tags=["Аутентификация"])
 
 security = HTTPBasic()
@@ -42,7 +41,7 @@ async def login_for_access_token(
         # не прошли проверку, отдаем HTTP-ошибку
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="Неверное имя пользователя или пароль",
             headers={"WWW-Authenticate": "Bearer"},
         )
     # устанавливаем время жизни токена
