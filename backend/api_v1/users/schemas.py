@@ -31,3 +31,18 @@ class UserSchema(BaseModel):
     password: str
     awaitable_attrs: Awaitable[Profile]
     is_active: bool = True
+    is_superuser: bool = False  # Добавляем поле is_superuser
+
+
+# --- Новая схема ---
+class PublicUserSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True) # Позволяет Pydantic заполнять схему из ORM объекта (например, SQLAlchemy)
+    username: str
+    email: EmailStr | None = None
+    is_active: bool = True
+    is_superuser: bool = False
+    # Добавьте сюда поля профиля, если они нужны, например:
+    # first_name: str | None = None
+    # last_name: str | None = None
+    # bio: str | None = None
+# --- Конец новой схемы ---

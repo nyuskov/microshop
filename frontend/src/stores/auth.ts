@@ -17,6 +17,12 @@ export const useAuthStore = defineStore('auth', {
     }
     return parsedState;
   },
+  getters: {
+    // Вычисляемое свойство для проверки, является ли пользователь администратором
+    isAdmin: (state) => {
+      return state.user && state.user.is_superuser === true;
+    }
+  },
   actions: {
     async initializeApp() {
       // Check if we have a valid token on app start
@@ -47,7 +53,7 @@ export const useAuthStore = defineStore('auth', {
         this.accessToken = response.data.access_token;
         // Refresh token может быть не всегда
         if (response.data.refresh_token) {
-            this.refreshToken = response.data.refresh_token;
+          this.refreshToken = response.data.refresh_token;
         }
 
         // Set the Authorization header for subsequent requests
@@ -57,11 +63,11 @@ export const useAuthStore = defineStore('auth', {
         this.isAuthenticated = true;
         this.saveState();
 
-        if (router) {
-          await this.fetchUser();
-          if (this.current_user !== null) {
-            await router.push({ name: 'Home' });
-          }
+        // Обязательно обновляем информацию о пользователе после входа
+        await this.fetchUser();
+
+        if (router && this.current_user !== null) {
+          await router.push({ name: 'Home' });
         }
       } catch (error) {
         console.error('Login error:', error);
@@ -89,7 +95,7 @@ export const useAuthStore = defineStore('auth', {
       this.saveState();
 
       if (router) {
-        await router.push({ name: 'login' });
+        await router.push({ name: 'Login' });
       }
     },
 
@@ -113,50 +119,50 @@ export const useAuthStore = defineStore('auth', {
 
         return response.data;
       } catch (error) {
-        console.error('Refresh token error:', error);
+        console.error('Refresh token error:', error)
         // If refresh fails, log out the user
-        this.logout();
-        throw error;
+        this.logout()
+        throw error
       }
     },
 
     async fetchUser() {
       try {
-        const response = await axios.get(`${backendServer}/api/v1/jwt/users/me/`);
-        this.user = response.data;
-        this.isAuthenticated = true;
-        this.current_user = response.data;
+        const response = await axios.get(`${backendServer}/api/v1/jwt/users/me/`)
+        this.user = response.data
+        this.isAuthenticated = true
+        this.current_user = response.data
       } catch (error) {
-        console.error('Failed to fetch user:', error);
+        console.error('Failed to fetch user:', error)
         // If fetching user fails, it might be due to an invalid token.
         // In this case, we'll attempt to refresh the token.
         // Проверим, есть ли refresh_token перед попыткой обновления
         if (error.response?.status === 401 && this.refreshToken) {
           try {
             // Attempt to refresh the token
-            await this.refreshToken();
+            await this.refreshToken()
             // After successful refresh, retry fetching user
-            const response = await axios.get(`${backendServer}/api/v1/jwt/users/me/`);
-            this.user = response.data;
-            this.isAuthenticated = true;
-            this.current_user = response.data;
+            const response = await axios.get(`${backendServer}/api/v1/jwt/users/me/`)
+            this.user = response.data
+            this.isAuthenticated = true
+            this.current_user = response.data
           } catch (refreshError) {
             // If refresh also fails, log out the user
-            console.error('Token refresh failed, logging out.', refreshError);
-            this.logout();
+            console.error('Token refresh failed, logging out.', refreshError)
+            this.logout()
           }
         } else if (error.response?.status === 401) {
           // Если статус 401 и refresh_token нет, сразу логаут
-          console.error('Access token invalid and no refresh token, logging out.');
-          this.logout();
+          console.error('Access token invalid and no refresh token, logging out.')
+          this.logout()
         } else {
           // For other errors, just reset user info
-          this.user = null;
-          this.isAuthenticated = false;
-          this.current_user = null;
+          this.user = null
+          this.isAuthenticated = false
+          this.current_user = null
         }
       }
-      this.saveState();
+      this.saveState()
     },
 
     saveState() {
@@ -207,7 +213,7 @@ export function getCSRFToken(): string | null {
     }
   }
   if (cookieValue === null) {
-    console.warn('CSRF cookie not found. A request to set it may be needed.');
+    console.warn('CSRF cookie not found. A request to set it may be needed.')
   }
   return cookieValue
 }

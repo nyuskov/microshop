@@ -1,7 +1,7 @@
 from pwdlib import PasswordHash
 from pwdlib.hashers.argon2 import Argon2Hasher
 from fastapi import HTTPException, status
-from sqlalchemy import Result, select
+from sqlalchemy import Result, select, func # Добавляем func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, joinedload
@@ -97,6 +97,11 @@ async def create_user(new_user: CreateUser, session: AsyncSession) -> dict:
     if new_user.password != new_user.password2:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
+    # Проверяем, есть ли уже пользователи в базе
+    user_count_stmt = select(func.count(User.id))
+    user_count_result = await session.execute(user_count_stmt)
+    user_count = user_count_result.scalar()
+
     hashed_password = hash_password(new_user.password)
 
     user = User(
@@ -104,6 +109,11 @@ async def create_user(new_user: CreateUser, session: AsyncSession) -> dict:
         hashed_password=hashed_password,
         email=new_user.email,
     )
+
+    # Если это первый пользователь, делаем его суперпользователем
+    if user_count == 0:
+        user.is_superuser = True
+
     session.add(user)
 
     profile = Profile(

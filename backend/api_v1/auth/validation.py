@@ -8,8 +8,9 @@ from .helpers import ACCESS_TOKEN_TYPE, REFRESH_TOKEN_TYPE, TOKEN_TYPE_FIELD
 from ..users.crud import get_user_by_username
 from ..users.schemas import UserSchema
 from .utils import decode_jwt, validate_password
+from core.models.user import User  # Импортируем модель User
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/jwt/login/")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api_v1/jwt/login/")
 
 
 def get_current_token_payload(
@@ -83,6 +84,50 @@ def get_current_active_auth_user(
     )
 
 
+# Новая функция для проверки, является ли пользователь администратором
+async def get_current_active_admin_user(
+    session: AsyncSession = Depends(db_helper.session_dependency),
+    user: UserSchema = Depends(get_current_active_auth_user),
+):
+    # Получаем полную модель пользователя из БД, чтобы проверить is_superuser
+    db_user = await session.get(User, user.id)
+    if not db_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не найден в базе данных",
+        )
+    if not db_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Пользователь неактивен",
+        )
+    if not db_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Пользователь не является администратором",
+        )
+    return user
+
+
+# --- Новая зависимость ---
+async def get_current_db_user(
+    session: AsyncSession = Depends(db_helper.session_dependency),
+    user: UserSchema = Depends(get_current_active_auth_user),
+):
+    """
+    Возвращает модель User из базы данных.
+    Предполагает, что username уникален, что верно для fastapi-users.
+    """
+    db_user = await session.get(User, user.id)
+    if not db_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не найден в базе данных",
+        )
+    return db_user
+# --- Конец новой зависимости ---
+
+
 async def validate_auth_user(
     session: AsyncSession = Depends(db_helper.session_dependency),
     username: str = Form(),
@@ -100,11 +145,4 @@ async def validate_auth_user(
         hashed_password=user.hashed_password,
     ):
         raise unauthed_exc
-
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Пользователь неактивен",
-        )
-
     return user

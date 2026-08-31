@@ -10,7 +10,7 @@ import { ref, type Ref, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 // Import the theme store
-import { useThemeStore } from '../stores/theme';
+import { useThemeStore } from "../stores/theme";
 
 const authStore = useAuthStore();
 authStore.initializeApp();
@@ -26,59 +26,70 @@ let isActiveUsers: Ref<boolean> = ref(false);
 let isActivePosts: Ref<boolean> = ref(false);
 
 const isAuthorized = computed(() => authStore.isAuthenticated);
+const isAdmin = computed(() => authStore.isAdmin);
 
 // State for the drawer (sidebar menu)
 const drawerVisible = ref(false);
 
 // Define menu items as a single root panel for PanelMenu
-const menuItems = computed(() => [
-  {
-    label: "Навигация",
-    items: [
-      {
-        label: "Пользователи",
-        icon: "pi pi-fw pi-user",
-        command: () => {
-          isActiveUsers.value = true;
-          isActivePosts.value = false;
-          drawerVisible.value = false; // Close drawer after selection
+// The menu items are now computed based on authorization and admin status
+const menuItems = computed(() => {
+  const baseItems = [
+    {
+      label: "Навигация",
+      items: [
+        // Conditionally add the "Пользователи" item based on admin status
+        ...(isAdmin.value
+          ? [
+              {
+                label: "Пользователи",
+                icon: "pi pi-fw pi-user",
+                command: () => {
+                  isActiveUsers.value = true;
+                  isActivePosts.value = false;
+                  drawerVisible.value = false; // Close drawer after selection
+                },
+              },
+            ]
+          : []),
+        {
+          label: "Посты",
+          icon: "pi pi-fw pi-file-edit",
+          command: () => {
+            isActiveUsers.value = false;
+            isActivePosts.value = true;
+            drawerVisible.value = false; // Close drawer after selection
+          },
         },
-      },
-      {
-        label: "Посты",
-        icon: "pi pi-fw pi-file-edit",
-        command: () => {
-          isActiveUsers.value = false;
-          isActivePosts.value = true;
-          drawerVisible.value = false; // Close drawer after selection
-        },
-      },
-    ],
-  },
-  {
-    label: "Настройки",
-    items: [
-      {
-        label: `Тема (${themeStore.currentTheme})`,
-        icon: themeStore.currentTheme === 'light' ? "pi pi-sun" : "pi pi-moon",
-        command: () => {
+      ],
+    },
+    {
+      label: "Настройки",
+      items: [
+        {
+          label: `Тема (${themeStore.currentTheme})`,
+          icon:
+            themeStore.currentTheme === "light" ? "pi pi-sun" : "pi pi-moon",
+          command: () => {
             themeStore.toggleTheme();
             // Keep drawer open after theme change
+          },
         },
-      },
-      {
-        label: "Выйти",
-        icon: "pi pi-fw pi-sign-out",
-        command: async () => {
-          isActiveUsers.value = false;
-          isActivePosts.value = false;
-          await authStore.logout(router);
-          drawerVisible.value = false; // Close drawer after logout
+        {
+          label: "Выйти",
+          icon: "pi pi-fw pi-sign-out",
+          command: async () => {
+            isActiveUsers.value = false;
+            isActivePosts.value = false;
+            await authStore.logout(router);
+            drawerVisible.value = false; // Close drawer after logout
+          },
         },
-      },
-    ],
-  }
-]);
+      ],
+    },
+  ];
+  return baseItems;
+});
 
 // Function to toggle the drawer visibility
 function toggleDrawer() {
@@ -134,10 +145,16 @@ function closeDrawer() {
       <div class="content">
         <h1 class="text-center">Hello!</h1>
         <!-- Show Users OR Posts based on state, exclusively -->
-        <Users v-if="isActiveUsers && !isActivePosts" :isActiveUsers="isActiveUsers"></Users>
+        <Users
+          v-if="isActiveUsers && !isActivePosts"
+          :isActiveUsers="isActiveUsers"
+        ></Users>
         <Posts v-if="isActivePosts && !isActiveUsers"></Posts>
         <!-- Optional: Default message when no specific view is selected -->
-        <div v-if="!isActiveUsers && !isActivePosts" class="default-view-message text-center p-4">
+        <div
+          v-if="!isActiveUsers && !isActivePosts"
+          class="default-view-message text-center p-4"
+        >
           <p>Выберите "Посты" или "Пользователи" в меню.</p>
         </div>
       </div>
@@ -149,8 +166,8 @@ function closeDrawer() {
         <h1 class="text-center">Hello!</h1>
         <div class="text-center">
           <p>
-            Добро пожаловать! Пожалуйста, войдите или зарегистрируйтесь для доступа
-            к дополнительным возможностям.
+            Добро пожаловать! Пожалуйста, войдите или зарегистрируйтесь для
+            доступа к дополнительным возможностям.
           </p>
           <Button severity="warning" @click="router.push(redirectReg)"
             >Зарегистрироваться</Button
@@ -175,11 +192,14 @@ function closeDrawer() {
 
 .top-toolbar {
   z-index: 1001; /* Higher than the sidebar to stay on top when it's open */
-  background-color: var(--surface-color); /* Use theme surface color, should be dark in dark mode now */
+  background-color: var(
+    --surface-color
+  ); /* Use theme surface color, should be dark in dark mode now */
   border-bottom: 1px solid var(--border-color);
 }
 
-.main-content, .main-content-unauthorized {
+.main-content,
+.main-content-unauthorized {
   flex: 1;
   padding: 1rem;
   margin-top: 1rem; /* Account for the fixed header */
@@ -202,17 +222,42 @@ function closeDrawer() {
 }
 
 /* Utility-like classes can be defined here if not in global styles */
-.p-2 { padding: var(--spacing-medium); }
-.m-1 { margin: var(--spacing-small); }
-.my-2 { margin-top: var(--spacing-medium); margin-bottom: var(--spacing-medium); }
-.mr-2 { margin-right: var(--spacing-medium); }
-.no-underline { text-decoration: none; }
-.text-color { color: var(--text-color); }
-.hover\:surface-100:hover { background-color: var(--surface-color); }
-.dark\.hover\:surface-700:hover { background-color: color-mix(in srgb, var(--surface-color) 80%, black); } /* Fallback for dark hover */
-.border-round { border-radius: var(--border-radius); }
-.transition-colors { transition: background-color, color 0.2s ease; }
-.transition-duration-150 { transition-duration: 0.15s; }
+.p-2 {
+  padding: var(--spacing-medium);
+}
+.m-1 {
+  margin: var(--spacing-small);
+}
+.my-2 {
+  margin-top: var(--spacing-medium);
+  margin-bottom: var(--spacing-medium);
+}
+.mr-2 {
+  margin-right: var(--spacing-medium);
+}
+.no-underline {
+  text-decoration: none;
+}
+.text-color {
+  color: var(--text-color);
+}
+.hover\:surface-100:hover {
+  background-color: var(--surface-color);
+}
+.dark\.hover\:surface-700:hover {
+  background-color: color-mix(in srgb, var(--surface-color) 80%, black);
+} /* Fallback for dark hover */
+.border-round {
+  border-radius: var(--border-radius);
+}
+.transition-colors {
+  transition:
+    background-color,
+    color 0.2s ease;
+}
+.transition-duration-150 {
+  transition-duration: 0.15s;
+}
 </style>
 
 <style>
@@ -241,7 +286,8 @@ function closeDrawer() {
   padding: 0.5rem 0; /* Add some padding inside the menu */
 }
 
-.custom-sidebar-content :deep(.p-panelmenu .p-panelmenu-header .p-panelmenu-header-content) {
+.custom-sidebar-content
+  :deep(.p-panelmenu .p-panelmenu-header .p-panelmenu-header-content) {
   border-radius: 0 !important; /* Remove header border radius */
   background: transparent; /* Ensure header is transparent */
   border: none; /* Remove header border */
@@ -262,7 +308,11 @@ function closeDrawer() {
 }
 
 .custom-sidebar-content :deep(.p-panelmenu .p-menuitem .p-menuitem-link):hover {
-  background-color: color-mix(in srgb, var(--warning-color) 20%, transparent); /* Light orange hover */
+  background-color: color-mix(
+    in srgb,
+    var(--warning-color) 20%,
+    transparent
+  ); /* Light orange hover */
 }
 
 .custom-sidebar-content :deep(.p-panelmenu .p-menuitem .p-menuitem-link):focus {
@@ -271,11 +321,13 @@ function closeDrawer() {
 }
 
 /* Attempt to style the icon and label inside the link */
-.custom-sidebar-content :deep(.p-panelmenu .p-menuitem .p-menuitem-link .p-menuitem-icon) {
+.custom-sidebar-content
+  :deep(.p-panelmenu .p-menuitem .p-menuitem-link .p-menuitem-icon) {
   color: var(--warning-color); /* Icon color to warning */
 }
 
-.custom-sidebar-content :deep(.p-panelmenu .p-menuitem .p-menuitem-link .p-menuitem-text) {
+.custom-sidebar-content
+  :deep(.p-panelmenu .p-menuitem .p-menuitem-link .p-menuitem-text) {
   color: var(--text-color); /* Text color */
 }
 </style>

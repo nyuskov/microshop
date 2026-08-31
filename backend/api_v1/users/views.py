@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.models import db_helper
 from . import crud
 from .schemas import CreateUser
+from api_v1.auth.validation import get_current_active_admin_user
 
 router = APIRouter(
     prefix="/users",
@@ -14,6 +15,7 @@ router = APIRouter(
 @router.get(
     "/",
     summary="Получение всех пользователей",
+    dependencies=[Depends(get_current_active_admin_user)],  # Добавляем зависимость для проверки администратора
 )
 async def get_users(
     session: AsyncSession = Depends(db_helper.session_dependency),
