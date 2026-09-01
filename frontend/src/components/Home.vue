@@ -83,6 +83,16 @@ const menuItems = computed(() => {
     {
       label: "Настройки",
       items: [
+        // --- Новый пункт меню 'Настройки профиля' ---
+        {
+          label: "Настройки профиля",
+          icon: "pi pi-user-edit",
+          command: () => {
+            router.push("/user-profile"); // Перенаправление на страницу профиля
+            drawerVisible.value = false; // Закрыть меню после выбора
+          },
+        },
+        // --- Конец нового пункта меню ---
         {
           label: `Тема (${themeStore.currentTheme})`,
           icon:
@@ -167,7 +177,9 @@ function closeDrawer() {
           v-if="isActiveUsers && !isActivePosts && !isActiveGroups"
           :isActiveUsers="isActiveUsers"
         ></Users>
-        <Posts v-if="isActivePosts && !isActiveUsers && !isActiveGroups"></Posts>
+        <Posts
+          v-if="isActivePosts && !isActiveUsers && !isActiveGroups"
+        ></Posts>
         <!-- Add the GroupsPage component -->
         <GroupsPage
           v-if="isActiveGroups && !isActiveUsers && !isActivePosts"
