@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import Posts from "./Posts.vue";
 import Users from "./Users.vue";
+// Import the new Groups component
+import GroupsPage from "./GroupsPage.vue";
 // Import Toolbar, Sidebar, and PanelMenu from PrimeVue
 import Toolbar from "primevue/toolbar";
 import Sidebar from "primevue/sidebar";
@@ -24,6 +26,8 @@ const redirectLogin = "/auth/login/";
 // State for active components
 let isActiveUsers: Ref<boolean> = ref(false);
 let isActivePosts: Ref<boolean> = ref(false);
+// Add state for active groups
+let isActiveGroups: Ref<boolean> = ref(false);
 
 const isAuthorized = computed(() => authStore.isAuthenticated);
 const isAdmin = computed(() => authStore.isAdmin);
@@ -47,6 +51,18 @@ const menuItems = computed(() => {
                 command: () => {
                   isActiveUsers.value = true;
                   isActivePosts.value = false;
+                  isActiveGroups.value = false; // Deselect groups
+                  drawerVisible.value = false; // Close drawer after selection
+                },
+              },
+              // Add the "Группы" item for superusers
+              {
+                label: "Группы",
+                icon: "pi pi-fw pi-users",
+                command: () => {
+                  isActiveGroups.value = true;
+                  isActiveUsers.value = false;
+                  isActivePosts.value = false; // Deselect other views
                   drawerVisible.value = false; // Close drawer after selection
                 },
               },
@@ -58,6 +74,7 @@ const menuItems = computed(() => {
           command: () => {
             isActiveUsers.value = false;
             isActivePosts.value = true;
+            isActiveGroups.value = false; // Deselect groups
             drawerVisible.value = false; // Close drawer after selection
           },
         },
@@ -81,6 +98,7 @@ const menuItems = computed(() => {
           command: async () => {
             isActiveUsers.value = false;
             isActivePosts.value = false;
+            isActiveGroups.value = false; // Deselect groups on logout
             await authStore.logout(router);
             drawerVisible.value = false; // Close drawer after logout
           },
@@ -144,18 +162,23 @@ function closeDrawer() {
     <main class="main-content" @click="closeDrawer" v-if="isAuthorized">
       <div class="content">
         <h1 class="text-center">Hello!</h1>
-        <!-- Show Users OR Posts based on state, exclusively -->
+        <!-- Show Users, Posts, or Groups based on state, exclusively -->
         <Users
-          v-if="isActiveUsers && !isActivePosts"
+          v-if="isActiveUsers && !isActivePosts && !isActiveGroups"
           :isActiveUsers="isActiveUsers"
         ></Users>
-        <Posts v-if="isActivePosts && !isActiveUsers"></Posts>
+        <Posts v-if="isActivePosts && !isActiveUsers && !isActiveGroups"></Posts>
+        <!-- Add the GroupsPage component -->
+        <GroupsPage
+          v-if="isActiveGroups && !isActiveUsers && !isActivePosts"
+        ></GroupsPage>
+
         <!-- Optional: Default message when no specific view is selected -->
         <div
-          v-if="!isActiveUsers && !isActivePosts"
+          v-if="!isActiveUsers && !isActivePosts && !isActiveGroups"
           class="default-view-message text-center p-4"
         >
-          <p>Выберите "Посты" или "Пользователи" в меню.</p>
+          <p>Выберите "Посты", "Пользователи" или "Группы" в меню.</p>
         </div>
       </div>
     </main>
