@@ -7,6 +7,7 @@ __all__ = {
     "Product",
     "Profile",
     "User",
+    "Group",  # Добавляем Group в экспорт
 }
 
 from .base import Base
@@ -16,3 +17,4 @@ from .post import Post
 from .product import Product
 from .profile import Profile
 from .user import User
+from .group import Group  # Импортируем Group

@@ -5,6 +5,7 @@ from .auth.jwt import router as jwt_router
 from .products.views import router as products_router
 from .users.views import router as users_router
 from .posts.views import router as posts_router # Импортируем новый роутер
+from .groups.views import router as groups_router # Импорт роутера для групп
 
 router_v1 = APIRouter()
 router_v1.include_router(
@@ -24,4 +25,9 @@ router_v1.include_router(
 router_v1.include_router(
     router=posts_router,
     prefix="/posts",
+)
+# Подключаем роутер для групп
+router_v1.include_router(
+    router=groups_router,
+    prefix="/groups",
 )
