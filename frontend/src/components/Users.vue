@@ -3,9 +3,13 @@ import { onMounted, ref } from "vue";
 import DataTable from "primevue/datatable";
 import Column from "primevue/column";
 import { useAuthStore } from "../stores/auth";
+import { fetchUserGroups } from "@/services/api"; // Импортируем новую функцию
+import { User } from '@/types'; // Импортируем обновлённый тип User
 
 const authStore = useAuthStore();
-const users = ref(null);
+// Тип ExtendedUser теперь просто User, так как он обновлён
+type ExtendedUser = User & { groups?: import('@/types').Group[] };
+const users = ref<ExtendedUser[] | null>(null);
 const api_prefix = "/api/v1";
 
 async function getUsersList() {
@@ -34,7 +38,23 @@ async function getUsersList() {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
-    users.value = await response.json();
+    const usersData: ExtendedUser[] = await response.json();
+    console.log(usersData);
+
+    // Для каждого пользователя загрузим его группы
+    const usersWithGroups = await Promise.all(
+      usersData.map(async (user) => {
+        try {
+          const userGroups = await fetchUserGroups(user.id);
+          return { ...user, groups: userGroups }; // Добавляем поле groups к пользователю
+        } catch (groupErr) {
+          console.error(`Failed to load groups for user ${user.id}:`, groupErr);
+          return { ...user, groups: [] }; // В случае ошибки присваиваем пустой список
+        }
+      })
+    );
+
+    users.value = usersWithGroups;
     console.log(users.value);
   } catch (err) {
     console.error("An error occurred during get users list:", err);
@@ -52,10 +72,27 @@ onMounted(async () => {
     <DataTable :value="users" tableStyle="min-width: 50rem">
       <Column field="username" header="Username"></Column>
       <Column field="email" header="Email"></Column>
-      <Column field="first_name" header="First name"></Column>
-      <Column field="last_name" header="Last name"></Column>
-      <Column field="bio" header="Biography"></Column>
-      <Column field="posts" header="Posts"></Column>
+      <!-- Отображение полей из profile -->
+      <Column field="profile.first_name" header="First Name"></Column>
+      <Column field="profile.last_name" header="Last Name"></Column>
+      <Column field="profile.bio" header="Bio"></Column>
+      <!-- Отображение количества постов или первых N символов -->
+      <Column field="posts" header="Posts Count">
+        <template #body="{ data }">
+          {{ data.posts.length }}
+        </template>
+      </Column>
+      <!-- Новая колонка для отображения групп -->
+      <Column field="groups" header="Groups">
+        <template #body="{ data }">
+          <span v-if="data.groups && data.groups.length > 0">
+            {{ data.groups.map(g => g.name).join(', ') }}
+          </span>
+          <span v-else>
+            No groups
+          </span>
+        </template>
+      </Column>
     </DataTable>
   </div>
 </template>

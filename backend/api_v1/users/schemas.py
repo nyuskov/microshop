@@ -1,10 +1,20 @@
-from typing import Annotated, Awaitable
+from typing import Annotated, Awaitable, List # Добавим List
 from annotated_types import MinLen, MaxLen
 
 from pydantic import BaseModel, ConfigDict, EmailStr
 
-from core.models.profile import Profile
+from core.models.profile import Profile # Импортируем модель Profile
+from api_v1.posts.schemas import PostBase # Импортируем существующую схему Post
 
+# --- Новая схема для Profile ---
+class ProfileSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    first_name: str | None = None
+    last_name: str | None = None
+    bio: str | None = None
+    user_id: int
+# --- Конец новой схемы ---
 
 class User(BaseModel):
     username: Annotated[str, MinLen(3), MaxLen(32)]
@@ -41,8 +51,12 @@ class PublicUserSchema(BaseModel):
     email: EmailStr | None = None
     is_active: bool = True
     is_superuser: bool = False
-    # Добавьте сюда поля профиля, если они нужны, например:
-    # first_name: str | None = None
-    # last_name: str | None = None
-    # bio: str | None = None
+    id: int # Добавим id, если он нужен
+# --- Конец новой схемы ---
+
+
+# --- Новая схема для пользователя с деталями ---
+class UserWithDetailsSchema(PublicUserSchema): # Наследуемся от PublicUserSchema
+    profile: ProfileSchema | None = None # Добавляем профиль
+    posts: List[PostBase] = [] # Добавляем список постов
 # --- Конец новой схемы ---
