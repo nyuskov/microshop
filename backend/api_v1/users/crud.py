@@ -19,15 +19,21 @@ async def get_users_with_posts_and_profiles(session: AsyncSession):
 
 
 async def get_user(session: AsyncSession, user_id: int) -> Optional[User]:
-    stmt = select(User).where(User.id == user_id).options(
-        selectinload(User.posts),
-        selectinload(User.profile),
+    stmt = (
+        select(User)
+        .where(User.id == user_id)
+        .options(
+            selectinload(User.posts),
+            selectinload(User.profile),
+        )
     )
     result = await session.scalars(stmt)
     return result.first()
 
 
-async def get_user_by_username(session: AsyncSession, username: str) -> Optional[User]:
+async def get_user_by_username(
+    session: AsyncSession, username: str
+) -> Optional[User]:
     stmt = select(User).where(User.username == username)
     result = await session.scalars(stmt)
     return result.first()
@@ -42,7 +48,9 @@ async def create_user(
         "last_name": new_user.last_name,
         "bio": new_user.bio,
     }
-    new_user_data = new_user.model_dump(exclude={"first_name", "last_name", "bio"})
+    new_user_data = new_user.model_dump(
+        exclude={"first_name", "last_name", "bio"}
+    )
     user = User(**new_user_data)
     profile = Profile(**new_user_profile_data)
     user.profile = profile
@@ -52,18 +60,42 @@ async def create_user(
     return user
 
 
-# --- Новая CRUD-функция ---
+# --- Исправленная CRUD-функция ---
 async def get_groups_for_user(
     session: AsyncSession,
     user_id: int,
-) -> list[Group]: # Возвращаем список ORM объектов Group
+) -> list[Group]:  # Возвращаем список ORM объектов Group
     """
     Получает список групп, к которым принадлежит пользователь.
     """
-    stmt = select(User).where(User.id == user_id).options(selectinload(User.groups))
-    result = await session.scalars(stmt)
-    user = result.first()
-    if user:
-        return user.groups # Возвращаем список групп
-    return [] # Если пользователь не найден, возвращаем пустой список
-# --- Конец новой CRUD-функции ---
+    # Сначала получаем ID групп, к которым принадлежит пользователь
+    user_stmt = (
+        select(User)
+        .where(User.id == user_id)
+        .options(selectinload(User.groups))
+    )
+    user_result = await session.scalars(user_stmt)
+    user = user_result.first()
+
+    if not user:
+        return []  # Если пользователь не найден, возвращаем пустой список
+
+    # Извлекаем ID групп
+    group_ids = [g.id for g in user.groups]
+
+    if not group_ids:
+        return []  # Если у пользователя нет групп, возвращаем пустой список
+
+    # Затем выбираем сами группы с загруженной связью users
+    groups_stmt = (
+        select(Group)
+        .where(Group.id.in_(group_ids))
+        .options(selectinload(Group.users))
+    )
+    groups_result = await session.scalars(groups_stmt)
+    return list(
+        groups_result.all()
+    )  # Возвращаем список групп с загруженными пользователями
+
+
+# --- Конец исправленной CRUD-функции ---
