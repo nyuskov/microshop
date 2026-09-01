@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from core.models import db_helper
+from core.security import password_hasher # Импортируем password_hasher из core.security с абсолютным путем
 from ..tokens.schemas import TokenData
 from ..users.crud import get_user_by_username
 from ..users.schemas import CurrentUser
@@ -27,8 +28,8 @@ from ..users.schemas import CurrentUser
 ACCESS_TOKEN_TYPE = "access"
 TOKEN_TYPE_FIELD = "type"
 
-# Создаем глобальный экземпляр PasswordHash, использующий argon2
-password_hasher = PasswordHash(hashers=[Argon2Hasher()])
+# # Создаем глобальный экземпляр PasswordHash, использующий argon2
+# password_hasher = PasswordHash(hashers=[Argon2Hasher()]) # Удаляем дублирующее определение
 
 security = HTTPBasic()
 

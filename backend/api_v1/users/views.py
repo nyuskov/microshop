@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models import db_helper
 from . import crud
-from .schemas import CreateUser, PublicUserSchema, UserWithDetailsSchema # Импортируем новую схему
+from .schemas import CreateUser, PublicUserSchema, UserWithDetailsSchema, UserCreatedResponseSchema # Импортируем новую схему
 from api_v1.auth.validation import get_current_active_admin_user # Импортируем зависимость
 from api_v1.groups.schemas import Group # Импортируем схему Group для возврата
 
@@ -44,6 +44,7 @@ async def get_user_groups(
 @router.post(
     "/",
     summary="Создание пользователя",
+    response_model=UserCreatedResponseSchema, # <-- Указываем новую схему для ответа
 )
 async def create_user(
     new_user: CreateUser,

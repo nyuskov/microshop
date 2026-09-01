@@ -1,63 +1,49 @@
 /* Global Styles and CSS Variables */
 
 :root {
-  /* Light Theme Colors - Black, Orange, Grey/Brown/Blue Palette */
-  --primary-color: #f4a261;
-  /* Orange */
-  --primary-light: #f5bb74;
-  /* Lighter Orange */
-  --secondary-color: #e9c46a;
-  /* Yellowy-Orange/Gold */
-  --accent-color: #e76f51;
-  /* Reddish Orange */
-  --background-color: #ffffff;
-  /* Pure White */
-  --surface-color: #f8f9fa;
-  /* Very light grey */
-  --text-color: #000000;
-  /* Pure Black */
-  --text-light: #6c757d;
-  /* Medium Grey */
-  --border-color: #8b4513;
-  /* Brown */
-  --success-color: #8b4513;
-  /* Brown (for success, if needed) */
-  --warning-color: #f4a261;
-  /* Orange (for warnings) */
-  --danger-color: #e63946;
-  /* Red */
-  --info-color: #457b9d;
-  /* Blue (for info/publish button) */
+  /* Light Theme Colors - Updated Palette */
+  --primary-color: #FF6B35; /* Brighter Orange */
+  --primary-light: #F4A261; /* Current Secondary */
+  --secondary-color: #E9C46A; /* Yellowy-Orange/Gold */
+  --accent-color: #E76F51; /* Reddish Orange */
+  --background-color: #FFFFFF; /* Pure White */
+  --surface-color: #F8F9FA; /* Very light grey */
+  --surface-color-dark: #F1F3F4; /* Slightly darker for contrast */
+  --text-color: #000000; /* Pure Black */
+  --text-light: #6C757D; /* Medium Grey */
+  --text-lighter: #ADB5BD; /* Lighter Grey */
+  --border-color: #DEE2E6; /* Light Grey */
+  --border-color-dark: #ADB5BD; /* Medium Grey */
+  --success-color: #2A9D8F; /* Soft Green */
+  --warning-color: #FF6B35; /* Orange (same as primary) */
+  --danger-color: #E63946; /* Red */
+  --info-color: #457B9D; /* Blue */
+  --shadow-small: 0 2px 4px rgba(0, 0, 0, 0.1);
+  --shadow-medium: 0 4px 8px rgba(0, 0, 0, 0.1);
+  --shadow-large: 0 8px 16px rgba(0, 0, 0, 0.1);
 }
 
-/* Dark Theme Colors - Black, Orange, Grey/Brown/Blue Palette */
+/* Dark Theme Colors - Updated Palette */
 html[data-theme="dark"] {
-  --primary-color: #f4a261;
-  /* Orange */
-  --primary-light: #f5bb74;
-  /* Lighter Orange */
-  --secondary-color: #e9c46a;
-  /* Yellowy-Orange/Gold */
-  --accent-color: #e76f51;
-  /* Reddish Orange */
-  --background-color: #000000;
-  /* Pure Black */
-  --surface-color: #262626;
-  /* Dark Grey */
-  --text-color: #ffffff;
-  /* Pure White */
-  --text-light: #a9a9a9;
-  /* Light Grey */
-  --border-color: #8b4513;
-  /* Brown */
-  --success-color: #8b4513;
-  /* Brown */
-  --danger-color: #e63946;
-  /* Red */
-  --warning-color: #f4a261;
-  /* Orange */
-  --info-color: #457b9d;
-  /* Blue */
+  --primary-color: #FF6B35; /* Brighter Orange */
+  --primary-light: #F4A261; /* Current Secondary */
+  --secondary-color: #E9C46A; /* Yellowy-Orange/Gold */
+  --accent-color: #E76F51; /* Reddish Orange */
+  --background-color: #1E1E1E; /* Darker Black */
+  --surface-color: #2D2D2D; /* Dark Grey */
+  --surface-color-dark: #3C3C3C; /* Slightly darker for contrast */
+  --text-color: #FFFFFF; /* Pure White */
+  --text-light: #ADB5BD; /* Light Grey */
+  --text-lighter: #6C757D; /* Medium Grey */
+  --border-color: #444444; /* Dark Grey */
+  --border-color-dark: #555555; /* Medium Dark Grey */
+  --success-color: #2A9D8F; /* Soft Green */
+  --danger-color: #E63946; /* Red */
+  --warning-color: #FF6B35; /* Orange (same as primary) */
+  --info-color: #457B9D; /* Blue */
+  --shadow-small: 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-medium: 0 4px 8px rgba(0, 0, 0, 0.3);
+  --shadow-large: 0 8px 16px rgba(0, 0, 0, 0.3);
 }
 
 /* Base styles */
@@ -90,11 +76,17 @@ body {
   border: var(--border-width) var(--border-style) var(--border-color);
   color: var(--text-color);
   /* Ensure text color is applied */
+  transition: box-shadow 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-large);
 }
 
 .btn {
   display: inline-block;
   padding: var(--spacing-small) var(--spacing-medium);
+  margin: var(--spacing-tiny); /* Add default margin */
   font-family: var(--font-family-base);
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-bold);
@@ -103,16 +95,17 @@ body {
   border: none;
   border-radius: var(--border-radius);
   cursor: pointer;
-  transition:
-    background-color 0.2s ease-in-out,
-    transform 0.1s ease;
+  transition: background-color 0.2s ease-in-out, transform 0.1s ease, box-shadow 0.2s ease;
   line-height: 1.5;
   color: white;
   /* Ensure button text is white */
+  min-height: 40px; /* Minimum height for better touch targets */
+  box-shadow: var(--shadow-small); /* Add initial shadow */
 }
 
 .btn:hover {
   transform: translateY(-2px);
+  box-shadow: var(--shadow-medium); /* Increase shadow on hover */
 }
 
 .btn:focus {
@@ -245,6 +238,9 @@ html[data-theme="dark"] {
   background-color: var(--surface-color) !important;
   color: var(--text-color) !important;
   border: 1px solid var(--border-color) !important;
+  box-shadow: var(--shadow-small) !important;
+  border-radius: var(--border-radius) !important;
+  margin: var(--spacing-medium) !important;
 }
 
 /* Sidebar - Specific override for dark theme */
@@ -292,11 +288,15 @@ html[data-theme="dark"] .p-panelmenu .p-panelmenu-panel {
   border-color: var(--primary-color) !important;
   color: var(--text-color) !important;
   /* Text color, white on dark bg, black on light bg */
+  box-shadow: var(--shadow-small) !important; /* Add initial shadow */
+  min-height: 40px !important; /* Minimum height for better touch targets */
 }
 
 .p-button:hover {
   background-color: var(--secondary-color) !important;
   border-color: var(--secondary-color) !important;
+  box-shadow: var(--shadow-medium) !important; /* Increase shadow on hover */
+  transform: translateY(-2px) !important; /* Lift effect */
 }
 
 .p-button.p-button-secondary {
@@ -464,6 +464,7 @@ body .p-panelmenu .p-panelmenu .p-panelmenu-header .p-panelmenu-header-content .
   color: var(--text-color) !important;
   border: 1px solid var(--border-color) !important;
   border-radius: var(--border-radius) !important;
+  box-shadow: var(--shadow-medium) !important;
 }
 
 /* NEW: Custom sidebar content styling */

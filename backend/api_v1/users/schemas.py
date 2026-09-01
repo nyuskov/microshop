@@ -60,3 +60,19 @@ class UserWithDetailsSchema(PublicUserSchema): # Наследуемся от Pub
     profile: ProfileSchema | None = None # Добавляем профиль
     posts: List[PostBase] = [] # Добавляем список постов
 # --- Конец новой схемы ---
+
+
+# --- Новая схема для ответа на создание пользователя ---
+class UserCreatedResponseSchema(BaseModel):
+    """
+    Схема для возврата данных о новом пользователе после его создания.
+    Не включает potentially recursive relationships.
+    """
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    username: str
+    email: EmailStr | None = None
+    is_active: bool = True
+    is_superuser: bool = False
+    # Не включаем profile, posts, groups и другие связи, чтобы избежать рекурсии
+# --- Конец новой схемы ---
