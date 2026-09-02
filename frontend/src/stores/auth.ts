@@ -165,6 +165,46 @@ export const useAuthStore = defineStore('auth', {
       this.saveState()
     },
 
+    // Новый метод для обновления данных текущего пользователя
+    async updateCurrentUser(userData: Partial<typeof this.current_user>) {
+      try {
+        // Убедимся, что у нас есть токен
+        if (!this.accessToken) {
+          throw new Error('No access token available for update request.');
+        }
+
+        // Уберем служебные поля, которые не должны отправляться на сервер
+        const { user, isAuthenticated, accessToken, refreshToken, ...updatableData } = userData;
+
+        const response = await axios.patch(`${backendServer}/api/v1/jwt/users/me/`, updatableData, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.accessToken}`
+          },
+        });
+
+        // Обновим данные пользователя в store после успешного запроса
+        this.current_user = { ...this.current_user, ...response.data };
+        this.user = { ...this.user, ...response.data }; // Также обновим в user, если используется
+
+        this.saveState(); // Сохраняем обновленное состояние
+
+        console.log('User profile updated successfully:', response.data);
+        return response.data;
+      } catch (error) {
+        console.error('Failed to update user profile:', error);
+        if (error.response) {
+          console.error('Server responded with error:', error.response.status, error.response.data);
+        } else if (error.request) {
+          console.error('No response received:', error.request);
+        } else {
+          console.error('Request setup error:', error.message);
+        }
+        throw error; // Перебросим ошибку наверх для обработки в компоненте
+      }
+    },
+
+
     saveState() {
       /*
             We save state to local storage to keep the
