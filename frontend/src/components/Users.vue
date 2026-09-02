@@ -1,69 +1,69 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
-import DataTable from "primevue/datatable";
-import Column from "primevue/column";
-import { useAuthStore } from "../stores/auth";
-import { fetchUserGroups } from "@/services/api"; // Импортируем новую функцию
-import { User } from '@/types'; // Импортируем обновлённый тип User
+import { onMounted, ref } from 'vue'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import { useAuthStore } from '../stores/auth'
+import { fetchUserGroups } from '@/services/api' // Импортируем новую функцию
+import { User } from '@/types' // Импортируем обновлённый тип User
 
-const authStore = useAuthStore();
+const authStore = useAuthStore()
 // Тип ExtendedUser теперь просто User, так как он обновлён
-type ExtendedUser = User & { groups?: import('@/types').Group[] };
-const users = ref<ExtendedUser[] | null>(null);
-const api_prefix = "/api/v1";
+type ExtendedUser = User & { groups?: import('@/types').Group[] }
+const users = ref<ExtendedUser[] | null>(null)
+const api_prefix = '/api/v1'
 
 async function getUsersList() {
-  const backendHost = window.location.hostname;
-  const backendUrl = `https://${backendHost}:8000`;
-  
-  const accessToken = authStore.accessToken;
-  
+  const backendHost = window.location.hostname
+  const backendUrl = `https://${backendHost}:8000`
+
+  const accessToken = authStore.accessToken
+
   if (!accessToken) {
-    console.error("Cannot fetch users: Access token is missing.");
-    return;
+    console.error('Cannot fetch users: Access token is missing.')
+    return
   }
 
   try {
     const response = await fetch(`${backendUrl}${api_prefix}/users/`, {
-      method: "GET",
-      cache: "reload",
+      method: 'GET',
+      cache: 'reload',
       headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`
       },
-      credentials: "include",
-    });
-    
+      credentials: 'include'
+    })
+
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
-    
-    const usersData: ExtendedUser[] = await response.json();
-    console.log(usersData);
+
+    const usersData: ExtendedUser[] = await response.json()
+    console.log(usersData)
 
     // Для каждого пользователя загрузим его группы
     const usersWithGroups = await Promise.all(
       usersData.map(async (user) => {
         try {
-          const userGroups = await fetchUserGroups(user.id);
-          return { ...user, groups: userGroups }; // Добавляем поле groups к пользователю
+          const userGroups = await fetchUserGroups(user.id)
+          return { ...user, groups: userGroups } // Добавляем поле groups к пользователю
         } catch (groupErr) {
-          console.error(`Failed to load groups for user ${user.id}:`, groupErr);
-          return { ...user, groups: [] }; // В случае ошибки присваиваем пустой список
+          console.error(`Failed to load groups for user ${user.id}:`, groupErr)
+          return { ...user, groups: [] } // В случае ошибки присваиваем пустой список
         }
       })
-    );
+    )
 
-    users.value = usersWithGroups;
-    console.log(users.value);
+    users.value = usersWithGroups
+    console.log(users.value)
   } catch (err) {
-    console.error("An error occurred during get users list:", err);
+    console.error('An error occurred during get users list:', err)
   }
 }
 
 onMounted(async () => {
-  await getUsersList();
-});
+  await getUsersList()
+})
 </script>
 
 <template>
@@ -86,11 +86,9 @@ onMounted(async () => {
       <Column field="groups" header="Groups">
         <template #body="{ data }">
           <span v-if="data.groups && data.groups.length > 0">
-            {{ data.groups.map(g => g.name).join(', ') }}
+            {{ data.groups.map((g) => g.name).join(', ') }}
           </span>
-          <span v-else>
-            No groups
-          </span>
+          <span v-else> No groups </span>
         </template>
       </Column>
     </DataTable>

@@ -1,12 +1,12 @@
 import { fileURLToPath, URL } from 'node:url'
-import { readFileSync } from 'fs';
+import { readFileSync } from 'fs'
 
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 // import vueDevTools from 'vite-plugin-vue-devtools' // Comment out vueDevTools
 import checker from 'vite-plugin-checker'
-
+import eslint from 'vite-plugin-eslint'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -16,13 +16,14 @@ export default defineConfig({
     // vueDevTools(), // Disabled to potentially remove vite-plugin-vue-inspector
     checker({
       // e.g. use TypeScript check
-      typescript: true,
+      typescript: true
     }),
+    eslint()
   ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
-    },
+    }
   },
   // Server configuration options go here if needed
   // Example: port, host, proxy
@@ -37,10 +38,10 @@ export default defineConfig({
     https: {
       // Предполагаем, что сертификаты будут смонтированы в /app/certs_from_backend в контейнере
       key: readFileSync('/app/certs_from_backend/server.key'),
-      cert: readFileSync('/app/certs_from_backend/server.crt'),
+      cert: readFileSync('/app/certs_from_backend/server.crt')
     },
     hmr: {
       overlay: false // Disable the HMR error overlay
     }
-  },
+  }
 })

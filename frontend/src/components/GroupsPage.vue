@@ -11,7 +11,11 @@
     <!-- Форма создания -->
     <form v-if="showCreateForm" @submit.prevent="createNewGroup" class="group-form">
       <input v-model="newGroupName" placeholder="Название Группы" required class="form-input" />
-      <textarea v-model="newGroupDescription" placeholder="Описание" class="form-textarea"></textarea>
+      <textarea
+        v-model="newGroupDescription"
+        placeholder="Описание"
+        class="form-textarea"
+      ></textarea>
       <button type="submit" class="btn btn-submit">Создать Группу</button>
     </form>
 
@@ -19,7 +23,9 @@
     <div class="groups-list">
       <div v-for="group in groups" :key="group.id" class="group-card">
         <div class="group-header">
-          <h3 class="group-name"><strong>{{ group.name }}</strong></h3>
+          <h3 class="group-name">
+            <strong>{{ group.name }}</strong>
+          </h3>
           <p class="group-description">{{ group.description }}</p>
         </div>
 
@@ -37,26 +43,41 @@
         </div>
 
         <div class="group-actions">
-          <button @click="selectGroupForEdit(group)" class="btn btn-action btn-info">Редактировать</button>
+          <button @click="selectGroupForEdit(group)" class="btn btn-action btn-info">
+            Редактировать
+          </button>
           <button @click="deleteGroup(group.id)" class="btn btn-action btn-danger">Удалить</button>
-          <button @click="selectedGroupForUsers = group" class="btn btn-action btn-manage">Управление Пользователями</button>
+          <button @click="selectedGroupForUsers = group" class="btn btn-action btn-manage">
+            Управление Пользователями
+          </button>
         </div>
 
         <!-- Форма редактирования для выбранной группы -->
-        <form v-if="group.id === editingGroupId" @submit.prevent="updateExistingGroup(group.id)" class="group-edit-form">
+        <form
+          v-if="group.id === editingGroupId"
+          @submit.prevent="updateExistingGroup(group.id)"
+          class="group-edit-form"
+        >
           <input v-model="updatedGroupName" placeholder="Новое Название" class="form-input" />
-          <textarea v-model="updatedGroupDescription" placeholder="Новое Описание" class="form-textarea"></textarea>
+          <textarea
+            v-model="updatedGroupDescription"
+            placeholder="Новое Описание"
+            class="form-textarea"
+          ></textarea>
           <button type="submit" class="btn btn-submit">Сохранить Изменения</button>
-          <button type="button" @click="editingGroupId = null" class="btn btn-cancel">Отмена</button>
+          <button type="button" @click="editingGroupId = null" class="btn btn-cancel">
+            Отмена
+          </button>
         </form>
 
         <!-- Компонент управления пользователями для этой группы -->
-        <ManageGroupUsers 
-          v-if="selectedGroupForUsers && selectedGroupForUsers.id === group.id" 
-          :selected-group="selectedGroupForUsers" 
-          @users-updated="handleUsersUpdated" 
+        <ManageGroupUsers
+          v-if="selectedGroupForUsers && selectedGroupForUsers.id === group.id"
+          :selected-group="selectedGroupForUsers"
+          @users-updated="handleUsersUpdated"
           @close-requested="handleCloseRequested"
-          class="manage-users-inline" />
+          class="manage-users-inline"
+        />
       </div>
     </div>
 
@@ -71,105 +92,105 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { fetchGroups, createGroup, updateGroup, deleteGroup } from '@/services/api';
-import { Group } from '@/types';
-import ManageGroupUsers from './ManageGroupUsers.vue'; // Импортируем новый компонент
+import { ref, onMounted } from 'vue'
+import { fetchGroups, createGroup, updateGroup, deleteGroup } from '@/services/api'
+import { Group } from '@/types'
+import ManageGroupUsers from './ManageGroupUsers.vue' // Импортируем новый компонент
 
-const groups = ref<Group[]>([]);
-const loading = ref(false);
-const error = ref('');
-const showCreateForm = ref(false);
-const newGroupName = ref('');
-const newGroupDescription = ref('');
+const groups = ref<Group[]>([])
+const loading = ref(false)
+const error = ref('')
+const showCreateForm = ref(false)
+const newGroupName = ref('')
+const newGroupDescription = ref('')
 
-const editingGroupId = ref<number | null>(null);
-const updatedGroupName = ref('');
-const updatedGroupDescription = ref('');
+const editingGroupId = ref<number | null>(null)
+const updatedGroupName = ref('')
+const updatedGroupDescription = ref('')
 
-const selectedGroupForUsers = ref<Group | null>(null); // Состояние для выбранной группы для управления пользователями
+const selectedGroupForUsers = ref<Group | null>(null) // Состояние для выбранной группы для управления пользователями
 
 const loadGroups = async () => {
-  loading.value = true;
-  error.value = '';
+  loading.value = true
+  error.value = ''
   try {
-    groups.value = await fetchGroups(); // fetchGroups уже возвращает группы с пользователями
+    groups.value = await fetchGroups() // fetchGroups уже возвращает группы с пользователями
   } catch (err) {
-    error.value = 'Не удалось загрузить группы.';
-    console.error(err);
+    error.value = 'Не удалось загрузить группы.'
+    console.error(err)
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
 // Новая функция-обработчик события
 const handleUsersUpdated = (groupId: number) => {
-  console.log(`Пользователи в группе ${groupId} были обновлены. Обновляем список групп.`);
-  loadGroups(); // Обновляем весь список групп
+  console.log(`Пользователи в группе ${groupId} были обновлены. Обновляем список групп.`)
+  loadGroups() // Обновляем весь список групп
   // Сбрасываем selectedGroupForUsers, чтобы закрыть форму после обновления
-  selectedGroupForUsers.value = null;
-};
+  selectedGroupForUsers.value = null
+}
 
 // Новая функция-обработчик события закрытия
 const handleCloseRequested = () => {
-  console.log('Запрос на закрытие формы управления пользователями.');
+  console.log('Запрос на закрытие формы управления пользователями.')
   // Сбрасываем selectedGroupForUsers, чтобы закрыть форму
-  selectedGroupForUsers.value = null;
-};
+  selectedGroupForUsers.value = null
+}
 
 const createNewGroup = async () => {
   try {
     const newGroup = await createGroup({
       name: newGroupName.value,
-      description: newGroupDescription.value,
-    });
-    groups.value.push(newGroup);
-    newGroupName.value = '';
-    newGroupDescription.value = '';
-    showCreateForm.value = false;
+      description: newGroupDescription.value
+    })
+    groups.value.push(newGroup)
+    newGroupName.value = ''
+    newGroupDescription.value = ''
+    showCreateForm.value = false
   } catch (err) {
-    error.value = 'Не удалось создать группу.';
-    console.error(err);
+    error.value = 'Не удалось создать группу.'
+    console.error(err)
   }
-};
+}
 
 const selectGroupForEdit = (group: Group) => {
-  editingGroupId.value = group.id;
-  updatedGroupName.value = group.name;
-  updatedGroupDescription.value = group.description || '';
-};
+  editingGroupId.value = group.id
+  updatedGroupName.value = group.name
+  updatedGroupDescription.value = group.description || ''
+}
 
 const updateExistingGroup = async (id: number) => {
   try {
     const updatedGroup = await updateGroup(id, {
       name: updatedGroupName.value,
-      description: updatedGroupDescription.value,
-    });
-    const index = groups.value.findIndex(g => g.id === id);
+      description: updatedGroupDescription.value
+    })
+    const index = groups.value.findIndex((g) => g.id === id)
     if (index !== -1) {
-      groups.value[index] = updatedGroup;
+      groups.value[index] = updatedGroup
     }
-    editingGroupId.value = null;
+    editingGroupId.value = null
   } catch (err) {
-    error.value = 'Не удалось обновить группу.';
-    console.error(err);
+    error.value = 'Не удалось обновить группу.'
+    console.error(err)
   }
-};
+}
 
 const deleteGroup = async (id: number) => {
-  if (!confirm('Вы уверены, что хотите удалить эту группу?')) return;
+  if (!confirm('Вы уверены, что хотите удалить эту группу?')) return
   try {
-    await deleteGroup(id);
-    groups.value = groups.value.filter(g => g.id !== id);
+    await deleteGroup(id)
+    groups.value = groups.value.filter((g) => g.id !== id)
   } catch (err) {
-    error.value = 'Не удалось удалить группу.';
-    console.error(err);
+    error.value = 'Не удалось удалить группу.'
+    console.error(err)
   }
-};
+}
 
 onMounted(() => {
-  loadGroups();
-});
+  loadGroups()
+})
 </script>
 
 <style scoped>
@@ -200,7 +221,9 @@ onMounted(() => {
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
-  transition: background-color 0.3s, color 0.3s;
+  transition:
+    background-color 0.3s,
+    color 0.3s;
   text-decoration: none;
   display: inline-block;
   text-align: center;
@@ -277,7 +300,8 @@ onMounted(() => {
   background-color: #5a6268; /* Темнее нейтрального для hover */
 }
 
-.group-form, .group-edit-form {
+.group-form,
+.group-edit-form {
   background-color: var(--surface-color); /* Используем глобальный surface цвет */
   padding: 15px;
   border-radius: 5px;
@@ -285,7 +309,8 @@ onMounted(() => {
   border: 1px solid var(--border-color); /* Добавим границу */
 }
 
-.form-input, .form-textarea {
+.form-input,
+.form-textarea {
   width: 100%;
   padding: 8px;
   margin-bottom: 10px;
@@ -312,7 +337,7 @@ onMounted(() => {
   border-radius: 5px;
   padding: 15px;
   background-color: var(--surface-color); /* Используем глобальный surface цвет */
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .group-header {
@@ -363,7 +388,8 @@ onMounted(() => {
   /* padding и border уже определены в стилях самого компонента ManageGroupUsers */
 }
 
-.loading, .error {
+.loading,
+.error {
   text-align: center;
   padding: 10px;
   margin-top: 20px;

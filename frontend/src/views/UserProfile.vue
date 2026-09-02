@@ -1,73 +1,71 @@
-<script setup>
-import { ref, reactive, computed } from "vue";
-import { useAuthStore } from "@/stores/auth";
-import { useRouter } from "vue-router";
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { useRouter } from 'vue-router'
 
 // Импорт компонентов PrimeVue
-import Button from "primevue/button";
-import Avatar from "primevue/avatar";
-import Textarea from "primevue/textarea";
-import InputText from "primevue/inputtext";
-import InputMask from "primevue/inputmask";
-import Calendar from "primevue/calendar";
-import Dropdown from "primevue/dropdown";
-import Password from "primevue/password";
-import ToggleSwitch from "primevue/toggleswitch";
+import Button from 'primevue/button'
+import Avatar from 'primevue/avatar'
+import Textarea from 'primevue/textarea'
+import InputText from 'primevue/inputtext'
+import InputMask from 'primevue/inputmask'
+import Calendar from 'primevue/calendar'
+import Dropdown from 'primevue/dropdown'
+import Password from 'primevue/password'
+import ToggleSwitch from 'primevue/toggleswitch'
 
-const authStore = useAuthStore();
-const router = useRouter();
+const authStore = useAuthStore()
+const router = useRouter()
 
 // Используем computed, чтобы profileForm всегда был синхронизирован с current_user
 // Предполагаем, что данные с бэкенда в snake_case
-const profileForm = computed(() =>
-  authStore.current_user ? { ...authStore.current_user } : {},
-);
+const profileForm = computed(() => (authStore.current_user ? { ...authStore.current_user } : {}))
 
-const newPassword = ref("");
-const confirmNewPassword = ref("");
+const newPassword = ref('')
+const confirmNewPassword = ref('')
 
 const updateProfile = async () => {
   if (newPassword.value !== confirmNewPassword.value) {
-    alert("Новые пароли не совпадают!");
-    return;
+    alert('Новые пароли не совпадают!')
+    return
   }
 
   // Создаем объект обновления, объединяя вычисленные значения из profileForm и новые пароли
   // Исключим currentPassword из обновления профиля, если оно не требуется бэкендом для этой операции
-  const { currentPassword, ...profileDataToSend } = profileForm.value;
-  const updateData = { ...profileDataToSend };
+  const { currentPassword: _currentPassword, ...profileDataToSend } = profileForm.value
+  const updateData = { ...profileDataToSend }
 
   if (newPassword.value) {
-    updateData.new_password = newPassword.value; // Предполагаем, что бэкенд принимает new_password
+    updateData.new_password = newPassword.value // Предполагаем, что бэкенд принимает new_password
   }
 
   try {
     // Вызываем обновленный метод из store
-    await authStore.updateCurrentUser(updateData);
+    await authStore.updateCurrentUser(updateData)
     // После успешного обновления можно показать сообщение и, возможно, остаться на странице
-    alert("Профиль успешно обновлен!");
+    alert('Профиль успешно обновлен!')
     // router.push('/dashboard'); // Закомментировано, чтобы остаться на странице профиля
   } catch (error) {
-    console.error("Ошибка обновления профиля:", error);
-    let errorMessage = "Не удалось обновить профиль.";
+    console.error('Ошибка обновления профиля:', error)
+    let errorMessage = 'Не удалось обновить профиль.'
     if (error.response && error.response.data) {
-      errorMessage += ` Сервер сообщил: ${JSON.stringify(error.response.data)}`;
+      errorMessage += ` Сервер сообщил: ${JSON.stringify(error.response.data)}`
     }
-    alert(errorMessage);
+    alert(errorMessage)
   }
-};
+}
 
 // Пример данных для селектов
 const languages = ref([
-  { name: "English", code: "en" },
-  { name: "Russian", code: "ru" },
-  { name: "Spanish", code: "es" },
-]);
+  { name: 'English', code: 'en' },
+  { name: 'Russian', code: 'ru' },
+  { name: 'Spanish', code: 'es' }
+])
 const countries = ref([
-  { name: "Russia", code: "RU" },
-  { name: "United States", code: "US" },
-  { name: "Spain", code: "ES" },
-]);
+  { name: 'Russia', code: 'RU' },
+  { name: 'United States', code: 'US' },
+  { name: 'Spain', code: 'ES' }
+])
 </script>
 
 <template>
@@ -111,9 +109,9 @@ const countries = ref([
             />
             <div class="profile-info">
               <h3>
-                {{ authStore.current_user?.username || "Имя не указано" }}
+                {{ authStore.current_user?.username || 'Имя не указано' }}
               </h3>
-              <p>{{ authStore.current_user?.email || "Email не указан" }}</p>
+              <p>{{ authStore.current_user?.email || 'Email не указан' }}</p>
             </div>
           </div>
 
@@ -136,20 +134,11 @@ const countries = ref([
           <div class="form-grid">
             <div class="form-field">
               <label for="username" class="form-label">Имя пользователя</label>
-              <InputText
-                id="username"
-                v-model="profileForm.username"
-                class="form-input"
-              />
+              <InputText id="username" v-model="profileForm.username" class="form-input" />
             </div>
             <div class="form-field">
               <label for="email" class="form-label">Email</label>
-              <InputText
-                id="email"
-                v-model="profileForm.email"
-                type="email"
-                class="form-input"
-              />
+              <InputText id="email" v-model="profileForm.email" type="email" class="form-input" />
             </div>
             <div class="form-field">
               <label for="phone" class="form-label">Номер телефона</label>
@@ -214,9 +203,7 @@ const countries = ref([
               />
             </div>
             <div class="form-field">
-              <label for="confirmNewPassword" class="form-label"
-                >Подтвердите новый пароль</label
-              >
+              <label for="confirmNewPassword" class="form-label">Подтвердите новый пароль</label>
               <Password
                 id="confirmNewPassword"
                 v-model="confirmNewPassword"
@@ -234,17 +221,11 @@ const countries = ref([
           <div class="settings-grid">
             <div class="setting-item">
               <div class="setting-label">Включить уведомления</div>
-              <ToggleSwitch
-                v-model="profileForm.notifications_enabled"
-                class="toggle-switch"
-              />
+              <ToggleSwitch v-model="profileForm.notifications_enabled" class="toggle-switch" />
             </div>
             <div class="setting-item">
               <div class="setting-label">Режим приватности</div>
-              <ToggleSwitch
-                v-model="profileForm.privacy_mode"
-                class="toggle-switch"
-              />
+              <ToggleSwitch v-model="profileForm.privacy_mode" class="toggle-switch" />
             </div>
           </div>
         </div>
@@ -261,8 +242,8 @@ const countries = ref([
   background-color: #ffffff; /* Основной фон как на дизайне */
   color: #333333; /* Основной цвет текста */
   font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
-    Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans',
+    'Helvetica Neue', sans-serif;
 }
 
 .profile-card {

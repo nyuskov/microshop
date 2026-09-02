@@ -21,8 +21,12 @@
 
       <!-- Кнопки управления -->
       <div class="transfer-buttons">
-        <button @click="moveToGroup" class="btn btn-transfer" title="Добавить в группу">&gt;&gt;</button>
-        <button @click="moveFromGroup" class="btn btn-transfer" title="Удалить из группы">&lt;&lt;</button>
+        <button @click="moveToGroup" class="btn btn-transfer" title="Добавить в группу">
+          &gt;&gt;
+        </button>
+        <button @click="moveFromGroup" class="btn btn-transfer" title="Удалить из группы">
+          &lt;&lt;
+        </button>
       </div>
 
       <!-- Правая колонка: Пользователи в группе -->
@@ -54,116 +58,120 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
-import { fetchAllUsers } from '@/services/api'; // Предполагается, что у вас есть функция для получения всех пользователей
-import { fetchUsersInGroup, updateUsersInGroup } from '@/services/api';
-import { Group, User } from '@/types';
+import { ref, watch, computed } from 'vue'
+import { fetchAllUsers } from '@/services/api' // Предполагается, что у вас есть функция для получения всех пользователей
+import { fetchUsersInGroup, updateUsersInGroup } from '@/services/api'
+import { Group, User } from '@/types'
 
 interface Props {
-  selectedGroup: Group | null;
+  selectedGroup: Group | null
 }
 
 // Определяем события, которые будут эмититься
 const emit = defineEmits<{
-  usersUpdated: [groupId: number];
-  closeRequested: []; // Новое событие для запроса закрытия
-}>();
+  usersUpdated: [groupId: number]
+  closeRequested: [] // Новое событие для запроса закрытия
+}>()
 
-const props = defineProps<Props>();
+const props = defineProps<Props>()
 
-const loading = ref(false);
+const loading = ref(false)
 // Список всех пользователей
-const allUsers = ref<User[]>([]);
+const allUsers = ref<User[]>([])
 // Список пользователей, принадлежащих к группе (рабочее состояние)
-const groupUsers = ref<User[]>([]);
+const groupUsers = ref<User[]>([])
 // Список пользователей, принадлежащих к группе при загрузке (для отмены)
-const initialGroupUsers = ref<User[]>([]);
+const initialGroupUsers = ref<User[]>([])
 // Список доступных пользователей (все - пользователи_в_группе)
 const availableUsers = computed(() => {
-  const groupUserIds = new Set(groupUsers.value.map(u => u.id));
-  return allUsers.value.filter(user => !groupUserIds.has(user.id));
-});
+  const groupUserIds = new Set(groupUsers.value.map((u) => u.id))
+  return allUsers.value.filter((user) => !groupUserIds.has(user.id))
+})
 // Выбранные пользователи для перемещения
-const selectedAvailableUsers = ref<User[]>([]);
-const selectedGroupUsers = ref<User[]>([]);
+const selectedAvailableUsers = ref<User[]>([])
+const selectedGroupUsers = ref<User[]>([])
 
 // Загрузка всех пользователей и пользователей в группе при выборе группы
-watch(() => props.selectedGroup, async (newGroup) => {
-  if (newGroup) {
-    loading.value = true;
-    try {
-      // Загружаем всех пользователей
-      allUsers.value = await fetchAllUsers();
-      // Загружаем пользователей в выбранной группе
-      const usersInGroup = await fetchUsersInGroup(newGroup.id);
-      // Устанавливаем пользователей в группе
-      groupUsers.value = [...usersInGroup]; // Создаём копию
-      initialGroupUsers.value = [...usersInGroup]; // Сохраняем начальное состояние для отмены
-      // Сбросим выделение
-      selectedAvailableUsers.value = [];
-      selectedGroupUsers.value = [];
-    } catch (error) {
-      console.error('Failed to load users for group:', error);
-    } finally {
-      loading.value = false;
+watch(
+  () => props.selectedGroup,
+  async (newGroup) => {
+    if (newGroup) {
+      loading.value = true
+      try {
+        // Загружаем всех пользователей
+        allUsers.value = await fetchAllUsers()
+        // Загружаем пользователей в выбранной группе
+        const usersInGroup = await fetchUsersInGroup(newGroup.id)
+        // Устанавливаем пользователей в группе
+        groupUsers.value = [...usersInGroup] // Создаём копию
+        initialGroupUsers.value = [...usersInGroup] // Сохраняем начальное состояние для отмены
+        // Сбросим выделение
+        selectedAvailableUsers.value = []
+        selectedGroupUsers.value = []
+      } catch (error) {
+        console.error('Failed to load users for group:', error)
+      } finally {
+        loading.value = false
+      }
+    } else {
+      // Сброс данных, если группа не выбрана
+      allUsers.value = []
+      groupUsers.value = []
+      initialGroupUsers.value = []
+      selectedAvailableUsers.value = []
+      selectedGroupUsers.value = []
     }
-  } else {
-    // Сброс данных, если группа не выбрана
-    allUsers.value = [];
-    groupUsers.value = [];
-    initialGroupUsers.value = [];
-    selectedAvailableUsers.value = [];
-    selectedGroupUsers.value = [];
-  }
-}, { immediate: true });
+  },
+  { immediate: true }
+)
 
 // Функция для перемещения из доступных в группу
 const moveToGroup = () => {
   // Добавляем выбранных пользователей в groupUsers
-  groupUsers.value = [...groupUsers.value, ...selectedAvailableUsers.value];
+  groupUsers.value = [...groupUsers.value, ...selectedAvailableUsers.value]
   // Сбрасываем выделение в левой колонке
-  selectedAvailableUsers.value = [];
-};
+  selectedAvailableUsers.value = []
+}
 
 // Функция для перемещения из группы в доступные
 const moveFromGroup = () => {
   // Фильтруем groupUsers, исключая выбранных
   groupUsers.value = groupUsers.value.filter(
-    user => !selectedGroupUsers.value.some(selectedUser => selectedUser.id === user.id)
-  );
+    (user) => !selectedGroupUsers.value.some((selectedUser) => selectedUser.id === user.id)
+  )
   // Сбрасываем выделение в правой колонке
-  selectedGroupUsers.value = [];
-};
+  selectedGroupUsers.value = []
+}
 
 // Функция для сохранения изменений на сервере
 const saveUsersToGroup = async () => {
-  if (!props.selectedGroup) return;
+  if (!props.selectedGroup) return
 
   // Извлекаем ID пользователей из списка groupUsers
-  const userIdsToSet = groupUsers.value.map(user => user.id);
+  const userIdsToSet = groupUsers.value.map((user) => user.id)
 
   try {
-    await updateUsersInGroup(props.selectedGroup.id, userIdsToSet);
+    await updateUsersInGroup(props.selectedGroup.id, userIdsToSet)
     // Сообщаем родительскому компоненту, что пользователи в группе были обновлены
-    emit('usersUpdated', props.selectedGroup.id);
+    emit('usersUpdated', props.selectedGroup.id)
     // Закрываем форму после успешного сохранения
-    emit('closeRequested');
+    emit('closeRequested')
   } catch (error) {
-    console.error('Failed to update users in group:', error);
+    console.error('Failed to update users in group:', error)
     // Ошибка обрабатывается в GroupsPage.vue через emit
   }
-};
+}
 
 // Функция для отмены изменений
 const cancelChanges = () => {
   // Восстанавливаем начальное состояние groupUsers
-  groupUsers.value = [...initialGroupUsers.value];
+  groupUsers.value = [...initialGroupUsers.value]
   // Сбрасываем выделение
-  selectedAvailableUsers.value = [];
-  selectedGroupUsers.value = [];
+  selectedAvailableUsers.value = []
+  selectedGroupUsers.value = []
   // Закрываем форму при отмене
-  emit('closeRequested');
-};
+  emit('closeRequested')
+}
 </script>
 
 <style scoped>
@@ -247,7 +255,9 @@ const cancelChanges = () => {
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
-  transition: background-color 0.3s, color 0.3s;
+  transition:
+    background-color 0.3s,
+    color 0.3s;
   text-decoration: none;
   display: inline-block;
   text-align: center;

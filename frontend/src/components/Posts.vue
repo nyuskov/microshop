@@ -16,7 +16,8 @@
         required
         class="form-control-alt"
       ></textarea>
-      <button type="submit" class="btn-primary">Опубликовать</button> <!-- Reverted to btn-primary (orange) -->
+      <button type="submit" class="btn-primary">Опубликовать</button>
+      <!-- Reverted to btn-primary (orange) -->
     </form>
 
     <!-- Список постов -->
@@ -28,7 +29,9 @@
           <small>Автор: {{ post.user_id }} | ID: {{ post.id }}</small>
         </div>
         <!-- Кнопка удаления доступна только владельцу поста -->
-        <button v-if="isOwner(post.user_id)" @click="deletePost(post.id)" class="btn-danger btn-sm">Удалить</button>
+        <button v-if="isOwner(post.user_id)" @click="deletePost(post.id)" class="btn-danger btn-sm">
+          Удалить
+        </button>
       </div>
     </div>
     <p v-else>Пока нет постов.</p>
@@ -36,89 +39,96 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
-import { backendServer, useAuthStore } from '../stores/auth'; // Импортируем store и адрес бэкенда
+import { ref, onMounted, computed } from 'vue'
+import { backendServer, useAuthStore } from '../stores/auth' // Импортируем store и адрес бэкенда
 
-const authStore = useAuthStore();
-const userId = computed(() => authStore.current_user?.id); // Получаем ID текущего пользователя
+interface Post {
+  id: number
+  title: string
+  body: string
+  user_id: number // Предполагаем, что API возвращает user_id
+}
 
-const posts = ref<any[]>([]);
-const newPostTitle = ref('');
-const newPostBody = ref('');
+const authStore = useAuthStore()
+const userId = computed(() => authStore.current_user?.id) // Получаем ID текущего пользователя
+
+const posts = ref<Post[]>([])
+const newPostTitle = ref('')
+const newPostBody = ref('')
 
 // Helper function to check if the current user is the owner of a post
 const isOwner = (postUserId: number) => {
-  return userId.value === postUserId;
-};
+  return userId.value === postUserId
+}
 
 // Загрузка всех постов при монтировании
 onMounted(() => {
-  fetchAllPosts();
-});
+  fetchAllPosts()
+})
 
 const fetchAllPosts = async () => {
   try {
     // Changed the API call to fetch all posts
-    const response = await fetch(`${backendServer}/api/v1/posts/`);
+    const response = await fetch(`${backendServer}/api/v1/posts/`)
     if (response.ok) {
-      posts.value = await response.json();
+      posts.value = await response.json()
     } else {
-      console.error('Ошибка при загрузке постов:', response.statusText);
+      console.error('Ошибка при загрузке постов:', response.statusText)
     }
   } catch (error) {
-    console.error('Ошибка сети при загрузке постов:', error);
+    console.error('Ошибка сети при загрузке постов:', error)
   }
-};
+}
 
 const createPost = async () => {
-  if (!newPostTitle.value.trim() || !newPostBody.value.trim()) return;
+  if (!newPostTitle.value.trim() || !newPostBody.value.trim()) return
 
   try {
     const response = await fetch(`${backendServer}/api/v1/posts/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.accessToken}`, // Добавляем токен авторизации
+        Authorization: `Bearer ${authStore.accessToken}` // Добавляем токен авторизации
       },
       body: JSON.stringify({
         title: newPostTitle.value,
-        body: newPostBody.value,
-      }),
-    });
+        body: newPostBody.value
+      })
+    })
 
     if (response.ok) {
-      const createdPost = await response.json();
-      posts.value.unshift(createdPost); // Добавляем новый пост в начало списка
-      newPostTitle.value = '';
-      newPostBody.value = '';
+      const createdPost = await response.json()
+      posts.value.unshift(createdPost) // Добавляем новый пост в начало списка
+      newPostTitle.value = ''
+      newPostBody.value = ''
     } else {
-      console.error('Ошибка при создании поста:', response.statusText);
+      console.error('Ошибка при создании поста:', response.statusText)
     }
   } catch (error) {
-    console.error('Ошибка сети при создании поста:', error);
+    console.error('Ошибка сети при создании поста:', error)
   }
-};
+}
 
 const deletePost = async (postId: number) => {
-  if (!confirm('Вы уверены, что хотите удалить этот пост?')) return;
+  if (!confirm('Вы уверены, что хотите удалить этот пост?')) return
 
   try {
     const response = await fetch(`${backendServer}/api/v1/posts/${postId}/`, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Bearer ${authStore.accessToken}`, // Добавляем токен авторизации
-      },
-    });
+        Authorization: `Bearer ${authStore.accessToken}` // Добавляем токен авторизации
+      }
+    })
 
     if (response.ok) {
-      posts.value = posts.value.filter((post) => post.id !== postId); // Удаляем пост из списка
+      posts.value = posts.value.filter((post) => post.id !== postId) // Удаляем пост из списка
     } else {
-      console.error('Ошибка при удалении поста:', response.statusText);
+      console.error('Ошибка при удалении поста:', response.statusText)
     }
   } catch (error) {
-    console.error('Ошибка сети при удалении поста:', error);
+    console.error('Ошибка сети при удалении поста:', error)
   }
-};
+}
 </script>
 
 <style scoped>
@@ -170,7 +180,8 @@ const deletePost = async (postId: number) => {
   font-size: 0.9em;
   margin-top: var(--spacing-small);
 }
-.btn-primary, .btn-danger {
+.btn-primary,
+.btn-danger {
   padding: var(--spacing-small) var(--spacing-medium);
   border: none;
   border-radius: var(--border-radius);

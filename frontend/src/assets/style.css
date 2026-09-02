@@ -2,45 +2,45 @@
 
 :root {
   /* Light Theme Colors - Updated Palette */
-  --primary-color: #FF6B35; /* Brighter Orange */
-  --primary-light: #F4A261; /* Current Secondary */
-  --secondary-color: #E9C46A; /* Yellowy-Orange/Gold */
-  --accent-color: #E76F51; /* Reddish Orange */
-  --background-color: #FFFFFF; /* Pure White */
-  --surface-color: #F8F9FA; /* Very light grey */
-  --surface-color-dark: #F1F3F4; /* Slightly darker for contrast */
+  --primary-color: #ff6b35; /* Brighter Orange */
+  --primary-light: #f4a261; /* Current Secondary */
+  --secondary-color: #e9c46a; /* Yellowy-Orange/Gold */
+  --accent-color: #e76f51; /* Reddish Orange */
+  --background-color: #ffffff; /* Pure White */
+  --surface-color: #f8f9fa; /* Very light grey */
+  --surface-color-dark: #f1f3f4; /* Slightly darker for contrast */
   --text-color: #000000; /* Pure Black */
-  --text-light: #6C757D; /* Medium Grey */
-  --text-lighter: #ADB5BD; /* Lighter Grey */
-  --border-color: #DEE2E6; /* Light Grey */
-  --border-color-dark: #ADB5BD; /* Medium Grey */
-  --success-color: #2A9D8F; /* Soft Green */
-  --warning-color: #FF6B35; /* Orange (same as primary) */
-  --danger-color: #E63946; /* Red */
-  --info-color: #457B9D; /* Blue */
+  --text-light: #6c757d; /* Medium Grey */
+  --text-lighter: #adb5bd; /* Lighter Grey */
+  --border-color: #dee2e6; /* Light Grey */
+  --border-color-dark: #adb5bd; /* Medium Grey */
+  --success-color: #2a9d8f; /* Soft Green */
+  --warning-color: #ff6b35; /* Orange (same as primary) */
+  --danger-color: #e63946; /* Red */
+  --info-color: #457b9d; /* Blue */
   --shadow-small: 0 2px 4px rgba(0, 0, 0, 0.1);
   --shadow-medium: 0 4px 8px rgba(0, 0, 0, 0.1);
   --shadow-large: 0 8px 16px rgba(0, 0, 0, 0.1);
 }
 
 /* Dark Theme Colors - Updated Palette */
-html[data-theme="dark"] {
-  --primary-color: #FF6B35; /* Brighter Orange */
-  --primary-light: #F4A261; /* Current Secondary */
-  --secondary-color: #E9C46A; /* Yellowy-Orange/Gold */
-  --accent-color: #E76F51; /* Reddish Orange */
-  --background-color: #1E1E1E; /* Darker Black */
-  --surface-color: #2D2D2D; /* Dark Grey */
-  --surface-color-dark: #3C3C3C; /* Slightly darker for contrast */
-  --text-color: #FFFFFF; /* Pure White */
-  --text-light: #ADB5BD; /* Light Grey */
-  --text-lighter: #6C757D; /* Medium Grey */
+html[data-theme='dark'] {
+  --primary-color: #ff6b35; /* Brighter Orange */
+  --primary-light: #f4a261; /* Current Secondary */
+  --secondary-color: #e9c46a; /* Yellowy-Orange/Gold */
+  --accent-color: #e76f51; /* Reddish Orange */
+  --background-color: #1e1e1e; /* Darker Black */
+  --surface-color: #2d2d2d; /* Dark Grey */
+  --surface-color-dark: #3c3c3c; /* Slightly darker for contrast */
+  --text-color: #ffffff; /* Pure White */
+  --text-light: #adb5bd; /* Light Grey */
+  --text-lighter: #6c757d; /* Medium Grey */
   --border-color: #444444; /* Dark Grey */
   --border-color-dark: #555555; /* Medium Dark Grey */
-  --success-color: #2A9D8F; /* Soft Green */
-  --danger-color: #E63946; /* Red */
-  --warning-color: #FF6B35; /* Orange (same as primary) */
-  --info-color: #457B9D; /* Blue */
+  --success-color: #2a9d8f; /* Soft Green */
+  --danger-color: #e63946; /* Red */
+  --warning-color: #ff6b35; /* Orange (same as primary) */
+  --info-color: #457b9d; /* Blue */
   --shadow-small: 0 2px 4px rgba(0, 0, 0, 0.3);
   --shadow-medium: 0 4px 8px rgba(0, 0, 0, 0.3);
   --shadow-large: 0 8px 16px rgba(0, 0, 0, 0.3);
@@ -95,7 +95,10 @@ body {
   border: none;
   border-radius: var(--border-radius);
   cursor: pointer;
-  transition: background-color 0.2s ease-in-out, transform 0.1s ease, box-shadow 0.2s ease;
+  transition:
+    background-color 0.2s ease-in-out,
+    transform 0.1s ease,
+    box-shadow 0.2s ease;
   line-height: 1.5;
   color: white;
   /* Ensure button text is white */
@@ -187,8 +190,8 @@ body {
 
 /* Typography */
 :root,
-html[data-theme="dark"] {
-  --font-family-base: "Inter", "Segoe UI", Roboto, sans-serif;
+html[data-theme='dark'] {
+  --font-family-base: 'Inter', 'Segoe UI', Roboto, sans-serif;
   --font-size-base: 1rem;
   --font-size-small: 0.875rem;
   --font-size-large: 1.25rem;
@@ -198,7 +201,7 @@ html[data-theme="dark"] {
 
 /* Spacing */
 :root,
-html[data-theme="dark"] {
+html[data-theme='dark'] {
   --spacing-tiny: 0.25rem;
   --spacing-small: 0.5rem;
   --spacing-medium: 1rem;
@@ -208,7 +211,7 @@ html[data-theme="dark"] {
 
 /* Borders */
 :root,
-html[data-theme="dark"] {
+html[data-theme='dark'] {
   --border-radius: 0.5rem;
   --border-width: 1px;
   --border-style: solid;
@@ -216,7 +219,7 @@ html[data-theme="dark"] {
 
 /* Shadows */
 :root,
-html[data-theme="dark"] {
+html[data-theme='dark'] {
   --shadow-small: 0 2px 4px rgba(0, 0, 0, 0.1);
   --shadow-medium: 0 4px 8px rgba(0, 0, 0, 0.1);
   --shadow-large: 0 8px 16px rgba(0, 0, 0, 0.1);
@@ -224,7 +227,7 @@ html[data-theme="dark"] {
 
 /* Layout */
 :root,
-html[data-theme="dark"] {
+html[data-theme='dark'] {
   --container-max-width: 1200px;
   --sidebar-width: 250px;
 }
@@ -244,7 +247,7 @@ html[data-theme="dark"] {
 }
 
 /* Sidebar - Specific override for dark theme */
-html[data-theme="dark"] .p-sidebar {
+html[data-theme='dark'] .p-sidebar {
   background-color: var(--surface-color) !important;
   /* Ensure dark surface color */
   color: var(--text-color) !important;
@@ -263,7 +266,7 @@ html[data-theme="dark"] .p-panelmenu {
 }
 
 /* NEW: PanelMenu Panel - Specific override for dark theme */
-html[data-theme="dark"] .p-panelmenu .p-panelmenu-panel {
+html[data-theme='dark'] .p-panelmenu .p-panelmenu-panel {
   background-color: var(--surface-color) !important;
   color: var(--text-color) !important;
   border: 1px solid var(--border-color) !important;
@@ -307,9 +310,7 @@ html[data-theme="dark"] .p-panelmenu .p-panelmenu-panel {
 }
 
 .p-button.p-button-secondary:hover {
-  background-color: color-mix(in srgb,
-      var(--warning-color) 80%,
-      white) !important;
+  background-color: color-mix(in srgb, var(--warning-color) 80%, white) !important;
   border-color: color-mix(in srgb, var(--warning-color) 80%, white) !important;
 }
 
@@ -359,20 +360,20 @@ html[data-theme="dark"] .p-panelmenu .p-panelmenu-panel {
 }
 
 /* DataTable */
-.p-datatable .p-datatable-tbody>tr>td {
+.p-datatable .p-datatable-tbody > tr > td {
   color: var(--text-color) !important;
   border: 1px solid var(--border-color) !important;
 }
 
-.p-datatable .p-datatable-thead>tr>th {
+.p-datatable .p-datatable-thead > tr > th {
   color: var(--text-color) !important;
   background-color: var(--surface-color) !important;
   border: 1px solid var(--border-color) !important;
 }
 
 /* DataTable text color in DARK theme specifically for better contrast on black */
-html[data-theme="dark"] .p-datatable .p-datatable-tbody>tr>td,
-html[data-theme="dark"] .p-datatable .p-datatable-thead>tr>th {
+html[data-theme='dark'] .p-datatable .p-datatable-tbody > tr > td,
+html[data-theme='dark'] .p-datatable .p-datatable-thead > tr > th {
   color: var(--text-light) !important;
   /* Use light grey text for better contrast on dark surface */
 }
@@ -396,7 +397,11 @@ html[data-theme="dark"] .p-datatable .p-datatable-thead>tr>th {
   /* Ensure text color is correct */
 }
 
-.p-panelmenu .p-panelmenu-header .p-panelmenu-header-content .p-panelmenu-header-action .p-menuitem-icon,
+.p-panelmenu
+  .p-panelmenu-header
+  .p-panelmenu-header-content
+  .p-panelmenu-header-action
+  .p-menuitem-icon,
 .p-panelmenu .p-panelmenu-content .p-menuitem .p-menuitem-link .p-menuitem-icon {
   color: var(--warning-color) !important;
   /* Icon color to orange */
@@ -418,7 +423,12 @@ html[data-theme="dark"] .p-datatable .p-datatable-thead>tr>th {
 }
 
 /* Updated NEW rule for dark theme panel header link hover - using background */
-body .p-panelmenu .p-panelmenu-header .p-panelmenu-header-content .p-panelmenu-header-action .p-panelmenu-header-link:hover {
+body
+  .p-panelmenu
+  .p-panelmenu-header
+  .p-panelmenu-header-content
+  .p-panelmenu-header-action
+  .p-panelmenu-header-link:hover {
   background: color-mix(in srgb, #8b4513 20%, black) !important;
   /* Darker brown hover for header links using 'background' */
   color: var(--text-color) !important;
@@ -443,14 +453,25 @@ a.p-panelmenu-item-link:hover {
 }
 
 /* Updated rule for light theme panel header hover with higher specificity - using background */
-body .p-panelmenu .p-panelmenu .p-panelmenu-header .p-panelmenu-header-content .p-panelmenu-header-action:hover {
+body
+  .p-panelmenu
+  .p-panelmenu
+  .p-panelmenu-header
+  .p-panelmenu-header-content
+  .p-panelmenu-header-action:hover {
   background: color-mix(in srgb, #8b4513 20%, white) !important;
   /* Lighter brown hover for light theme headers using 'background' */
   color: var(--text-color) !important;
 }
 
 /* Updated NEW rule for light theme panel header link hover - using background */
-body .p-panelmenu .p-panelmenu .p-panelmenu-header .p-panelmenu-header-content .p-panelmenu-header-action .p-panelmenu-header-link:hover {
+body
+  .p-panelmenu
+  .p-panelmenu
+  .p-panelmenu-header
+  .p-panelmenu-header-content
+  .p-panelmenu-header-action
+  .p-panelmenu-header-link:hover {
   background: color-mix(in srgb, #8b4513 20%, white) !important;
   /* Lighter brown hover for light theme header links using 'background' */
   color: var(--text-color) !important;
@@ -477,19 +498,19 @@ body .p-panelmenu .p-panelmenu .p-panelmenu-header .p-panelmenu-header-content .
 }
 
 /* Specific styling for dark theme */
-html[data-theme="dark"] .custom-sidebar-content {
+html[data-theme='dark'] .custom-sidebar-content {
   background-color: var(--surface-color) !important;
   color: var(--text-color) !important;
 }
 
 /* NEW: Additional styling for the top part of sidebar to ensure proper theming */
-.custom-sidebar-content> :first-child {
+.custom-sidebar-content > :first-child {
   background-color: var(--surface-color) !important;
   color: var(--text-color) !important;
 }
 
 /* Specific styling for dark theme - top part of sidebar */
-html[data-theme="dark"] .custom-sidebar-content> :first-child {
+html[data-theme='dark'] .custom-sidebar-content > :first-child {
   background-color: var(--surface-color) !important;
   color: var(--text-color) !important;
 }
@@ -501,44 +522,44 @@ html[data-theme="dark"] .custom-sidebar-content> :first-child {
 }
 
 /* NEW: Specific styling for any direct children in the sidebar to ensure proper theming */
-.custom-sidebar-content>div,
-.custom-sidebar-content>section,
-.custom-sidebar-content>header {
+.custom-sidebar-content > div,
+.custom-sidebar-content > section,
+.custom-sidebar-content > header {
   background-color: var(--surface-color) !important;
   color: var(--text-color) !important;
 }
 
 /* NEW: Even more specific rule for dark theme to ensure all elements in sidebar are styled correctly */
-html[data-theme="dark"] .custom-sidebar-content>div,
-html[data-theme="dark"] .custom-sidebar-content>section,
-html[data-theme="dark"] .custom-sidebar-content>header {
+html[data-theme='dark'] .custom-sidebar-content > div,
+html[data-theme='dark'] .custom-sidebar-content > section,
+html[data-theme='dark'] .custom-sidebar-content > header {
   background-color: var(--surface-color) !important;
   color: var(--text-color) !important;
 }
 
 /* NEW: More comprehensive sidebar styling to ensure all parts are properly themed */
-html[data-theme="dark"] .p-sidebar,
-html[data-theme="dark"] .p-sidebar .p-sidebar-content,
-html[data-theme="dark"] .p-sidebar .p-sidebar-header,
-html[data-theme="dark"] .p-sidebar .p-sidebar-footer {
+html[data-theme='dark'] .p-sidebar,
+html[data-theme='dark'] .p-sidebar .p-sidebar-content,
+html[data-theme='dark'] .p-sidebar .p-sidebar-header,
+html[data-theme='dark'] .p-sidebar .p-sidebar-footer {
   background-color: var(--surface-color) !important;
   color: var(--text-color) !important;
   border-color: var(--border-color) !important;
 }
 
 /* NEW: Ensure the main container inside sidebar gets proper dark theme */
-html[data-theme="dark"] .p-sidebar .p-sidebar-content>* {
+html[data-theme='dark'] .p-sidebar .p-sidebar-content > * {
   background-color: var(--surface-color) !important;
   color: var(--text-color) !important;
 }
 
 /* NEW: Even more specific rule to target the very top element in sidebar */
-.p-sidebar[style*="display: block"] {
+.p-sidebar[style*='display: block'] {
   background-color: var(--surface-color) !important;
   color: var(--text-color) !important;
 }
 
-html[data-theme="dark"] .p-sidebar[style*="display: block"] {
+html[data-theme='dark'] .p-sidebar[style*='display: block'] {
   background-color: var(--surface-color) !important;
   color: var(--text-color) !important;
 }
@@ -551,12 +572,11 @@ html[data-theme="dark"] .p-sidebar[style*="display: block"] {
 }
 
 /* Specific styling for dark theme */
-html[data-theme="dark"] .p-drawer {
+html[data-theme='dark'] .p-drawer {
   background-color: var(--surface-color) !important;
   color: var(--text-color) !important;
   border: 1px solid var(--border-color) !important;
 }
-
 
 /* NEW: Ensure drawer content also follows theme */
 .p-drawer .p-drawer-content {
@@ -564,7 +584,7 @@ html[data-theme="dark"] .p-drawer {
   color: var(--text-color) !important;
 }
 
-html[data-theme="dark"] .p-drawer .p-drawer-content {
+html[data-theme='dark'] .p-drawer .p-drawer-content {
   background-color: var(--surface-color) !important;
   color: var(--text-color) !important;
 }

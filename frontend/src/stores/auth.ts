@@ -1,123 +1,131 @@
 import { defineStore } from 'pinia'
 import type { Router } from 'vue-router'
-import axios from 'axios';
+import axios from 'axios'
 
 // Define backendServer constant as the direct address to the backend service, including port 8000.
 // This bypasses the nginx proxy for API calls.
-export const backendServer = `${window.location.protocol}//${window.location.hostname}:8000`;
+export const backendServer = `${window.location.protocol}//${window.location.hostname}:8000`
 
 export const useAuthStore = defineStore('auth', {
   // Add accessToken and refreshToken to the state
   state: () => {
     const storedState = localStorage.getItem('authState')
-    const parsedState = storedState ? JSON.parse(storedState) : { user: null, isAuthenticated: false, current_user: null, accessToken: null, refreshToken: null };
+    const parsedState = storedState
+      ? JSON.parse(storedState)
+      : {
+          user: null,
+          isAuthenticated: false,
+          current_user: null,
+          accessToken: null,
+          refreshToken: null
+        }
     // Initialize axios default headers with the stored token if available
     if (parsedState.accessToken) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${parsedState.accessToken}`;
+      axios.defaults.headers.common['Authorization'] = `Bearer ${parsedState.accessToken}`
     }
-    return parsedState;
+    return parsedState
   },
   getters: {
     // Вычисляемое свойство для проверки, является ли пользователь администратором
     isAdmin: (state) => {
-      return state.user && state.user.is_superuser === true;
+      return state.user && state.user.is_superuser === true
     }
   },
   actions: {
     async initializeApp() {
       // Check if we have a valid token on app start
       if (this.accessToken) {
-        await this.fetchUser();
+        await this.fetchUser()
       }
     },
 
     async login(username: string, password: string, router: Router | null = null) {
       try {
         // Create FormData object to send credentials as form data
-        const formData = new FormData();
-        formData.append('username', username);
-        formData.append('password', password);
+        const formData = new FormData()
+        formData.append('username', username)
+        formData.append('password', password)
 
         const response = await axios.post(`${backendServer}/api/v1/auth/token/`, formData, {
           headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        });
+            'Content-Type': 'multipart/form-data'
+          }
+        })
 
         // Проверяем, что в ответе действительно есть токены
         if (!response.data || !response.data.access_token) {
-          console.error('Login failed: No access token received from server.');
-          throw new Error('Server response did not contain access token.');
+          console.error('Login failed: No access token received from server.')
+          throw new Error('Server response did not contain access token.')
         }
 
-        this.accessToken = response.data.access_token;
+        this.accessToken = response.data.access_token
         // Refresh token может быть не всегда
         if (response.data.refresh_token) {
-          this.refreshToken = response.data.refresh_token;
+          this.refreshToken = response.data.refresh_token
         }
 
         // Set the Authorization header for subsequent requests
-        axios.defaults.headers.common['Authorization'] = `Bearer ${this.accessToken}`;
+        axios.defaults.headers.common['Authorization'] = `Bearer ${this.accessToken}`
 
         // Save state to localStorage
-        this.isAuthenticated = true;
-        this.saveState();
+        this.isAuthenticated = true
+        this.saveState()
 
         // Обязательно обновляем информацию о пользователе после входа
-        await this.fetchUser();
+        await this.fetchUser()
 
         if (router && this.current_user !== null) {
-          await router.push({ name: 'Home' });
+          await router.push({ name: 'Home' })
         }
       } catch (error) {
-        console.error('Login error:', error);
+        console.error('Login error:', error)
         // Убедимся, что состояние очищено при любой ошибке входа
-        this.current_user = null;
-        this.isAuthenticated = false;
-        this.user = null;
-        this.accessToken = null;
-        this.refreshToken = null;
-        delete axios.defaults.headers.common['Authorization'];
-        this.saveState();
-        throw error; // Перебросим ошибку наверх
+        this.current_user = null
+        this.isAuthenticated = false
+        this.user = null
+        this.accessToken = null
+        this.refreshToken = null
+        delete axios.defaults.headers.common['Authorization']
+        this.saveState()
+        throw error // Перебросим ошибку наверх
       }
     },
 
     async logout(router: Router | null = null) {
       // Clear tokens from state and localStorage
-      this.current_user = null;
-      this.isAuthenticated = false;
-      this.user = null;
-      this.accessToken = null;
-      this.refreshToken = null;
-      delete axios.defaults.headers.common['Authorization'];
+      this.current_user = null
+      this.isAuthenticated = false
+      this.user = null
+      this.accessToken = null
+      this.refreshToken = null
+      delete axios.defaults.headers.common['Authorization']
 
-      this.saveState();
+      this.saveState()
 
       if (router) {
-        await router.push({ name: 'Login' });
+        await router.push({ name: 'Login' })
       }
     },
 
     async refreshToken() {
       if (!this.refreshToken) {
-        throw new Error('No refresh token available');
+        throw new Error('No refresh token available')
       }
 
       try {
         const response = await axios.post(`${backendServer}/api/v1/jwt/refresh/`, {
-          refresh_token: this.refreshToken,
-        });
+          refresh_token: this.refreshToken
+        })
 
-        this.accessToken = response.data.access_token;
+        this.accessToken = response.data.access_token
 
         // Update the Authorization header
-        axios.defaults.headers.common['Authorization'] = `Bearer ${this.accessToken}`;
+        axios.defaults.headers.common['Authorization'] = `Bearer ${this.accessToken}`
 
         // Save the new access token
-        this.saveState();
+        this.saveState()
 
-        return response.data;
+        return response.data
       } catch (error) {
         console.error('Refresh token error:', error)
         // If refresh fails, log out the user
@@ -170,40 +178,45 @@ export const useAuthStore = defineStore('auth', {
       try {
         // Убедимся, что у нас есть токен
         if (!this.accessToken) {
-          throw new Error('No access token available for update request.');
+          throw new Error('No access token available for update request.')
         }
 
         // Уберем служебные поля, которые не должны отправляться на сервер
-        const { user, isAuthenticated, accessToken, refreshToken, ...updatableData } = userData;
+        const {
+          user: _user,
+          isAuthenticated: _isAuthenticated,
+          accessToken: _accessToken,
+          refreshToken: _refreshToken,
+          ...updatableData
+        } = userData
 
         const response = await axios.patch(`${backendServer}/api/v1/jwt/users/me/`, updatableData, {
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.accessToken}`
-          },
-        });
+            Authorization: `Bearer ${this.accessToken}`
+          }
+        })
 
         // Обновим данные пользователя в store после успешного запроса
-        this.current_user = { ...this.current_user, ...response.data };
-        this.user = { ...this.user, ...response.data }; // Также обновим в user, если используется
+        this.current_user = { ...this.current_user, ...response.data }
+        this.user = { ...this.user, ...response.data } // Также обновим в user, если используется
 
-        this.saveState(); // Сохраняем обновленное состояние
+        this.saveState() // Сохраняем обновленное состояние
 
-        console.log('User profile updated successfully:', response.data);
-        return response.data;
+        console.log('User profile updated successfully:', response.data)
+        return response.data
       } catch (error) {
-        console.error('Failed to update user profile:', error);
+        console.error('Failed to update user profile:', error)
         if (error.response) {
-          console.error('Server responded with error:', error.response.status, error.response.data);
+          console.error('Server responded with error:', error.response.status, error.response.data)
         } else if (error.request) {
-          console.error('No response received:', error.request);
+          console.error('No response received:', error.request)
         } else {
-          console.error('Request setup error:', error.message);
+          console.error('Request setup error:', error.message)
         }
-        throw error; // Перебросим ошибку наверх для обработки в компоненте
+        throw error // Перебросим ошибку наверх для обработки в компоненте
       }
     },
-
 
     saveState() {
       /*
@@ -220,17 +233,17 @@ export const useAuthStore = defineStore('auth', {
           isAuthenticated: this.isAuthenticated,
           current_user: this.current_user,
           accessToken: this.accessToken,
-          refreshToken: this.refreshToken,
-        }),
+          refreshToken: this.refreshToken
+        })
       )
-    },
-  },
+    }
+  }
 })
 
 // Добавляем недостающую функцию getAddress
 export function getAddress(): string {
   // Возвращаем хост из URL, можно настроить по необходимости
-  return window.location.hostname;
+  return window.location.hostname
 }
 
 // Restore the getCSRFToken function for other parts of the app that might need it
@@ -259,4 +272,4 @@ export function getCSRFToken(): string | null {
 }
 
 // Export axios instance for use in other parts of the application
-export { axios };
+export { axios }

@@ -1,90 +1,91 @@
 <script setup lang="ts">
-import { Form } from '@primevue/forms';
-import { FormField } from '@primevue/forms';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Message from 'primevue/message';
-import Textarea from 'primevue/textarea';
-import Password from 'primevue/password';
-import { zodResolver } from "@primevue/forms/resolvers/zod";
-import { z } from 'zod';
-import { backendServer, getCSRFToken } from '@/stores/auth';
-import { useRouter } from 'vue-router';
-import { ref } from 'vue';
+import { Form } from '@primevue/forms'
+import { FormField } from '@primevue/forms'
+import Button from 'primevue/button'
+import InputText from 'primevue/inputtext'
+import Message from 'primevue/message'
+import Textarea from 'primevue/textarea'
+import Password from 'primevue/password'
+import { zodResolver } from '@primevue/forms/resolvers/zod'
+import { z } from 'zod'
+import { backendServer, getCSRFToken } from '@/stores/auth'
+import { useRouter } from 'vue-router'
+import { ref } from 'vue'
 
 const formSchema = z.object({
-  username: z.string().min(2, { message: "Имя пользователя должно быть больше 3 символов." }),
-  email: z.string().email({ message: "Неверный email-адрес." }),
-  password: z.string().min(8, { message: "Пароль должен содержать не меньше 8 символов." }),
-  password2: z.string().min(8, { message: "Пароль должен содержать не меньше 8 символов." }),
+  username: z.string().min(2, { message: 'Имя пользователя должно быть больше 3 символов.' }),
+  email: z.string().email({ message: 'Неверный email-адрес.' }),
+  password: z.string().min(8, { message: 'Пароль должен содержать не меньше 8 символов.' }),
+  password2: z.string().min(8, { message: 'Пароль должен содержать не меньше 8 символов.' }),
   first_name: z.string(),
   last_name: z.string(),
-  bio: z.string(),
-});
-const resolver = zodResolver(formSchema);
-const router = useRouter();
-const api_prefix: string = "/api/v1";
-const result = ref("");
-const severity = ref("success");
-const redirect = "/auth/login/";
+  bio: z.string()
+})
+const resolver = zodResolver(formSchema)
+const router = useRouter()
+const api_prefix: string = '/api/v1'
+const result = ref('')
+const severity = ref('success')
+const redirect = '/auth/login/'
 
 interface FormEventObject {
-  values: Record<string, any>;
-  errors: Record<string, any>;
-  [key: string]: any; // Allow other properties
+  values: Record<string, unknown>
+  errors: Record<string, string[]>
+  [key: string]: unknown // Allow other properties
 }
 
 async function registerUser(e: FormEventObject) {
   if (backendServer != undefined) {
-    const csrfToken = getCSRFToken(); // Get the CSRF token
+    const csrfToken = getCSRFToken() // Get the CSRF token
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
+      'Content-Type': 'application/json'
+    }
 
     // Add the CSRF token to headers if it exists
     if (csrfToken) {
-      headers['X-CSRFToken'] = csrfToken;
+      headers['X-CSRFToken'] = csrfToken
     }
 
     try {
-      const response = await fetch(
-        backendServer + api_prefix + '/users/', {
+      const response = await fetch(backendServer + api_prefix + '/users/', {
         method: 'POST',
-        cache: "reload",
+        cache: 'reload',
         body: JSON.stringify(e.values),
         headers: headers,
-        credentials: 'include',
-      });
+        credentials: 'include'
+      })
 
-      console.log('Response status:', response.status); // Логирование статуса
-      console.log('Response ok:', response.ok); // Логирование флага ok
+      console.log('Response status:', response.status) // Логирование статуса
+      console.log('Response ok:', response.ok) // Логирование флага ok
 
       // Читаем тело ответа, чтобы получить потенциальные сообщения об ошибках
-      const responseBody = await response.text();
-      console.log('Response body:', responseBody); // Логирование тела ответа
+      const responseBody = await response.text()
+      console.log('Response body:', responseBody) // Логирование тела ответа
 
       // Обновляем результат в зависимости от статуса
-      result.value = `${response.status} ${response.statusText}`.trim();
-      severity.value = response.ok ? "success" : "error";
+      result.value = `${response.status} ${response.statusText}`.trim()
+      severity.value = response.ok ? 'success' : 'error'
 
       // Если статус 2xx (успешный), выполняем перенаправление
       if (response.ok) {
-        console.log('Navigation to login triggered.'); // Логирование перехода
-        router.push('/auth/login/');
+        console.log('Navigation to login triggered.') // Логирование перехода
+        router.push('/auth/login/')
       }
     } catch (err) {
-      console.error('Fetch error:', err); // Логирование ошибки fetch
-      let error: string = 'An error occurred during registration : ' + (err instanceof Error ? err.message : String(err));
-      result.value = error;
-      severity.value = "error";
+      console.error('Fetch error:', err) // Логирование ошибки fetch
+      const error: string =
+        'An error occurred during registration : ' +
+        (err instanceof Error ? err.message : String(err))
+      result.value = error
+      severity.value = 'error'
     }
   }
 }
 async function onFormSubmit(e: FormEventObject) {
   if (Object.keys(e.errors).length) {
-    return;
+    return
   }
-  await registerUser(e);
+  await registerUser(e)
 }
 </script>
 
@@ -92,44 +93,96 @@ async function onFormSubmit(e: FormEventObject) {
   <div class="cnt-register">
     <Form @submit="onFormSubmit" :resolver class="frm-login flex flex-col gap-4 w-full sm:w-80">
       <h3>Регистрация</h3>
-      <FormField v-slot="$field" name="username" initialValue="" class="flex txt-login flex-col gap-1">
+      <FormField
+        v-slot="$field"
+        name="username"
+        initialValue=""
+        class="flex txt-login flex-col gap-1"
+      >
         <InputText type="text" class="txt-login" placeholder="Имя пользователя" />
-        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
+        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple"
+          >{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="password" initialValue="" class="flex txt-login flex-col gap-1">
-        <Password type="text" placeholder="Пароль" :feedback="false" class="txt-login" toggleMask fluid />
-        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
+      <FormField
+        v-slot="$field"
+        name="password"
+        initialValue=""
+        class="flex txt-login flex-col gap-1"
+      >
+        <Password
+          type="text"
+          placeholder="Пароль"
+          :feedback="false"
+          class="txt-login"
+          toggleMask
+          fluid
+        />
+        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple"
+          >{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="password2" initialValue="" class="flex txt-login flex-col gap-1">
-        <Password type="text" placeholder="Повторите пароль" class="txt-login" :feedback="false" toggleMask fluid />
-        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
+      <FormField
+        v-slot="$field"
+        name="password2"
+        initialValue=""
+        class="flex txt-login flex-col gap-1"
+      >
+        <Password
+          type="text"
+          placeholder="Повторите пароль"
+          class="txt-login"
+          :feedback="false"
+          toggleMask
+          fluid
+        />
+        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple"
+          >{{ $field.error?.message }}
         </Message>
       </FormField>
       <FormField v-slot="$field" name="email" initialValue="" class="flex txt-login flex-col gap-1">
         <InputText type="text" class="txt-login" placeholder="Почта@gmail.com" />
-        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
+        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple"
+          >{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="first_name" initialValue="" class="flex txt-login flex-col gap-1">
+      <FormField
+        v-slot="$field"
+        name="first_name"
+        initialValue=""
+        class="flex txt-login flex-col gap-1"
+      >
         <InputText type="text" class="txt-login" placeholder="Имя" />
-        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
+        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple"
+          >{{ $field.error?.message }}
         </Message>
       </FormField>
-      <FormField v-slot="$field" name="last_name" initialValue="" class="flex txt-login flex-col gap-1">
+      <FormField
+        v-slot="$field"
+        name="last_name"
+        initialValue=""
+        class="flex txt-login flex-col gap-1"
+      >
         <InputText type="text" class="txt-login" placeholder="Фамилия" />
-        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
+        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple"
+          >{{ $field.error?.message }}
         </Message>
       </FormField>
       <FormField v-slot="$field" name="bio" class="flex txt-login flex-col gap-1">
         <Textarea class="txt-login" placeholder="Биография" />
-        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple">{{ $field.error?.message }}
+        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple"
+          >{{ $field.error?.message }}
         </Message>
       </FormField>
       <Message size="small" :severity variant="simple">{{ result }}</Message>
       <Button type="submit" class="btn-login" label="Зарегистрироваться" />
-      <Button @click="router.push(redirect)" class="btn-login" label="Войти" severity="secondary" variant="text" />
+      <Button
+        @click="router.push(redirect)"
+        class="btn-login"
+        label="Войти"
+        severity="secondary"
+        variant="text"
+      />
     </Form>
   </div>
 </template>

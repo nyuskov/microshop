@@ -1,132 +1,131 @@
 <script setup lang="ts">
-import Posts from "./Posts.vue";
-import Users from "./Users.vue";
+import Posts from './Posts.vue'
+import Users from './Users.vue'
 // Import the new Groups component
-import GroupsPage from "./GroupsPage.vue";
+import GroupsPage from './GroupsPage.vue'
 // Import Toolbar, Sidebar, and PanelMenu from PrimeVue
-import Toolbar from "primevue/toolbar";
-import Sidebar from "primevue/sidebar";
-import PanelMenu from "primevue/panelmenu";
-import { Button } from "primevue";
-import { ref, type Ref, computed } from "vue";
-import { useRouter } from "vue-router";
-import { useAuthStore } from "../stores/auth";
+import Toolbar from 'primevue/toolbar'
+import Sidebar from 'primevue/sidebar'
+import PanelMenu from 'primevue/panelmenu'
+import { Button } from 'primevue'
+import { ref, type Ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
 // Import the theme store
-import { useThemeStore } from "../stores/theme";
+import { useThemeStore } from '../stores/theme'
 
-const authStore = useAuthStore();
-authStore.initializeApp();
+const authStore = useAuthStore()
+authStore.initializeApp()
 
 // Get the theme store instance
-const themeStore = useThemeStore();
-const router = useRouter();
-const redirectReg = "/auth/registration/";
-const redirectLogin = "/auth/login/";
+const themeStore = useThemeStore()
+const router = useRouter()
+const redirectReg = '/auth/registration/'
+const redirectLogin = '/auth/login/'
 
 // State for active components
-let isActiveUsers: Ref<boolean> = ref(false);
-let isActivePosts: Ref<boolean> = ref(false);
+const isActiveUsers: Ref<boolean> = ref(false)
+const isActivePosts: Ref<boolean> = ref(false)
 // Add state for active groups
-let isActiveGroups: Ref<boolean> = ref(false);
+const isActiveGroups: Ref<boolean> = ref(false)
 
-const isAuthorized = computed(() => authStore.isAuthenticated);
-const isAdmin = computed(() => authStore.isAdmin);
+const isAuthorized = computed(() => authStore.isAuthenticated)
+const isAdmin = computed(() => authStore.isAdmin)
 
 // State for the drawer (sidebar menu)
-const drawerVisible = ref(false);
+const drawerVisible = ref(false)
 
 // Define menu items as a single root panel for PanelMenu
 // The menu items are now computed based on authorization and admin status
 const menuItems = computed(() => {
   const baseItems = [
     {
-      label: "Навигация",
+      label: 'Навигация',
       items: [
         // Conditionally add the "Пользователи" item based on admin status
         ...(isAdmin.value
           ? [
               {
-                label: "Пользователи",
-                icon: "pi pi-fw pi-user",
+                label: 'Пользователи',
+                icon: 'pi pi-fw pi-user',
                 command: () => {
-                  isActiveUsers.value = true;
-                  isActivePosts.value = false;
-                  isActiveGroups.value = false; // Deselect groups
-                  drawerVisible.value = false; // Close drawer after selection
-                },
+                  isActiveUsers.value = true
+                  isActivePosts.value = false
+                  isActiveGroups.value = false // Deselect groups
+                  drawerVisible.value = false // Close drawer after selection
+                }
               },
               // Add the "Группы" item for superusers
               {
-                label: "Группы",
-                icon: "pi pi-fw pi-users",
+                label: 'Группы',
+                icon: 'pi pi-fw pi-users',
                 command: () => {
-                  isActiveGroups.value = true;
-                  isActiveUsers.value = false;
-                  isActivePosts.value = false; // Deselect other views
-                  drawerVisible.value = false; // Close drawer after selection
-                },
-              },
+                  isActiveGroups.value = true
+                  isActiveUsers.value = false
+                  isActivePosts.value = false // Deselect other views
+                  drawerVisible.value = false // Close drawer after selection
+                }
+              }
             ]
           : []),
         {
-          label: "Посты",
-          icon: "pi pi-fw pi-file-edit",
+          label: 'Посты',
+          icon: 'pi pi-fw pi-file-edit',
           command: () => {
-            isActiveUsers.value = false;
-            isActivePosts.value = true;
-            isActiveGroups.value = false; // Deselect groups
-            drawerVisible.value = false; // Close drawer after selection
-          },
-        },
-      ],
+            isActiveUsers.value = false
+            isActivePosts.value = true
+            isActiveGroups.value = false // Deselect groups
+            drawerVisible.value = false // Close drawer after selection
+          }
+        }
+      ]
     },
     {
-      label: "Настройки",
+      label: 'Настройки',
       items: [
         // --- Новый пункт меню 'Настройки профиля' ---
         {
-          label: "Настройки профиля",
-          icon: "pi pi-user-edit",
+          label: 'Настройки профиля',
+          icon: 'pi pi-user-edit',
           command: () => {
-            router.push("/user-profile"); // Перенаправление на страницу профиля
-            drawerVisible.value = false; // Закрыть меню после выбора
-          },
+            router.push('/user-profile') // Перенаправление на страницу профиля
+            drawerVisible.value = false // Закрыть меню после выбора
+          }
         },
         // --- Конец нового пункта меню ---
         {
           label: `Тема (${themeStore.currentTheme})`,
-          icon:
-            themeStore.currentTheme === "light" ? "pi pi-sun" : "pi pi-moon",
+          icon: themeStore.currentTheme === 'light' ? 'pi pi-sun' : 'pi pi-moon',
           command: () => {
-            themeStore.toggleTheme();
+            themeStore.toggleTheme()
             // Keep drawer open after theme change
-          },
+          }
         },
         {
-          label: "Выйти",
-          icon: "pi pi-fw pi-sign-out",
+          label: 'Выйти',
+          icon: 'pi pi-fw pi-sign-out',
           command: async () => {
-            isActiveUsers.value = false;
-            isActivePosts.value = false;
-            isActiveGroups.value = false; // Deselect groups on logout
-            await authStore.logout(router);
-            drawerVisible.value = false; // Close drawer after logout
-          },
-        },
-      ],
-    },
-  ];
-  return baseItems;
-});
+            isActiveUsers.value = false
+            isActivePosts.value = false
+            isActiveGroups.value = false // Deselect groups on logout
+            await authStore.logout(router)
+            drawerVisible.value = false // Close drawer after logout
+          }
+        }
+      ]
+    }
+  ]
+  return baseItems
+})
 
 // Function to toggle the drawer visibility
 function toggleDrawer() {
-  drawerVisible.value = !drawerVisible.value;
+  drawerVisible.value = !drawerVisible.value
 }
 
 // Function to close the drawer
 function closeDrawer() {
-  drawerVisible.value = false;
+  drawerVisible.value = false
 }
 </script>
 
@@ -160,7 +159,7 @@ function closeDrawer() {
       v-model:visible="drawerVisible"
       :pt="{
         root: { class: 'custom-sidebar-root' },
-        content: { class: 'custom-sidebar-content' },
+        content: { class: 'custom-sidebar-content' }
       }"
       position="left"
     >
@@ -177,13 +176,9 @@ function closeDrawer() {
           v-if="isActiveUsers && !isActivePosts && !isActiveGroups"
           :isActiveUsers="isActiveUsers"
         ></Users>
-        <Posts
-          v-if="isActivePosts && !isActiveUsers && !isActiveGroups"
-        ></Posts>
+        <Posts v-if="isActivePosts && !isActiveUsers && !isActiveGroups"></Posts>
         <!-- Add the GroupsPage component -->
-        <GroupsPage
-          v-if="isActiveGroups && !isActiveUsers && !isActivePosts"
-        ></GroupsPage>
+        <GroupsPage v-if="isActiveGroups && !isActiveUsers && !isActivePosts"></GroupsPage>
 
         <!-- Optional: Default message when no specific view is selected -->
         <div
@@ -201,16 +196,12 @@ function closeDrawer() {
         <h1 class="text-center">Hello!</h1>
         <div class="text-center">
           <p>
-            Добро пожаловать! Пожалуйста, войдите или зарегистрируйтесь для
-            доступа к дополнительным возможностям.
+            Добро пожаловать! Пожалуйста, войдите или зарегистрируйтесь для доступа к дополнительным
+            возможностям.
           </p>
-          <Button severity="warning" @click="router.push(redirectReg)"
-            >Зарегистрироваться</Button
-          >
+          <Button severity="warning" @click="router.push(redirectReg)">Зарегистрироваться</Button>
           <span class="mx-2">или</span>
-          <Button severity="warning" @click="router.push(redirectLogin)"
-            >Войти</Button
-          >
+          <Button severity="warning" @click="router.push(redirectLogin)">Войти</Button>
         </div>
       </div>
     </main>
@@ -321,8 +312,7 @@ function closeDrawer() {
   padding: 0.5rem 0; /* Add some padding inside the menu */
 }
 
-.custom-sidebar-content
-  :deep(.p-panelmenu .p-panelmenu-header .p-panelmenu-header-content) {
+.custom-sidebar-content :deep(.p-panelmenu .p-panelmenu-header .p-panelmenu-header-content) {
   border-radius: 0 !important; /* Remove header border radius */
   background: transparent; /* Ensure header is transparent */
   border: none; /* Remove header border */
@@ -356,13 +346,11 @@ function closeDrawer() {
 }
 
 /* Attempt to style the icon and label inside the link */
-.custom-sidebar-content
-  :deep(.p-panelmenu .p-menuitem .p-menuitem-link .p-menuitem-icon) {
+.custom-sidebar-content :deep(.p-panelmenu .p-menuitem .p-menuitem-link .p-menuitem-icon) {
   color: var(--warning-color); /* Icon color to warning */
 }
 
-.custom-sidebar-content
-  :deep(.p-panelmenu .p-menuitem .p-menuitem-link .p-menuitem-text) {
+.custom-sidebar-content :deep(.p-panelmenu .p-menuitem .p-menuitem-link .p-menuitem-text) {
   color: var(--text-color); /* Text color */
 }
 </style>
