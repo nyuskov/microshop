@@ -4,15 +4,15 @@
 
 Это репозиторий для проекта Microshop, включающий в себя фронтенд на Vue.js и бэкенд на Python/FastAPI.
 
-## Установка и настройку
+## Установка и настройка
 
 ### Frontend (Vue.js)
 
 1. Перейдите в директорию `frontend`: `cd frontend`.
-2. Убедитесь, что у вас установлен Node.js (версия, указанная в `engines` в [package.json](file:///home/freedom/Документы/microshop/frontend/node_modules/@babel/core/package.json)).
-3. Установите зависимости: `npm install`. (Если возникает ошибка `EACCES`, см. раздел "Проблемы с правами доступа").
-4. Установите `vite-plugin-eslint`: `npm install -D vite-plugin-eslint`. (Требует предварительно исправленные права на `node_modules`)
-5. Запустите проект в режиме разработки: `npm run dev`.
+2. Убедитесь, что у вас установлены Node.js (версия, указанная в `engines` в [package.json](file:///home/freedom/Документы/microshop/frontend/node_modules/@babel/core/package.json)) и pnpm.
+3. Установите зависимости: `pnpm install`. (Если возникает ошибка `EACCES`, см. раздел "Проблемы с правами доступа").
+4. Установите `vite-plugin-eslint`: `pnpm add -D vite-plugin-eslint`. (Требует предварительно исправленные права на `node_modules`)
+5. Запустите проект в режиме разработки: `pnpm dev`.
 
 ### Backend (Python/FastAPI)
 
@@ -30,9 +30,9 @@
 *   Используется `Prettier` для форматирования кода. Конфигурация находится в [.prettierrc](file:///home/freedom/Документы/microshop/frontend/.prettierrc).
 *   Используется `ESLint` для проверки ошибок и стиля кода. Конфигурация находится в [eslint.config.js](file:///home/freedom/Документы/microshop/frontend/eslint.config.js) (новый формат flat config).
 *   Плагин `vite-plugin-eslint` интегрирован в Vite (после установки) и будет отображать ошибки ESLint в браузере во время разработки.
-*   Скрипт `npm run lint` запускает ESLint и показывает найденные ошибки/предупреждения. Он также исправляет автоисправляемые ошибки.
-*   Скрипт `npm run format` запускает Prettier для форматирования кода.
-*   Рекомендуется использовать VSCode с расширениями, перечисленными в [.vscode/extensions.json](file:///home/freedom/Документы/microshop/frontend/.vscode/extensions.json), и настройками из [.vscode/settings.json](file:///home/freedom/Документы/microshop/frontend/.vscode/settings.json) для автоматического форматирования при сохранении.
+*   Скрипт `pnpm lint` запускает ESLint и показывает найденные ошибки/предупреждения. Он также исправляет автоисправляемые ошибки.
+*   Скрипт `pnpm format` запускает Prettier для форматирования кода.
+*   Рекомендуется использовать VSCode с расширениями, перечисленными в [.vscode/extensions.json](file:///home/freedom/Документы/microshop/frontend/.vscode/extensions.json), и настройками из [.vscode/settings.json](file:///home/freedom/ДOCUMENTS/microshop/frontend/.vscode/settings.json) для автоматического форматирования при сохранении.
 
 ### Backend
 
@@ -51,8 +51,12 @@
 sudo chown -R $USER:$USER /path/to/microshop/frontend/node_modules
 ```
 
-Затем повторите установку зависимостей: `npm install`.
+Затем повторите установку зависимостей: `pnpm install`.
 
 Аналогичная проблема может возникнуть с Poetry в `backend`. Если вы получаете ошибки доступа при работе с Poetry, проверьте права на директорию кэша Poetry (обычно `~/.cache/pypoetry`) и измените их при необходимости.
 
-После исправления прав и установки `vite-plugin-eslint`, он будет отображать ошибки линтера в браузере. Без него, ошибки будут видны только при запуске `npm run lint`.
+После исправления прав и установки `vite-plugin-eslint`, он будет отображать ошибки линтера в браузере. Без него, ошибки будут видны только при запуске `pnpm lint`.
+
+## Менеджер пакетов
+
+Frontend часть проекта теперь использует `pnpm` в качестве менеджера пакетов. Убедитесь, что он установлен в вашей системе.
