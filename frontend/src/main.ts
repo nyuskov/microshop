@@ -8,7 +8,7 @@ import router from './router'
 import './assets/style.css'
 
 import PrimeVue from 'primevue/config'
-import Theme from '@primevue/themes/nora'
+import Theme from '@primeuix/themes/aura'
 import { Ripple } from 'primevue'
 import 'primeicons/primeicons.css'
 // Import the new theme store

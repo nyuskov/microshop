@@ -5,20 +5,24 @@ RUN npm install -g pnpm
 
 WORKDIR /app
 
-# Копируем package.json и pnpm-lock.yaml для кеширования слоя
+# Копируем package.json, pnpm-lock.yaml и .pnpmfile.cjs для кеширования слоя и настройки
 COPY package*.json ./
 COPY pnpm-lock.yaml ./
+COPY .pnpmfile.cjs ./
+
+# Создаем .npmrc для игнорирования скриптов сборки
+RUN echo "ignore-scripts=true" > .npmrc && \
+    echo "enable-pre-post-scripts=false" >> .npmrc
 
 # Устанавливаем зависимости с помощью pnpm
-# Это создает node_modules в образе, но они будут перезаписаны при монтировании volume
-RUN pnpm install
+# Используем --ignore-scripts для предотвращения ошибок
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Копируем исходный код (это будет переопределено volume в compose)
-# Это также копирует vite.config.ts в образ
 COPY . .
 
 EXPOSE 5173
 
 # Запускаем shell-скрипт, который обновляет зависимости и затем запускает vite
-# pnpm install быстрее и надежнее устанавливает зависимости строго по pnpm-lock.yaml
-CMD ["sh", "-c", "pnpm install --frozen-lockfile && pnpm exec vite --host --port 5173"]
+# Используем --ignore-scripts при повторной установке
+CMD ["sh", "-c", "pnpm install --frozen-lockfile --ignore-scripts && pnpm exec vite --host --port 5173"]
