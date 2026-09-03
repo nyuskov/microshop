@@ -1,34 +1,41 @@
 from typing import TYPE_CHECKING
 
-from fastapi_users.db import (
-    SQLAlchemyBaseUserTable,
-    SQLAlchemyUserDatabase,
-)
+from fastapi_users.db import SQLAlchemyBaseUserTable
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from .associations import user_chat_association_table
 from .base import Base
 from .mixins import IdIntPkMixin
 
-# Импортируем ассоциативную таблицу из group.py
-from .group import user_group_association_table
-
 if TYPE_CHECKING:
-    from .post import Post
     from .profile import Profile
-    from .group import Group
+    from .chat import Chat
+    from .message import Message
 
 
 class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
+    __tablename__ = "user"
+
     username: Mapped[str] = mapped_column(String(32), unique=True)
+    first_name: Mapped[str] = mapped_column(String(32), nullable=True)
+    last_name: Mapped[str] = mapped_column(String(32), nullable=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
-    posts: Mapped[list["Post"]] = relationship(back_populates="user")
+
     profile: Mapped["Profile"] = relationship(back_populates="user")
 
-    groups: Mapped[list["Group"]] = relationship(
-        "Group",
-        secondary=user_group_association_table,
+    chats: Mapped[list["Chat"]] = relationship(
+        "Chat",
+        secondary=user_chat_association_table,
+        primaryjoin="User.id == chat_user_association.c.user_id",
+        secondaryjoin="Chat.id == chat_user_association.c.chat_id",
         back_populates="users",
+    )
+
+    messages: Mapped[list["Message"]] = relationship(
+        "Message",
+        primaryjoin="User.id == Message.user_id",
+        back_populates="user",
     )
 
     def __str__(self):

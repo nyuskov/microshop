@@ -3,8 +3,8 @@ allowBuilds:
   esbuild: false
   vue-demi: false
 
-buildConfig:
-  allowBuildScriptsForPackages:
-    - "@parcel/watcher"
-    - "esbuild"
-    - "vue-demi"
+# buildConfig:
+#   allowBuildScriptsForPackages:
+#     - "@parcel/watcher"
+#     - "esbuild"
+#     - "vue-demi"

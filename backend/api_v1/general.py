@@ -16,8 +16,8 @@ def set_csrf_token(response: Response):
         key="csrf_token",
         value=csrf_token,
         httponly=True,  # Prevents client-side JS from accessing the cookie
-        samesite="lax", # Balances security and usability for CSRF
-        max_age=3600,   # Optional: set a reasonable expiration time (e.g., 1 hour)
+        samesite="lax",  # Balances security and usability for CSRF
+        max_age=3600,  # Optional: set a reasonable expiration time (e.g., 1 hour)
         # secure=True,  # Uncomment if using HTTPS in production
     )
     # Return the token in the response body as well, so the frontend can use it immediately

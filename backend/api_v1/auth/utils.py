@@ -1,5 +1,5 @@
 import secrets
-import jwt # Добавляем импорт jwt
+import jwt  # Добавляем импорт jwt
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -13,12 +13,15 @@ from fastapi.security import (
     HTTPBasicCredentials,
     OAuth2PasswordBearer,
 )
+
 # from passlib.context import CryptContext # Не импортируем CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from core.models import db_helper
-from core.security import password_hasher # Импортируем password_hasher из core.security с абсолютным путем
+from core.security import (
+    password_hasher,
+)  # Импортируем password_hasher из core.security с абсолютным путем
 from ..tokens.schemas import TokenData
 from ..users.crud import get_user_by_username
 from ..users.schemas import CurrentUser
@@ -49,7 +52,9 @@ def encode_jwt(
     if expire_timedelta:
         expire = now + expire_timedelta
     else:
-        expire = now + timedelta(minutes=settings.auth_jwt.access_token_expire_minutes)
+        expire = now + timedelta(
+            minutes=settings.auth_jwt.access_token_expire_minutes
+        )
     to_encode.update(
         exp=expire,
         iat=now,
@@ -58,7 +63,7 @@ def encode_jwt(
     encoded = jwt.encode(
         to_encode,
         settings.auth_jwt.secret_key,
-        algorithm=settings.auth_jwt.algorithm, # settings.auth_jwt.algorithm
+        algorithm=settings.auth_jwt.algorithm,  # settings.auth_jwt.algorithm
     )
     return encoded
 
@@ -74,14 +79,14 @@ def decode_jwt(
     decoded = jwt.decode(
         token,
         settings.auth_jwt.secret_key,
-        algorithms=[settings.auth_jwt.algorithm], # settings.auth_jwt.algorithm
+        algorithms=[settings.auth_jwt.algorithm],  # settings.auth_jwt.algorithm
     )
     return decoded
 
 
 def validate_password(
     password: str,
-    hashed_password: str, # pwdlib возвращает строку, а не байты
+    hashed_password: str,  # pwdlib возвращает строку, а не байты
 ) -> bool:
     # Используем pwdlib для проверки пароля
     return password_hasher.verify(password, hashed_password)
@@ -118,19 +123,21 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=15)
-    
+
     # Добавляем поля 'type' и 'sub' для совместимости с fastapi-users
-    to_encode.update({
-        "exp": expire,
-        TOKEN_TYPE_FIELD: ACCESS_TOKEN_TYPE, # type: "access"
-        # "sub": data.get("sub"), # sub уже должен быть в data
-    })
-    
+    to_encode.update(
+        {
+            "exp": expire,
+            TOKEN_TYPE_FIELD: ACCESS_TOKEN_TYPE,  # type: "access"
+            # "sub": data.get("sub"), # sub уже должен быть в data
+        }
+    )
+
     # Используем secret_key и algorithm из настроек
     encoded_jwt = jwt.encode(
         to_encode,
         settings.auth_jwt.secret_key,
-        algorithm=settings.auth_jwt.algorithm, # settings.auth_jwt.algorithm
+        algorithm=settings.auth_jwt.algorithm,  # settings.auth_jwt.algorithm
     )
     return encoded_jwt
 
@@ -176,7 +183,9 @@ async def get_current_user(
         payload = jwt.decode(
             token,
             settings.auth_jwt.secret_key,
-            algorithms=[settings.auth_jwt.algorithm], # settings.auth_jwt.algorithm
+            algorithms=[
+                settings.auth_jwt.algorithm
+            ],  # settings.auth_jwt.algorithm
         )
         # вернем пользователя, зашитого в ключе
         username: str = payload.get("sub")

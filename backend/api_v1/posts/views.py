@@ -3,7 +3,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from crud import create_post, get_post_by_id, update_post, delete_post, get_posts_by_user_id, get_all_posts
+from crud import (
+    create_post,
+    get_post_by_id,
+    update_post,
+    delete_post,
+    get_posts_by_user_id,
+    get_all_posts,
+)
 from api_v1.auth.utils import get_current_user
 from core.models import Post, db_helper, User
 from .schemas import PostCreate, PostUpdate, PostBase
@@ -24,7 +31,9 @@ async def get_all_posts_endpoint(
 @router.post("/", response_model=PostBase)
 async def create_post_endpoint(
     post_in: PostCreate,
-    user: User = Depends(get_current_user),  # Предполагаем, что есть зависимость для аутентификации
+    user: User = Depends(
+        get_current_user
+    ),  # Предполагаем, что есть зависимость для аутентификации
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
     """Создать новый пост от имени текущего пользователя."""
@@ -58,7 +67,9 @@ async def update_post_endpoint(
     if not db_post:
         raise HTTPException(status_code=404, detail="Post not found")
     if db_post.user_id != user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to update this post")
+        raise HTTPException(
+            status_code=403, detail="Not authorized to update this post"
+        )
 
     updated_post = await update_post(
         session=session, post=db_post, title=post_update.title, body=post_update.body
@@ -77,7 +88,9 @@ async def delete_post_endpoint(
     if not db_post:
         raise HTTPException(status_code=404, detail="Post not found")
     if db_post.user_id != user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this post")
+        raise HTTPException(
+            status_code=403, detail="Not authorized to delete this post"
+        )
 
     await delete_post(session=session, post=db_post)
     return  # 204 No Content

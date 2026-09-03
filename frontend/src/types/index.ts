@@ -1,35 +1,21 @@
-export interface Group {
+export interface Chat {
   id: number
   name: string
-  description?: string
-  users: User[] // Связь с пользователями
 }
 
-// Определим типы для Post и Profile
-export interface Post {
+export interface Message {
   id: number
-  title: string
-  body: string
-  user_id: number // или ссылка на User
+  text: string
+  user_id: number // или объект пользователя
+  chat_id: number
 }
 
-export interface Profile {
-  id: number
-  first_name: string | null
-  last_name: string | null
-  bio: string | null
-  user_id: number // или ссылка на User
+export interface CreateChatRequest {
+  name: string
 }
 
-// Обновим интерфейс User, чтобы включить posts и profile
-export interface User {
-  id: number
-  username: string
-  email?: string
-  is_active: boolean
-  is_superuser: boolean
-  posts: Post[] // Добавим поле posts
-  profile: Profile | null // Добавим поле profile
-  // Группы, к которым принадлежит пользователь, не определены здесь
-  // и будут добавлены динамически в компоненте Users.vue
+export interface CreateMessageRequest {
+  text: string
+  user_id: number
+  chat_id: number
 }

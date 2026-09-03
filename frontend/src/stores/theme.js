@@ -1,4 +1,4 @@
-/* global document, localStorage */
+// Удален устаревший комментарий /* global document, localStorage */
 
 import { defineStore } from 'pinia'
 

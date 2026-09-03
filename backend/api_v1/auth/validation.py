@@ -37,10 +37,10 @@ def validate_token_type(
     if current_token_type == token_type:
         return True
     raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Неверный тип токена {current_token_type!r} expected {
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=f"Неверный тип токена {current_token_type!r} expected {
                 token_type!r}",
-        )
+    )
 
 
 async def get_user_by_token_sub(
@@ -69,8 +69,7 @@ def get_auth_user_from_token_of_type(token_type: str):
 
 
 get_current_auth_user = get_auth_user_from_token_of_type(ACCESS_TOKEN_TYPE)
-get_current_auth_user_for_refresh = get_auth_user_from_token_of_type(
-    REFRESH_TOKEN_TYPE)
+get_current_auth_user_for_refresh = get_auth_user_from_token_of_type(REFRESH_TOKEN_TYPE)
 
 
 def get_current_active_auth_user(
@@ -125,6 +124,8 @@ async def get_current_db_user(
             detail="Пользователь не найден в базе данных",
         )
     return db_user
+
+
 # --- Конец новой зависимости ---
 
 

@@ -1,234 +1,54 @@
-import asyncio
-from sqlalchemy import Result, select
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload, joinedload
 
-from core.models import db_helper, User, Profile, Post
-
-
-async def get_user_by_username(
-    session: AsyncSession,
-    username: str,
-) -> User | None:
-    stmt = select(User).where(User.username == username)
-    # result: Result = await session.execute(stmt)
-    # user: User | None = result.scalar_one_or_none()
-    user: User | None = await session.scalar(stmt)
-    print("found user", username, user)
-    return user
+from core.models import (
+    User,
+    Profile,
+    Chat,
+    Message,
+)  # Импортируем только используемые модели
 
 
-async def get_users_with_posts(
-    session: AsyncSession,
-):
+async def get_user_with_profile(session: AsyncSession, user_id: int) -> User | None:
+    """Получает пользователя вместе с его профилем."""
+    stmt = select(User).options(joinedload(User.profile)).filter(User.id == user_id)
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def get_user_chats(session: AsyncSession, user_id: int) -> list[Chat]:
+    """Получает список чатов, в которых участвует пользователь."""
     stmt = (
-        select(User)
-        .options(
-            # joinedload(User.posts),
-            selectinload(User.posts),
-        )
-        .order_by(User.id)
+        select(Chat)
+        .join(Chat.users)
+        .filter(User.id == user_id)
+        .options(selectinload(Chat.users), selectinload(Chat.messages))
     )
-    # result: Result = await session.execute(stmt)
-    # users: list[User] = result.unique().scalars()
-    users = await session.scalars(stmt)
-    for user in users:
-        print(user)
-        for post in user.posts:
-            print("-", post)
+    result = await session.execute(stmt)
+    return result.scalars().all()
 
 
-async def get_users_with_posts_and_profiles(
-    session: AsyncSession,
-):
+async def get_chat_with_users_and_messages(
+    session: AsyncSession, chat_id: int
+) -> Chat | None:
+    """Получает чат вместе с его пользователями и сообщениями."""
     stmt = (
-        select(User)
-        .options(
-            joinedload(User.profile),
-            selectinload(User.posts),
-        )
-        .order_by(User.id)
+        select(Chat)
+        .filter(Chat.id == chat_id)
+        .options(selectinload(Chat.users), selectinload(Chat.messages))
     )
-    users = await session.scalars(stmt)
-
-    for user in users:
-        print(user)
-        print(user.profile)
-        for post in user.posts:
-            print("-", post)
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
 
 
-async def get_profiles_with_users_and_users_with_posts(
-    session: AsyncSession,
-):
+async def get_messages_for_chat(session: AsyncSession, chat_id: int) -> list[Message]:
+    """Получает список сообщений для конкретного чата."""
     stmt = (
-        select(Profile)
-        .options(
-            joinedload(Profile.user).selectinload(User.posts),
-        )
-        .order_by(Profile.id)
+        select(Message)
+        .filter(Message.chat_id == chat_id)
+        .order_by(Message.timestamp.asc())  # Сортировка по времени
+        .options(joinedload(Message.user))  # Загружаем данные пользователя-отправителя
     )
-    profiles = await session.scalars(stmt)
-
-    for profile in profiles:
-        print(profile)
-        print(profile.user)
-        for post in profile.user.posts:
-            print("-", post)
-
-
-async def get_posts_with_authors(
-    session: AsyncSession,
-):
-    stmt = select(Post).options(joinedload(Post.user)).order_by(Post.id)
-    posts = await session.scalars(stmt)
-    for post in posts:
-        print("post", post)
-        print("author", post.user)
-
-# New function to get all posts for the API endpoint
-async def get_all_posts(
-    session: AsyncSession,
-) -> list[Post]:
-    stmt = select(Post).order_by(Post.id.desc())
-    result = await session.scalars(stmt)
-    return list(result)
-
-async def show_users_with_profiles(
-    session: AsyncSession,
-):
-    stmt = select(User).options(joinedload(User.profile)).order_by(User.id)
-    # result: Result = await session.execute(stmt)
-    # users: list[User] = result.scalars()
-    users = await session.scalars(stmt)
-    for user in users:
-        print(user)
-        print(user.profile.first_name)
-
-
-async def create_user(session: AsyncSession, username: str) -> None:
-    user = User(username=username)
-    session.add(user)
-    print("user", user)
-    await session.commit()
-
-
-async def create_posts(
-    session: AsyncSession,
-    user_id: int,
-    *posts_titles: str,
-) -> list[Post]:
-    posts = [Post(title=title, user_id=user_id) for title in posts_titles]
-    session.add_all(posts)
-    await session.commit()
-    print(posts)
-    return posts
-
-
-async def create_user_profile(
-    session: AsyncSession,
-    user_id: int,
-    first_name: str | None = None,
-    last_name: str | None = None,
-) -> Profile:
-    profile = Profile(
-        user_id=user_id,
-        first_name=first_name,
-        last_name=last_name,
-    )
-    session.add(profile)
-    await session.commit()
-    return profile
-
-
-# --- Новые CRUD-функции для Post ---
-async def create_post(session: AsyncSession, user_id: int, title: str, body: str) -> Post:
-    """Создает новый пост."""
-    post = Post(user_id=user_id, title=title, body=body)
-    session.add(post)
-    await session.commit()
-    await session.refresh(post)  # Обновляем объект, чтобы получить его ID и другие данные
-    return post
-
-
-async def get_post_by_id(session: AsyncSession, post_id: int) -> Post | None:
-    """Получает пост по его ID."""
-    stmt = select(Post).where(Post.id == post_id)
-    return await session.scalar(stmt)
-
-
-async def get_posts_by_user_id(session: AsyncSession, user_id: int) -> list[Post]:
-    """Получает все посты пользователя по его ID."""
-    stmt = select(Post).where(Post.user_id == user_id).order_by(Post.id.desc())
-    return await session.scalars(stmt).all()
-
-
-async def update_post(session: AsyncSession, post: Post, title: str = None, body: str = None) -> Post:
-    """Обновляет существующий пост."""
-    if title is not None:
-        post.title = title
-    if body is not None:
-        post.body = body
-    await session.commit()
-    await session.refresh(post)
-    return post
-
-
-async def delete_post(session: AsyncSession, post: Post) -> None:
-    """Удаляет существующий пост."""
-    await session.delete(post)
-    await session.commit()
-
-
-# --- Конец новых CRUD-функций ---
-
-async def main_relations(session: AsyncSession):
-    # await create_user(session=session, username="bob")
-    # await create_user(session=session, username="john")
-    # await create_user(session=session, username="sam")
-    # user_sam = await get_user_by_username(session=session, username="sam")
-    # user_john = await get_user_by_username(session=session, username="john")
-
-    # await create_user_profile(
-    #     session=session,
-    #     user_id=user_john.id,
-    #     first_name="John",
-    #     last_name="Doe"
-    # )
-    # await create_user_profile(
-    #     session=session,
-    #     user_id=user_sam.id,
-    #     first_name="Sam",
-    #     last_name="Fisher"
-    # )
-    # await show_users_with_profiles(session=session)
-    # await create_posts(
-    #     session,
-    #     user_john.id,
-    #     "SQLA 2.0",
-    #     "SQLA Joins",
-    # )
-    # await create_posts(
-    #     session,
-    #     user_sam.id,
-    #     "FastAPI Intro",
-    #     "FastAPI Advanced",
-    #     "FastAPI More",
-    # )
-    # await get_users_with_posts(session=session)
-    # await get_posts_with_authors(session=session)
-    # await get_users_with_posts_and_profiles(session=session)
-    await get_profiles_with_users_and_users_with_posts(session=session)
-
-
-async def demo_m2m(session: AsyncSession): ...
-
-
-async def main():
-    async with db_helper.session_factory() as session:
-        # await main_relations(session)
-        await demo_m2m(session)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    result = await session.execute(stmt)
+    return result.scalars().all()

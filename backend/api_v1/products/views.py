@@ -6,7 +6,9 @@ from .dependencies import product_by_id
 from .schemas import Product, ProductCreate, ProductUpdate, ProductUpdatePartial
 
 
-router = APIRouter(tags=["Товары"],)
+router = APIRouter(
+    tags=["Товары"],
+)
 
 
 @router.get(
@@ -55,8 +57,8 @@ async def update_product(
     product: Product = Depends(product_by_id),
 ):
     return await crud.update_product(
-        session=session, product=product,
-        product_up=product_up)
+        session=session, product=product, product_up=product_up
+    )
 
 
 @router.patch(
@@ -70,8 +72,8 @@ async def update_product_partial(
     product: Product = Depends(product_by_id),
 ):
     return await crud.update_product(
-        session=session, product=product,
-        product_up=product_up, partial=True)
+        session=session, product=product, product_up=product_up, partial=True
+    )
 
 
 @router.delete(
@@ -84,5 +86,6 @@ async def delete_product(
     product: Product = Depends(product_by_id),
 ) -> None:
     await crud.delete_product(
-        session=session, product=product,
+        session=session,
+        product=product,
     )
