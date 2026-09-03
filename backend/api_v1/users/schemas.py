@@ -1,10 +1,4 @@
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    EmailStr,
-    Field,
-    field_validator,
-)
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, validator
 
 
 class CurrentUser(BaseModel):
@@ -16,6 +10,7 @@ class UserSchema(BaseModel):
 
     id: int
     username: str
+    phone_number: str | None = None  # Added field
     first_name: str | None = None
     last_name: str | None = None
     email: EmailStr | None = None
@@ -26,6 +21,7 @@ class PublicUserSchema(BaseModel):  # noqa: F821
 
     id: int
     username: str
+    phone_number: str | None = None  # Added field
     email: EmailStr | None = None
 
 
@@ -46,6 +42,7 @@ class UserWithDetailsSchema(BaseModel):  # noqa: F821
     model_config = ConfigDict(from_attributes=True)
 
     username: str
+    phone_number: str | None = None  # Added field
     first_name: str | None
     last_name: str | None
     email: EmailStr | None
@@ -62,6 +59,7 @@ class UserWithDetailsSchema(BaseModel):  # noqa: F821
 
 class CreateUser(BaseModel):
     username: str
+    phone_number: str | None = None  # Added field
     password: str
     first_name: str | None = None
     last_name: str | None = None
@@ -74,10 +72,22 @@ class CreateUser(BaseModel):
             return None
         return v
 
+    @validator('phone_number')
+    def validate_phone_number(cls, v):
+        if v is not None:
+            # Простая валидация формата номера телефона
+            # В реальном приложении можно использовать более сложную логику
+            import re
+
+            if not re.match(r'^\+?[\d\s\-\(\)]+$', v):
+                raise ValueError('Invalid phone number format')
+        return v
+
 
 class UserCreatedResponseSchema(BaseModel):
     id: int
     username: str
+    phone_number: str | None = None  # Added field
 
 
 class GroupSchema(BaseModel):

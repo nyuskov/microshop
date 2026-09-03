@@ -18,6 +18,29 @@ async def get_user_by_username(session: AsyncSession, username: str) -> User | N
     return result.scalar_one_or_none()
 
 
+# NEW FUNCTION
+async def get_user_by_phone_number(
+    session: AsyncSession, phone_number: str
+) -> User | None:
+    """Получает пользователя по его номеру телефона."""
+    stmt = select(User).where(User.phone_number == phone_number)
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+# END NEW FUNCTION
+
+
+async def create_user(session: AsyncSession, user: User) -> User:
+    """Создает нового пользователя."""
+    session.add(user)
+    await session.commit()
+    await session.refresh(
+        user
+    )  # Обновляем объект, чтобы получить сгенерированные значения
+    return user
+
+
 async def delete_user(
     session: AsyncSession,
     user: User,

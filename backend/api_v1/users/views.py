@@ -3,6 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.users import crud, schemas
 from core.models import User, db_helper
+from core.security import (
+    get_password_hash,
+)  # Import the password hashing function
 
 router = APIRouter(
     prefix="/users",
@@ -41,7 +44,10 @@ async def create_user(
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
     user = User(**user_in.model_dump(exclude={"password"}))
-    user.set_password(user_in.password)  # Устанавливаем пароль через метод модели
+    # Replace set_password call with direct hashing using the imported function
+    user.hashed_password = get_password_hash(
+        user_in.password
+    )  # Hash the password and assign it
     created_user = await crud.create_user(session=session, user=user)
     return {"id": created_user.id, "username": created_user.username}
 

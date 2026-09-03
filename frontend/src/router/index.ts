@@ -4,6 +4,7 @@ import Registration from '../components/Registration.vue'
 import Login from '../components/Login.vue'
 import UserProfile from '../views/UserProfile.vue'
 import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '@/stores/auth' // Import the auth store
 
 const routes = [
   {
@@ -31,6 +32,28 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: routes
+})
+
+// Global navigation guard
+router.beforeEach((to, from, next) => {
+  const authStore = useAuthStore()
+
+  // Define routes that do not require authentication
+  const publicRoutes = ['Login', 'Registration']
+
+  // Check if the route requires authentication
+  if (!publicRoutes.includes(to.name as string)) {
+    // If the user is not authenticated, redirect to login
+    if (!authStore.isAuthenticated) {
+      next({ name: 'Login' })
+    } else {
+      // If authenticated, proceed to the route
+      next()
+    }
+  } else {
+    // If the route is public, proceed
+    next()
+  }
 })
 
 export default router

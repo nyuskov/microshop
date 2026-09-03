@@ -10,6 +10,13 @@ from core.models import (
 )  # Импортируем только используемые модели
 
 
+async def create_user(session: AsyncSession, user: User) -> User:
+    """Создает нового пользователя."""
+    session.add(user)
+    await session.commit()
+    return user
+
+
 async def get_user_with_profile(session: AsyncSession, user_id: int) -> User | None:
     """Получает пользователя вместе с его профилем."""
     stmt = select(User).options(joinedload(User.profile)).filter(User.id == user_id)

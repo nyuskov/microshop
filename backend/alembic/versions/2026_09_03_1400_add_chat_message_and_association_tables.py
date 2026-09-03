@@ -10,7 +10,6 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql  # Импортируем для ALTER COLUMN
 
 # revision identifiers, used by Alembic.
 revision: str = "abcdef123456"
@@ -20,15 +19,29 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. Обновляем существующую таблицу users, если необходимо (например, hashed_password)
-    # Предположим, что hashed_password был varchar(128), а стал varchar(255)
-    # Проверим, существует ли столбец и какой у него тип, затем изменим.
-    # Обычно ALTER COLUMN делается так:
-    op.alter_column(
-        'user', 'hashed_password', type_=sa.String(255), nullable=False
-    )
+    # 1. Обновляем существующую таблицу user
+    # Проверяем, существует ли колонка hashed_password
+    connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    columns = [col['name'] for col in inspector.get_columns('user')]
 
-    # 2. Создаем новую таблицу chats
+    if 'hashed_password' in columns:
+        op.alter_column('user', 'hashed_password', type_=sa.String(255), nullable=False)
+    # NEW: Add phone_number column
+    if 'phone_number' not in columns:
+        op.add_column('user', sa.Column('phone_number', sa.String(20), nullable=True))
+        op.create_index(
+            op.f('ix_user_phone_number'), 'user', ['phone_number'], unique=True
+        )
+    # END NEW
+    # NEW: Add first_name and last_name columns
+    if 'first_name' not in columns:
+        op.add_column('user', sa.Column('first_name', sa.String(32), nullable=True))
+    if 'last_name' not in columns:
+        op.add_column('user', sa.Column('last_name', sa.String(32), nullable=True))
+    # END NEW
+
+    # 2. Создаем таблицу chats
     op.create_table(
         "chats",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -37,7 +50,7 @@ def upgrade() -> None:
     )
     op.create_index(op.f("ix_chats_id"), "chats", ["id"], unique=False)
 
-    # 3. Создаем ассоциативную таблицу для связи many-to-many между User и Chat
+    # 3. Создаем ассоциативную таблицу
     op.create_table(
         "chat_user_association",
         sa.Column(
@@ -45,16 +58,16 @@ def upgrade() -> None:
             sa.Integer(),
             sa.ForeignKey("chats.id", ondelete="CASCADE"),
             nullable=False,
+            primary_key=True,  # Добавляем primary_key здесь
         ),
         sa.Column(
             "user_id",
             sa.Integer(),
             sa.ForeignKey("user.id", ondelete="CASCADE"),
             nullable=False,
+            primary_key=True,  # Добавляем primary_key здесь
         ),
-        sa.PrimaryKeyConstraint(
-            "chat_id", "user_id"
-        ),  # Первичный ключ из двух столбцов
+        # Убираем PrimaryKeyConstraint, так как уже указали выше
     )
     op.create_index(
         op.f("ix_chat_user_association_chat_id"),
@@ -69,7 +82,7 @@ def upgrade() -> None:
         unique=False,
     )
 
-    # 4. Создаем новую таблицу messages
+    # 4. Создаем таблицу messages
     op.create_table(
         "messages",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -98,20 +111,22 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_messages_timestamp"), "messages", ["timestamp"], unique=False
     )
+    # Добавляем составной индекс для частых запросов по user_id и chat_id
+    op.create_index(
+        "ix_messages_user_chat",
+        "messages",
+        ["user_id", "chat_id"],
+        unique=False,
+    )
 
-    # 5. Теперь удаляем старые таблицы *после* создания новых, с использованием CASCADE
-    # Удаляем user_group (ассоциативная таблица между User и Group)
+    # 5. Удаляем старые таблицы (если они существуют)
     op.execute('DROP TABLE IF EXISTS "user_group" CASCADE;')
-    # Удаляем group (связана с user_group)
     op.execute('DROP TABLE IF EXISTS "group" CASCADE;')
-    # Удаляем post (может быть связана с user)
     op.execute('DROP TABLE IF EXISTS "post" CASCADE;')
 
 
 def downgrade() -> None:
-    # Обратные действия: воссоздаем старые таблицы, удаляем новые
     # 1. Воссоздаем старые таблицы
-    # Воссоздаем user_group
     op.create_table(
         "user_group",
         sa.Column("user_id", sa.Integer(), nullable=False),
@@ -127,7 +142,6 @@ def downgrade() -> None:
         op.f("ix_user_group_group_id"), "user_group", ["group_id"], unique=False
     )
 
-    # Воссоздаем group
     op.create_table(
         "group",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -139,20 +153,18 @@ def downgrade() -> None:
     op.create_index(op.f("ix_group_id"), "group", ["id"], unique=False)
     op.create_index(op.f("ix_group_name"), "group", ["name"], unique=True)
 
-    # Воссоздаем post
     op.create_table(
         "post",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("title", sa.String(length=255), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
-        sa.Column(
-            "author_id", sa.Integer(), sa.ForeignKey("user.id"), nullable=False
-        ),
+        sa.Column("author_id", sa.Integer(), sa.ForeignKey("user.id"), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_post_id"), "post", ["id"], unique=False)
 
-    # 2. Удаляем новые таблицы
+    # 2. Удаляем новые таблицы (сначала индексы, потом таблицы)
+    op.drop_index("ix_messages_user_chat", table_name="messages")
     op.drop_index(op.f("ix_messages_timestamp"), table_name="messages")
     op.drop_index(op.f("ix_messages_id"), table_name="messages")
     op.drop_table("messages")
@@ -170,7 +182,13 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_chats_id"), table_name="chats")
     op.drop_table("chats")
 
-    # 3. Откатываем изменения в users
-    op.alter_column(
-        'user', 'hashed_password', type_=sa.String(128), nullable=False
-    )  # Возвращаем к старому размеру, если был
+    # 3. Откатываем изменения в user
+    op.alter_column('user', 'hashed_password', type_=sa.String(128), nullable=False)
+    # NEW: Drop first_name and last_name columns
+    op.drop_column('user', 'last_name')
+    op.drop_column('user', 'first_name')
+    # END NEW
+    # NEW: Drop phone_number column
+    op.drop_index(op.f('ix_user_phone_number'), table_name='user')
+    op.drop_column('user', 'phone_number')
+    # END NEW

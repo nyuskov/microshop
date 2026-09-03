@@ -23,7 +23,10 @@ from core.security import (
     password_hasher,
 )  # Импортируем password_hasher из core.security с абсолютным путем
 from ..tokens.schemas import TokenData
-from ..users.crud import get_user_by_username
+from ..users.crud import (
+    get_user_by_username,
+    get_user_by_phone_number,
+)  # Import the new function
 from ..users.schemas import CurrentUser
 
 # Убираем импорт констант из helpers.py, чтобы избежать циклической зависимости
@@ -52,9 +55,7 @@ def encode_jwt(
     if expire_timedelta:
         expire = now + expire_timedelta
     else:
-        expire = now + timedelta(
-            minutes=settings.auth_jwt.access_token_expire_minutes
-        )
+        expire = now + timedelta(minutes=settings.auth_jwt.access_token_expire_minutes)
     to_encode.update(
         exp=expire,
         iat=now,
@@ -100,17 +101,22 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 async def authenticate_user(
-    username: str,
+    username_or_phone: str,  # Renamed parameter to reflect dual purpose
     password: str,
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
     """Функция для проверки подлинности и возврата пользователя"""
 
-    user = await get_user_by_username(session, username)
-    # проверяем, получены ли данные пользователя
+    # First, try to find by username
+    user = await get_user_by_username(session, username_or_phone)
+    if not user:
+        # If not found by username, try by phone number
+        user = await get_user_by_phone_number(session, username_or_phone)
+
+    # Check if user data was retrieved
     if not user:
         return None
-    # проверяем соответствие пароля и хэша пароля из базы данных
+    # Check if the provided password matches the hashed password in the database
     if not verify_password(password, user.hashed_password):
         return None
     return user
@@ -183,9 +189,7 @@ async def get_current_user(
         payload = jwt.decode(
             token,
             settings.auth_jwt.secret_key,
-            algorithms=[
-                settings.auth_jwt.algorithm
-            ],  # settings.auth_jwt.algorithm
+            algorithms=[settings.auth_jwt.algorithm],  # settings.auth_jwt.algorithm
         )
         # вернем пользователя, зашитого в ключе
         username: str = payload.get("sub")
@@ -199,6 +203,7 @@ async def get_current_user(
         raise credentials_exception
     # пытаемся получить данные пользователя из базы
     user = await get_user_by_username(session, token_data.username)
+    user = await get_user_by_username(session, token_data.username)
     if user is None:
         # нет пользователя, отдаем HTTP-ошибку.
         raise credentials_exception
@@ -208,7 +213,7 @@ async def get_current_user(
 async def get_current_active_user(
     current_user: Annotated[CurrentUser, Depends(get_current_user)],
 ):
-    """Проверяет запись пользователя по полю `disabled`"""
+    """Проверяет запись пользователя по полю [disabled](file:///home/freedom/Документы/microshop/backend/api_v1/users/schemas.py#L25-L25)"""
 
     if current_user.disabled:
         # если пользователь отключен, то => HTTP=ошибка

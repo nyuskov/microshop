@@ -12,15 +12,18 @@ import { backendServer, getCSRFToken } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import { ref } from 'vue'
 
+// Updated schema to include phone_number
 const formSchema = z.object({
   username: z.string().min(2, { message: 'Имя пользователя должно быть больше 3 символов.' }),
-  email: z.string().email({ message: 'Неверный email-адрес.' }),
+  phone_number: z.string().optional(), // Phone number is optional
+  email: z.string().email({ message: 'Неверный email-адрес.' }).optional().or(z.literal('')),
   password: z.string().min(8, { message: 'Пароль должен содержать не меньше 8 символов.' }),
   password2: z.string().min(8, { message: 'Пароль должен содержать не меньше 8 символов.' }),
-  first_name: z.string(),
-  last_name: z.string(),
-  bio: z.string()
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  bio: z.string().optional()
 })
+// END Updated schema
 const resolver = zodResolver(formSchema)
 const router = useRouter()
 const api_prefix: string = '/api/v1'
@@ -50,7 +53,16 @@ async function registerUser(e: FormEventObject) {
       const response = await fetch(backendServer + api_prefix + '/users/', {
         method: 'POST',
         cache: 'reload',
-        body: JSON.stringify(e.values),
+        // Send only the values needed by the backend
+        body: JSON.stringify({
+          username: e.values.username,
+          phone_number: e.values.phone_number || null, // Send null if empty
+          email: e.values.email || null,
+          password: e.values.password,
+          first_name: e.values.first_name || null,
+          last_name: e.values.last_name || null,
+          bio: e.values.bio || null
+        }),
         headers: headers,
         credentials: 'include'
       })
@@ -104,6 +116,19 @@ async function onFormSubmit(e: FormEventObject) {
           >{{ $field.error?.message }}
         </Message>
       </FormField>
+      <!-- NEW FIELD -->
+      <FormField
+        v-slot="$field"
+        name="phone_number"
+        initialValue=""
+        class="flex txt-login flex-col gap-1"
+      >
+        <InputText type="tel" class="txt-login" placeholder="Телефон (опционально)" />
+        <Message v-if="$field?.invalid" severity="error" size="small" variant="simple"
+          >{{ $field.error?.message }}
+        </Message>
+      </FormField>
+      <!-- END NEW FIELD -->
       <FormField
         v-slot="$field"
         name="password"
@@ -141,7 +166,7 @@ async function onFormSubmit(e: FormEventObject) {
         </Message>
       </FormField>
       <FormField v-slot="$field" name="email" initialValue="" class="flex txt-login flex-col gap-1">
-        <InputText type="text" class="txt-login" placeholder="Почта@gmail.com" />
+        <InputText type="email" class="txt-login" placeholder="Почта@gmail.com (опционально)" />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple"
           >{{ $field.error?.message }}
         </Message>

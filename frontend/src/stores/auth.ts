@@ -75,7 +75,7 @@ export const useAuthStore = defineStore('auth', {
         await this.fetchUser()
 
         if (router && this.current_user !== null) {
-          await router.push({ name: 'Home' })
+          await router.push({ name: 'Messenger' })
         }
       } catch (error) {
         console.error('Login error:', error)

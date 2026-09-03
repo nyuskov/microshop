@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 
 import App from './App.vue'
 import router from './router'
+import { useAuthStore } from './stores/auth' // Import the auth store
 
 // Import global styles first
 import './assets/style.css'
@@ -36,5 +37,9 @@ app.use(PrimeVue, {
 const themeStore = useThemeStore()
 themeStore.initializeTheme()
 themeStore.initializeSidebarState() // Initialize sidebar state
+
+// Initialize the auth store to check for existing tokens
+const authStore = useAuthStore()
+authStore.initializeApp() // Call initializeApp to check token validity
 
 app.mount('#app')

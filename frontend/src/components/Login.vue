@@ -72,7 +72,7 @@ async function onFormSubmit(e: FormEventObject) {
         initialValue=""
         class="flex txt-login flex-col gap-1"
       >
-        <InputText type="text" class="txt-login" placeholder="Имя пользователя" />
+        <InputText type="text" class="txt-login" placeholder="Имя пользователя или телефон" />
         <Message v-if="$field?.invalid" severity="error" size="small" variant="simple"
           >{{ $field.error?.message }}
         </Message>
@@ -100,33 +100,8 @@ async function onFormSubmit(e: FormEventObject) {
   </div>
 </template>
 
+<style src="../assets/css/style.css" scoped></style>
 <style scoped>
-.cnt-login {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-}
-
-.frm-login {
-  padding: 2rem;
-  border-radius: var(--border-radius);
-  background: var(--surface-card);
-  box-shadow:
-    0px 11px 15px -7px rgba(0, 0, 0, 0.2),
-    0px 24px 38px 3px rgba(0, 0, 0, 0.14),
-    0px 9px 46px 8px rgba(0, 0, 0, 0.12);
-}
-
-.txt-login {
-  width: 100%;
-}
-
-.btn-login {
-  margin-top: 1rem;
-}
-
 .reg-link {
   position: fixed;
   bottom: 2rem;
