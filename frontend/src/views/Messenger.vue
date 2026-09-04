@@ -45,6 +45,7 @@
           </div>
         </div>
         <div class="header-actions">
+          <Button icon="pi pi-cog" severity="secondary" text rounded @click="goToSettings" />
           <Button icon="pi pi-ellipsis-v" severity="secondary" text rounded />
         </div>
       </div>
@@ -186,6 +187,10 @@ const selectChat = (id: number) => {
 
 const goToProfile = () => {
   router.push({ name: 'UserProfile' })
+}
+
+const goToSettings = () => {
+  router.push({ name: 'Settings' })
 }
 
 const sendMessage = () => {
