@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { useRouter } from 'vue-router'
 
 // Импорт компонентов PrimeVue
 import Button from 'primevue/button'
@@ -14,8 +13,10 @@ import Dropdown from 'primevue/dropdown'
 import Password from 'primevue/password'
 import ToggleSwitch from 'primevue/toggleswitch'
 
+// Define emits
+const emit = defineEmits(['close-modal'])
+
 const authStore = useAuthStore()
-const router = useRouter()
 
 // Используем computed, чтобы profileForm всегда был синхронизирован с current_user
 // Предполагаем, что данные с бэкенда в snake_case
@@ -55,6 +56,11 @@ const updateProfile = async () => {
   }
 }
 
+// Функция для закрытия модального окна
+const closeModal = () => {
+  emit('close-modal')
+}
+
 // Пример данных для селектов
 const languages = ref([
   { name: 'English', code: 'en' },
@@ -74,12 +80,12 @@ const countries = ref([
       <div class="profile-toolbar">
         <h2 class="toolbar-title">Настройки профиля</h2>
         <div class="toolbar-buttons">
-          <!-- Кнопка "Назад" с иконкой и текстом -->
+          <!-- Кнопка "Отмена" с иконкой и текстом -->
           <Button
-            label="Назад"
-            icon="pi pi-arrow-left"
+            label="Отмена"
+            icon="pi pi-times"
             severity="secondary"
-            @click="router.go(-1)"
+            @click="closeModal"
             class="btn-secondary btn-with-icon"
           />
           <!-- Кнопка "Сохранить" с иконкой и текстом -->

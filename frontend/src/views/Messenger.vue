@@ -83,6 +83,44 @@
       </div>
     </div>
   </div>
+
+  <!-- Settings Modal -->
+  <Dialog
+    v-model:visible="showSettingsModal"
+    header="Настройки"
+    :modal="true"
+    :closable="true"
+    :style="{ width: '50vw' }"
+    @hide="showSettingsModal = false"
+  >
+    <Suspense>
+      <template #default>
+        <SettingsView @close-modal="showSettingsModal = false" />
+      </template>
+      <template #fallback>
+        <div>Загрузка настроек...</div>
+      </template>
+    </Suspense>
+  </Dialog>
+
+  <!-- Profile Modal -->
+  <Dialog
+    v-model:visible="showProfileModal"
+    header="Профиль пользователя"
+    :modal="true"
+    :closable="true"
+    :style="{ width: '50vw' }"
+    @hide="showProfileModal = false"
+  >
+    <Suspense>
+      <template #default>
+        <UserProfile @close-modal="showProfileModal = false" />
+      </template>
+      <template #fallback>
+        <div>Загрузка профиля...</div>
+      </template>
+    </Suspense>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
@@ -91,13 +129,20 @@ import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 // Импортирую Avatar
 import Avatar from 'primevue/avatar'
-// Импортирую store и router
+// Импортирую Dialog для модальных окон
+import Dialog from 'primevue/dialog'
+// Импортирую store
 import { useAuthStore } from '@/stores/auth'
-import { useRouter } from 'vue-router'
+// Импортирую компоненты для модальных окон
+import SettingsView from './SettingsView.vue'
+import UserProfile from './UserProfile.vue'
 
-// Получаю экземпляры store и router
+// Получаю экземпляр store
 const authStore = useAuthStore()
-const router = useRouter()
+
+// State variables for modals
+const showSettingsModal = ref(false)
+const showProfileModal = ref(false)
 
 // Define types
 interface Chat {
@@ -186,11 +231,11 @@ const selectChat = (id: number) => {
 }
 
 const goToProfile = () => {
-  router.push({ name: 'UserProfile' })
+  showProfileModal.value = true
 }
 
 const goToSettings = () => {
-  router.push({ name: 'Settings' })
+  showSettingsModal.value = true
 }
 
 const sendMessage = () => {

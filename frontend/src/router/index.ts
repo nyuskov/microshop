@@ -2,7 +2,6 @@ import Messenger from '../views/Messenger.vue' // Импортируем нов�
 // import Home from '../components/Home.vue' // Закомментируем старый
 // import Registration from '../components/Registration.vue' // Закомментировал импорт
 import Login from '../components/Login.vue'
-import UserProfile from '../views/UserProfile.vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth' // Import the auth store
 
@@ -21,17 +20,6 @@ const routes = [
     path: '/auth/login/',
     name: 'Login',
     component: Login
-  },
-  {
-    path: '/user-profile',
-    name: 'UserProfile',
-    component: UserProfile
-  },
-  {
-    path: '/settings',
-    name: 'Settings',
-    component: () => import('../views/SettingsView.vue'),
-    meta: { requiresAuth: true }
   }
 ]
 

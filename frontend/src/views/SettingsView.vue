@@ -17,7 +17,10 @@
           <option value="dark">Темная</option>
         </select>
       </div>
-      <button @click="saveSettings" class="save-btn">Сохранить</button>
+      <div class="button-group">
+        <button @click="saveSettings" class="save-btn">Сохранить</button>
+        <button @click="closeModal" class="cancel-btn">Отмена</button>
+      </div>
     </div>
   </div>
 </template>
@@ -31,6 +34,9 @@ interface Settings {
   theme: string
 }
 
+// Define emits
+const emit = defineEmits(['close-modal'])
+
 const settings = reactive<Settings>({
   username: '',
   email: '',
@@ -41,6 +47,11 @@ const saveSettings = () => {
   // Save settings logic would go here
   console.log('Settings saved:', settings)
   alert('Настройки сохранены!')
+  emit('close-modal')
+}
+
+const closeModal = () => {
+  emit('close-modal')
 }
 
 onMounted(() => {
@@ -80,9 +91,13 @@ onMounted(() => {
   border-radius: 4px;
 }
 
-.save-btn {
-  background-color: #007bff;
-  color: white;
+.button-group {
+  display: flex;
+  gap: 10px;
+}
+
+.save-btn,
+.cancel-btn {
   padding: 10px 20px;
   border: none;
   border-radius: 4px;
@@ -90,7 +105,21 @@ onMounted(() => {
   width: fit-content;
 }
 
+.save-btn {
+  background-color: #007bff;
+  color: white;
+}
+
 .save-btn:hover {
   background-color: #0056b3;
+}
+
+.cancel-btn {
+  background-color: #6c757d;
+  color: white;
+}
+
+.cancel-btn:hover {
+  background-color: #5a6268;
 }
 </style>
