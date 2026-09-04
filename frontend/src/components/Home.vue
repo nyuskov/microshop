@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import Posts from './Posts.vue'
 import Users from './Users.vue'
-// Import the new Groups component
 import GroupsPage from './GroupsPage.vue'
-// Import Toolbar, Sidebar, and PanelMenu from PrimeVue
 import Toolbar from 'primevue/toolbar'
 import Sidebar from 'primevue/sidebar'
 import PanelMenu from 'primevue/panelmenu'
@@ -11,13 +9,13 @@ import { Button } from 'primevue'
 import { ref, type Ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-// Import the theme store
 import { useThemeStore } from '../stores/theme'
+// Импортируем компонент модалки логина
+import LoginModal from './LoginModal.vue'
 
 const authStore = useAuthStore()
 authStore.initializeApp()
 
-// Get the theme store instance
 const themeStore = useThemeStore()
 const router = useRouter()
 const redirectReg = '/auth/registration/'
@@ -26,7 +24,6 @@ const redirectLogin = '/auth/login/'
 // State for active components
 const isActiveUsers: Ref<boolean> = ref(false)
 const isActivePosts: Ref<boolean> = ref(false)
-// Add state for active groups
 const isActiveGroups: Ref<boolean> = ref(false)
 
 const isAuthorized = computed(() => authStore.isAuthenticated)
@@ -35,14 +32,15 @@ const isAdmin = computed(() => authStore.isAdmin)
 // State for the drawer (sidebar menu)
 const drawerVisible = ref(false)
 
+// State for login modal
+const showLoginModal = ref(false)
+
 // Define menu items as a single root panel for PanelMenu
-// The menu items are now computed based on authorization and admin status
 const menuItems = computed(() => {
   const baseItems = [
     {
       label: 'Навигация',
       items: [
-        // Conditionally add the "Пользователи" item based on admin status
         ...(isAdmin.value
           ? [
               {
@@ -51,19 +49,18 @@ const menuItems = computed(() => {
                 command: () => {
                   isActiveUsers.value = true
                   isActivePosts.value = false
-                  isActiveGroups.value = false // Deselect groups
-                  drawerVisible.value = false // Close drawer after selection
+                  isActiveGroups.value = false
+                  drawerVisible.value = false
                 }
               },
-              // Add the "Группы" item for superusers
               {
                 label: 'Группы',
                 icon: 'pi pi-fw pi-users',
                 command: () => {
                   isActiveGroups.value = true
                   isActiveUsers.value = false
-                  isActivePosts.value = false // Deselect other views
-                  drawerVisible.value = false // Close drawer after selection
+                  isActivePosts.value = false
+                  drawerVisible.value = false
                 }
               }
             ]
@@ -74,8 +71,8 @@ const menuItems = computed(() => {
           command: () => {
             isActiveUsers.value = false
             isActivePosts.value = true
-            isActiveGroups.value = false // Deselect groups
-            drawerVisible.value = false // Close drawer after selection
+            isActiveGroups.value = false
+            drawerVisible.value = false
           }
         }
       ]
@@ -83,22 +80,19 @@ const menuItems = computed(() => {
     {
       label: 'Настройки',
       items: [
-        // --- Новый пункт меню 'Настройки профиля' ---
         {
           label: 'Настройки профиля',
           icon: 'pi pi-user-edit',
           command: () => {
-            router.push('/user-profile') // Перенаправление на страницу профиля
-            drawerVisible.value = false // Закрыть меню после выбора
+            router.push('/user-profile')
+            drawerVisible.value = false
           }
         },
-        // --- Конец нового пункта меню ---
         {
           label: `Тема (${themeStore.currentTheme})`,
           icon: themeStore.currentTheme === 'light' ? 'pi pi-sun' : 'pi pi-moon',
           command: () => {
             themeStore.toggleTheme()
-            // Keep drawer open after theme change
           }
         },
         {
@@ -107,9 +101,9 @@ const menuItems = computed(() => {
           command: async () => {
             isActiveUsers.value = false
             isActivePosts.value = false
-            isActiveGroups.value = false // Deselect groups on logout
+            isActiveGroups.value = false
             await authStore.logout(router)
-            drawerVisible.value = false // Close drawer after logout
+            drawerVisible.value = false
           }
         }
       ]
@@ -127,6 +121,44 @@ function toggleDrawer() {
 function closeDrawer() {
   drawerVisible.value = false
 }
+
+// Функция для открытия модалки логина
+function openLoginModal() {
+  if (!authStore.isAuthenticated) {
+    showLoginModal.value = true
+  }
+}
+
+// Функция для закрытия модалки логина
+function closeLoginModal() {
+  showLoginModal.value = false
+}
+
+// Следим за изменением статуса аутентификации
+import { watch } from 'vue'
+watch(
+  () => authStore.isAuthenticated,
+  (isAuth) => {
+    if (isAuth) {
+      // Если пользователь аутентифицировался, закрываем модалку
+      showLoginModal.value = false
+      // Если пользователь только что вошел, можно показать приветствие
+      console.log('User authenticated successfully!')
+    }
+  }
+)
+
+// При монтировании проверяем, нужно ли показать модалку
+import { onMounted } from 'vue'
+onMounted(() => {
+  // Если пользователь не аутентифицирован, но пытается зайти на защищенную страницу
+  // можно автоматически открыть модалку, но лучше это делать через роутер
+  const path = router.currentRoute.value.path
+  if (!authStore.isAuthenticated && path !== '/auth/login/' && path !== '/auth/registration/') {
+    // Например, если пользователь на главной странице и не авторизован
+    // showLoginModal.value = true // Раскомментируйте, если нужно автоматически показывать модалку
+  }
+})
 </script>
 
 <template>
@@ -146,9 +178,20 @@ function closeDrawer() {
           />
         </template>
 
-        <!-- Optional: Add other elements to the center/end of the toolbar here -->
         <template #center>
-          <!-- e.g., Page title could go here -->
+          <!-- Можно добавить заголовок страницы -->
+        </template>
+
+        <template #end>
+          <!-- Кнопка для выхода (можно добавить для удобства) -->
+          <Button
+            icon="pi pi-sign-out"
+            @click="authStore.logout(router)"
+            severity="danger"
+            text
+            rounded
+            label="Выйти"
+          />
         </template>
       </Toolbar>
     </header>
@@ -163,7 +206,6 @@ function closeDrawer() {
       }"
       position="left"
     >
-      <!-- Use PrimeVue PanelMenu for correct menu rendering -->
       <PanelMenu :model="menuItems" class="p-0 border-0 bg-transparent" />
     </Sidebar>
 
@@ -177,7 +219,6 @@ function closeDrawer() {
           :isActiveUsers="isActiveUsers"
         ></Users>
         <Posts v-if="isActivePosts && !isActiveUsers && !isActiveGroups"></Posts>
-        <!-- Add the GroupsPage component -->
         <GroupsPage v-if="isActiveGroups && !isActiveUsers && !isActivePosts"></GroupsPage>
 
         <!-- Optional: Default message when no specific view is selected -->
@@ -201,10 +242,13 @@ function closeDrawer() {
           </p>
           <Button severity="warning" @click="router.push(redirectReg)">Зарегистрироваться</Button>
           <span class="mx-2">или</span>
-          <Button severity="warning" @click="router.push(redirectLogin)">Войти</Button>
+          <Button severity="warning" @click="openLoginModal">Войти</Button>
         </div>
       </div>
     </main>
+
+    <!-- Login Modal -->
+    <LoginModal :visible="showLoginModal" @close-modal="closeLoginModal" />
   </div>
 </template>
 
@@ -217,10 +261,8 @@ function closeDrawer() {
 }
 
 .top-toolbar {
-  z-index: 1001; /* Higher than the sidebar to stay on top when it's open */
-  background-color: var(
-    --surface-color
-  ); /* Use theme surface color, should be dark in dark mode now */
+  z-index: 1001;
+  background-color: var(--surface-color);
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -228,11 +270,10 @@ function closeDrawer() {
 .main-content-unauthorized {
   flex: 1;
   padding: 1rem;
-  margin-top: 1rem; /* Account for the fixed header */
-  transition: margin-left 0.3s ease; /* Smooth transition if needed */
+  margin-top: 1rem;
+  transition: margin-left 0.3s ease;
 }
 
-/* Style the menu items inside the drawer */
 .drawer-menu-items {
   height: 100%;
 }
@@ -247,7 +288,6 @@ function closeDrawer() {
   width: 100%;
 }
 
-/* Utility-like classes can be defined here if not in global styles */
 .p-2 {
   padding: var(--spacing-medium);
 }
@@ -272,7 +312,7 @@ function closeDrawer() {
 }
 .dark\.hover\:surface-700:hover {
   background-color: color-mix(in srgb, var(--surface-color) 80%, black);
-} /* Fallback for dark hover */
+}
 .border-round {
   border-radius: var(--border-radius);
 }
@@ -289,68 +329,61 @@ function closeDrawer() {
 <style>
 /* Global styles for the simplified pt classes */
 .custom-sidebar-root {
-  width: 22rem; /* Set a default width, slightly wider for PanelMenu */
+  width: 22rem;
 }
 
 .custom-sidebar-root.p-sidebar-left {
-  width: 22rem; /* Ensure width for left position */
+  width: 22rem;
 }
 
 .custom-sidebar-content {
-  padding: 0; /* Remove default padding */
+  padding: 0;
 }
 
 .custom-sidebar-content :deep(.p-sidebar-header) {
-  display: none; /* Hide default header */
+  display: none;
 }
 
-/* Style the PanelMenu inside the sidebar */
 .custom-sidebar-content :deep(.p-panelmenu) {
-  border: none; /* Remove default border */
-  background: transparent; /* Make background transparent */
-  border-radius: 0; /* Remove border radius to fit sidebar */
-  padding: 0.5rem 0; /* Add some padding inside the menu */
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  padding: 0.5rem 0;
 }
 
 .custom-sidebar-content :deep(.p-panelmenu .p-panelmenu-header .p-panelmenu-header-content) {
-  border-radius: 0 !important; /* Remove header border radius */
-  background: transparent; /* Ensure header is transparent */
-  border: none; /* Remove header border */
+  border-radius: 0 !important;
+  background: transparent;
+  border: none;
 }
 
 .custom-sidebar-content :deep(.p-panelmenu .p-panelmenu-content) {
-  border-radius: 0 !important; /* Remove content border radius */
-  background: transparent; /* Ensure content is transparent */
-  border: none; /* Remove content border */
+  border-radius: 0 !important;
+  background: transparent;
+  border: none;
 }
 
-/* Style the links inside PanelMenu items to use the warning/orange color */
 .custom-sidebar-content :deep(.p-panelmenu .p-menuitem .p-menuitem-link) {
-  color: var(--text-color); /* Use theme text color */
-  border-radius: var(--border-radius); /* Apply border radius */
-  margin: 0.1rem 0.5rem; /* Add some margin for spacing */
-  transition: background-color 0.2s ease; /* Smooth transition for hover */
+  color: var(--text-color);
+  border-radius: var(--border-radius);
+  margin: 0.1rem 0.5rem;
+  transition: background-color 0.2s ease;
 }
 
 .custom-sidebar-content :deep(.p-panelmenu .p-menuitem .p-menuitem-link):hover {
-  background-color: color-mix(
-    in srgb,
-    var(--warning-color) 20%,
-    transparent
-  ); /* Light orange hover */
+  background-color: color-mix(in srgb, var(--warning-color) 20%, transparent);
 }
 
 .custom-sidebar-content :deep(.p-panelmenu .p-menuitem .p-menuitem-link):focus {
-  outline: 2px solid var(--warning-color); /* Focus ring using warning color */
+  outline: 2px solid var(--warning-color);
   outline-offset: 2px;
 }
 
-/* Attempt to style the icon and label inside the link */
 .custom-sidebar-content :deep(.p-panelmenu .p-menuitem .p-menuitem-link .p-menuitem-icon) {
-  color: var(--warning-color); /* Icon color to warning */
+  color: var(--warning-color);
 }
 
 .custom-sidebar-content :deep(.p-panelmenu .p-menuitem .p-menuitem-link .p-menuitem-text) {
-  color: var(--text-color); /* Text color */
+  color: var(--text-color);
 }
 </style>

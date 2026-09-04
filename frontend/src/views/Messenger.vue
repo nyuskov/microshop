@@ -121,6 +121,11 @@
       </template>
     </Suspense>
   </Dialog>
+
+  <!-- Login Modal -->
+  <!-- Отображаем модалку, если пользователь не аутентифицирован -->
+  <LoginModal :visible="showLoginModal" @close-modal="onLoginModalClose" />
+  <!-- Удален лишний оверлей -->
 </template>
 
 <script setup lang="ts">
@@ -131,6 +136,8 @@ import InputText from 'primevue/inputtext'
 import Avatar from 'primevue/avatar'
 // Импортирую Dialog для модальных окон
 import Dialog from 'primevue/dialog'
+// Импортирую LoginModal
+import LoginModal from '@/components/LoginModal.vue'
 // Импортирую store
 import { useAuthStore } from '@/stores/auth'
 // Импортирую компоненты для модальных окон
@@ -143,6 +150,8 @@ const authStore = useAuthStore()
 // State variables for modals
 const showSettingsModal = ref(false)
 const showProfileModal = ref(false)
+// Инициализируем showLoginModal как true, полагаясь на watch для обновления
+const showLoginModal = ref(true)
 
 // Define types
 interface Chat {
@@ -297,10 +306,30 @@ watch(
   { deep: true }
 )
 
+// Обработчик закрытия модального окна входа, вызывается когда Login.vue эмиттит 'close-modal'
+// Это означает, что аутентификация прошла успешно
+const onLoginModalClose = () => {
+  console.log('Login modal close event received in Messenger.vue. Closing modal.')
+  showLoginModal.value = false
+}
+
 // Initialize
-onMounted(() => {
+onMounted(async () => {
+  // Ждем полной инициализации store
+  await authStore.initializeApp()
+  // После инициализации store, watch сработает и установит showLoginModal в правильное значение
   scrollToBottom()
 })
+
+// Следим за изменением состояния аутентификации
+watch(
+  () => authStore.is_authenticated,
+  (newVal) => {
+    // Устанавливаем видимость модального окна как противоположное состоянию аутентификации
+    showLoginModal.value = !newVal
+  },
+  { immediate: true }
+) // immediate: true гарантирует выполнение watch при его создании
 </script>
 
 <style scoped>
@@ -309,6 +338,7 @@ onMounted(() => {
   height: 100vh;
   background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  position: relative; /* Для правильного позиционирования оверлея */
 }
 
 .sidebar {
@@ -534,6 +564,18 @@ onMounted(() => {
     transform: translateY(0);
   }
 }
+
+/* Удалены стили для оверлея */
+/* .overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.1);
+  z-index: 999;
+  pointer-events: auto;
+} */
 
 @media (max-width: 768px) {
   .messenger-container {

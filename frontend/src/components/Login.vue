@@ -1,21 +1,43 @@
 <script setup lang="ts">
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
-// Импортирую InputMask
 import InputMask from 'primevue/inputmask'
 import Message from 'primevue/message'
-// Удаляю zod и zodResolver
-// import { zodResolver } from '@primevue/forms/resolvers/zod'
-// import { z } from 'zod'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '../stores/auth' // Импортируем store
-import { ref, computed } from 'vue' // Добавляю computed
+import { useAuthStore } from '../stores/auth'
+import { ref, computed, onMounted } from 'vue'
 
 const router = useRouter()
-const authStore = useAuthStore() // Инициализируем store
+const authStore = useAuthStore()
+
+// Пропс для получения начального состояния
+const props = defineProps<{
+  initialState?: 'phone' | 'otp'
+}>()
+
+// Эмиты для уведомления родителя о смене состояния и о закрытии
+const emit = defineEmits<{
+  'state-changed': ['phone' | 'otp']
+  'close-modal': []
+}>()
 
 // Состояние компонента: 'phone' - ввод телефона, 'otp' - ввод кода
 const state = ref<'phone' | 'otp'>('phone')
+
+// Устанавливаем начальное состояние из пропсов
+onMounted(() => {
+  // Проверяем, не аутентифицирован ли пользователь уже
+  if (authStore.isAuthenticated) {
+    emit('close-modal')
+    return
+  }
+
+  if (props.initialState) {
+    state.value = props.initialState
+    emit('state-changed', state.value)
+  }
+})
+
 // Теперь phoneOrUsername будет строкой в формате +7 (...)
 const phoneOrUsername = ref('')
 // Разделю OTP на 6 переменных
@@ -36,26 +58,28 @@ const otpCode = computed(() => {
 
 const severity = ref('success')
 const result = ref('')
-const isLoading = ref(false) // Состояние загрузки для кнопок
+const isLoading = ref(false)
 
 // Функция для проверки валидности номера телефона (формат +7 (...) ...)
 const isValidPhoneNumber = (phone: string): boolean => {
-  // Удаляем все символы, кроме цифр
   const cleaned = phone.replace(/\D/g, '')
-  // Проверяем, начинается ли с '7' и состоит ли из 11 цифр
   return cleaned.startsWith('7') && cleaned.length === 11
 }
 
 // Функция для преобразования строки в формате +7 (...) ... в формат, пригодный для отправки
 const formatPhoneForBackend = (phone: string): string => {
-  // Удаляем все символы, кроме цифр
   const cleaned = phone.replace(/\D/g, '')
-  // Вставляем '+' в начало, если его нет
   return cleaned.startsWith('+') ? cleaned : `+${cleaned}`
 }
 
 // Функция для запроса OTP
 async function requestOtpHandler() {
+  // Проверяем, не аутентифицирован ли пользователь
+  if (authStore.isAuthenticated) {
+    emit('close-modal')
+    return
+  }
+
   // Валидация номера телефона
   if (!isValidPhoneNumber(phoneOrUsername.value)) {
     result.value = 'Введите корректный номер телефона в формате +7 (___) ___-__-__'
@@ -66,12 +90,9 @@ async function requestOtpHandler() {
   isLoading.value = true
   result.value = ''
   try {
-    // Отправляем отформатированный номер
     await authStore.requestOtp(formatPhoneForBackend(phoneOrUsername.value))
-    // Убираю сообщение об отправке
-    // result.value = 'Код OTP отправлен!';
-    // severity.value = 'success';
-    state.value = 'otp' // Переходим к вводу OTP
+    state.value = 'otp'
+    emit('state-changed', state.value)
   } catch (error: unknown) {
     console.error('Request OTP failed:', error)
     let errorMessage = 'Не удалось отправить код OTP.'
@@ -96,6 +117,14 @@ async function requestOtpHandler() {
 
 // Функция для обработки формы (отправка OTP для верификации)
 async function onFormSubmit() {
+  console.log('onFormSubmit started')
+
+  // Проверяем, не аутентифицирован ли пользователь
+  if (authStore.isAuthenticated) {
+    emit('close-modal')
+    return
+  }
+
   // Валидация OTP: проверяем, что все 6 полей заполнены цифрами
   const fullOtpCode = otpCode.value
   if (fullOtpCode.length !== 6 || isNaN(Number(fullOtpCode))) {
@@ -108,12 +137,21 @@ async function onFormSubmit() {
   result.value = ''
 
   try {
-    // Вызываем loginWithOtp из store
+    console.log('Calling authStore.loginWithOtp...')
     await authStore.loginWithOtp(formatPhoneForBackend(phoneOrUsername.value), fullOtpCode, router)
-    // Убираю сообщение об успешном входе
-    // result.value = 'Вход успешен!';
-    // severity.value = 'success';
-    // Перенаправление теперь происходит внутри loginWithOtp после успешного входа
+    console.log('authStore.loginWithOtp completed successfully.')
+
+    // Успешная аутентификация - закрываем модалку
+    console.log("Authentication confirmed. Emitting 'close-modal' event.")
+
+    // Сбрасываем состояние перед закрытием
+    state.value = 'phone'
+    otpDigits.forEach((digit) => (digit.value = ''))
+    phoneOrUsername.value = ''
+    result.value = ''
+
+    // Закрываем модалку
+    emit('close-modal')
   } catch (error: unknown) {
     console.error('Login with OTP failed:', error)
     let errorMessage = 'Вход не удался.'
@@ -132,6 +170,7 @@ async function onFormSubmit() {
     result.value = errorMessage
     severity.value = 'error'
   } finally {
+    console.log('onFormSubmit finally block executed.')
     isLoading.value = false
   }
 }
@@ -139,7 +178,7 @@ async function onFormSubmit() {
 // Вспомогательная функция для возврата к вводу телефона
 function goBackToPhoneInput() {
   state.value = 'phone'
-  // Очищаем все 6 полей OTP
+  emit('state-changed', state.value)
   otpDigits.forEach((digit) => (digit.value = ''))
   result.value = ''
 }
@@ -147,17 +186,15 @@ function goBackToPhoneInput() {
 // Функция для перемещения фокуса между полями OTP
 const moveFocus = (currentIndex: number, event: Event) => {
   const target = event.target as HTMLInputElement
+
   if (target.value && currentIndex < 5) {
     otpDigits[currentIndex + 1].value = ''
-    // Использую nextTick для гарантии обновления DOM перед фокусировкой
-    // Но в данном случае, так как значение следующего поля устанавливается выше,
-    // и оно пустое, фокус может сразу не сработать как ожидалось.
-    // Лучше вызвать focus напрямую на элементе.
     const nextInput = document.getElementById(`otp-digit-${currentIndex + 2}`)
     if (nextInput) {
       nextInput.focus()
     }
   }
+
   if (
     event instanceof KeyboardEvent &&
     event.key === 'Backspace' &&
@@ -167,28 +204,22 @@ const moveFocus = (currentIndex: number, event: Event) => {
     const prevInput = document.getElementById(`otp-digit-${currentIndex}`)
     if (prevInput) {
       prevInput.focus()
-      // Опционально: можно очистить предыдущее поле при переходе назад
-      // otpDigits[currentIndex - 1].value = '';
     }
   }
 }
 </script>
 
 <template>
-  <div class="cnt-login">
+  <div class="cnt-login-modal-content">
     <!-- Форма для ввода телефона -->
     <div v-if="state === 'phone'" class="phone-input-section">
-      <h3>Вход по SMS</h3>
-      <!-- Убираю Form и FormField для ввода телефона, так как использую валидацию вручную -->
       <div class="frm-login flex flex-col gap-4 w-full sm:w-80">
         <div class="flex txt-login flex-col gap-1">
-          <!-- Не очищать поле, если введенное значение не соответствует маске -->
-          <!-- Перенес комментарий -->
           <InputMask
             v-model="phoneOrUsername"
             mask="+7 (999) 999-99-99"
             placeholder="+7 (___) ___-__-__"
-            class="txt-login"
+            class="single-phone-input"
             :auto-clear="false"
           />
         </div>
@@ -205,11 +236,8 @@ const moveFocus = (currentIndex: number, event: Event) => {
 
     <!-- Форма для ввода OTP -->
     <div v-if="state === 'otp'" class="otp-input-section">
-      <h3>Введите код из SMS</h3>
-      <!-- Использую простую форму для обработки Enter -->
       <form @submit.prevent="onFormSubmit" class="frm-login flex flex-col gap-4 w-full sm:w-80">
         <div class="flex txt-login flex-col gap-1">
-          <!-- Поле для ввода OTP -->
           <div class="otp-input-grid">
             <InputText
               v-for="(digitRef, index) in otpDigits"
@@ -260,9 +288,18 @@ const moveFocus = (currentIndex: number, event: Event) => {
 
 <style src="../assets/css/style.css" scoped></style>
 <style scoped>
-/* Можно добавить специфичные стили для новых секций при желании */
+/* Стили для контента модального окна */
+.cnt-login-modal-content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0;
+}
+
 .phone-input-section,
 .otp-input-section {
+  width: 100%;
   transition: opacity 0.3s ease;
 }
 
@@ -273,33 +310,71 @@ const moveFocus = (currentIndex: number, event: Event) => {
   margin-bottom: 0.5rem;
 }
 
-.otp-digit-input {
-  width: calc((100vw - 4rem - 5 * 0.5rem) / 6); /* Ширина с учетом gap и padding контейнера */
-  max-width: 3rem; /* Максимальная ширина для больших экранов */
+.single-phone-input {
+  width: 100%;
   height: 3rem;
   text-align: center;
   font-size: 1.2rem;
   border: 2px solid var(--p-inputbordercolor);
   border-radius: 8px;
-  transition: border-color 0.2s;
+  transition:
+    border-color 0.2s,
+    transform 0.2s,
+    box-shadow 0.2s;
+  background-color: var(--p-surface-card);
+  color: var(--p-textcolor);
+  padding: 0 0.5rem;
+}
+
+.single-phone-input:hover {
+  transform: scale(1.02);
+  border-color: var(--p-primary-300);
+}
+
+.single-phone-input:focus {
+  outline: 0 none;
+  border-color: var(--p-primary-500);
+  box-shadow: 0 0 0 0.2rem var(--p-primary-200);
+  transform: scale(1.02);
+}
+
+.otp-digit-input {
+  width: calc((100vw - 4rem - 5 * 0.5rem) / 6);
+  max-width: 3rem;
+  height: 3rem;
+  text-align: center;
+  font-size: 1.2rem;
+  border: 2px solid var(--p-inputbordercolor);
+  border-radius: 8px;
+  transition:
+    border-color 0.2s,
+    transform 0.2s,
+    box-shadow 0.2s;
+  background-color: var(--p-surface-card);
+  color: var(--p-textcolor);
+}
+
+.otp-digit-input:hover {
+  transform: scale(1.05);
+  border-color: var(--p-primary-300);
 }
 
 .otp-digit-input.has-value {
   border-color: var(--p-primarycolor);
-  background-color: var(--p-fieldbgcolor);
+  background-color: var(--p-primary-50);
+  color: var(--p-primary-700);
 }
 
 .otp-digit-input:focus {
   outline: 0 none;
-  border-color: var(--p-primarycolor);
-  box-shadow: 0 0 0 0.2rem var(--p-focusringcolor);
+  border-color: var(--p-primary-500);
+  box-shadow: 0 0 0 0.2rem var(--p-primary-200);
+  transform: scale(1.05);
 }
 
 @media (min-width: 640px) {
   .otp-digit-input {
-    width: calc(
-      (min(100vw, 24rem) - 4rem - 5 * 0.5rem) / 6
-    ); /* Более адаптивная ширина для desktop */
+    width: calc((min(100vw, 24rem) - 4rem - 5 * 0.5rem) / 6);
   }
 }
 </style>

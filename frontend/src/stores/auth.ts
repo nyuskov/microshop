@@ -156,7 +156,25 @@ export const useAuthStore = defineStore('auth', {
         this.saveState()
 
         // Обязательно обновляем информацию о пользователе после входа
-        await this.fetchUser()
+        // Обернем fetchUser в try...catch, чтобы обработать ошибки получения данных
+        try {
+          console.log("DEBUG: Inside loginWithOtp, before fetchUser, isAuthenticated =", this.isAuthenticated);
+          await this.fetchUser()
+          console.log("DEBUG: Inside loginWithOtp, after fetchUser, isAuthenticated =", this.isAuthenticated);
+        } catch (fetchError) {
+          console.error('Failed to fetch user data after loginWithOtp:', fetchError);
+          // Если fetchUser не удался, считаем весь вход неуспешным.
+          // Очищаем состояние аутентификации.
+          this.current_user = null
+          this.isAuthenticated = false
+          this.user = null
+          this.accessToken = null
+          this.refreshToken = null
+          delete axios.defaults.headers.common['Authorization']
+          this.saveState()
+          // Пробрасываем ошибку дальше, чтобы компоненты могли её обработать
+          throw fetchError;
+        }
 
         if (router && this.current_user !== null) {
           await router.push({ name: 'Messenger' })
@@ -223,9 +241,11 @@ export const useAuthStore = defineStore('auth', {
         const response = await axios.get(`${backendServer}/api/v1/jwt/users/me/`)
         this.user = response.data
         this.isAuthenticated = true
+        console.log("DEBUG: Inside fetchUser try block, after setting isAuthenticated = true, current value =", this.isAuthenticated);
         this.current_user = response.data
       } catch (error) {
         console.error('Failed to fetch user:', error)
+        console.log("DEBUG: Inside fetchUser catch block, before any changes, isAuthenticated =", this.isAuthenticated);
         // If fetching user fails, it might be due to an invalid token.
         // In this case, we'll attempt to refresh the token.
         // Проверим, есть ли refresh_token перед попыткой обновления
@@ -249,11 +269,19 @@ export const useAuthStore = defineStore('auth', {
           this.logout()
         } else {
           // For other errors, just reset user info
+          // ВАЖНО: теперь этот блок также бросает ошибку
           this.user = null
           this.isAuthenticated = false
+          console.log("DEBUG: Inside fetchUser catch block, after setting isAuthenticated = false, current value =", this.isAuthenticated);
           this.current_user = null
+          this.saveState() // Сохраняем состояние после сброса
+          // Бросаем ошибку, чтобы loginWithOtp мог её перехватить
+          throw error;
         }
+        console.log("DEBUG: Inside fetchUser catch block (after 401 checks), isAuthenticated =", this.isAuthenticated);
       }
+      // saveState вызывается всегда после завершения try или catch
+      console.log("DEBUG: End of fetchUser, calling saveState, isAuthenticated =", this.isAuthenticated);
       this.saveState()
     },
 

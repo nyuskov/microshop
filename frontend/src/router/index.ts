@@ -33,7 +33,8 @@ router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
 
   // Define routes that do not require authentication
-  const publicRoutes = ['Login'] // Убираю 'Registration' из списка публичных маршрутов
+  // Добавляем 'Messenger' в список публичных маршрутов
+  const publicRoutes = ['Login', 'Messenger']
 
   // Check if the route requires authentication
   if (!publicRoutes.includes(to.name as string)) {
