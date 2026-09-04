@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 
 // Импорт компонентов PrimeVue
@@ -18,9 +18,78 @@ const emit = defineEmits(['close-modal'])
 
 const authStore = useAuthStore()
 
-// Используем computed, чтобы profileForm всегда был синхронизирован с current_user
-// Предполагаем, что данные с бэкенда в snake_case
-const profileForm = computed(() => (authStore.current_user ? { ...authStore.current_user } : {}))
+// Пример данных для селектов
+const languages = ref([
+  { name: 'English', code: 'en' },
+  { name: 'Russian', code: 'ru' },
+  { name: 'Spanish', code: 'es' }
+])
+const countries = ref([
+  { name: 'Russia', code: 'RU' },
+  { name: 'United States', code: 'US' },
+  { name: 'Spain', code: 'ES' }
+])
+
+// Используем reactive для создания формы, которая будет синхронизирована с current_user
+import { reactive, watch } from 'vue'
+
+const profileForm = reactive({
+  username: '',
+  phone_number: null,
+  first_name: null,
+  last_name: null,
+  email: null,
+  profile: {
+    bio: null,
+    birth_date: null,
+    language: null,
+    country: null,
+    notifications_enabled: true,
+    privacy_mode: false
+  }
+})
+
+// Синхронизируем форму с данными пользователя при их изменении
+watch(
+  () => authStore.current_user,
+  (newUser) => {
+    if (newUser) {
+      profileForm.username = newUser.username
+      profileForm.phone_number = newUser.phone_number
+      profileForm.first_name = newUser.first_name
+      profileForm.last_name = newUser.last_name
+      profileForm.email = newUser.email
+
+      if (newUser.profile) {
+        profileForm.profile.bio = newUser.profile.bio
+        profileForm.profile.birth_date = newUser.profile.birth_date
+
+        // Преобразуем строковые значения language и country в объекты для Dropdown
+        if (newUser.profile.language) {
+          const selectedLanguage = languages.value.find(
+            (lang) => lang.code === newUser.profile.language
+          )
+          profileForm.profile.language = selectedLanguage || newUser.profile.language
+        } else {
+          profileForm.profile.language = null
+        }
+
+        if (newUser.profile.country) {
+          const selectedCountry = countries.value.find(
+            (country) => country.code === newUser.profile.country
+          )
+          profileForm.profile.country = selectedCountry || newUser.profile.country
+        } else {
+          profileForm.profile.country = null
+        }
+
+        profileForm.profile.notifications_enabled = newUser.profile.notifications_enabled
+        profileForm.profile.privacy_mode = newUser.profile.privacy_mode
+      }
+    }
+  },
+  { immediate: true }
+)
 
 const newPassword = ref('')
 const confirmNewPassword = ref('')
@@ -31,10 +100,47 @@ const updateProfile = async () => {
     return
   }
 
-  // Создаем объект обновления, объединяя вычисленные значения из profileForm и новые пароли
-  // Исключим currentPassword из обновления профиля, если оно не требуется бэкендом для этой операции
-  const { currentPassword: _currentPassword, ...profileDataToSend } = profileForm.value
-  const updateData = { ...profileDataToSend }
+  // Создаем объект обновления, разделяя поля пользователя и профиля
+  const userData = {
+    username: profileForm.username,
+    phone_number: profileForm.phone_number,
+    first_name: profileForm.first_name,
+    last_name: profileForm.last_name,
+    email: profileForm.email
+  }
+
+  // Обработка даты рождения - преобразование в формат YYYY-MM-DD
+  let birthDateFormatted = profileForm.profile.birth_date
+  if (birthDateFormatted instanceof Date) {
+    // Если это объект Date, преобразуем в строку в формате YYYY-MM-DD
+    birthDateFormatted = birthDateFormatted.toISOString().split('T')[0]
+  } else if (typeof birthDateFormatted === 'string' && birthDateFormatted.includes('T')) {
+    // Если это строка с временем, извлекаем только дату
+    birthDateFormatted = birthDateFormatted.split('T')[0]
+  }
+
+  const profileData = {
+    bio: profileForm.profile.bio,
+    birth_date: birthDateFormatted, // Используем отформатированную дату
+    // Отправляем код языка, а не объект
+    language:
+      typeof profileForm.profile.language === 'object'
+        ? profileForm.profile.language?.code
+        : profileForm.profile.language,
+    // Отправляем код страны, а не объект
+    country:
+      typeof profileForm.profile.country === 'object'
+        ? profileForm.profile.country?.code
+        : profileForm.profile.country,
+    notifications_enabled: profileForm.profile.notifications_enabled,
+    privacy_mode: profileForm.profile.privacy_mode
+  }
+
+  // Формируем итоговый объект в соответствии со схемой UserWithDetailsSchema
+  const updateData = {
+    ...userData,
+    profile: profileData
+  }
 
   if (newPassword.value) {
     updateData.new_password = newPassword.value // Предполагаем, что бэкенд принимает new_password
@@ -43,6 +149,8 @@ const updateProfile = async () => {
   try {
     // Вызываем обновленный метод из store
     await authStore.updateCurrentUser(updateData)
+    // После успешного обновления обновляем данные в хранилище
+    await authStore.fetchUser()
     // После успешного обновления можно показать сообщение и, возможно, остаться на странице
     alert('Профиль успешно обновлен!')
     // router.push('/dashboard'); // Закомментировано, чтобы остаться на странице профиля
@@ -60,18 +168,6 @@ const updateProfile = async () => {
 const closeModal = () => {
   emit('close-modal')
 }
-
-// Пример данных для селектов
-const languages = ref([
-  { name: 'English', code: 'en' },
-  { name: 'Russian', code: 'ru' },
-  { name: 'Spanish', code: 'es' }
-])
-const countries = ref([
-  { name: 'Russia', code: 'RU' },
-  { name: 'United States', code: 'US' },
-  { name: 'Spain', code: 'ES' }
-])
 </script>
 
 <template>
@@ -126,7 +222,7 @@ const countries = ref([
               <label for="bio" class="form-label">Биография</label>
               <Textarea
                 id="bio"
-                v-model="profileForm.bio"
+                v-model="profileForm.profile.bio"
                 rows="4"
                 cols="50"
                 class="form-input form-textarea"
@@ -150,8 +246,8 @@ const countries = ref([
               <label for="phone" class="form-label">Номер телефона</label>
               <InputMask
                 id="phone"
-                mask="+7 (999) 999-99-99"
-                v-model="profileForm.phone"
+                mask="+7 (999) 999-999-99"
+                v-model="profileForm.phone_number"
                 class="form-input"
               />
             </div>
@@ -159,7 +255,7 @@ const countries = ref([
               <label for="birthDate" class="form-label">Дата рождения</label>
               <Calendar
                 id="birthDate"
-                v-model="profileForm.birth_date"
+                v-model="profileForm.profile.birth_date"
                 showIcon
                 class="form-input"
               />
@@ -168,9 +264,10 @@ const countries = ref([
               <label for="language" class="form-label">Язык</label>
               <Dropdown
                 id="language"
-                v-model="profileForm.language"
+                v-model="profileForm.profile.language"
                 :options="languages"
                 optionLabel="name"
+                optionValue="code"
                 placeholder="Выберите язык"
                 class="form-select"
               />
@@ -179,9 +276,10 @@ const countries = ref([
               <label for="country" class="form-label">Страна</label>
               <Dropdown
                 id="country"
-                v-model="profileForm.country"
+                v-model="profileForm.profile.country"
                 :options="countries"
                 optionLabel="name"
+                optionValue="code"
                 placeholder="Выберите страну"
                 class="form-select"
               />
@@ -227,11 +325,14 @@ const countries = ref([
           <div class="settings-grid">
             <div class="setting-item">
               <div class="setting-label">Включить уведомления</div>
-              <ToggleSwitch v-model="profileForm.notifications_enabled" class="toggle-switch" />
+              <ToggleSwitch
+                v-model="profileForm.profile.notifications_enabled"
+                class="toggle-switch"
+              />
             </div>
             <div class="setting-item">
               <div class="setting-label">Режим приватности</div>
-              <ToggleSwitch v-model="profileForm.privacy_mode" class="toggle-switch" />
+              <ToggleSwitch v-model="profileForm.profile.privacy_mode" class="toggle-switch" />
             </div>
           </div>
         </div>

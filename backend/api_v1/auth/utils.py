@@ -60,9 +60,7 @@ def encode_jwt(
     if expire_timedelta:
         expire = now + expire_timedelta
     else:
-        expire = now + timedelta(
-            minutes=settings.auth_jwt.access_token_expire_minutes
-        )
+        expire = now + timedelta(minutes=settings.auth_jwt.access_token_expire_minutes)
     to_encode.update(
         exp=expire,
         iat=now,
@@ -172,9 +170,7 @@ async def get_current_user(
         payload = jwt.decode(
             token,
             settings.auth_jwt.secret_key,
-            algorithms=[
-                settings.auth_jwt.algorithm
-            ],  # settings.auth_jwt.algorithm
+            algorithms=[settings.auth_jwt.algorithm],  # settings.auth_jwt.algorithm
         )
         # вернем пользователя, зашитого в ключе
         sub_value: str = payload.get("sub")

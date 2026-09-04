@@ -33,10 +33,9 @@ async def get_user_by_phone_number(
 
 # END NEW FUNCTION
 
+
 # NEW FUNCTION
-async def get_user_by_id(
-    session: AsyncSession, user_id: int
-) -> User | None:
+async def get_user_by_id(session: AsyncSession, user_id: int) -> User | None:
     """Получает пользователя по его ID."""
     stmt = select(User).where(User.id == user_id)
     result = await session.execute(stmt)
@@ -77,8 +76,8 @@ async def get_or_create_user_by_phone_number(
 
     # Генерируем уникальный username и временный пароль
     # username = phone_number.replace("+", "plus_").replace("-", "_") # Простая замена символов
-    username = f"phone_{uuid4().hex[:8]}" # Генерация уникального имени
-    temp_password = secrets.token_urlsafe(32) # Генерация безопасного пароля
+    username = f"phone_{uuid4().hex[:8]}"  # Генерация уникального имени
+    temp_password = secrets.token_urlsafe(32)  # Генерация безопасного пароля
     hashed_temp_password = password_hasher.hash(temp_password)
 
     # Создаем нового пользователя
@@ -87,10 +86,10 @@ async def get_or_create_user_by_phone_number(
         username=username,
         phone_number=phone_number,
         hashed_password=hashed_temp_password,
-        is_active=True, # Предполагаем, что пользователь активен после верификации OTP
-        is_verified=True, # Можно отметить как верифицированного по телефону
+        is_active=True,  # Предполагаем, что пользователь активен после верификации OTP
+        is_verified=True,  # Можно отметить как верифицированного по телефону
         # Установим значения по умолчанию для опциональных полей
-        email=None, # Теперь email может быть None
+        email=None,  # Теперь email может быть None
         first_name=None,
         last_name=None,
     )

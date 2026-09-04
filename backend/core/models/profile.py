@@ -12,3 +12,8 @@ class Profile(IdIntPkMixin, UserRelationMixin, Base):
     first_name: Mapped[str | None] = mapped_column(String(40))
     last_name: Mapped[str | None] = mapped_column(String(40))
     bio: Mapped[str | None]
+    birth_date: Mapped[str | None] = mapped_column(String(10))  # Format: YYYY-MM-DD
+    language: Mapped[str | None] = mapped_column(String(10))  # e.g., 'en', 'ru'
+    country: Mapped[str | None] = mapped_column(String(10))  # e.g., 'US', 'RU'
+    notifications_enabled: Mapped[bool] = mapped_column(default=True)
+    privacy_mode: Mapped[bool] = mapped_column(default=False)

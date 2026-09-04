@@ -70,9 +70,7 @@ def validate_phone_number_format(phone_number: str) -> bool:
     Проверяет формат номера телефона.
     Простая проверка: +7 (___) ___-__-__ или +7__________
     """
-    pattern = (
-        r'^\+7\s?\(?(\d{3})\)?[\s\.-]?(\d{3})[\s\.-]?(\d{2})[\s\.-]?(\d{2})$'
-    )
+    pattern = r'^\+7\s?\(?(\d{3})\)?[\s\.-]?(\d{3})[\s\.-]?(\d{2})[\s\.-]?(\d{2})$'
     return bool(re.match(pattern, phone_number))
 
 
@@ -130,9 +128,7 @@ class OTPResponse(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    refresh_token: str = (
-        None  # Добавлено поле для refresh токена, если используется
-    )
+    refresh_token: str = None  # Добавлено поле для refresh токена, если используется
 
 
 @router.post("/request-otp/", response_model=OTPResponse)

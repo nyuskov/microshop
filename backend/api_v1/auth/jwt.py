@@ -15,7 +15,18 @@ from pydantic import field_validator  # Импортирую field_validator
 from pydantic import Field  # Import Field for Pydantic v2
 from typing import Optional  # Import Optional
 
-from core.models import User, db_helper
+from core.models import User, db_helper, Profile
+from core.models.chat import Chat  # Импортируем модель Chat
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlalchemy import select  # Импортируем select
+
+# Импортирую схемы из api_v1.users.schemas
+from api_v1.users.schemas import (
+    UserWithDetailsSchema,
+    ProfileSchema,
+    UserUpdateWithProfileSchema,
+)
 
 # Восстанавливаю импорты
 from .db import get_user_db
@@ -87,9 +98,100 @@ router.include_router(
 
 
 # Подключаю маршрут /me/ напрямую, с слешем
-@router.get("/users/me/", response_model=UserRead)
-async def get_me(user=Depends(fastapi_users.current_user())):
-    return user
+@router.get("/users/me/", response_model=UserWithDetailsSchema)
+async def get_me(
+    user=Depends(fastapi_users.current_user()),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    # Выполняем повторный запрос к базе данных с предварительной загрузкой связанных данных
+    stmt = (
+        select(User)
+        .where(User.id == user.id)
+        .options(selectinload(User.profile))
+        .options(selectinload(User.chats))
+    )
+    result = await session.execute(stmt)
+    user_with_relations = result.scalar_one_or_none()
+    return user_with_relations
+
+
+# PATCH endpoint for updating user profile
+@router.patch("/users/me/", response_model=UserWithDetailsSchema)
+async def update_me(
+    user_update: UserUpdateWithProfileSchema,
+    current_user=Depends(
+        fastapi_users.current_user()
+    ),  # Получаем текущего пользователя для проверки аутентификации и получения id
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    # Выполняем новый запрос к базе данных для получения текущего пользователя с предварительно загруженным профилем
+    stmt = (
+        select(User)
+        .where(User.id == current_user.id)
+        .options(selectinload(User.profile))
+    )
+    result = await session.execute(stmt)
+    user_with_loaded_profile = result.scalar_one_or_none()
+
+    if not user_with_loaded_profile:
+        # В теории, этого не должно произойти, если current_user аутентифицирован
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Update user fields
+    if user_update.username is not None:
+        user_with_loaded_profile.username = user_update.username
+    if user_update.phone_number is not None:
+        user_with_loaded_profile.phone_number = user_update.phone_number
+    if user_update.first_name is not None:
+        user_with_loaded_profile.first_name = user_update.first_name
+    if user_update.last_name is not None:
+        user_with_loaded_profile.last_name = user_update.last_name
+    if user_update.email is not None:
+        user_with_loaded_profile.email = user_update.email
+
+    # Работаем с уже загруженным профилем
+    if user_with_loaded_profile.profile is None:
+        profile = Profile(user_id=user_with_loaded_profile.id)
+        session.add(profile)
+        user_with_loaded_profile.profile = profile
+
+    # Update profile fields
+    profile_data = user_update.profile
+    if profile_data:
+        if profile_data.bio is not None:
+            user_with_loaded_profile.profile.bio = profile_data.bio
+        if profile_data.birth_date is not None:
+            user_with_loaded_profile.profile.birth_date = (
+                profile_data.birth_date
+            )
+        if profile_data.language is not None:
+            user_with_loaded_profile.profile.language = profile_data.language
+        if profile_data.country is not None:
+            user_with_loaded_profile.profile.country = profile_data.country
+        if profile_data.notifications_enabled is not None:
+            user_with_loaded_profile.profile.notifications_enabled = (
+                profile_data.notifications_enabled
+            )
+        if profile_data.privacy_mode is not None:
+            user_with_loaded_profile.profile.privacy_mode = (
+                profile_data.privacy_mode
+            )
+
+    await session.commit()
+
+    # Выполняем повторный запрос к базе данных с предварительной загрузкой связанных данных для возврата полного объекта
+    stmt = (
+        select(User)
+        .where(User.id == user_with_loaded_profile.id)
+        .options(selectinload(User.profile))
+        .options(selectinload(User.chats))
+    )
+    result = await session.execute(stmt)
+    updated_user_with_relations = result.scalar_one_or_none()
+
+    return updated_user_with_relations
 
 
 # Также можно подключить маршруты аутентификации, если они нужны отдельно

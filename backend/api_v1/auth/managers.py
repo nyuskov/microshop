@@ -22,13 +22,9 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
         Override to handle cases where email might be an empty string
         and convert it to None to satisfy Pydantic schema validation.
         """
-        print(
-            f"CustomUserManager.get called with id: {id}"
-        )  # <-- Отладочный вывод
+        print(f"CustomUserManager.get called with id: {id}")  # <-- Отладочный вывод
         user = await super().get(id)
-        print(
-            f"User fetched: {user}, email: {user.email}"
-        )  # <-- Отладочный вывод
+        print(f"User fetched: {user}, email: {user.email}")  # <-- Отладочный вывод
         if user and user.email == "":
             # Create a new instance or modify in place if SQLAlchemy allows
             # Modifying in place is usually safe for attributes loaded from DB
@@ -36,9 +32,7 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
             print("Email changed to None")  # <-- Отладочный вывод
         return user
 
-    async def on_after_register(
-        self, user: User, request: Optional[Request] = None
-    ):
+    async def on_after_register(self, user: User, request: Optional[Request] = None):
         print(f"User {user.id} has registered.")
 
     async def on_after_forgot_password(
@@ -49,6 +43,4 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
     async def on_after_request_verify(
         self, user: User, token: str, request: Optional[Request] = None
     ):
-        print(
-            f"Verification requested for user {user.id}. Verification token: {token}"
-        )
+        print(f"Verification requested for user {user.id}. Verification token: {token}")

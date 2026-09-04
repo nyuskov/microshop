@@ -1,4 +1,11 @@
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    validator,
+)
 
 
 class CurrentUser(BaseModel):
@@ -29,6 +36,20 @@ class ProfileSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     bio: str | None
+    birth_date: str | None
+    language: str | None
+    country: str | None
+    notifications_enabled: bool
+    privacy_mode: bool
+
+
+class ProfileUpdateSchema(BaseModel):
+    bio: str | None = None
+    birth_date: str | None = None
+    language: str | None = None
+    country: str | None = None
+    notifications_enabled: bool | None = None
+    privacy_mode: bool | None = None
 
 
 class ChatSchema(BaseModel):
@@ -48,6 +69,24 @@ class UserWithDetailsSchema(BaseModel):  # noqa: F821
     email: EmailStr | None
     profile: ProfileSchema | None
     chats: list[ChatSchema] = Field(default_factory=list)
+
+    @field_validator("first_name", "last_name", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if v == "":
+            return None
+        return v
+
+
+class UserUpdateWithProfileSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    username: str | None = None
+    phone_number: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    email: EmailStr | None = None
+    profile: ProfileUpdateSchema | None = None
 
     @field_validator("first_name", "last_name", mode="before")
     @classmethod

@@ -26,27 +26,19 @@ def upgrade() -> None:
     columns = [col['name'] for col in inspector.get_columns('user')]
 
     if 'hashed_password' in columns:
-        op.alter_column(
-            'user', 'hashed_password', type_=sa.String(255), nullable=False
-        )
+        op.alter_column('user', 'hashed_password', type_=sa.String(255), nullable=False)
     # NEW: Add phone_number column
     if 'phone_number' not in columns:
-        op.add_column(
-            'user', sa.Column('phone_number', sa.String(20), nullable=True)
-        )
+        op.add_column('user', sa.Column('phone_number', sa.String(20), nullable=True))
         op.create_index(
             op.f('ix_user_phone_number'), 'user', ['phone_number'], unique=True
         )
     # END NEW
     # NEW: Add first_name and last_name columns
     if 'first_name' not in columns:
-        op.add_column(
-            'user', sa.Column('first_name', sa.String(32), nullable=True)
-        )
+        op.add_column('user', sa.Column('first_name', sa.String(32), nullable=True))
     if 'last_name' not in columns:
-        op.add_column(
-            'user', sa.Column('last_name', sa.String(32), nullable=True)
-        )
+        op.add_column('user', sa.Column('last_name', sa.String(32), nullable=True))
     # END NEW
 
     # 2. Создаем таблицу chats
@@ -166,9 +158,7 @@ def downgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("title", sa.String(length=255), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
-        sa.Column(
-            "author_id", sa.Integer(), sa.ForeignKey("user.id"), nullable=False
-        ),
+        sa.Column("author_id", sa.Integer(), sa.ForeignKey("user.id"), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_post_id"), "post", ["id"], unique=False)
@@ -193,9 +183,7 @@ def downgrade() -> None:
     op.drop_table("chats")
 
     # 3. Откатываем изменения в user
-    op.alter_column(
-        'user', 'hashed_password', type_=sa.String(128), nullable=False
-    )
+    op.alter_column('user', 'hashed_password', type_=sa.String(128), nullable=False)
     # NEW: Drop first_name and last_name columns
     op.drop_column('user', 'last_name')
     op.drop_column('user', 'first_name')

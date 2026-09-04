@@ -11,9 +11,7 @@ _OTP_STORAGE: Dict[str, tuple[str, datetime]] = {}
 _LOCK = asyncio.Lock()
 
 
-async def store_otp(
-    phone_number: str, otp_code: str, ttl_seconds: int = 300
-) -> None:
+async def store_otp(phone_number: str, otp_code: str, ttl_seconds: int = 300) -> None:
     """
     Сохраняет OTP-код для номера телефона с заданным временем жизни (TTL) в секундах.
     По умолчанию TTL = 300 секунд (5 минут).
