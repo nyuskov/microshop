@@ -1,66 +1,100 @@
-from fastapi import APIRouter, Depends
-from fastapi.security import (
-    HTTPBearer,
-    OAuth2PasswordBearer,
+from fastapi import Depends, FastAPI
+from fastapi_users import FastAPIUsers
+from fastapi_users.authentication import (
+    AuthenticationBackend,
+    BearerTransport,
+    JWTStrategy,
 )
+from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
+from fastapi_users.schemas import (
+    BaseUser,
+    BaseUserUpdate,
+)  # Импортирую базовые схемы
+from fastapi.routing import APIRouter  # Импортирую APIRouter
+from pydantic import field_validator  # Импортирую field_validator
+from pydantic import Field  # Import Field for Pydantic v2
+from typing import Optional  # Import Optional
 
-from .helpers import (
-    create_access_token,
-    create_refresh_token,
-)
-from ..tokens.schemas import Token
-from ..users.schemas import UserSchema, PublicUserSchema  # Импортируем PublicUserSchema
-from .validation import (
-    get_current_active_auth_user,
-    get_current_auth_user_for_refresh,
-    get_current_token_payload,
-    validate_auth_user,
-    get_current_db_user,  # Импортируем новую зависимость
-)
-from core.models.user import User  # Импортируем модель User
+from core.models import User, db_helper
 
-http_bearer = HTTPBearer(auto_error=False)
-router = APIRouter(
-    prefix="/jwt",
-    tags=["JSON Web Tokens"],
-    dependencies=[Depends(http_bearer)],
-)
+# Восстанавливаю импорты
+from .db import get_user_db
+from .managers import (
+    UserManager,
+)  # Импортирую UserManager напрямую, так как он кастомный
 
 
-@router.get("/users/me/", response_model=PublicUserSchema)  # Указываем новую схему
-def auth_user_check_self_info(
-    # payload: dict = Depends(get_current_token_payload),
-    user: User = Depends(
-        get_current_db_user
-    ),  # Используем новую зависимость, возвращающую модель User
+# Определяю схемы для пользователей
+class UserRead(BaseUser):
+    # Override the email field to make it optional (str | None)
+    # Using Field(...) explicitly might be needed depending on BaseUser definition
+    email: Optional[str] = Field(default=None)  # Make email optional
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if v == "":
+            return None
+        return v
+
+
+class UserUpdate(BaseUserUpdate):
+    # Optionally, also make email optional in the update schema if needed
+    email: Optional[str] = Field(default=None)
+
+
+# Изменяю get_user_manager, чтобы он использовал мой UserManager
+async def get_user_manager(
+    user_db: SQLAlchemyUserDatabase[User, int] = Depends(get_user_db),
 ):
-    # OAuth2PasswordBearer
-    # Возвращаем модель User, Pydantic заполнит PublicUserSchema автоматически благодаря from_attributes=True
+    # Возвращаю экземпляр нового UserManager
+    return UserManager(user_db)
+
+
+def get_jwt_strategy() -> JWTStrategy:
+    from core.config import settings
+
+    return JWTStrategy(
+        secret=settings.auth_jwt.secret_key,
+        lifetime_seconds=settings.auth_jwt.access_token_expire_minutes * 60,
+    )
+
+
+bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
+
+
+auth_backend = AuthenticationBackend(
+    name="jwt",
+    transport=bearer_transport,
+    get_strategy=get_jwt_strategy,
+)
+
+
+fastapi_users = FastAPIUsers[User, int](
+    get_user_manager=get_user_manager,
+    auth_backends=[auth_backend],
+)
+
+
+# Восстанавливаю роутер и подключаю к нему маршруты пользователей
+router = APIRouter(prefix="/jwt", tags=["JWT"])
+
+
+# Подключаю маршруты аутентификации, включая /refresh/
+router.include_router(
+    fastapi_users.get_auth_router(auth_backend), prefix="/auth"
+)
+
+
+# Подключаю маршрут /me/ напрямую, с слешем
+@router.get("/users/me/", response_model=UserRead)
+async def get_me(user=Depends(fastapi_users.current_user())):
     return user
 
 
-@router.post("/login/", response_model=Token)
-def auth_user_issue_jwt(
-    user: UserSchema = Depends(validate_auth_user),
-) -> Token:
-    access_token = create_access_token(user)
-    refresh_token = create_refresh_token(user)
-    return Token(
-        access_token=access_token,
-        refresh_token=refresh_token,
-    )
+# Также можно подключить маршруты аутентификации, если они нужны отдельно
+# router.include_router(fastapi_users.get_auth_router(auth_backend))
 
-
-@router.post(
-    "/refresh/",
-    response_model=Token,
-    response_model_exclude_none=True,
-)
-def auth_refresh_jwt(
-    user: UserSchema = Depends(get_current_auth_user_for_refresh),
-) -> Token:
-    access_token = create_access_token(user)
-
-    return Token(
-        access_token=access_token,
-    )
+# Опционально: определяю current_user как зависимость, если она используется в других местах
+# current_user = fastapi_users.current_user()
+# current_superuser = fastapi_users.current_user(optional=False, superuser=True)

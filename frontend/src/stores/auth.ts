@@ -39,22 +39,106 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    async login(username: string, password: string, router: Router | null = null) {
-      try {
-        // Create FormData object to send credentials as form data
-        const formData = new FormData()
-        formData.append('username', username)
-        formData.append('password', password)
+    // Старый метод, переименованный и закомментированный как резервный
+    // async login(username: string, password: string, router: Router | null = null) {
+    //   try {
+    //     // Send credentials as JSON data. The backend should handle phone numbers as usernames.
+    //     const requestData = {
+    //       username: username, // This can now be a phone number
+    //       password: password
+    //     }
 
-        const response = await axios.post(`${backendServer}/api/v1/auth/token/`, formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data'
+    //     const response = await axios.post(`${backendServer}/api/v1/auth/token/`, requestData, {
+    //       headers: {
+    //         'Content-Type': 'application/json' // Changed from multipart/form-data to application/json
+    //       }
+    //     })
+
+    //     // Проверяем, что в ответе действительно есть токены
+    //     if (!response.data || !response.data.access_token) {
+    //       console.error('Login failed: No access token received from server.')
+    //       throw new Error('Server response did not contain access token.')
+    //     }
+
+    //     this.accessToken = response.data.access_token
+    //     // Refresh token может быть не всегда
+    //     if (response.data.refresh_token) {
+    //       this.refreshToken = response.data.refresh_token
+    //     }
+
+    //     // Set the Authorization header for subsequent requests
+    //     axios.defaults.headers.common['Authorization'] = `Bearer ${this.accessToken}`
+
+    //     // Save state to localStorage
+    //     this.isAuthenticated = true
+    //     this.saveState()
+
+    //     // Обязательно обновляем информацию о пользователе после входа
+    //     await this.fetchUser()
+
+    //     if (router && this.current_user !== null) {
+    //       await router.push({ name: 'Messenger' })
+    //     }
+    //   } catch (error) {
+    //     console.error('Login error:', error)
+    //     // Убедимся, что состояние очищено при любой ошибке входа
+    //     this.current_user = null
+    //     this.isAuthenticated = false
+    //     this.user = null
+    //     this.accessToken = null
+    //     this.refreshToken = null
+    //     delete axios.defaults.headers.common['Authorization']
+    //     this.saveState()
+    //     throw error // Перебросим ошибку наверх
+    //   }
+    // },
+
+    // Новый метод для запроса OTP
+    async requestOtp(phoneNumber: string): Promise<void> {
+      try {
+        const response = await axios.post(
+          `${backendServer}/api/v1/auth/request-otp/`,
+          {
+            phone_number: phoneNumber
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json'
+            }
           }
-        })
+        )
+
+        console.log('OTP sent successfully:', response.data)
+        // Бэкенд может вернуть что-то полезное, например, срок действия кода
+        // или подтверждение успешной отправки.
+        // Для простоты, просто логгируем успех.
+      } catch (error) {
+        console.error('Request OTP error:', error)
+        // Пробрасываем ошибку, чтобы компонент мог её обработать
+        throw error
+      }
+    },
+
+    // Новый метод для входа с использованием OTP
+    async loginWithOtp(phoneNumber: string, otpCode: string, router: Router | null = null) {
+      try {
+        // Отправляем номер телефона и код OTP на бэкенд для верификации
+        const response = await axios.post(
+          `${backendServer}/api/v1/auth/verify-otp/`,
+          {
+            phone_number: phoneNumber,
+            otp: otpCode
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          }
+        )
 
         // Проверяем, что в ответе действительно есть токены
         if (!response.data || !response.data.access_token) {
-          console.error('Login failed: No access token received from server.')
+          console.error('Login with OTP failed: No access token received from server.')
           throw new Error('Server response did not contain access token.')
         }
 
@@ -78,7 +162,7 @@ export const useAuthStore = defineStore('auth', {
           await router.push({ name: 'Messenger' })
         }
       } catch (error) {
-        console.error('Login error:', error)
+        console.error('Login with OTP error:', error)
         // Убедимся, что состояние очищено при любой ошибке входа
         this.current_user = null
         this.isAuthenticated = false

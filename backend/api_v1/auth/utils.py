@@ -26,13 +26,18 @@ from ..tokens.schemas import TokenData
 from ..users.crud import (
     get_user_by_username,
     get_user_by_phone_number,
-)  # Import the new function
+    get_user_by_id,  # Импортирую новую функцию
+)
 from ..users.schemas import CurrentUser
 
-# Убираем импорт констант из helpers.py, чтобы избежать циклической зависимости
+# Убираю старое определение констант, так как они могут конфликтовать с fastapi_users
 # from .helpers import ACCESS_TOKEN_TYPE, TOKEN_TYPE_FIELD
+# ACCESS_TOKEN_TYPE = "access"
+# TOKEN_TYPE_FIELD = "type"
+
+# Новые константы, совместимые с fastapi-users
 ACCESS_TOKEN_TYPE = "access"
-TOKEN_TYPE_FIELD = "type"
+TOKEN_TYPE_FIELD = "token_type"  # Изменено на "token_type"
 
 # # Создаем глобальный экземпляр PasswordHash, использующий argon2
 # password_hasher = PasswordHash(hashers=[Argon2Hasher()]) # Удаляем дублирующее определение
@@ -55,7 +60,9 @@ def encode_jwt(
     if expire_timedelta:
         expire = now + expire_timedelta
     else:
-        expire = now + timedelta(minutes=settings.auth_jwt.access_token_expire_minutes)
+        expire = now + timedelta(
+            minutes=settings.auth_jwt.access_token_expire_minutes
+        )
     to_encode.update(
         exp=expire,
         iat=now,
@@ -130,7 +137,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=15)
 
-    # Добавляем поля 'type' и 'sub' для совместимости с fastapi-users
+    # Добавляем поля 'token_type' и 'sub' для совместимости с fastapi-users
     to_encode.update(
         {
             "exp": expire,
@@ -146,6 +153,53 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
         algorithm=settings.auth_jwt.algorithm,  # settings.auth_jwt.algorithm
     )
     return encoded_jwt
+
+
+async def get_current_user(
+    token: Annotated[str, Depends(OAuth2PasswordBearer(tokenUrl="token"))],
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Получение текущего пользователя из токена"""
+
+    # создадим исключение, которое будем возвращать, если токен недействителен
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:  # расшифруем и проверим полученный токен
+        # Используем secret_key и algorithm из настроек
+        payload = jwt.decode(
+            token,
+            settings.auth_jwt.secret_key,
+            algorithms=[
+                settings.auth_jwt.algorithm
+            ],  # settings.auth_jwt.algorithm
+        )
+        # вернем пользователя, зашитого в ключе
+        sub_value: str = payload.get("sub")
+        if sub_value is None:
+            # нет пользователя, отдаем HTTP-ошибку.
+            raise credentials_exception
+
+        # Проверяем, является ли sub числом (ID пользователя), иначе считаем, что это username
+        # Эта логика теперь является резервной, основная будет использовать username
+        user = None
+        if sub_value.isdigit():
+            # Если sub - число, ищем по ID (для совместимости)
+            user_id = int(sub_value)
+            user = await get_user_by_id(session, user_id)
+        else:
+            # Если не число, считаем, что это username (новое поведение по умолчанию)
+            user = await get_user_by_username(session, sub_value)
+
+        if user is None:
+            # нет пользователя, отдаем HTTP-ошибку.
+            raise credentials_exception
+        return user
+    except jwt.InvalidTokenError:
+        # если токен недействителен, отдадим HTTP-ошибку.
+        raise credentials_exception
 
 
 async def get_auth_user_username(
@@ -170,44 +224,6 @@ async def get_auth_user_username(
         raise unauthed_exc
 
     return credentials.username
-
-
-async def get_current_user(
-    token: Annotated[str, Depends(OAuth2PasswordBearer(tokenUrl="token"))],
-    session: AsyncSession = Depends(db_helper.session_dependency),
-):
-    """Получение текущего пользователя из токена"""
-
-    # создадим исключение, которое будем возвращать, если токен недействителен
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:  # расшифруем и проверим полученный токен
-        # Используем secret_key и algorithm из настроек
-        payload = jwt.decode(
-            token,
-            settings.auth_jwt.secret_key,
-            algorithms=[settings.auth_jwt.algorithm],  # settings.auth_jwt.algorithm
-        )
-        # вернем пользователя, зашитого в ключе
-        username: str = payload.get("sub")
-        if username is None:
-            # нет пользователя, отдаем HTTP-ошибку.
-            raise credentials_exception
-        # сериализуем имя пользователя моделью Pydantic
-        token_data = TokenData(username=username)
-    except jwt.InvalidTokenError:
-        # если токен недействителен, отдадим HTTP-ошибку.
-        raise credentials_exception
-    # пытаемся получить данные пользователя из базы
-    user = await get_user_by_username(session, token_data.username)
-    user = await get_user_by_username(session, token_data.username)
-    if user is None:
-        # нет пользователя, отдаем HTTP-ошибку.
-        raise credentials_exception
-    return user
 
 
 async def get_current_active_user(

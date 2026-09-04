@@ -24,6 +24,7 @@ class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
     first_name: Mapped[str] = mapped_column(String(32), nullable=True)
     last_name: Mapped[str] = mapped_column(String(32), nullable=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
+    email: Mapped[str | None] = mapped_column(String(length=320), nullable=True)
 
     profile: Mapped["Profile"] = relationship(back_populates="user")
 

@@ -31,10 +31,18 @@
     <div class="chat-area">
       <div class="chat-header">
         <div class="header-info">
-          <div class="chat-avatar-small">
-            <i class="pi pi-user"></i>
+          <!-- Добавляю Avatar для профиля пользователя -->
+          <Avatar
+            :label="authStore.current_user?.username?.charAt(0) || 'U'"
+            size="large"
+            shape="circle"
+            class="profile-avatar-clickable"
+            @click="goToProfile"
+            :pt="{ root: { 'data-pr-tooltip': 'Профиль' } }"
+          />
+          <div class="chat-name" @click="goToProfile" style="cursor: pointer">
+            {{ authStore.current_user?.username || 'Профиль' }}
           </div>
-          <div class="chat-name">{{ selectedChatName }}</div>
         </div>
         <div class="header-actions">
           <Button icon="pi pi-ellipsis-v" severity="secondary" text rounded />
@@ -80,6 +88,15 @@
 import { ref, onMounted, watch, nextTick, computed } from 'vue'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
+// Импортирую Avatar
+import Avatar from 'primevue/avatar'
+// Импортирую store и router
+import { useAuthStore } from '@/stores/auth'
+import { useRouter } from 'vue-router'
+
+// Получаю экземпляры store и router
+const authStore = useAuthStore()
+const router = useRouter()
 
 // Define types
 interface Chat {
@@ -159,16 +176,16 @@ const currentMessages = computed(() => {
   return index !== -1 ? messages.value[index] : []
 })
 
-const selectedChatName = computed(() => {
-  if (selectedChatId.value === null) return 'Выберите чат'
-  const chat = chats.value.find((chat) => chat.id === selectedChatId.value)
-  return chat ? chat.name : 'Выберите чат'
-})
+// NOTE: selectedChatName was removed as it was unused according to the linter error.
 
 // Functions
 const selectChat = (id: number) => {
   selectedChatId.value = id
   scrollToBottom()
+}
+
+const goToProfile = () => {
+  router.push({ name: 'UserProfile' })
 }
 
 const sendMessage = () => {
@@ -358,17 +375,18 @@ onMounted(() => {
   align-items: center;
 }
 
-.chat-avatar-small {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #4776e6 0%, #8e54e9 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 16px;
+/* Стили для аватара профиля */
+.profile-avatar-clickable {
+  width: 40px !important;
+  height: 40px !important;
+  cursor: pointer;
   margin-right: 15px;
+  background: linear-gradient(135deg, #4776e6 0%, #8e54e9 100%) !important;
+  color: white !important;
+}
+
+.profile-avatar-clickable:hover {
+  opacity: 0.8;
 }
 
 .header-actions {
@@ -455,6 +473,7 @@ onMounted(() => {
   box-shadow: none;
 }
 
+/* Анимация fadeIn */
 @keyframes fadeIn {
   from {
     opacity: 0;

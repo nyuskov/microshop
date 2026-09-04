@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     )
     db_echo: bool = True
     auth_jwt: AuthJWT = AuthJWT()
+    # Новая настройка для времени жизни OTP
+    auth_otp_expire_seconds: int = 300 # 5 минут
 
 
 settings = Settings()
