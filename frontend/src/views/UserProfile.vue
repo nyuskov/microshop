@@ -1,567 +1,693 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { reactive, ref, watch, computed } from 'vue'
+import InputMask from 'primevue/inputmask'
 import { useAuthStore } from '@/stores/auth'
 import { getErrorMessage } from '@/services/errors'
 
-// Импорт компонентов PrimeVue
-import Button from 'primevue/button'
-import Avatar from 'primevue/avatar'
-import Textarea from 'primevue/textarea'
-import InputText from 'primevue/inputtext'
-import InputMask from 'primevue/inputmask'
-import Calendar from 'primevue/calendar'
-import Dropdown from 'primevue/dropdown'
-import Password from 'primevue/password'
-import ToggleSwitch from 'primevue/toggleswitch'
-
-// Define emits
 const emit = defineEmits(['close-modal'])
 
 const authStore = useAuthStore()
 
-// Пример данных для селектов
-const languages = ref([
-  { name: 'English', code: 'en' },
-  { name: 'Russian', code: 'ru' },
-  { name: 'Spanish', code: 'es' }
-])
-const countries = ref([
-  { name: 'Russia', code: 'RU' },
-  { name: 'United States', code: 'US' },
-  { name: 'Spain', code: 'ES' }
-])
+const LANGUAGES = [
+  { code: 'ru', name: 'Русский' },
+  { code: 'en', name: 'English' },
+  { code: 'es', name: 'Español' },
+  { code: 'de', name: 'Deutsch' },
+  { code: 'fr', name: 'Français' }
+]
 
-// Используем reactive для создания формы, которая будет синхронизирована с current_user
-interface SelectOption {
-  name: string
-  code: string
-}
+const COUNTRIES = [
+  { code: 'RU', name: 'Россия' },
+  { code: 'BY', name: 'Беларусь' },
+  { code: 'KZ', name: 'Казахстан' },
+  { code: 'US', name: 'США' },
+  { code: 'DE', name: 'Германия' },
+  { code: 'ES', name: 'Испания' },
+  { code: 'FR', name: 'Франция' }
+]
 
-interface ProfileFormData {
+interface ProfileForm {
   username: string
-  phone_number: string | null
-  first_name: string | null
-  last_name: string | null
-  email: string | null
-  profile: {
-    bio: string | null
-    birth_date: Date | null
-    language: string | SelectOption | null
-    country: string | SelectOption | null
-    notifications_enabled: boolean
-    privacy_mode: boolean
-  }
+  first_name: string
+  last_name: string
+  phone_number: string
+  email: string
+  bio: string
+  birth_date: string
+  language: string
+  country: string
+  notifications_enabled: boolean
+  privacy_mode: boolean
 }
 
-const profileForm = reactive<ProfileFormData>({
+const profileForm = reactive<ProfileForm>({
   username: '',
-  phone_number: null,
-  first_name: null,
-  last_name: null,
-  email: null,
-  profile: {
-    bio: null,
-    birth_date: null,
-    language: null,
-    country: null,
-    notifications_enabled: true,
-    privacy_mode: false
-  }
+  first_name: '',
+  last_name: '',
+  phone_number: '',
+  email: '',
+  bio: '',
+  birth_date: '',
+  language: '',
+  country: '',
+  notifications_enabled: true,
+  privacy_mode: false
 })
 
-// Синхронизируем форму с данными пользователя при их изменении
 watch(
   () => authStore.current_user,
-  (newUser) => {
-    if (!newUser) return
-
-    profileForm.username = newUser.username
-    profileForm.phone_number = newUser.phone_number
-    profileForm.first_name = newUser.first_name
-    profileForm.last_name = newUser.last_name
-    profileForm.email = newUser.email
-
-    const profile = newUser.profile
-    if (profile) {
-      profileForm.profile.bio = profile.bio
-      profileForm.profile.birth_date = profile.birth_date
-        ? new Date(`${profile.birth_date}T00:00:00`)
-        : null
-
-      // Преобразуем строковые значения language и country в объекты для Dropdown
-      const languageCode = profile.language
-      profileForm.profile.language = languageCode
-        ? (languages.value.find((lang) => lang.code === languageCode) ?? languageCode)
-        : null
-
-      const countryCode = profile.country
-      profileForm.profile.country = countryCode
-        ? (countries.value.find((country) => country.code === countryCode) ?? countryCode)
-        : null
-
-      profileForm.profile.notifications_enabled = profile.notifications_enabled
-      profileForm.profile.privacy_mode = profile.privacy_mode
-    }
+  (user) => {
+    if (!user) return
+    const profile = user.profile
+    profileForm.username = user.username ?? ''
+    profileForm.first_name = user.first_name ?? ''
+    profileForm.last_name = user.last_name ?? ''
+    profileForm.phone_number = user.phone_number ?? ''
+    profileForm.email = user.email ?? ''
+    profileForm.bio = profile?.bio ?? ''
+    profileForm.birth_date = profile?.birth_date ?? ''
+    profileForm.language = profile?.language ?? ''
+    profileForm.country = profile?.country ?? ''
+    profileForm.notifications_enabled = profile?.notifications_enabled ?? true
+    profileForm.privacy_mode = profile?.privacy_mode ?? false
   },
   { immediate: true }
 )
 
-const newPassword = ref('')
-const confirmNewPassword = ref('')
+// ---------- Отображение ----------
+const fullName = computed(() =>
+  [profileForm.first_name, profileForm.last_name].filter(Boolean).join(' ').trim()
+)
 
-const updateProfile = async () => {
-  if (newPassword.value !== confirmNewPassword.value) {
-    alert('Новые пароли не совпадают!')
-    return
+const heroName = computed(() => fullName.value || profileForm.username || 'Пользователь')
+
+const heroInitials = computed(() => {
+  const clean = heroName.value.trim()
+  if (!clean) return '?'
+  const parts = clean.split(/\s+/)
+  if (parts.length >= 2) {
+    return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase()
   }
+  return clean.slice(0, 2).toUpperCase()
+})
 
-  // Создаем объект обновления, разделяя поля пользователя и профиля
-  const userData = {
-    username: profileForm.username,
-    phone_number: profileForm.phone_number,
-    first_name: profileForm.first_name,
-    last_name: profileForm.last_name,
-    email: profileForm.email
+const AVATAR_COLORS = [
+  'linear-gradient(135deg,#5b9bd5,#2e75b6)',
+  'linear-gradient(135deg,#69b578,#2f8f5b)',
+  'linear-gradient(135deg,#e58e7a,#c25e4a)',
+  'linear-gradient(135deg,#b28ce0,#7c53b8)',
+  'linear-gradient(135deg,#f0a35e,#d97b2b)',
+  'linear-gradient(135deg,#6fc3c9,#2f9aa3)'
+]
+
+const avatarStyle = computed(() => {
+  const name = heroName.value
+  let hash = 0
+  for (let i = 0; i < name.length; i += 1) {
+    hash = (hash * 31 + name.charCodeAt(i)) >>> 0
   }
+  return { background: AVATAR_COLORS[hash % AVATAR_COLORS.length] }
+})
 
-  // Обработка даты рождения - преобразование в формат YYYY-MM-DD
-  const rawBirthDate = profileForm.profile.birth_date
-  const birthDateFormatted: string | null = rawBirthDate
-    ? rawBirthDate.toISOString().split('T')[0]
-    : null
+// ---------- Сохранение ----------
+const saving = ref(false)
+const success = ref(false)
+const errorMessage = ref('')
 
-  const toCode = (value: string | SelectOption | null): string | null => {
-    if (typeof value === 'object' && value !== null) {
-      return value.code
-    }
-    return value
-  }
+const closeModal = () => emit('close-modal')
 
-  const profileData = {
-    bio: profileForm.profile.bio,
-    birth_date: birthDateFormatted,
-    // Отправляем код языка, а не объект
-    language: toCode(profileForm.profile.language),
-    // Отправляем код страны, а не объект
-    country: toCode(profileForm.profile.country),
-    notifications_enabled: profileForm.profile.notifications_enabled,
-    privacy_mode: profileForm.profile.privacy_mode
-  }
-
-  // Формируем итоговый объект в соответствии со схемой UserWithDetailsSchema
-  const updateData = {
-    ...userData,
-    profile: profileData,
-    ...(newPassword.value ? { new_password: newPassword.value } : {})
-  }
-
+const doLogout = async () => {
   try {
-    // Вызываем обновленный метод из store
-    await authStore.updateCurrentUser(updateData)
-    // После успешного обновления обновляем данные в хранилище
-    await authStore.fetchUser()
-    // После успешного обновления можно показать сообщение и, возможно, остаться на странице
-    alert('Профиль успешно обновлен!')
-    // router.push('/dashboard'); // Закомментировано, чтобы остаться на странице профиля
-  } catch (error) {
-    console.error('Ошибка обновления профиля:', error)
-    alert(`Не удалось обновить профиль. ${getErrorMessage(error)}`)
+    await authStore.logout()
+  } finally {
+    emit('close-modal')
   }
 }
 
-// Функция для закрытия модального окна
-const closeModal = () => {
-  emit('close-modal')
+const updateProfile = async () => {
+  if (saving.value) return
+  saving.value = true
+  success.value = false
+  errorMessage.value = ''
+
+  const userData = {
+    username: profileForm.username.trim(),
+    first_name: profileForm.first_name.trim() || null,
+    last_name: profileForm.last_name.trim() || null,
+    phone_number: profileForm.phone_number || null,
+    email: profileForm.email.trim() || null
+  }
+
+  const profileData = {
+    bio: profileForm.bio.trim() || null,
+    birth_date: profileForm.birth_date || null,
+    language: profileForm.language || null,
+    country: profileForm.country || null,
+    notifications_enabled: profileForm.notifications_enabled,
+    privacy_mode: profileForm.privacy_mode
+  }
+
+  try {
+    await authStore.updateCurrentUser({ ...userData, profile: profileData })
+    await authStore.fetchUser()
+    success.value = true
+  } catch (error) {
+    errorMessage.value = getErrorMessage(error, 'Не удалось сохранить профиль')
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 
 <template>
-  <div class="profile-container">
-    <div class="profile-card">
-      <div class="profile-toolbar">
-        <h2 class="toolbar-title">Настройки профиля</h2>
-        <div class="toolbar-buttons">
-          <!-- Кнопка "Отмена" с иконкой и текстом -->
-          <Button
-            label="Отмена"
-            icon="pi pi-times"
-            severity="secondary"
-            @click="closeModal"
-            class="btn-secondary btn-with-icon"
-          />
-          <!-- Кнопка "Сохранить" с иконкой и текстом -->
-          <Button
-            label="Сохранить"
-            icon="pi pi-save"
-            @click="updateProfile"
-            class="btn-primary ml-2 btn-with-icon"
-          />
-        </div>
-      </div>
-
-      <!-- Индикатор загрузки, если current_user еще нет -->
-      <div v-if="!authStore.current_user" class="loading-message">
-        Загрузка данных пользователя...
-      </div>
-
-      <!-- Основной контент, если данные пользователя загружены -->
-      <div v-else class="profile-content">
-        <div class="profile-section">
-          <div class="profile-header">
-            <Avatar
-              :label="authStore.current_user?.username?.charAt(0) || 'U'"
-              size="large"
-              shape="circle"
-              class="profile-avatar"
-            />
-            <div class="profile-info">
-              <h3>
-                {{ authStore.current_user?.username || 'Имя не указано' }}
-              </h3>
-              <p>{{ authStore.current_user?.email || 'Email не указан' }}</p>
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label for="bio" class="form-label">Биография</label>
-              <Textarea
-                id="bio"
-                v-model="profileForm.profile.bio"
-                rows="4"
-                cols="50"
-                class="form-input form-textarea"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div class="profile-section">
-          <h4 class="section-title">Личная информация</h4>
-          <div class="form-grid">
-            <div class="form-field">
-              <label for="username" class="form-label">Имя пользователя</label>
-              <InputText id="username" v-model="profileForm.username" class="form-input" />
-            </div>
-            <div class="form-field">
-              <label for="email" class="form-label">Email</label>
-              <InputText id="email" v-model="profileForm.email" type="email" class="form-input" />
-            </div>
-            <div class="form-field">
-              <label for="phone" class="form-label">Номер телефона</label>
-              <InputMask
-                id="phone"
-                mask="+7 (999) 999-999-99"
-                v-model="profileForm.phone_number"
-                class="form-input"
-              />
-            </div>
-            <div class="form-field">
-              <label for="birthDate" class="form-label">Дата рождения</label>
-              <Calendar
-                id="birthDate"
-                v-model="profileForm.profile.birth_date"
-                showIcon
-                class="form-input"
-              />
-            </div>
-            <div class="form-field">
-              <label for="language" class="form-label">Язык</label>
-              <Dropdown
-                id="language"
-                v-model="profileForm.profile.language"
-                :options="languages"
-                optionLabel="name"
-                optionValue="code"
-                placeholder="Выберите язык"
-                class="form-select"
-              />
-            </div>
-            <div class="form-field">
-              <label for="country" class="form-label">Страна</label>
-              <Dropdown
-                id="country"
-                v-model="profileForm.profile.country"
-                :options="countries"
-                optionLabel="name"
-                optionValue="code"
-                placeholder="Выберите страну"
-                class="form-select"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div class="profile-section">
-          <h4 class="section-title">Безопасность</h4>
-          <div class="form-grid">
-            <!-- Поле "Текущий пароль" не привязано к profileForm, используется отдельно, если нужно для смены пароля -->
-            <!-- <div class="form-field">
-              <label for="currentPassword" class="form-label">Текущий пароль</label>
-              <Password id="currentPassword" v-model="profileForm.current_password" feedback toggleMask class="form-input-password" placeholder="Введите текущий пароль" />
-            </div> -->
-            <div class="form-field">
-              <label for="newPassword" class="form-label">Новый пароль</label>
-              <Password
-                id="newPassword"
-                v-model="newPassword"
-                feedback
-                toggleMask
-                class="form-input-password"
-                placeholder="Введите новый пароль"
-              />
-            </div>
-            <div class="form-field">
-              <label for="confirmNewPassword" class="form-label">Подтвердите новый пароль</label>
-              <Password
-                id="confirmNewPassword"
-                v-model="confirmNewPassword"
-                feedback
-                toggleMask
-                class="form-input-password"
-                placeholder="Подтвердите новый пароль"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div class="profile-section">
-          <h4 class="section-title">Настройки</h4>
-          <div class="settings-grid">
-            <div class="setting-item">
-              <div class="setting-label">Включить уведомления</div>
-              <ToggleSwitch
-                v-model="profileForm.profile.notifications_enabled"
-                class="toggle-switch"
-              />
-            </div>
-            <div class="setting-item">
-              <div class="setting-label">Режим приватности</div>
-              <ToggleSwitch v-model="profileForm.profile.privacy_mode" class="toggle-switch" />
-            </div>
-          </div>
-        </div>
-      </div>
+  <div class="profile-sheet">
+    <div v-if="!authStore.current_user" class="loading-block">
+      <span class="spinner"></span>
+      <p>Загрузка профиля…</p>
     </div>
+
+    <template v-else>
+      <!-- Шапка профиля -->
+      <div class="profile-hero">
+        <div class="hero-avatar" :style="avatarStyle">{{ heroInitials }}</div>
+        <div class="hero-info">
+          <h2 class="hero-name">{{ heroName }}</h2>
+          <p class="hero-username">@{{ profileForm.username || 'username' }}</p>
+          <p v-if="profileForm.phone_number" class="hero-phone">
+            <i class="pi pi-phone"></i> {{ profileForm.phone_number }}
+          </p>
+        </div>
+      </div>
+
+      <form class="profile-form" @submit.prevent="updateProfile">
+        <!-- Основное -->
+        <section class="card-section">
+          <h3 class="section-title">О себе</h3>
+          <div class="field">
+            <label for="pf-bio">Биография</label>
+            <textarea
+              id="pf-bio"
+              v-model="profileForm.bio"
+              rows="3"
+              placeholder="Расскажите немного о себе…"
+            ></textarea>
+          </div>
+        </section>
+
+        <!-- Имя -->
+        <section class="card-section">
+          <h3 class="section-title">Имя и фамилия</h3>
+          <div class="grid-2">
+            <div class="field">
+              <label for="pf-first">Имя</label>
+              <input id="pf-first" v-model="profileForm.first_name" type="text" placeholder="Имя" />
+            </div>
+            <div class="field">
+              <label for="pf-last">Фамилия</label>
+              <input
+                id="pf-last"
+                v-model="profileForm.last_name"
+                type="text"
+                placeholder="Фамилия"
+              />
+            </div>
+            <div class="field">
+              <label for="pf-username">Логин</label>
+              <input
+                id="pf-username"
+                v-model="profileForm.username"
+                type="text"
+                placeholder="Логин"
+              />
+            </div>
+            <div class="field">
+              <label for="pf-email">Email</label>
+              <input id="pf-email" v-model="profileForm.email" type="email" placeholder="Email" />
+            </div>
+          </div>
+        </section>
+
+        <!-- Контакты и локализация -->
+        <section class="card-section">
+          <h3 class="section-title">Контакты и локализация</h3>
+          <div class="grid-2">
+            <div class="field">
+              <label for="pf-phone">Телефон</label>
+              <InputMask
+                id="pf-phone"
+                v-model="profileForm.phone_number"
+                mask="+7 (999) 999-99-99"
+                class="native-like"
+                placeholder="+7 (___) ___-__-__"
+                :auto-clear="false"
+              />
+            </div>
+            <div class="field">
+              <label for="pf-birth">Дата рождения</label>
+              <input id="pf-birth" v-model="profileForm.birth_date" type="date" />
+            </div>
+            <div class="field">
+              <label for="pf-lang">Язык</label>
+              <select id="pf-lang" v-model="profileForm.language">
+                <option value="">Не выбран</option>
+                <option v-for="lang in LANGUAGES" :key="lang.code" :value="lang.code">
+                  {{ lang.name }}
+                </option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="pf-country">Страна</label>
+              <select id="pf-country" v-model="profileForm.country">
+                <option value="">Не выбрана</option>
+                <option v-for="country in COUNTRIES" :key="country.code" :value="country.code">
+                  {{ country.name }}
+                </option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <!-- Настройки -->
+        <section class="card-section">
+          <h3 class="section-title">Настройки</h3>
+          <div class="toggle-row">
+            <div class="toggle-text">
+              <span class="toggle-name">Уведомления о сообщениях</span>
+              <span class="toggle-desc">Присылать оповещения о новых сообщениях</span>
+            </div>
+            <label class="switch">
+              <input v-model="profileForm.notifications_enabled" type="checkbox" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-text">
+              <span class="toggle-name">Приватный режим</span>
+              <span class="toggle-desc">Скрывать профиль от посторонних в поиске</span>
+            </div>
+            <label class="switch">
+              <input v-model="profileForm.privacy_mode" type="checkbox" />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </section>
+
+        <!-- Сообщения -->
+        <transition name="fade">
+          <div v-if="success" class="notice success">
+            <i class="pi pi-check-circle"></i> Профиль сохранён
+          </div>
+        </transition>
+        <transition name="fade">
+          <div v-if="errorMessage" class="notice error">
+            <i class="pi pi-exclamation-circle"></i> {{ errorMessage }}
+          </div>
+        </transition>
+
+        <!-- Действия -->
+        <div class="logout-row">
+          <button type="button" class="logout-btn" :disabled="saving" @click="doLogout">
+            <i class="pi pi-sign-out"></i>
+            Выйти из аккаунта
+          </button>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn ghost" :disabled="saving" @click="closeModal">
+            Отмена
+          </button>
+          <button type="submit" class="btn primary" :disabled="saving">
+            <span v-if="saving" class="spinner light"></span>
+            <template v-else><i class="pi pi-check"></i></template>
+            {{ saving ? 'Сохранение…' : 'Сохранить' }}
+          </button>
+        </div>
+      </form>
+    </template>
   </div>
 </template>
 
 <style scoped>
-.profile-container {
-  padding: 24px;
-  max-width: 1200px;
-  margin: 0 auto;
-  background-color: #ffffff; /* Основной фон как на дизайне */
-  color: #333333; /* Основной цвет текста */
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans',
-    'Helvetica Neue', sans-serif;
+.profile-sheet {
+  color: #1c2733;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
-.profile-card {
-  background-color: #ffffff;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
+.loading-block {
   display: flex;
   flex-direction: column;
-}
-
-.profile-toolbar {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
-  background-color: #f8f9fa; /* Светлый фон для тулбара */
-  border-bottom: 1px solid #e0e0e0;
+  gap: 12px;
+  padding: 40px 0;
+  color: #71808d;
 }
 
-.toolbar-title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: #333333;
-}
-
-.toolbar-buttons {
-  display: flex;
-  gap: 8px;
-}
-
-.btn-primary {
-  background-color: #007bff; /* Синий цвет для основной кнопки */
-  border: 1px solid #007bff;
-  color: white;
-}
-
-.btn-primary:hover {
-  background-color: #0056b3;
-  border-color: #0056b3;
-}
-
-.btn-secondary {
-  background-color: #ffffff;
-  border: 1px solid #ced4da;
-  color: #6c757d;
-}
-
-.btn-secondary:hover {
-  background-color: #f8f9fa;
-  color: #495057;
-}
-
-/* Стили для кнопок с иконками */
-.btn-with-icon {
+/* Шапка */
+.profile-hero {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 18px;
+  padding: 4px 2px 22px;
+  border-bottom: 1px solid #eef1f3;
+  margin-bottom: 18px;
 }
 
-.ml-2 {
-  margin-left: 0.5rem;
-}
-
-.loading-message {
-  padding: 24px;
-  text-align: center;
-  font-style: italic;
-  color: #6c757d;
-}
-
-.profile-content {
-  padding: 24px;
-  flex-grow: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 32px; /* Отступ между секциями */
-}
-
-.profile-section {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.profile-header {
+.hero-avatar {
+  width: 84px;
+  height: 84px;
+  border-radius: 28px;
+  color: #fff;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e0e0e0;
+  justify-content: center;
+  font-size: 1.9rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
 }
 
-.profile-avatar {
-  background-color: #007bff !important;
-  color: white !important;
+.hero-info {
+  min-width: 0;
 }
 
-.profile-info h3 {
-  margin: 0 0 4px 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #333333;
+.hero-name {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 700;
+  color: #141d26;
 }
 
-.profile-info p {
-  margin: 0;
+.hero-username {
+  margin: 0 0 4px;
+  color: #71808d;
   font-size: 14px;
-  color: #6c757d;
+}
+
+.hero-phone {
+  margin: 0;
+  font-size: 13.5px;
+  color: #4c6b5b;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hero-phone i {
+  font-size: 0.85rem;
+}
+
+/* Секции-карточки */
+.profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card-section {
+  background: #f7f9fb;
+  border: 1px solid #e9edf0;
+  border-radius: 16px;
+  padding: 16px 18px;
 }
 
 .section-title {
-  margin: 0;
-  padding: 0 0 8px 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #333333;
-  border-bottom: 1px solid #e0e0e0;
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #8295a3;
 }
 
-.form-grid,
-.settings-grid {
+.grid-2 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 24px;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
 }
 
-.form-row {
+.field {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 6px;
 }
 
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.field label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #52626f;
 }
 
-.form-field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.form-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: #333333;
-  margin-bottom: 4px;
-}
-
-.form-input,
-.form-input-password,
-.form-textarea,
-.form-select {
+.field input,
+.field textarea,
+.field select,
+.field :deep(.native-like),
+.native-like {
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #ced4da;
-  border-radius: 4px;
-  background-color: #ffffff;
-  color: #333333;
-  font-size: 14px;
-  transition: border-color 0.2s ease;
-}
-
-.form-input:focus,
-.form-input-password:focus,
-.form-textarea:focus,
-.form-select:focus {
+  box-sizing: border-box;
+  border: 1.5px solid #dfe5ea;
+  border-radius: 11px;
+  padding: 10px 12px;
+  font-size: 14.5px;
+  color: #141d26;
+  background: #fff;
   outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+  font-family: inherit;
 }
 
-.setting-item {
+.field :deep(.native-like) {
+  background: #fff;
+  border: 1.5px solid #dfe5ea;
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus,
+.field :deep(.native-like:focus) {
+  border-color: #2ea25e;
+  box-shadow: 0 0 0 4px rgba(46, 162, 94, 0.13);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 70px;
+}
+
+.field select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238295a3' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+/* Тумблеры */
+.toggle-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid #e0e0e0;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 2px;
 }
 
-.setting-item:last-child {
-  border-bottom: none;
+.toggle-row + .toggle-row {
+  border-top: 1px solid #e9edf0;
 }
 
-.setting-label {
-  font-size: 14px;
-  color: #333333;
-  font-weight: 500;
+.toggle-text {
+  display: flex;
+  flex-direction: column;
 }
 
-.toggle-switch {
-  /* Стили для ToggleSwitch будут зависеть от PrimeVue */
-  /* Основные стили PrimeVue можно переопределить здесь при необходимости */
-  /* Пример: увеличение размера */
-  /* width: 50px; height: 28px; */
+.toggle-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #1c2733;
 }
 
-.toggle-with-labels {
+.toggle-desc {
+  font-size: 12.5px;
+  color: #8295a3;
+  margin-top: 2px;
+}
+
+.switch {
+  position: relative;
+  width: 46px;
+  height: 26px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  inset: 0;
+  background: #cdd6dd;
+  border-radius: 26px;
+  transition: background 0.2s;
+}
+
+.slider::before {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  left: 3px;
+  top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s;
+}
+
+.switch input:checked + .slider {
+  background: #2ea25e;
+}
+
+.switch input:checked + .slider::before {
+  transform: translateX(20px);
+}
+
+/* Кнопки и уведомления */
+.logout-row {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.logout-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #fdecec;
+  color: #c0392b;
+  border: none;
+  border-radius: 11px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.logout-btn:hover:not(:disabled) {
+  background: #f8d7d7;
+}
+
+.logout-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 6px;
+}
+
+.btn {
+  border: none;
+  border-radius: 12px;
+  padding: 11px 18px;
+  font-size: 14.5px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition:
+    transform 0.12s,
+    box-shadow 0.2s,
+    background 0.2s;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: linear-gradient(135deg, #34c979 0%, #1e9b51 100%);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(30, 155, 81, 0.24);
+}
+
+.btn.primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.btn.ghost {
+  background: #fff;
+  color: #52626f;
+  border: 1.5px solid #dfe5ea;
+}
+
+.btn.ghost:hover:not(:disabled) {
+  background: #f1f3f5;
+}
+
+.notice {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
-  color: #333333;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.notice.success {
+  background: #eaf7ee;
+  color: #1e7a43;
+}
+
+.notice.error {
+  background: #fdecec;
+  color: #c0392b;
+}
+
+.spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  border-top-color: #2ea25e;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.spinner.light {
+  border-color: rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+@media (max-width: 560px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

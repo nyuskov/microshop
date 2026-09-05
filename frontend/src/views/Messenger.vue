@@ -433,39 +433,20 @@
         </span>
         <span>Чаты</span>
       </button>
-      <button class="nav-btn" @click="openSettings">
+      <button class="nav-btn" @click="goToProfile">
         <i class="pi pi-cog"></i>
         <span>Настройки</span>
       </button>
     </nav>
   </div>
 
-  <!-- Settings Modal -->
-  <Dialog
-    v-model:visible="showSettingsModal"
-    header="Настройки"
-    :modal="true"
-    :closable="true"
-    :style="{ width: '520px' }"
-    @hide="showSettingsModal = false"
-  >
-    <Suspense>
-      <template #default>
-        <SettingsView @close-modal="showSettingsModal = false" />
-      </template>
-      <template #fallback>
-        <div>Загрузка настроек...</div>
-      </template>
-    </Suspense>
-  </Dialog>
-
   <!-- Profile Modal -->
   <Dialog
     v-model:visible="showProfileModal"
-    header="Профиль"
+    header="Настройки профиля"
     :modal="true"
     :closable="true"
-    :style="{ width: '520px' }"
+    :style="{ width: '680px' }"
     @hide="showProfileModal = false"
   >
     <Suspense>
@@ -505,13 +486,11 @@ import {
   type SearchUserResult
 } from '@/services/chatService'
 import type { Chat, ChatUser, Message, MessageFile } from '@/types'
-import SettingsView from './SettingsView.vue'
 import UserProfile from './UserProfile.vue'
 
 const authStore = useAuthStore()
 
 // ---------- Модальные окна ----------
-const showSettingsModal = ref(false)
 const showProfileModal = ref(false)
 const showLoginModal = ref(true)
 
@@ -1134,10 +1113,6 @@ const startPolling = () => {
 // ---------- Навигация ----------
 const goToProfile = () => {
   showProfileModal.value = true
-}
-
-const openSettings = () => {
-  showSettingsModal.value = true
 }
 
 const onLoginModalClose = () => {

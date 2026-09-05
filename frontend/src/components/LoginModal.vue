@@ -5,11 +5,10 @@
     :closable="false"
     :dismissable-mask="false"
     :close-on-escape="false"
-    :style="{ width: '90%', maxWidth: '450px' }"
+    :show-header="false"
+    :style="{ width: '400px' }"
+    :contentStyle="{ padding: '26px 28px', borderRadius: '18px', overflow: 'hidden' }"
   >
-    <template #header>
-      <h3>{{ state === 'phone' ? 'Вход по SMS' : 'Введите код из SMS' }}</h3>
-    </template>
     <Login
       @close-modal="handleLoginClose"
       :initial-state="state"
