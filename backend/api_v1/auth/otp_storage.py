@@ -1,52 +1,46 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta
-from typing import Dict, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 
 # Временное хранилище OTP в памяти. НЕ ПОДХОДИТ для продакшена!
-# Для продакшена используйте Redis или другое решение.
 _OTP_STORAGE: Dict[str, tuple[str, datetime]] = {}
 _LOCK = asyncio.Lock()
 
 
 async def store_otp(phone_number: str, otp_code: str, ttl_seconds: int = 300) -> None:
-    """
-    Сохраняет OTP-код для номера телефона с заданным временем жизни (TTL) в секундах.
-    По умолчанию TTL = 300 секунд (5 минут).
-    """
-    expiry_time = datetime.utcnow() + timedelta(seconds=ttl_seconds)
+    """Сохраняет OTP-код с заданным временем жизни (TTL) в секундах."""
+    expiry_time = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
     async with _LOCK:
         _OTP_STORAGE[phone_number] = (otp_code, expiry_time)
-    logger.info(f"Stored OTP for {phone_number}, expires at {expiry_time}")
+    logger.info("Stored OTP for %s, expires at %s", phone_number, expiry_time)
 
 
 async def verify_otp(phone_number: str, otp_code: str) -> bool:
-    """
-    Проверяет, соответствует ли предоставленный OTP-код сохраненному для номера телефона
-    и не истекло ли его время.
-    """
+    """Проверяет OTP-код и его срок действия."""
     async with _LOCK:
         stored_data = _OTP_STORAGE.get(phone_number)
         if not stored_data:
-            logger.warning(f"No OTP found for {phone_number}")
+            logger.warning("No OTP found for %s", phone_number)
             return False
 
         stored_otp, expiry_time = stored_data
-        if datetime.utcnow() > expiry_time:
-            # Удаляем просроченный OTP
+        if datetime.now(timezone.utc) > expiry_time:
             del _OTP_STORAGE[phone_number]
-            logger.info(f"OTP for {phone_number} has expired and was removed.")
+            logger.info("OTP for %s has expired and was removed.", phone_number)
             return False
 
         if stored_otp == otp_code:
-            # Удаляем OTP после успешной проверки
             del _OTP_STORAGE[phone_number]
-            logger.info(f"OTP for {phone_number} verified successfully.")
+            logger.info("OTP for %s verified successfully.", phone_number)
             return True
-        else:
-            logger.warning(
-                f"Invalid OTP for {phone_number}. Expected: {stored_otp}, Got: {otp_code}"
-            )
-            return False
+
+        logger.warning(
+            "Invalid OTP for %s. Expected: %s, Got: %s",
+            phone_number,
+            stored_otp,
+            otp_code,
+        )
+        return False

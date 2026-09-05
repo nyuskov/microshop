@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+"""Pydantic-схемы чатов."""
+
+from pydantic import BaseModel, ConfigDict
 
 
 class ChatBase(BaseModel):
@@ -9,14 +11,15 @@ class ChatCreate(ChatBase):
     pass
 
 
-class ChatUpdate(ChatBase):
+class ChatUpdate(BaseModel):
     name: str | None = None
 
 
-class ChatUpdatePartial(ChatBase):
-    name: str | None = None
+class ChatUpdatePartial(ChatUpdate):
+    pass
 
 
 class Chat(ChatBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
-    # Не включаем список пользователей и сообщений для упрощения

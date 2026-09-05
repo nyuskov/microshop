@@ -1,46 +1,38 @@
+import logging
 from typing import Optional
-from fastapi import Depends, Request
-from fastapi_users.manager import BaseUserManager, UUIDIDMixin, IntegerIDMixin
+
+from fastapi import Request
+from fastapi_users.manager import BaseUserManager, IntegerIDMixin
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
-from fastapi_users import exceptions
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models import User
-from core.models.db_helper import db_helper
-from .db import get_user_db
+
+logger = logging.getLogger(__name__)
 
 
-# Define custom manager
-class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
-    def __init__(self, user_db: SQLAlchemyUserDatabase[User, int]):
+# User не строго удовлетворяет UserProtocol fastapi-users из-за nullable email
+class UserManager(IntegerIDMixin, BaseUserManager[User, int]):  # type: ignore[type-var]
+    def __init__(
+        self, user_db: SQLAlchemyUserDatabase[User, int]  # type: ignore[type-var]
+    ):
         super().__init__(user_db)
 
     async def get(self, id: int) -> User:
-        """
-        Get a user by id.
-
-        Override to handle cases where email might be an empty string
-        and convert it to None to satisfy Pydantic schema validation.
-        """
-        print(f"CustomUserManager.get called with id: {id}")  # <-- Отладочный вывод
+        """Возвращает пользователя по id, нормализуя пустой email в None."""
         user = await super().get(id)
-        print(f"User fetched: {user}, email: {user.email}")  # <-- Отладочный вывод
-        if user and user.email == "":
-            # Create a new instance or modify in place if SQLAlchemy allows
-            # Modifying in place is usually safe for attributes loaded from DB
+        if user is not None and user.email == "":
             user.email = None
-            print("Email changed to None")  # <-- Отладочный вывод
         return user
 
     async def on_after_register(self, user: User, request: Optional[Request] = None):
-        print(f"User {user.id} has registered.")
+        logger.info("User %s has registered.", user.id)
 
     async def on_after_forgot_password(
         self, user: User, token: str, request: Optional[Request] = None
     ):
-        print(f"User {user.id} has forgot their password. Reset token: {token}")
+        logger.info("User %s has requested password reset.", user.id)
 
     async def on_after_request_verify(
         self, user: User, token: str, request: Optional[Request] = None
     ):
-        print(f"Verification requested for user {user.id}. Verification token: {token}")
+        logger.info("Verification requested for user %s.", user.id)

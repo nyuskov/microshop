@@ -6,6 +6,8 @@ import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 // import vueDevTools from 'vite-plugin-vue-devtools' // Comment out vueDevTools
 import checker from 'vite-plugin-checker'
+// vite-plugin-eslint не поставляет типы
+// @ts-ignore
 import eslint from 'vite-plugin-eslint'
 
 // https://vite.dev/config/

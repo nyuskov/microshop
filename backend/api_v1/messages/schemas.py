@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+"""Pydantic-схемы сообщений."""
+
+from pydantic import BaseModel, ConfigDict
 
 
 class MessageBase(BaseModel):
@@ -11,13 +13,17 @@ class MessageCreate(MessageBase):
     pass
 
 
-class MessageUpdate(MessageBase):
+class MessageUpdate(BaseModel):
     text: str | None = None
+    user_id: int | None = None
+    chat_id: int | None = None
 
 
-class MessageUpdatePartial(MessageBase):
-    text: str | None = None
+class MessageUpdatePartial(MessageUpdate):
+    pass
 
 
 class Message(MessageBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int

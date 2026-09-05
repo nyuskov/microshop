@@ -1,10 +1,10 @@
+from typing import TYPE_CHECKING
+
 from sqlalchemy import ForeignKey
-from sqlalchemy.orm import (
-    declared_attr,
-    Mapped,
-    mapped_column,
-    relationship,
-)
+from sqlalchemy.orm import Mapped, declared_attr, mapped_column, relationship
+
+if TYPE_CHECKING:
+    from .user import User
 
 
 class IdIntPkMixin:
@@ -25,5 +25,5 @@ class UserRelationMixin:
         )
 
     @declared_attr
-    def user(cls) -> Mapped["User"]:  # noqa: F821
+    def user(cls) -> Mapped["User"]:
         return relationship("User", back_populates=cls._user_back_populates)

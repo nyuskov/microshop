@@ -6,7 +6,7 @@ import Toolbar from 'primevue/toolbar'
 import Sidebar from 'primevue/sidebar'
 import PanelMenu from 'primevue/panelmenu'
 import { Button } from 'primevue'
-import { ref, type Ref, computed } from 'vue'
+import { ref, type Ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useThemeStore } from '../stores/theme'
@@ -19,7 +19,6 @@ authStore.initializeApp()
 const themeStore = useThemeStore()
 const router = useRouter()
 const redirectReg = '/auth/registration/'
-const redirectLogin = '/auth/login/'
 
 // State for active components
 const isActiveUsers: Ref<boolean> = ref(false)
@@ -135,7 +134,6 @@ function closeLoginModal() {
 }
 
 // Следим за изменением статуса аутентификации
-import { watch } from 'vue'
 watch(
   () => authStore.isAuthenticated,
   (isAuth) => {

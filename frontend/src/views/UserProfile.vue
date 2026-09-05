@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { getErrorMessage } from '@/services/errors'
 
 // Импорт компонентов PrimeVue
 import Button from 'primevue/button'
@@ -31,9 +32,28 @@ const countries = ref([
 ])
 
 // Используем reactive для создания формы, которая будет синхронизирована с current_user
-import { reactive, watch } from 'vue'
+interface SelectOption {
+  name: string
+  code: string
+}
 
-const profileForm = reactive({
+interface ProfileFormData {
+  username: string
+  phone_number: string | null
+  first_name: string | null
+  last_name: string | null
+  email: string | null
+  profile: {
+    bio: string | null
+    birth_date: Date | null
+    language: string | SelectOption | null
+    country: string | SelectOption | null
+    notifications_enabled: boolean
+    privacy_mode: boolean
+  }
+}
+
+const profileForm = reactive<ProfileFormData>({
   username: '',
   phone_number: null,
   first_name: null,
@@ -53,39 +73,34 @@ const profileForm = reactive({
 watch(
   () => authStore.current_user,
   (newUser) => {
-    if (newUser) {
-      profileForm.username = newUser.username
-      profileForm.phone_number = newUser.phone_number
-      profileForm.first_name = newUser.first_name
-      profileForm.last_name = newUser.last_name
-      profileForm.email = newUser.email
+    if (!newUser) return
 
-      if (newUser.profile) {
-        profileForm.profile.bio = newUser.profile.bio
-        profileForm.profile.birth_date = newUser.profile.birth_date
+    profileForm.username = newUser.username
+    profileForm.phone_number = newUser.phone_number
+    profileForm.first_name = newUser.first_name
+    profileForm.last_name = newUser.last_name
+    profileForm.email = newUser.email
 
-        // Преобразуем строковые значения language и country в объекты для Dropdown
-        if (newUser.profile.language) {
-          const selectedLanguage = languages.value.find(
-            (lang) => lang.code === newUser.profile.language
-          )
-          profileForm.profile.language = selectedLanguage || newUser.profile.language
-        } else {
-          profileForm.profile.language = null
-        }
+    const profile = newUser.profile
+    if (profile) {
+      profileForm.profile.bio = profile.bio
+      profileForm.profile.birth_date = profile.birth_date
+        ? new Date(`${profile.birth_date}T00:00:00`)
+        : null
 
-        if (newUser.profile.country) {
-          const selectedCountry = countries.value.find(
-            (country) => country.code === newUser.profile.country
-          )
-          profileForm.profile.country = selectedCountry || newUser.profile.country
-        } else {
-          profileForm.profile.country = null
-        }
+      // Преобразуем строковые значения language и country в объекты для Dropdown
+      const languageCode = profile.language
+      profileForm.profile.language = languageCode
+        ? (languages.value.find((lang) => lang.code === languageCode) ?? languageCode)
+        : null
 
-        profileForm.profile.notifications_enabled = newUser.profile.notifications_enabled
-        profileForm.profile.privacy_mode = newUser.profile.privacy_mode
-      }
+      const countryCode = profile.country
+      profileForm.profile.country = countryCode
+        ? (countries.value.find((country) => country.code === countryCode) ?? countryCode)
+        : null
+
+      profileForm.profile.notifications_enabled = profile.notifications_enabled
+      profileForm.profile.privacy_mode = profile.privacy_mode
     }
   },
   { immediate: true }
@@ -110,28 +125,25 @@ const updateProfile = async () => {
   }
 
   // Обработка даты рождения - преобразование в формат YYYY-MM-DD
-  let birthDateFormatted = profileForm.profile.birth_date
-  if (birthDateFormatted instanceof Date) {
-    // Если это объект Date, преобразуем в строку в формате YYYY-MM-DD
-    birthDateFormatted = birthDateFormatted.toISOString().split('T')[0]
-  } else if (typeof birthDateFormatted === 'string' && birthDateFormatted.includes('T')) {
-    // Если это строка с временем, извлекаем только дату
-    birthDateFormatted = birthDateFormatted.split('T')[0]
+  const rawBirthDate = profileForm.profile.birth_date
+  const birthDateFormatted: string | null = rawBirthDate
+    ? rawBirthDate.toISOString().split('T')[0]
+    : null
+
+  const toCode = (value: string | SelectOption | null): string | null => {
+    if (typeof value === 'object' && value !== null) {
+      return value.code
+    }
+    return value
   }
 
   const profileData = {
     bio: profileForm.profile.bio,
-    birth_date: birthDateFormatted, // Используем отформатированную дату
+    birth_date: birthDateFormatted,
     // Отправляем код языка, а не объект
-    language:
-      typeof profileForm.profile.language === 'object'
-        ? profileForm.profile.language?.code
-        : profileForm.profile.language,
+    language: toCode(profileForm.profile.language),
     // Отправляем код страны, а не объект
-    country:
-      typeof profileForm.profile.country === 'object'
-        ? profileForm.profile.country?.code
-        : profileForm.profile.country,
+    country: toCode(profileForm.profile.country),
     notifications_enabled: profileForm.profile.notifications_enabled,
     privacy_mode: profileForm.profile.privacy_mode
   }
@@ -139,11 +151,8 @@ const updateProfile = async () => {
   // Формируем итоговый объект в соответствии со схемой UserWithDetailsSchema
   const updateData = {
     ...userData,
-    profile: profileData
-  }
-
-  if (newPassword.value) {
-    updateData.new_password = newPassword.value // Предполагаем, что бэкенд принимает new_password
+    profile: profileData,
+    ...(newPassword.value ? { new_password: newPassword.value } : {})
   }
 
   try {
@@ -156,11 +165,7 @@ const updateProfile = async () => {
     // router.push('/dashboard'); // Закомментировано, чтобы остаться на странице профиля
   } catch (error) {
     console.error('Ошибка обновления профиля:', error)
-    let errorMessage = 'Не удалось обновить профиль.'
-    if (error.response && error.response.data) {
-      errorMessage += ` Сервер сообщил: ${JSON.stringify(error.response.data)}`
-    }
-    alert(errorMessage)
+    alert(`Не удалось обновить профиль. ${getErrorMessage(error)}`)
   }
 }
 

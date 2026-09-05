@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Form } from '@primevue/forms'
-import { FormField } from '@primevue/forms'
+import { Form, FormField } from '@primevue/forms'
+import type { FormSubmitEvent } from '@primevue/forms'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
@@ -31,13 +31,7 @@ const result = ref('')
 const severity = ref('success')
 const redirect = '/auth/login/'
 
-interface FormEventObject {
-  values: Record<string, unknown>
-  errors: Record<string, string[]>
-  [key: string]: unknown // Allow other properties
-}
-
-async function registerUser(e: FormEventObject) {
+async function registerUser(e: FormSubmitEvent<Record<string, unknown>>) {
   if (backendServer != undefined) {
     const csrfToken = getCSRFToken() // Get the CSRF token
     const headers: Record<string, string> = {
@@ -93,7 +87,7 @@ async function registerUser(e: FormEventObject) {
     }
   }
 }
-async function onFormSubmit(e: FormEventObject) {
+async function onFormSubmit(e: FormSubmitEvent<Record<string, unknown>>) {
   if (Object.keys(e.errors).length) {
     return
   }

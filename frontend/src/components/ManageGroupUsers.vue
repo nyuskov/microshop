@@ -61,7 +61,7 @@
 import { ref, watch, computed } from 'vue'
 import { fetchAllUsers } from '@/services/api' // Предполагается, что у вас есть функция для получения всех пользователей
 import { fetchUsersInGroup, updateUsersInGroup } from '@/services/api'
-import { Group, User } from '@/types'
+import type { Group, User } from '@/types'
 
 interface Props {
   selectedGroup: Group | null

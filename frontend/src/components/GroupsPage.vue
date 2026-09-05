@@ -93,8 +93,13 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { fetchGroups, createGroup, updateGroup, deleteGroup } from '@/services/api'
-import { Group } from '@/types'
+import {
+  fetchGroups,
+  createGroup,
+  updateGroup,
+  deleteGroup as apiDeleteGroup
+} from '@/services/api'
+import type { Group } from '@/types'
 import ManageGroupUsers from './ManageGroupUsers.vue' // Импортируем новый компонент
 
 const groups = ref<Group[]>([])
@@ -180,7 +185,7 @@ const updateExistingGroup = async (id: number) => {
 const deleteGroup = async (id: number) => {
   if (!confirm('Вы уверены, что хотите удалить эту группу?')) return
   try {
-    await deleteGroup(id)
+    await apiDeleteGroup(id)
     groups.value = groups.value.filter((g) => g.id !== id)
   } catch (err) {
     error.value = 'Не удалось удалить группу.'

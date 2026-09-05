@@ -9,22 +9,24 @@ from .base import Base
 from .mixins import IdIntPkMixin
 
 if TYPE_CHECKING:
-    from .profile import Profile
     from .chat import Chat
     from .message import Message
+    from .post import Post
+    from .profile import Profile
 
 
 class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
     __tablename__ = "user"
 
     username: Mapped[str] = mapped_column(String(32), unique=True)
-    phone_number: Mapped[str] = mapped_column(
-        String(20), unique=True, nullable=True
-    )  # New field
+    phone_number: Mapped[str] = mapped_column(String(20), unique=True, nullable=True)
     first_name: Mapped[str] = mapped_column(String(32), nullable=True)
     last_name: Mapped[str] = mapped_column(String(32), nullable=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
-    email: Mapped[str | None] = mapped_column(String(length=320), nullable=True)
+    # email может отсутствовать при входе по телефону, поэтому nullable
+    email: Mapped[str | None] = mapped_column(  # type: ignore[assignment]
+        String(length=320), nullable=True
+    )
 
     profile: Mapped["Profile"] = relationship(back_populates="user")
 
@@ -39,6 +41,12 @@ class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
     messages: Mapped[list["Message"]] = relationship(
         "Message",
         primaryjoin="User.id == Message.user_id",
+        back_populates="user",
+    )
+
+    posts: Mapped[list["Post"]] = relationship(
+        "Post",
+        primaryjoin="User.id == Post.user_id",
         back_populates="user",
     )
 

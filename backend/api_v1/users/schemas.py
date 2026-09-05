@@ -1,35 +1,14 @@
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    EmailStr,
-    Field,
-    field_validator,
-    validator,
-)
+"""Pydantic-схемы пользователей."""
+
+import re
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+PHONE_PATTERN = re.compile(r"^\+?[\d\s\-()]+$")
 
 
-class CurrentUser(BaseModel):
-    username: str
-
-
-class UserSchema(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    username: str
-    phone_number: str | None = None  # Added field
-    first_name: str | None = None
-    last_name: str | None = None
-    email: EmailStr | None = None
-
-
-class PublicUserSchema(BaseModel):  # noqa: F821
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    username: str
-    phone_number: str | None = None  # Added field
-    email: EmailStr | None = None
+def _empty_str_to_none(value: str | None) -> str | None:
+    return None if value == "" else value
 
 
 class ProfileSchema(BaseModel):
@@ -59,23 +38,29 @@ class ChatSchema(BaseModel):
     name: str
 
 
-class UserWithDetailsSchema(BaseModel):  # noqa: F821
+class PostSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    body: str
+    user_id: int
+
+
+class UserWithDetailsSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     username: str
-    phone_number: str | None = None  # Added field
+    phone_number: str | None = None
     first_name: str | None
     last_name: str | None
     email: EmailStr | None
     profile: ProfileSchema | None
     chats: list[ChatSchema] = Field(default_factory=list)
 
-    @field_validator("first_name", "last_name", mode="before")
-    @classmethod
-    def empty_str_to_none(cls, v):
-        if v == "":
-            return None
-        return v
+    _empty_str_to_none = field_validator("first_name", "last_name", mode="before")(
+        _empty_str_to_none
+    )
 
 
 class UserUpdateWithProfileSchema(BaseModel):
@@ -88,58 +73,34 @@ class UserUpdateWithProfileSchema(BaseModel):
     email: EmailStr | None = None
     profile: ProfileUpdateSchema | None = None
 
-    @field_validator("first_name", "last_name", mode="before")
-    @classmethod
-    def empty_str_to_none(cls, v):
-        if v == "":
-            return None
-        return v
+    _empty_str_to_none = field_validator("first_name", "last_name", mode="before")(
+        _empty_str_to_none
+    )
 
 
 class CreateUser(BaseModel):
     username: str
-    phone_number: str | None = None  # Added field
+    phone_number: str | None = None
     password: str
     first_name: str | None = None
     last_name: str | None = None
     email: EmailStr | None = None
 
-    @field_validator("first_name", "last_name", mode="before")
+    @field_validator("phone_number")
     @classmethod
-    def empty_str_to_none(cls, v):
-        if v == "":
-            return None
-        return v
+    def validate_phone_number(cls, value: str | None) -> str | None:
+        if value is not None and not PHONE_PATTERN.match(value):
+            raise ValueError("Неверный формат номера телефона")
+        return value
 
-    @validator('phone_number')
-    def validate_phone_number(cls, v):
-        if v is not None:
-            # Простая валидация формата номера телефона
-            # В реальном приложении можно использовать более сложную логику
-            import re
-
-            if not re.match(r'^\+?[\d\s\-\(\)]+$', v):
-                raise ValueError('Invalid phone number format')
-        return v
+    _empty_str_to_none = field_validator("first_name", "last_name", mode="before")(
+        _empty_str_to_none
+    )
 
 
 class UserCreatedResponseSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     username: str
-    phone_number: str | None = None  # Added field
-
-
-class GroupSchema(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    name: str
-
-
-class PostSchema(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    title: str
-    content: str
-    author_id: int
+    phone_number: str | None = None

@@ -1,107 +1,109 @@
-from typing import Annotated
+"""Эндпоинты для работы с постами."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from crud import (
-    create_post,
-    get_post_by_id,
-    update_post,
-    delete_post,
-    get_posts_by_user_id,
-    get_all_posts,
-)
 from api_v1.auth.utils import get_current_user
-from core.models import Post, db_helper, User
-from .schemas import PostCreate, PostUpdate, PostBase
+from api_v1.posts import crud
+from api_v1.posts.schemas import PostBase, PostCreate, PostUpdate
+from core.models import Post, User, db_helper
 
 router = APIRouter(tags=["Posts"])
 
 
-# New endpoint to get all posts
 @router.get("/", response_model=list[PostBase])
 async def get_all_posts_endpoint(
     session: AsyncSession = Depends(db_helper.session_dependency),
-):
-    """Получить все посты."""
-    posts = await get_all_posts(session=session)
-    return posts
+) -> list:
+    """Возвращает все посты."""
+    return await crud.get_all_posts(session)
 
 
-@router.post("/", response_model=PostBase)
+@router.get(
+    "/by_user/{user_id}/",
+    response_model=list[PostBase],
+)
+async def get_posts_for_user_endpoint(
+    user_id: int,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> list:
+    """Возвращает посты пользователя."""
+    return await crud.get_posts_by_user_id(session, user_id)
+
+
+@router.post(
+    "/",
+    response_model=PostBase,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_post_endpoint(
     post_in: PostCreate,
-    user: User = Depends(
-        get_current_user
-    ),  # Предполагаем, что есть зависимость для аутентификации
+    user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
-):
-    """Создать новый пост от имени текущего пользователя."""
-    db_post = await create_post(
-        session=session, user_id=user.id, title=post_in.title, body=post_in.body
+) -> Post:
+    """Создаёт пост от имени текущего пользователя."""
+    return await crud.create_post(
+        session=session,
+        user_id=user.id,
+        title=post_in.title,
+        body=post_in.body,
     )
-    return db_post
 
 
 @router.get("/{post_id}/", response_model=PostBase)
 async def get_post_endpoint(
     post_id: int,
     session: AsyncSession = Depends(db_helper.session_dependency),
-):
-    """Получить пост по ID."""
-    db_post = await get_post_by_id(session=session, post_id=post_id)
-    if not db_post:
-        raise HTTPException(status_code=404, detail="Post not found")
-    return db_post
+) -> Post:
+    """Возвращает пост по id."""
+    post = await crud.get_post_by_id(session, post_id)
+    if post is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пост не найден",
+        )
+    return post
 
 
 @router.patch("/{post_id}/", response_model=PostBase)
 async def update_post_endpoint(
     post_id: int,
     post_update: PostUpdate,
-    user: User = Depends(get_current_user),  # Только владелец может обновить
+    user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
-):
-    """Обновить существующий пост (только если пользователь является владельцем)."""
-    db_post = await get_post_by_id(session=session, post_id=post_id)
-    if not db_post:
-        raise HTTPException(status_code=404, detail="Post not found")
-    if db_post.user_id != user.id:
-        raise HTTPException(
-            status_code=403, detail="Not authorized to update this post"
-        )
-
-    updated_post = await update_post(
-        session=session, post=db_post, title=post_update.title, body=post_update.body
+) -> Post:
+    """Обновляет пост, если текущий пользователь является его автором."""
+    post = await _get_owned_post(session, post_id, user)
+    return await crud.update_post(
+        session=session,
+        post=post,
+        title=post_update.title,
+        body=post_update.body,
     )
-    return updated_post
 
 
-@router.delete("/{post_id}/", status_code=204)
+@router.delete("/{post_id}/", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_post_endpoint(
     post_id: int,
-    user: User = Depends(get_current_user),  # Только владелец может удалить
+    user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
-):
-    """Удалить пост (только если пользователь является владельцем)."""
-    db_post = await get_post_by_id(session=session, post_id=post_id)
-    if not db_post:
-        raise HTTPException(status_code=404, detail="Post not found")
-    if db_post.user_id != user.id:
+) -> None:
+    """Удаляет пост, если текущий пользователь является его автором."""
+    post = await _get_owned_post(session, post_id, user)
+    await crud.delete_post(session=session, post=post)
+
+
+async def _get_owned_post(session: AsyncSession, post_id: int, user: User) -> Post:
+    """Возвращает пост по id и проверяет право владельца."""
+    post = await crud.get_post_by_id(session, post_id)
+    if post is None:
         raise HTTPException(
-            status_code=403, detail="Not authorized to delete this post"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пост не найден",
         )
-
-    await delete_post(session=session, post=db_post)
-    return  # 204 No Content
-
-
-# Роут для получения постов конкретного пользователя
-@router.get("/by_user/{user_id}/", response_model=list[PostBase])
-async def get_posts_for_user_endpoint(
-    user_id: int,
-    session: AsyncSession = Depends(db_helper.session_dependency),
-):
-    """Получить все посты пользователя по его ID."""
-    posts = await get_posts_by_user_id(session=session, user_id=user_id)
-    return posts
+    if post.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Нет прав на выполнение операции",
+        )
+    return post

@@ -1,40 +1,24 @@
-import asyncio
-from contextlib import asynccontextmanager
-
-# import uvicorn
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api_v1 import router_v1
 from core.config import settings
-from core.middleware import SimpleMiddleware
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    yield
-
 
 app = FastAPI(
-    lifespan=lifespan,
+    title="Microshop",
     swagger_ui_parameters={"favicon_url": "/favicon.ico"},
 )
-app.include_router(router=router_v1, prefix=settings.api_v1_prefix)
 
-origins = [
-    "https://localhost:5173",  # Добавляем источник фронтенда
-    "http://127.0.0.1:5173",
-    # При необходимости можно добавить продакшен URL
-]
-
-app.add_middleware(SimpleMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods (GET, POST, PUT, DELETE, etc.)
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
+app.include_router(router=router_v1, prefix=settings.api_v1_prefix)
 
 
 @app.get(
@@ -42,10 +26,9 @@ app.add_middleware(
     tags=["Базовый функционал"],
     summary="Главная страница",
 )
-async def read_root():
+async def read_root() -> dict[str, str]:
     return {"Hello": "World"}
 
 
 if __name__ == "__main__":
-    # uvicorn.run("main:app", reload=True)
-    asyncio.run(app())
+    uvicorn.run("main:app", reload=True)

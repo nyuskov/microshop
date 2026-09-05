@@ -1,24 +1,24 @@
-// Удален устаревший комментарий /* global document, localStorage */
-
 import { defineStore } from 'pinia'
+
+type Theme = 'light' | 'dark'
 
 export const useThemeStore = defineStore('theme', {
   state: () => ({
-    currentTheme: 'dark', // Default theme changed to 'dark'
+    currentTheme: 'dark' as Theme, // Default theme changed to 'dark'
     isSidebarCollapsed: false // State for the collapsible sidebar (now used for drawer)
   }),
 
   actions: {
-    setTheme(theme) {
+    setTheme(theme: string) {
       if (['light', 'dark'].includes(theme)) {
-        this.currentTheme = theme
+        this.currentTheme = theme as Theme
         document.documentElement.setAttribute('data-theme', theme)
         localStorage.setItem('app-theme', theme) // Save preference to localStorage
       }
     },
 
     toggleTheme() {
-      const newTheme = this.currentTheme === 'light' ? 'dark' : 'light'
+      const newTheme: Theme = this.currentTheme === 'light' ? 'dark' : 'light'
       this.setTheme(newTheme)
     },
 

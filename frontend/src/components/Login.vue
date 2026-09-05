@@ -5,6 +5,7 @@ import InputMask from 'primevue/inputmask'
 import Message from 'primevue/message'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { getErrorMessage } from '../services/errors'
 import { ref, computed, onMounted } from 'vue'
 
 const router = useRouter()
@@ -95,20 +96,7 @@ async function requestOtpHandler() {
     emit('state-changed', state.value)
   } catch (error: unknown) {
     console.error('Request OTP failed:', error)
-    let errorMessage = 'Не удалось отправить код OTP.'
-    if (
-      error &&
-      typeof error === 'object' &&
-      'response' in error &&
-      error.response &&
-      error.response.data &&
-      error.response.data.detail
-    ) {
-      errorMessage = error.response.data.detail
-    } else if (error && typeof error === 'object' && 'message' in error && error.message) {
-      errorMessage = error.message
-    }
-    result.value = errorMessage
+    result.value = getErrorMessage(error, 'Не удалось отправить код OTP.')
     severity.value = 'error'
   } finally {
     isLoading.value = false
@@ -154,20 +142,7 @@ async function onFormSubmit() {
     emit('close-modal')
   } catch (error: unknown) {
     console.error('Login with OTP failed:', error)
-    let errorMessage = 'Вход не удался.'
-    if (
-      error &&
-      typeof error === 'object' &&
-      'response' in error &&
-      error.response &&
-      error.response.data &&
-      error.response.data.detail
-    ) {
-      errorMessage = error.response.data.detail
-    } else if (error && typeof error === 'object' && 'message' in error && error.message) {
-      errorMessage = error.message
-    }
-    result.value = errorMessage
+    result.value = getErrorMessage(error, 'Вход не удался.')
     severity.value = 'error'
   } finally {
     console.log('onFormSubmit finally block executed.')

@@ -4,7 +4,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import { useAuthStore } from '../stores/auth'
 import { fetchUserGroups } from '@/services/api' // Импортируем новую функцию
-import { User } from '@/types' // Импортируем обновлённый тип User
+import type { User } from '@/types' // Импортируем обновлённый тип User
 
 const authStore = useAuthStore()
 // Тип ExtendedUser теперь просто User, так как он обновлён
@@ -86,7 +86,7 @@ onMounted(async () => {
       <Column field="groups" header="Groups">
         <template #body="{ data }">
           <span v-if="data.groups && data.groups.length > 0">
-            {{ data.groups.map((g) => g.name).join(', ') }}
+            {{ (data.groups as Array<{ name: string }>).map((g) => g.name).join(', ') }}
           </span>
           <span v-else> No groups </span>
         </template>

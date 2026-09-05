@@ -1,26 +1,29 @@
+"""Pydantic-схемы товаров."""
+
 from pydantic import BaseModel, ConfigDict
 
 
 class ProductBase(BaseModel):
-    description: str
     name: str
+    description: str
     price: int
-
-
-class Product(ProductBase):
-    model_config = ConfigDict(from_attributes=True)
-    id: int
 
 
 class ProductCreate(ProductBase):
     pass
 
 
-class ProductUpdate(ProductCreate):
-    pass
+class Product(ProductBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
 
 
-class ProductUpdatePartial(ProductCreate):
-    description: str | None = None
+class ProductUpdate(BaseModel):
     name: str | None = None
+    description: str | None = None
     price: int | None = None
+
+
+class ProductUpdatePartial(ProductUpdate):
+    pass

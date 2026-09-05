@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from sqlalchemy import Column, ForeignKey, Integer, Table
+
 from .base import Base
 
 # Ассоциативная таблица для связи many-to-many между User и Chat

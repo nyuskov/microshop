@@ -5,15 +5,15 @@ from core.models import Chat
 
 
 async def create_chat(session: AsyncSession, chat_create: dict) -> Chat:
-    """Создает новый чат."""
+    """Создаёт новый чат."""
     new_chat = Chat(**chat_create)
     session.add(new_chat)
     await session.commit()
+    await session.refresh(new_chat)
     return new_chat
 
 
 async def get_chats(session: AsyncSession) -> list[Chat]:
-    """Получает список всех чатов."""
-    stmt = select(Chat)
-    result = await session.execute(stmt)
-    return result.scalars().all()
+    """Возвращает список всех чатов."""
+    result = await session.execute(select(Chat).order_by(Chat.id))
+    return list(result.scalars().all())

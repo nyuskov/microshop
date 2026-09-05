@@ -1,64 +1,80 @@
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+"""CRUD-операции для пользователей."""
+
 import secrets
 from uuid import uuid4
 
-from core.models import User
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from core.models import Post, User
 from core.security import password_hasher
 
 
 async def get_users(session: AsyncSession) -> list[User]:
-    """Получает список всех пользователей."""
-    stmt = select(User)
+    """Возвращает список всех пользователей."""
+    result = await session.execute(select(User))
+    return list(result.scalars().all())
+
+
+async def get_users_with_profile(session: AsyncSession) -> list[User]:
+    """Возвращает список пользователей вместе с профилями."""
+    stmt = select(User).options(selectinload(User.profile)).order_by(User.id)
     result = await session.execute(stmt)
-    return result.scalars().all()
+    return list(result.scalars().all())
+
+
+async def get_user_by_id(session: AsyncSession, user_id: int) -> User | None:
+    """Возвращает пользователя по id."""
+    return await session.get(User, user_id)
 
 
 async def get_user_by_username(session: AsyncSession, username: str) -> User | None:
-    """Получает пользователя по его имени."""
-    stmt = select(User).where(User.username == username)
-    result = await session.execute(stmt)
+    """Возвращает пользователя по имени."""
+    result = await session.execute(select(User).where(User.username == username))
     return result.scalar_one_or_none()
 
 
-# NEW FUNCTION
 async def get_user_by_phone_number(
     session: AsyncSession, phone_number: str
 ) -> User | None:
-    """Получает пользователя по его номеру телефона."""
-    stmt = select(User).where(User.phone_number == phone_number)
+    """Возвращает пользователя по номеру телефона."""
+    result = await session.execute(
+        select(User).where(User.phone_number == phone_number)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_user_with_profile(session: AsyncSession, user_id: int) -> User | None:
+    """Возвращает пользователя вместе с профилем."""
+    stmt = select(User).where(User.id == user_id).options(selectinload(User.profile))
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
 
-# END NEW FUNCTION
-
-
-# NEW FUNCTION
-async def get_user_by_id(session: AsyncSession, user_id: int) -> User | None:
-    """Получает пользователя по его ID."""
-    stmt = select(User).where(User.id == user_id)
+async def get_user_with_chats(session: AsyncSession, user_id: int) -> User | None:
+    """Возвращает пользователя вместе с его чатами."""
+    stmt = select(User).where(User.id == user_id).options(selectinload(User.chats))
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
 
-# END NEW FUNCTION
+async def get_posts_for_user(session: AsyncSession, user_id: int) -> list[Post]:
+    """Возвращает посты пользователя."""
+    stmt = select(Post).where(Post.user_id == user_id).order_by(Post.id)
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
 
 
 async def create_user(session: AsyncSession, user: User) -> User:
-    """Создает нового пользователя."""
+    """Создаёт нового пользователя."""
     session.add(user)
     await session.commit()
-    await session.refresh(
-        user
-    )  # Обновляем объект, чтобы получить сгенерированные значения
+    await session.refresh(user)
     return user
 
 
-async def delete_user(
-    session: AsyncSession,
-    user: User,
-) -> None:
+async def delete_user(session: AsyncSession, user: User) -> None:
     """Удаляет пользователя."""
     await session.delete(user)
     await session.commit()
@@ -67,33 +83,19 @@ async def delete_user(
 async def get_or_create_user_by_phone_number(
     session: AsyncSession, phone_number: str
 ) -> User:
-    """
-    Получает пользователя по номеру телефона. Если не найден, создает нового.
-    """
+    """Возвращает пользователя по номеру телефона или создаёт нового."""
     user = await get_user_by_phone_number(session, phone_number)
-    if user:
+    if user is not None:
         return user
 
-    # Генерируем уникальный username и временный пароль
-    # username = phone_number.replace("+", "plus_").replace("-", "_") # Простая замена символов
-    username = f"phone_{uuid4().hex[:8]}"  # Генерация уникального имени
-    temp_password = secrets.token_urlsafe(32)  # Генерация безопасного пароля
-    hashed_temp_password = password_hasher.hash(temp_password)
-
-    # Создаем нового пользователя
-    # Устанавливаем значения по умолчанию для полей, обязательных в БД
     new_user = User(
-        username=username,
+        username=f"phone_{uuid4().hex[:8]}",
         phone_number=phone_number,
-        hashed_password=hashed_temp_password,
-        is_active=True,  # Предполагаем, что пользователь активен после верификации OTP
-        is_verified=True,  # Можно отметить как верифицированного по телефону
-        # Установим значения по умолчанию для опциональных полей
-        email=None,  # Теперь email может быть None
+        hashed_password=password_hasher.hash(secrets.token_urlsafe(32)),
+        is_active=True,
+        is_verified=True,
+        email=None,
         first_name=None,
         last_name=None,
     )
-
-    # Сохраняем в БД
-    created_user = await create_user(session, new_user)
-    return created_user
+    return await create_user(session, new_user)

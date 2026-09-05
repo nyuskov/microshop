@@ -1,27 +1,21 @@
-__all__ = {
+__all__ = [
     "Base",
     "DatabaseHelper",
     "db_helper",
-    # "Order", # Убираем из экспорта
-    # "Post", # Убираем из экспорта
-    # "Product", # Убираем из экспорта
+    "Chat",
+    "Message",
+    "Post",
+    "Product",
     "Profile",
     "User",
-    # "Group", # Убираем Group из экспорта
-    "Chat",  # Новая модель
-    "Message",  # Новая модель
-    "user_chat_association_table",  # Добавляем таблицу в экспорт
-}
+    "user_chat_association_table",
+]
 
-from .base import Base
-from .db_helper import DatabaseHelper, db_helper
-
-# from .order import Order # Убираем из импортов
-# from .post import Post # Убираем из импортов
-# from .product import Product # Убираем из импортов
-from .profile import Profile
-from .user import User
-
-# from .group import Group # Убираем импорт Group
-from .chat import Chat, user_chat_association_table  # Импортируем таблицу
-from .message import Message
+from .base import Base  # noqa: F401
+from .chat import Chat, user_chat_association_table  # noqa: F401
+from .db_helper import DatabaseHelper, db_helper  # noqa: F401
+from .message import Message  # noqa: F401
+from .post import Post  # noqa: F401
+from .product import Product  # noqa: F401
+from .profile import Profile  # noqa: F401
+from .user import User  # noqa: F401

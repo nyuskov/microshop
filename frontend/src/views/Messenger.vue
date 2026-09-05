@@ -323,7 +323,7 @@ onMounted(async () => {
 
 // Следим за изменением состояния аутентификации
 watch(
-  () => authStore.is_authenticated,
+  () => authStore.isAuthenticated,
   (newVal) => {
     // Устанавливаем видимость модального окна как противоположное состоянию аутентификации
     showLoginModal.value = !newVal

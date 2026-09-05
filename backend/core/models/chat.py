@@ -1,8 +1,14 @@
+from typing import TYPE_CHECKING
+
 from sqlalchemy.orm import Mapped, relationship
 
 from .associations import user_chat_association_table
 from .base import Base
 from .mixins import IdIntPkMixin
+
+if TYPE_CHECKING:
+    from .message import Message
+    from .user import User
 
 
 class Chat(IdIntPkMixin, Base):
