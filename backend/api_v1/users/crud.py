@@ -3,7 +3,7 @@
 import secrets
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -33,6 +33,29 @@ async def get_user_by_username(session: AsyncSession, username: str) -> User | N
     """Возвращает пользователя по имени."""
     result = await session.execute(select(User).where(User.username == username))
     return result.scalar_one_or_none()
+
+
+async def search_users_by_query(
+    session: AsyncSession,
+    query: str,
+    *,
+    exclude_user_id: int | None = None,
+    limit: int = 20,
+) -> list[User]:
+    """Ищет пользователей по логину или номеру телефона (частичное совпадение)."""
+    pattern = f"%{query.strip()}%"
+    stmt = select(User).where(
+        or_(
+            User.username.ilike(pattern),
+            User.phone_number.ilike(pattern),
+        )
+    )
+    if exclude_user_id is not None:
+        stmt = stmt.where(User.id != exclude_user_id)
+    stmt = stmt.order_by(User.id).limit(limit)
+
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
 
 
 async def get_user_by_phone_number(

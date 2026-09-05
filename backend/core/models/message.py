@@ -1,6 +1,7 @@
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey
+from sqlalchemy import DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -15,6 +16,11 @@ class Message(IdIntPkMixin, Base):
     __tablename__ = "messages"
 
     text: Mapped[str]
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        server_default=func.now(),
+        index=True,
+    )
     user_id: Mapped[int] = mapped_column(ForeignKey("user.id"))
     chat_id: Mapped[int] = mapped_column(ForeignKey("chats.id"))
 

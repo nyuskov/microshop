@@ -1,8 +1,52 @@
 <template>
   <div class="messenger-container">
-    <div class="sidebar">
+    <aside class="sidebar">
       <div class="search-bar">
-        <InputText v-model="searchQuery" placeholder="Поиск..." class="search-input" />
+        <span class="pi pi-search search-icon"></span>
+        <InputText
+          v-model="searchQuery"
+          placeholder="Поиск по логину или телефону"
+          class="search-input"
+        />
+      </div>
+
+      <div v-if="searchError" class="search-error">{{ searchError }}</div>
+
+      <!-- Результаты поиска людей -->
+      <div v-if="searchQuery.trim()" class="people-results">
+        <div v-if="searching" class="search-status">Поиск…</div>
+        <template v-else-if="userResults.length">
+          <div class="people-results-title">Найти людей</div>
+          <div
+            v-for="user in userResults"
+            :key="user.id"
+            class="people-result"
+            @click="startChat(user)"
+          >
+            <div class="result-avatar">{{ initials(displayName(user)) }}</div>
+            <div class="result-info">
+              <div class="result-name">{{ displayName(user) }}</div>
+              <div class="result-meta">
+                @{{ user.username
+                }}<template v-if="user.phone_number"> · {{ user.phone_number }}</template>
+              </div>
+            </div>
+            <Button
+              icon="pi pi-comment"
+              text
+              rounded
+              severity="secondary"
+              aria-label="Начать чат"
+            />
+          </div>
+        </template>
+        <div v-else class="search-status">Никого не найдено</div>
+      </div>
+
+      <div class="chat-list-header">Диалоги</div>
+      <div v-if="loadingChats" class="chat-list-status">Загрузка…</div>
+      <div v-else-if="!filteredChats.length" class="chat-list-status">
+        Найдите пользователя по логину или телефону и начните переписку
       </div>
       <div class="chat-list">
         <div
@@ -13,75 +57,96 @@
           @click="selectChat(chat.id)"
         >
           <div class="chat-avatar">
-            <i class="pi pi-user"></i>
+            {{ initials(chatTitle(chat)) }}
           </div>
           <div class="chat-info">
-            <div class="chat-name">{{ chat.name }}</div>
-            <div class="chat-preview">
-              {{ chat.lastMessage ? chat.lastMessage.text : 'Нет сообщений' }}
-            </div>
+            <div class="chat-name">{{ chatTitle(chat) }}</div>
+            <div class="chat-preview">{{ previewText(chat) }}</div>
           </div>
           <div class="chat-time">
-            {{ chat.lastMessage ? formatDate(chat.lastMessage.timestamp) : formatDate(new Date()) }}
+            {{ chat.last_message ? formatListDate(chat.last_message.timestamp) : '' }}
           </div>
         </div>
       </div>
-    </div>
+    </aside>
 
-    <div class="chat-area">
+    <main class="chat-area">
       <div class="chat-header">
         <div class="header-info">
-          <!-- Добавляю Avatar для профиля пользователя -->
+          <template v-if="selectedChat">
+            <Avatar
+              :label="initials(chatTitle(selectedChat))"
+              shape="circle"
+              class="chat-avatar-big"
+            />
+            <div class="header-chat-block">
+              <div class="chat-name">{{ chatTitle(selectedChat) }}</div>
+              <div class="chat-subtitle">{{ chatSubtitle(selectedChat) }}</div>
+            </div>
+          </template>
+          <template v-else>
+            <div class="header-chat-block">
+              <div class="chat-name">Мессенджер</div>
+              <div class="chat-subtitle">Личные сообщения</div>
+            </div>
+          </template>
+        </div>
+        <div class="header-actions">
           <Avatar
-            :label="authStore.current_user?.username?.charAt(0) || 'U'"
+            :label="selfInitial"
             size="large"
             shape="circle"
             class="profile-avatar-clickable"
             @click="goToProfile"
-            :pt="{ root: { 'data-pr-tooltip': 'Профиль' } }"
           />
-          <div class="chat-name" @click="goToProfile" style="cursor: pointer">
-            {{ authStore.current_user?.username || 'Профиль' }}
-          </div>
-        </div>
-        <div class="header-actions">
           <Button icon="pi pi-cog" severity="secondary" text rounded @click="goToSettings" />
-          <Button icon="pi pi-ellipsis-v" severity="secondary" text rounded />
         </div>
       </div>
 
-      <div class="messages-container" ref="messagesContainerRef">
+      <div v-if="selectedChat" class="messages-container" ref="messagesContainerRef">
         <div
-          v-for="(message, index) in currentMessages"
-          :key="index"
+          v-for="message in messages"
+          :key="message.id"
           class="message-wrapper"
           :class="{
-            'message-sent': message.senderId === currentUserId,
-            'message-received': message.senderId !== currentUserId
+            'message-sent': message.user_id === currentUserId,
+            'message-received': message.user_id !== currentUserId
           }"
         >
           <div class="message-content">
             <div class="message-text">{{ message.text }}</div>
-            <div class="message-time">
-              {{ formatTime(message.timestamp) }}
-            </div>
+            <div class="message-time">{{ formatTime(message.timestamp) }}</div>
           </div>
         </div>
+        <div v-if="messagesLoading" class="chat-list-status">Загрузка сообщений…</div>
       </div>
 
-      <div class="input-area">
+      <div v-else class="chat-empty">
+        <i class="pi pi-comments chat-empty-icon"></i>
+        <p>
+          Выберите диалог слева или найдите собеседника по логину или телефону, чтобы начать
+          переписку.
+        </p>
+      </div>
+
+      <div v-if="selectedChat" class="input-area">
+        <div v-if="sendError" class="send-error">{{ sendError }}</div>
         <div class="input-wrapper">
-          <Button icon="pi pi-plus" severity="secondary" text rounded />
           <InputText
             v-model="newMessage"
             placeholder="Введите сообщение..."
             class="message-input"
+            :disabled="sending"
             @keypress.enter="sendMessage"
           />
-          <Button icon="pi pi-paper-plane" @click="sendMessage" :disabled="!newMessage.trim()" />
+          <Button
+            icon="pi pi-paper-plane"
+            @click="sendMessage"
+            :disabled="!newMessage.trim() || sending"
+          />
         </div>
       </div>
-    </div>
+    </main>
   </div>
 
   <!-- Settings Modal -->
@@ -129,18 +194,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
-// Импортирую Avatar
 import Avatar from 'primevue/avatar'
-// Импортирую Dialog для модальных окон
 import Dialog from 'primevue/dialog'
-// Импортирую LoginModal
 import LoginModal from '@/components/LoginModal.vue'
-// Импортирую store
 import { useAuthStore } from '@/stores/auth'
-// Импортирую компоненты для модальных окон
+import { getErrorMessage } from '@/services/errors'
+import {
+  fetchMyChats,
+  fetchMessages,
+  openPrivateChat,
+  searchUsers,
+  sendNewMessage,
+  type SearchUserResult
+} from '@/services/chatService'
+import type { Chat, ChatUser, Message } from '@/types'
 import SettingsView from './SettingsView.vue'
 import UserProfile from './UserProfile.vue'
 
@@ -153,142 +223,127 @@ const showProfileModal = ref(false)
 // Инициализируем showLoginModal как true, полагаясь на watch для обновления
 const showLoginModal = ref(true)
 
-// Define types
-interface Chat {
-  id: number
-  name: string
-  lastMessage?: Message
-}
-
-interface Message {
-  id: number
-  text: string
-  timestamp: Date
-  senderId: number
-}
-
-// State variables
-const chats = ref<Chat[]>([
-  {
-    id: 1,
-    name: 'Иван Петров',
-    lastMessage: { text: 'Привет!', timestamp: new Date(Date.now() - 3600000), id: 1, senderId: 2 }
-  },
-  {
-    id: 2,
-    name: 'Анна Смирнова',
-    lastMessage: {
-      text: 'Как дела?',
-      timestamp: new Date(Date.now() - 86400000),
-      id: 2,
-      senderId: 3
-    }
-  },
-  {
-    id: 3,
-    name: 'Групповой чат',
-    lastMessage: {
-      text: 'Новое собрание',
-      timestamp: new Date(Date.now() - 172800000),
-      id: 3,
-      senderId: 1
-    }
-  }
-])
-const messages = ref<Message[][]>([
-  [
-    { id: 1, text: 'Привет!', timestamp: new Date(Date.now() - 3600000), senderId: 2 },
-    { id: 2, text: 'Привет, как дела?', timestamp: new Date(Date.now() - 3500000), senderId: 1 },
-    { id: 3, text: 'Отлично, спасибо!', timestamp: new Date(Date.now() - 3400000), senderId: 2 }
-  ],
-  [
-    { id: 1, text: 'Как дела?', timestamp: new Date(Date.now() - 86400000), senderId: 3 },
-    { id: 2, text: 'Хорошо, спасибо', timestamp: new Date(Date.now() - 86300000), senderId: 1 }
-  ],
-  [
-    { id: 1, text: 'Новое собрание', timestamp: new Date(Date.now() - 172800000), senderId: 1 },
-    { id: 2, text: 'Когда?', timestamp: new Date(Date.now() - 172700000), senderId: 2 },
-    { id: 3, text: 'Завтра в 10', timestamp: new Date(Date.now() - 172600000), senderId: 3 }
-  ]
-])
-const selectedChatId = ref<number | null>(1)
+// Данные мессенджера
+const chats = ref<Chat[]>([])
+const messages = ref<Message[]>([])
+const loadingChats = ref(false)
+const messagesLoading = ref(false)
+const selectedChatId = ref<number | null>(null)
 const newMessage = ref('')
+const sending = ref(false)
+const sendError = ref('')
 const searchQuery = ref('')
-const currentUserId = ref(1) // Simulate current user ID
+const searching = ref(false)
+const userResults = ref<SearchUserResult[]>([])
+const searchError = ref('')
 const messagesContainerRef = ref<HTMLElement | null>(null)
 
-// Computed properties
-const filteredChats = computed(() => {
-  if (!searchQuery.value) return chats.value
-  return chats.value.filter((chat) =>
-    chat.name.toLowerCase().includes(searchQuery.value.toLowerCase())
-  )
+// Текущий пользователь (id появляется в /jwt/users/me)
+const currentUserId = computed<number | null>(() => authStore.current_user?.id ?? null)
+
+const selectedChat = computed<Chat | null>(() => {
+  if (selectedChatId.value === null) return null
+  return chats.value.find((chat) => chat.id === selectedChatId.value) ?? null
 })
 
-const currentMessages = computed(() => {
-  if (selectedChatId.value === null) return []
-  const index = chats.value.findIndex((chat) => chat.id === selectedChatId.value)
-  return index !== -1 ? messages.value[index] : []
+const filteredChats = computed<Chat[]>(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+  if (!query) return chats.value
+  return chats.value.filter((chat) => {
+    const other = otherUserOf(chat)
+    const title = other ? displayName(other) : chat.name
+    const phone = other?.phone_number ?? ''
+    return (
+      title.toLowerCase().includes(query) ||
+      chat.name.toLowerCase().includes(query) ||
+      phone.toLowerCase().includes(query)
+    )
+  })
 })
 
-// NOTE: selectedChatName was removed as it was unused according to the linter error.
-
-// Functions
-const selectChat = (id: number) => {
-  selectedChatId.value = id
-  scrollToBottom()
+// ---------- Вспомогательные функции ----------
+const fullName = (
+  first: string | null | undefined,
+  last: string | null | undefined,
+  username: string
+): string => {
+  if (first && last) return `${first} ${last}`
+  if (first) return first
+  if (last) return last
+  return username
 }
 
-const goToProfile = () => {
-  showProfileModal.value = true
-}
+const displayName = (user: {
+  first_name?: string | null
+  last_name?: string | null
+  username: string
+}): string => fullName(user.first_name, user.last_name, user.username)
 
-const goToSettings = () => {
-  showSettingsModal.value = true
-}
-
-const sendMessage = () => {
-  if (!newMessage.value.trim() || selectedChatId.value === null) return
-
-  const chatIndex = chats.value.findIndex((chat) => chat.id === selectedChatId.value)
-  if (chatIndex === -1) return
-
-  const newMsg: Message = {
-    id: Date.now(),
-    text: newMessage.value,
-    timestamp: new Date(),
-    senderId: currentUserId.value
+const initials = (value: string): string => {
+  const clean = value.trim()
+  if (!clean) return '?'
+  const parts = clean.split(/\s+/)
+  if (parts.length >= 2) {
+    return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase()
   }
-
-  // Add message to current chat
-  messages.value[chatIndex] = [...messages.value[chatIndex], newMsg]
-
-  // Update last message in chat
-  chats.value[chatIndex].lastMessage = newMsg
-
-  // Clear input
-  newMessage.value = ''
-
-  // Auto-scroll to bottom
-  nextTick(scrollToBottom)
+  return clean.slice(0, 2).toUpperCase()
 }
 
-const formatDate = (date: Date) => {
+const selfInitial = computed<string>(() => {
+  const user = authStore.current_user
+  return user ? initials(displayName(user)) : 'U'
+})
+
+const otherUserOf = (chat: Chat): ChatUser | undefined => {
+  if (currentUserId.value !== null) {
+    const found = chat.users.find((user) => user.id !== currentUserId.value)
+    if (found) return found
+  }
+  return chat.users[0]
+}
+
+const chatTitle = (chat: Chat): string => {
+  const other = otherUserOf(chat)
+  return other ? displayName(other) : chat.name
+}
+
+const chatSubtitle = (chat: Chat): string => {
+  const other = otherUserOf(chat)
+  if (!other) return chat.name
+  const parts: string[] = [`@${other.username}`]
+  if (other.phone_number) parts.push(other.phone_number)
+  return parts.join(' · ')
+}
+
+const previewText = (chat: Chat): string => {
+  const last = chat.last_message
+  if (!last) return 'Нет сообщений'
+  const prefix = last.user_id === currentUserId.value ? 'Вы: ' : ''
+  return prefix + last.text
+}
+
+const toDate = (value: string | Date): Date => (typeof value === 'string' ? new Date(value) : value)
+
+const formatListDate = (timestamp: string): string => {
+  const date = toDate(timestamp)
   const today = new Date()
   const yesterday = new Date(today)
   yesterday.setDate(yesterday.getDate() - 1)
 
   if (date.toDateString() === today.toDateString()) {
     return 'Сегодня'
-  } else if (date.toDateString() === yesterday.toDateString()) {
-    return 'Вчера'
-  } else {
-    return date.toLocaleDateString('ru-RU')
   }
+  if (date.toDateString() === yesterday.toDateString()) {
+    return 'Вчера'
+  }
+  return date.toLocaleDateString('ru-RU')
 }
 
-const formatTime = (date: Date) => {
-  return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+const formatTime = (timestamp: string): string => {
+  return toDate(timestamp).toLocaleTimeString('ru-RU', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 const scrollToBottom = () => {
@@ -297,39 +352,201 @@ const scrollToBottom = () => {
   }
 }
 
-// Watch for new messages and scroll to bottom
-watch(
-  currentMessages,
-  () => {
-    nextTick(scrollToBottom)
-  },
-  { deep: true }
-)
+// ---------- Загрузка данных ----------
+const loadChats = async () => {
+  loadingChats.value = true
+  try {
+    chats.value = await fetchMyChats()
+  } catch (error) {
+    console.error('Не удалось загрузить чаты:', getErrorMessage(error))
+  } finally {
+    loadingChats.value = false
+  }
+}
 
-// Обработчик закрытия модального окна входа, вызывается когда Login.vue эмиттит 'close-modal'
-// Это означает, что аутентификация прошла успешно
+const loadMessages = async (chatId: number) => {
+  messagesLoading.value = true
+  try {
+    messages.value = await fetchMessages(chatId)
+    await nextTick()
+    scrollToBottom()
+  } catch (error) {
+    console.error('Не удалось загрузить сообщения:', getErrorMessage(error))
+  } finally {
+    messagesLoading.value = false
+  }
+}
+
+const selectChat = async (chatId: number) => {
+  selectedChatId.value = chatId
+  sendError.value = ''
+  messages.value = []
+  await loadMessages(chatId)
+}
+
+const startChat = async (user: SearchUserResult) => {
+  searchError.value = ''
+  try {
+    const chat = await openPrivateChat(user.id)
+    const index = chats.value.findIndex((item) => item.id === chat.id)
+    if (index === -1) {
+      chats.value.unshift(chat)
+    } else {
+      chats.value[index] = chat
+    }
+    searchQuery.value = ''
+    userResults.value = []
+    selectedChatId.value = chat.id
+    messages.value = []
+    await loadMessages(chat.id)
+  } catch (error) {
+    searchError.value = getErrorMessage(error, 'Не удалось начать переписку')
+  }
+}
+
+const sendMessage = async () => {
+  const chatId = selectedChatId.value
+  const text = newMessage.value.trim()
+  if (chatId === null || !text || sending.value) return
+
+  sending.value = true
+  sendError.value = ''
+  try {
+    const message = await sendNewMessage(chatId, text)
+    newMessage.value = ''
+    messages.value = [...messages.value, message]
+    await loadChats()
+    await nextTick()
+    scrollToBottom()
+  } catch (error) {
+    sendError.value = getErrorMessage(error, 'Не удалось отправить сообщение')
+  } finally {
+    sending.value = false
+  }
+}
+
+// ---------- Поиск пользователей ----------
+let searchTimer: number | null = null
+watch(searchQuery, (value) => {
+  if (searchTimer !== null) {
+    window.clearTimeout(searchTimer)
+    searchTimer = null
+  }
+  searchError.value = ''
+  const query = value.trim()
+  if (!query) {
+    userResults.value = []
+    searching.value = false
+    return
+  }
+
+  searching.value = true
+  searchTimer = window.setTimeout(async () => {
+    try {
+      userResults.value = await searchUsers(query)
+    } catch (error) {
+      searchError.value = getErrorMessage(error, 'Не удалось выполнить поиск')
+    } finally {
+      searching.value = false
+    }
+  }, 350)
+})
+
+// ---------- Опрос новых сообщений (polling) ----------
+let pollTimer: number | null = null
+
+const stopPolling = () => {
+  if (pollTimer !== null) {
+    window.clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+const startPolling = () => {
+  stopPolling()
+  pollTimer = window.setInterval(async () => {
+    if (!authStore.isAuthenticated) return
+    try {
+      chats.value = await fetchMyChats()
+    } catch (error) {
+      console.error('Не удалось обновить чаты:', getErrorMessage(error))
+    }
+
+    if (selectedChatId.value !== null) {
+      try {
+        const previousIds = new Set(messages.value.map((message) => message.id))
+        const fresh = await fetchMessages(selectedChatId.value)
+        messages.value = fresh
+        const hasNew = fresh.some((message) => !previousIds.has(message.id))
+        if (hasNew) {
+          await nextTick()
+          scrollToBottom()
+        }
+      } catch (error) {
+        console.error('Не удалось обновить сообщения:', getErrorMessage(error))
+      }
+    }
+  }, 3000)
+}
+
+// ---------- Навигация ----------
+const goToProfile = () => {
+  showProfileModal.value = true
+}
+
+const goToSettings = () => {
+  showSettingsModal.value = true
+}
+
 const onLoginModalClose = () => {
   console.log('Login modal close event received in Messenger.vue. Closing modal.')
   showLoginModal.value = false
 }
 
-// Initialize
+// ---------- Жизненный цикл ----------
+const ready = computed(() => authStore.isAuthenticated && currentUserId.value !== null)
+
+watch(
+  ready,
+  async (isReady) => {
+    if (isReady) {
+      await loadChats()
+      startPolling()
+    } else {
+      stopPolling()
+      chats.value = []
+      messages.value = []
+      userResults.value = []
+      selectedChatId.value = null
+    }
+  },
+  { immediate: true }
+)
+
 onMounted(async () => {
   // Ждем полной инициализации store
   await authStore.initializeApp()
-  // После инициализации store, watch сработает и установит showLoginModal в правильное значение
-  scrollToBottom()
+  if (messagesContainerRef.value) {
+    scrollToBottom()
+  }
+})
+
+onBeforeUnmount(() => {
+  stopPolling()
+  if (searchTimer !== null) {
+    window.clearTimeout(searchTimer)
+  }
 })
 
 // Следим за изменением состояния аутентификации
 watch(
   () => authStore.isAuthenticated,
-  (newVal) => {
-    // Устанавливаем видимость модального окна как противоположное состоянию аутентификации
-    showLoginModal.value = !newVal
+  (isAuthenticated) => {
+    // Показываем модалку входа, пока пользователь не аутентифицирован
+    showLoginModal.value = !isAuthenticated
   },
   { immediate: true }
-) // immediate: true гарантирует выполнение watch при его создании
+)
 </script>
 
 <style scoped>
@@ -576,6 +793,160 @@ watch(
   z-index: 999;
   pointer-events: auto;
 } */
+
+/* Панель поиска людей */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 15px;
+  background: #f0f2f5;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.search-icon {
+  color: #888;
+  font-size: 0.9rem;
+}
+
+.search-input {
+  flex: 1;
+  width: auto;
+}
+
+.search-error,
+.send-error {
+  font-size: 13px;
+  color: #d32f2f;
+  padding: 6px 15px;
+  background: #fdecea;
+}
+
+.send-error {
+  border-radius: 8px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+}
+
+.people-results {
+  border-bottom: 1px solid #e0e0e0;
+  max-height: 40vh;
+  overflow-y: auto;
+  background: #ffffff;
+}
+
+.people-results-title {
+  padding: 8px 15px 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #999;
+}
+
+.people-result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 15px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.people-result:hover {
+  background: #f5f7fa;
+}
+
+.result-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4776e6 0%, #8e54e9 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.result-info {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.result-name {
+  font-weight: 600;
+  color: #0a0a0a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.result-meta {
+  font-size: 13px;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-status,
+.chat-list-status {
+  padding: 12px 15px;
+  color: #888;
+  font-size: 13px;
+}
+
+.chat-list-header {
+  padding: 12px 15px 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #999;
+}
+
+/* Аватар и название собеседника в шапке */
+.chat-avatar-big {
+  width: 42px !important;
+  height: 42px !important;
+  background: linear-gradient(135deg, #4776e6 0%, #8e54e9 100%) !important;
+  color: white !important;
+  font-weight: 600;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.header-chat-block {
+  min-width: 0;
+}
+
+.chat-subtitle {
+  font-size: 13px;
+  color: #777;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Пустое состояние при отсутствии выбранного чата */
+.chat-empty {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #888;
+  padding: 20px;
+  background: #eef1f5;
+}
+
+.chat-empty-icon {
+  font-size: 3rem;
+  color: #c0c8d4;
+  margin-bottom: 12px;
+}
 
 @media (max-width: 768px) {
   .messenger-container {

@@ -1,23 +1,33 @@
+export interface ChatUser {
+  id: number
+  username: string
+  first_name: string | null
+  last_name: string | null
+  phone_number: string | null
+}
+
 export interface Chat {
   id: number
   name: string
+  users: ChatUser[]
+  last_message: Message | null
 }
 
 export interface Message {
   id: number
   text: string
-  user_id: number // или объект пользователя
+  user_id: number
   chat_id: number
-}
-
-export interface CreateChatRequest {
-  name: string
+  timestamp: string
 }
 
 export interface CreateMessageRequest {
   text: string
-  user_id: number
   chat_id: number
+}
+
+export interface OpenPrivateChatRequest {
+  user_id: number
 }
 
 export interface Profile {

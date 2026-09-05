@@ -47,9 +47,20 @@ class PostSchema(BaseModel):
     user_id: int
 
 
+class UserSearchResultSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    first_name: str | None
+    last_name: str | None
+    phone_number: str | None = None
+
+
 class UserWithDetailsSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    id: int
     username: str
     phone_number: str | None = None
     first_name: str | None
@@ -58,9 +69,9 @@ class UserWithDetailsSchema(BaseModel):
     profile: ProfileSchema | None
     chats: list[ChatSchema] = Field(default_factory=list)
 
-    _empty_str_to_none = field_validator("first_name", "last_name", mode="before")(
-        _empty_str_to_none
-    )
+    _empty_str_to_none = field_validator(
+        "first_name", "last_name", mode="before"
+    )(_empty_str_to_none)
 
 
 class UserUpdateWithProfileSchema(BaseModel):
@@ -73,9 +84,9 @@ class UserUpdateWithProfileSchema(BaseModel):
     email: EmailStr | None = None
     profile: ProfileUpdateSchema | None = None
 
-    _empty_str_to_none = field_validator("first_name", "last_name", mode="before")(
-        _empty_str_to_none
-    )
+    _empty_str_to_none = field_validator(
+        "first_name", "last_name", mode="before"
+    )(_empty_str_to_none)
 
 
 class CreateUser(BaseModel):
@@ -93,9 +104,9 @@ class CreateUser(BaseModel):
             raise ValueError("Неверный формат номера телефона")
         return value
 
-    _empty_str_to_none = field_validator("first_name", "last_name", mode="before")(
-        _empty_str_to_none
-    )
+    _empty_str_to_none = field_validator(
+        "first_name", "last_name", mode="before"
+    )(_empty_str_to_none)
 
 
 class UserCreatedResponseSchema(BaseModel):

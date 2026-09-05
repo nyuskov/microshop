@@ -1,8 +1,9 @@
 """Эндпоинты для управления пользователями."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api_v1.auth.utils import get_current_user
 from api_v1.users import crud, schemas
 from core.models import User, db_helper
 from core.security import get_password_hash
@@ -15,6 +16,19 @@ async def get_users(
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> list[User]:
     return await crud.get_users_with_profile(session)
+
+
+@router.get("/search/", response_model=list[schemas.UserSearchResultSchema])
+async def search_users(
+    q: str = Query(default="", min_length=1, max_length=64),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> list[User]:
+    """Ищет пользователей по логину или номеру телефона."""
+    query = q.strip()
+    if not query:
+        return []
+    return await crud.search_users_by_query(session, query, exclude_user_id=user.id)
 
 
 @router.get("/{user_id}/", response_model=schemas.UserWithDetailsSchema)

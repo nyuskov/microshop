@@ -4,30 +4,54 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.models import Message, User
+from api_v1.chats.crud import is_user_chat_member
+from core.models import Chat, Message
+
+_NOT_MEMBER_DETAIL = "Вы не являетесь участником этого чата"
 
 
-async def create_message(session: AsyncSession, message_create: dict) -> Message:
-    """Создаёт сообщение, проверяя существование автора."""
-    user_id = message_create.get("user_id")
-    if user_id is not None:
-        user = await session.get(User, user_id)
-        if user is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Пользователь с id {user_id} не существует",
-            )
+async def create_message(
+    session: AsyncSession, *, chat_id: int, text: str, user_id: int
+) -> Message:
+    """Создаёт сообщение от имени пользователя-участника чата."""
+    chat = await session.get(Chat, chat_id)
+    if chat is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Чат не найден",
+        )
+    if not await is_user_chat_member(session, chat_id=chat_id, user_id=user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=_NOT_MEMBER_DETAIL,
+        )
 
-    message = Message(**message_create)
+    message = Message(text=text, chat_id=chat_id, user_id=user_id)
     session.add(message)
     await session.commit()
     await session.refresh(message)
     return message
 
 
-async def get_messages_by_chat_id(session: AsyncSession, chat_id: int) -> list[Message]:
-    """Возвращает сообщения указанного чата."""
+async def get_messages_by_chat_id(
+    session: AsyncSession, *, chat_id: int, user_id: int
+) -> list[Message]:
+    """Возвращает сообщения чата, если пользователь является его участником."""
+    chat = await session.get(Chat, chat_id)
+    if chat is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Чат не найден",
+        )
+    if not await is_user_chat_member(session, chat_id=chat_id, user_id=user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=_NOT_MEMBER_DETAIL,
+        )
+
     result = await session.execute(
-        select(Message).where(Message.chat_id == chat_id).order_by(Message.id)
+        select(Message)
+        .where(Message.chat_id == chat_id)
+        .order_by(Message.timestamp, Message.id)
     )
     return list(result.scalars().all())

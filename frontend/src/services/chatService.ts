@@ -1,24 +1,44 @@
-import axios from 'axios'
-import type { Chat, Message, CreateChatRequest, CreateMessageRequest } from '@/types'
+import { api } from './api'
+import type { Chat, Message, CreateMessageRequest, OpenPrivateChatRequest } from '@/types'
 
-const API_BASE_URL = 'https://localhost:8000/api/v1' // Обновленный URL
+export interface SearchUserResult {
+  id: number
+  username: string
+  first_name: string | null
+  last_name: string | null
+  phone_number: string | null
+}
 
-export const fetchChats = async (): Promise<Chat[]> => {
-  const response = await axios.get(`${API_BASE_URL}/chats/`)
+/** Возвращает чаты текущего пользователя с последними сообщениями. */
+export const fetchMyChats = async (): Promise<Chat[]> => {
+  const response = await api.get<Chat[]>('/chats/')
   return response.data
 }
 
-export const createChat = async (chatData: CreateChatRequest): Promise<Chat> => {
-  const response = await axios.post(`${API_BASE_URL}/chats/`, chatData)
+/** Находит или создаёт личный чат с указанным пользователем. */
+export const openPrivateChat = async (userId: number): Promise<Chat> => {
+  const payload: OpenPrivateChatRequest = { user_id: userId }
+  const response = await api.post<Chat>('/chats/private/', payload)
   return response.data
 }
 
+/** Возвращает сообщения указанного чата. */
 export const fetchMessages = async (chatId: number): Promise<Message[]> => {
-  const response = await axios.get(`${API_BASE_URL}/messages/${chatId}`)
+  const response = await api.get<Message[]>(`/messages/${chatId}/`)
   return response.data
 }
 
-export const sendNewMessage = async (messageData: CreateMessageRequest): Promise<Message> => {
-  const response = await axios.post(`${API_BASE_URL}/messages/`, messageData)
+/** Отправляет сообщение в чат от имени текущего пользователя. */
+export const sendNewMessage = async (chatId: number, text: string): Promise<Message> => {
+  const payload: CreateMessageRequest = { chat_id: chatId, text }
+  const response = await api.post<Message>('/messages/', payload)
+  return response.data
+}
+
+/** Ищет пользователей по логину или номеру телефона. */
+export const searchUsers = async (query: string): Promise<SearchUserResult[]> => {
+  const response = await api.get<SearchUserResult[]>('/users/search/', {
+    params: { q: query }
+  })
   return response.data
 }

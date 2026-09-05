@@ -87,3 +87,5 @@ export const updateUsersInGroup = async (groupId: number, userIds: number[]) => 
   return response.data
 }
 // --- Конец новых функций ---
+
+export { api }

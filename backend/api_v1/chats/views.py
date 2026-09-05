@@ -1,10 +1,13 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api_v1.auth.utils import get_current_user
 from api_v1.chats import crud
 from api_v1.chats.schemas import Chat as ChatSchema
-from api_v1.chats.schemas import ChatCreate
-from core.models import db_helper
+from api_v1.chats.schemas import ChatUserSchema, MessageSchema, PrivateChatCreate
+from core.models import Chat, Message, User, db_helper
 
 router = APIRouter(
     prefix="/chats",
@@ -12,16 +15,51 @@ router = APIRouter(
 )
 
 
-@router.post("/", response_model=ChatSchema)
-async def create_new_chat(
-    chat: ChatCreate,
-    session: AsyncSession = Depends(db_helper.session_dependency),
-):
-    return await crud.create_chat(session=session, chat_create=chat.model_dump())
+def _serialize_chat(chat: Chat, last_messages: dict[int, Message]) -> dict:
+    """Преобразует чат в словарь для ответа API."""
+    last = last_messages.get(chat.id)
+    return {
+        "id": chat.id,
+        "name": chat.name,
+        "users": [ChatUserSchema.model_validate(u) for u in chat.users],
+        "last_message": MessageSchema.model_validate(last) if last else None,
+    }
+
+
+def _chat_sort_key(item: dict):
+    """Ключ сортировки: чаты с сообщениями сначала, новые — выше."""
+    last = item.get("last_message")
+    if last is None:
+        return (1, datetime.min)
+    return (0, last.timestamp)
 
 
 @router.get("/", response_model=list[ChatSchema])
-async def get_all_chats(
+async def get_my_chats(
+    user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
-    return await crud.get_chats(session=session)
+    """Возвращает чаты текущего пользователя с последними сообщениями."""
+    chats = await crud.get_user_chats(session=session, user_id=user.id)
+    last_messages = await crud.get_last_messages(
+        session=session, chat_ids=[chat.id for chat in chats]
+    )
+    items = [_serialize_chat(chat, last_messages) for chat in chats]
+    items.sort(key=_chat_sort_key, reverse=True)
+    return items
+
+
+@router.post("/private/", response_model=ChatSchema)
+async def create_or_open_private_chat(
+    payload: PrivateChatCreate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Находит или создаёт личный чат текущего пользователя с собеседником."""
+    chat = await crud.get_or_create_private_chat(
+        session=session,
+        first_user_id=user.id,
+        second_user_id=payload.user_id,
+    )
+    last_messages = await crud.get_last_messages(session=session, chat_ids=[chat.id])
+    return _serialize_chat(chat, last_messages)
