@@ -29,9 +29,13 @@ async def get_user_by_id(session: AsyncSession, user_id: int) -> User | None:
     return await session.get(User, user_id)
 
 
-async def get_user_by_username(session: AsyncSession, username: str) -> User | None:
+async def get_user_by_username(
+    session: AsyncSession, username: str
+) -> User | None:
     """Возвращает пользователя по имени."""
-    result = await session.execute(select(User).where(User.username == username))
+    result = await session.execute(
+        select(User).where(User.username == username)
+    )
     return result.scalar_one_or_none()
 
 
@@ -58,6 +62,18 @@ async def search_users_by_query(
     return list(result.scalars().all())
 
 
+async def get_contacts(
+    session: AsyncSession, *, exclude_user_id: int | None = None
+) -> list[User]:
+    """Возвращает список пользователей (контактов), кроме указанного."""
+    stmt = select(User).order_by(User.username)
+    if exclude_user_id is not None:
+        stmt = stmt.where(User.id != exclude_user_id)
+
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
 async def get_user_by_phone_number(
     session: AsyncSession, phone_number: str
 ) -> User | None:
@@ -68,16 +84,26 @@ async def get_user_by_phone_number(
     return result.scalar_one_or_none()
 
 
-async def get_user_with_profile(session: AsyncSession, user_id: int) -> User | None:
+async def get_user_with_profile(
+    session: AsyncSession, user_id: int
+) -> User | None:
     """Возвращает пользователя вместе с профилем."""
-    stmt = select(User).where(User.id == user_id).options(selectinload(User.profile))
+    stmt = (
+        select(User)
+        .where(User.id == user_id)
+        .options(selectinload(User.profile))
+    )
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
 
-async def get_user_with_chats(session: AsyncSession, user_id: int) -> User | None:
+async def get_user_with_chats(
+    session: AsyncSession, user_id: int
+) -> User | None:
     """Возвращает пользователя вместе с его чатами."""
-    stmt = select(User).where(User.id == user_id).options(selectinload(User.chats))
+    stmt = (
+        select(User).where(User.id == user_id).options(selectinload(User.chats))
+    )
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 

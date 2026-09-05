@@ -212,3 +212,6 @@ __marimo__/
 
 # Certificates
 certs/
+
+# Загруженные пользователями файлы сообщений
+backend/media/

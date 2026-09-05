@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api_v1.auth.utils import get_current_user
 from api_v1.chats import crud
 from api_v1.chats.schemas import Chat as ChatSchema
-from api_v1.chats.schemas import ChatUserSchema, MessageSchema, PrivateChatCreate
+from api_v1.chats.schemas import ChatUserSchema, PrivateChatCreate
+from api_v1.messages.crud import message_basic_to_dict
 from core.models import Chat, Message, User, db_helper
 
 router = APIRouter(
@@ -15,14 +16,21 @@ router = APIRouter(
 )
 
 
-def _serialize_chat(chat: Chat, last_messages: dict[int, Message]) -> dict:
+def _serialize_chat(
+    chat: Chat,
+    last_messages: dict[int, Message],
+    unread_counts: dict[int, int],
+) -> dict:
     """Преобразует чат в словарь для ответа API."""
     last = last_messages.get(chat.id)
     return {
         "id": chat.id,
         "name": chat.name,
         "users": [ChatUserSchema.model_validate(u) for u in chat.users],
-        "last_message": MessageSchema.model_validate(last) if last else None,
+        "last_message": (
+            message_basic_to_dict(last) if last is not None else None
+        ),
+        "unread_count": unread_counts.get(chat.id, 0),
     }
 
 
@@ -31,7 +39,7 @@ def _chat_sort_key(item: dict):
     last = item.get("last_message")
     if last is None:
         return (1, datetime.min)
-    return (0, last.timestamp)
+    return (0, last["timestamp"])
 
 
 @router.get("/", response_model=list[ChatSchema])
@@ -41,10 +49,16 @@ async def get_my_chats(
 ):
     """Возвращает чаты текущего пользователя с последними сообщениями."""
     chats = await crud.get_user_chats(session=session, user_id=user.id)
+    chat_ids = [chat.id for chat in chats]
     last_messages = await crud.get_last_messages(
-        session=session, chat_ids=[chat.id for chat in chats]
+        session=session, chat_ids=chat_ids
     )
-    items = [_serialize_chat(chat, last_messages) for chat in chats]
+    unread_counts = await crud.get_unread_counts(
+        session=session, chat_ids=chat_ids, user_id=user.id
+    )
+    items = [
+        _serialize_chat(chat, last_messages, unread_counts) for chat in chats
+    ]
     items.sort(key=_chat_sort_key, reverse=True)
     return items
 
@@ -61,5 +75,10 @@ async def create_or_open_private_chat(
         first_user_id=user.id,
         second_user_id=payload.user_id,
     )
-    last_messages = await crud.get_last_messages(session=session, chat_ids=[chat.id])
-    return _serialize_chat(chat, last_messages)
+    last_messages = await crud.get_last_messages(
+        session=session, chat_ids=[chat.id]
+    )
+    unread_counts = await crud.get_unread_counts(
+        session=session, chat_ids=[chat.id], user_id=user.id
+    )
+    return _serialize_chat(chat, last_messages, unread_counts)

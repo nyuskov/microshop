@@ -1,6 +1,9 @@
+from pathlib import Path
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from api_v1 import router_v1
 from core.config import settings
@@ -18,7 +21,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Каталог для файлов сообщений (создаётся при необходимости)
+MEDIA_DIR = Path(__file__).resolve().parent / "media"
+MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+
 app.include_router(router=router_v1, prefix=settings.api_v1_prefix)
+app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
 
 
 @app.get(

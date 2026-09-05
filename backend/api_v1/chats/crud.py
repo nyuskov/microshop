@@ -131,3 +131,23 @@ async def get_last_messages(
     for message in result.scalars().all():
         last_by_chat[message.chat_id] = message
     return last_by_chat
+
+
+async def get_unread_counts(
+    session: AsyncSession, chat_ids: list[int], user_id: int
+) -> dict[int, int]:
+    """Возвращает количество непрочитанных сообщений для каждого чата."""
+    if not chat_ids:
+        return {}
+
+    stmt = (
+        select(Message.chat_id, func.count(Message.id))
+        .where(
+            Message.chat_id.in_(chat_ids),
+            Message.user_id != user_id,
+            Message.is_read.is_(False),
+        )
+        .group_by(Message.chat_id)
+    )
+    result = await session.execute(stmt)
+    return {chat_id: count for chat_id, count in result.all()}

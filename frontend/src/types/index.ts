@@ -6,24 +6,44 @@ export interface ChatUser {
   phone_number: string | null
 }
 
+export interface MessageFile {
+  name: string
+  url: string
+  mime: string | null
+  size: number | null
+}
+
+export interface ReactionSummary {
+  emoji: string
+  count: number
+  reacted_by_me: boolean
+}
+
 export interface Chat {
   id: number
   name: string
   users: ChatUser[]
   last_message: Message | null
+  unread_count: number
 }
 
 export interface Message {
   id: number
-  text: string
-  user_id: number
   chat_id: number
+  user_id: number
+  text: string
   timestamp: string
+  reply_to_id: number | null
+  is_read: boolean
+  is_pinned: boolean
+  file: MessageFile | null
+  reactions: ReactionSummary[]
 }
 
 export interface CreateMessageRequest {
   text: string
   chat_id: number
+  reply_to_id?: number | null
 }
 
 export interface OpenPrivateChatRequest {
