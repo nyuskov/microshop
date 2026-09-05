@@ -32,6 +32,22 @@ export const fetchAllUsers = async () => {
   return response.data
 }
 
+// --- Функции для аватара текущего пользователя ---
+export const uploadAvatar = async (file: File): Promise<string | null> => {
+  const extMatch = file.name.split('.').pop()
+  const ext = (extMatch || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png'
+  const response = await api.put('/users/me/avatar/', file, {
+    params: { ext },
+    headers: { 'Content-Type': file.type || 'application/octet-stream' }
+  })
+  return response.data?.avatar_url ?? null
+}
+
+export const removeAvatar = async (): Promise<void> => {
+  await api.delete('/users/me/avatar/')
+}
+// --- Конец функций для аватара ---
+
 // --- Новая функция для получения групп пользователя ---
 export const fetchUserGroups = async (userId: number) => {
   const response = await api.get(`/users/${userId}/groups/`)

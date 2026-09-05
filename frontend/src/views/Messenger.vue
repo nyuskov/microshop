@@ -47,7 +47,8 @@
                 @click="startChat(user)"
               >
                 <span class="avatar" :style="avatarStyle(displayName(user))">
-                  {{ initials(displayName(user)) }}
+                  <img v-if="avatarSrc(user)" :src="avatarSrc(user)" class="avatar-img" alt="" />
+                  <template v-else>{{ initials(displayName(user)) }}</template>
                 </span>
                 <span class="row-text">
                   <span class="row-title">{{ displayName(user) }}</span>
@@ -79,7 +80,13 @@
                 @click="selectChat(chat.id)"
               >
                 <span class="avatar" :style="avatarStyle(chatTitle(chat))">
-                  {{ initials(chatTitle(chat)) }}
+                  <img
+                    v-if="avatarSrc(otherUserOfChat(chat))"
+                    :src="avatarSrc(otherUserOfChat(chat))"
+                    class="avatar-img"
+                    alt=""
+                  />
+                  <template v-else>{{ initials(chatTitle(chat)) }}</template>
                 </span>
                 <span class="row-text">
                   <span class="row-line">
@@ -135,7 +142,13 @@
               @click="openChatWithContact(contact)"
             >
               <span class="avatar" :style="avatarStyle(displayName(contact))">
-                {{ initials(displayName(contact)) }}
+                <img
+                  v-if="avatarSrc(contact)"
+                  :src="avatarSrc(contact)"
+                  class="avatar-img"
+                  alt=""
+                />
+                <template v-else>{{ initials(displayName(contact)) }}</template>
               </span>
               <span class="row-text">
                 <span class="row-title">{{ displayName(contact) }}</span>
@@ -170,7 +183,13 @@
               <i class="pi pi-arrow-left"></i>
             </button>
             <span class="avatar chat-avatar" :style="avatarStyle(chatTitle(selectedChat))">
-              {{ initials(chatTitle(selectedChat)) }}
+              <img
+                v-if="avatarSrc(otherUserOfChat(selectedChat))"
+                :src="avatarSrc(otherUserOfChat(selectedChat))"
+                class="avatar-img"
+                alt=""
+              />
+              <template v-else>{{ initials(chatTitle(selectedChat)) }}</template>
             </span>
             <div class="chat-header-info">
               <div class="chat-title">{{ chatTitle(selectedChat) }}</div>
@@ -181,7 +200,15 @@
                 <i class="pi pi-search"></i>
               </button>
               <button class="icon-btn" title="Профиль" @click="goToProfile">
-                <span class="avatar mini" :style="avatarStyle(selfName)">{{ selfInitial }}</span>
+                <span class="avatar mini" :style="avatarStyle(selfName)">
+                  <img
+                    v-if="avatarSrc(authStore.current_user)"
+                    :src="avatarSrc(authStore.current_user)"
+                    class="avatar-img"
+                    alt=""
+                  />
+                  <template v-else>{{ selfInitial }}</template>
+                </span>
               </button>
             </div>
           </div>
@@ -538,6 +565,9 @@ const selfName = computed<string>(() =>
 const selfInitial = computed<string>(() =>
   authStore.current_user ? initials(displayName(authStore.current_user)) : 'U'
 )
+
+const avatarSrc = (user: { avatar_url?: string | null } | null | undefined): string | undefined =>
+  user?.avatar_url ? mediaUrl(user.avatar_url) : undefined
 
 const selectedChat = computed<Chat | null>(() => {
   if (selectedChatId.value === null) return null
@@ -1273,6 +1303,15 @@ watch(
   font-size: 1rem;
   flex-shrink: 0;
   user-select: none;
+  overflow: hidden;
+  position: relative;
+}
+
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .avatar.mini {

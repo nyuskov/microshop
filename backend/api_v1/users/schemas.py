@@ -31,6 +31,10 @@ class ProfileUpdateSchema(BaseModel):
     privacy_mode: bool | None = None
 
 
+class UserAvatarResponse(BaseModel):
+    avatar_url: str | None = None
+
+
 class ChatSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -55,6 +59,7 @@ class UserSearchResultSchema(BaseModel):
     first_name: str | None
     last_name: str | None
     phone_number: str | None = None
+    avatar_url: str | None = None
 
 
 class UserWithDetailsSchema(BaseModel):
@@ -66,6 +71,7 @@ class UserWithDetailsSchema(BaseModel):
     first_name: str | None
     last_name: str | None
     email: EmailStr | None
+    avatar_url: str | None = None
     profile: ProfileSchema | None
     chats: list[ChatSchema] = Field(default_factory=list)
 

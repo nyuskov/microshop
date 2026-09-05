@@ -3,6 +3,8 @@ import { reactive, ref, watch, computed } from 'vue'
 import InputMask from 'primevue/inputmask'
 import { useAuthStore } from '@/stores/auth'
 import { getErrorMessage } from '@/services/errors'
+import { removeAvatar, uploadAvatar } from '@/services/api'
+import { mediaUrl } from '@/services/chatService'
 
 const emit = defineEmits(['close-modal'])
 
@@ -114,6 +116,60 @@ const saving = ref(false)
 const success = ref(false)
 const errorMessage = ref('')
 
+// ---------- Аватар ----------
+const avatarInput = ref<HTMLInputElement | null>(null)
+const avatarUploading = ref(false)
+const avatarError = ref('')
+
+const avatarSrc = computed<string | null>(() => {
+  const url = authStore.current_user?.avatar_url
+  return url ? mediaUrl(url) : null
+})
+
+const hasAvatar = computed<boolean>(() => !!authStore.current_user?.avatar_url)
+
+const onAvatarSelected = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+
+  if (!file.type.startsWith('image/')) {
+    avatarError.value = 'Пожалуйста, выберите изображение'
+    return
+  }
+
+  avatarUploading.value = true
+  avatarError.value = ''
+  try {
+    const url = await uploadAvatar(file)
+    if (authStore.current_user) {
+      authStore.current_user = { ...authStore.current_user, avatar_url: url }
+    }
+    await authStore.fetchUser()
+  } catch (error) {
+    avatarError.value = getErrorMessage(error, 'Не удалось загрузить фото')
+  } finally {
+    avatarUploading.value = false
+  }
+}
+
+const removeAvatarClick = async () => {
+  avatarUploading.value = true
+  avatarError.value = ''
+  try {
+    await removeAvatar()
+    if (authStore.current_user) {
+      authStore.current_user = { ...authStore.current_user, avatar_url: null }
+    }
+    await authStore.fetchUser()
+  } catch (error) {
+    avatarError.value = getErrorMessage(error, 'Не удалось удалить фото')
+  } finally {
+    avatarUploading.value = false
+  }
+}
+
 const closeModal = () => emit('close-modal')
 
 const doLogout = async () => {
@@ -169,13 +225,47 @@ const updateProfile = async () => {
     <template v-else>
       <!-- Шапка профиля -->
       <div class="profile-hero">
-        <div class="hero-avatar" :style="avatarStyle">{{ heroInitials }}</div>
+        <div class="avatar-box">
+          <button
+            type="button"
+            class="hero-avatar"
+            :style="avatarStyle"
+            :title="hasAvatar ? 'Изменить фото' : 'Загрузить фото'"
+            :disabled="avatarUploading"
+            @click="avatarInput?.click()"
+          >
+            <img v-if="avatarSrc" :src="avatarSrc" class="avatar-photo" alt="Аватар" />
+            <template v-else>{{ heroInitials }}</template>
+            <span class="avatar-camera"><i class="pi pi-camera"></i></span>
+          </button>
+          <button
+            v-if="hasAvatar"
+            type="button"
+            class="avatar-remove"
+            title="Удалить фото"
+            :disabled="avatarUploading"
+            @click.stop="removeAvatarClick"
+          >
+            <i class="pi pi-times"></i>
+          </button>
+          <input
+            ref="avatarInput"
+            class="hidden-file"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            @change="onAvatarSelected"
+          />
+        </div>
         <div class="hero-info">
           <h2 class="hero-name">{{ heroName }}</h2>
           <p class="hero-username">@{{ profileForm.username || 'username' }}</p>
           <p v-if="profileForm.phone_number" class="hero-phone">
             <i class="pi pi-phone"></i> {{ profileForm.phone_number }}
           </p>
+          <p v-if="avatarUploading" class="avatar-status">
+            <span class="mini-spinner"></span> Загрузка фото…
+          </p>
+          <p v-else-if="avatarError" class="avatar-status error">{{ avatarError }}</p>
         </div>
       </div>
 
@@ -364,6 +454,109 @@ const updateProfile = async () => {
   font-weight: 700;
   flex-shrink: 0;
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
+  border: none;
+  cursor: pointer;
+  overflow: hidden;
+  position: relative;
+  padding: 0;
+  transition:
+    box-shadow 0.2s,
+    filter 0.2s;
+}
+
+.hero-avatar:hover:not(:disabled) {
+  filter: brightness(1.04);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
+}
+
+.hero-avatar:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.avatar-box {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.avatar-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.avatar-camera {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  pointer-events: none;
+}
+
+.avatar-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #d64545;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 0;
+  transition:
+    transform 0.12s,
+    background 0.2s;
+}
+
+.avatar-remove:hover:not(:disabled) {
+  transform: scale(1.1);
+  background: #c0392b;
+}
+
+.avatar-remove:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.hidden-file {
+  display: none;
+}
+
+.avatar-status {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: #2ea25e;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.avatar-status.error {
+  color: #c0392b;
+}
+
+.mini-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(46, 162, 94, 0.3);
+  border-top-color: #2ea25e;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
 }
 
 .hero-info {
