@@ -311,7 +311,17 @@
                 <span class="pinned-count">{{ pinnedMessages.length }}</span>
               </div>
               <div v-if="pinnedOpen" class="pinned-list">
-                <div v-for="message in pinnedMessages" :key="message.id" class="pinned-item">
+                <div
+                  v-for="message in pinnedMessages"
+                  :key="message.id"
+                  class="pinned-item"
+                  role="button"
+                  tabindex="0"
+                  title="Перейти к сообщению"
+                  @click.stop="scrollToPinnedMessage(message.id)"
+                  @keydown.enter.prevent="scrollToPinnedMessage(message.id)"
+                  @keydown.space.prevent="scrollToPinnedMessage(message.id)"
+                >
                   <span class="pinned-sender">{{ senderName(message) }}</span>
                   {{ pinnedSnippet(message) }}
                 </div>
@@ -333,7 +343,15 @@
                 <div v-if="row.kind === 'day'" class="day-divider">
                   <span>{{ row.label }}</span>
                 </div>
-                <div v-else class="msg" :class="isOwnMessage(row.message) ? 'out' : 'in'">
+                <div
+                  v-else
+                  class="msg"
+                  :class="[
+                    isOwnMessage(row.message) ? 'out' : 'in',
+                    { 'msg-highlight': highlightedMessageId === row.message.id }
+                  ]"
+                  :data-message-id="row.message.id"
+                >
                   <div
                     class="msg-bubble"
                     :class="{ 'round-video-only': isRoundVideoOnly(row.message) }"
@@ -717,6 +735,8 @@ const inlineQuery = ref('')
 const emojiPickerFor = ref<number | null>(null)
 const emojiMenuOpen = ref(false)
 const pinnedOpen = ref(true)
+const highlightedMessageId = ref<number | null>(null)
+let highlightTimer: number | undefined
 
 const messagesContainerRef = ref<HTMLElement | null>(null)
 const attachInput = ref<HTMLInputElement | null>(null)
@@ -1518,6 +1538,34 @@ const deleteMessageOf = async (message: Message) => {
   }
 }
 
+// ---------- Переход к закреплённому сообщению ----------
+const scrollToPinnedMessage = async (messageId: number) => {
+  // Если активен поиск по сообщениям — снимаем фильтр, иначе сообщения может не быть в ленте.
+  if (inlineSearchOpen.value) {
+    inlineSearchOpen.value = false
+    inlineQuery.value = ''
+  }
+  if (highlightTimer !== undefined) {
+    window.clearTimeout(highlightTimer)
+    highlightTimer = undefined
+  }
+  highlightedMessageId.value = messageId
+  await nextTick()
+  const container = messagesContainerRef.value
+  if (container) {
+    const el = container.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null
+    if (el) {
+      const containerRect = container.getBoundingClientRect()
+      const elRect = el.getBoundingClientRect()
+      container.scrollTop +=
+        elRect.top - containerRect.top - containerRect.height / 2 + elRect.height / 2
+    }
+  }
+  highlightTimer = window.setTimeout(() => {
+    highlightedMessageId.value = null
+  }, 2400)
+}
+
 // ---------- Поиск по сообщениям ----------
 const toggleInlineSearch = () => {
   inlineSearchOpen.value = !inlineSearchOpen.value
@@ -1672,6 +1720,10 @@ onBeforeUnmount(() => {
   stopPolling()
   clearMicTimer()
   clearModeHint()
+  if (highlightTimer !== undefined) {
+    window.clearTimeout(highlightTimer)
+    highlightTimer = undefined
+  }
   if (searchTimer !== null) {
     window.clearTimeout(searchTimer)
   }
@@ -1709,6 +1761,11 @@ watch(
     voiceRecOpen.value = false
     videoRecOpen.value = false
     resetRecordMode()
+    highlightedMessageId.value = null
+    if (highlightTimer !== undefined) {
+      window.clearTimeout(highlightTimer)
+      highlightTimer = undefined
+    }
   },
   { immediate: true }
 )
@@ -2241,12 +2298,37 @@ watch(
   overflow: hidden;
   text-overflow: ellipsis;
   margin-top: 3px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.pinned-item:hover {
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .pinned-sender {
   font-weight: 600;
   color: #1e7a43;
   margin-right: 6px;
+}
+
+/* Подсветка сообщения при переходе из закреплённых */
+.msg-highlight .msg-bubble {
+  animation: msg-highlight-pulse 2.4s ease 1;
+}
+
+@keyframes msg-highlight-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(46, 162, 94, 0);
+  }
+  15% {
+    box-shadow: 0 0 0 3px var(--ms-accent, #2ea25e);
+  }
+  55% {
+    box-shadow: 0 0 0 3px var(--ms-accent, #2ea25e);
+  }
 }
 
 /* ---------- Сообщения ---------- */

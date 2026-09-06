@@ -371,6 +371,10 @@ html .messenger-shell .pinned-sender {
     color: var(--ms-accent);
 }
 
+html .messenger-shell .pinned-item:hover {
+    background: color-mix(in srgb, var(--ms-icon) 10%, transparent);
+}
+
 /* Сообщения */
 html .messenger-shell .day-divider span {
     background: var(--ms-surface);
