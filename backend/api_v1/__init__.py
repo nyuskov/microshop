@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from .auth.jwt import router as jwt_router
 from .auth.views import router as auth_router
+from .calls.views import router as calls_router
 from .chats.views import router as chats_router
 from .general import router as general_router
 from .messages.views import router as messages_router
@@ -20,4 +21,5 @@ router_v1.include_router(products_router, prefix="/products")
 router_v1.include_router(posts_router, prefix="/posts")
 router_v1.include_router(chats_router)
 router_v1.include_router(messages_router)
+router_v1.include_router(calls_router)
 router_v1.include_router(telegram_router, prefix="/telegram")

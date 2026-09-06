@@ -1,0 +1,542 @@
+/* ==========================================================================
+   Кастомизация внешнего вида мессенджера (темы, акценты, пузыри, обои).
+   Слой поверх scoped-стилей Messenger.vue: значения задаются через CSS-переменные,
+   поэтому светлая тема по умолчанию визуально совпадает с исходной.
+   ========================================================================== */
+
+/* ---------- Токены: светлая тема (значения = исходный вид) ---------- */
+:root {
+    /* Каркас */
+    --ms-shell: #6d7c8c;
+    --ms-body: #e7ebf0;
+    --ms-surface: #ffffff;
+    --ms-surface-2: #f0f2f5;
+    --ms-hover: #f2f4f6;
+    --ms-border: #e2e6ea;
+
+    /* Текст */
+    --ms-text: #1c2733;
+    --ms-text-strong: #141d26;
+    --ms-muted: #71808d;
+    --ms-muted-2: #8a98a3;
+    --ms-muted-3: #97a5b0;
+
+    /* Иконки */
+    --ms-icon: #52626f;
+    --ms-icon-2: #5b6b79;
+    --ms-icon-3: #9aa7b2;
+
+    /* Акцент и опасность */
+    --ms-accent: #2ea25e;
+    --ms-on-accent: #ffffff;
+    --ms-danger: #d64545;
+    --ms-danger-bg: #fdecec;
+    --ms-info: #3aa6e0;
+    --ms-tick: #37aee2;
+
+    /* Пузыри сообщений */
+    --ms-bubble-out: #dcf8c6;
+    --ms-bubble-text: #111111;
+    --ms-bubble-time: #8a98a3;
+
+    /* Закреплённые сообщения */
+    --ms-pinned-bg: #fffdf4;
+    --ms-pinned-border: #efe4c8;
+    --ms-pinned-icon: #c9a227;
+    --ms-pinned-text: #8a7320;
+    --ms-pinned-chip-bg: #f3e6b8;
+    --ms-pinned-item: #4a4a3c;
+
+    /* Фон окна сообщений по умолчанию */
+    --ms-chat-bg: #eef1f4;
+    --ms-chat-dots: radial-gradient(circle at 1px 1px, rgba(120, 144, 156, 0.12) 1px, transparent 0);
+
+    /* Производные (пересчитываются браузером из --ms-accent) */
+    --ms-accent-strong: color-mix(in srgb, var(--ms-accent) 88%, #000000);
+    --ms-accent-soft: color-mix(in srgb, var(--ms-accent) 16%, #ffffff);
+    --ms-accent-border: color-mix(in srgb, var(--ms-accent) 55%, #ffffff);
+}
+
+/* ---------- Токены: тёмная тема ---------- */
+html[data-theme='dark'] {
+    --ms-shell: #0b0f14;
+    --ms-body: #10151c;
+    --ms-surface: #171e26;
+    --ms-surface-2: #1f2730;
+    --ms-hover: #212a34;
+    --ms-border: #2a333e;
+
+    --ms-text: #dbe4ec;
+    --ms-text-strong: #eef2f6;
+    --ms-muted: #8fa0ad;
+    --ms-muted-2: #6e7d8a;
+    --ms-muted-3: #64717d;
+
+    --ms-icon: #a8b8c6;
+    --ms-icon-2: #93a5b3;
+    --ms-icon-3: #5c6b78;
+
+    --ms-danger: #ff8a80;
+    --ms-danger-bg: rgba(255, 138, 128, 0.12);
+    --ms-info: #5db9ee;
+    --ms-tick: #5db9ee;
+
+    --ms-bubble-out: color-mix(in srgb, var(--ms-accent) 30%, #111820);
+    --ms-bubble-text: #e9eff4;
+    --ms-bubble-time: #9fb0bd;
+
+    --ms-pinned-bg: #201d14;
+    --ms-pinned-border: #3a3420;
+    --ms-pinned-icon: #e0c15a;
+    --ms-pinned-text: #cdb86b;
+    --ms-pinned-chip-bg: #37321f;
+    --ms-pinned-item: #cfc9b0;
+
+    --ms-chat-bg: #0f141b;
+    --ms-chat-dots: radial-gradient(circle at 1px 1px, rgba(150, 170, 190, 0.08) 1px, transparent 0);
+
+    --ms-accent-soft: color-mix(in srgb, var(--ms-accent) 22%, #171e26);
+    --ms-accent-border: color-mix(in srgb, var(--ms-accent) 60%, #171e26);
+}
+
+/* ---------- Цвет исходящих сообщений (светлая тема) ---------- */
+html[data-bubble='blue'] {
+    --ms-bubble-out: #cfe6f9;
+}
+
+html[data-bubble='lilac'] {
+    --ms-bubble-out: #e3dcf5;
+}
+
+html[data-bubble='pink'] {
+    --ms-bubble-out: #fbdce8;
+}
+
+html[data-bubble='peach'] {
+    --ms-bubble-out: #fde6d0;
+}
+
+html[data-bubble='mint'] {
+    --ms-bubble-out: #d3f2e4;
+}
+
+html[data-bubble='orange'] {
+    --ms-bubble-out: #fee3c8;
+}
+
+/* Тёмная тема: исходящие пузыри — тёмные оттенки выбранного цвета */
+html[data-theme='dark'][data-bubble='blue'] {
+    --ms-bubble-out: color-mix(in srgb, #2f8fd6 30%, #111820);
+}
+
+html[data-theme='dark'][data-bubble='lilac'] {
+    --ms-bubble-out: color-mix(in srgb, #8b6ce0 30%, #111820);
+}
+
+html[data-theme='dark'][data-bubble='pink'] {
+    --ms-bubble-out: color-mix(in srgb, #e06aa6 30%, #111820);
+}
+
+html[data-theme='dark'][data-bubble='peach'] {
+    --ms-bubble-out: color-mix(in srgb, #ee8a3d 30%, #111820);
+}
+
+html[data-theme='dark'][data-bubble='orange'] {
+    --ms-bubble-out: color-mix(in srgb, #f08618 30%, #111820);
+}
+
+html[data-theme='dark'][data-bubble='mint'] {
+    --ms-bubble-out: color-mix(in srgb, #12a58e 30%, #111820);
+}
+
+/* ==========================================================================
+   Messenger.vue: применяем токены поверх scoped-стилей.
+   Селекторы с префиксом "html .messenger-shell" имеют приоритет выше scoped.
+   ========================================================================== */
+
+/* Каркас */
+html .messenger-shell {
+    background: var(--ms-shell);
+}
+
+html .messenger-shell .messenger-body {
+    background: var(--ms-body);
+}
+
+html .messenger-shell .side-panel {
+    background: var(--ms-surface);
+    border-right-color: var(--ms-border);
+}
+
+html .messenger-shell .chat-panel {
+    background-color: var(--ms-chat-bg);
+    background-image: var(--ms-chat-dots);
+}
+
+/* Общие элементы */
+html .messenger-shell .icon-btn {
+    color: var(--ms-icon);
+}
+
+html .messenger-shell .icon-btn:hover {
+    background: var(--ms-hover);
+    color: var(--ms-text);
+}
+
+html .messenger-shell .round-btn {
+    color: var(--ms-icon-2);
+}
+
+html .messenger-shell .round-btn:hover {
+    background: var(--ms-hover);
+    color: var(--ms-text);
+}
+
+html .messenger-shell .round-btn.danger:hover {
+    color: var(--ms-danger);
+}
+
+html .messenger-shell .round-btn.muted {
+    color: var(--ms-icon-3);
+}
+
+html .messenger-shell .inline-error {
+    color: var(--ms-danger);
+    background: var(--ms-danger-bg);
+}
+
+/* Заголовки панелей */
+html .messenger-shell .panel-header {
+    background: var(--ms-surface);
+}
+
+html .messenger-shell .panel-title {
+    color: var(--ms-text);
+}
+
+html .messenger-shell .panel-search {
+    background: var(--ms-surface-2);
+}
+
+html .messenger-shell .search-icon {
+    color: var(--ms-muted-3);
+}
+
+html .messenger-shell .panel-search-input {
+    color: var(--ms-text);
+}
+
+/* Списки */
+html .messenger-shell .section-label {
+    color: var(--ms-muted);
+}
+
+html .messenger-shell .row-item:hover {
+    background: var(--ms-hover);
+}
+
+html .messenger-shell .row-item.active {
+    background: var(--ms-accent-soft);
+}
+
+html .messenger-shell .row-title {
+    color: var(--ms-text-strong);
+}
+
+html .messenger-shell .row-time {
+    color: var(--ms-muted-3);
+}
+
+html .messenger-shell .row-sub {
+    color: var(--ms-muted);
+}
+
+html .messenger-shell .tick {
+    color: var(--ms-tick);
+}
+
+html .messenger-shell .unread-badge {
+    background: var(--ms-accent);
+    color: var(--ms-on-accent);
+}
+
+html .messenger-shell .row-arrow {
+    color: var(--ms-icon-3);
+}
+
+html .messenger-shell .people-results {
+    border-bottom-color: var(--ms-border);
+}
+
+html .messenger-shell .search-status,
+html .messenger-shell .empty-hint {
+    color: var(--ms-muted-3);
+}
+
+/* Пустое состояние */
+html .messenger-shell .chat-placeholder {
+    color: var(--ms-muted);
+}
+
+html .messenger-shell .placeholder-icon {
+    color: var(--ms-icon-3);
+}
+
+html .messenger-shell .chat-placeholder h3 {
+    color: var(--ms-icon-2);
+}
+
+html .messenger-shell .ghost-btn {
+    border-color: var(--ms-icon-3);
+    background: var(--ms-surface);
+    color: var(--ms-accent);
+}
+
+html .messenger-shell .ghost-btn:hover {
+    background: var(--ms-accent-soft);
+}
+
+/* Шапка чата */
+html .messenger-shell .chat-header {
+    background: var(--ms-surface);
+    border-bottom-color: var(--ms-border);
+}
+
+html .messenger-shell .chat-title {
+    color: var(--ms-text-strong);
+}
+
+html .messenger-shell .chat-subtitle {
+    color: var(--ms-muted);
+}
+
+/* Закреплённые */
+html .messenger-shell .pinned-bar {
+    background: var(--ms-pinned-bg);
+    border-bottom-color: var(--ms-pinned-border);
+}
+
+html .messenger-shell .pinned-icon {
+    color: var(--ms-pinned-icon);
+}
+
+html .messenger-shell .pinned-head {
+    color: var(--ms-pinned-text);
+}
+
+html .messenger-shell .pinned-count {
+    background: var(--ms-pinned-chip-bg);
+    color: var(--ms-pinned-text);
+}
+
+html .messenger-shell .pinned-item {
+    color: var(--ms-pinned-item);
+}
+
+html .messenger-shell .pinned-sender {
+    color: var(--ms-accent);
+}
+
+/* Сообщения */
+html .messenger-shell .day-divider span {
+    background: var(--ms-surface);
+    color: var(--ms-muted);
+}
+
+html .messenger-shell .msg.out .msg-bubble {
+    background: var(--ms-bubble-out);
+}
+
+html .messenger-shell .msg.in .msg-bubble {
+    background: var(--ms-surface);
+}
+
+html .messenger-shell .msg-text {
+    color: var(--ms-bubble-text);
+}
+
+html .messenger-shell .msg-time {
+    color: var(--ms-bubble-time);
+}
+
+html .messenger-shell .msg-ticks {
+    color: var(--ms-bubble-time);
+}
+
+html .messenger-shell .msg-ticks.read {
+    color: var(--ms-link);
+}
+
+html .messenger-shell .reply-quote {
+    background: color-mix(in srgb, var(--ms-icon) 8%, transparent);
+    border-left-color: var(--ms-info);
+}
+
+html .messenger-shell .msg.out .reply-quote {
+    border-left-color: var(--ms-accent);
+}
+
+html .messenger-shell .quote-name {
+    color: var(--ms-info);
+}
+
+html .messenger-shell .quote-name.mine {
+    color: var(--ms-accent);
+}
+
+html .messenger-shell .quote-text {
+    color: var(--ms-muted);
+}
+
+/* Вложения */
+html .messenger-shell .attachment-card {
+    background: var(--ms-surface-2);
+    color: var(--ms-text-strong);
+}
+
+html .messenger-shell .attachment-card i {
+    color: #d4585e;
+}
+
+html .messenger-shell .attachment-name {
+    color: var(--ms-text-strong);
+}
+
+html .messenger-shell .attachment-meta {
+    color: var(--ms-muted-2);
+}
+
+/* Действия и реакции */
+html .messenger-shell .msg-actions {
+    background: var(--ms-surface);
+}
+
+html .messenger-shell .reaction-chip {
+    border-color: var(--ms-border);
+    background: var(--ms-surface);
+    color: var(--ms-text);
+}
+
+html .messenger-shell .reaction-chip.mine {
+    background: var(--ms-accent-soft);
+    border-color: var(--ms-accent-border);
+}
+
+html .messenger-shell .emoji-picker {
+    background: var(--ms-surface);
+}
+
+html .messenger-shell .emoji-option:hover {
+    background: var(--ms-hover);
+}
+
+html .messenger-shell .emoji-option.active {
+    background: var(--ms-accent-soft);
+}
+
+/* Поиск по сообщениям */
+html .messenger-shell .inline-search {
+    background: var(--ms-surface);
+    border-bottom-color: var(--ms-border);
+}
+
+html .messenger-shell .inline-search-input {
+    color: var(--ms-text);
+}
+
+/* Ввод */
+html .messenger-shell .input-area {
+    background: var(--ms-surface-2);
+    border-top-color: var(--ms-border);
+}
+
+html .messenger-shell .reply-bar {
+    background: var(--ms-surface);
+    border-left-color: var(--ms-info);
+}
+
+html .messenger-shell .reply-bar-name {
+    color: var(--ms-info);
+}
+
+html .messenger-shell .reply-bar-text {
+    color: var(--ms-muted);
+}
+
+html .messenger-shell .input-row {
+    background: var(--ms-surface);
+}
+
+html .messenger-shell .text-input {
+    color: var(--ms-text-strong);
+    caret-color: var(--ms-accent);
+}
+
+html .messenger-shell .send-btn {
+    background: var(--ms-accent);
+    color: var(--ms-on-accent);
+}
+
+html .messenger-shell .send-btn:hover {
+    background: var(--ms-accent-strong);
+}
+
+html .messenger-shell .chat-status {
+    color: var(--ms-muted-2);
+}
+
+/* Нижняя навигация */
+html .messenger-shell .bottom-nav {
+    background: var(--ms-surface);
+    border-top-color: var(--ms-border);
+}
+
+html .messenger-shell .nav-btn {
+    color: var(--ms-muted);
+}
+
+html .messenger-shell .nav-btn.active {
+    color: var(--ms-accent);
+}
+
+html .messenger-shell .nav-btn:hover {
+    background: var(--ms-hover);
+}
+
+html .messenger-shell .nav-badge {
+    background: var(--ms-danger);
+    color: #ffffff;
+}
+
+/* Быстрый выбор обоев */
+html .messenger-shell .bg-picker {
+    background: var(--ms-surface);
+    border-color: var(--ms-border);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+}
+
+html .messenger-shell .bg-picker-head {
+    color: var(--ms-text);
+}
+
+html .messenger-shell .bg-option {
+    border-color: var(--ms-border);
+    background: var(--ms-surface);
+}
+
+html .messenger-shell .bg-option:hover {
+    border-color: var(--ms-icon-3);
+}
+
+html .messenger-shell .bg-option.active {
+    border-color: var(--ms-accent);
+    box-shadow: 0 0 0 1px var(--ms-accent) inset;
+}
+
+html .messenger-shell .bg-label {
+    color: var(--ms-muted);
+}
+
+html .messenger-shell .bg-swatch {
+    border-color: rgba(0, 0, 0, 0.08);
+}

@@ -16,6 +16,9 @@
             </div>
             <h2 class="panel-title">Чаты</h2>
             <div class="panel-header-right">
+              <button class="icon-btn" title="Оформление" @click="openAppearance">
+                <i class="pi pi-palette"></i>
+              </button>
               <button class="icon-btn" title="Новое сообщение" @click="focusSearch">
                 <i class="pi pi-pencil"></i>
               </button>
@@ -196,6 +199,14 @@
               <div class="chat-subtitle">{{ chatSubtitle(selectedChat) }}</div>
             </div>
             <div class="chat-header-actions">
+              <template v-if="isPrivateChat(selectedChat)">
+                <button class="icon-btn call-btn" title="Голосовой звонок" @click="startVoiceCall">
+                  <i class="pi pi-phone"></i>
+                </button>
+                <button class="icon-btn call-btn" title="Видеозвонок" @click="startVideoCall">
+                  <i class="pi pi-video"></i>
+                </button>
+              </template>
               <button
                 class="icon-btn"
                 title="Фон сообщений"
@@ -229,17 +240,30 @@
               </div>
               <div class="bg-picker-grid">
                 <button
-                  v-for="opt in CHAT_BACKGROUNDS"
+                  v-for="opt in WALLPAPER_PRESETS"
                   :key="opt.key"
                   class="bg-option"
-                  :class="{ active: chatBg === opt.key }"
+                  :class="{ active: themeStore.wallpaperKey === opt.key }"
                   :title="opt.label"
-                  @click="setChatBg(opt.key)"
+                  @click="pickWallpaper(opt.key)"
                 >
                   <span class="bg-swatch" :style="{ background: opt.swatch }"></span>
                   <span class="bg-label">{{ opt.label }}</span>
                 </button>
+                <button
+                  v-if="themeStore.wallpaperCustom"
+                  class="bg-option"
+                  :class="{ active: themeStore.wallpaperKey === 'custom' }"
+                  title="Ваше фото"
+                  @click="pickWallpaper('custom')"
+                >
+                  <span class="bg-swatch" :style="customWallpaperStyle()"></span>
+                  <span class="bg-label">Ваше фото</span>
+                </button>
               </div>
+              <button class="bg-picker-more" @click="openAppearance">
+                <i class="pi pi-sliders-h"></i> Полная настройка оформления
+              </button>
             </div>
           </div>
 
@@ -516,8 +540,23 @@
     </Suspense>
   </Dialog>
 
+  <!-- Appearance Modal -->
+  <Dialog
+    v-model:visible="showAppearanceModal"
+    header="Оформление"
+    :modal="true"
+    :closable="true"
+    :style="{ width: '430px' }"
+    @hide="showAppearanceModal = false"
+  >
+    <AppearanceSettings />
+  </Dialog>
+
   <!-- Login Modal -->
   <LoginModal :visible="showLoginModal" @close-modal="onLoginModalClose" />
+
+  <!-- Звонки -->
+  <CallOverlay />
 </template>
 
 <script setup lang="ts">
@@ -525,6 +564,7 @@ import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
 import Dialog from 'primevue/dialog'
 import LoginModal from '@/components/LoginModal.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useThemeStore, WALLPAPER_PRESETS } from '@/stores/theme'
 import { getErrorMessage } from '@/services/errors'
 import {
   fetchContacts,
@@ -544,11 +584,17 @@ import {
 } from '@/services/chatService'
 import type { Chat, ChatUser, Message, MessageFile } from '@/types'
 import UserProfile from './UserProfile.vue'
+import AppearanceSettings from './AppearanceSettings.vue'
+import CallOverlay from '@/components/calls/CallOverlay.vue'
+import { useCallStore } from '@/stores/call'
 
 const authStore = useAuthStore()
+const themeStore = useThemeStore()
+const callStore = useCallStore()
 
 // ---------- Модальные окна ----------
 const showProfileModal = ref(false)
+const showAppearanceModal = ref(false)
 const showLoginModal = ref(true)
 
 // ---------- Данные ----------
@@ -587,68 +633,21 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '😮', '😢', '👏', '🎉']
 const INPUT_EMOJIS = ['😀', '😁', '😂', '🤣', '😊', '😍', '😎', '🤔', '👍', '👎', '❤️', '🔥']
 
-// ---------- Фон окна сообщений ----------
-const CHAT_BG_STORAGE_KEY = 'microshop_chat_bg'
-
-type ChatBgOption = { key: string; label: string; swatch: string; background?: string }
-
-const CHAT_BACKGROUNDS: ChatBgOption[] = [
-  {
-    key: 'default',
-    label: 'По умолчанию',
-    swatch:
-      'radial-gradient(circle at 1px 1px, rgba(120,144,156,0.25) 1px, transparent 0) 0 0/22px 22px, #eef1f4'
-  },
-  {
-    key: 'sky',
-    label: 'Небо',
-    swatch: 'linear-gradient(160deg,#d6e6f4,#aecbe4)',
-    background: 'linear-gradient(160deg,#d6e6f4,#aecbe4)'
-  },
-  {
-    key: 'mint',
-    label: 'Мята',
-    swatch: 'linear-gradient(160deg,#dbf2e4,#b6e2c8)',
-    background: 'linear-gradient(160deg,#dbf2e4,#b6e2c8)'
-  },
-  {
-    key: 'peach',
-    label: 'Персик',
-    swatch: 'linear-gradient(160deg,#fdebd9,#f5cfae)',
-    background: 'linear-gradient(160deg,#fdebd9,#f5cfae)'
-  },
-  {
-    key: 'lilac',
-    label: 'Сирень',
-    swatch: 'linear-gradient(160deg,#e9e0f6,#cbbae8)',
-    background: 'linear-gradient(160deg,#e9e0f6,#cbbae8)'
-  },
-  {
-    key: 'graphite',
-    label: 'Графит',
-    swatch: 'linear-gradient(160deg,#3f4a55,#1f262d)',
-    background: 'linear-gradient(160deg,#3f4a55,#1f262d)'
-  }
-]
-
-const chatBg = ref<string>('default')
+// ---------- Фон окна сообщений (обои берутся из store оформления) ----------
 const bgPickerOpen = ref(false)
 
-const chatBgStyle = computed(() => {
-  const option = CHAT_BACKGROUNDS.find((item) => item.key === chatBg.value)
-  // Пустая строка убирает инлайн-фон — остаётся стиль «По умолчанию» из CSS
-  return { background: option?.background ?? '' }
-})
+const chatBgStyle = computed(() => ({ background: themeStore.wallpaperCss }))
 
-const setChatBg = (key: string) => {
-  chatBg.value = key
+const pickWallpaper = (key: string) => {
+  themeStore.setWallpaper(key)
   bgPickerOpen.value = false
-  try {
-    localStorage.setItem(CHAT_BG_STORAGE_KEY, key)
-  } catch {
-    /* localStorage недоступен — просто не сохраняем */
-  }
 }
+
+const customWallpaperStyle = (): Record<string, string> => ({
+  background: themeStore.wallpaperCustom
+    ? `url("${themeStore.wallpaperCustom}") center / cover`
+    : ''
+})
 
 // ---------- Вычисляемые значения ----------
 const currentUserId = computed<number | null>(() => authStore.current_user?.id ?? null)
@@ -772,6 +771,48 @@ const otherUserOfChat = (chat: Chat): ChatUser | undefined => {
     if (found) return found
   }
   return chat.users[0]
+}
+
+/** Находит пользователя по id среди участников чатов или списка контактов. */
+const findPeerUser = (
+  id: number
+):
+  | {
+      username: string
+      first_name?: string | null
+      last_name?: string | null
+      avatar_url?: string | null
+    }
+  | undefined => {
+  for (const chat of chats.value) {
+    const other = otherUserOfChat(chat)
+    if (other && other.id === id) return other
+  }
+  return contacts.value.find((contact) => contact.id === id)
+}
+
+const isPrivateChat = (chat: Chat | null): boolean => !!chat && chat.users.length === 2
+
+const startVoiceCall = () => {
+  const chat = selectedChat.value
+  if (!isPrivateChat(chat)) return
+  const peer = otherUserOfChat(chat as Chat)
+  if (!peer) return
+  void callStore.startCall(
+    { id: peer.id, name: displayName(peer), avatarUrl: peer.avatar_url ?? null },
+    'audio'
+  )
+}
+
+const startVideoCall = () => {
+  const chat = selectedChat.value
+  if (!isPrivateChat(chat)) return
+  const peer = otherUserOfChat(chat as Chat)
+  if (!peer) return
+  void callStore.startCall(
+    { id: peer.id, name: displayName(peer), avatarUrl: peer.avatar_url ?? null },
+    'video'
+  )
 }
 
 const chatTitle = (chat: Chat): string => {
@@ -1241,6 +1282,11 @@ const goToProfile = () => {
   bgPickerOpen.value = false
 }
 
+const openAppearance = () => {
+  showAppearanceModal.value = true
+  bgPickerOpen.value = false
+}
+
 const onLoginModalClose = () => {
   console.log('Login modal close event received. Closing modal.')
   showLoginModal.value = false
@@ -1255,8 +1301,10 @@ watch(
     if (isReady) {
       await Promise.all([loadChats(), loadContacts()])
       startPolling()
+      void callStore.connect()
     } else {
       stopPolling()
+      callStore.disconnect()
       chats.value = []
       messages.value = []
       pinnedMessages.value = []
@@ -1270,15 +1318,6 @@ watch(
 
 onMounted(async () => {
   await authStore.initializeApp()
-  // Восстанавливаем сохранённый фон окна сообщений
-  try {
-    const saved = localStorage.getItem(CHAT_BG_STORAGE_KEY)
-    if (saved && CHAT_BACKGROUNDS.some((item) => item.key === saved)) {
-      chatBg.value = saved
-    }
-  } catch {
-    /* localStorage недоступен — остаёмся на фоне по умолчанию */
-  }
   scrollToBottom()
 })
 
@@ -1293,6 +1332,22 @@ watch(
   () => authStore.isAuthenticated,
   (isAuthenticated) => {
     showLoginModal.value = !isAuthenticated
+  },
+  { immediate: true }
+)
+
+// Обогащаем карточку собеседника (имя/аватар) при звонке из списка чатов/контактов.
+watch(
+  [() => callStore.status, () => callStore.peerId],
+  ([status, peerId]) => {
+    if (status === 'idle' || peerId === null) return
+    const peer = findPeerUser(peerId)
+    if (peer) {
+      callStore.setPeerInfo({
+        name: displayName(peer),
+        avatarUrl: peer.avatar_url ?? null
+      })
+    }
   },
   { immediate: true }
 )
@@ -2270,6 +2325,36 @@ watch(
 .bg-label {
   font-size: 11px;
   color: #5c6a75;
+}
+
+.bg-picker-more {
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px;
+  border: 1px dashed #b9c6cf;
+  border-radius: 8px;
+  background: transparent;
+  color: #5c6a75;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.bg-picker-more:hover {
+  background: #f2f4f6;
+  color: #1c2733;
+}
+
+.call-btn {
+  color: var(--ms-accent, #2ea25e);
+}
+
+.call-btn:hover {
+  color: var(--ms-accent, #2ea25e);
 }
 
 @media (max-width: 820px) {
