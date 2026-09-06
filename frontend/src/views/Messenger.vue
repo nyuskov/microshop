@@ -166,7 +166,7 @@
       </aside>
 
       <!-- ======= Правая область чата ======= -->
-      <main class="chat-panel">
+      <main class="chat-panel" :style="chatBgStyle">
         <template v-if="!selectedChat">
           <div class="chat-placeholder">
             <i class="pi pi-comments placeholder-icon"></i>
@@ -196,6 +196,13 @@
               <div class="chat-subtitle">{{ chatSubtitle(selectedChat) }}</div>
             </div>
             <div class="chat-header-actions">
+              <button
+                class="icon-btn"
+                title="Фон сообщений"
+                @click.stop="bgPickerOpen = !bgPickerOpen"
+              >
+                <i class="pi pi-palette"></i>
+              </button>
               <button class="icon-btn" title="Поиск по сообщениям" @click="toggleInlineSearch">
                 <i class="pi pi-search"></i>
               </button>
@@ -210,6 +217,29 @@
                   <template v-else>{{ selfInitial }}</template>
                 </span>
               </button>
+            </div>
+
+            <!-- Выбор фона сообщений -->
+            <div v-if="bgPickerOpen" class="bg-picker" @click.stop>
+              <div class="bg-picker-head">
+                <span>Фон сообщений</span>
+                <button class="icon-btn" title="Закрыть" @click="bgPickerOpen = false">
+                  <i class="pi pi-times"></i>
+                </button>
+              </div>
+              <div class="bg-picker-grid">
+                <button
+                  v-for="opt in CHAT_BACKGROUNDS"
+                  :key="opt.key"
+                  class="bg-option"
+                  :class="{ active: chatBg === opt.key }"
+                  :title="opt.label"
+                  @click="setChatBg(opt.key)"
+                >
+                  <span class="bg-swatch" :style="{ background: opt.swatch }"></span>
+                  <span class="bg-label">{{ opt.label }}</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -557,6 +587,69 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '😮', '😢', '👏', '🎉']
 const INPUT_EMOJIS = ['😀', '😁', '😂', '🤣', '😊', '😍', '😎', '🤔', '👍', '👎', '❤️', '🔥']
 
+// ---------- Фон окна сообщений ----------
+const CHAT_BG_STORAGE_KEY = 'microshop_chat_bg'
+
+type ChatBgOption = { key: string; label: string; swatch: string; background?: string }
+
+const CHAT_BACKGROUNDS: ChatBgOption[] = [
+  {
+    key: 'default',
+    label: 'По умолчанию',
+    swatch:
+      'radial-gradient(circle at 1px 1px, rgba(120,144,156,0.25) 1px, transparent 0) 0 0/22px 22px, #eef1f4'
+  },
+  {
+    key: 'sky',
+    label: 'Небо',
+    swatch: 'linear-gradient(160deg,#d6e6f4,#aecbe4)',
+    background: 'linear-gradient(160deg,#d6e6f4,#aecbe4)'
+  },
+  {
+    key: 'mint',
+    label: 'Мята',
+    swatch: 'linear-gradient(160deg,#dbf2e4,#b6e2c8)',
+    background: 'linear-gradient(160deg,#dbf2e4,#b6e2c8)'
+  },
+  {
+    key: 'peach',
+    label: 'Персик',
+    swatch: 'linear-gradient(160deg,#fdebd9,#f5cfae)',
+    background: 'linear-gradient(160deg,#fdebd9,#f5cfae)'
+  },
+  {
+    key: 'lilac',
+    label: 'Сирень',
+    swatch: 'linear-gradient(160deg,#e9e0f6,#cbbae8)',
+    background: 'linear-gradient(160deg,#e9e0f6,#cbbae8)'
+  },
+  {
+    key: 'graphite',
+    label: 'Графит',
+    swatch: 'linear-gradient(160deg,#3f4a55,#1f262d)',
+    background: 'linear-gradient(160deg,#3f4a55,#1f262d)'
+  }
+]
+
+const chatBg = ref<string>('default')
+const bgPickerOpen = ref(false)
+
+const chatBgStyle = computed(() => {
+  const option = CHAT_BACKGROUNDS.find((item) => item.key === chatBg.value)
+  // Пустая строка убирает инлайн-фон — остаётся стиль «По умолчанию» из CSS
+  return { background: option?.background ?? '' }
+})
+
+const setChatBg = (key: string) => {
+  chatBg.value = key
+  bgPickerOpen.value = false
+  try {
+    localStorage.setItem(CHAT_BG_STORAGE_KEY, key)
+  } catch {
+    /* localStorage недоступен — просто не сохраняем */
+  }
+}
+
 // ---------- Вычисляемые значения ----------
 const currentUserId = computed<number | null>(() => authStore.current_user?.id ?? null)
 const selfName = computed<string>(() =>
@@ -832,6 +925,7 @@ const toggleEmojiPicker = (messageId: number) => {
 const closePopups = () => {
   emojiPickerFor.value = null
   emojiMenuOpen.value = false
+  bgPickerOpen.value = false
 }
 
 const toggleReaction = async (message: Message, emoji: string) => {
@@ -1057,6 +1151,7 @@ const deleteMessageOf = async (message: Message) => {
 // ---------- Поиск по сообщениям ----------
 const toggleInlineSearch = () => {
   inlineSearchOpen.value = !inlineSearchOpen.value
+  bgPickerOpen.value = false
   if (!inlineSearchOpen.value) inlineQuery.value = ''
 }
 
@@ -1143,6 +1238,7 @@ const startPolling = () => {
 // ---------- Навигация ----------
 const goToProfile = () => {
   showProfileModal.value = true
+  bgPickerOpen.value = false
 }
 
 const onLoginModalClose = () => {
@@ -1174,6 +1270,15 @@ watch(
 
 onMounted(async () => {
   await authStore.initializeApp()
+  // Восстанавливаем сохранённый фон окна сообщений
+  try {
+    const saved = localStorage.getItem(CHAT_BG_STORAGE_KEY)
+    if (saved && CHAT_BACKGROUNDS.some((item) => item.key === saved)) {
+      chatBg.value = saved
+    }
+  } catch {
+    /* localStorage недоступен — остаёмся на фоне по умолчанию */
+  }
   scrollToBottom()
 })
 
@@ -1536,6 +1641,7 @@ watch(
 
 /* ---------- Шапка чата ---------- */
 .chat-header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1709,8 +1815,9 @@ watch(
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 2px;
   margin-top: 2px;
+  line-height: 1;
 }
 
 .msg-time {
@@ -1721,6 +1828,7 @@ watch(
 .msg-ticks {
   font-size: 12px;
   color: #99a7b1;
+  letter-spacing: -4px; /* галки стоят плотнее друг к другу */
 }
 
 .msg-ticks.read {
@@ -2098,6 +2206,70 @@ watch(
 
 .rotated {
   transform: rotate(180deg);
+}
+
+/* ---------- Выбор фона сообщений ---------- */
+.bg-picker {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 12px;
+  width: 264px;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  border: 1px solid #e2e6ea;
+  padding: 10px 12px 12px;
+  z-index: 30;
+}
+
+.bg-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1c2733;
+  margin-bottom: 8px;
+}
+
+.bg-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.bg-option {
+  border: 1px solid #e2e6ea;
+  border-radius: 10px;
+  background: #fff;
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.bg-option:hover {
+  border-color: #b7c6d0;
+}
+
+.bg-option.active {
+  border-color: #1e9b51;
+  box-shadow: 0 0 0 1px #1e9b51 inset;
+}
+
+.bg-swatch {
+  width: 100%;
+  height: 34px;
+  border-radius: 7px;
+  display: block;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.bg-label {
+  font-size: 11px;
+  color: #5c6a75;
 }
 
 @media (max-width: 820px) {
