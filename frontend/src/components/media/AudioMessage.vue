@@ -8,6 +8,8 @@
       @loadedmetadata="onLoadedMetadata"
       @timeupdate="onTimeUpdate"
       @ended="onEnded"
+      @play="isPlaying = true"
+      @pause="isPlaying = false"
       @error="onError"
     ></audio>
 
@@ -40,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { formatClock } from '@/services/recorder'
 
 defineProps<{
@@ -91,11 +93,11 @@ const toggle = () => {
   })
 }
 
-const timeLabel = (): string => {
+const timeLabel = computed<string>(() => {
   if (broken.value) return ''
   const total = durationKnown.value ? formatClock(duration.value) : '…'
   return `${formatClock(current.value)} / ${total}`
-}
+})
 
 const progressStyle = (): Record<string, string> => {
   let percent = 0
@@ -154,12 +156,17 @@ const formatBytes = (size: number | null | undefined): string => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
   font-size: 1.05rem;
   flex-shrink: 0;
-  padding-left: 2px;
   transition:
     transform 0.12s,
     background 0.12s;
+}
+
+.am-play i {
+  display: block;
+  line-height: 1;
 }
 
 .am-play:hover {

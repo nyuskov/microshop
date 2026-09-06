@@ -284,9 +284,14 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
   font-size: 1.1rem;
   flex-shrink: 0;
-  padding-left: 2px;
+}
+
+.vr-play i {
+  display: block;
+  line-height: 1;
 }
 
 .vr-play:hover {
