@@ -200,6 +200,15 @@ html .messenger-shell .round-btn.muted {
     color: var(--ms-icon-3);
 }
 
+/* Одна кнопка записи голосового/видео (клик = голосовое, удержание 2 c = видео) */
+html .messenger-shell .mic-hold-btn.holding {
+    color: var(--ms-accent);
+}
+
+html .messenger-shell .mic-hold-btn.holding::after {
+    border-color: var(--ms-accent);
+}
+
 html .messenger-shell .inline-error {
     color: var(--ms-danger);
     background: var(--ms-danger-bg);
@@ -349,6 +358,13 @@ html .messenger-shell .msg.out .msg-bubble {
 
 html .messenger-shell .msg.in .msg-bubble {
     background: var(--ms-surface);
+}
+
+/* Пузырь, где лежит только «кружок»-видеосообщение, — без фона и отступов */
+html .messenger-shell .msg .msg-bubble.round-video-only {
+    background: transparent;
+    box-shadow: none;
+    padding: 2px;
 }
 
 html .messenger-shell .msg-text {

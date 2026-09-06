@@ -3,7 +3,7 @@
     <div class="video-rec-modal" @mousedown.self="close">
       <div class="vrm-card">
         <div class="vrm-head">
-          <span>Видеосообщение</span>
+          <span>Видеосообщение (кружок)</span>
           <button class="vrm-close" title="Закрыть" @click="close">
             <i class="pi pi-times"></i>
           </button>
@@ -108,7 +108,8 @@ const openCamera = async (): Promise<boolean> => {
     stopMediaStream(mediaStream)
     mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true },
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+      // Квадратная съёмка — видеосообщение показывается «кружком».
+      video: { width: { ideal: 720 }, height: { ideal: 720 }, aspectRatio: 1, facingMode: 'user' }
     })
     streamReady.value = true
     await nextTick()
@@ -295,8 +296,12 @@ void openCamera()
 
 .vrm-stage {
   position: relative;
+  width: min(420px, 100%);
+  margin: 0 auto;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  overflow: hidden;
   background: #000;
-  aspect-ratio: 16 / 9;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -305,7 +310,7 @@ void openCamera()
 .vrm-video {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
   background: #000;
 }
 

@@ -69,7 +69,9 @@ microshop/
 ├── entry.sh                   # dump_db.sh && docker compose down -v && build && up
 ├── dump_db.sh                 # сохранить дамп БД в ./db_dump (вызывается из entry.sh)
 ├── restore_db.sh              # восстановить БД из дампа вручную
-├── db_dump/                   # дампы БД: microshop_latest.sql + archive/ (в .gitignore)
+├── cron_dump_db.sh            # обёртка дампа для cron: лог + ротация архива (см. разд. 4)
+├── install_cron_backup.sh     # установка ежедневного дампа в crontab пользователя
+├── db_dump/                   # дампы БД: microshop_latest.sql + archive/ + logs/ (в .gitignore)
 └── queries.sql                # черновик SQL-запросов
 ```
 
@@ -101,10 +103,34 @@ docker compose up --build  # из корня microshop
 |---|---|---|
 | Автодамп перед сбросом | `./entry.sh` | дамп в `./db_dump/microshop_latest.sql`, затем `down -v` |
 | Ручной дамп | `./dump_db.sh` | в любой момент (сервис `db` поднимет сам, если нужно) |
+| **Автодамп по cron** | `./install_cron_backup.sh` (однократно) | ежедневно в 03:00 — см. ниже |
 | Авто-restore | `docker compose up` | только когда volume БД создан заново/пуст (после `down -v`): postgres сам выполняет `./db_dump/*.sql` из `/docker-entrypoint-initdb.d` |
 | Ручной restore | `./restore_db.sh [файл.sql]` | перезаписывает данные в запущенной БД (осторожно!) |
 
 - Актуальный дамп: `db_dump/microshop_latest.sql`; архивные копии по датам — `db_dump/archive/`. Папка `db_dump/` в `.gitignore` (в git лежат только пустые `.gitkeep`).
+
+#### Автоматический дамп по cron (регулярное резервное копирование)
+
+Задача ставится в **crontab пользователя** на хосте (там, где запускается `docker compose`) и ежедневно снимает дамп БД:
+
+```bash
+./install_cron_backup.sh            # ежедневно в 03:00
+# при необходимости другое расписание, например каждые 6 часов:
+CRON_SCHEDULE='0 */6 * * *' ./install_cron_backup.sh
+```
+
+Что происходит по расписанию (скрипт `./cron_dump_db.sh`):
+
+- запускается `./dump_db.sh` — обновляется `db_dump/microshop_latest.sql` и создаётся архивная копия `db_dump/archive/microshop_<дата>.sql`;
+- пишется лог в `db_dump/logs/cron.log`;
+- хранится только последние **30** архивных копий (лимит задаётся переменной `ARCHIVE_KEEP`, лог — `DUMP_LOG_FILE`).
+
+Проверка/удаление задачи:
+
+```bash
+crontab -l | grep '# microshop-db-backup'              # посмотреть задачу
+crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
+```
 - Дамп полный (`pg_dump --clean`), включает и схему, и данные, и таблицу `alembic_version`. Поэтому после restore миграции на старте `web` — no-op; если позже появятся новые миграции — применятся поверх восстановленных данных.
 - Если БД пустая (нет таблиц), `dump_db.sh` не затирает прежний дамп.
 

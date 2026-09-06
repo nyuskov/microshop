@@ -313,7 +313,10 @@
                   <span>{{ row.label }}</span>
                 </div>
                 <div v-else class="msg" :class="isOwnMessage(row.message) ? 'out' : 'in'">
-                  <div class="msg-bubble">
+                  <div
+                    class="msg-bubble"
+                    :class="{ 'round-video-only': isRoundVideoOnly(row.message) }"
+                  >
                     <!-- Ответ-цитата -->
                     <div
                       v-if="row.message.reply_to_id && replyMessage(row.message)"
@@ -343,6 +346,12 @@
                           loading="lazy"
                         />
                       </a>
+                      <RoundVideoMessage
+                        v-else-if="isRecordedVideoMessage(row.message.file)"
+                        :src="mediaAbsolute(row.message.file.url)"
+                        :name="row.message.file.name"
+                        :size="row.message.file.size"
+                      />
                       <video
                         v-else-if="isVideoFile(row.message.file)"
                         class="attachment-video"
@@ -505,12 +514,34 @@
                 <button class="round-btn" title="Эмодзи" @click="emojiMenuOpen = !emojiMenuOpen">
                   <i class="pi pi-face-smile"></i>
                 </button>
-                <button class="round-btn" title="Видеосообщение" @click="openVideoRec">
-                  <i class="pi pi-video"></i>
-                </button>
-                <button class="round-btn" title="Голосовое сообщение" @click="openVoiceRec">
-                  <i class="pi pi-microphone"></i>
-                </button>
+                <span class="mic-wrap">
+                  <button
+                    class="round-btn mic-hold-btn"
+                    :class="{
+                      holding: micHolding,
+                      'mode-video': recordMode === 'video'
+                    }"
+                    :title="
+                      recordMode === 'video'
+                        ? 'Видеосообщение (нажмите). Удерживайте 2 секунды — голосовое'
+                        : 'Голосовое сообщение (нажмите). Удерживайте 2 секунды — видеосообщение'
+                    "
+                    :aria-label="
+                      recordMode === 'video'
+                        ? 'Записать видеосообщение. Удерживайте 2 секунды для голосового'
+                        : 'Записать голосовое сообщение. Удерживайте 2 секунды для видеосообщения'
+                    "
+                    @click="onMicClick"
+                    @pointerdown="onMicDown"
+                    @pointerup="onMicUp"
+                    @pointerleave="onMicUp"
+                    @pointercancel="onMicCancel"
+                    @contextmenu.prevent
+                  >
+                    <i :class="recordMode === 'video' ? 'pi pi-video' : 'pi pi-microphone'"></i>
+                  </button>
+                  <span v-if="recordModeHint" class="record-mode-hint">{{ recordModeHint }}</span>
+                </span>
               </template>
 
               <div v-if="emojiMenuOpen" class="emoji-picker bottom">
@@ -618,6 +649,7 @@ import UserProfile from './UserProfile.vue'
 import AppearanceSettings from './AppearanceSettings.vue'
 import CallOverlay from '@/components/calls/CallOverlay.vue'
 import AudioMessage from '@/components/media/AudioMessage.vue'
+import RoundVideoMessage from '@/components/media/RoundVideoMessage.vue'
 import VoiceRecorderBar from '@/components/media/VoiceRecorderBar.vue'
 import VideoRecorderModal from '@/components/media/VideoRecorderModal.vue'
 import { useCallStore } from '@/stores/call'
@@ -982,6 +1014,17 @@ const isAudioFile = (file: MessageFile): boolean => file.mime?.startsWith('audio
 
 const isVideoFile = (file: MessageFile): boolean => file.mime?.startsWith('video/') ?? false
 
+/** Видео, записанное через кнопку «видеосообщение» (имя файла video_*), — кружок. */
+const isRecordedVideoMessage = (file: MessageFile): boolean =>
+  isVideoFile(file) && (file.name.toLowerCase().startsWith('video_') ?? false)
+
+/** Пузырь, содержащий только кружок-видео (без текста/ответа), — без фона. */
+const isRoundVideoOnly = (message: Message): boolean =>
+  !!message.file &&
+  isRecordedVideoMessage(message.file) &&
+  !message.text &&
+  message.reply_to_id == null
+
 const mediaTypeLabel = (file: MessageFile): string => {
   if (isImageFile(file)) return 'Изображение'
   if (isAudioFile(file)) return 'Голосовое сообщение'
@@ -1217,10 +1260,12 @@ const openVideoRec = () => {
 
 const onVideoCancel = () => {
   videoRecOpen.value = false
+  resetRecordMode()
 }
 
 const onVideoSend = async (payload: RecordedMedia) => {
   videoRecOpen.value = false
+  resetRecordMode()
   await uploadRecordedMedia(payload, 'video')
 }
 
@@ -1242,6 +1287,91 @@ const uploadRecordedMedia = async (payload: RecordedMedia, kind: 'voice' | 'vide
     sendError.value = getErrorMessage(error, 'Не удалось отправить медиасообщение')
   } finally {
     sendingFile.value = false
+  }
+}
+
+// ---------- Одна кнопка аудио/видео ----------
+// Клик = запись сообщения выбранного режима; удержание 2 секунды = переключение
+// режима (микрофон ⇄ видео): значок меняется, сама запись НЕ начинается.
+const MIC_HOLD_MS = 500
+const recordMode = ref<'audio' | 'video'>('audio')
+const micHolding = ref(false)
+const recordModeHint = ref('')
+let micPressTimer: number | null = null
+let suppressMicClick = false
+let modeHintTimer: number | null = null
+
+const clearMicTimer = () => {
+  if (micPressTimer !== null) {
+    window.clearTimeout(micPressTimer)
+    micPressTimer = null
+  }
+}
+
+const clearModeHint = () => {
+  if (modeHintTimer !== null) {
+    window.clearTimeout(modeHintTimer)
+    modeHintTimer = null
+  }
+}
+
+const showModeHint = () => {
+  clearModeHint()
+  recordModeHint.value = recordMode.value === 'video' ? 'Запись видео' : 'Запись голоса'
+  modeHintTimer = window.setTimeout(() => {
+    recordModeHint.value = ''
+    modeHintTimer = null
+  }, 1500)
+}
+
+const setRecordMode = (mode: 'audio' | 'video') => {
+  if (recordMode.value === mode) return
+  recordMode.value = mode
+  showModeHint()
+}
+
+const resetRecordMode = () => {
+  recordMode.value = 'audio'
+  recordModeHint.value = ''
+  clearModeHint()
+}
+
+const onMicDown = () => {
+  if (voiceRecOpen.value || videoRecOpen.value) return
+  clearMicTimer()
+  suppressMicClick = false
+  micHolding.value = true
+  micPressTimer = window.setTimeout(() => {
+    micPressTimer = null
+    micHolding.value = false
+    // Переключаем режим, но запись не запускаем — она начнётся по клику.
+    suppressMicClick = true
+    setRecordMode(recordMode.value === 'video' ? 'audio' : 'video')
+  }, MIC_HOLD_MS)
+}
+
+const onMicUp = () => {
+  clearMicTimer()
+  micHolding.value = false
+}
+
+const onMicCancel = () => {
+  clearMicTimer()
+  micHolding.value = false
+  suppressMicClick = false
+}
+
+const onMicClick = () => {
+  // После долгого удержания браузер всё равно пришлёт click — пропускаем его,
+  // т.к. удержание уже переключило режим (иначе сразу началась бы запись).
+  if (suppressMicClick) {
+    suppressMicClick = false
+    return
+  }
+  if (recordMode.value === 'video') {
+    openVideoRec()
+  } else {
+    openVoiceRec()
   }
 }
 
@@ -1423,6 +1553,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   stopPolling()
+  clearMicTimer()
+  clearModeHint()
   if (searchTimer !== null) {
     window.clearTimeout(searchTimer)
   }
@@ -1459,6 +1591,7 @@ watch(
     clearReply()
     voiceRecOpen.value = false
     videoRecOpen.value = false
+    resetRecordMode()
   },
   { immediate: true }
 )
@@ -1551,6 +1684,82 @@ watch(
 
 .round-btn.muted {
   color: #9aa7b2;
+}
+
+/* Кнопка записи голосового/видеосообщения (удержание 2 c — переключение режима) */
+.mic-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.mic-hold-btn {
+  position: relative;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.mic-hold-btn.holding,
+.mic-hold-btn.mode-video {
+  color: #2ea25e;
+}
+
+.mic-hold-btn.holding::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid #2ea25e;
+  opacity: 0;
+  animation: mic-hold-ring 2s ease-out forwards;
+  pointer-events: none;
+}
+
+/* Подсказка о смене режима */
+.record-mode-hint {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 26, 32, 0.85);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 12;
+  animation: record-hint-pop 0.15s ease-out;
+}
+
+@keyframes record-hint-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes mic-hold-ring {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.92);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+/* Пузырь, где лежит только кружок-видео */
+.msg-bubble.round-video-only {
+  background: transparent;
+  box-shadow: none;
+  padding: 2px;
 }
 
 .avatar {
