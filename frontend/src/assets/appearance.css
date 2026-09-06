@@ -321,6 +321,25 @@ html .messenger-shell .chat-status-pill {
     border-color: var(--ms-accent-border);
 }
 
+/* Dropdown-меню (⋮ настройки и звонки) */
+html .messenger-shell .ms-dropdown {
+    background: var(--ms-surface);
+    border-color: var(--ms-border);
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.24);
+}
+
+html .messenger-shell .ms-dropdown-item {
+    color: var(--ms-text-strong);
+}
+
+html .messenger-shell .ms-dropdown-item:hover {
+    background: var(--ms-hover);
+}
+
+html .messenger-shell .ms-dropdown-item i {
+    color: var(--ms-icon-2);
+}
+
 html .messenger-shell .chat-subtitle {
     color: var(--ms-muted);
 }

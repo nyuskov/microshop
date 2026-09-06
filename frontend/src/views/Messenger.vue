@@ -10,18 +10,33 @@
               <button class="icon-btn" title="Контакты" @click="view = 'contacts'">
                 <i class="pi pi-user-plus"></i>
               </button>
-              <button class="icon-btn" title="Профиль" @click="goToProfile">
-                <i class="pi pi-user"></i>
-              </button>
             </div>
             <h2 class="panel-title">Чаты</h2>
             <div class="panel-header-right">
-              <button class="icon-btn" title="Оформление" @click="openAppearance">
-                <i class="pi pi-palette"></i>
-              </button>
               <button class="icon-btn" title="Новое сообщение" @click="focusSearch">
                 <i class="pi pi-pencil"></i>
               </button>
+              <span class="ms-dropdown-wrap" @click.stop>
+                <button
+                  class="icon-btn"
+                  :class="{ open: settingsMenuOpen }"
+                  title="Настройки"
+                  @click="toggleSettingsMenu"
+                >
+                  <i class="pi pi-ellipsis-v"></i>
+                </button>
+                <div v-if="settingsMenuOpen" class="ms-dropdown">
+                  <button
+                    v-for="action in SETTINGS_ACTIONS"
+                    :key="action.key"
+                    class="ms-dropdown-item"
+                    @click="runSettingsAction(action)"
+                  >
+                    <i :class="action.icon"></i>
+                    <span>{{ action.label }}</span>
+                  </button>
+                </div>
+              </span>
             </div>
           </div>
 
@@ -122,7 +137,29 @@
               </button>
             </div>
             <h2 class="panel-title">Контакты</h2>
-            <div class="panel-header-right"></div>
+            <div class="panel-header-right">
+              <span class="ms-dropdown-wrap" @click.stop>
+                <button
+                  class="icon-btn"
+                  :class="{ open: settingsMenuOpen }"
+                  title="Настройки"
+                  @click="toggleSettingsMenu"
+                >
+                  <i class="pi pi-ellipsis-v"></i>
+                </button>
+                <div v-if="settingsMenuOpen" class="ms-dropdown">
+                  <button
+                    v-for="action in SETTINGS_ACTIONS"
+                    :key="action.key"
+                    class="ms-dropdown-item"
+                    @click="runSettingsAction(action)"
+                  >
+                    <i :class="action.icon"></i>
+                    <span>{{ action.label }}</span>
+                  </button>
+                </div>
+              </span>
+            </div>
           </div>
 
           <div class="panel-search">
@@ -204,21 +241,36 @@
               <div class="chat-subtitle">{{ chatSubtitle(selectedChat) }}</div>
             </div>
             <div class="chat-header-actions">
-              <template v-if="isPrivateChat(selectedChat)">
-                <button class="icon-btn call-btn" title="Голосовой звонок" @click="startVoiceCall">
-                  <i class="pi pi-phone"></i>
+              <span v-if="isPrivateChat(selectedChat)" class="call-group" @click.stop>
+                <button
+                  class="icon-btn call-btn"
+                  :title="callLabel(callKind)"
+                  @click="startSelectedCall"
+                >
+                  <i :class="callKind === 'video' ? 'pi pi-video' : 'pi pi-phone'"></i>
                 </button>
-                <button class="icon-btn call-btn" title="Видеозвонок" @click="startVideoCall">
-                  <i class="pi pi-video"></i>
+                <button
+                  class="icon-btn call-caret-btn"
+                  :class="{ open: callMenuOpen }"
+                  title="Выбрать тип звонка"
+                  @click="toggleCallMenu"
+                >
+                  <i class="pi pi-angle-down"></i>
                 </button>
-              </template>
-              <button
-                class="icon-btn"
-                title="Фон сообщений"
-                @click.stop="bgPickerOpen = !bgPickerOpen"
-              >
-                <i class="pi pi-palette"></i>
-              </button>
+                <div v-if="callMenuOpen" class="ms-dropdown">
+                  <button
+                    v-for="option in CALL_OPTIONS"
+                    :key="option.kind"
+                    class="ms-dropdown-item"
+                    :class="{ active: callKind === option.kind }"
+                    @click="chooseCallOption(option.kind)"
+                  >
+                    <i :class="option.icon"></i>
+                    <span>{{ option.label }}</span>
+                    <i v-if="callKind === option.kind" class="pi pi-check call-check"></i>
+                  </button>
+                </div>
+              </span>
               <button class="icon-btn" title="Поиск по сообщениям" @click="toggleInlineSearch">
                 <i class="pi pi-search"></i>
               </button>
@@ -232,42 +284,6 @@
                   />
                   <template v-else>{{ selfInitial }}</template>
                 </span>
-              </button>
-            </div>
-
-            <!-- Выбор фона сообщений -->
-            <div v-if="bgPickerOpen" class="bg-picker" @click.stop>
-              <div class="bg-picker-head">
-                <span>Фон сообщений</span>
-                <button class="icon-btn" title="Закрыть" @click="bgPickerOpen = false">
-                  <i class="pi pi-times"></i>
-                </button>
-              </div>
-              <div class="bg-picker-grid">
-                <button
-                  v-for="opt in WALLPAPER_PRESETS"
-                  :key="opt.key"
-                  class="bg-option"
-                  :class="{ active: themeStore.wallpaperKey === opt.key }"
-                  :title="opt.label"
-                  @click="pickWallpaper(opt.key)"
-                >
-                  <span class="bg-swatch" :style="{ background: opt.swatch }"></span>
-                  <span class="bg-label">{{ opt.label }}</span>
-                </button>
-                <button
-                  v-if="themeStore.wallpaperCustom"
-                  class="bg-option"
-                  :class="{ active: themeStore.wallpaperKey === 'custom' }"
-                  title="Ваше фото"
-                  @click="pickWallpaper('custom')"
-                >
-                  <span class="bg-swatch" :style="customWallpaperStyle()"></span>
-                  <span class="bg-label">Ваше фото</span>
-                </button>
-              </div>
-              <button class="bg-picker-more" @click="openAppearance">
-                <i class="pi pi-sliders-h"></i> Полная настройка оформления
               </button>
             </div>
           </div>
@@ -631,7 +647,7 @@ import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
 import Dialog from 'primevue/dialog'
 import LoginModal from '@/components/LoginModal.vue'
 import { useAuthStore } from '@/stores/auth'
-import { useThemeStore, WALLPAPER_PRESETS } from '@/stores/theme'
+import { useThemeStore } from '@/stores/theme'
 import { getErrorMessage } from '@/services/errors'
 import {
   fetchContacts,
@@ -670,6 +686,8 @@ const showAppearanceModal = ref(false)
 const showLoginModal = ref(true)
 const voiceRecOpen = ref(false)
 const videoRecOpen = ref(false)
+const callMenuOpen = ref(false)
+const settingsMenuOpen = ref(false)
 
 // ---------- Данные ----------
 const view = ref<'chats' | 'contacts'>('chats')
@@ -708,20 +726,7 @@ const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '😮', '😢', '👏
 const INPUT_EMOJIS = ['😀', '😁', '😂', '🤣', '😊', '😍', '😎', '🤔', '👍', '👎', '❤️', '🔥']
 
 // ---------- Фон окна сообщений (обои берутся из store оформления) ----------
-const bgPickerOpen = ref(false)
-
 const chatBgStyle = computed(() => ({ background: themeStore.wallpaperCss }))
-
-const pickWallpaper = (key: string) => {
-  themeStore.setWallpaper(key)
-  bgPickerOpen.value = false
-}
-
-const customWallpaperStyle = (): Record<string, string> => ({
-  background: themeStore.wallpaperCustom
-    ? `url("${themeStore.wallpaperCustom}") center / cover`
-    : ''
-})
 
 // ---------- Вычисляемые значения ----------
 const currentUserId = computed<number | null>(() => authStore.current_user?.id ?? null)
@@ -887,6 +892,36 @@ const startVideoCall = () => {
     { id: peer.id, name: displayName(peer), avatarUrl: peer.avatar_url ?? null },
     'video'
   )
+}
+
+// ---------- Звонки в шапке чата: основная кнопка + отдельный дропдаун выбора ----------
+const CALL_OPTIONS = [
+  { kind: 'audio', label: 'Голосовой звонок', icon: 'pi pi-phone' },
+  { kind: 'video', label: 'Видеозвонок', icon: 'pi pi-video' }
+] as const
+
+// Текущий выбранный тип: основная кнопка звонит именно им.
+const callKind = ref<'audio' | 'video'>('audio')
+
+const callLabel = (kind: 'audio' | 'video'): string => {
+  const option = CALL_OPTIONS.find((item) => item.kind === kind)
+  return option ? option.label : ''
+}
+
+const toggleCallMenu = () => {
+  callMenuOpen.value = !callMenuOpen.value
+  settingsMenuOpen.value = false
+}
+
+const chooseCallOption = (kind: 'audio' | 'video') => {
+  callKind.value = kind
+  closeMenus()
+}
+
+const startSelectedCall = () => {
+  closeMenus()
+  if (callKind.value === 'video') startVideoCall()
+  else startVoiceCall()
 }
 
 const chatTitle = (chat: Chat): string => {
@@ -1117,7 +1152,13 @@ const toggleEmojiPicker = (messageId: number) => {
 const closePopups = () => {
   emojiPickerFor.value = null
   emojiMenuOpen.value = false
-  bgPickerOpen.value = false
+  callMenuOpen.value = false
+  settingsMenuOpen.value = false
+}
+
+const closeMenus = () => {
+  callMenuOpen.value = false
+  settingsMenuOpen.value = false
 }
 
 const toggleReaction = async (message: Message, emoji: string) => {
@@ -1480,7 +1521,7 @@ const deleteMessageOf = async (message: Message) => {
 // ---------- Поиск по сообщениям ----------
 const toggleInlineSearch = () => {
   inlineSearchOpen.value = !inlineSearchOpen.value
-  bgPickerOpen.value = false
+  closeMenus()
   if (!inlineSearchOpen.value) inlineQuery.value = ''
 }
 
@@ -1492,6 +1533,7 @@ const appendEmoji = (emoji: string) => {
 
 // ---------- Поиск людей ----------
 const focusSearch = () => {
+  closeMenus()
   nextTick(() => searchInputRef.value?.focus())
 }
 
@@ -1565,14 +1607,31 @@ const startPolling = () => {
 }
 
 // ---------- Навигация ----------
+// Пункты верхнего меню «⋯» (сюда будут добавляться новые настройки).
+const SETTINGS_ACTIONS = [
+  { key: 'profile', label: 'Настройки профиля', icon: 'pi pi-user' },
+  { key: 'appearance', label: 'Оформление и тема', icon: 'pi pi-palette' }
+] as const
+
+const toggleSettingsMenu = () => {
+  settingsMenuOpen.value = !settingsMenuOpen.value
+  callMenuOpen.value = false
+}
+
+const runSettingsAction = (action: (typeof SETTINGS_ACTIONS)[number]) => {
+  closeMenus()
+  if (action.key === 'profile') goToProfile()
+  else if (action.key === 'appearance') openAppearance()
+}
+
 const goToProfile = () => {
   showProfileModal.value = true
-  bgPickerOpen.value = false
+  closeMenus()
 }
 
 const openAppearance = () => {
   showAppearanceModal.value = true
-  bgPickerOpen.value = false
+  closeMenus()
 }
 
 const onLoginModalClose = () => {
@@ -2756,6 +2815,76 @@ watch(
 
 .call-btn:hover {
   color: var(--ms-accent, #2ea25e);
+}
+
+.call-group {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.call-group .call-caret-btn {
+  width: 26px;
+  height: 34px;
+  font-size: 0.8rem;
+}
+
+.ms-dropdown-item .call-check {
+  margin-left: auto;
+  color: var(--ms-accent, #2ea25e);
+}
+
+.icon-btn.open {
+  color: var(--ms-accent, #1e9b51);
+}
+
+/* Dropdown-меню (верх панели и звонки в шапке чата) */
+.ms-dropdown-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.ms-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 200px;
+  background: #ffffff;
+  border: 1px solid #e2e6ea;
+  border-radius: 12px;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.16);
+  padding: 6px;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+}
+
+.ms-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 9px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+  font-family: inherit;
+  color: #1c2733;
+  white-space: nowrap;
+}
+
+.ms-dropdown-item:hover {
+  background: #f2f4f6;
+}
+
+.ms-dropdown-item i {
+  width: 18px;
+  text-align: center;
+  font-size: 1rem;
+  color: #5b6b79;
 }
 
 @media (max-width: 820px) {
