@@ -215,3 +215,10 @@ certs/
 
 # Загруженные пользователями файлы сообщений
 backend/media/
+
+# Локальные дампы БД (dump_db.sh / restore_db.sh, auto-restore в /docker-entrypoint-initdb.d)
+db_dump/*
+!db_dump/.gitkeep
+!db_dump/archive/
+db_dump/archive/*
+!db_dump/archive/.gitkeep

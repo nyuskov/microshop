@@ -27,6 +27,10 @@ services:
     image: postgres:latest
     volumes:
         - postgres_data:/var/lib/postgresql/
+        # Дамп/восстановление: когда volume БД создаётся заново (после down -v),
+        # postgres автоматически выполнит ./db_dump/*.sql (восстановление из дампа).
+        # Свежий дамп снимите скриптом ./dump_db.sh (или он вызывается в entry.sh).
+        - ./db_dump:/docker-entrypoint-initdb.d:ro
     environment:
         - POSTGRES_URL=postgres
         - POSTGRES_PASSWORD=Xx123456

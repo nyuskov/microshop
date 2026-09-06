@@ -66,7 +66,10 @@ microshop/
 │       └── router/index.ts       # маршруты: "/" → Messenger, "/auth/login/"
 ├── docker-compose.yaml        # основной дев-стек: web+db+frontend(nginx)
 ├── docker-compose.dev.yaml    # лёгкий вариант (см. раздел 4)
-├── entry.sh                   # docker compose down -v && build && up
+├── entry.sh                   # dump_db.sh && docker compose down -v && build && up
+├── dump_db.sh                 # сохранить дамп БД в ./db_dump (вызывается из entry.sh)
+├── restore_db.sh              # восстановить БД из дампа вручную
+├── db_dump/                   # дампы БД: microshop_latest.sql + archive/ (в .gitignore)
 └── queries.sql                # черновик SQL-запросов
 ```
 
@@ -79,8 +82,8 @@ microshop/
 Контейнеры: `web` (FastAPI :8000 HTTPS + авто-миграции), `db` (Postgres), `frontend` (Vite :5173 HTTPS), `nginx` (:8080 HTTP, dev-прокси к frontend и API).
 
 ```bash
-./entry.sh                 # = docker compose down -v --rmi all && build && up
-# или вручную:
+./entry.sh                 # = dump_db.sh && docker compose down -v --rmi all && build && up
+# или вручную (данные в volume сохранятся):
 docker compose up --build  # из корня microshop
 ```
 
@@ -90,7 +93,20 @@ docker compose up --build  # из корня microshop
 - **Frontend (HTTPS)**: https://localhost:5173 (нужно принять самоподписанный сертификат).
 - **Nginx (HTTP, отладка)**: http://localhost:8080.
 
-`entry.sh` использует `-v` (удаляет volume БД) — данные стираются при каждом запуске.
+`entry.sh` делает полный сброс (`down -v --rmi all`), но **перед этим снимает дамп БД**, а при старте на пустом volume база **автоматически восстанавливается из дампа** — данные не теряются.
+
+### Резервное копирование БД (дамп/восстановление)
+
+| Что | Команда | Когда срабатывает |
+|---|---|---|
+| Автодамп перед сбросом | `./entry.sh` | дамп в `./db_dump/microshop_latest.sql`, затем `down -v` |
+| Ручной дамп | `./dump_db.sh` | в любой момент (сервис `db` поднимет сам, если нужно) |
+| Авто-restore | `docker compose up` | только когда volume БД создан заново/пуст (после `down -v`): postgres сам выполняет `./db_dump/*.sql` из `/docker-entrypoint-initdb.d` |
+| Ручной restore | `./restore_db.sh [файл.sql]` | перезаписывает данные в запущенной БД (осторожно!) |
+
+- Актуальный дамп: `db_dump/microshop_latest.sql`; архивные копии по датам — `db_dump/archive/`. Папка `db_dump/` в `.gitignore` (в git лежат только пустые `.gitkeep`).
+- Дамп полный (`pg_dump --clean`), включает и схему, и данные, и таблицу `alembic_version`. Поэтому после restore миграции на старте `web` — no-op; если позже появятся новые миграции — применятся поверх восстановленных данных.
+- Если БД пустая (нет таблиц), `dump_db.sh` не затирает прежний дамп.
 
 ### Лёгкий вариант (docker-compose.dev.yaml)
 
@@ -284,6 +300,10 @@ node node_modules/prettier/bin/prettier.cjs --write <files> # формат
 ```bash
 # Backend: применить миграции (в контейнере)
 docker exec microshop-web-1 poetry run alembic upgrade head
+
+# Дамп / восстановление БД (см. раздел 4)
+./dump_db.sh                 # сохранить дамп в ./db_dump
+./restore_db.sh              # восстановить из ./db_dump/microshop_latest.sql
 
 # Backend: автоформат + линт (на хосте)
 cd backend && poetry run isort . && poetry run black . && poetry run flake8 . --exclude=.mypy_cache,__pycache__ && poetry run mypy --cache-dir=/tmp/ms-mypy main.py core api_v1
