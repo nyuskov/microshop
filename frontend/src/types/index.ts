@@ -5,6 +5,7 @@ export interface ChatUser {
   last_name: string | null
   phone_number: string | null
   avatar_url: string | null
+  status?: string | null
 }
 
 export interface MessageFile {
@@ -68,6 +69,8 @@ export interface User {
   last_name?: string | null
   email?: string | null
   is_superuser?: boolean
+  avatar_url?: string | null
+  status?: string | null
   profile?: Profile | null
   chats?: Chat[]
   posts?: unknown[]

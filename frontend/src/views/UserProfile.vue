@@ -34,6 +34,7 @@ interface ProfileForm {
   last_name: string
   phone_number: string
   email: string
+  status: string
   bio: string
   birth_date: string
   language: string
@@ -48,6 +49,7 @@ const profileForm = reactive<ProfileForm>({
   last_name: '',
   phone_number: '',
   email: '',
+  status: '',
   bio: '',
   birth_date: '',
   language: '',
@@ -66,6 +68,7 @@ watch(
     profileForm.last_name = user.last_name ?? ''
     profileForm.phone_number = user.phone_number ?? ''
     profileForm.email = user.email ?? ''
+    profileForm.status = user.status ?? ''
     profileForm.bio = profile?.bio ?? ''
     profileForm.birth_date = profile?.birth_date ?? ''
     profileForm.language = profile?.language ?? ''
@@ -191,7 +194,8 @@ const updateProfile = async () => {
     first_name: profileForm.first_name.trim() || null,
     last_name: profileForm.last_name.trim() || null,
     phone_number: profileForm.phone_number || null,
-    email: profileForm.email.trim() || null
+    email: profileForm.email.trim() || null,
+    status: profileForm.status.trim() || null
   }
 
   const profileData = {
@@ -259,6 +263,9 @@ const updateProfile = async () => {
         <div class="hero-info">
           <h2 class="hero-name">{{ heroName }}</h2>
           <p class="hero-username">@{{ profileForm.username || 'username' }}</p>
+          <p v-if="profileForm.status && profileForm.status.trim()" class="hero-status">
+            {{ profileForm.status.trim() }}
+          </p>
           <p v-if="profileForm.phone_number" class="hero-phone">
             <i class="pi pi-phone"></i> {{ profileForm.phone_number }}
           </p>
@@ -270,6 +277,22 @@ const updateProfile = async () => {
       </div>
 
       <form class="profile-form" @submit.prevent="updateProfile">
+        <!-- Статус -->
+        <section class="card-section">
+          <h3 class="section-title">Статус</h3>
+          <div class="field">
+            <label for="pf-status">Ваш статус</label>
+            <input
+              id="pf-status"
+              v-model="profileForm.status"
+              type="text"
+              maxlength="140"
+              placeholder="Например: в работе 🚀"
+            />
+            <p class="field-hint">Показывается собеседнику в шапке личного чата.</p>
+          </div>
+        </section>
+
         <!-- Основное -->
         <section class="card-section">
           <h3 class="section-title">О себе</h3>
@@ -576,6 +599,14 @@ const updateProfile = async () => {
   font-size: 14px;
 }
 
+.hero-status {
+  margin: 0 0 4px;
+  color: #2ea25e;
+  font-size: 13.5px;
+  font-weight: 500;
+  word-break: break-word;
+}
+
 .hero-phone {
   margin: 0;
   font-size: 13.5px;
@@ -628,6 +659,12 @@ const updateProfile = async () => {
   font-size: 12.5px;
   font-weight: 600;
   color: #52626f;
+}
+
+.field-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #8a98a3;
 }
 
 .field input,

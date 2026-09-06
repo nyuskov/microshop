@@ -60,6 +60,7 @@ class UserSearchResultSchema(BaseModel):
     last_name: str | None
     phone_number: str | None = None
     avatar_url: str | None = None
+    status: str | None = None
 
 
 class UserWithDetailsSchema(BaseModel):
@@ -72,6 +73,7 @@ class UserWithDetailsSchema(BaseModel):
     last_name: str | None
     email: EmailStr | None
     avatar_url: str | None = None
+    status: str | None = None
     profile: ProfileSchema | None
     chats: list[ChatSchema] = Field(default_factory=list)
 
@@ -88,10 +90,11 @@ class UserUpdateWithProfileSchema(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     email: EmailStr | None = None
+    status: str | None = None
     profile: ProfileUpdateSchema | None = None
 
     _empty_str_to_none = field_validator(
-        "first_name", "last_name", mode="before"
+        "first_name", "last_name", "status", mode="before"
     )(_empty_str_to_none)
 
 

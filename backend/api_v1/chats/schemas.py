@@ -18,6 +18,7 @@ class ChatUserSchema(BaseModel):
     last_name: str | None = None
     phone_number: str | None = None
     avatar_url: str | None = None
+    status: str | None = None
 
 
 class Chat(BaseModel):

@@ -30,6 +30,8 @@ class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
         String(length=320), nullable=True
     )
     avatar_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Текст-статус пользователя (например «в работе», «🚀»), задаётся в профиле.
+    status: Mapped[str | None] = mapped_column(String(140), nullable=True)
 
     profile: Mapped["Profile"] = relationship(back_populates="user")
 

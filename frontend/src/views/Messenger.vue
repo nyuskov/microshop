@@ -892,6 +892,10 @@ const chatTitle = (chat: Chat): string => {
 const chatSubtitle = (chat: Chat): string => {
   const other = otherUserOfChat(chat)
   if (!other) return chat.name
+  // В личном чате под именем показываем текст-статус собеседника (если задан).
+  if (isPrivateChat(chat) && other.status && other.status.trim()) {
+    return other.status.trim()
+  }
   const parts: string[] = [`@${other.username}`]
   if (other.phone_number) parts.push(other.phone_number)
   return parts.join(' · ')
