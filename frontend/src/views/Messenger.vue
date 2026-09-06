@@ -244,32 +244,19 @@
               <span v-if="isPrivateChat(selectedChat)" class="call-group" @click.stop>
                 <button
                   class="icon-btn call-btn"
-                  :title="callLabel(callKind)"
-                  @click="startSelectedCall"
+                  :class="{ holding: callHolding }"
+                  :title="
+                    callLabel(callKind) + ' — нажмите для звонка, удерживайте 0,5 с для смены типа'
+                  "
+                  @click="onCallClick"
+                  @pointerdown="onCallDown"
+                  @pointerup="onCallUp"
+                  @pointerleave="onCallUp"
+                  @pointercancel="onCallCancel"
+                  @contextmenu.prevent
                 >
                   <i :class="callKind === 'video' ? 'pi pi-video' : 'pi pi-phone'"></i>
                 </button>
-                <button
-                  class="icon-btn call-caret-btn"
-                  :class="{ open: callMenuOpen }"
-                  title="Выбрать тип звонка"
-                  @click="toggleCallMenu"
-                >
-                  <i class="pi pi-angle-down"></i>
-                </button>
-                <div v-if="callMenuOpen" class="ms-dropdown">
-                  <button
-                    v-for="option in CALL_OPTIONS"
-                    :key="option.kind"
-                    class="ms-dropdown-item"
-                    :class="{ active: callKind === option.kind }"
-                    @click="chooseCallOption(option.kind)"
-                  >
-                    <i :class="option.icon"></i>
-                    <span>{{ option.label }}</span>
-                    <i v-if="callKind === option.kind" class="pi pi-check call-check"></i>
-                  </button>
-                </div>
               </span>
               <button class="icon-btn" title="Поиск по сообщениям" @click="toggleInlineSearch">
                 <i class="pi pi-search"></i>
@@ -540,6 +527,37 @@
                 placeholder="Сообщение"
                 @keydown.enter.prevent="sendText"
               />
+              <button class="round-btn" title="Эмодзи" @click="emojiMenuOpen = !emojiMenuOpen">
+                <i class="pi pi-face-smile"></i>
+              </button>
+              <span class="mic-wrap">
+                <button
+                  class="round-btn mic-hold-btn"
+                  :class="{
+                    holding: micHolding,
+                    'mode-video': recordMode === 'video'
+                  }"
+                  :title="
+                    recordMode === 'video'
+                      ? 'Видеосообщение (нажмите). Удерживайте 2 секунды — голосовое'
+                      : 'Голосовое сообщение (нажмите). Удерживайте 2 секунды — видеосообщение'
+                  "
+                  :aria-label="
+                    recordMode === 'video'
+                      ? 'Записать видеосообщение. Удерживайте 2 секунды для голосового'
+                      : 'Записать голосовое сообщение. Удерживайте 2 секунды для видеосообщения'
+                  "
+                  @click="onMicClick"
+                  @pointerdown="onMicDown"
+                  @pointerup="onMicUp"
+                  @pointerleave="onMicUp"
+                  @pointercancel="onMicCancel"
+                  @contextmenu.prevent
+                >
+                  <i :class="recordMode === 'video' ? 'pi pi-video' : 'pi pi-microphone'"></i>
+                </button>
+                <span v-if="recordModeHint" class="record-mode-hint">{{ recordModeHint }}</span>
+              </span>
               <button
                 v-if="newMessage.trim()"
                 class="send-btn"
@@ -549,39 +567,6 @@
               >
                 <i class="pi pi-send"></i>
               </button>
-              <template v-else>
-                <button class="round-btn" title="Эмодзи" @click="emojiMenuOpen = !emojiMenuOpen">
-                  <i class="pi pi-face-smile"></i>
-                </button>
-                <span class="mic-wrap">
-                  <button
-                    class="round-btn mic-hold-btn"
-                    :class="{
-                      holding: micHolding,
-                      'mode-video': recordMode === 'video'
-                    }"
-                    :title="
-                      recordMode === 'video'
-                        ? 'Видеосообщение (нажмите). Удерживайте 2 секунды — голосовое'
-                        : 'Голосовое сообщение (нажмите). Удерживайте 2 секунды — видеосообщение'
-                    "
-                    :aria-label="
-                      recordMode === 'video'
-                        ? 'Записать видеосообщение. Удерживайте 2 секунды для голосового'
-                        : 'Записать голосовое сообщение. Удерживайте 2 секунды для видеосообщения'
-                    "
-                    @click="onMicClick"
-                    @pointerdown="onMicDown"
-                    @pointerup="onMicUp"
-                    @pointerleave="onMicUp"
-                    @pointercancel="onMicCancel"
-                    @contextmenu.prevent
-                  >
-                    <i :class="recordMode === 'video' ? 'pi pi-video' : 'pi pi-microphone'"></i>
-                  </button>
-                  <span v-if="recordModeHint" class="record-mode-hint">{{ recordModeHint }}</span>
-                </span>
-              </template>
 
               <div v-if="emojiMenuOpen" class="emoji-picker bottom">
                 <button
@@ -685,7 +670,6 @@ const showAppearanceModal = ref(false)
 const showLoginModal = ref(true)
 const voiceRecOpen = ref(false)
 const videoRecOpen = ref(false)
-const callMenuOpen = ref(false)
 const settingsMenuOpen = ref(false)
 
 // ---------- Данные ----------
@@ -891,28 +875,80 @@ const startVideoCall = () => {
   )
 }
 
-// ---------- Звонки в шапке чата: основная кнопка + отдельный дропдаун выбора ----------
+// ---------- Звонок в шапке чата: клик = звонок, удержание 0,5 c = смена типа ----------
 const CALL_OPTIONS = [
   { kind: 'audio', label: 'Голосовой звонок', icon: 'pi pi-phone' },
   { kind: 'video', label: 'Видеозвонок', icon: 'pi pi-video' }
 ] as const
 
-// Текущий выбранный тип: основная кнопка звонит именно им.
-const callKind = ref<'audio' | 'video'>('audio')
+// Текущий выбранный тип звонка (по умолчанию голосовой); запоминается между сессиями.
+const CALL_KIND_KEY = 'microshop_call_kind'
+const callKind = ref<'audio' | 'video'>(
+  (() => {
+    try {
+      return localStorage.getItem(CALL_KIND_KEY) === 'video' ? 'video' : 'audio'
+    } catch {
+      return 'audio'
+    }
+  })()
+)
+const CALL_HOLD_MS = 500
+const callHolding = ref(false)
+let callPressTimer: number | null = null
+let suppressCallClick = false
 
 const callLabel = (kind: 'audio' | 'video'): string => {
   const option = CALL_OPTIONS.find((item) => item.kind === kind)
   return option ? option.label : ''
 }
 
-const toggleCallMenu = () => {
-  callMenuOpen.value = !callMenuOpen.value
-  settingsMenuOpen.value = false
+const clearCallTimer = () => {
+  if (callPressTimer !== null) {
+    window.clearTimeout(callPressTimer)
+    callPressTimer = null
+  }
 }
 
-const chooseCallOption = (kind: 'audio' | 'video') => {
-  callKind.value = kind
-  closeMenus()
+const toggleCallKind = () => {
+  callKind.value = callKind.value === 'video' ? 'audio' : 'video'
+  try {
+    localStorage.setItem(CALL_KIND_KEY, callKind.value)
+  } catch {
+    /* ignore */
+  }
+}
+
+const onCallDown = () => {
+  clearCallTimer()
+  suppressCallClick = false
+  callHolding.value = true
+  callPressTimer = window.setTimeout(() => {
+    callPressTimer = null
+    callHolding.value = false
+    // Удержание — только переключаем тип, звонок не делаем.
+    suppressCallClick = true
+    toggleCallKind()
+  }, CALL_HOLD_MS)
+}
+
+const onCallUp = () => {
+  clearCallTimer()
+  callHolding.value = false
+}
+
+const onCallCancel = () => {
+  clearCallTimer()
+  callHolding.value = false
+  suppressCallClick = false
+}
+
+const onCallClick = () => {
+  // После долгого удержания браузер всё равно пришлёт click — пропускаем его.
+  if (suppressCallClick) {
+    suppressCallClick = false
+    return
+  }
+  startSelectedCall()
 }
 
 const startSelectedCall = () => {
@@ -1149,12 +1185,10 @@ const toggleEmojiPicker = (messageId: number) => {
 const closePopups = () => {
   emojiPickerFor.value = null
   emojiMenuOpen.value = false
-  callMenuOpen.value = false
   settingsMenuOpen.value = false
 }
 
 const closeMenus = () => {
-  callMenuOpen.value = false
   settingsMenuOpen.value = false
 }
 
@@ -1640,7 +1674,6 @@ const SETTINGS_ACTIONS = [
 
 const toggleSettingsMenu = () => {
   settingsMenuOpen.value = !settingsMenuOpen.value
-  callMenuOpen.value = false
 }
 
 const runSettingsAction = (action: (typeof SETTINGS_ACTIONS)[number]) => {
@@ -1697,6 +1730,7 @@ onBeforeUnmount(() => {
   stopPolling()
   clearMicTimer()
   clearModeHint()
+  clearCallTimer()
   if (highlightTimer !== undefined) {
     window.clearTimeout(highlightTimer)
     highlightTimer = undefined
@@ -2891,6 +2925,33 @@ watch(
 .ms-dropdown-item .call-check {
   margin-left: auto;
   color: var(--ms-accent, #2ea25e);
+}
+
+/* Кнопка звонка: короткое нажатие = звонок, удержание 0,5 c = смена типа */
+.call-btn {
+  position: relative;
+}
+
+.call-btn.holding::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid var(--ms-accent, #2ea25e);
+  opacity: 0;
+  animation: call-hold-ring 0.5s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes call-hold-ring {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
 }
 
 .icon-btn.open {
