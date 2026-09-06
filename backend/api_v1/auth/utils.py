@@ -1,5 +1,6 @@
 """Вспомогательные функции для аутентификации и работы с JWT."""
 
+from datetime import datetime, timezone
 from typing import Annotated
 
 import jwt
@@ -26,6 +27,20 @@ security = HTTPBasic()
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=f"{settings.api_v1_prefix}/auth/token/",
 )
+
+# Как часто обновлять last_seen в БД при активности пользователя.
+LAST_SEEN_UPDATE_SECONDS = 10
+
+
+async def touch_last_seen(user: User, session: AsyncSession) -> None:
+    """Обновляет время последней активности (не чаще раза в N секунд)."""
+    now = datetime.now(timezone.utc)
+    if (
+        user.last_seen is None
+        or (now - user.last_seen).total_seconds() >= LAST_SEEN_UPDATE_SECONDS
+    ):
+        user.last_seen = now
+        await session.commit()
 
 
 def decode_jwt(token: str | bytes) -> dict:
@@ -84,6 +99,9 @@ async def get_current_user(
     )
     if user is None:
         raise credentials_exception
+
+    # Любая активность с токеном обновляет присутствие («в сети»).
+    await touch_last_seen(user, session)
     return user
 
 

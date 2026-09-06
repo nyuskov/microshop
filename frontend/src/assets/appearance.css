@@ -315,6 +315,12 @@ html .messenger-shell .chat-title {
     color: var(--ms-text-strong);
 }
 
+html .messenger-shell .chat-status-pill {
+    color: var(--ms-accent);
+    background: var(--ms-accent-soft);
+    border-color: var(--ms-accent-border);
+}
+
 html .messenger-shell .chat-subtitle {
     color: var(--ms-muted);
 }

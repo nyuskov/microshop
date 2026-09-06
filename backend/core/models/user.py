@@ -1,7 +1,8 @@
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from fastapi_users.db import SQLAlchemyBaseUserTable
-from sqlalchemy import String
+from sqlalchemy import DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .associations import user_chat_association_table
@@ -32,6 +33,10 @@ class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
     avatar_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Текст-статус пользователя (например «в работе», «🚀»), задаётся в профиле.
     status: Mapped[str | None] = mapped_column(String(140), nullable=True)
+    # Время последней активности — для присутствия («в сети» / «был(а) N назад»).
+    last_seen: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     profile: Mapped["Profile"] = relationship(back_populates="user")
 

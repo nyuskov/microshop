@@ -1,5 +1,7 @@
 """Pydantic-схемы чатов."""
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
 
 from api_v1.messages.schemas import Message as MessageSchema
@@ -19,6 +21,7 @@ class ChatUserSchema(BaseModel):
     phone_number: str | None = None
     avatar_url: str | None = None
     status: str | None = None
+    last_seen: datetime | None = None
 
 
 class Chat(BaseModel):

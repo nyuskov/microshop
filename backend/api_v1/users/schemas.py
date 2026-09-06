@@ -1,6 +1,7 @@
 """Pydantic-схемы пользователей."""
 
 import re
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -61,6 +62,7 @@ class UserSearchResultSchema(BaseModel):
     phone_number: str | None = None
     avatar_url: str | None = None
     status: str | None = None
+    last_seen: datetime | None = None
 
 
 class UserWithDetailsSchema(BaseModel):
@@ -74,6 +76,7 @@ class UserWithDetailsSchema(BaseModel):
     email: EmailStr | None
     avatar_url: str | None = None
     status: str | None = None
+    last_seen: datetime | None = None
     profile: ProfileSchema | None
     chats: list[ChatSchema] = Field(default_factory=list)
 

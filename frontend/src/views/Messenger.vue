@@ -195,7 +195,12 @@
               <template v-else>{{ initials(chatTitle(selectedChat)) }}</template>
             </span>
             <div class="chat-header-info">
-              <div class="chat-title">{{ chatTitle(selectedChat) }}</div>
+              <div class="chat-title-row">
+                <div class="chat-title">{{ chatTitle(selectedChat) }}</div>
+                <span v-if="peerStatus(selectedChat)" class="chat-status-pill">
+                  {{ peerStatus(selectedChat) }}
+                </span>
+              </div>
               <div class="chat-subtitle">{{ chatSubtitle(selectedChat) }}</div>
             </div>
             <div class="chat-header-actions">
@@ -892,13 +897,22 @@ const chatTitle = (chat: Chat): string => {
 const chatSubtitle = (chat: Chat): string => {
   const other = otherUserOfChat(chat)
   if (!other) return chat.name
-  // В личном чате под именем показываем текст-статус собеседника (если задан).
-  if (isPrivateChat(chat) && other.status && other.status.trim()) {
-    return other.status.trim()
+  // В личном чате под именем всегда показываем присутствие собеседника
+  // («в сети» / «был(а) … назад»; если данных нет — «был(а) давно»).
+  if (isPrivateChat(chat)) {
+    const presence = lastSeenLabel(other.last_seen)
+    return presence || 'был(а) давно'
   }
   const parts: string[] = [`@${other.username}`]
   if (other.phone_number) parts.push(other.phone_number)
   return parts.join(' · ')
+}
+
+/** Задаваемый собеседником текст-статус (для шапки личного чата). */
+const peerStatus = (chat: Chat): string => {
+  const other = otherUserOfChat(chat)
+  if (!other || !isPrivateChat(chat)) return ''
+  return (other.status ?? '').trim()
 }
 
 const isOwnMessage = (message: Message): boolean =>
@@ -1007,6 +1021,46 @@ const dayLabel = (date: Date): string => {
   if (isToday(date)) return 'Сегодня'
   if (isYesterday(date)) return 'Вчера'
   return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+// ---------- Присутствие («в сети» / «был(а) … назад») ----------
+// Считаем пользователя «в сети», если last_seen не старше этого времени.
+const ONLINE_WINDOW_SECONDS = 30
+
+const pluralRu = (n: number, one: string, few: string, many: string): string => {
+  const n10 = n % 10
+  const n100 = n % 100
+  if (n10 === 1 && n100 !== 11) return one
+  if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return few
+  return many
+}
+
+const lastSeenLabel = (value?: string | null): string => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000))
+  if (seconds <= ONLINE_WINDOW_SECONDS) return 'в сети'
+  if (seconds < 60) return 'был(а) только что'
+  if (seconds < 3600) {
+    const minutes = Math.floor(seconds / 60)
+    return `был(а) ${minutes} ${pluralRu(minutes, 'минуту', 'минуты', 'минут')} назад`
+  }
+  if (seconds < 86400) {
+    const hours = Math.floor(seconds / 3600)
+    return `был(а) ${hours} ${pluralRu(hours, 'час', 'часа', 'часов')} назад`
+  }
+  const days = Math.floor(seconds / 86400)
+  if (days === 1) return 'был(а) вчера'
+  if (days < 30) {
+    return `был(а) ${days} ${pluralRu(days, 'день', 'дня', 'дней')} назад`
+  }
+  const months = Math.floor(days / 30)
+  if (months < 12) {
+    return `был(а) ${months} ${pluralRu(months, 'месяц', 'месяца', 'месяцев')} назад`
+  }
+  const years = Math.floor(days / 365)
+  return `был(а) ${years} ${pluralRu(years, 'год', 'года', 'лет')} назад`
 }
 
 // ---------- Файлы ----------
@@ -2036,6 +2090,13 @@ watch(
   min-width: 0;
 }
 
+.chat-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .chat-title {
   font-size: 16px;
   font-weight: 600;
@@ -2043,6 +2104,23 @@ watch(
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.chat-status-pill {
+  max-width: 170px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #2ea25e;
+  background: rgba(46, 162, 94, 0.1);
+  border: 1px solid rgba(46, 162, 94, 0.35);
+  border-radius: 10px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .chat-subtitle {

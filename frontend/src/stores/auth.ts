@@ -26,6 +26,7 @@ export interface ApiUser {
   is_superuser?: boolean
   avatar_url?: string | null
   status?: string | null
+  last_seen?: string | null
   profile?: ApiUserProfile | null
 }
 

@@ -6,6 +6,7 @@ export interface ChatUser {
   phone_number: string | null
   avatar_url: string | null
   status?: string | null
+  last_seen?: string | null
 }
 
 export interface MessageFile {
