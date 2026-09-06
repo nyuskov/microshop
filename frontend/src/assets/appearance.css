@@ -540,3 +540,42 @@ html .messenger-shell .bg-label {
 html .messenger-shell .bg-swatch {
     border-color: rgba(0, 0, 0, 0.08);
 }
+
+/* Панель записи голосового сообщения */
+html .messenger-shell .voice-recorder {
+    background: var(--ms-surface);
+}
+
+html .messenger-shell .vr-label {
+    color: var(--ms-text-strong);
+}
+
+html .messenger-shell .vr-timer {
+    color: var(--ms-muted-2);
+}
+
+html .messenger-shell .vr-btn.danger {
+    background: var(--ms-danger-bg);
+    color: var(--ms-danger);
+}
+
+html .messenger-shell .vr-btn.danger:hover {
+    background: color-mix(in srgb, var(--ms-danger) 16%, transparent);
+}
+
+html .messenger-shell .vr-btn.accent {
+    background: var(--ms-accent-soft);
+    color: var(--ms-accent);
+}
+
+html .messenger-shell .vr-btn.accent:hover {
+    background: color-mix(in srgb, var(--ms-accent) 16%, transparent);
+}
+
+html .messenger-shell .vr-play {
+    background: var(--ms-accent);
+}
+
+html .messenger-shell .vr-play:hover {
+    background: var(--ms-accent-strong);
+}

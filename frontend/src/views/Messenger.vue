@@ -327,31 +327,55 @@
                     </div>
 
                     <!-- Вложение -->
-                    <a
-                      v-if="row.message.file"
-                      class="attachment"
-                      :href="mediaAbsolute(row.message.file.url)"
-                      :download="row.message.file.name"
-                      target="_blank"
-                      rel="noopener"
-                    >
-                      <img
+                    <template v-if="row.message.file">
+                      <a
                         v-if="isImageFile(row.message.file)"
+                        class="attachment"
+                        :href="mediaAbsolute(row.message.file.url)"
+                        :download="row.message.file.name"
+                        target="_blank"
+                        rel="noopener"
+                      >
+                        <img
+                          :src="mediaAbsolute(row.message.file.url)"
+                          :alt="row.message.file.name"
+                          class="attachment-image"
+                          loading="lazy"
+                        />
+                      </a>
+                      <video
+                        v-else-if="isVideoFile(row.message.file)"
+                        class="attachment-video"
                         :src="mediaAbsolute(row.message.file.url)"
-                        :alt="row.message.file.name"
-                        class="attachment-image"
-                        loading="lazy"
+                        controls
+                        preload="metadata"
+                        @click.stop
+                      ></video>
+                      <AudioMessage
+                        v-else-if="isAudioFile(row.message.file)"
+                        :src="mediaAbsolute(row.message.file.url)"
+                        :name="row.message.file.name"
+                        :size="row.message.file.size"
                       />
-                      <span v-else class="attachment-card">
-                        <i :class="fileIcon(row.message.file)"></i>
-                        <span class="attachment-info">
-                          <span class="attachment-name">{{ row.message.file.name }}</span>
-                          <span class="attachment-meta">{{
-                            formatBytes(row.message.file.size)
-                          }}</span>
+                      <a
+                        v-else
+                        class="attachment"
+                        :href="mediaAbsolute(row.message.file.url)"
+                        :download="row.message.file.name"
+                        target="_blank"
+                        rel="noopener"
+                      >
+                        <span class="attachment-card">
+                          <i :class="fileIcon(row.message.file)"></i>
+                          <span class="attachment-info">
+                            <span class="attachment-name">{{ row.message.file.name }}</span>
+                            <span class="attachment-meta">{{
+                              formatBytes(row.message.file.size)
+                            }}</span>
+                          </span>
                         </span>
-                      </span>
-                    </a>
+                      </a>
+                    </template>
 
                     <span v-if="row.message.text" class="msg-text">{{ row.message.text }}</span>
 
@@ -455,7 +479,8 @@
               </button>
             </div>
 
-            <div class="input-row">
+            <VoiceRecorderBar v-if="voiceRecOpen" @cancel="onVoiceCancel" @send="onVoiceSend" />
+            <div v-else class="input-row">
               <button class="round-btn" title="Прикрепить файл" @click="attachInput?.click()">
                 <i class="pi pi-paperclip"></i>
               </button>
@@ -480,7 +505,10 @@
                 <button class="round-btn" title="Эмодзи" @click="emojiMenuOpen = !emojiMenuOpen">
                   <i class="pi pi-face-smile"></i>
                 </button>
-                <button class="round-btn muted" title="Голосовое сообщение (скоро)">
+                <button class="round-btn" title="Видеосообщение" @click="openVideoRec">
+                  <i class="pi pi-video"></i>
+                </button>
+                <button class="round-btn" title="Голосовое сообщение" @click="openVoiceRec">
                   <i class="pi pi-microphone"></i>
                 </button>
               </template>
@@ -557,6 +585,9 @@
 
   <!-- Звонки -->
   <CallOverlay />
+
+  <!-- Запись видеосообщения -->
+  <VideoRecorderModal v-if="videoRecOpen" @close="onVideoCancel" @send="onVideoSend" />
 </template>
 
 <script setup lang="ts">
@@ -586,7 +617,11 @@ import type { Chat, ChatUser, Message, MessageFile } from '@/types'
 import UserProfile from './UserProfile.vue'
 import AppearanceSettings from './AppearanceSettings.vue'
 import CallOverlay from '@/components/calls/CallOverlay.vue'
+import AudioMessage from '@/components/media/AudioMessage.vue'
+import VoiceRecorderBar from '@/components/media/VoiceRecorderBar.vue'
+import VideoRecorderModal from '@/components/media/VideoRecorderModal.vue'
 import { useCallStore } from '@/stores/call'
+import { mediaFileName, type RecordedMedia } from '@/services/recorder'
 
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
@@ -596,6 +631,8 @@ const callStore = useCallStore()
 const showProfileModal = ref(false)
 const showAppearanceModal = ref(false)
 const showLoginModal = ref(true)
+const voiceRecOpen = ref(false)
+const videoRecOpen = ref(false)
 
 // ---------- Данные ----------
 const view = ref<'chats' | 'contacts'>('chats')
@@ -841,8 +878,7 @@ const previewText = (chat: Chat): string => {
   if (!last) return 'Нет сообщений'
   const prefix = currentUserId.value !== null && last.user_id === currentUserId.value ? 'Вы: ' : ''
   if (last.file) {
-    const label = isImageFile(last.file) ? 'Изображение' : `Файл: ${last.file.name}`
-    return `${prefix}${label}`
+    return `${prefix}${mediaTypeLabel(last.file)}`
   }
   return `${prefix}${last.text}`
 }
@@ -878,7 +914,10 @@ const quoteText = (message: Message): string => {
 
 const snippetOf = (message: Message): string => {
   if (message.file) {
-    return isImageFile(message.file) ? '📷 Изображение' : `📎 ${message.file.name}`
+    if (isImageFile(message.file)) return '📷 Изображение'
+    if (isAudioFile(message.file)) return '🎤 Голосовое'
+    if (isVideoFile(message.file)) return '🎥 Видео'
+    return `📎 ${message.file.name}`
   }
   return message.text || ''
 }
@@ -938,6 +977,17 @@ const dayLabel = (date: Date): string => {
 const mediaAbsolute = (path: string): string => mediaUrl(path)
 
 const isImageFile = (file: MessageFile): boolean => file.mime?.startsWith('image/') ?? false
+
+const isAudioFile = (file: MessageFile): boolean => file.mime?.startsWith('audio/') ?? false
+
+const isVideoFile = (file: MessageFile): boolean => file.mime?.startsWith('video/') ?? false
+
+const mediaTypeLabel = (file: MessageFile): string => {
+  if (isImageFile(file)) return 'Изображение'
+  if (isAudioFile(file)) return 'Голосовое сообщение'
+  if (isVideoFile(file)) return 'Видеосообщение'
+  return `Файл: ${file.name}`
+}
 
 const fileIcon = (file: MessageFile): string => {
   if (file.mime?.startsWith('image/')) return 'pi pi-image'
@@ -1140,6 +1190,56 @@ const onFileSelected = async (event: Event) => {
     scrollToBottom()
   } catch (error) {
     sendError.value = getErrorMessage(error, 'Не удалось отправить файл')
+  } finally {
+    sendingFile.value = false
+  }
+}
+
+// ---------- Запись аудио/видеосообщений ----------
+const openVoiceRec = () => {
+  closePopups()
+  voiceRecOpen.value = true
+}
+
+const onVoiceCancel = () => {
+  voiceRecOpen.value = false
+}
+
+const onVoiceSend = async (payload: RecordedMedia) => {
+  voiceRecOpen.value = false
+  await uploadRecordedMedia(payload, 'voice')
+}
+
+const openVideoRec = () => {
+  closePopups()
+  videoRecOpen.value = true
+}
+
+const onVideoCancel = () => {
+  videoRecOpen.value = false
+}
+
+const onVideoSend = async (payload: RecordedMedia) => {
+  videoRecOpen.value = false
+  await uploadRecordedMedia(payload, 'video')
+}
+
+const uploadRecordedMedia = async (payload: RecordedMedia, kind: 'voice' | 'video') => {
+  const chatId = selectedChatId.value
+  if (chatId === null) return
+  sendingFile.value = true
+  sendError.value = ''
+  try {
+    const file = new File([payload.blob], mediaFileName(kind, payload.mime), {
+      type: payload.mime
+    })
+    const message = await sendAttachmentMessage(chatId, file, '', replyTarget.value?.id)
+    clearReply()
+    messages.value = appendMessage(messages.value, message)
+    await Promise.all([loadPinned(chatId), loadChats()])
+    scrollToBottom()
+  } catch (error) {
+    sendError.value = getErrorMessage(error, 'Не удалось отправить медиасообщение')
   } finally {
     sendingFile.value = false
   }
@@ -1357,6 +1457,8 @@ watch(
   () => {
     closePopups()
     clearReply()
+    voiceRecOpen.value = false
+    videoRecOpen.value = false
   },
   { immediate: true }
 )
@@ -1937,6 +2039,14 @@ watch(
   max-height: 260px;
   border-radius: 8px;
   display: block;
+}
+
+.attachment-video {
+  max-width: 320px;
+  max-height: 300px;
+  border-radius: 8px;
+  display: block;
+  margin-bottom: 4px;
 }
 
 .attachment-card {
