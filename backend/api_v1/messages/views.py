@@ -1,5 +1,9 @@
+import asyncio
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
+from urllib.request import Request as UrlRequest
+from urllib.request import urlopen
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
@@ -26,6 +30,12 @@ class PinRequest(BaseModel):
 
 class ReactionRequest(BaseModel):
     emoji: str
+
+
+class GifMessageCreate(BaseModel):
+    chat_id: int
+    url: str
+    reply_to_id: int | None = None
 
 
 def _store_upload(content: bytes, filename: str) -> str:
@@ -88,6 +98,66 @@ async def create_attachment_message(
         file_size=len(content),
         text=caption.strip(),
         reply_to_id=reply_to_id,
+    )
+
+
+# Хосты, с которых разрешено импортировать GIF.
+ALLOWED_GIF_HOSTS = {
+    "giphy.com",
+    "media.giphy.com",
+    "media0.giphy.com",
+    "media1.giphy.com",
+    "media2.giphy.com",
+    "media3.giphy.com",
+    "media4.giphy.com",
+    "i.giphy.com",
+    "media.tenor.com",
+    "c.tenor.com",
+}
+
+
+def _download_gif_bytes(url: str, limit: int) -> bytes:
+    """Скачивает GIF по URL (синхронно; вызывается в отдельном потоке)."""
+    req = UrlRequest(url, headers={"User-Agent": "microshop/1.0"})
+    with urlopen(req, timeout=20) as response:
+        content = response.read(limit + 1)
+    if len(content) > limit:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="GIF слишком большой (максимум 15 МБ)",
+        )
+    return content
+
+
+@router.post("/gif/", response_model=MessageSchema)
+async def send_gif_message(
+    payload: GifMessageCreate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Скачивает GIF из интернета (Giphy/Tenor) и отправляет как сообщение."""
+    parsed = urlparse(payload.url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme not in ("http", "https") or host not in ALLOWED_GIF_HOSTS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Недопустимый адрес GIF",
+        )
+
+    content = await asyncio.to_thread(
+        _download_gif_bytes, payload.url, MAX_UPLOAD_SIZE
+    )
+    file_url = _store_upload(content, "gif.gif")
+    return await crud.send_attachment_message(
+        session=session,
+        chat_id=payload.chat_id,
+        user_id=user.id,
+        file_name=f"gif_{uuid.uuid4().hex[:8]}.gif",
+        file_url=file_url,
+        mime_type="image/gif",
+        file_size=len(content),
+        text="",
+        reply_to_id=payload.reply_to_id,
     )
 
 

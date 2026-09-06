@@ -77,6 +77,20 @@ export const sendAttachmentMessage = async (
   return response.data
 }
 
+/** Отправляет GIF по URL из интернета (бэкенд сам скачивает файл). */
+export const sendGifMessage = async (
+  chatId: number,
+  url: string,
+  replyToId?: number | null
+): Promise<Message> => {
+  const response = await api.post<Message>('/messages/gif/', {
+    chat_id: chatId,
+    url,
+    reply_to_id: replyToId ?? null
+  })
+  return response.data
+}
+
 /** Закрепляет или открепляет сообщение. */
 export const setMessagePinned = async (messageId: number, isPinned: boolean): Promise<Message> => {
   const response = await api.patch<Message>(`/messages/${messageId}/pin/`, {

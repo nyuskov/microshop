@@ -340,6 +340,44 @@ html .messenger-shell .ms-dropdown-item i {
     color: var(--ms-icon-2);
 }
 
+/* Панель GIF */
+html .messenger-shell .gif-picker {
+    background: var(--ms-surface);
+    border-color: var(--ms-border);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
+}
+
+html .messenger-shell .gif-head {
+    background: var(--ms-surface-2);
+}
+
+html .messenger-shell .gif-search-input {
+    color: var(--ms-text-strong);
+}
+
+html .messenger-shell .gif-chip {
+    border-color: var(--ms-border);
+    background: var(--ms-surface);
+    color: var(--ms-text);
+}
+
+html .messenger-shell .gif-chip:hover {
+    background: var(--ms-hover);
+}
+
+html .messenger-shell .gif-chip.active {
+    background: var(--ms-accent-soft);
+    border-color: var(--ms-accent-border);
+}
+
+html .messenger-shell .gif-tile {
+    background: var(--ms-surface-2);
+}
+
+html .messenger-shell .gif-status {
+    color: var(--ms-muted-2);
+}
+
 html .messenger-shell .chat-subtitle {
     color: var(--ms-muted);
 }

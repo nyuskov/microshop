@@ -527,8 +527,16 @@
                 placeholder="Сообщение"
                 @keydown.enter.prevent="sendText"
               />
-              <button class="round-btn" title="Эмодзи" @click="emojiMenuOpen = !emojiMenuOpen">
+              <button class="round-btn" title="Эмодзи" @click="toggleEmojiMenu">
                 <i class="pi pi-face-smile"></i>
+              </button>
+              <button
+                class="round-btn gif-btn"
+                :class="{ active: gifPanelOpen }"
+                title="GIF"
+                @click="toggleGifPanel"
+              >
+                GIF
               </button>
               <span class="mic-wrap">
                 <button
@@ -567,6 +575,14 @@
               >
                 <i class="pi pi-send"></i>
               </button>
+
+              <template v-if="gifPanelOpen && selectedChatId !== null">
+                <GifPicker
+                  :chat-id="selectedChatId"
+                  :reply-to-id="replyTarget?.id ?? null"
+                  @sent="onGifSent"
+                />
+              </template>
 
               <div v-if="emojiMenuOpen" class="emoji-picker bottom">
                 <button
@@ -654,6 +670,7 @@ import UserProfile from './UserProfile.vue'
 import AppearanceSettings from './AppearanceSettings.vue'
 import CallOverlay from '@/components/calls/CallOverlay.vue'
 import AudioMessage from '@/components/media/AudioMessage.vue'
+import GifPicker from '@/components/media/GifPicker.vue'
 import RoundVideoMessage from '@/components/media/RoundVideoMessage.vue'
 import VoiceRecorderBar from '@/components/media/VoiceRecorderBar.vue'
 import VideoRecorderModal from '@/components/media/VideoRecorderModal.vue'
@@ -699,6 +716,7 @@ const inlineSearchOpen = ref(false)
 const inlineQuery = ref('')
 const emojiPickerFor = ref<number | null>(null)
 const emojiMenuOpen = ref(false)
+const gifPanelOpen = ref(false)
 const pinnedOpen = ref(true)
 const highlightedMessageId = ref<number | null>(null)
 let highlightTimer: number | undefined
@@ -1185,6 +1203,7 @@ const toggleEmojiPicker = (messageId: number) => {
 const closePopups = () => {
   emojiPickerFor.value = null
   emojiMenuOpen.value = false
+  gifPanelOpen.value = false
   settingsMenuOpen.value = false
 }
 
@@ -1584,10 +1603,31 @@ const toggleInlineSearch = () => {
   if (!inlineSearchOpen.value) inlineQuery.value = ''
 }
 
-// ---------- Эмодзи в поле ввода ----------
+// ---------- Эмодзи / GIF в поле ввода ----------
 const appendEmoji = (emoji: string) => {
   newMessage.value = `${newMessage.value}${emoji}`
   emojiMenuOpen.value = false
+}
+
+const toggleEmojiMenu = () => {
+  emojiMenuOpen.value = !emojiMenuOpen.value
+  gifPanelOpen.value = false
+}
+
+const toggleGifPanel = () => {
+  gifPanelOpen.value = !gifPanelOpen.value
+  emojiMenuOpen.value = false
+}
+
+const onGifSent = async (message: Message) => {
+  gifPanelOpen.value = false
+  clearReply()
+  messages.value = appendMessage(messages.value, message)
+  const chatId = selectedChatId.value
+  if (chatId !== null) {
+    await Promise.all([loadPinned(chatId), loadChats()])
+    scrollToBottom()
+  }
 }
 
 // ---------- Поиск людей ----------
@@ -1869,6 +1909,22 @@ watch(
 
 .round-btn.muted {
   color: #9aa7b2;
+}
+
+/* Кнопка открытия панели GIF */
+.gif-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  color: var(--ms-accent, #2ea25e);
+}
+
+.gif-btn.active {
+  background: #e3f2e5;
+  color: #1e9b51;
 }
 
 /* Кнопка записи голосового/видеосообщения (удержание 2 c — переключение режима) */
