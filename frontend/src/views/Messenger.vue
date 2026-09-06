@@ -598,25 +598,6 @@
         </template>
       </main>
     </div>
-
-    <!-- ======= Нижняя навигация ======= -->
-    <nav class="bottom-nav">
-      <button class="nav-btn" :class="{ active: view === 'contacts' }" @click="view = 'contacts'">
-        <i class="pi pi-users"></i>
-        <span>Контакты</span>
-      </button>
-      <button class="nav-btn" :class="{ active: view === 'chats' }" @click="view = 'chats'">
-        <span class="nav-icon-wrap">
-          <i class="pi pi-comments"></i>
-          <span v-if="totalUnread > 0" class="nav-badge">{{ totalUnread }}</span>
-        </span>
-        <span>Чаты</span>
-      </button>
-      <button class="nav-btn" @click="goToProfile">
-        <i class="pi pi-cog"></i>
-        <span>Настройки</span>
-      </button>
-    </nav>
   </div>
 
   <!-- Profile Modal -->
@@ -764,10 +745,6 @@ const selectedChat = computed<Chat | null>(() => {
   if (selectedChatId.value === null) return null
   return chats.value.find((chat) => chat.id === selectedChatId.value) ?? null
 })
-
-const totalUnread = computed<number>(() =>
-  chats.value.reduce((sum, chat) => sum + (chat.unread_count || 0), 0)
-)
 
 const filteredChats = computed<Chat[]>(() => {
   const query = searchQuery.value.trim().toLowerCase()
