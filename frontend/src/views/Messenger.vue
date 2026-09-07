@@ -58,44 +58,26 @@
           />
 
           <!-- Сообщения -->
-          <div
-            ref="messagesContainerRef"
-            class="messages-scroll"
-            @click="closePopups"
-            @scroll.passive="onMessagesScroll"
-          >
-            <div v-if="messagesLoading" class="chat-status">Загрузка сообщений…</div>
-            <template v-else>
-              <template
-                v-for="(row, index) in messageRows"
-                :key="row.kind === 'day' ? 'd' + index : row.message.id"
-              >
-                <div v-if="row.kind === 'day'" class="day-divider">
-                  <span>{{ row.label }}</span>
-                </div>
-                <MessageRow
-                  v-else
-                  :message="row.message"
-                  :is-own="isOwnMessage(row.message)"
-                  :highlighted="highlightedMessageId === row.message.id"
-                  :emoji-picker-open="emojiPickerFor === row.message.id"
-                  :quote="quoteFor(row.message)"
-                  @quote-click="quoteClick"
-                  @toggle-emoji-picker="toggleEmojiPicker(row.message.id)"
-                  @set-reply="setReply(row.message)"
-                  @toggle-reaction="toggleReaction(row.message, $event)"
-                  @toggle-pin="togglePinMessage(row.message)"
-                  @copy="copyMessage(row.message)"
-                  @edit="startEditMessage(row.message)"
-                  @forward="openForward(row.message)"
-                  @delete="deleteMessageOf(row.message)"
-                />
-              </template>
-              <div v-if="!messageRows.length" class="chat-status">
-                Сообщений пока нет. Напишите первым!
-              </div>
-            </template>
-          </div>
+          <MessageThread
+            ref="threadRef"
+            :rows="messageRows"
+            :loading="messagesLoading"
+            :current-user-id="currentUserId"
+            :highlighted-message-id="highlightedMessageId"
+            :emoji-picker-for="emojiPickerFor"
+            :quote-of="quoteFor"
+            @background-click="closePopups"
+            @reach-top="loadOlderMessages"
+            @quote-click="quoteClick"
+            @toggle-emoji-picker="onToggleEmojiPicker"
+            @set-reply="setReply"
+            @toggle-reaction="toggleReaction"
+            @toggle-pin="togglePinMessage"
+            @copy="copyMessage"
+            @edit="startEditMessage"
+            @forward="openForward"
+            @delete="deleteMessageOf"
+          />
 
           <!-- Панель ввода (композер) -->
           <MessageComposer
@@ -218,7 +200,7 @@ import ChatHeader from '@/components/messenger/ChatHeader.vue'
 import ChatPlaceholder from '@/components/messenger/ChatPlaceholder.vue'
 import InlineSearchBar from '@/components/messenger/InlineSearchBar.vue'
 import PinnedBar from '@/components/messenger/PinnedBar.vue'
-import MessageRow from '@/components/messenger/MessageRow.vue'
+import MessageThread from '@/components/messenger/MessageThread.vue'
 import MessageComposer from '@/components/messenger/MessageComposer.vue'
 import VideoRecorderModal from '@/components/media/VideoRecorderModal.vue'
 import { useCallStore } from '@/stores/call'
@@ -263,7 +245,8 @@ const pinnedOpen = ref(true)
 const highlightedMessageId = ref<number | null>(null)
 let highlightTimer: number | undefined
 
-const messagesContainerRef = ref<HTMLElement | null>(null)
+/** Ссылка на ленту сообщений (MessageThread) для управления прокруткой. */
+const threadRef = ref<InstanceType<typeof MessageThread> | null>(null)
 
 // ---------- Фон окна сообщений (обои берутся из store оформления) ----------
 const chatBgStyle = computed(() => ({ background: themeStore.wallpaperCss }))
@@ -455,6 +438,11 @@ const toggleEmojiPicker = (messageId: number) => {
   emojiPickerFor.value = emojiPickerFor.value === messageId ? null : messageId
 }
 
+/** Обработчик «выбор реакций» от строки ленты (лента отдаёт сообщение). */
+const onToggleEmojiPicker = (message: Message) => {
+  toggleEmojiPicker(message.id)
+}
+
 const closePopups = () => {
   emojiPickerFor.value = null
   emojiMenuOpen.value = false
@@ -493,9 +481,6 @@ const MESSAGES_PAGE_SIZE = 80
 const noMoreOlder = ref(false)
 const loadingOlder = ref(false)
 
-const isNearBottom = (container: HTMLElement): boolean =>
-  container.scrollHeight - container.scrollTop - container.clientHeight < 120
-
 const replaceMessageInThread = (updated: Message) => {
   messages.value = messages.value.map((m) => (m.id === updated.id ? updated : m))
 }
@@ -530,23 +515,22 @@ const mergeThreadLatest = async (chatId: number): Promise<boolean> => {
   const keptOlder = messages.value.filter((m) => !freshIds.has(m.id))
   messages.value = [...keptOlder, ...fresh].sort((a, b) => a.id - b.id)
   const hasNew = fresh.some((m) => !previousIds.has(m.id))
-  const container = messagesContainerRef.value
-  if (hasNew && (!container || isNearBottom(container))) {
+  if (hasNew && (!threadRef.value || threadRef.value.isNearBottom())) {
     await nextTick()
     scrollToBottom()
   }
   return hasNew
 }
 
-/** Подгружает более старые сообщения при прокрутке вверх. */
+/** Подгружает более старые сообщения при прокрутке вверх (вызывается лентой). */
 const loadOlderMessages = async () => {
   const chatId = selectedChatId.value
-  const container = messagesContainerRef.value
   if (chatId === null || loadingOlder.value || noMoreOlder.value || messages.value.length === 0) {
     return
   }
-  const prevScrollHeight = container?.scrollHeight ?? 0
-  const prevScrollTop = container?.scrollTop ?? 0
+  const saved = threadRef.value?.capture()
+  const prevScrollHeight = saved?.height ?? 0
+  const prevScrollTop = saved?.top ?? 0
   const oldestId = messages.value.reduce<number | null>(
     (min, m) => (min === null || m.id < min ? m.id : min),
     null
@@ -565,20 +549,11 @@ const loadOlderMessages = async () => {
     }
     messages.value = [...toAdd, ...messages.value].sort((a, b) => a.id - b.id)
     await nextTick()
-    if (container) {
-      container.scrollTop = prevScrollTop + (container.scrollHeight - prevScrollHeight)
-    }
+    threadRef.value?.restoreScroll(prevScrollTop, prevScrollHeight)
   } catch (error) {
     console.error('Не удалось загрузить более старые сообщения:', getErrorMessage(error))
   } finally {
     loadingOlder.value = false
-  }
-}
-
-const onMessagesScroll = () => {
-  const container = messagesContainerRef.value
-  if (container && container.scrollTop < 80) {
-    void loadOlderMessages()
   }
 }
 
@@ -608,9 +583,7 @@ const refreshThread = async () => {
 }
 
 const scrollToBottom = () => {
-  if (messagesContainerRef.value) {
-    messagesContainerRef.value.scrollTop = messagesContainerRef.value.scrollHeight
-  }
+  threadRef.value?.scrollToBottom()
 }
 
 // ---------- Выбор / открытие чата ----------
@@ -896,16 +869,7 @@ const scrollToPinnedMessage = async (messageId: number) => {
   }
   highlightedMessageId.value = messageId
   await nextTick()
-  const container = messagesContainerRef.value
-  if (container) {
-    const el = container.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null
-    if (el) {
-      const containerRect = container.getBoundingClientRect()
-      const elRect = el.getBoundingClientRect()
-      container.scrollTop +=
-        elRect.top - containerRect.top - containerRect.height / 2 + elRect.height / 2
-    }
-  }
+  threadRef.value?.reveal(messageId)
   highlightTimer = window.setTimeout(() => {
     highlightedMessageId.value = null
   }, 2400)
@@ -928,16 +892,7 @@ const revealMessageInThread = async (messageId: number) => {
   }
   highlightedMessageId.value = messageId
   await nextTick()
-  const container = messagesContainerRef.value
-  const el = container
-    ? (container.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null)
-    : null
-  if (container && el) {
-    const containerRect = container.getBoundingClientRect()
-    const elRect = el.getBoundingClientRect()
-    container.scrollTop +=
-      elRect.top - containerRect.top - containerRect.height / 2 + elRect.height / 2
-  }
+  threadRef.value?.reveal(messageId)
   highlightTimer = window.setTimeout(() => {
     highlightedMessageId.value = null
   }, 2400)
@@ -1213,36 +1168,5 @@ watch(
   );
   background-size: 22px 22px;
   background-color: #eef1f4;
-}
-
-/* ---------- Сообщения ---------- */
-.messages-scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px 16px;
-  display: flex;
-  flex-direction: column;
-}
-
-.day-divider {
-  display: flex;
-  justify-content: center;
-  margin: 10px 0;
-}
-
-.day-divider span {
-  background: #ffffff;
-  color: #60707c;
-  font-size: 12px;
-  padding: 4px 12px;
-  border-radius: 12px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-}
-
-.chat-status {
-  padding: 12px;
-  text-align: center;
-  color: #8a98a3;
-  font-size: 13.5px;
 }
 </style>
