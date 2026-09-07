@@ -737,7 +737,26 @@ import {
   deleteMessage,
   type SearchUserResult
 } from '@/services/chatService'
-import type { Chat, ChatUser, Message, MessageFile } from '@/types'
+import type { Chat, ChatUser, Message } from '@/types'
+import { avatarStyle, displayName, initials } from '@/utils/user'
+import {
+  ONLINE_WINDOW_SECONDS,
+  dayLabel,
+  formatBytes,
+  formatChatTime,
+  formatMsgTime,
+  lastSeenLabel,
+  toDate
+} from '@/utils/format'
+import {
+  fileIcon,
+  isAudioFile,
+  isImageFile,
+  isRecordedVideoMessage,
+  isRoundVideoOnly,
+  isVideoFile,
+  mediaTypeLabel
+} from '@/utils/media'
 import UserProfile from './UserProfile.vue'
 import AppearanceSettings from './AppearanceSettings.vue'
 import CallOverlay from '@/components/calls/CallOverlay.vue'
@@ -873,50 +892,6 @@ const messageRows = computed<MessageRow[]>(() => {
 })
 
 // ---------- Вспомогательные функции ----------
-const fullName = (
-  first: string | null | undefined,
-  last: string | null | undefined,
-  username: string
-): string => {
-  if (first && last) return `${first} ${last}`
-  if (first) return first
-  if (last) return last
-  return username
-}
-
-const displayName = (user: {
-  first_name?: string | null
-  last_name?: string | null
-  username: string
-}): string => fullName(user.first_name, user.last_name, user.username)
-
-const initials = (value: string): string => {
-  const clean = value.trim()
-  if (!clean) return '?'
-  const parts = clean.split(/\s+/)
-  if (parts.length >= 2) {
-    return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase()
-  }
-  return clean.slice(0, 2).toUpperCase()
-}
-
-const AVATAR_COLORS = [
-  'linear-gradient(135deg,#5b9bd5,#2e75b6)',
-  'linear-gradient(135deg,#69b578,#2f8f5b)',
-  'linear-gradient(135deg,#e58e7a,#c25e4a)',
-  'linear-gradient(135deg,#b28ce0,#7c53b8)',
-  'linear-gradient(135deg,#f0a35e,#d97b2b)',
-  'linear-gradient(135deg,#6fc3c9,#2f9aa3)'
-]
-
-const avatarStyle = (name: string): Record<string, string> => {
-  let hash = 0
-  for (let i = 0; i < name.length; i += 1) {
-    hash = (hash * 31 + name.charCodeAt(i)) >>> 0
-  }
-  return { background: AVATAR_COLORS[hash % AVATAR_COLORS.length] }
-}
-
 const otherUserOfChat = (chat: Chat): ChatUser | undefined => {
   if (currentUserId.value !== null) {
     const found = chat.users.find((user) => user.id !== currentUserId.value)
@@ -1141,74 +1116,6 @@ const otherUserOfChatForMessage = (message: Message): ChatUser | undefined => {
 const pinnedSnippet = (message: Message): string =>
   `${message.user_id === currentUserId.value ? 'Вы: ' : senderNameOfMessage(message) + ': '}${snippetOf(message)}`
 
-// ---------- Дата и время ----------
-const toDate = (value: string | Date): Date => (typeof value === 'string' ? new Date(value) : value)
-
-const isToday = (date: Date): boolean => date.toDateString() === new Date().toDateString()
-const isYesterday = (date: Date): boolean => {
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  return date.toDateString() === yesterday.toDateString()
-}
-
-const formatChatTime = (timestamp: string): string => {
-  const date = toDate(timestamp)
-  if (isToday(date)) {
-    return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-  }
-  if (isYesterday(date)) return 'Вчера'
-  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
-}
-
-const formatMsgTime = (timestamp: string): string =>
-  toDate(timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-
-const dayLabel = (date: Date): string => {
-  if (isToday(date)) return 'Сегодня'
-  if (isYesterday(date)) return 'Вчера'
-  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
-}
-
-// ---------- Присутствие («в сети» / «был(а) … назад») ----------
-// Считаем пользователя «в сети», если last_seen не старше этого времени.
-const ONLINE_WINDOW_SECONDS = 30
-
-const pluralRu = (n: number, one: string, few: string, many: string): string => {
-  const n10 = n % 10
-  const n100 = n % 100
-  if (n10 === 1 && n100 !== 11) return one
-  if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return few
-  return many
-}
-
-const lastSeenLabel = (value?: string | null, allowOnline = true): string => {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000))
-  if (seconds <= ONLINE_WINDOW_SECONDS) return allowOnline ? 'в сети' : 'был(а) только что'
-  if (seconds < 60) return 'был(а) только что'
-  if (seconds < 3600) {
-    const minutes = Math.floor(seconds / 60)
-    return `был(а) ${minutes} ${pluralRu(minutes, 'минуту', 'минуты', 'минут')} назад`
-  }
-  if (seconds < 86400) {
-    const hours = Math.floor(seconds / 3600)
-    return `был(а) ${hours} ${pluralRu(hours, 'час', 'часа', 'часов')} назад`
-  }
-  const days = Math.floor(seconds / 86400)
-  if (days === 1) return 'был(а) вчера'
-  if (days < 30) {
-    return `был(а) ${days} ${pluralRu(days, 'день', 'дня', 'дней')} назад`
-  }
-  const months = Math.floor(days / 30)
-  if (months < 12) {
-    return `был(а) ${months} ${pluralRu(months, 'месяц', 'месяца', 'месяцев')} назад`
-  }
-  const years = Math.floor(days / 365)
-  return `был(а) ${years} ${pluralRu(years, 'год', 'года', 'лет')} назад`
-}
-
 // ---------- Присутствие в реальном времени (WS поверх last_seen) ----------
 // Оверлей статуса собеседников: подтверждённый WS-статус («в сети»/«не в сети»)
 // имеет приоритет над вычислением из last_seen. Заполняется событиями presence
@@ -1296,46 +1203,6 @@ const chatSubtitle = (chat: Chat): string => {
 
 // ---------- Файлы ----------
 const mediaAbsolute = (path: string): string => mediaUrl(path)
-
-const isImageFile = (file: MessageFile): boolean => file.mime?.startsWith('image/') ?? false
-
-const isAudioFile = (file: MessageFile): boolean => file.mime?.startsWith('audio/') ?? false
-
-const isVideoFile = (file: MessageFile): boolean => file.mime?.startsWith('video/') ?? false
-
-/** Видео, записанное через кнопку «видеосообщение» (имя файла video_*), — кружок. */
-const isRecordedVideoMessage = (file: MessageFile): boolean =>
-  isVideoFile(file) && (file.name.toLowerCase().startsWith('video_') ?? false)
-
-/** Пузырь, содержащий только кружок-видео (без текста/ответа), — без фона. */
-const isRoundVideoOnly = (message: Message): boolean =>
-  !!message.file &&
-  isRecordedVideoMessage(message.file) &&
-  !message.text &&
-  message.reply_to_id == null
-
-const mediaTypeLabel = (file: MessageFile): string => {
-  if (isImageFile(file)) return 'Изображение'
-  if (isAudioFile(file)) return 'Голосовое сообщение'
-  if (isVideoFile(file)) return 'Видеосообщение'
-  return `Файл: ${file.name}`
-}
-
-const fileIcon = (file: MessageFile): string => {
-  if (file.mime?.startsWith('image/')) return 'pi pi-image'
-  if (file.mime?.startsWith('video/')) return 'pi pi-video'
-  if (file.mime === 'application/pdf') return 'pi pi-file-pdf'
-  if (file.mime?.startsWith('audio/')) return 'pi pi-volume-up'
-  if (file.mime?.startsWith('text/')) return 'pi pi-file'
-  return 'pi pi-file'
-}
-
-const formatBytes = (size: number | null): string => {
-  if (!size) return ''
-  if (size < 1024) return `${size} Б`
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} КБ`
-  return `${(size / (1024 * 1024)).toFixed(1)} МБ`
-}
 
 // ---------- Реакции ----------
 const hasMyReaction = (message: Message, emoji: string): boolean =>

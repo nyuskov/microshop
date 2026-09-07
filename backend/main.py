@@ -15,6 +15,14 @@ from core.models import db_helper
 
 logger = logging.getLogger("microshop")
 
+# Uvicorn не настраивает корневой логгер на уровень INFO, поэтому сообщения
+# уровня INFO из модулей приложения (например, OTP-код для входа) не попадали
+# бы в консоль. Включаем вывод INFO в stderr (нужно для dev-заглушки SMS).
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+
 app = FastAPI(
     title="Microshop",
     swagger_ui_parameters={"favicon_url": "/favicon.ico"},
