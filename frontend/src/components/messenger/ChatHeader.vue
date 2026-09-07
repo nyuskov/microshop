@@ -32,6 +32,15 @@
           <q-icon :name="callKind === 'video' ? 'videocam' : 'call'" size="20px" />
         </button>
       </span>
+      <button
+        class="icon-btn"
+        :class="{ pinned }"
+        :title="pinned ? 'Открепить чат' : 'Закрепить чат вверху списка'"
+        :aria-pressed="pinned"
+        @click="emit('toggle-pin')"
+      >
+        <q-icon name="push_pin" size="20px" />
+      </button>
       <button class="icon-btn" title="Поиск по сообщениям" @click="emit('toggle-search')">
         <q-icon name="search" size="20px" />
       </button>
@@ -67,6 +76,8 @@ const props = defineProps<{
   showBack: boolean
   /** «В сети» ли собеседник (точка на аватаре). */
   peerOnline: boolean
+  /** Закреплён ли этот чат в списке диалогов. */
+  pinned?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -75,6 +86,7 @@ const emit = defineEmits<{
   (e: 'toggle-search'): void
   (e: 'open-profile'): void
   (e: 'start-call', kind: 'audio' | 'video'): void
+  (e: 'toggle-pin'): void
 }>()
 
 const peer = computed(() => chatPeer(props.chat, props.currentUserId))
@@ -234,6 +246,10 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   display: flex;
   align-items: center;
   gap: 2px;
+}
+
+.icon-btn.pinned {
+  color: var(--ms-accent, #2ea25e);
 }
 
 /* Кнопка звонка: короткое нажатие = звонок, удержание 0,5 c = смена типа */

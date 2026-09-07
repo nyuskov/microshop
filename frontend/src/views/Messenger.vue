@@ -23,6 +23,8 @@
         :contacts-loading="contactsLoading"
         :online-user-ids="onlineUserIds"
         :typing-chat-ids="typingChatIds"
+        :pinned-chat-ids="pinnedChatIds"
+        @open-message="openGlobalMessage"
         @to-contacts="view = 'contacts'"
         @to-chats="view = 'chats'"
         @open-profile="goToProfile"
@@ -51,10 +53,12 @@
             :self-avatar-url="selfAvatarUrl"
             :show-back="!isDesktop"
             :peer-online="selectedChatPeerOnline"
+            :pinned="selectedChatPinned"
             @back="goBackToList"
             @toggle-search="toggleInlineSearch"
             @open-profile="goToProfile"
             @start-call="startCall"
+            @toggle-pin="toggleCurrentChatPin"
           />
 
           <!-- Поиск по сообщениям -->
@@ -94,6 +98,7 @@
             @edit="startEditMessage"
             @forward="openForward"
             @delete="deleteMessageOf"
+            @open-image="openImageFromMessage"
           />
 
           <!-- Панель ввода (композер) -->
@@ -188,6 +193,16 @@
 
   <!-- Запись видеосообщения -->
   <VideoRecorderModal v-if="videoRecOpen" @close="onVideoCancel" @send="onVideoSend" />
+
+  <!-- Просмотр изображений (lightbox) -->
+  <ImageLightbox
+    v-if="lightboxImages.length > 0 && lightboxIndex !== null"
+    :images="lightboxImages"
+    :index="lightboxIndex"
+    @close="closeLightbox"
+    @prev="lightboxStep(-1)"
+    @next="lightboxStep(1)"
+  />
 </template>
 
 <script setup lang="ts">
@@ -217,7 +232,8 @@ import type { Chat, ChatUser, Message } from '@/types'
 import { avatarUrlOf, displayName } from '@/utils/user'
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
-import { messageSnippet } from '@/utils/media'
+import { isImageFile, messageSnippet } from '@/utils/media'
+import { mediaUrl } from '@/config'
 import { usePeerActivity } from '@/composables/usePeerActivity'
 import { useRealtimeSync } from '@/composables/useRealtimeSync'
 import { useRecordButton } from '@/composables/useRecordButton'
@@ -233,6 +249,7 @@ import MessageThread from '@/components/messenger/MessageThread.vue'
 import MessageComposer from '@/components/messenger/MessageComposer.vue'
 import ForwardDialog from '@/components/messenger/ForwardDialog.vue'
 import VideoRecorderModal from '@/components/media/VideoRecorderModal.vue'
+import ImageLightbox from '@/components/media/ImageLightbox.vue'
 import { useCallStore } from '@/stores/call'
 import { useRealtimeStore } from '@/stores/realtime'
 import { mediaFileName, type RecordedMedia } from '@/services/recorder'
@@ -312,6 +329,97 @@ const selectedChat = computed<Chat | null>(() => {
 })
 
 const messageRows = computed<ThreadRow[]>(() => buildMessageRows(messages.value, inlineQuery.value))
+
+// ---------- Закреплённые чаты (пин вверху списка диалогов) ----------
+const PINNED_CHATS_KEY = 'microshop_pinned_chats'
+
+const readPinnedChats = (): number[] => {
+  const uid = currentUserId.value
+  if (uid === null) return []
+  try {
+    const raw = window.localStorage.getItem(PINNED_CHATS_KEY)
+    const all = raw ? (JSON.parse(raw) as Record<string, number[]>) : {}
+    const list = all[String(uid)]
+    return Array.isArray(list) ? list.filter((id) => typeof id === 'number') : []
+  } catch {
+    return []
+  }
+}
+
+const writePinnedChats = () => {
+  const uid = currentUserId.value
+  if (uid === null) return
+  try {
+    const raw = window.localStorage.getItem(PINNED_CHATS_KEY)
+    const all = raw ? (JSON.parse(raw) as Record<string, number[]>) : {}
+    all[String(uid)] = pinnedChatIds.value
+    window.localStorage.setItem(PINNED_CHATS_KEY, JSON.stringify(all))
+  } catch {
+    // localStorage недоступен — пин просто не сохранится.
+  }
+}
+
+const pinnedChatIds = ref<number[]>([])
+
+watch(
+  currentUserId,
+  () => {
+    pinnedChatIds.value = readPinnedChats()
+  },
+  { immediate: true }
+)
+
+const isChatPinned = (chatId: number): boolean => pinnedChatIds.value.includes(chatId)
+
+const toggleChatPinned = (chatId: number) => {
+  const next = new Set(pinnedChatIds.value)
+  if (next.has(chatId)) {
+    next.delete(chatId)
+  } else {
+    next.add(chatId)
+  }
+  pinnedChatIds.value = Array.from(next)
+  writePinnedChats()
+}
+
+/** Закреплён ли открытый чат (состояние кнопки в шапке). */
+const selectedChatPinned = computed<boolean>(
+  () => selectedChat.value !== null && isChatPinned(selectedChat.value.id)
+)
+
+/** Закрепить/открепить открытый чат. */
+const toggleCurrentChatPin = () => {
+  const chat = selectedChat.value
+  if (chat !== null) toggleChatPinned(chat.id)
+}
+
+// ---------- Просмотр изображений (lightbox) ----------
+const lightboxImages = computed(() =>
+  messages.value
+    .filter((m) => m.file !== null && isImageFile(m.file))
+    .map((m) => ({
+      id: m.id,
+      url: mediaUrl(m.file!.url),
+      name: m.file!.name || 'Изображение'
+    }))
+)
+const lightboxIndex = ref<number | null>(null)
+
+const openImageFromMessage = (message: Message) => {
+  if (lightboxImages.value.length === 0) return
+  const idx = lightboxImages.value.findIndex((item) => item.id === message.id)
+  lightboxIndex.value = idx >= 0 ? idx : 0
+}
+
+const closeLightbox = () => {
+  lightboxIndex.value = null
+}
+
+const lightboxStep = (delta: number) => {
+  if (lightboxIndex.value === null || lightboxImages.value.length === 0) return
+  const length = lightboxImages.value.length
+  lightboxIndex.value = (lightboxIndex.value + delta + length) % length
+}
 
 /** Строки закреплённых сообщений для PinnedBar (имя + сниппет уже посчитаны). */
 const pinnedRows = computed(() =>
@@ -667,6 +775,7 @@ const openChatThread = async (chatId: number) => {
   inlineQuery.value = ''
   inlineSearchOpen.value = false
   clearReply()
+  closeLightbox()
   await Promise.all([loadThreadLatest(chatId), loadPinned(chatId)])
   scrollToBottom()
   // Мобильный режим: выбор чата закрывает drawer — нить на весь экран.
@@ -1059,6 +1168,19 @@ const revealMessageInThread = async (messageId: number) => {
   highlightTimer = window.setTimeout(() => {
     highlightedMessageId.value = null
   }, 2400)
+}
+
+/** Глобальный поиск: открыть чат и перейти (с подсветкой) к найденному сообщению. */
+const openGlobalMessage = async (chatId: number, messageId: number) => {
+  await openChatThread(chatId)
+  // Если сообщения нет в загруженной порции — догружаем более старые.
+  if (!messages.value.some((m) => m.id === messageId)) {
+    for (let i = 0; i < 40 && !noMoreOlder.value; i += 1) {
+      await loadOlderMessages()
+      if (messages.value.some((m) => m.id === messageId)) break
+    }
+  }
+  await revealMessageInThread(messageId)
 }
 
 /** Серверный поиск по всей истории + догрузка старых до найденного. */

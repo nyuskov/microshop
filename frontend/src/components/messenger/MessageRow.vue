@@ -23,13 +23,12 @@
 
       <!-- Вложение -->
       <template v-if="message.file">
-        <a
+        <button
           v-if="isImageFile(message.file)"
-          class="attachment"
-          :href="mediaAbsolute(message.file.url)"
-          :download="message.file.name"
-          target="_blank"
-          rel="noopener"
+          class="attachment attachment-image-btn"
+          type="button"
+          :title="`Открыть изображение «${message.file.name}»`"
+          @click.stop="emit('open-image')"
         >
           <img
             :src="mediaAbsolute(message.file.url)"
@@ -37,7 +36,7 @@
             class="attachment-image"
             loading="lazy"
           />
-        </a>
+        </button>
         <RoundVideoMessage
           v-else-if="isRecordedVideoMessage(message.file)"
           :src="mediaAbsolute(message.file.url)"
@@ -207,6 +206,7 @@ const emit = defineEmits<{
   (e: 'edit'): void
   (e: 'forward'): void
   (e: 'delete'): void
+  (e: 'open-image'): void
 }>()
 
 const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '😮', '😢', '👏', '🎉']
@@ -361,6 +361,13 @@ const hasMyReaction = (message: Message, emoji: string): boolean =>
   display: block;
   margin-bottom: 4px;
   text-decoration: none;
+}
+
+.attachment-image-btn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: zoom-in;
 }
 
 .attachment-image {

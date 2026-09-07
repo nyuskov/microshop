@@ -40,14 +40,16 @@
         aria-label="Прикрепить файл"
         @change="onFileSelected"
       />
-      <input
+      <textarea
+        ref="textInputRef"
         v-model="newMessage"
         class="text-input"
-        type="text"
+        rows="1"
         placeholder="Сообщение"
         aria-label="Сообщение"
-        @keydown.enter.prevent="emit('send-text')"
-      />
+        @keydown.enter.exact.prevent="emit('send-text')"
+        @input="autoGrow"
+      ></textarea>
       <button class="round-btn" title="Эмодзи" @click="emit('toggle-emoji-menu')">
         <q-icon name="sentiment_satisfied_alt" size="20px" />
       </button>
@@ -120,7 +122,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import type { Message } from '@/types'
 import { messageSnippet } from '@/utils/media'
 import VoiceRecorderBar from '@/components/media/VoiceRecorderBar.vue'
@@ -173,6 +175,23 @@ const onFileSelected = (event: Event) => {
   input.value = ''
   if (file) emit('file-selected', file)
 }
+
+// ---------- Авто-рост многострочного поля ----------
+const textInputRef = ref<HTMLTextAreaElement | null>(null)
+/** Максимальная высота поля ввода (пикселей) — примерно 6 строк. */
+const TEXTAREA_MAX_HEIGHT = 140
+
+const autoGrow = () => {
+  const el = textInputRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT)}px`
+}
+
+// Сброс высоты при очистке/подстановке текста (например, после отправки).
+watch(newMessage, () => {
+  void nextTick(autoGrow)
+})
 </script>
 
 <style scoped>
@@ -366,9 +385,15 @@ const onFileSelected = (event: Event) => {
   border: none;
   outline: none;
   font-size: 15px;
+  line-height: 1.35;
   background: transparent;
   padding: 7px 4px;
   color: #141d26;
+  resize: none;
+  overflow-y: auto;
+  min-height: 24px;
+  max-height: 140px;
+  font-family: inherit;
 }
 
 .send-btn {

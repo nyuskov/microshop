@@ -51,10 +51,33 @@
 
       <div v-if="searchError" class="inline-error">{{ searchError }}</div>
 
-      <!-- Результаты поиска людей -->
+      <!-- Результаты поиска: люди / сообщения -->
       <div v-if="searchQuery.trim()" class="people-results">
+        <div class="search-mode-tabs" role="tablist" aria-label="Область поиска">
+          <button
+            class="search-mode-tab"
+            :class="{ active: searchMode === 'people' }"
+            role="tab"
+            :aria-selected="searchMode === 'people'"
+            @click="setSearchMode('people')"
+          >
+            Люди
+          </button>
+          <button
+            class="search-mode-tab"
+            :class="{ active: searchMode === 'messages' }"
+            role="tab"
+            :aria-selected="searchMode === 'messages'"
+            @click="setSearchMode('messages')"
+          >
+            Сообщения
+          </button>
+        </div>
+
         <div v-if="searching" class="search-status">Поиск…</div>
-        <template v-else-if="userResults.length">
+
+        <!-- Люди -->
+        <template v-else-if="searchMode === 'people' && userResults.length">
           <div class="section-label">Найти людей</div>
           <button
             v-for="user in userResults"
@@ -76,7 +99,39 @@
             <q-icon name="chevron_right" class="row-arrow" size="20px" />
           </button>
         </template>
-        <div v-else class="search-status">Никого не найдено</div>
+        <div v-else-if="searchMode === 'people'" class="search-status">Никого не найдено</div>
+
+        <!-- Сообщения (по всем диалогам) -->
+        <template v-else-if="searchMode === 'messages' && messageResults.length">
+          <div class="section-label">Найдено в чатах</div>
+          <button
+            v-for="msg in messageResults"
+            :key="msg.id"
+            class="row-item"
+            @click="openMessageResult(msg)"
+          >
+            <span class="avatar" :style="avatarStyle(messageChatTitle(msg))">
+              <img
+                v-if="messageChatAvatar(msg)"
+                :src="messageChatAvatar(msg)"
+                class="avatar-img"
+                alt=""
+              />
+              <template v-else>{{ initials(messageChatTitle(msg)) }}</template>
+            </span>
+            <span class="row-text">
+              <span class="row-line">
+                <span class="row-title msg-result-chat">{{ messageChatTitle(msg) }}</span>
+                <span class="row-time">{{ formatMsgTime(msg.timestamp) }}</span>
+              </span>
+              <span class="row-sub msg-result-snippet">
+                {{ messageSenderPrefix(msg) }}{{ messageSnippetText(msg) }}
+              </span>
+            </span>
+            <q-icon name="chevron_right" class="row-arrow" size="20px" />
+          </button>
+        </template>
+        <div v-else-if="searchMode === 'messages'" class="search-status">Ничего не найдено</div>
       </div>
 
       <div v-if="loadingChats" class="search-status">Загрузка…</div>
@@ -84,12 +139,12 @@
       <!-- Недавние диалоги -->
       <template v-else>
         <div class="section-label">Недавние</div>
-        <div v-if="!filteredChats.length" class="empty-hint">
+        <div v-if="!orderedChats.length" class="empty-hint">
           Найдите пользователя по логину или телефону и начните переписку
         </div>
         <div class="chat-scroll">
           <button
-            v-for="chat in filteredChats"
+            v-for="chat in orderedChats"
             :key="chat.id"
             class="row-item"
             :class="{ active: selectedChatId === chat.id }"
@@ -211,8 +266,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { getErrorMessage } from '@/services/errors'
-import { openPrivateChat, searchUsers, type SearchUserResult } from '@/services/chatService'
-import type { Chat, ChatUser } from '@/types'
+import {
+  openPrivateChat,
+  searchMessages,
+  searchUsers,
+  type SearchUserResult
+} from '@/services/chatService'
+import type { Chat, ChatUser, Message } from '@/types'
 import {
   avatarStyle,
   avatarUrlOf,
@@ -221,7 +281,7 @@ import {
   displayName,
   initials
 } from '@/utils/user'
-import { ONLINE_WINDOW_SECONDS, formatChatTime } from '@/utils/format'
+import { ONLINE_WINDOW_SECONDS, formatChatTime, formatMsgTime } from '@/utils/format'
 import { mediaTypeLabel } from '@/utils/media'
 
 const props = defineProps<{
@@ -236,6 +296,8 @@ const props = defineProps<{
   onlineUserIds?: number[]
   /** id чатов, где собеседник сейчас печатает. */
   typingChatIds?: number[]
+  /** id закреплённых чатов (показываются вверху списка). */
+  pinnedChatIds?: number[]
 }>()
 
 const emit = defineEmits<{
@@ -245,6 +307,7 @@ const emit = defineEmits<{
   (e: 'open-appearance'): void
   (e: 'select-chat', chatId: number): void
   (e: 'chat-opened', chat: Chat): void
+  (e: 'open-message', chatId: number, messageId: number): void
 }>()
 
 // Пункты верхнего меню «⋯» (сюда будут добавляться новые настройки).
@@ -274,7 +337,9 @@ watch(settingsMenuOpen, (open) => {
 
 const searchQuery = ref('')
 const searching = ref(false)
+const searchMode = ref<'people' | 'messages'>('people')
 const userResults = ref<SearchUserResult[]>([])
+const messageResults = ref<Message[]>([])
 const searchError = ref('')
 const contactsQuery = ref('')
 
@@ -316,6 +381,15 @@ const filteredChats = computed<Chat[]>(() => {
       phone.toLowerCase().includes(query)
     )
   })
+})
+
+/** Чаты для показа: сначала закреплённые (в прежнем относительном порядке). */
+const orderedChats = computed<Chat[]>(() => {
+  const pinned = new Set(props.pinnedChatIds ?? [])
+  if (pinned.size === 0) return filteredChats.value
+  const top = filteredChats.value.filter((chat) => pinned.has(chat.id))
+  const rest = filteredChats.value.filter((chat) => !pinned.has(chat.id))
+  return [...top, ...rest]
 })
 
 const filteredContacts = computed<SearchUserResult[]>(() => {
@@ -377,6 +451,45 @@ const openChatWithUser = async (user: SearchUserResult) => {
   }
 }
 
+const setSearchMode = (mode: 'people' | 'messages') => {
+  searchMode.value = mode
+}
+
+/** Чат, в котором лежит найденное сообщение. */
+const chatOfMessage = (message: Message): Chat | undefined =>
+  props.chats.find((chat) => chat.id === message.chat_id)
+
+/** Название чата для результата поиска по сообщениям. */
+const messageChatTitle = (message: Message): string => {
+  const chat = chatOfMessage(message)
+  return chat ? chatPeerTitle(chat, props.currentUserId) : `#${message.chat_id}`
+}
+
+/** Аватар чата (собеседника) для результата поиска. */
+const messageChatAvatar = (message: Message): string | undefined => {
+  const chat = chatOfMessage(message)
+  return chat ? avatarUrlOf(chatPeerOf(chat)) : undefined
+}
+
+/** Префикс «Вы: » для своих сообщений в результате поиска. */
+const messageSenderPrefix = (message: Message): string =>
+  props.currentUserId !== null && message.user_id === props.currentUserId ? 'Вы: ' : ''
+
+/** Текст сниппета сообщения (текст или тип вложения). */
+const messageSnippetText = (message: Message): string => {
+  if (message.text) return message.text
+  return message.file ? mediaTypeLabel(message.file) : ''
+}
+
+/** Переход к найденному сообщению в его чате. */
+const openMessageResult = (message: Message) => {
+  searchQuery.value = ''
+  userResults.value = []
+  messageResults.value = []
+  settingsMenuOpen.value = false
+  emit('open-message', message.chat_id, message.id)
+}
+
 /** Открытие приватного чата из вкладки «Контакты». */
 const openChatWithContact = async (contact: SearchUserResult) => {
   searchError.value = ''
@@ -396,7 +509,7 @@ watch([() => props.view, () => props.selectedChatId], () => {
 })
 
 let searchTimer: number | null = null
-watch(searchQuery, (value) => {
+watch([searchQuery, searchMode], ([value, mode]) => {
   if (searchTimer !== null) {
     window.clearTimeout(searchTimer)
     searchTimer = null
@@ -405,13 +518,20 @@ watch(searchQuery, (value) => {
   const query = value.trim()
   if (!query) {
     userResults.value = []
+    messageResults.value = []
     searching.value = false
     return
   }
   searching.value = true
   searchTimer = window.setTimeout(async () => {
     try {
-      userResults.value = await searchUsers(query)
+      if (mode === 'messages') {
+        messageResults.value = await searchMessages(query)
+        userResults.value = []
+      } else {
+        userResults.value = await searchUsers(query)
+        messageResults.value = []
+      }
     } catch (error) {
       searchError.value = getErrorMessage(error, 'Не удалось выполнить поиск')
     } finally {
@@ -580,6 +700,46 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   color: #8295a3;
   user-select: none;
+}
+
+.search-mode-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 2px 14px 8px;
+}
+
+.search-mode-tab {
+  flex: 1;
+  border: 1px solid var(--ms-border, #e2e6ea);
+  background: var(--ms-surface, #fff);
+  color: var(--ms-muted, #71808d);
+  border-radius: 10px;
+  padding: 6px 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.12s;
+}
+
+.search-mode-tab:hover {
+  background: var(--ms-hover, #f2f4f6);
+}
+
+.search-mode-tab.active {
+  border-color: var(--ms-accent, #2ea25e);
+  color: var(--ms-accent, #2ea25e);
+  background: var(--ms-accent-soft, #e3f2e5);
+}
+
+.msg-result-chat {
+  color: var(--ms-accent, #2ea25e);
+}
+
+.msg-result-snippet {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-scroll {

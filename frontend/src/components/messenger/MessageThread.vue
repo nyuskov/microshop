@@ -31,6 +31,7 @@
           @edit="emit('edit', row.message)"
           @forward="emit('forward', row.message)"
           @delete="emit('delete', row.message)"
+          @open-image="emit('open-image', row.message)"
         />
       </template>
       <div v-if="!rows.length" class="chat-status">Сообщений пока нет. Напишите первым!</div>
@@ -72,6 +73,7 @@ const emit = defineEmits<{
   (e: 'edit', message: Message): void
   (e: 'forward', message: Message): void
   (e: 'delete', message: Message): void
+  (e: 'open-image', message: Message): void
 }>()
 
 const containerRef = ref<HTMLElement | null>(null)
