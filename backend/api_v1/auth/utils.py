@@ -1,5 +1,6 @@
 """Вспомогательные функции для аутентификации и работы с JWT."""
 
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -13,7 +14,11 @@ from core.models import db_helper
 from core.models.user import User
 from core.security import verify_password
 
-from ..users.crud import get_user_by_id, get_user_by_phone_number, get_user_by_username
+from ..users.crud import (
+    get_user_by_id,
+    get_user_by_phone_number,
+    get_user_by_username,
+)
 
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=f"{settings.api_v1_prefix}/auth/token/",
@@ -56,19 +61,24 @@ def decode_jwt(token: str | bytes) -> dict:
     )
 
 
-def build_refresh_token(user_id: int) -> str:
+def build_refresh_token(user_id: int, jti: str | None = None) -> str:
     """Создаёт refresh-токен (долгоживущий, с отдельным aud и claim type).
 
-    Такой токен принимается только эндпоинтом ``/jwt/auth/refresh`` и не может
+    Claim ``jti`` — идентификатор refresh-сессии (для отзыва/ротации). Такой
+    токен принимается только эндпоинтом ``/jwt/auth/refresh`` и не может
     использоваться как access (см. guard в get_current_user и проверку aud).
     """
+    if jti is None:
+        jti = uuid.uuid4().hex
     now = datetime.now(timezone.utc)
     payload = {
         "sub": str(user_id),
+        "jti": jti,
         "type": REFRESH_TOKEN_TYPE,
         "aud": REFRESH_TOKEN_AUDIENCE,
         "iat": now,
-        "exp": now + timedelta(days=settings.auth_jwt.refresh_token_expire_days),
+        "exp": now
+        + timedelta(days=settings.auth_jwt.refresh_token_expire_days),
     }
     return jwt.encode(
         payload,

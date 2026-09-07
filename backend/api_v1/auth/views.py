@@ -16,9 +16,20 @@ from core.models import db_helper
 from ..tokens.schemas import Token
 from ..users.crud import get_or_create_user_by_phone_number
 from .jwt import get_jwt_strategy
-from .otp_storage import OtpVerifyResult, can_request_new_code, store_otp, verify_otp
-from .schemas import OTPResponse, RequestOTPRequest, TokenResponse, VerifyOTPRequest
-from .utils import authenticate_user, build_refresh_token
+from .otp_storage import (
+    OtpVerifyResult,
+    can_request_new_code,
+    store_otp,
+    verify_otp,
+)
+from .refresh_sessions import issue_refresh_token
+from .schemas import (
+    OTPResponse,
+    RequestOTPRequest,
+    TokenResponse,
+    VerifyOTPRequest,
+)
+from .utils import authenticate_user
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +43,9 @@ PHONE_PATTERN = re.compile(
 _AUTH_LIMIT_WINDOW_SECONDS = 60
 
 
-async def _enforce_ip_limit(request: Request, *, scope: str, limit: int) -> None:
+async def _enforce_ip_limit(
+    request: Request, *, scope: str, limit: int
+) -> None:
     """Ограничивает число запросов с одного IP за окно времени."""
     client_ip = request.client.host if request.client is not None else "unknown"
     allowed = await rate_limiter.allow(
@@ -91,7 +104,7 @@ async def login_for_access_token(
     return Token(
         access_token=access_token,
         token_type="bearer",
-        refresh_token=build_refresh_token(user.id),
+        refresh_token=await issue_refresh_token(session, user_id=user.id),
     )
 
 
@@ -172,5 +185,5 @@ async def verify_otp_endpoint(
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
-        refresh_token=build_refresh_token(user.id),
+        refresh_token=await issue_refresh_token(session, user_id=user.id),
     )

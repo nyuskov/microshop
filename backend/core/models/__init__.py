@@ -9,6 +9,7 @@ __all__ = [
     "Post",
     "Product",
     "Profile",
+    "RefreshSession",
     "User",
     "user_chat_association_table",
 ]
@@ -22,4 +23,5 @@ from .otp_code import OtpCode  # noqa: F401
 from .post import Post  # noqa: F401
 from .product import Product  # noqa: F401
 from .profile import Profile  # noqa: F401
+from .refresh_session import RefreshSession  # noqa: F401
 from .user import User  # noqa: F401
