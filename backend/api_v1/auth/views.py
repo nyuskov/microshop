@@ -5,10 +5,11 @@ import re
 import secrets
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api_v1.rate_limit import rate_limit_key, rate_limiter
 from core.config import settings
 from core.models import db_helper
 
@@ -26,6 +27,25 @@ router = APIRouter(prefix="/auth", tags=["Аутентификация"])
 PHONE_PATTERN = re.compile(
     r"^\+7\s?\(?(\d{3})\)?[\s.-]?(\d{3})[\s.-]?(\d{2})[\s.-]?(\d{2})$"
 )
+
+# Окно rate limiting для публичных auth-эндпоинтов (секунды).
+_AUTH_LIMIT_WINDOW_SECONDS = 60
+
+
+async def _enforce_ip_limit(request: Request, *, scope: str, limit: int) -> None:
+    """Ограничивает число запросов с одного IP за окно времени."""
+    client_ip = request.client.host if request.client is not None else "unknown"
+    allowed = await rate_limiter.allow(
+        rate_limit_key(scope, client_ip),
+        limit=limit,
+        window_seconds=_AUTH_LIMIT_WINDOW_SECONDS,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Слишком много запросов. Попробуйте позже.",
+            headers={"Retry-After": str(_AUTH_LIMIT_WINDOW_SECONDS)},
+        )
 
 
 def generate_otp_code() -> str:
@@ -46,9 +66,15 @@ def send_sms_otp(phone_number: str, otp_code: str) -> None:
 @router.post("/token/", response_model=Token)
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+    request: Request,
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> Token:
     """Авторизует пользователя и возвращает access-токен."""
+    await _enforce_ip_limit(
+        request,
+        scope="auth:token",
+        limit=settings.auth_token_login_limit_per_minute,
+    )
     user = await authenticate_user(
         form_data.username,
         form_data.password,
@@ -72,9 +98,15 @@ async def login_for_access_token(
 @router.post("/request-otp/", response_model=OTPResponse)
 async def request_otp(
     request_data: RequestOTPRequest,
+    request: Request,
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> OTPResponse:
     """Запрашивает OTP-код для номера телефона (с кулдауном повторной отправки)."""
+    await _enforce_ip_limit(
+        request,
+        scope="auth:request-otp",
+        limit=settings.auth_otp_request_limit_per_minute,
+    )
     phone_number = request_data.phone_number
 
     if not validate_phone_number_format(phone_number):
@@ -108,9 +140,15 @@ async def request_otp(
 @router.post("/verify-otp/", response_model=TokenResponse)
 async def verify_otp_endpoint(
     request_data: VerifyOTPRequest,
+    request: Request,
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> TokenResponse:
     """Верифицирует OTP-код и выдаёт токен (с ограничением числа попыток)."""
+    await _enforce_ip_limit(
+        request,
+        scope="auth:verify-otp",
+        limit=settings.auth_otp_verify_limit_per_minute,
+    )
     phone_number = request_data.phone_number
     result = await verify_otp(
         session,

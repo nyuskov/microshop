@@ -4,8 +4,9 @@ import axios from 'axios'
 
 import { getErrorMessage } from '@/services/errors'
 import { API_ORIGIN } from '@/config'
+import { api, registerAuth } from '@/services/api'
 
-// Origin бэкенда (централизован в config.ts).
+// Origin бэкенда (централизован в config.ts). Экспортируется для совместимости.
 export const backendServer = API_ORIGIN
 
 export interface ApiUserProfile {
@@ -56,14 +57,7 @@ function loadState(): AuthState {
 }
 
 export const useAuthStore = defineStore('auth', {
-  state: (): AuthState => {
-    const state = loadState()
-    // Восстанавливаем Authorization header из сохранённого токена
-    if (state.accessToken) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${state.accessToken}`
-    }
-    return state
-  },
+  state: (): AuthState => loadState(),
 
   getters: {
     // Проверка, является ли пользователь администратором
@@ -80,12 +74,8 @@ export const useAuthStore = defineStore('auth', {
 
     async requestOtp(phoneNumber: string): Promise<void> {
       try {
-        const response = await axios.post(
-          `${backendServer}/api/v1/auth/request-otp/`,
-          { phone_number: phoneNumber },
-          { headers: { 'Content-Type': 'application/json' } }
-        )
-        console.log('OTP sent successfully:', response.data)
+        await api.post('/auth/request-otp/', { phone_number: phoneNumber })
+        console.log('OTP sent successfully')
       } catch (error) {
         console.error('Request OTP error:', error)
         throw error
@@ -94,11 +84,10 @@ export const useAuthStore = defineStore('auth', {
 
     async loginWithOtp(phoneNumber: string, otpCode: string, router: Router | null = null) {
       try {
-        const response = await axios.post(
-          `${backendServer}/api/v1/auth/verify-otp/`,
-          { phone_number: phoneNumber, otp: otpCode },
-          { headers: { 'Content-Type': 'application/json' } }
-        )
+        const response = await api.post('/auth/verify-otp/', {
+          phone_number: phoneNumber,
+          otp: otpCode
+        })
 
         if (!response.data?.access_token) {
           throw new Error('Server response did not contain access token.')
@@ -106,7 +95,6 @@ export const useAuthStore = defineStore('auth', {
 
         this.accessToken = response.data.access_token
         this.refreshToken = response.data.refresh_token ?? null
-        axios.defaults.headers.common['Authorization'] = `Bearer ${this.accessToken}`
 
         this.isAuthenticated = true
         this.saveState()
@@ -142,15 +130,14 @@ export const useAuthStore = defineStore('auth', {
       }
 
       try {
-        const response = await axios.post(
-          `${backendServer}/api/v1/jwt/auth/refresh`,
+        const response = await api.post(
+          '/jwt/auth/refresh',
           {},
           { headers: { Authorization: `Bearer ${this.refreshToken}` } }
         )
 
         this.accessToken = response.data.access_token
         this.refreshToken = response.data.refresh_token ?? this.refreshToken
-        axios.defaults.headers.common['Authorization'] = `Bearer ${this.accessToken}`
         this.saveState()
         return response.data
       } catch (error) {
@@ -162,25 +149,14 @@ export const useAuthStore = defineStore('auth', {
 
     async fetchUser() {
       try {
-        const response = await axios.get<ApiUser>(`${backendServer}/api/v1/jwt/users/me/`)
+        const response = await api.get<ApiUser>('/jwt/users/me/')
         this.user = response.data
         this.current_user = response.data
         this.isAuthenticated = true
       } catch (error) {
-        // Пробуем обновить токен при ошибке 401
-        if (axios.isAxiosError(error) && error.response?.status === 401 && this.refreshToken) {
-          try {
-            await this.refreshTokens()
-            const response = await axios.get<ApiUser>(`${backendServer}/api/v1/jwt/users/me/`)
-            this.user = response.data
-            this.current_user = response.data
-            this.isAuthenticated = true
-          } catch (refreshError) {
-            console.error('Token refresh failed, logging out.', refreshError)
-            await this.logout()
-          }
-        } else if (axios.isAxiosError(error) && error.response?.status === 401) {
-          console.error('Access token invalid and no refresh token, logging out.')
+        // Если interceptor не смог обновить токен (401) — выходим.
+        if (axios.isAxiosError(error) && error.response?.status === 401) {
+          console.error('Access token invalid, logging out.')
           await this.logout()
         } else {
           console.error('Failed to fetch user:', getErrorMessage(error))
@@ -200,12 +176,7 @@ export const useAuthStore = defineStore('auth', {
           throw new Error('No access token available for update request.')
         }
 
-        const response = await axios.patch(`${backendServer}/api/v1/jwt/users/me/`, userData, {
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.accessToken}`
-          }
-        })
+        const response = await api.patch('/jwt/users/me/', userData)
 
         this.current_user = { ...this.current_user, ...response.data }
         this.user = { ...this.user, ...response.data }
@@ -236,8 +207,23 @@ export const useAuthStore = defineStore('auth', {
       this.isAuthenticated = false
       this.accessToken = null
       this.refreshToken = null
-      delete axios.defaults.headers.common['Authorization']
       this.saveState()
     }
   }
 })
+
+// Единый HTTP-клиент: регистрируем источник access-токена и обработчик 401.
+// Вызывается один раз при импорте модуля; useAuthStore() дёргается лениво.
+registerAuth(
+  () => useAuthStore().accessToken,
+  async () => {
+    const store = useAuthStore()
+    if (!store.refreshToken) return false
+    try {
+      await store.refreshTokens()
+      return store.isAuthenticated
+    } catch {
+      return false
+    }
+  }
+)

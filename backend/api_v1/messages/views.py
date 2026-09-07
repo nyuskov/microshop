@@ -202,6 +202,27 @@ async def send_gif_message(
     )
 
 
+@router.get("/search/", response_model=list[MessageSchema])
+async def search_messages_endpoint(
+    q: str = Query(default="", min_length=1, max_length=200),
+    chat_id: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Ищет сообщения по тексту/имени файла (в чате или во всех чатах)."""
+    query = q.strip()
+    if not query:
+        return []
+    return await crud.search_messages(
+        session,
+        user_id=user.id,
+        query=query,
+        chat_id=chat_id,
+        limit=limit,
+    )
+
+
 @router.get("/{chat_id}/", response_model=list[MessageSchema])
 async def get_messages_for_chat(
     chat_id: int,

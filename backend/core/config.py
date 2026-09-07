@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     # Минимальная пауза между повторными отправками кода на номер.
     auth_otp_resend_cooldown_seconds: int = 30
 
+    # Rate limiting публичных auth-эндпоинтов (лимит запросов в минуту с одного IP).
+    auth_otp_request_limit_per_minute: int = 5
+    auth_otp_verify_limit_per_minute: int = 10
+    auth_token_login_limit_per_minute: int = 20
+
     # Разрешённые источники для CORS
     cors_origins: list[str] = Field(
         default_factory=lambda: [

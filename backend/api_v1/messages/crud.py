@@ -3,13 +3,13 @@
 from pathlib import Path
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api_v1.chats.crud import is_user_chat_member
 from api_v1.events.service import notify_chat
-from core.models import Chat, Message, MessageReaction
+from core.models import Chat, Message, MessageReaction, user_chat_association_table
 
 _NOT_MEMBER_DETAIL = "Вы не являетесь участником этого чата"
 
@@ -414,3 +414,44 @@ async def set_reaction(
             exclude_user_id=user_id,
         )
     return result
+
+
+async def search_messages(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    query: str,
+    chat_id: int | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    """Ищет сообщения пользователя по тексту или имени файла (ILIKE).
+
+    Если ``chat_id`` не задан — ищет по всем чатам пользователя. Возвращает
+    до ``limit`` сообщений в хронологическом порядке (для отображения).
+    """
+    text_pattern = f"%{query}%"
+    stmt = (
+        select(Message)
+        .where(
+            or_(
+                Message.text.ilike(text_pattern),
+                Message.file_name.ilike(text_pattern),
+            )
+        )
+        .options(selectinload(Message.reactions))
+    )
+
+    if chat_id is None:
+        user_chats = select(user_chat_association_table.c.chat_id).where(
+            user_chat_association_table.c.user_id == user_id
+        )
+        stmt = stmt.where(Message.chat_id.in_(user_chats))
+    else:
+        await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
+        stmt = stmt.where(Message.chat_id == chat_id)
+
+    stmt = stmt.order_by(Message.timestamp.desc(), Message.id.desc()).limit(limit)
+    result = await session.execute(stmt)
+    rows = list(result.scalars().all())
+    rows.reverse()
+    return [message_to_dict(message, user_id) for message in rows]
