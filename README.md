@@ -353,3 +353,43 @@ docker exec -it microshop-db-1 psql -U postgres -d microshop
 - Dark-тема и оформление профиля/логина не полностью адаптированы под тёмный режим.
 - Удаление аватара/файлов не затрагивает записи истории (намеренно).
 - Legacy-модули (products/posts/telegram) не поддерживаются в рамках мессенджера.
+
+## 9. Улучшения и безопасность (2026-09-07)
+
+### Окружение и секреты
+- Секреты вынесены из кода/композа в корневой **`.env`** (в `.gitignore`); образец — `.env.example`. `docker compose` требует `POSTGRES_PASSWORD` и `JWT_SECRET_KEY`, при отсутствии файла `.env` останавливается с понятной ошибкой.
+- `backend/core/config.py`: `JWT_SECRET_KEY` читается из окружения; если не задан — в лог пишется предупреждение (используется только dev-запасной ключ).
+- **Требует действий:** смените `JWT_SECRET_KEY`/пароль БД, если значения попадали в публичный git (ротация + пересоздание volume). Старый файл `.env.dev` удалён из индекса.
+
+### Аутентификация (OTP)
+- OTP-коды теперь хранятся в **БД** (`otp_codes`, хеш + счётчик попыток), а не в памяти — переживают рестарт и работают при нескольких воркерах.
+- Защита от перебора: лимит неверных попыток (`AUTH_OTP_MAX_ATTEMPTS`, по умолч. 5), кулдаун повторной отправки (`AUTH_OTP_RESEND_COOLDOWN_SECONDS`, 30 с, HTTP 429 + `Retry-After`).
+- Удалены отладочные эндпоинты `/auth/basic-auth*`.
+
+### Загрузка файлов
+- Вложения и аватары проверяются: расширение из белого списка + сигнатура (magic bytes) для изображений. HTML/SVG/JS/XML и неизвестные типы отклоняются (защита от stored-XSS через `/media/...`).
+- Импорт GIF: запрещены HTTP-редиректы (защита от SSRF), проверяется host, порт/userinfo и что ответ действительно GIF.
+
+### Присутствие и БД
+- `last_seen` больше не обновляется в `get_current_user` (не было лишних commit на каждый read-only запрос); теперь присутствие обновляется в poll-эндпоинте `GET /chats/`.
+- При удалении сообщения его файл удаляется с диска (best-effort).
+- `GET /messages/{chat_id}/` поддерживает пагинацию: `?limit=` и `?before_id=` (по умолчанию — вся история, как раньше). Добавлен индекс `(chat_id, timestamp)`.
+
+### Docker
+- Образы закреплены: `postgres:18`, `nginx:1.27-alpine`; у `db` появился `healthcheck`, `web` стартует после `service_healthy`.
+- Релоад управляется переменной `UVICORN_RELOAD` (по умолчанию 1 для разработки, `0` — для «продового» запуска).
+
+### Тесты и CI
+- Backend: `pytest` + `pytest-asyncio` (dev). Юнит-тесты: `backend/tests/test_upload_guard.py`, `test_otp_storage.py` (чистые тесты хеширования; БД-тесты выполняются при заданном `TEST_DATABASE_URL`).
+- Frontend: устаревший тест-шаблон `App.spec.ts` заменён на `src/__tests__/errors.spec.ts`.
+- Добавлен GitHub Actions (`.github/workflows/ci.yml`): backend (black/isort/flake8/mypy/pytest c PostgreSQL-сервисом) и frontend (vue-tsc/eslint/vitest).
+
+### Frontend: адреса и чистка
+- Адреса бэкенда централизованы в `src/config.ts` (`API_ORIGIN`, `API_BASE_URL`, `WS_ORIGIN`, `mediaUrl`); переопределяются через `VITE_API_ORIGIN` (см. `frontend/.env.example`).
+- Удалены неиспользуемые legacy-компоненты (`Home/Posts/Users/GroupsPage/ManageGroupUsers/Products/Registration/SettingsView`, `auth.js`) и мёртвый scoped-CSS из `Messenger.vue`; из `services/api.ts` убраны неиспользуемые функции групп.
+
+### Ручные шаги после этого обновления
+1. `cp .env.example .env` и задайте свои значения (или используйте сгенерированный `.env`).
+2. Из-за смены пароля БД пересоздайте volume: `./entry.sh` (снимет дамп и поднимет заново) или `docker compose down -v && docker compose up --build`.
+3. Применятся новые миграции (`otp_codes`, индекс `messages`).
+4. Если репозиторий публичный — смените/ротируйте секреты из git-истории.

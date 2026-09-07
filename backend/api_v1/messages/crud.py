@@ -28,9 +28,7 @@ def _file_payload(message: Message) -> dict | None:
     }
 
 
-def _reactions_payload(
-    reactions: list[MessageReaction], user_id: int
-) -> list[dict]:
+def _reactions_payload(reactions: list[MessageReaction], user_id: int) -> list[dict]:
     """Агрегирует реакции по эмодзи."""
     aggregated: dict[str, dict] = {}
     for reaction in reactions:
@@ -76,9 +74,7 @@ def message_basic_to_dict(message: Message) -> dict:
     }
 
 
-async def _load_message(
-    session: AsyncSession, message_id: int
-) -> Message | None:
+async def _load_message(session: AsyncSession, message_id: int) -> Message | None:
     """Загружает сообщение вместе с реакциями."""
     stmt = (
         select(Message)
@@ -130,9 +126,7 @@ async def _get_member_message(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Сообщение не найдено",
         )
-    await _ensure_chat_member_or_404(
-        session, chat_id=message.chat_id, user_id=user_id
-    )
+    await _ensure_chat_member_or_404(session, chat_id=message.chat_id, user_id=user_id)
     return message
 
 
@@ -237,9 +231,7 @@ async def list_chat_messages(
 
     if limit is not None:
         # Пагинация: берём порцию от новых к старым, затем разворачиваем.
-        stmt = stmt.order_by(Message.timestamp.desc(), Message.id.desc()).limit(
-            limit
-        )
+        stmt = stmt.order_by(Message.timestamp.desc(), Message.id.desc()).limit(limit)
     else:
         stmt = stmt.order_by(Message.timestamp, Message.id)
 
@@ -263,9 +255,7 @@ async def list_pinned_messages(
         .order_by(Message.timestamp, Message.id)
     )
     result = await session.execute(stmt)
-    return [
-        message_to_dict(message, user_id) for message in result.scalars().all()
-    ]
+    return [message_to_dict(message, user_id) for message in result.scalars().all()]
 
 
 async def delete_message(
@@ -336,9 +326,7 @@ async def set_reaction(
     else:
         if reaction is None:
             session.add(
-                MessageReaction(
-                    message_id=message_id, user_id=user_id, emoji=emoji
-                )
+                MessageReaction(message_id=message_id, user_id=user_id, emoji=emoji)
             )
         else:
             reaction.emoji = emoji

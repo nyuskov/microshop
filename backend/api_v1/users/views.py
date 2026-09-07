@@ -47,9 +47,7 @@ async def search_users(
     query = q.strip()
     if not query:
         return []
-    return await crud.search_users_by_query(
-        session, query, exclude_user_id=user.id
-    )
+    return await crud.search_users_by_query(session, query, exclude_user_id=user.id)
 
 
 @router.get("/contacts/", response_model=list[schemas.UserSearchResultSchema])

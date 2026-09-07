@@ -14,18 +14,8 @@ from core.models import db_helper
 from ..tokens.schemas import Token
 from ..users.crud import get_or_create_user_by_phone_number
 from .jwt import get_jwt_strategy
-from .otp_storage import (
-    OtpVerifyResult,
-    can_request_new_code,
-    store_otp,
-    verify_otp,
-)
-from .schemas import (
-    OTPResponse,
-    RequestOTPRequest,
-    TokenResponse,
-    VerifyOTPRequest,
-)
+from .otp_storage import OtpVerifyResult, can_request_new_code, store_otp, verify_otp
+from .schemas import OTPResponse, RequestOTPRequest, TokenResponse, VerifyOTPRequest
 from .utils import authenticate_user
 
 router = APIRouter(prefix="/auth", tags=["Аутентификация"])

@@ -21,9 +21,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # Текст-статус пользователя (виден в шапке личного чата и в профиле).
-    op.add_column(
-        "user", sa.Column("status", sa.String(length=140), nullable=True)
-    )
+    op.add_column("user", sa.Column("status", sa.String(length=140), nullable=True))
 
 
 def downgrade() -> None:

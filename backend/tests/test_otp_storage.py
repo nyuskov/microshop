@@ -57,14 +57,10 @@ async def otp_engine():
     engine = create_async_engine(url)
     table = Base.metadata.tables["otp_codes"]
     async with engine.begin() as conn:
-        await conn.run_sync(
-            lambda sync_conn: table.create(sync_conn, checkfirst=True)
-        )
+        await conn.run_sync(lambda sync_conn: table.create(sync_conn, checkfirst=True))
     yield engine
     async with engine.begin() as conn:
-        await conn.run_sync(
-            lambda sync_conn: table.drop(sync_conn, checkfirst=True)
-        )
+        await conn.run_sync(lambda sync_conn: table.drop(sync_conn, checkfirst=True))
     await engine.dispose()
 
 
@@ -85,9 +81,7 @@ async def test_cooldown_blocks_resend(session) -> None:
         session, phone_number=PHONE, cooldown_seconds=60
     )
     # Нулевой кулдаун разрешает.
-    assert await can_request_new_code(
-        session, phone_number=PHONE, cooldown_seconds=0
-    )
+    assert await can_request_new_code(session, phone_number=PHONE, cooldown_seconds=0)
 
 
 @DB_TEST

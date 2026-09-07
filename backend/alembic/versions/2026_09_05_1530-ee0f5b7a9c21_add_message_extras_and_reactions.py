@@ -57,9 +57,7 @@ def upgrade() -> None:
     op.add_column(
         "messages", sa.Column("mime_type", sa.String(length=120), nullable=True)
     )
-    op.add_column(
-        "messages", sa.Column("file_size", sa.Integer(), nullable=True)
-    )
+    op.add_column("messages", sa.Column("file_size", sa.Integer(), nullable=True))
     op.create_index(
         op.f("ix_messages_reply_to_id"),
         "messages",
@@ -82,9 +80,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
-        sa.ForeignKeyConstraint(
-            ["message_id"], ["messages.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["message_id"], ["messages.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["user_id"], ["user.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("message_id", "user_id"),
     )

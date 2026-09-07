@@ -3,9 +3,10 @@ import type { Router } from 'vue-router'
 import axios from 'axios'
 
 import { getErrorMessage } from '@/services/errors'
+import { API_ORIGIN } from '@/config'
 
-// Прямой адрес бэкенда (минуя nginx-прокси для API-запросов)
-export const backendServer = `${window.location.protocol}//${window.location.hostname}:8000`
+// Origin бэкенда (централизован в config.ts).
+export const backendServer = API_ORIGIN
 
 export interface ApiUserProfile {
   bio: string | null
@@ -262,5 +263,3 @@ export function getCSRFToken(): string | null {
   console.warn('CSRF cookie not found. A request to set it may be needed.')
   return null
 }
-
-export { axios }

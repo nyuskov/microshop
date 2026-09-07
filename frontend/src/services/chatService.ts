@@ -1,3 +1,5 @@
+export { mediaUrl } from '@/config'
+
 import { api } from './api'
 import type { Chat, Message, CreateMessageRequest, OpenPrivateChatRequest } from '@/types'
 
@@ -9,10 +11,6 @@ export interface SearchUserResult {
   phone_number: string | null
   avatar_url?: string | null
 }
-
-/** Превращает относительный путь /media/... в абсолютный адрес бэкенда. */
-export const mediaUrl = (path: string): string =>
-  `${window.location.protocol}//${window.location.hostname}:8000${path}`
 
 /** Возвращает чаты текущего пользователя с последними сообщениями. */
 export const fetchMyChats = async (): Promise<Chat[]> => {

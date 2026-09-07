@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
+
 import { useAuthStore } from '@/stores/auth'
+import { WS_ORIGIN } from '@/config'
 
 /** Тип вызова: только голос или голос + видео. */
 export type CallKind = 'audio' | 'video'
@@ -47,8 +49,7 @@ let ringTimer: ReturnType<typeof setTimeout> | undefined
 let audioContext: AudioContext | null = null
 
 function socketUrl(token: string): string {
-  const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${scheme}://${window.location.hostname}:8000${WS_PATH}?token=${encodeURIComponent(token)}`
+  return `${WS_ORIGIN}${WS_PATH}?token=${encodeURIComponent(token)}`
 }
 
 function stopAllTracks(stream: MediaStream | null | undefined) {

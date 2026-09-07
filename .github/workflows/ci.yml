@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, dev]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (lint + mypy + tests)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: microshop_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d microshop_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/microshop_test
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry/virtualenvs
+          key: poetry-${{ runner.os }}-${{ hashFiles('backend/poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --with dev --no-interaction
+
+      - name: Lint (black, isort, flake8)
+        run: |
+          poetry run black --check .
+          poetry run isort --check-only .
+          poetry run flake8 . --exclude=.mypy_cache,__pycache__
+
+      - name: Type check (mypy)
+        run: poetry run mypy --cache-dir=/tmp/mypy_ci main.py core api_v1
+
+      - name: Tests (pytest, с БД из сервиса)
+        run: poetry run pytest -q
+
+  frontend:
+    name: Frontend (type-check + lint + unit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check (vue-tsc)
+        run: pnpm exec vue-tsc --noEmit -p tsconfig.app.json
+
+      - name: Lint (eslint)
+        run: pnpm exec eslint --no-cache src
+
+      - name: Unit tests (vitest)
+        run: pnpm exec vitest run

@@ -13,9 +13,7 @@ BASE_DIR = Path(__file__).parent.parent
 # без окружения. Никогда не используйте его на реальном сервере. При docker-запуске
 # секрет обязательно приходит из корневого .env (переменная JWT_SECRET_KEY); если он
 # не задан — в лог пишется предупреждение (см. конец файла).
-_DEV_JWT_SECRET_KEY = (
-    "0b7a392c19cb1a102061ec65bb016b50cd506c2257739c6348df9e8d373bc405"
-)
+_DEV_JWT_SECRET_KEY = "0b7a392c19cb1a102061ec65bb016b50cd506c2257739c6348df9e8d373bc405"
 
 
 class AuthJWT(BaseSettings):

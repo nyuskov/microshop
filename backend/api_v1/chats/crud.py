@@ -8,13 +8,9 @@ from sqlalchemy.orm import selectinload
 from core.models import Chat, Message, User, user_chat_association_table
 
 
-async def get_chat_with_users(
-    session: AsyncSession, chat_id: int
-) -> Chat | None:
+async def get_chat_with_users(session: AsyncSession, chat_id: int) -> Chat | None:
     """Возвращает чат вместе с его участниками."""
-    stmt = (
-        select(Chat).where(Chat.id == chat_id).options(selectinload(Chat.users))
-    )
+    stmt = select(Chat).where(Chat.id == chat_id).options(selectinload(Chat.users))
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
@@ -38,14 +34,11 @@ async def get_private_chat_id_between(
     stmt = (
         select(user_chat_association_table.c.chat_id)
         .where(
-            user_chat_association_table.c.user_id.in_(
-                [first_user_id, second_user_id]
-            )
+            user_chat_association_table.c.user_id.in_([first_user_id, second_user_id])
         )
         .group_by(user_chat_association_table.c.chat_id)
         .having(
-            func.count(func.distinct(user_chat_association_table.c.user_id))
-            == 2,
+            func.count(func.distinct(user_chat_association_table.c.user_id)) == 2,
             func.count(user_chat_association_table.c.user_id) == 2,
         )
     )
@@ -81,9 +74,7 @@ async def get_or_create_private_chat(
             detail="Пользователь не найден",
         )
 
-    chat_id = await get_private_chat_id_between(
-        session, first_user_id, second_user_id
-    )
+    chat_id = await get_private_chat_id_between(session, first_user_id, second_user_id)
     if chat_id is not None:
         chat = await get_chat_with_users(session, chat_id)
         if chat is not None:

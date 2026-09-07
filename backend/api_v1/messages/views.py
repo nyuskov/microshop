@@ -187,9 +187,7 @@ async def send_gif_message(
             detail="Недопустимый адрес GIF",
         )
 
-    content = await asyncio.to_thread(
-        _download_gif_bytes, payload.url, MAX_UPLOAD_SIZE
-    )
+    content = await asyncio.to_thread(_download_gif_bytes, payload.url, MAX_UPLOAD_SIZE)
     file_url = _store_upload(content, "gif.gif")
     return await crud.send_attachment_message(
         session=session,
