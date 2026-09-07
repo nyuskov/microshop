@@ -1,46 +1,119 @@
-import asyncio
-import logging
+"""Хранение OTP-кодов в БД с защитой от перебора и повторной рассылки.
+
+Раньше коды держались в in-memory dict — они терялись при рестарте и не работали
+при нескольких воркерах. Теперь код хранится в таблице ``otp_codes`` только в виде
+хеша, вместе со счётчиком неудачных попыток и временем последней отправки.
+"""
+
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Dict
+from enum import Enum
 
-logger = logging.getLogger(__name__)
+from sqlalchemy.ext.asyncio import AsyncSession
 
-# Временное хранилище OTP в памяти. НЕ ПОДХОДИТ для продакшена!
-_OTP_STORAGE: Dict[str, tuple[str, datetime]] = {}
-_LOCK = asyncio.Lock()
-
-
-async def store_otp(phone_number: str, otp_code: str, ttl_seconds: int = 300) -> None:
-    """Сохраняет OTP-код с заданным временем жизни (TTL) в секундах."""
-    expiry_time = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
-    async with _LOCK:
-        _OTP_STORAGE[phone_number] = (otp_code, expiry_time)
-    logger.info("Stored OTP for %s, expires at %s", phone_number, expiry_time)
+from core.config import settings
+from core.models import OtpCode
 
 
-async def verify_otp(phone_number: str, otp_code: str) -> bool:
-    """Проверяет OTP-код и его срок действия."""
-    async with _LOCK:
-        stored_data = _OTP_STORAGE.get(phone_number)
-        if not stored_data:
-            logger.warning("No OTP found for %s", phone_number)
-            return False
+class OtpVerifyResult(str, Enum):
+    """Исход проверки кода (чтобы эндпоинт вернул корректный HTTP-статус)."""
 
-        stored_otp, expiry_time = stored_data
-        if datetime.now(timezone.utc) > expiry_time:
-            del _OTP_STORAGE[phone_number]
-            logger.info("OTP for %s has expired and was removed.", phone_number)
-            return False
+    OK = "ok"
+    NOT_FOUND = "not_found"
+    INVALID = "invalid"
+    EXPIRED = "expired"
+    TOO_MANY = "too_many"
 
-        if stored_otp == otp_code:
-            del _OTP_STORAGE[phone_number]
-            logger.info("OTP for %s verified successfully.", phone_number)
-            return True
 
-        logger.warning(
-            "Invalid OTP for %s. Expected: %s, Got: %s",
-            phone_number,
-            stored_otp,
-            otp_code,
+def _hash_code(phone_number: str, code: str) -> str:
+    """Хеширует код с «солью» из секрета приложения — сам код в БД не хранится."""
+    payload = f"{phone_number}:{code}:{settings.auth_jwt.secret_key}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+async def _load(session: AsyncSession, phone_number: str) -> OtpCode | None:
+    return await session.get(OtpCode, phone_number)
+
+
+async def can_request_new_code(
+    session: AsyncSession,
+    *,
+    phone_number: str,
+    cooldown_seconds: int,
+) -> bool:
+    """True, если на этот номер ещё можно отправить код (кулдаун не истёк)."""
+    row = await _load(session, phone_number)
+    if row is None:
+        return True
+    # Просроченный/исчерпанный код не блокирует повторный запрос.
+    if row.expires_at < _now():
+        return True
+    age = (_now() - row.created_at).total_seconds()
+    return age >= cooldown_seconds
+
+
+async def store_otp(
+    session: AsyncSession,
+    *,
+    phone_number: str,
+    code: str,
+    ttl_seconds: int,
+) -> None:
+    """Создаёт или обновляет код для номера, сбрасывая счётчик попыток."""
+    now = _now()
+    row = await _load(session, phone_number)
+    if row is None:
+        session.add(
+            OtpCode(
+                phone_number=phone_number,
+                code_hash=_hash_code(phone_number, code),
+                attempts=0,
+                expires_at=now + timedelta(seconds=ttl_seconds),
+                created_at=now,
+            )
         )
-        return False
+    else:
+        row.code_hash = _hash_code(phone_number, code)
+        row.attempts = 0
+        row.expires_at = now + timedelta(seconds=ttl_seconds)
+        row.created_at = now
+    await session.commit()
+
+
+async def verify_otp(
+    session: AsyncSession,
+    *,
+    phone_number: str,
+    code: str,
+    max_attempts: int,
+) -> OtpVerifyResult:
+    """Проверяет код, учитывая число попыток и срок действия."""
+    row = await _load(session, phone_number)
+    if row is None:
+        return OtpVerifyResult.NOT_FOUND
+
+    if row.expires_at < _now():
+        await session.delete(row)
+        await session.commit()
+        return OtpVerifyResult.EXPIRED
+
+    if row.attempts >= max_attempts:
+        # Код «выгорел» — удаляем, чтобы нельзя было продолжать перебор.
+        await session.delete(row)
+        await session.commit()
+        return OtpVerifyResult.TOO_MANY
+
+    expected = _hash_code(phone_number, code)
+    if secrets.compare_digest(row.code_hash, expected):
+        await session.delete(row)
+        await session.commit()
+        return OtpVerifyResult.OK
+
+    row.attempts += 1
+    await session.commit()
+    return OtpVerifyResult.INVALID

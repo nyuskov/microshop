@@ -5,6 +5,7 @@ __all__ = [
     "Chat",
     "Message",
     "MessageReaction",
+    "OtpCode",
     "Post",
     "Product",
     "Profile",
@@ -17,6 +18,7 @@ from .chat import Chat, user_chat_association_table  # noqa: F401
 from .db_helper import DatabaseHelper, db_helper  # noqa: F401
 from .message import Message  # noqa: F401
 from .message_reaction import MessageReaction  # noqa: F401
+from .otp_code import OtpCode  # noqa: F401
 from .post import Post  # noqa: F401
 from .product import Product  # noqa: F401
 from .profile import Profile  # noqa: F401

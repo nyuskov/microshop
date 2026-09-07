@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     db_echo: bool = False
     auth_jwt: AuthJWT = AuthJWT()
     auth_otp_expire_seconds: int = 300  # 5 минут
+    # Сколько неверных попыток ввода OTP допустимо до «сгорания» кода.
+    auth_otp_max_attempts: int = 5
+    # Минимальная пауза между повторными отправками кода на номер.
+    auth_otp_resend_cooldown_seconds: int = 30
 
     # Разрешённые источники для CORS
     cors_origins: list[str] = Field(

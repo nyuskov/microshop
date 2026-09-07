@@ -18,7 +18,12 @@ from core.models import db_helper
 from ..tokens.schemas import Token
 from ..users.crud import get_or_create_user_by_phone_number
 from .jwt import get_jwt_strategy
-from .otp_storage import store_otp, verify_otp
+from .otp_storage import (
+    OtpVerifyResult,
+    can_request_new_code,
+    store_otp,
+    verify_otp,
+)
 from .schemas import (
     OTPResponse,
     RequestOTPRequest,
@@ -74,8 +79,11 @@ async def login_for_access_token(
 
 
 @router.post("/request-otp/", response_model=OTPResponse)
-async def request_otp(request_data: RequestOTPRequest) -> OTPResponse:
-    """Запрашивает OTP-код для номера телефона."""
+async def request_otp(
+    request_data: RequestOTPRequest,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> OTPResponse:
+    """Запрашивает OTP-код для номера телефона (с кулдауном повторной отправки)."""
     phone_number = request_data.phone_number
 
     if not validate_phone_number_format(phone_number):
@@ -84,10 +92,21 @@ async def request_otp(request_data: RequestOTPRequest) -> OTPResponse:
             detail="Неверный формат номера телефона. Ожидается +7 (___) ___-__-__.",
         )
 
+    cooldown = settings.auth_otp_resend_cooldown_seconds
+    if not await can_request_new_code(
+        session, phone_number=phone_number, cooldown_seconds=cooldown
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Код уже отправлен. Повторите запрос через {cooldown} секунд.",
+            headers={"Retry-After": str(cooldown)},
+        )
+
     otp_code = generate_otp_code()
     await store_otp(
-        phone_number,
-        otp_code,
+        session,
+        phone_number=phone_number,
+        code=otp_code,
         ttl_seconds=settings.auth_otp_expire_seconds,
     )
     send_sms_otp(phone_number, otp_code)
@@ -100,10 +119,20 @@ async def verify_otp_endpoint(
     request_data: VerifyOTPRequest,
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> TokenResponse:
-    """Верифицирует OTP-код и выдаёт токен."""
+    """Верифицирует OTP-код и выдаёт токен (с ограничением числа попыток)."""
     phone_number = request_data.phone_number
-
-    if not await verify_otp(phone_number, request_data.otp):
+    result = await verify_otp(
+        session,
+        phone_number=phone_number,
+        code=request_data.otp,
+        max_attempts=settings.auth_otp_max_attempts,
+    )
+    if result is not OtpVerifyResult.OK:
+        if result is OtpVerifyResult.TOO_MANY:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Слишком много неверных попыток. Запросите новый код.",
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный или истёкший код OTP.",
