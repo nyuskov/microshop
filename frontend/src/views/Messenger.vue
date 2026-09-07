@@ -569,7 +569,7 @@
             <div v-if="replyTarget" class="reply-bar">
               <div class="reply-bar-info">
                 <span class="reply-bar-name">{{ quoteName(replyTarget) }}</span>
-                <span class="reply-bar-text">{{ replySnippetOf(replyTarget) }}</span>
+                <span class="reply-bar-text">{{ messageSnippet(replyTarget) }}</span>
               </div>
               <button class="icon-btn" title="Отменить ответ" @click="clearReply">
                 <i class="pi pi-times"></i>
@@ -712,7 +712,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
 import Dialog from 'primevue/dialog'
 import LoginModal from '@/components/LoginModal.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -739,15 +739,10 @@ import {
 } from '@/services/chatService'
 import type { Chat, ChatUser, Message } from '@/types'
 import { avatarStyle, displayName, initials } from '@/utils/user'
-import {
-  ONLINE_WINDOW_SECONDS,
-  formatBytes,
-  formatChatTime,
-  formatMsgTime,
-  lastSeenLabel
-} from '@/utils/format'
+import { formatBytes, formatChatTime, formatMsgTime, lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow } from '@/utils/thread'
 import { useCallButton } from '@/composables/useCallButton'
+import { usePeerActivity } from '@/composables/usePeerActivity'
 import {
   fileIcon,
   isAudioFile,
@@ -755,7 +750,8 @@ import {
   isRecordedVideoMessage,
   isRoundVideoOnly,
   isVideoFile,
-  mediaTypeLabel
+  mediaTypeLabel,
+  messageSnippet
 } from '@/utils/media'
 import UserProfile from './UserProfile.vue'
 import AppearanceSettings from './AppearanceSettings.vue'
@@ -987,20 +983,8 @@ const quoteNameClass = (message: Message): Record<string, boolean> => ({
 
 const quoteText = (message: Message): string => {
   const target = replyMessage(message)
-  return target ? snippetOf(target) : ''
+  return target ? messageSnippet(target) : ''
 }
-
-const snippetOf = (message: Message): string => {
-  if (message.file) {
-    if (isImageFile(message.file)) return '📷 Изображение'
-    if (isAudioFile(message.file)) return '🎤 Голосовое'
-    if (isVideoFile(message.file)) return '🎥 Видео'
-    return `📎 ${message.file.name}`
-  }
-  return message.text || ''
-}
-
-const replySnippetOf = (message: Message): string => snippetOf(message)
 
 const quoteClick = (_messageId: number) => {
   emojiPickerFor.value = null
@@ -1021,24 +1005,20 @@ const otherUserOfChatForMessage = (message: Message): ChatUser | undefined => {
 }
 
 const pinnedSnippet = (message: Message): string =>
-  `${message.user_id === currentUserId.value ? 'Вы: ' : senderNameOfMessage(message) + ': '}${snippetOf(message)}`
+  `${message.user_id === currentUserId.value ? 'Вы: ' : senderNameOfMessage(message) + ': '}${messageSnippet(message)}`
 
-// ---------- Присутствие в реальном времени (WS поверх last_seen) ----------
-// Оверлей статуса собеседников: подтверждённый WS-статус («в сети»/«не в сети»)
-// имеет приоритет над вычислением из last_seen. Заполняется событиями presence
-// и (как фолбэк) данными из ответа /chats.
-const peerPresence = reactive<Record<number, { online: boolean; last_seen: string | null }>>({})
-
-const isWithinOnlineWindow = (value?: string | null): boolean => {
-  if (!value) return false
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return false
-  return Date.now() - date.getTime() <= ONLINE_WINDOW_SECONDS * 1000
-}
-
-const applyPresence = (userId: number, online: boolean, lastSeen: string | null) => {
-  peerPresence[userId] = { online, last_seen: lastSeen }
-}
+// ---------- Присутствие + индикатор «печатает…» (состояние в composable) ----------
+const {
+  peerPresence,
+  isWithinOnlineWindow,
+  applyPresence,
+  isPeerTyping,
+  markPeerTyping,
+  clearPeerTyping,
+  clearAll
+} = usePeerActivity({
+  isMe: (userId) => userId === currentUserId.value
+})
 
 /** Подмешивает присутствие из свежего ответа /chats (не перетирая WS-статус). */
 const syncPresenceFromChats = (list: Chat[]) => {
@@ -1067,40 +1047,6 @@ const presenceText = (chat: Chat): string => {
   if (known?.online) return 'в сети'
   if (known) return known.last_seen ? lastSeenLabel(known.last_seen, false) : 'был(а) давно'
   return lastSeenLabel(other.last_seen) || 'был(а) давно'
-}
-
-// ---------- Индикатор «печатает…» ----------
-const TYPING_DISPLAY_MS = 4000
-const peerTypingUntil = reactive<Record<number, number>>({})
-const typingClearTimers: Record<number, number> = {}
-
-const isPeerTyping = (chatId: number | null): boolean =>
-  chatId !== null && (peerTypingUntil[chatId] ?? 0) > Date.now()
-
-const markPeerTyping = (chatId: number, userId: number) => {
-  if (userId === currentUserId.value) return
-  if (typingClearTimers[chatId]) {
-    window.clearTimeout(typingClearTimers[chatId])
-  }
-  peerTypingUntil[chatId] = Date.now() + TYPING_DISPLAY_MS
-  typingClearTimers[chatId] = window.setTimeout(() => {
-    delete peerTypingUntil[chatId]
-    delete typingClearTimers[chatId]
-  }, TYPING_DISPLAY_MS + 300)
-}
-
-const clearPeerTyping = (chatId: number) => {
-  if (typingClearTimers[chatId]) {
-    window.clearTimeout(typingClearTimers[chatId])
-    delete typingClearTimers[chatId]
-  }
-  delete peerTypingUntil[chatId]
-}
-
-const clearPeerTypingState = () => {
-  for (const key of Object.keys(peerTypingUntil)) {
-    clearPeerTyping(Number(key))
-  }
 }
 
 const chatSubtitle = (chat: Chat): string => {
@@ -1992,10 +1938,7 @@ watch(
       contacts.value = []
       userResults.value = []
       selectedChatId.value = null
-      for (const key of Object.keys(peerPresence)) {
-        delete peerPresence[Number(key)]
-      }
-      clearPeerTypingState()
+      clearAll()
     }
   },
   { immediate: true }
@@ -2009,7 +1952,6 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopRealtime()
   realtimeStore.setHandler(null)
-  clearPeerTypingState()
   clearMicTimer()
   clearModeHint()
   if (highlightTimer !== undefined) {

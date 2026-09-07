@@ -34,3 +34,14 @@ export const fileIcon = (file: MessageFile): string => {
   if (file.mime?.startsWith('text/')) return 'pi pi-file'
   return 'pi pi-file'
 }
+
+/** Краткое описание сообщения для цитат, превью и закреплённых. */
+export const messageSnippet = (message: Message): string => {
+  if (message.file) {
+    if (isImageFile(message.file)) return '📷 Изображение'
+    if (isAudioFile(message.file)) return '🎤 Голосовое'
+    if (isVideoFile(message.file)) return '🎥 Видео'
+    return `📎 ${message.file.name}`
+  }
+  return message.text || ''
+}
