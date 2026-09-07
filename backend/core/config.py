@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     auth_otp_verify_limit_per_minute: int = 10
     auth_token_login_limit_per_minute: int = 20
 
+    # Лимиты загрузок (в байтах), переопределяются через env.
+    max_upload_size_bytes: int = 15 * 1024 * 1024
+    max_avatar_size_bytes: int = 8 * 1024 * 1024
+    # Как часто обновлять last_seen пользователя при активности (секунды).
+    last_seen_update_seconds: int = 10
+
     # Разрешённые источники для CORS
     cors_origins: list[str] = Field(
         default_factory=lambda: [

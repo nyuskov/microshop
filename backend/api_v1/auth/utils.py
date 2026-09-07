@@ -19,8 +19,9 @@ oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=f"{settings.api_v1_prefix}/auth/token/",
 )
 
-# Как часто обновлять last_seen в БД при активности пользователя.
-LAST_SEEN_UPDATE_SECONDS = 10
+# Как часто обновлять last_seen в БД при активности пользователя
+# (настраивается через env, см. Settings.last_seen_update_seconds).
+LAST_SEEN_UPDATE_SECONDS = settings.last_seen_update_seconds
 
 # Аудитория access-токенов fastapi-users (используется по умолчанию JWTStrategy).
 TOKEN_AUDIENCE = "fastapi-users:auth"

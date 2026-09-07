@@ -27,6 +27,8 @@ export type RealtimeEvent =
   | { type: 'chat.new'; chat_id: number; user_id: number }
   | { type: 'chat.read'; chat_id: number; reader_id: number }
   | { type: 'presence'; user_id: number; online: boolean; last_seen: string | null }
+  | { type: 'typing'; chat_id: number; user_id: number }
+  | { type: 'typing-stop'; chat_id: number; user_id: number }
 
 let socket: WebSocket | null = null
 let eventHandler: ((event: RealtimeEvent) => void) | null = null
@@ -117,6 +119,13 @@ export const useRealtimeStore = defineStore('realtime', {
         }
         tick()
       })
+    },
+
+    /** Отправляет клиентское событие на сервер (если канал открыт). */
+    send(payload: Record<string, unknown>): boolean {
+      if (!socket || socket.readyState !== WebSocket.OPEN) return false
+      socket.send(JSON.stringify(payload))
+      return true
     },
 
     scheduleReconnect() {

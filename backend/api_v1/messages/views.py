@@ -16,6 +16,7 @@ from api_v1.messages import crud
 from api_v1.messages.schemas import Message as MessageSchema
 from api_v1.messages.schemas import MessageCreate
 from api_v1.upload_guard import validate_attachment_upload
+from core.config import settings
 from core.models import User, db_helper
 
 router = APIRouter(
@@ -24,7 +25,9 @@ router = APIRouter(
 )
 
 MEDIA_DIR = Path(__file__).resolve().parent.parent.parent / "media"
-MAX_UPLOAD_SIZE = 15 * 1024 * 1024  # 15 МБ
+# Лимит размера вложения настраивается через env (см. Settings.max_upload_size_bytes).
+MAX_UPLOAD_SIZE = settings.max_upload_size_bytes
+MAX_UPLOAD_MB = MAX_UPLOAD_SIZE // (1024 * 1024)
 
 
 class PinRequest(BaseModel):
@@ -87,7 +90,7 @@ async def create_attachment_message(
     if len(content) > MAX_UPLOAD_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Файл слишком большой (максимум 15 МБ)",
+            detail=f"Файл слишком большой (максимум {MAX_UPLOAD_MB} МБ)",
         )
 
     validate_attachment_upload(filename, content)
@@ -154,7 +157,7 @@ def _download_gif_bytes(url: str, limit: int) -> bytes:
     if len(content) > limit:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="GIF слишком большой (максимум 15 МБ)",
+            detail=f"GIF слишком большой (максимум {MAX_UPLOAD_MB} МБ)",
         )
     if not (
         content_type.lower().startswith("image/gif")

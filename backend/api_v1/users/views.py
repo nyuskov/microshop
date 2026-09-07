@@ -9,13 +9,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api_v1.auth.utils import get_current_user
 from api_v1.upload_guard import validate_image_upload
 from api_v1.users import crud, schemas
+from core.config import settings
 from core.models import User, db_helper
 from core.security import get_password_hash
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
 AVATAR_DIR = Path(__file__).resolve().parent.parent.parent / "media" / "avatars"
-MAX_AVATAR_SIZE = 8 * 1024 * 1024  # 8 МБ
+# Лимит размера аватара настраивается через env (Settings.max_avatar_size_bytes).
+MAX_AVATAR_SIZE = settings.max_avatar_size_bytes
+MAX_AVATAR_MB = MAX_AVATAR_SIZE // (1024 * 1024)
 ALLOWED_AVATAR_EXTS = {"png", "jpg", "jpeg", "gif", "webp"}
 
 
@@ -83,7 +86,7 @@ async def upload_my_avatar(
     if len(content) > MAX_AVATAR_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Файл слишком большой (максимум 8 МБ)",
+            detail=f"Файл слишком большой (максимум {MAX_AVATAR_MB} МБ)",
         )
 
     validate_image_upload(f"avatar.{ext}", content)

@@ -1,8 +1,10 @@
 import logging
+import time
+import uuid
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
@@ -25,6 +27,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_request_id_and_log_slow(request: Request, call_next):
+    """Проставляет X-Request-ID в ответ и логирует медленные запросы (>1 c)."""
+    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
+    start = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    response.headers["X-Request-ID"] = request_id
+    if elapsed_ms > 1000:
+        logger.warning(
+            "Slow request: %s %s (%.0f ms) id=%s",
+            request.method,
+            request.url.path,
+            elapsed_ms,
+            request_id,
+        )
+    return response
+
 
 # Каталог для файлов сообщений (создаётся при необходимости)
 MEDIA_DIR = Path(__file__).resolve().parent / "media"

@@ -1183,7 +1183,44 @@ const presenceText = (chat: Chat): string => {
   return lastSeenLabel(other.last_seen) || 'был(а) давно'
 }
 
-const chatSubtitle = (chat: Chat): string => presenceText(chat)
+// ---------- Индикатор «печатает…» ----------
+const TYPING_DISPLAY_MS = 4000
+const peerTypingUntil = reactive<Record<number, number>>({})
+const typingClearTimers: Record<number, number> = {}
+
+const isPeerTyping = (chatId: number | null): boolean =>
+  chatId !== null && (peerTypingUntil[chatId] ?? 0) > Date.now()
+
+const markPeerTyping = (chatId: number, userId: number) => {
+  if (userId === currentUserId.value) return
+  if (typingClearTimers[chatId]) {
+    window.clearTimeout(typingClearTimers[chatId])
+  }
+  peerTypingUntil[chatId] = Date.now() + TYPING_DISPLAY_MS
+  typingClearTimers[chatId] = window.setTimeout(() => {
+    delete peerTypingUntil[chatId]
+    delete typingClearTimers[chatId]
+  }, TYPING_DISPLAY_MS + 300)
+}
+
+const clearPeerTyping = (chatId: number) => {
+  if (typingClearTimers[chatId]) {
+    window.clearTimeout(typingClearTimers[chatId])
+    delete typingClearTimers[chatId]
+  }
+  delete peerTypingUntil[chatId]
+}
+
+const clearPeerTypingState = () => {
+  for (const key of Object.keys(peerTypingUntil)) {
+    clearPeerTyping(Number(key))
+  }
+}
+
+const chatSubtitle = (chat: Chat): string => {
+  if (isPeerTyping(chat.id)) return 'печатает…'
+  return presenceText(chat)
+}
 
 // ---------- Файлы ----------
 const mediaAbsolute = (path: string): string => mediaUrl(path)
@@ -1378,6 +1415,7 @@ const sendText = async () => {
   try {
     const message = await sendNewMessage(chatId, text, replyTarget.value?.id)
     newMessage.value = ''
+    sendTypingStop(chatId)
     clearReply()
     await refreshThread()
     messages.value = appendMessage(messages.value, message)
@@ -1414,6 +1452,7 @@ const onFileSelected = async (event: Event) => {
     )
     newMessage.value = ''
     clearReply()
+    sendTypingStop(chatId)
     messages.value = appendMessage(messages.value, message)
     await loadPinned(chatId)
     await loadChats()
@@ -1467,6 +1506,7 @@ const uploadRecordedMedia = async (payload: RecordedMedia, kind: 'voice' | 'vide
     })
     const message = await sendAttachmentMessage(chatId, file, '', replyTarget.value?.id)
     clearReply()
+    sendTypingStop(chatId)
     messages.value = appendMessage(messages.value, message)
     await Promise.all([loadPinned(chatId), loadChats()])
     scrollToBottom()
@@ -1663,6 +1703,7 @@ const onGifSent = async (message: Message) => {
   messages.value = appendMessage(messages.value, message)
   const chatId = selectedChatId.value
   if (chatId !== null) {
+    sendTypingStop(chatId)
     await Promise.all([loadPinned(chatId), loadChats()])
     scrollToBottom()
   }
@@ -1762,12 +1803,19 @@ const handleRealtimeEvent = (event: RealtimeEvent) => {
     case 'presence':
       applyPresence(event.user_id, event.online, event.last_seen)
       return
+    case 'typing':
+      markPeerTyping(event.chat_id, event.user_id)
+      return
+    case 'typing-stop':
+      clearPeerTyping(event.chat_id)
+      return
     case 'chat.new':
       scheduleChatsSync()
       return
     case 'message.new':
       // Свои сообщения сервер не пушит — они добавляются сразу при отправке.
       if (event.sender_id === currentUserId.value) return
+      clearPeerTyping(event.chat_id)
       scheduleChatsSync()
       if (event.chat_id === selectedChatId.value) scheduleThreadSync()
       return
@@ -1784,6 +1832,25 @@ const handleRealtimeEvent = (event: RealtimeEvent) => {
       return
   }
 }
+
+// ---------- Отправка индикатора «печатает…» ----------
+const TYPING_SEND_INTERVAL_MS = 3000
+let lastTypingSentAt = 0
+
+const sendTypingStop = (chatId: number) => {
+  realtimeStore.send({ type: 'typing-stop', chat_id: chatId })
+}
+
+// Пока пользователь набирает текст — с троттлингом сообщаем собеседнику.
+watch(newMessage, (value) => {
+  const chatId = selectedChatId.value
+  if (!value.trim() || chatId === null) return
+  const now = Date.now()
+  if (now - lastTypingSentAt >= TYPING_SEND_INTERVAL_MS) {
+    lastTypingSentAt = now
+    realtimeStore.send({ type: 'typing', chat_id: chatId })
+  }
+})
 
 const stopRealtime = () => {
   if (fallbackTimer !== null) {
@@ -1872,6 +1939,7 @@ watch(
       for (const key of Object.keys(peerPresence)) {
         delete peerPresence[Number(key)]
       }
+      clearPeerTypingState()
     }
   },
   { immediate: true }
@@ -1885,6 +1953,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopRealtime()
   realtimeStore.setHandler(null)
+  clearPeerTypingState()
   clearMicTimer()
   clearModeHint()
   clearCallTimer()
@@ -1923,7 +1992,8 @@ watch(
 
 watch(
   selectedChatId,
-  () => {
+  (newId, oldId) => {
+    if (oldId != null && oldId !== newId) sendTypingStop(oldId)
     closePopups()
     clearReply()
     voiceRecOpen.value = false

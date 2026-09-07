@@ -16,6 +16,7 @@
 
 import logging
 from datetime import datetime, timezone
+from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -24,7 +25,7 @@ from api_v1.users.crud import get_user_by_id
 from core.models import db_helper
 
 from .manager import events_manager
-from .service import presence_peer_ids
+from .service import chat_member_ids, presence_peer_ids
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,32 @@ async def _broadcast_presence(
     await events_manager.broadcast(peer_ids, payload)
 
 
+async def _handle_client_event(user_id: int, data: Any) -> None:
+    """Обрабатывает события от клиента (сейчас — индикатор «печатает…»).
+
+    ``typing``/``typing-stop`` ретранслируются участникам чата, кроме автора.
+    """
+    if not isinstance(data, dict):
+        return
+    event_type = data.get("type")
+    if event_type not in ("typing", "typing-stop"):
+        return
+    try:
+        chat_id = int(data["chat_id"])  # type: ignore[arg-type]
+    except (KeyError, TypeError, ValueError):
+        return
+
+    async with db_helper.session_factory() as session:
+        members = await chat_member_ids(session, chat_id)
+    if user_id not in members:
+        return
+    recipients = [member_id for member_id in members if member_id != user_id]
+    await events_manager.broadcast(
+        recipients,
+        {"type": event_type, "chat_id": chat_id, "user_id": user_id},
+    )
+
+
 @router.websocket("/events")
 async def websocket_events(websocket: WebSocket) -> None:
     """Событийный канал мессенджера для текущего авторизованного пользователя."""
@@ -67,14 +94,19 @@ async def websocket_events(websocket: WebSocket) -> None:
             await touch_last_seen(current, session)
             current_last_seen = current.last_seen
             peers = await presence_peer_ids(session, user.id)
-    await _broadcast_presence(peers, user.id, online=True, last_seen=current_last_seen)
+    await _broadcast_presence(
+        peers, user.id, online=True, last_seen=current_last_seen
+    )
 
     try:
-        # Сервер только пушит события — сообщения клиента не используются.
+        # Сервер в основном пушит события; от клиента принимаем typing/typing-stop.
         while True:
-            await websocket.receive_json()
+            data = await websocket.receive_json()
+            await _handle_client_event(user.id, data)
     except WebSocketDisconnect:
-        logger.debug("Пользователь %s отключился от событийного канала", user.id)
+        logger.debug(
+            "Пользователь %s отключился от событийного канала", user.id
+        )
     finally:
         await events_manager.disconnect(user.id, websocket)
         # «Не в сети» — только если это было последнее соединение пользователя
@@ -95,4 +127,6 @@ async def websocket_events(websocket: WebSocket) -> None:
                 peers, user.id, online=False, last_seen=offline_last_seen
             )
         except Exception:  # noqa: BLE001 - офлайн-статус некритичен
-            logger.exception("Не удалось отправить presence offline для %s", user.id)
+            logger.exception(
+                "Не удалось отправить presence offline для %s", user.id
+            )
