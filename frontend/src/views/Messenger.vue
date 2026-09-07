@@ -743,6 +743,7 @@ import { formatBytes, formatChatTime, formatMsgTime, lastSeenLabel } from '@/uti
 import { buildMessageRows, type MessageRow } from '@/utils/thread'
 import { useCallButton } from '@/composables/useCallButton'
 import { usePeerActivity } from '@/composables/usePeerActivity'
+import { useRealtimeSync } from '@/composables/useRealtimeSync'
 import { useRecordButton } from '@/composables/useRecordButton'
 import {
   fileIcon,
@@ -763,7 +764,7 @@ import RoundVideoMessage from '@/components/media/RoundVideoMessage.vue'
 import VoiceRecorderBar from '@/components/media/VoiceRecorderBar.vue'
 import VideoRecorderModal from '@/components/media/VideoRecorderModal.vue'
 import { useCallStore } from '@/stores/call'
-import { useRealtimeStore, type RealtimeEvent } from '@/stores/realtime'
+import { useRealtimeStore } from '@/stores/realtime'
 import { mediaFileName, type RecordedMedia } from '@/services/recorder'
 
 const authStore = useAuthStore()
@@ -1687,11 +1688,6 @@ watch(searchQuery, (value) => {
 // ---------- События реального времени (WS-канал) вместо поллинга ----------
 // Сервер пушит события, по которым делаем выборочный refetch. Редкий
 // «страховочный» опрос остаётся на случай пропущенных событий/реконнекта.
-const REALTIME_FALLBACK_MS = 20000
-let fallbackTimer: number | null = null
-let chatSyncTimer: number | null = null
-let threadSyncTimer: number | null = null
-
 const refreshChatsQuiet = async () => {
   if (!authStore.isAuthenticated) return
   try {
@@ -1718,56 +1714,17 @@ const refreshOpenThreadQuiet = async () => {
   }
 }
 
-const scheduleChatsSync = () => {
-  if (chatSyncTimer !== null) window.clearTimeout(chatSyncTimer)
-  chatSyncTimer = window.setTimeout(() => {
-    chatSyncTimer = null
-    void refreshChatsQuiet()
-  }, 120)
-}
-
-const scheduleThreadSync = () => {
-  if (threadSyncTimer !== null) window.clearTimeout(threadSyncTimer)
-  threadSyncTimer = window.setTimeout(() => {
-    threadSyncTimer = null
-    void refreshOpenThreadQuiet()
-  }, 120)
-}
-
-const handleRealtimeEvent = (event: RealtimeEvent) => {
-  switch (event.type) {
-    case 'presence':
-      applyPresence(event.user_id, event.online, event.last_seen)
-      return
-    case 'typing':
-      markPeerTyping(event.chat_id, event.user_id)
-      return
-    case 'typing-stop':
-      clearPeerTyping(event.chat_id)
-      return
-    case 'chat.new':
-      scheduleChatsSync()
-      return
-    case 'message.new':
-      // Свои сообщения сервер не пушит — они добавляются сразу при отправке.
-      if (event.sender_id === currentUserId.value) return
-      clearPeerTyping(event.chat_id)
-      scheduleChatsSync()
-      if (event.chat_id === selectedChatId.value) scheduleThreadSync()
-      return
-    case 'message.changed':
-      scheduleChatsSync()
-      if (event.chat_id === selectedChatId.value) scheduleThreadSync()
-      return
-    case 'chat.read':
-      // Собеседник прочитал — обновляем галочки ✓✓ в открытом чате.
-      if (event.reader_id === currentUserId.value) return
-      if (event.chat_id === selectedChatId.value) {
-        void refreshOpenThreadQuiet()
-      }
-      return
-  }
-}
+// Оркестрация (таймеры/события) вынесена в composable.
+const { start: startRealtime, stop: stopRealtime } = useRealtimeSync({
+  isAuthenticated: () => authStore.isAuthenticated,
+  isMe: (userId) => userId === currentUserId.value,
+  getSelectedChatId: () => selectedChatId.value,
+  onPresence: applyPresence,
+  onTyping: markPeerTyping,
+  onTypingStop: clearPeerTyping,
+  onChatsSync: refreshChatsQuiet,
+  onThreadSync: refreshOpenThreadQuiet
+})
 
 // ---------- Отправка индикатора «печатает…» ----------
 const TYPING_SEND_INTERVAL_MS = 3000
@@ -1787,39 +1744,6 @@ watch(newMessage, (value) => {
     realtimeStore.send({ type: 'typing', chat_id: chatId })
   }
 })
-
-const stopRealtime = () => {
-  if (fallbackTimer !== null) {
-    window.clearInterval(fallbackTimer)
-    fallbackTimer = null
-  }
-  if (chatSyncTimer !== null) {
-    window.clearTimeout(chatSyncTimer)
-    chatSyncTimer = null
-  }
-  if (threadSyncTimer !== null) {
-    window.clearTimeout(threadSyncTimer)
-    threadSyncTimer = null
-  }
-  realtimeStore.disconnect()
-}
-
-const startRealtime = () => {
-  realtimeStore.setHandler(handleRealtimeEvent)
-  stopRealtime()
-  // Синхронизируемся сразу после подключения (навёрстываем пропущенное).
-  void realtimeStore.connect().then((connected) => {
-    if (connected) {
-      void refreshChatsQuiet()
-      void refreshOpenThreadQuiet()
-    }
-  })
-  fallbackTimer = window.setInterval(() => {
-    if (!authStore.isAuthenticated) return
-    void refreshChatsQuiet()
-    void refreshOpenThreadQuiet()
-  }, REALTIME_FALLBACK_MS)
-}
 
 // ---------- Навигация ----------
 // Пункты верхнего меню «⋯» (сюда будут добавляться новые настройки).
