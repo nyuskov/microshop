@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user
+from api_v1.upload_guard import validate_image_upload
 from api_v1.users import crud, schemas
 from core.models import User, db_helper
 from core.security import get_password_hash
@@ -86,6 +87,8 @@ async def upload_my_avatar(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail="Файл слишком большой (максимум 8 МБ)",
         )
+
+    validate_image_upload(f"avatar.{ext}", content)
 
     db_user = await session.get(User, user.id)
     if db_user is None:

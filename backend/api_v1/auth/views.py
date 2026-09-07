@@ -1,15 +1,11 @@
-"""Эндпоинты аутентификации: токены, OTP и HTTP Basic."""
+"""Эндпоинты аутентификации: токены и OTP."""
 
 import re
 import secrets
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import (
-    HTTPBasic,
-    HTTPBasicCredentials,
-    OAuth2PasswordRequestForm,
-)
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
@@ -30,11 +26,9 @@ from .schemas import (
     TokenResponse,
     VerifyOTPRequest,
 )
-from .utils import authenticate_user, get_auth_user_username
+from .utils import authenticate_user
 
 router = APIRouter(prefix="/auth", tags=["Аутентификация"])
-
-security = HTTPBasic()
 
 PHONE_PATTERN = re.compile(
     r"^\+7\s?\(?(\d{3})\)?[\s.-]?(\d{3})[\s.-]?(\d{2})[\s.-]?(\d{2})$"
@@ -141,24 +135,3 @@ async def verify_otp_endpoint(
     user = await get_or_create_user_by_phone_number(session, phone_number)
     access_token = await get_jwt_strategy().write_token(user)
     return TokenResponse(access_token=access_token, token_type="bearer")
-
-
-@router.get("/basic-auth/")
-def basic_auth_credentials(
-    credentials: Annotated[HTTPBasicCredentials, Depends(security)],
-) -> dict[str, str]:
-    return {
-        "message": "ok",
-        "username": credentials.username,
-        "password": credentials.password,
-    }
-
-
-@router.get("/basic-auth-username/")
-def basic_auth_username(
-    auth_username: str = Depends(get_auth_user_username),
-) -> dict[str, str]:
-    return {
-        "message": "ok",
-        "username": auth_username,
-    }

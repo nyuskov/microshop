@@ -1,9 +1,11 @@
 import asyncio
 import uuid
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.parse import urlparse
+from urllib.request import HTTPRedirectHandler
 from urllib.request import Request as UrlRequest
-from urllib.request import urlopen
+from urllib.request import build_opener
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
@@ -13,6 +15,7 @@ from api_v1.auth.utils import get_current_user
 from api_v1.messages import crud
 from api_v1.messages.schemas import Message as MessageSchema
 from api_v1.messages.schemas import MessageCreate
+from api_v1.upload_guard import validate_attachment_upload
 from core.models import User, db_helper
 
 router = APIRouter(
@@ -87,6 +90,8 @@ async def create_attachment_message(
             detail="Файл слишком большой (максимум 15 МБ)",
         )
 
+    validate_attachment_upload(filename, content)
+
     file_url = _store_upload(content, filename)
     return await crud.send_attachment_message(
         session=session,
@@ -116,15 +121,48 @@ ALLOWED_GIF_HOSTS = {
 }
 
 
+class _NoRedirectHandler(HTTPRedirectHandler):
+    """Запрещает следовать HTTP-редиректам при скачивании GIF.
+
+    urlopen по умолчанию следует редиректам — через них запрос можно увести на
+    внутренние адреса (SSRF). Здесь редирект превращается в ошибку.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl) -> None:
+        raise HTTPError(req.full_url, code, msg, headers, fp)
+
+
 def _download_gif_bytes(url: str, limit: int) -> bytes:
-    """Скачивает GIF по URL (синхронно; вызывается в отдельном потоке)."""
+    """Скачивает GIF по URL без редиректов (вызывается в отдельном потоке)."""
     req = UrlRequest(url, headers={"User-Agent": "microshop/1.0"})
-    with urlopen(req, timeout=20) as response:
-        content = response.read(limit + 1)
+    opener = build_opener(_NoRedirectHandler)
+    try:
+        with opener.open(req, timeout=20) as response:
+            content = response.read(limit + 1)
+            content_type = response.headers.get("Content-Type", "")
+    except HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Недопустимый адрес GIF",
+        ) from exc
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Не удалось загрузить GIF",
+        ) from exc
+
     if len(content) > limit:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail="GIF слишком большой (максимум 15 МБ)",
+        )
+    if not (
+        content_type.lower().startswith("image/gif")
+        or content[:6] in (b"GIF87a", b"GIF89a")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="URL не ведёт на GIF-изображение",
         )
     return content
 
@@ -138,7 +176,12 @@ async def send_gif_message(
     """Скачивает GIF из интернета (Giphy/Tenor) и отправляет как сообщение."""
     parsed = urlparse(payload.url)
     host = (parsed.hostname or "").lower()
-    if parsed.scheme not in ("http", "https") or host not in ALLOWED_GIF_HOSTS:
+    if (
+        parsed.scheme not in ("http", "https")
+        or host not in ALLOWED_GIF_HOSTS
+        or parsed.port is not None
+        or parsed.username is not None
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Недопустимый адрес GIF",

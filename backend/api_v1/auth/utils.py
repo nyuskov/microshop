@@ -5,11 +5,7 @@ from typing import Annotated
 
 import jwt
 from fastapi import Depends, HTTPException, status
-from fastapi.security import (
-    HTTPBasic,
-    HTTPBasicCredentials,
-    OAuth2PasswordBearer,
-)
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
@@ -23,7 +19,6 @@ from ..users.crud import (
     get_user_by_username,
 )
 
-security = HTTPBasic()
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=f"{settings.api_v1_prefix}/auth/token/",
 )
@@ -103,22 +98,3 @@ async def get_current_user(
     # Любая активность с токеном обновляет присутствие («в сети»).
     await touch_last_seen(user, session)
     return user
-
-
-async def get_auth_user_username(
-    credentials: Annotated[HTTPBasicCredentials, Depends(security)],
-    session: AsyncSession = Depends(db_helper.session_dependency),
-) -> str:
-    """Проверяет учётные данные HTTP Basic и возвращает имя пользователя."""
-    unauthed_exc = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Неверное имя пользователя или пароль",
-        headers={"WWW-Authenticate": "Basic"},
-    )
-    user = await get_user_by_username(session, credentials.username)
-    if user is None or not verify_password(
-        credentials.password, user.hashed_password
-    ):
-        raise unauthed_exc
-
-    return credentials.username
