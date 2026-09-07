@@ -63,9 +63,11 @@ export const fetchPinnedMessages = async (chatId: number): Promise<Message[]> =>
   return response.data
 }
 
-/** Удаляет чат у текущего пользователя (покидает; при 0 участников — целиком). */
-export const deleteChat = async (chatId: number): Promise<void> => {
-  await api.delete(`/chats/${chatId}/`)
+/** Удаляет чат: `forAll=false` — только у себя, `forAll=true` — для всех участников. */
+export const deleteChat = async (chatId: number, forAll = false): Promise<void> => {
+  await api.delete(`/chats/${chatId}/`, {
+    params: forAll ? { for_all: 'true' } : {}
+  })
 }
 
 /** Отправляет текстовое сообщение от имени текущего пользователя. */

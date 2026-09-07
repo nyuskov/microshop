@@ -22,6 +22,8 @@ export interface RealtimeSyncOptions {
   onChatsSync: () => Promise<void> | void
   /** Мягкий refetch открытого треда (после дебаунса). */
   onThreadSync: () => Promise<void> | void
+  /** Пришло новое сообщение от собеседника (для уведомлений). */
+  onMessageNew?: (chatId: number) => void
 }
 
 export function useRealtimeSync(options: RealtimeSyncOptions) {
@@ -65,6 +67,7 @@ export function useRealtimeSync(options: RealtimeSyncOptions) {
         // Свои сообщения сервер не пушит — они добавляются сразу при отправке.
         if (options.isMe(event.sender_id)) return
         options.onTypingStop(event.chat_id)
+        options.onMessageNew?.(event.chat_id)
         scheduleChatsSync()
         if (event.chat_id === options.getSelectedChatId()) scheduleThreadSync()
         return

@@ -27,7 +27,7 @@
         :drafts="draftsByChatId"
         @open-message="openGlobalMessage"
         @toggle-pin="toggleChatPinned"
-        @delete-chat="deleteChatOf"
+        @delete-chat="openDeleteChatModal"
         @to-contacts="view = 'contacts'"
         @to-chats="view = 'chats'"
         @open-profile="goToProfile"
@@ -203,6 +203,33 @@
     </template>
   </q-dialog>
 
+  <!-- Удаление чата (для себя / для всех) -->
+  <q-dialog v-model="showDeleteChatModal">
+    <q-card class="delchat-card">
+      <q-card-section class="row no-wrap items-center delchat-head">
+        <div class="text-subtitle1 text-weight-medium ellipsis">Удалить чат</div>
+        <q-space />
+        <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
+      </q-card-section>
+      <q-separator />
+      <q-card-section class="delchat-body">
+        <p class="delchat-text">
+          Удалить чат с <b>{{ deleteChatTitle }}</b
+          >?
+        </p>
+        <q-radio v-model="deleteChatScope" val="me" label="Только у меня" />
+        <div class="delchat-hint">Чат исчезнет из вашего списка; у собеседника останется.</div>
+        <q-radio v-model="deleteChatScope" val="all" label="Для всех" />
+        <div class="delchat-hint">Чат и переписка будут удалены у всех участников.</div>
+      </q-card-section>
+      <q-separator />
+      <q-card-actions align="right" class="delchat-actions">
+        <q-btn flat label="Отмена" v-close-popup />
+        <q-btn flat color="negative" label="Удалить" @click="confirmDeleteChat" />
+      </q-card-actions>
+    </q-card>
+  </q-dialog>
+
   <!-- Login Modal -->
   <LoginModal :visible="showLoginModal" @close-modal="onLoginModalClose" />
 
@@ -225,7 +252,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
-import { useQuasar } from 'quasar'
+import { Notify, useQuasar } from 'quasar'
 import LoginModal from '@/components/LoginModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -626,9 +653,24 @@ const quoteFor = (message: Message): { name: string; mine: boolean; text: string
   }
 }
 
-const quoteClick = () => {
-  // Просто закрываем всплывающие меню (без реальной прокрутки здесь).
+/** Клик по цитате-ответу: закрыть меню и перейти к исходному сообщению. */
+const quoteClick = (message: Message) => {
   emojiPickerFor.value = null
+  const targetId = message.reply_to_id
+  if (targetId == null) return
+  // Исходное сообщение может быть не загружено — тогда ничего не делаем.
+  if (!messages.value.some((item) => item.id === targetId)) return
+  if (highlightTimer !== undefined) {
+    window.clearTimeout(highlightTimer)
+    highlightTimer = undefined
+  }
+  highlightedMessageId.value = targetId
+  void nextTick(() => {
+    threadRef.value?.reveal(targetId)
+    highlightTimer = window.setTimeout(() => {
+      highlightedMessageId.value = null
+    }, 2400)
+  })
 }
 
 const senderNameOfMessage = (message: Message): string => {
@@ -1119,20 +1161,36 @@ const handleBeforeUnload = () => {
   saveDraftFor(selectedChatId.value)
 }
 
-/** Название чата для подтверждения удаления. */
+/** Название чата для модалки удаления. */
 const chatDeleteLabel = (chat: Chat): string => {
   const peer = otherUserOfChat(chat)
   return chat.users.length === 2 && peer ? displayName(peer) : chat.name
 }
 
-/** Удалить чат у себя (покинуть; при 0 участников удаляется целиком). */
-const deleteChatOf = async (chat: Chat) => {
-  const label = chatDeleteLabel(chat)
-  if (!window.confirm(`Удалить чат «${label}»? Переписка исчезнет из вашего списка.`)) {
-    return
-  }
+// ---------- Модалка «Удалить чат» (для себя / для всех) ----------
+const showDeleteChatModal = ref(false)
+const deleteChatTarget = ref<Chat | null>(null)
+const deleteChatScope = ref<'me' | 'all'>('me')
+
+const deleteChatTitle = computed<string>(() =>
+  deleteChatTarget.value ? chatDeleteLabel(deleteChatTarget.value) : ''
+)
+
+/** Открывает модалку удаления (вместо window.confirm). */
+const openDeleteChatModal = (chat: Chat) => {
+  deleteChatTarget.value = chat
+  deleteChatScope.value = 'me'
+  showDeleteChatModal.value = true
+}
+
+/** Подтверждение из модалки: удалить «только у меня» или «для всех». */
+const confirmDeleteChat = async () => {
+  const chat = deleteChatTarget.value
+  if (!chat) return
+  showDeleteChatModal.value = false
+  deleteChatTarget.value = null
   try {
-    await deleteChat(chat.id)
+    await deleteChat(chat.id, deleteChatScope.value === 'all')
     chats.value = chats.value.filter((item) => item.id !== chat.id)
     clearDraftFor(chat.id)
     if (pinnedChatIds.value.includes(chat.id)) toggleChatPinned(chat.id)
@@ -1402,6 +1460,58 @@ const refreshOpenThreadQuiet = async () => {
 }
 
 // Оркестрация (таймеры/события) вынесена в composable.
+// ---------- Уведомления о новых сообщениях + счётчик в заголовке вкладки ----------
+const BASE_DOC_TITLE = 'Microshop — мессенджер'
+
+const totalUnread = computed(() =>
+  chats.value.reduce((sum, chat) => sum + (chat.unread_count || 0), 0)
+)
+
+watch(
+  totalUnread,
+  (count) => {
+    document.title = count > 0 ? `(${count}) ${BASE_DOC_TITLE}` : BASE_DOC_TITLE
+  },
+  { immediate: true }
+)
+
+// Дедупликация уведомлений по чату.
+const lastNotifyAt: Record<number, number> = {}
+const NOTIFY_DEDUPE_MS = 3500
+
+const notifyNewMessage = (chatId: number) => {
+  const now = Date.now()
+  if (now - (lastNotifyAt[chatId] ?? 0) < NOTIFY_DEDUPE_MS) return
+  // Показываем, только если чат не открыт или вкладка свёрнута.
+  if (!document.hidden && selectedChatId.value === chatId) return
+  lastNotifyAt[chatId] = now
+  // Ждём обновления списка чатов — появится last_message с текстом.
+  window.setTimeout(() => {
+    const chat = chats.value.find((item) => item.id === chatId)
+    if (!chat) return
+    const sender = otherUserOfChat(chat)
+    const title = sender ? displayName(sender) : chat.name
+    const text = chat.last_message ? messageSnippet(chat.last_message) : 'Новое сообщение'
+    Notify.create({
+      type: 'info',
+      caption: title,
+      message: text,
+      position: 'top-right',
+      timeout: 4000,
+      actions: [
+        {
+          label: 'Открыть',
+          color: 'white',
+          handler: () => {
+            void openChatThread(chatId)
+          }
+        },
+        { icon: 'close', color: 'white', round: true, dense: true }
+      ]
+    })
+  }, 350)
+}
+
 const { start: startRealtime, stop: stopRealtime } = useRealtimeSync({
   isAuthenticated: () => authStore.isAuthenticated,
   isMe: (userId) => userId === currentUserId.value,
@@ -1410,7 +1520,8 @@ const { start: startRealtime, stop: stopRealtime } = useRealtimeSync({
   onTyping: markPeerTyping,
   onTypingStop: clearPeerTyping,
   onChatsSync: refreshChatsQuiet,
-  onThreadSync: refreshOpenThreadQuiet
+  onThreadSync: refreshOpenThreadQuiet,
+  onMessageNew: notifyNewMessage
 })
 
 // ---------- Отправка индикатора «печатает…» ----------
@@ -1604,5 +1715,34 @@ watch(
   padding: 8px 22px 24px;
   max-height: 82vh;
   overflow: auto;
+}
+
+/* ---------- Модалка удаления чата ---------- */
+.delchat-card {
+  width: min(400px, calc(100vw - 32px));
+  border-radius: 18px;
+}
+
+.delchat-head {
+  padding: 8px 8px 8px 20px;
+}
+
+.delchat-body {
+  padding: 6px 20px 10px;
+}
+
+.delchat-text {
+  margin: 8px 0 10px;
+  font-size: 14.5px;
+}
+
+.delchat-hint {
+  font-size: 12.5px;
+  color: var(--ms-muted, #71808d);
+  margin: -2px 0 8px 30px;
+}
+
+.delchat-actions {
+  padding: 8px 12px;
 }
 </style>
