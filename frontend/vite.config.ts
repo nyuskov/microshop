@@ -7,7 +7,7 @@ import vueJsx from '@vitejs/plugin-vue-jsx'
 // import vueDevTools from 'vite-plugin-vue-devtools' // Comment out vueDevTools
 import checker from 'vite-plugin-checker'
 // vite-plugin-eslint не поставляет типы
-// @ts-ignore
+// @ts-expect-error - модуль без типов
 import eslint from 'vite-plugin-eslint'
 
 // https://vite.dev/config/
@@ -41,6 +41,22 @@ export default defineConfig({
       // Предполагаем, что сертификаты будут смонтированы в /app/certs_from_backend в контейнере
       key: readFileSync('/app/certs_from_backend/server.key'),
       cert: readFileSync('/app/certs_from_backend/server.crt')
+    },
+    proxy: {
+      // Проксируем API/WebSocket и медиа на бэкенд, чтобы фронт ходил на
+      // тот же origin (без CORS и без жёсткой привязки к localhost —
+      // работает и при открытии с LAN-адреса, например с телефона).
+      '/api': {
+        target: 'https://web:8000',
+        changeOrigin: true,
+        secure: false,
+        ws: true
+      },
+      '/media': {
+        target: 'https://web:8000',
+        changeOrigin: true,
+        secure: false
+      }
     },
     hmr: {
       overlay: false // Disable the HMR error overlay

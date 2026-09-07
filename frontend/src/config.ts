@@ -5,17 +5,16 @@
  * chatService (mediaUrl) и stores/call.ts. Теперь он задаётся в одном месте.
  *
  * Можно переопределить через переменную окружения VITE_API_ORIGIN
- * (без завершающего слэша), например:
- *   - http://localhost:8080 — через nginx;
- *   - пустая строка + Vite-proxy — если фронт ходит на тот же origin.
- * По умолчанию: https://<host>:8000 (как раньше).
+ * (без завершающего слэша). Если не задана/пустая — фронт ходит на ТОТ ЖЕ origin
+ * (запросы /api и /media проксируются сервером: vite-proxy или nginx),
+ * поэтому приложение работает и с LAN-адреса (например, с телефона),
+ * а не только с localhost.
  */
 
 function resolveOrigin(): string {
   const fromEnv = (import.meta.env.VITE_API_ORIGIN as string | undefined) ?? ''
-  const trimmed = fromEnv.trim().replace(/\/+$/, '')
-  if (trimmed) return trimmed
-  return `${window.location.protocol}//${window.location.hostname}:8000`
+  // Пусто = тот же origin (vite-proxy / nginx проксируют /api и /media на бэкенд).
+  return fromEnv.trim().replace(/\/+$/, '')
 }
 
 /** Origin бэкенда, например `https://localhost:8000`. */
