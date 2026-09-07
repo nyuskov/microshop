@@ -33,10 +33,31 @@ class Message(IdIntPkMixin, Base):
     reply_to_id: Mapped[int | None] = mapped_column(
         ForeignKey("messages.id", ondelete="SET NULL")
     )
+    # Пересылка: ссылка на исходное сообщение + снимок «от кого», чтобы
+    # показывать плашку «Переслано от …» даже после удаления оригинала.
+    forwarded_from_id: Mapped[int | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    forwarded_sender_id: Mapped[int | None] = mapped_column(
+        ForeignKey("user.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    forwarded_sender_name: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    forwarded_chat_id: Mapped[int | None] = mapped_column(
+        ForeignKey("chats.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     # Статус прочтения для собеседника (только для личных чатов)
-    is_read: Mapped[bool] = mapped_column(default=False, server_default=func.false())
+    is_read: Mapped[bool] = mapped_column(
+        default=False, server_default=func.false()
+    )
     # Закреплено ли сообщение в чате
-    is_pinned: Mapped[bool] = mapped_column(default=False, server_default=func.false())
+    is_pinned: Mapped[bool] = mapped_column(
+        default=False, server_default=func.false()
+    )
     # Время последнего редактирования текста (null — не редактировалось).
     edited_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -48,8 +69,16 @@ class Message(IdIntPkMixin, Base):
     mime_type: Mapped[str | None] = mapped_column(String(120))
     file_size: Mapped[int | None]
 
-    user: Mapped["User"] = relationship(back_populates="messages")
-    chat: Mapped["Chat"] = relationship(back_populates="messages")
+    user: Mapped["User"] = relationship(
+        back_populates="messages",
+        # У Message два FK на user (автор + автор пересылки) — уточняем связь.
+        foreign_keys="Message.user_id",
+    )
+    chat: Mapped["Chat"] = relationship(
+        back_populates="messages",
+        # У Message два FK на chats (чат + исходный чат пересылки).
+        foreign_keys="Message.chat_id",
+    )
     reactions: Mapped[list["MessageReaction"]] = relationship(
         back_populates="message",
         cascade="all, delete-orphan",

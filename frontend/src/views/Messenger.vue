@@ -82,16 +82,12 @@
           <!-- Панель ввода (композер) -->
           <MessageComposer
             :chat-id="selectedChat.id"
-            :chats="chats"
-            :current-user-id="currentUserId"
             v-model:new-message="newMessage"
-            v-model:forward-chat-id="forwardChatId"
             :sending="sending"
             :send-error="sendError"
             :reply-target="replyTarget"
             :reply-bar-name="replyBarName"
             :editing-message="editingMessage"
-            :forward-source="forwardSource"
             :emoji-menu-open="emojiMenuOpen"
             :gif-panel-open="gifPanelOpen"
             :voice-rec-open="voiceRecOpen"
@@ -101,8 +97,6 @@
             @send-text="sendText"
             @file-selected="onFileSelected"
             @cancel-edit="cancelEditing"
-            @send-forward="sendForward"
-            @cancel-forward="cancelForward"
             @clear-reply="clearReply"
             @voice-cancel="onVoiceCancel"
             @voice-send="onVoiceSend"
@@ -119,6 +113,18 @@
       </main>
     </div>
   </div>
+
+  <!-- Пересылка сообщения (список чатов) -->
+  <ForwardDialog
+    v-if="forwardSource"
+    :source="forwardSource"
+    :chats="chats"
+    :current-user-id="currentUserId"
+    :current-chat-id="selectedChatId"
+    :sending="forwardBusy"
+    @close="cancelForward"
+    @forward="sendForward"
+  />
 
   <!-- Profile Modal -->
   <Dialog
@@ -202,6 +208,7 @@ import InlineSearchBar from '@/components/messenger/InlineSearchBar.vue'
 import PinnedBar from '@/components/messenger/PinnedBar.vue'
 import MessageThread from '@/components/messenger/MessageThread.vue'
 import MessageComposer from '@/components/messenger/MessageComposer.vue'
+import ForwardDialog from '@/components/messenger/ForwardDialog.vue'
 import VideoRecorderModal from '@/components/media/VideoRecorderModal.vue'
 import { useCallStore } from '@/stores/call'
 import { useRealtimeStore } from '@/stores/realtime'
@@ -794,14 +801,15 @@ const copyMessage = async (message: Message) => {
 
 // ---------- Редактирование / пересылка ----------
 const editingMessage = ref<Message | null>(null)
+/** Пересылаемое сообщение; пока не null — открыт диалог выбора чатов. */
 const forwardSource = ref<Message | null>(null)
-const forwardChatId = ref<number | null>(null)
+/** Идёт ли отправка пересылок (блокирует кнопки диалога). */
+const forwardBusy = ref(false)
 
 const startEditMessage = (message: Message) => {
   if (!isOwnMessage(message)) return
   clearReply()
-  forwardSource.value = null
-  forwardChatId.value = null
+  cancelForward()
   editingMessage.value = message
   newMessage.value = message.text || ''
 }
@@ -811,34 +819,40 @@ const cancelEditing = () => {
   newMessage.value = ''
 }
 
+/** Открывает диалог «Переслать»: пользователь сам выбирает чаты списком. */
 const openForward = (message: Message) => {
   cancelEditing()
+  closePopups()
   forwardSource.value = message
-  forwardChatId.value =
-    chats.value.find((chat) => chat.id !== selectedChatId.value)?.id ?? chats.value[0]?.id ?? null
 }
 
 const cancelForward = () => {
   forwardSource.value = null
-  forwardChatId.value = null
+  forwardBusy.value = false
 }
 
-const sendForward = async () => {
+/** Пересылает сообщение в выбранные чаты (по одному запросу на чат). */
+const sendForward = async (chatIds: number[]) => {
   const source = forwardSource.value
-  const targetChatId = forwardChatId.value
-  if (!source || targetChatId === null) return
+  if (!source || chatIds.length === 0) return
+  forwardBusy.value = true
   try {
-    const sent = await forwardMessage(source.id, targetChatId)
-    cancelForward()
-    sendTypingStop(targetChatId)
-    if (selectedChatId.value === targetChatId) {
-      messages.value = appendMessage(messages.value, sent)
-      await loadPinned(targetChatId)
-    } else {
-      await loadChats()
+    for (const targetChatId of chatIds) {
+      const sent = await forwardMessage(source.id, targetChatId)
+      sendTypingStop(targetChatId)
+      if (selectedChatId.value === targetChatId) {
+        messages.value = appendMessage(messages.value, sent)
+        await loadPinned(targetChatId)
+      }
     }
+    // Обновляем список: пересланные чаты поднимутся наверх с новым превью.
+    await loadChats()
+    cancelForward()
   } catch (error) {
     console.error('Не удалось переслать сообщение:', getErrorMessage(error))
+    cancelForward()
+  } finally {
+    forwardBusy.value = false
   }
 }
 

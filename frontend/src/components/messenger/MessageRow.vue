@@ -5,6 +5,12 @@
     :data-message-id="message.id"
   >
     <div class="msg-bubble" :class="{ 'round-video-only': isRoundVideoOnly(message) }">
+      <!-- Плашка «Переслано от …» -->
+      <div v-if="forwardLabel" class="forward-banner">
+        <i class="pi pi-share-alt"></i>
+        <span>{{ forwardLabel }}</span>
+      </div>
+
       <!-- Ответ-цитата -->
       <div
         v-if="message.reply_to_id && quote"
@@ -146,6 +152,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Message } from '@/types'
 import { mediaUrl } from '@/config'
 import { formatBytes, formatMsgTime } from '@/utils/format'
@@ -166,9 +173,11 @@ export interface MessageQuote {
   text: string
 }
 
-defineProps<{
+const props = defineProps<{
   message: Message
   isOwn: boolean
+  /** Id текущего зрителя — чтобы плашка была «Переслано от вас». */
+  viewerId: number | null
   /** Подсветка при переходе к сообщению (из закреплённых/поиска). */
   highlighted: boolean
   /** Открыт ли выбор эмодзи-реакций для этой строки. */
@@ -176,6 +185,17 @@ defineProps<{
   /** Данные ответа-цитаты (null, если цитируемое сообщение не загружено). */
   quote: MessageQuote | null
 }>()
+
+/** Текст плашки «Переслано от …» (null, если сообщение не переслано). */
+const forwardLabel = computed<string | null>(() => {
+  const forwarded = props.message.forwarded_from
+  if (!forwarded) return null
+  if (props.viewerId !== null && forwarded.sender_id === props.viewerId) {
+    return 'Переслано от вас'
+  }
+  const name = forwarded.sender_name?.trim()
+  return name ? `Переслано от ${name}` : 'Переслано'
+})
 
 const emit = defineEmits<{
   (e: 'quote-click'): void
@@ -279,6 +299,26 @@ const hasMyReaction = (message: Message, emoji: string): boolean =>
   font-style: italic;
   opacity: 0.75;
   margin-right: 6px;
+}
+
+/* Плашка «Переслано от …» (как в Telegram: мелко, над содержимым) */
+.forward-banner {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: -1px 0 3px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ms-info, #3aa6e0);
+  letter-spacing: 0.1px;
+  user-select: none;
+}
+
+.forward-banner i {
+  font-size: 11px;
+  opacity: 0.85;
+  flex: none;
 }
 
 /* Ответ-цитата */

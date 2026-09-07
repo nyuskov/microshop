@@ -13,32 +13,6 @@
       </button>
     </div>
 
-    <!-- Пересылка сообщения -->
-    <div v-else-if="forwardSource" class="reply-bar mode-bar forward-bar">
-      <span class="reply-bar-name">Переслать:</span>
-      <select v-model="forwardChatId" class="forward-chat-select">
-        <option
-          v-for="chat in chats"
-          :key="chat.id"
-          :value="chat.id"
-          :disabled="chat.id === chatId"
-        >
-          {{ chatTitleOf(chat) }}
-        </option>
-      </select>
-      <button
-        class="round-btn"
-        title="Переслать"
-        :disabled="forwardChatId === null"
-        @click="emit('send-forward')"
-      >
-        <i class="pi pi-send"></i>
-      </button>
-      <button class="icon-btn" title="Отмена" @click="emit('cancel-forward')">
-        <i class="pi pi-times"></i>
-      </button>
-    </div>
-
     <!-- Цитата ответа -->
     <div v-if="replyTarget" class="reply-bar">
       <div class="reply-bar-info">
@@ -147,24 +121,20 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { Chat, Message } from '@/types'
-import { chatPeerTitle } from '@/utils/user'
+import type { Message } from '@/types'
 import { messageSnippet } from '@/utils/media'
 import VoiceRecorderBar from '@/components/media/VoiceRecorderBar.vue'
 import GifPicker from '@/components/media/GifPicker.vue'
 import type { RecordedMedia } from '@/services/recorder'
 
-const props = defineProps<{
+defineProps<{
   chatId: number | null
-  chats: Chat[]
-  currentUserId: number | null
   sending: boolean
   sendError: string
   replyTarget: Message | null
   /** Название в шапке цитаты ответа (вычисляется родителем). */
   replyBarName: string
   editingMessage: Message | null
-  forwardSource: Message | null
   emojiMenuOpen: boolean
   gifPanelOpen: boolean
   voiceRecOpen: boolean
@@ -173,16 +143,13 @@ const props = defineProps<{
   recordModeHint: string
 }>()
 
-// Текст в поле ввода (v-model) и выбор чата для пересылки — изменяются в композере.
+// Текст в поле ввода (v-model) изменяется в композере.
 const newMessage = defineModel<string>('newMessage', { required: true })
-const forwardChatId = defineModel<number | null>('forwardChatId', { default: null })
 
 const emit = defineEmits<{
   (e: 'send-text'): void
   (e: 'file-selected', file: File): void
   (e: 'cancel-edit'): void
-  (e: 'send-forward'): void
-  (e: 'cancel-forward'): void
   (e: 'clear-reply'): void
   (e: 'voice-cancel'): void
   (e: 'voice-send', payload: RecordedMedia): void
@@ -197,8 +164,6 @@ const emit = defineEmits<{
 }>()
 
 const INPUT_EMOJIS = ['😀', '😁', '😂', '🤣', '😊', '😍', '😎', '🤔', '👍', '👎', '❤️', '🔥']
-
-const chatTitleOf = (chat: Chat): string => chatPeerTitle(chat, props.currentUserId)
 
 const attachInput = ref<HTMLInputElement | null>(null)
 
@@ -426,16 +391,6 @@ const onFileSelected = (event: Event) => {
 
 .hidden-file {
   display: none;
-}
-
-.forward-chat-select {
-  max-width: 220px;
-  padding: 4px 6px;
-  border: 1px solid #d4d9e0;
-  border-radius: 8px;
-  background: #fff;
-  color: inherit;
-  font-size: 13px;
 }
 
 /* Палитра эмодзи в поле ввода (расположена над строкой ввода) */

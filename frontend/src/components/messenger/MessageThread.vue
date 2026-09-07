@@ -18,6 +18,7 @@
           v-else
           :message="row.message"
           :is-own="row.message.user_id === currentUserId"
+          :viewer-id="currentUserId"
           :highlighted="highlightedMessageId === row.message.id"
           :emoji-picker-open="emojiPickerFor === row.message.id"
           :quote="quoteOf(row.message)"

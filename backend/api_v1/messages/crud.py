@@ -10,7 +10,13 @@ from sqlalchemy.orm import selectinload
 
 from api_v1.chats.crud import is_user_chat_member
 from api_v1.events.service import notify_chat
-from core.models import Chat, Message, MessageReaction, user_chat_association_table
+from core.models import (
+    Chat,
+    Message,
+    MessageReaction,
+    User,
+    user_chat_association_table,
+)
 
 _NOT_MEMBER_DETAIL = "Вы не являетесь участником этого чата"
 
@@ -44,6 +50,29 @@ def _reactions_payload(reactions: list[MessageReaction], user_id: int) -> list[d
     return list(aggregated.values())
 
 
+def _user_display_name(user: User) -> str:
+    """Отображаемое имя пользователя (как displayName на фронте)."""
+    if user.first_name and user.last_name:
+        return f"{user.first_name} {user.last_name}"
+    if user.first_name:
+        return user.first_name
+    if user.last_name:
+        return user.last_name
+    return user.username
+
+
+def _forwarded_payload(message: Message) -> dict | None:
+    """Снимок пересылки («переслано от …») либо None для обычных сообщений."""
+    if message.forwarded_from_id is None:
+        return None
+    return {
+        "id": message.forwarded_from_id,
+        "sender_id": message.forwarded_sender_id,
+        "sender_name": message.forwarded_sender_name or "",
+        "chat_id": message.forwarded_chat_id,
+    }
+
+
 def message_to_dict(message: Message, user_id: int) -> dict:
     """Преобразует сообщение (с загруженными реакциями) в словарь для API."""
     return {
@@ -58,6 +87,7 @@ def message_to_dict(message: Message, user_id: int) -> dict:
         "edited_at": message.edited_at,
         "file": _file_payload(message),
         "reactions": _reactions_payload(message.reactions, user_id),
+        "forwarded_from": _forwarded_payload(message),
     }
 
 
@@ -75,6 +105,7 @@ def message_basic_to_dict(message: Message) -> dict:
         "edited_at": message.edited_at,
         "file": _file_payload(message),
         "reactions": [],
+        "forwarded_from": _forwarded_payload(message),
     }
 
 
@@ -471,6 +502,9 @@ async def forward_message(
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
 
+    # Снимок автора оригинала для плашки «Переслано от …».
+    source_sender = await session.get(User, source.user_id)
+
     forwarded = Message(
         text=source.text or "",
         chat_id=chat_id,
@@ -480,6 +514,12 @@ async def forward_message(
         file_url=source.file_url,
         mime_type=source.mime_type,
         file_size=source.file_size,
+        forwarded_from_id=source.id,
+        forwarded_sender_id=source.user_id,
+        forwarded_sender_name=(
+            _user_display_name(source_sender) if source_sender is not None else ""
+        ),
+        forwarded_chat_id=source.chat_id,
     )
     session.add(forwarded)
     await session.commit()

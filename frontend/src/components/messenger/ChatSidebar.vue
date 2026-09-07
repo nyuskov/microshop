@@ -308,8 +308,9 @@ const previewText = (chat: Chat): string => {
   const last = chat.last_message
   if (!last) return 'Нет сообщений'
   const prefix = props.currentUserId !== null && last.user_id === props.currentUserId ? 'Вы: ' : ''
-  if (last.file) return `${prefix}${mediaTypeLabel(last.file)}`
-  return `${prefix}${last.text}`
+  const body = last.file ? mediaTypeLabel(last.file) : last.text
+  if (last.forwarded_from) return `${prefix}↪ Переслано: ${body}`
+  return `${prefix}${body}`
 }
 
 const toggleSettingsMenu = () => {

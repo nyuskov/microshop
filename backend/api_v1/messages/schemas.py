@@ -38,6 +38,15 @@ class ReactionSummary(BaseModel):
     reacted_by_me: bool = False
 
 
+class ForwardedFrom(BaseModel):
+    """Данные плашки «Переслано от …» (снимок на момент пересылки)."""
+
+    id: int
+    sender_id: int | None = None
+    sender_name: str = ""
+    chat_id: int | None = None
+
+
 class Message(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -52,3 +61,4 @@ class Message(BaseModel):
     edited_at: datetime | None = None
     file: MessageFile | None = None
     reactions: list[ReactionSummary] = Field(default_factory=list)
+    forwarded_from: ForwardedFrom | None = None

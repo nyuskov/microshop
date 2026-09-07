@@ -22,6 +22,14 @@ export interface ReactionSummary {
   reacted_by_me: boolean
 }
 
+/** Данные плашки «Переслано от …» (снимок на момент пересылки). */
+export interface ForwardedFrom {
+  id: number
+  sender_id: number | null
+  sender_name: string
+  chat_id: number | null
+}
+
 export interface Chat {
   id: number
   name: string
@@ -42,6 +50,7 @@ export interface Message {
   edited_at: string | null
   file: MessageFile | null
   reactions: ReactionSummary[]
+  forwarded_from: ForwardedFrom | null
 }
 
 export interface CreateMessageRequest {
