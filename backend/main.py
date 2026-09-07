@@ -1,12 +1,17 @@
+import logging
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from api_v1 import router_v1
 from core.config import settings
+from core.models import db_helper
+
+logger = logging.getLogger("microshop")
 
 app = FastAPI(
     title="Microshop",
@@ -36,6 +41,33 @@ app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
 )
 async def read_root() -> dict[str, str]:
     return {"Hello": "World"}
+
+
+@app.get(
+    "/health",
+    tags=["Базовый функционал"],
+    summary="Liveness-проверка",
+)
+async def health() -> dict[str, str]:
+    """Жив ли процесс (без обращения к БД)."""
+    return {"status": "ok"}
+
+
+@app.get(
+    "/health/ready",
+    tags=["Базовый функционал"],
+    summary="Readiness-проверка (доступность БД)",
+)
+async def health_ready(response: Response) -> dict[str, str]:
+    """Готов ли сервис принимать трафик (проверка соединения с БД)."""
+    try:
+        async with db_helper.session_factory() as session:
+            await session.execute(text("SELECT 1"))
+        return {"status": "ok", "database": "ok"}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Readiness check failed: %s", exc)
+        response.status_code = 503
+        return {"status": "error", "database": "unreachable"}
 
 
 if __name__ == "__main__":

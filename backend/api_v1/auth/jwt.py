@@ -2,7 +2,8 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi_users import FastAPIUsers
 from fastapi_users.authentication import (
     AuthenticationBackend,
@@ -16,6 +17,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from api_v1.auth.schemas import TokenResponse
+from api_v1.auth.utils import (
+    REFRESH_TOKEN_AUDIENCE,
+    REFRESH_TOKEN_TYPE,
+    build_refresh_token,
+    decode_jwt,
+)
+from api_v1.users.crud import get_user_by_id
 from api_v1.users.schemas import UserUpdateWithProfileSchema, UserWithDetailsSchema
 from core.config import settings
 from core.models import Profile, User, db_helper
@@ -126,3 +135,52 @@ async def update_me(
     )
     result = await session.execute(stmt)
     return result.scalar_one()
+
+
+@router.post("/auth/refresh", response_model=TokenResponse)
+async def refresh_access_token(
+    request: Request,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> TokenResponse:
+    """Обменивает refresh-токен на новую пару (access + refresh, ротация).
+
+    Фронт держит refresh-токен в сторе и обращается сюда при 401 от API.
+    Refresh-токен не является access-токеном (отдельный aud и claim type),
+    поэтому сюда нельзя «подсунуть» обычный токен.
+    """
+    unauthorized = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Недействительный refresh-токен",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    auth_header = request.headers.get("Authorization", "")
+    scheme, _, token = auth_header.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise unauthorized
+
+    try:
+        payload = decode_jwt(token)
+    except jwt.InvalidTokenError as exc:
+        raise unauthorized from exc
+
+    if (
+        payload.get("type") != REFRESH_TOKEN_TYPE
+        or payload.get("aud") != REFRESH_TOKEN_AUDIENCE
+    ):
+        raise unauthorized
+
+    sub_value = str(payload.get("sub", ""))
+    if not sub_value.isdigit():
+        raise unauthorized
+
+    user = await get_user_by_id(session, int(sub_value))
+    if user is None:
+        raise unauthorized
+
+    access_token = await get_jwt_strategy().write_token(user)
+    refresh_token = build_refresh_token(user.id)
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=refresh_token,
+    )

@@ -136,10 +136,6 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    async setCsrfToken() {
-      await axios.get(`${backendServer}/api/v1/set-csrf-token`)
-    },
-
     async refreshTokens() {
       if (!this.refreshToken) {
         throw new Error('No refresh token available')
@@ -245,21 +241,3 @@ export const useAuthStore = defineStore('auth', {
     }
   }
 })
-
-export function getAddress(): string {
-  return window.location.hostname
-}
-
-// Получение CSRF-токена из cookie (используется другими частями приложения)
-export function getCSRFToken(): string | null {
-  const name = 'csrf_token'
-  const cookies = document.cookie.split(';')
-  for (const cookie of cookies) {
-    const trimmed = cookie.trim()
-    if (trimmed.substring(0, name.length + 1) === `${name}=`) {
-      return decodeURIComponent(trimmed.substring(name.length + 1))
-    }
-  }
-  console.warn('CSRF cookie not found. A request to set it may be needed.')
-  return null
-}

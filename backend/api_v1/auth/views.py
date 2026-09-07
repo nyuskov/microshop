@@ -1,5 +1,6 @@
 """Эндпоинты аутентификации: токены и OTP."""
 
+import logging
 import re
 import secrets
 from typing import Annotated
@@ -16,7 +17,9 @@ from ..users.crud import get_or_create_user_by_phone_number
 from .jwt import get_jwt_strategy
 from .otp_storage import OtpVerifyResult, can_request_new_code, store_otp, verify_otp
 from .schemas import OTPResponse, RequestOTPRequest, TokenResponse, VerifyOTPRequest
-from .utils import authenticate_user
+from .utils import authenticate_user, build_refresh_token
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Аутентификация"])
 
@@ -37,7 +40,7 @@ def validate_phone_number_format(phone_number: str) -> bool:
 
 def send_sms_otp(phone_number: str, otp_code: str) -> None:
     """Заглушка отправки SMS. В проде — вызов API провайдера."""
-    print(f"Sending SMS to {phone_number}: Your OTP code is {otp_code}")
+    logger.info("SMS to %s: OTP code is %s", phone_number, otp_code)
 
 
 @router.post("/token/", response_model=Token)
@@ -59,7 +62,11 @@ async def login_for_access_token(
         )
 
     access_token = await get_jwt_strategy().write_token(user)
-    return Token(access_token=access_token, token_type="bearer")
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=build_refresh_token(user.id),
+    )
 
 
 @router.post("/request-otp/", response_model=OTPResponse)
@@ -124,4 +131,8 @@ async def verify_otp_endpoint(
 
     user = await get_or_create_user_by_phone_number(session, phone_number)
     access_token = await get_jwt_strategy().write_token(user)
-    return TokenResponse(access_token=access_token, token_type="bearer")
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=build_refresh_token(user.id),
+    )

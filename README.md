@@ -393,3 +393,16 @@ docker exec -it microshop-db-1 psql -U postgres -d microshop
 2. Из-за смены пароля БД пересоздайте volume: `./entry.sh` (снимет дамп и поднимет заново) или `docker compose down -v && docker compose up --build`.
 3. Применятся новые миграции (`otp_codes`, индекс `messages`).
 4. Если репозиторий публичный — смените/ротируйте секреты из git-истории.
+
+### Итерация 2 (2026-09-07)
+
+- **Refresh-токены заработали**: `POST /jwt/auth/refresh` обменивает refresh на новую пару (access + refresh). Refresh — отдельный JWT (`aud: microshop:refresh`, `type: refresh`), не принимается как access (`get_current_user` отклоняет). Выдаётся при OTP-входе и `/auth/token`. Раньше `/jwt/auth/refresh` не существовал, refreshToken всегда был null, и сессия обрывалась через ~30 мин.
+- **Удалён CSRF-рудимент**: эндпоинт `GET /set-csrf-token` (модуль `general.py`) и фронт-хелперы `setCsrfToken`/`getCSRFToken`/`getAddress` — CSRF не используется (JWT в заголовке).
+- **Health**: `GET /health` (liveness) и `GET /health/ready` (проверка БД, 503 при недоступности) в `main.py`.
+- **Логирование**: SMS-заглушка пишет через `logging` вместо `print`.
+- **Зависимости**: `python-jose` удалён; `PyJWT` добавлен явно (именно его использует `import jwt`). Обновился `poetry.lock` (убраны rsa/pyasn1/six).
+- **Docker**: `backend/Dockerfile` — не-root пользователь `microshop` (uid 1000, совпадает с uid хоста для dev-тома), venv/кеш poetry в `/home/microshop` (вне `/app`, чтобы не прятаться под bind-томом). `.dockerignore` исключает `backend/media/`, `db_dump/`, `*.sql`, `.env`.
+- **Очистка «сирот» медиа**: `backend/scripts/cleanup_orphan_media.py` (dry-run по умолчанию, `--delete` для удаления) — находит файлы в `media/`, на которые нет ссылок в БД. Запуск: `poetry run python -m scripts.cleanup_orphan_media [--delete]` (с доступом к БД, напр. в контейнере `web`).
+- `CORS_ORIGINS` можно задать в `.env` (JSON-список), см. `.env.example`.
+
+> Осталось (крупные, по порядку): real-time (WebSocket) для сообщений, декомпозиция `Messenger.vue`, TURN для звонков, подгрузка старых сообщений в UI, индикатор «печатает», расширение тестов.

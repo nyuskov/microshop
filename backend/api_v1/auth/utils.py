@@ -1,6 +1,6 @@
 """Вспомогательные функции для аутентификации и работы с JWT."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 import jwt
@@ -21,6 +21,12 @@ oauth2_scheme = OAuth2PasswordBearer(
 
 # Как часто обновлять last_seen в БД при активности пользователя.
 LAST_SEEN_UPDATE_SECONDS = 10
+
+# Аудитория access-токенов fastapi-users (используется по умолчанию JWTStrategy).
+TOKEN_AUDIENCE = "fastapi-users:auth"
+# Refresh-токены: отдельный aud и type, чтобы их нельзя было использовать как access.
+REFRESH_TOKEN_TYPE = "refresh"
+REFRESH_TOKEN_AUDIENCE = "microshop:refresh"
 
 
 async def touch_last_seen(user: User, session: AsyncSession) -> None:
@@ -46,6 +52,27 @@ def decode_jwt(token: str | bytes) -> dict:
         settings.auth_jwt.secret_key,
         algorithms=[settings.auth_jwt.algorithm],
         options={"verify_aud": False},
+    )
+
+
+def build_refresh_token(user_id: int) -> str:
+    """Создаёт refresh-токен (долгоживущий, с отдельным aud и claim type).
+
+    Такой токен принимается только эндпоинтом ``/jwt/auth/refresh`` и не может
+    использоваться как access (см. guard в get_current_user и проверку aud).
+    """
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user_id),
+        "type": REFRESH_TOKEN_TYPE,
+        "aud": REFRESH_TOKEN_AUDIENCE,
+        "iat": now,
+        "exp": now + timedelta(days=settings.auth_jwt.refresh_token_expire_days),
+    }
+    return jwt.encode(
+        payload,
+        settings.auth_jwt.secret_key,
+        algorithm=settings.auth_jwt.algorithm,
     )
 
 
@@ -78,6 +105,10 @@ async def get_current_user(
         payload = decode_jwt(token)
     except jwt.InvalidTokenError as exc:
         raise credentials_exception from exc
+
+    # Refresh-токены не должны работать как access.
+    if payload.get("type") == REFRESH_TOKEN_TYPE:
+        raise credentials_exception
 
     sub_value = str(payload.get("sub", ""))
     if not sub_value:

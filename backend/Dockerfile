@@ -1,16 +1,33 @@
-# Use a alpine Python image
+# Используем alpine Python
 FROM python:3.13-alpine
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# Copy the application code
+# Не-root пользователь (uid 1000 совпадает с uid хоста, чтобы dev-том ./backend:/app
+# оставался доступным на запись; медиа/кеши пишутся не от root).
+RUN addgroup -S -g 1000 microshop \
+    && adduser -S -u 1000 -G microshop -h /home/microshop microshop
+
+# Венв и кеш poetry — в домашнем каталоге пользователя (НЕ в /app: /app в dev
+# перекрывается bind-томом хоста).
+ENV HOME=/home/microshop \
+    POETRY_CACHE_DIR=/home/microshop/.cache/pypoetry \
+    POETRY_VIRTUALENVS_PATH=/home/microshop/.cache/pypoetry/virtualenvs
+
+# Сначала зависимости — для кеширования слоёв
+COPY ./backend/pyproject.toml ./backend/poetry.lock ./
+RUN pip install --no-cache-dir poetry \
+    && poetry install --no-root --no-interaction
+
+# Код приложения
 COPY ./backend .
 
-# Install dependencies
-RUN pip install poetry && poetry install --no-root
+# Даём пользователю писать в media (сообщения/аватары)
+RUN mkdir -p /app/media/avatars \
+    && chown -R microshop:microshop /home/microshop /app/media
 
-# Expose the port your FastAPI app listens on
+USER microshop
+
 EXPOSE 8000
 
 # Command to run the application when the container starts.

@@ -1,0 +1,92 @@
+"""Удаляет файлы-«сироты» в media (на которые нет ссылок в БД).
+
+Файлы сообщений (messages.file_url) и аватары (user.avatar_url), оставшиеся на
+диске после удаления записей или сбоев, копятся бесконечно. Скрипт находит файлы
+в backend/media, на которые нет ссылок в БД, и (по флагу) удаляет их.
+
+Запуск (нужен доступ к БД, например внутри контейнера web):
+    poetry run python -m scripts.cleanup_orphan_media           # dry-run, только список
+    poetry run python -m scripts.cleanup_orphan_media --delete  # реальное удаление
+
+Для cron добавьте строку (в контейнере/хосте с доступом к БД):
+    0 4 * * * cd /path && poetry run python -m scripts.cleanup_orphan_media --delete
+"""
+
+import argparse
+import asyncio
+from pathlib import Path
+
+from sqlalchemy import select
+
+from core.models import Message, User, db_helper
+
+MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
+
+
+def _collect_names(urls: list[str | None]) -> set[str]:
+    """Из /media/... URL достаёт имена файлов."""
+    names: set[str] = set()
+    for url in urls or []:
+        if not url or not url.startswith("/media/"):
+            continue
+        names.add(Path(url).name)
+    return names
+
+
+async def _collect_used(session) -> set[str]:
+    """Имена файлов, на которые ссылаются сообщения и аватары."""
+    used: set[str] = set()
+
+    result = await session.execute(
+        select(Message.file_url).where(Message.file_url.is_not(None))
+    )
+    used |= _collect_names([row[0] for row in result.all()])
+
+    result = await session.execute(
+        select(User.avatar_url).where(User.avatar_url.is_not(None))
+    )
+    used |= _collect_names([row[0] for row in result.all()])
+
+    return used
+
+
+def _find_orphans(used: set[str]) -> list[Path]:
+    """Файлы в media и media/avatars, имени которых нет среди используемых."""
+    orphans: list[Path] = []
+    for folder in (MEDIA_DIR, MEDIA_DIR / "avatars"):
+        if not folder.is_dir():
+            continue
+        for path in folder.iterdir():
+            if path.is_file() and path.name not in used:
+                orphans.append(path)
+    return orphans
+
+
+async def _run(delete: bool) -> None:
+    async with db_helper.session_factory() as session:
+        used = await _collect_used(session)
+    orphans = _find_orphans(used)
+
+    action = (
+        "УДАЛЕНО" if delete else "найдено (dry-run, без --delete ничего не удаляется)"
+    )
+    print(f"Файлов со ссылками в БД: {len(used)}; {action}: {len(orphans)}")
+    for path in sorted(orphans):
+        if delete:
+            path.unlink(missing_ok=True)
+        print(f"  {path.relative_to(MEDIA_DIR.parent.parent)}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--delete",
+        action="store_true",
+        help="реально удалять файлы (без флага — только показать)",
+    )
+    args = parser.parse_args()
+    asyncio.run(_run(delete=args.delete))
+
+
+if __name__ == "__main__":
+    main()
