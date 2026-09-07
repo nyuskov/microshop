@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api_v1.chats.crud import is_user_chat_member
+from api_v1.events.service import notify_chat
 from core.models import Chat, Message, MessageReaction
 
 _NOT_MEMBER_DETAIL = "Вы не являетесь участником этого чата"
@@ -149,7 +150,19 @@ async def send_text_message(
     session.add(message)
     await session.commit()
 
-    return await _reload_and_serialize(session, message.id, user_id)
+    result = await _reload_and_serialize(session, message.id, user_id)
+    await notify_chat(
+        session,
+        chat_id=chat_id,
+        payload={
+            "type": "message.new",
+            "chat_id": chat_id,
+            "message_id": message.id,
+            "sender_id": user_id,
+        },
+        exclude_user_id=user_id,
+    )
+    return result
 
 
 async def send_attachment_message(
@@ -182,7 +195,19 @@ async def send_attachment_message(
     session.add(message)
     await session.commit()
 
-    return await _reload_and_serialize(session, message.id, user_id)
+    result = await _reload_and_serialize(session, message.id, user_id)
+    await notify_chat(
+        session,
+        chat_id=chat_id,
+        payload={
+            "type": "message.new",
+            "chat_id": chat_id,
+            "message_id": message.id,
+            "sender_id": user_id,
+        },
+        exclude_user_id=user_id,
+    )
+    return result
 
 
 async def _validate_reply(
@@ -214,7 +239,7 @@ async def list_chat_messages(
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
 
     # Помечаем сообщения собеседника прочитанными
-    await session.execute(
+    update_result = await session.execute(
         update(Message)
         .where(
             Message.chat_id == chat_id,
@@ -224,6 +249,7 @@ async def list_chat_messages(
         .values(is_read=True)
     )
     await session.commit()
+    marked_read = (update_result.rowcount or 0) > 0
 
     stmt = select(Message).where(Message.chat_id == chat_id)
     if before_id is not None:
@@ -240,7 +266,19 @@ async def list_chat_messages(
     rows = list(result.scalars().all())
     if limit is not None:
         rows.reverse()
-    return [message_to_dict(message, user_id) for message in rows]
+    items = [message_to_dict(message, user_id) for message in rows]
+    if marked_read:
+        await notify_chat(
+            session,
+            chat_id=chat_id,
+            payload={
+                "type": "chat.read",
+                "chat_id": chat_id,
+                "reader_id": user_id,
+            },
+            exclude_user_id=user_id,
+        )
+    return items
 
 
 async def list_pinned_messages(
@@ -269,6 +307,7 @@ async def delete_message(
             detail="Удалить можно только своё сообщение",
         )
 
+    chat_id = message.chat_id
     file_path = _resolve_media_file(message.file_url)
     await session.delete(message)
     await session.commit()
@@ -279,6 +318,18 @@ async def delete_message(
             file_path.unlink(missing_ok=True)
         except OSError:
             pass
+
+    await notify_chat(
+        session,
+        chat_id=chat_id,
+        payload={
+            "type": "message.changed",
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "kind": "deleted",
+        },
+        exclude_user_id=user_id,
+    )
 
 
 def _resolve_media_file(file_url: str | None) -> Path | None:
@@ -296,10 +347,23 @@ async def set_message_pinned(
 ) -> dict:
     """Закрепляет/открепляет сообщение."""
     message = await _get_member_message(session, message_id, user_id)
+    chat_id = message.chat_id
     message.is_pinned = is_pinned
     await session.commit()
 
-    return await _reload_and_serialize(session, message_id, user_id)
+    result = await _reload_and_serialize(session, message_id, user_id)
+    await notify_chat(
+        session,
+        chat_id=chat_id,
+        payload={
+            "type": "message.changed",
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "kind": "pin",
+        },
+        exclude_user_id=user_id,
+    )
+    return result
 
 
 async def set_reaction(
@@ -310,19 +374,22 @@ async def set_reaction(
     emoji: str | None,
 ) -> dict:
     """Устанавливает или снимает реакцию текущего пользователя."""
-    await _get_member_message(session, message_id, user_id)
+    message = await _get_member_message(session, message_id, user_id)
+    chat_id = message.chat_id
 
     stmt = select(MessageReaction).where(
         MessageReaction.message_id == message_id,
         MessageReaction.user_id == user_id,
     )
-    result = await session.execute(stmt)
-    reaction = result.scalar_one_or_none()
+    reaction_result = await session.execute(stmt)
+    reaction = reaction_result.scalar_one_or_none()
 
+    changed = False
     if not emoji:
         if reaction is not None:
             await session.delete(reaction)
             await session.commit()
+            changed = True
     else:
         if reaction is None:
             session.add(
@@ -331,5 +398,19 @@ async def set_reaction(
         else:
             reaction.emoji = emoji
         await session.commit()
+        changed = True
 
-    return await _reload_and_serialize(session, message_id, user_id)
+    result = await _reload_and_serialize(session, message_id, user_id)
+    if changed:
+        await notify_chat(
+            session,
+            chat_id=chat_id,
+            payload={
+                "type": "message.changed",
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "kind": "reaction",
+            },
+            exclude_user_id=user_id,
+        )
+    return result

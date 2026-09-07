@@ -643,7 +643,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
 import Dialog from 'primevue/dialog'
 import LoginModal from '@/components/LoginModal.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -675,11 +675,13 @@ import RoundVideoMessage from '@/components/media/RoundVideoMessage.vue'
 import VoiceRecorderBar from '@/components/media/VoiceRecorderBar.vue'
 import VideoRecorderModal from '@/components/media/VideoRecorderModal.vue'
 import { useCallStore } from '@/stores/call'
+import { useRealtimeStore, type RealtimeEvent } from '@/stores/realtime'
 import { mediaFileName, type RecordedMedia } from '@/services/recorder'
 
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
 const callStore = useCallStore()
+const realtimeStore = useRealtimeStore()
 
 // ---------- Модальные окна ----------
 const showProfileModal = ref(false)
@@ -980,20 +982,6 @@ const chatTitle = (chat: Chat): string => {
   return other ? displayName(other) : chat.name
 }
 
-const chatSubtitle = (chat: Chat): string => {
-  const other = otherUserOfChat(chat)
-  if (!other) return chat.name
-  // В личном чате под именем всегда показываем присутствие собеседника
-  // («в сети» / «был(а) … назад»; если данных нет — «был(а) давно»).
-  if (isPrivateChat(chat)) {
-    const presence = lastSeenLabel(other.last_seen)
-    return presence || 'был(а) давно'
-  }
-  const parts: string[] = [`@${other.username}`]
-  if (other.phone_number) parts.push(other.phone_number)
-  return parts.join(' · ')
-}
-
 /** Задаваемый собеседником текст-статус (для шапки личного чата). */
 const peerStatus = (chat: Chat): string => {
   const other = otherUserOfChat(chat)
@@ -1121,12 +1109,12 @@ const pluralRu = (n: number, one: string, few: string, many: string): string => 
   return many
 }
 
-const lastSeenLabel = (value?: string | null): string => {
+const lastSeenLabel = (value?: string | null, allowOnline = true): string => {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
   const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000))
-  if (seconds <= ONLINE_WINDOW_SECONDS) return 'в сети'
+  if (seconds <= ONLINE_WINDOW_SECONDS) return allowOnline ? 'в сети' : 'был(а) только что'
   if (seconds < 60) return 'был(а) только что'
   if (seconds < 3600) {
     const minutes = Math.floor(seconds / 60)
@@ -1148,6 +1136,54 @@ const lastSeenLabel = (value?: string | null): string => {
   const years = Math.floor(days / 365)
   return `был(а) ${years} ${pluralRu(years, 'год', 'года', 'лет')} назад`
 }
+
+// ---------- Присутствие в реальном времени (WS поверх last_seen) ----------
+// Оверлей статуса собеседников: подтверждённый WS-статус («в сети»/«не в сети»)
+// имеет приоритет над вычислением из last_seen. Заполняется событиями presence
+// и (как фолбэк) данными из ответа /chats.
+const peerPresence = reactive<Record<number, { online: boolean; last_seen: string | null }>>({})
+
+const isWithinOnlineWindow = (value?: string | null): boolean => {
+  if (!value) return false
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return false
+  return Date.now() - date.getTime() <= ONLINE_WINDOW_SECONDS * 1000
+}
+
+const applyPresence = (userId: number, online: boolean, lastSeen: string | null) => {
+  peerPresence[userId] = { online, last_seen: lastSeen }
+}
+
+/** Подмешивает присутствие из свежего ответа /chats (не перетирая WS-статус). */
+const syncPresenceFromChats = (list: Chat[]) => {
+  for (const chat of list) {
+    const other = otherUserOfChat(chat)
+    if (!other) continue
+    const known = peerPresence[other.id]
+    if (known?.online) continue
+    peerPresence[other.id] = {
+      online: isWithinOnlineWindow(other.last_seen),
+      last_seen: other.last_seen ?? null
+    }
+  }
+}
+
+/** Подпись шапки личного чата: присутствие собеседника. */
+const presenceText = (chat: Chat): string => {
+  const other = otherUserOfChat(chat)
+  if (!other) return chat.name
+  if (!isPrivateChat(chat)) {
+    const parts: string[] = [`@${other.username}`]
+    if (other.phone_number) parts.push(other.phone_number)
+    return parts.join(' · ')
+  }
+  const known = peerPresence[other.id]
+  if (known?.online) return 'в сети'
+  if (known) return known.last_seen ? lastSeenLabel(known.last_seen, false) : 'был(а) давно'
+  return lastSeenLabel(other.last_seen) || 'был(а) давно'
+}
+
+const chatSubtitle = (chat: Chat): string => presenceText(chat)
 
 // ---------- Файлы ----------
 const mediaAbsolute = (path: string): string => mediaUrl(path)
@@ -1230,7 +1266,9 @@ const toggleReaction = async (message: Message, emoji: string) => {
 const loadChats = async () => {
   loadingChats.value = true
   try {
-    chats.value = await fetchMyChats()
+    const fresh = await fetchMyChats()
+    chats.value = fresh
+    syncPresenceFromChats(fresh)
   } catch (error) {
     console.error('Не удалось загрузить чаты:', getErrorMessage(error))
   } finally {
@@ -1662,47 +1700,122 @@ watch(searchQuery, (value) => {
   }, 350)
 })
 
-// ---------- Опрос (polling) ----------
-let pollTimer: number | null = null
+// ---------- События реального времени (WS-канал) вместо поллинга ----------
+// Сервер пушит события, по которым делаем выборочный refetch. Редкий
+// «страховочный» опрос остаётся на случай пропущенных событий/реконнекта.
+const REALTIME_FALLBACK_MS = 20000
+let fallbackTimer: number | null = null
+let chatSyncTimer: number | null = null
+let threadSyncTimer: number | null = null
 
-const stopPolling = () => {
-  if (pollTimer !== null) {
-    window.clearInterval(pollTimer)
-    pollTimer = null
+const refreshChatsQuiet = async () => {
+  if (!authStore.isAuthenticated) return
+  try {
+    const fresh = await fetchMyChats()
+    chats.value = fresh
+    syncPresenceFromChats(fresh)
+  } catch (error) {
+    console.error('Не удалось обновить чаты:', getErrorMessage(error))
   }
 }
 
-const startPolling = () => {
-  stopPolling()
-  pollTimer = window.setInterval(async () => {
-    if (!authStore.isAuthenticated) return
-    try {
-      chats.value = await fetchMyChats()
-    } catch (error) {
-      console.error('Не удалось обновить чаты:', getErrorMessage(error))
+const refreshOpenThreadQuiet = async () => {
+  const chatId = selectedChatId.value
+  if (chatId === null) return
+  try {
+    const previousIds = new Set(messages.value.map((message) => message.id))
+    const fresh = await fetchMessages(chatId)
+    const hasNew = fresh.some((message) => !previousIds.has(message.id))
+    messages.value = fresh
+    const pinned = await fetchPinnedMessages(chatId)
+    const pinnedChanged =
+      pinned.map((item) => item.id).join(',') !==
+      pinnedMessages.value.map((item) => item.id).join(',')
+    if (pinnedChanged) pinnedMessages.value = pinned
+    if (hasNew) {
+      await nextTick()
+      scrollToBottom()
     }
+  } catch (error) {
+    console.error('Не удалось обновить сообщения:', getErrorMessage(error))
+  }
+}
 
-    const chatId = selectedChatId.value
-    if (chatId !== null) {
-      try {
-        const previousIds = new Set(messages.value.map((message) => message.id))
-        const fresh = await fetchMessages(chatId)
-        messages.value = fresh
-        const hasNew = fresh.some((message) => !previousIds.has(message.id))
-        const pinned = await fetchPinnedMessages(chatId)
-        const pinnedChanged =
-          pinned.map((item) => item.id).join(',') !==
-          pinnedMessages.value.map((item) => item.id).join(',')
-        if (pinnedChanged) pinnedMessages.value = pinned
-        if (hasNew) {
-          await nextTick()
-          scrollToBottom()
-        }
-      } catch (error) {
-        console.error('Не удалось обновить сообщения:', getErrorMessage(error))
+const scheduleChatsSync = () => {
+  if (chatSyncTimer !== null) window.clearTimeout(chatSyncTimer)
+  chatSyncTimer = window.setTimeout(() => {
+    chatSyncTimer = null
+    void refreshChatsQuiet()
+  }, 120)
+}
+
+const scheduleThreadSync = () => {
+  if (threadSyncTimer !== null) window.clearTimeout(threadSyncTimer)
+  threadSyncTimer = window.setTimeout(() => {
+    threadSyncTimer = null
+    void refreshOpenThreadQuiet()
+  }, 120)
+}
+
+const handleRealtimeEvent = (event: RealtimeEvent) => {
+  switch (event.type) {
+    case 'presence':
+      applyPresence(event.user_id, event.online, event.last_seen)
+      return
+    case 'chat.new':
+      scheduleChatsSync()
+      return
+    case 'message.new':
+      // Свои сообщения сервер не пушит — они добавляются сразу при отправке.
+      if (event.sender_id === currentUserId.value) return
+      scheduleChatsSync()
+      if (event.chat_id === selectedChatId.value) scheduleThreadSync()
+      return
+    case 'message.changed':
+      scheduleChatsSync()
+      if (event.chat_id === selectedChatId.value) scheduleThreadSync()
+      return
+    case 'chat.read':
+      // Собеседник прочитал — обновляем галочки ✓✓ в открытом чате.
+      if (event.reader_id === currentUserId.value) return
+      if (event.chat_id === selectedChatId.value) {
+        void refreshOpenThreadQuiet()
       }
+      return
+  }
+}
+
+const stopRealtime = () => {
+  if (fallbackTimer !== null) {
+    window.clearInterval(fallbackTimer)
+    fallbackTimer = null
+  }
+  if (chatSyncTimer !== null) {
+    window.clearTimeout(chatSyncTimer)
+    chatSyncTimer = null
+  }
+  if (threadSyncTimer !== null) {
+    window.clearTimeout(threadSyncTimer)
+    threadSyncTimer = null
+  }
+  realtimeStore.disconnect()
+}
+
+const startRealtime = () => {
+  realtimeStore.setHandler(handleRealtimeEvent)
+  stopRealtime()
+  // Синхронизируемся сразу после подключения (навёрстываем пропущенное).
+  void realtimeStore.connect().then((connected) => {
+    if (connected) {
+      void refreshChatsQuiet()
+      void refreshOpenThreadQuiet()
     }
-  }, 3000)
+  })
+  fallbackTimer = window.setInterval(() => {
+    if (!authStore.isAuthenticated) return
+    void refreshChatsQuiet()
+    void refreshOpenThreadQuiet()
+  }, REALTIME_FALLBACK_MS)
 }
 
 // ---------- Навигация ----------
@@ -1745,10 +1858,10 @@ watch(
   async (isReady) => {
     if (isReady) {
       await Promise.all([loadChats(), loadContacts()])
-      startPolling()
+      startRealtime()
       void callStore.connect()
     } else {
-      stopPolling()
+      stopRealtime()
       callStore.disconnect()
       chats.value = []
       messages.value = []
@@ -1756,6 +1869,9 @@ watch(
       contacts.value = []
       userResults.value = []
       selectedChatId.value = null
+      for (const key of Object.keys(peerPresence)) {
+        delete peerPresence[Number(key)]
+      }
     }
   },
   { immediate: true }
@@ -1767,7 +1883,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  stopPolling()
+  stopRealtime()
+  realtimeStore.setHandler(null)
   clearMicTimer()
   clearModeHint()
   clearCallTimer()

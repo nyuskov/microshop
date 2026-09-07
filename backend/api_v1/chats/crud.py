@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from api_v1.events.service import notify_user
 from core.models import Chat, Message, User, user_chat_association_table
 
 
@@ -54,6 +55,12 @@ async def create_private_chat(
     chat.users = [first_user, second_user]
     session.add(chat)
     await session.commit()
+    # Сообщаем собеседнику о новом чате (если он на связи) — иначе он увидит
+    # его только при следующем опросе/синхронизации.
+    await notify_user(
+        second_user.id,
+        {"type": "chat.new", "chat_id": chat.id, "user_id": first_user.id},
+    )
     return chat
 
 

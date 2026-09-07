@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, WebSocket, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -125,4 +125,33 @@ async def get_current_user(
     # ВАЖНО: здесь НЕ обновляем last_seen и не делаем commit — иначе любой
     # read-only запрос писал бы в БД. Присутствие обновляется точечно там, где
     # это дёшево (см. touch_last_seen в GET /chats/).
+    return user
+
+
+async def resolve_user_from_websocket(websocket: WebSocket) -> User | None:
+    """Проверяет JWT из query-параметра ``token`` и возвращает пользователя.
+
+    Общий резолвер для WebSocket-эндпоинтов (сигналинг звонков и событийный
+    канал). При любой ошибке закрывает соединение кодом 4401 и возвращает None.
+    """
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4401)
+        return None
+    try:
+        payload = decode_jwt(token)
+    except jwt.InvalidTokenError:
+        await websocket.close(code=4401)
+        return None
+
+    sub_value = str(payload.get("sub", ""))
+    if not sub_value.isdigit():
+        await websocket.close(code=4401)
+        return None
+
+    async with db_helper.session_factory() as session:
+        user = await get_user_by_id(session, int(sub_value))
+    if user is None:
+        await websocket.close(code=4401)
+        return None
     return user
