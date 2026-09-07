@@ -1,5 +1,8 @@
 /** Утилиты отображения имени пользователя и аватара (градиент). */
 
+import { mediaUrl } from '@/config'
+import type { Chat, ChatUser } from '@/types'
+
 export const fullName = (
   first: string | null | undefined,
   last: string | null | undefined,
@@ -43,3 +46,26 @@ export const avatarStyle = (name: string): Record<string, string> => {
   }
   return { background: AVATAR_COLORS[hash % AVATAR_COLORS.length] }
 }
+
+/** Абсолютный URL аватара пользователя (если он задан). */
+export const avatarUrlOf = (
+  user: { avatar_url?: string | null } | null | undefined
+): string | undefined => (user?.avatar_url ? mediaUrl(user.avatar_url) : undefined)
+
+/** Второй участник личного чата (не текущий пользователь). */
+export const chatPeer = (chat: Chat, currentUserId: number | null): ChatUser | undefined => {
+  if (currentUserId !== null) {
+    const found = chat.users.find((user) => user.id !== currentUserId)
+    if (found) return found
+  }
+  return chat.users[0]
+}
+
+/** Отображаемое название чата (для личных чатов — имя собеседника). */
+export const chatPeerTitle = (chat: Chat, currentUserId: number | null): string => {
+  const peer = chatPeer(chat, currentUserId)
+  return peer ? displayName(peer) : chat.name
+}
+
+/** Личный чат ровно с двумя участниками. */
+export const isPrivateChat = (chat: Chat): boolean => chat.users.length === 2
