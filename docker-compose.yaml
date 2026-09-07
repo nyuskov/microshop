@@ -19,7 +19,8 @@ services:
       - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     networks:
       - server_network
     # Монтируем исходный код backend внутрь контейнера
@@ -27,7 +28,7 @@ services:
       - ./backend:/app
 
   db:
-    image: postgres:latest
+    image: postgres:18
     volumes:
         - postgres_data:/var/lib/postgresql/
         # Дамп/восстановление: когда volume БД создаётся заново (после down -v),
@@ -38,6 +39,12 @@ services:
         - POSTGRES_URL=postgres
         - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}
         - POSTGRES_DB=microshop
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d microshop"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     networks:
       - server_network
 
@@ -71,7 +78,7 @@ services:
 
 
   nginx:
-    image: nginx:latest
+    image: nginx:1.27-alpine
     build:
       context: .
       dockerfile: ./nginx/Dockerfile # Этот файл копирует dev.conf как default.conf

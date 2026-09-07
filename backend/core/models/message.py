@@ -34,9 +34,13 @@ class Message(IdIntPkMixin, Base):
         ForeignKey("messages.id", ondelete="SET NULL")
     )
     # Статус прочтения для собеседника (только для личных чатов)
-    is_read: Mapped[bool] = mapped_column(default=False, server_default=func.false())
+    is_read: Mapped[bool] = mapped_column(
+        default=False, server_default=func.false()
+    )
     # Закреплено ли сообщение в чате
-    is_pinned: Mapped[bool] = mapped_column(default=False, server_default=func.false())
+    is_pinned: Mapped[bool] = mapped_column(
+        default=False, server_default=func.false()
+    )
 
     # Вложение (файл/изображение)
     file_name: Mapped[str | None] = mapped_column(String(255))
