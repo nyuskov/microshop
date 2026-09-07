@@ -6,8 +6,6 @@ __all__ = [
     "Message",
     "MessageReaction",
     "OtpCode",
-    "Post",
-    "Product",
     "Profile",
     "RefreshSession",
     "User",
@@ -20,8 +18,6 @@ from .db_helper import DatabaseHelper, db_helper  # noqa: F401
 from .message import Message  # noqa: F401
 from .message_reaction import MessageReaction  # noqa: F401
 from .otp_code import OtpCode  # noqa: F401
-from .post import Post  # noqa: F401
-from .product import Product  # noqa: F401
 from .profile import Profile  # noqa: F401
 from .refresh_session import RefreshSession  # noqa: F401
 from .user import User  # noqa: F401

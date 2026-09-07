@@ -94,9 +94,7 @@ async def websocket_events(websocket: WebSocket) -> None:
             await touch_last_seen(current, session)
             current_last_seen = current.last_seen
             peers = await presence_peer_ids(session, user.id)
-    await _broadcast_presence(
-        peers, user.id, online=True, last_seen=current_last_seen
-    )
+    await _broadcast_presence(peers, user.id, online=True, last_seen=current_last_seen)
 
     try:
         # Сервер в основном пушит события; от клиента принимаем typing/typing-stop.
@@ -104,9 +102,7 @@ async def websocket_events(websocket: WebSocket) -> None:
             data = await websocket.receive_json()
             await _handle_client_event(user.id, data)
     except WebSocketDisconnect:
-        logger.debug(
-            "Пользователь %s отключился от событийного канала", user.id
-        )
+        logger.debug("Пользователь %s отключился от событийного канала", user.id)
     finally:
         await events_manager.disconnect(user.id, websocket)
         # «Не в сети» — только если это было последнее соединение пользователя
@@ -127,6 +123,4 @@ async def websocket_events(websocket: WebSocket) -> None:
                 peers, user.id, online=False, last_seen=offline_last_seen
             )
         except Exception:  # noqa: BLE001 - офлайн-статус некритичен
-            logger.exception(
-                "Не удалось отправить presence offline для %s", user.id
-            )
+            logger.exception("Не удалось отправить presence offline для %s", user.id)

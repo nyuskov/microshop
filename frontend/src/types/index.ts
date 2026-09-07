@@ -39,6 +39,7 @@ export interface Message {
   reply_to_id: number | null
   is_read: boolean
   is_pinned: boolean
+  edited_at: string | null
   file: MessageFile | null
   reactions: ReactionSummary[]
 }

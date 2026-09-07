@@ -1,0 +1,23 @@
+# Сборка фронтенда для продакшена: vite build -> статика в nginx,
+# который раздаёт SPA и проксирует /api и /media на backend (web:8000).
+
+# Этап 1 — сборка
+FROM node:22-alpine AS build
+WORKDIR /app
+RUN corepack enable
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY . .
+# Публичный origin API (тот же, что у nginx). Переопределяется через build-arg.
+ARG VITE_API_ORIGIN=http://localhost
+ENV VITE_API_ORIGIN=${VITE_API_ORIGIN}
+# Опциональные ключи (Giphy и т.п.) можно передать как build-args при необходимости.
+ARG VITE_GIPHY_API_KEY=
+ENV VITE_GIPHY_API_KEY=${VITE_GIPHY_API_KEY}
+RUN pnpm run build-only
+
+# Этап 2 — раздача + прокси
+FROM nginx:1.27-alpine
+COPY nginx.prod.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80

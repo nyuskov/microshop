@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 
 import { useAuthStore } from '@/stores/auth'
-import { WS_ORIGIN } from '@/config'
+import { ICE_SERVERS as CONFIG_ICE_SERVERS, WS_ORIGIN } from '@/config'
 
 /** Тип вызова: только голос или голос + видео. */
 export type CallKind = 'audio' | 'video'
@@ -33,9 +33,9 @@ interface SignalingMessage {
 const WS_PATH = '/api/v1/ws/calls'
 const RING_OUT_TIMEOUT_MS = 30_000
 
-const ICE_SERVERS: RTCConfiguration = {
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]
-}
+// ICE-серверы централизованы в config.ts (переопределяются через VITE_ICE_SERVERS);
+// для звонков за «симметричным» NAT нужен TURN-сервер (см. docs/turn.md).
+const ICE_SERVERS: RTCConfiguration = { iceServers: CONFIG_ICE_SERVERS }
 
 /* ===================== Модульные (не реактивные) ресурсы звонка ===================== */
 

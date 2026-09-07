@@ -12,7 +12,6 @@ from .mixins import IdIntPkMixin
 if TYPE_CHECKING:
     from .chat import Chat
     from .message import Message
-    from .post import Post
     from .profile import Profile
 
 
@@ -49,12 +48,6 @@ class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
     messages: Mapped[list["Message"]] = relationship(
         "Message",
         primaryjoin="User.id == Message.user_id",
-        back_populates="user",
-    )
-
-    posts: Mapped[list["Post"]] = relationship(
-        "Post",
-        primaryjoin="User.id == Post.user_id",
         back_populates="user",
     )
 

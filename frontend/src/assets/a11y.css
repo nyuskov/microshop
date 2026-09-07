@@ -1,0 +1,19 @@
+/* Доступность: уважение prefers-reduced-motion.
+   Отключаем анимации/переходы для пользователей, которые их не переносят.
+   Для подсветки сообщения (msg-highlight) остаётся контрастная рамка. */
+
+@media (prefers-reduced-motion: reduce) {
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+    }
+
+    .msg-highlight {
+        box-shadow: 0 0 0 3px var(--ms-accent, #3aa6e0) !important;
+    }
+}

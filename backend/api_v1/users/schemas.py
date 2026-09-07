@@ -43,15 +43,6 @@ class ChatSchema(BaseModel):
     name: str
 
 
-class PostSchema(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    title: str
-    body: str
-    user_id: int
-
-
 class UserSearchResultSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

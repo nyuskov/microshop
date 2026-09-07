@@ -1,0 +1,102 @@
+# Продовый стек microshop (starting point).
+#
+# Отличия от dev:
+#   - web: без bind-тома кода, без reload, без self-signed TLS (TLS — на nginx/edge);
+#   - миграции отдельным одноразовым сервисом migrate;
+#   - фронтенд собирается (vite build) в образ с nginx (статик + прокси /api, /media);
+#   - restart-политики и healthcheck'и.
+#
+# Запуск:
+#   docker compose -f docker-compose.prod.yaml up -d --build
+#
+# Переменные окружения: POSTGRES_PASSWORD, JWT_SECRET_KEY обязательны (см. .env.example).
+# VITE_API_ORIGIN — публичный origin, на котором отдаётся фронтенд (тот же origin,
+# что у nginx), напр. https://chat.example.com. По умолчанию http://localhost.
+
+name: microshop-prod
+
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_URL: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}
+      POSTGRES_DB: microshop
+    volumes:
+      - postgres_data:/var/lib/postgresql/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d microshop"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - server_network
+
+  # Разовые миграции перед стартом web.
+  migrate:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    command: ["poetry", "run", "alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - server_network
+
+  web:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    # Внутренний HTTP: TLS/HTTPS терминируется на nginx/edge.
+    command: ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
+      UVICORN_RELOAD: "0"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      # Загруженные медиа храним в volume (сообщения/аватары).
+      - media_data:/app/media
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - server_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_ORIGIN: ${VITE_API_ORIGIN:-http://localhost}
+    ports:
+      - "80:80"
+    depends_on:
+      - web
+    restart: unless-stopped
+    networks:
+      - server_network
+
+networks:
+  server_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  media_data:

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user
 from api_v1.messages import crud
+from api_v1.messages.schemas import EditMessageRequest, ForwardMessageRequest
 from api_v1.messages.schemas import Message as MessageSchema
 from api_v1.messages.schemas import MessageCreate
 from api_v1.upload_guard import validate_attachment_upload
@@ -66,6 +67,38 @@ async def create_new_message(
         text=message.text,
         user_id=user.id,
         reply_to_id=message.reply_to_id,
+    )
+
+
+@router.patch("/{message_id}/", response_model=MessageSchema)
+async def edit_message(
+    message_id: int,
+    payload: EditMessageRequest,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Редактирует текст своего сообщения."""
+    return await crud.edit_message_text(
+        session=session,
+        message_id=message_id,
+        user_id=user.id,
+        text=payload.text,
+    )
+
+
+@router.post("/forward/", response_model=MessageSchema)
+async def forward_message(
+    payload: ForwardMessageRequest,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Пересылает сообщение из одного своего чата в другой."""
+    return await crud.forward_message(
+        session=session,
+        source_message_id=payload.message_id,
+        user_id=user.id,
+        chat_id=payload.chat_id,
+        reply_to_id=payload.reply_to_id,
     )
 
 

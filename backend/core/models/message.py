@@ -37,6 +37,10 @@ class Message(IdIntPkMixin, Base):
     is_read: Mapped[bool] = mapped_column(default=False, server_default=func.false())
     # Закреплено ли сообщение в чате
     is_pinned: Mapped[bool] = mapped_column(default=False, server_default=func.false())
+    # Время последнего редактирования текста (null — не редактировалось).
+    edited_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Вложение (файл/изображение)
     file_name: Mapped[str | None] = mapped_column(String(255))

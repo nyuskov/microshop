@@ -36,3 +36,22 @@ export function mediaUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path
   return `${API_ORIGIN}${path.startsWith('/') ? path : `/${path}`}`
 }
+
+/**
+ * ICE-серверы для WebRTC-звонков. По умолчанию — публичные STUN Google.
+ * Для звонков за «симметричным» NAT нужен TURN: задайте JSON-массив в
+ * ``VITE_ICE_SERVERS``, например:
+ * ``[{"urls":"turn:turn.example.com:3478","username":"user","credential":"pass"}]``
+ */
+export const ICE_SERVERS: RTCIceServer[] = (() => {
+  const raw = (import.meta.env.VITE_ICE_SERVERS as string | undefined) ?? ''
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as RTCIceServer[]
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    } catch {
+      // Невалидный JSON — используем значения по умолчанию.
+    }
+  }
+  return [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]
+})()

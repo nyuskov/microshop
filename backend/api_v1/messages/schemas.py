@@ -11,6 +11,20 @@ class MessageCreate(BaseModel):
     reply_to_id: int | None = None
 
 
+class EditMessageRequest(BaseModel):
+    """Новый текст сообщения (редактирование)."""
+
+    text: str = Field(..., min_length=1, max_length=4000)
+
+
+class ForwardMessageRequest(BaseModel):
+    """Переслать сообщение в другой чат."""
+
+    message_id: int
+    chat_id: int
+    reply_to_id: int | None = None
+
+
 class MessageFile(BaseModel):
     name: str
     url: str
@@ -35,5 +49,6 @@ class Message(BaseModel):
     reply_to_id: int | None = None
     is_read: bool = False
     is_pinned: bool = False
+    edited_at: datetime | None = None
     file: MessageFile | None = None
     reactions: list[ReactionSummary] = Field(default_factory=list)

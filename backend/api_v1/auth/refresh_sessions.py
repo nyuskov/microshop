@@ -48,9 +48,7 @@ async def rotate_refresh_token(
     (семейный отзыв — признак кражи токена).
     """
     now = datetime.now(timezone.utc)
-    stmt = select(RefreshSession).where(
-        RefreshSession.jti_hash == _hash_jti(jti)
-    )
+    stmt = select(RefreshSession).where(RefreshSession.jti_hash == _hash_jti(jti))
     row = (await session.execute(stmt)).scalar_one_or_none()
     if row is None or row.user_id != user_id:
         return None

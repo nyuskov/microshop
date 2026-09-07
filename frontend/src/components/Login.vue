@@ -233,6 +233,7 @@ onMounted(() => {
               autocomplete="one-time-code"
               class="otp-box"
               :class="{ filled: digitRef.value }"
+              :aria-label="`Цифра ${index + 1} кода`"
               @input="(e) => moveFocus(index, e)"
               @keydown.backspace="(e) => moveFocus(index, e)"
               @paste.prevent

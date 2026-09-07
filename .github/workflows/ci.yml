@@ -48,6 +48,11 @@ jobs:
       - name: Install dependencies
         run: poetry install --with dev --no-interaction
 
+      - name: Apply migrations (alembic)
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/microshop_test
+        run: poetry run alembic upgrade head
+
       - name: Lint (black, isort, flake8)
         run: |
           poetry run black --check .
@@ -96,3 +101,28 @@ jobs:
 
       - name: Unit tests (vitest)
         run: pnpm exec vitest run
+
+      - name: Production build (vite)
+        run: pnpm exec vite build
+
+      - name: Upload frontend build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          if-no-files-found: error
+
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks
+        # Не блокирует CI (для организаций может требоваться GITLEAKS_LICENSE).
+        continue-on-error: true
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

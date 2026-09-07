@@ -7,7 +7,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from core.models import Post, User
+from core.models import User
 from core.security import password_hasher
 
 
@@ -92,13 +92,6 @@ async def get_user_with_chats(session: AsyncSession, user_id: int) -> User | Non
     stmt = select(User).where(User.id == user_id).options(selectinload(User.chats))
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
-
-
-async def get_posts_for_user(session: AsyncSession, user_id: int) -> list[Post]:
-    """Возвращает посты пользователя."""
-    stmt = select(Post).where(Post.user_id == user_id).order_by(Post.id)
-    result = await session.execute(stmt)
-    return list(result.scalars().all())
 
 
 async def create_user(session: AsyncSession, user: User) -> User:

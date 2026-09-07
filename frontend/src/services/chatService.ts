@@ -25,9 +25,35 @@ export const openPrivateChat = async (userId: number): Promise<Chat> => {
   return response.data
 }
 
+export interface FetchMessagesParams {
+  /** Сколько последних сообщений вернуть (без beforeId — самые свежие). */
+  limit?: number
+  /** Вернуть сообщения, более старые, чем это id (для подгрузки истории). */
+  beforeId?: number
+}
+
 /** Возвращает сообщения указанного чата. */
-export const fetchMessages = async (chatId: number): Promise<Message[]> => {
-  const response = await api.get<Message[]>(`/messages/${chatId}/`)
+export const fetchMessages = async (
+  chatId: number,
+  params: FetchMessagesParams = {}
+): Promise<Message[]> => {
+  const response = await api.get<Message[]>(`/messages/${chatId}/`, {
+    params: {
+      ...(params.limit !== undefined ? { limit: params.limit } : {}),
+      ...(params.beforeId !== undefined ? { before_id: params.beforeId } : {})
+    }
+  })
+  return response.data
+}
+
+/** Серверный поиск по сообщениям (в чате или по всем чатам). */
+export const searchMessages = async (query: string, chatId?: number): Promise<Message[]> => {
+  const response = await api.get<Message[]>('/messages/search/', {
+    params: {
+      q: query,
+      ...(chatId !== undefined ? { chat_id: chatId } : {})
+    }
+  })
   return response.data
 }
 
@@ -114,6 +140,26 @@ export const removeMessageReaction = async (messageId: number): Promise<Message>
 /** Удаляет сообщение (только своё). */
 export const deleteMessage = async (messageId: number): Promise<void> => {
   await api.delete(`/messages/${messageId}/`)
+}
+
+/** Редактирует текст своего сообщения. */
+export const editMessage = async (messageId: number, text: string): Promise<Message> => {
+  const response = await api.patch<Message>(`/messages/${messageId}/`, { text })
+  return response.data
+}
+
+/** Пересылает сообщение в указанный чат. */
+export const forwardMessage = async (
+  messageId: number,
+  chatId: number,
+  replyToId?: number | null
+): Promise<Message> => {
+  const response = await api.post<Message>('/messages/forward/', {
+    message_id: messageId,
+    chat_id: chatId,
+    reply_to_id: replyToId ?? null
+  })
+  return response.data
 }
 
 /** Ищет пользователей по логину или номеру телефона. */

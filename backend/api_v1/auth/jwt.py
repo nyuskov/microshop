@@ -19,16 +19,9 @@ from sqlalchemy.orm import selectinload
 
 from api_v1.auth.refresh_sessions import rotate_refresh_token
 from api_v1.auth.schemas import TokenResponse
-from api_v1.auth.utils import (
-    REFRESH_TOKEN_AUDIENCE,
-    REFRESH_TOKEN_TYPE,
-    decode_jwt,
-)
+from api_v1.auth.utils import REFRESH_TOKEN_AUDIENCE, REFRESH_TOKEN_TYPE, decode_jwt
 from api_v1.users.crud import get_user_by_id
-from api_v1.users.schemas import (
-    UserUpdateWithProfileSchema,
-    UserWithDetailsSchema,
-)
+from api_v1.users.schemas import UserUpdateWithProfileSchema, UserWithDetailsSchema
 from core.config import settings
 from core.models import Profile, User, db_helper
 
@@ -79,9 +72,7 @@ fastapi_users = FastAPIUsers[User, int](  # type: ignore[type-var]
 )
 
 router = APIRouter(prefix="/jwt", tags=["JWT"])
-router.include_router(
-    fastapi_users.get_auth_router(auth_backend), prefix="/auth"
-)
+router.include_router(fastapi_users.get_auth_router(auth_backend), prefix="/auth")
 
 
 @router.get("/users/me/", response_model=UserWithDetailsSchema)
@@ -187,9 +178,7 @@ async def refresh_access_token(
     if user is None:
         raise unauthorized
 
-    new_refresh_token = await rotate_refresh_token(
-        session, jti=jti, user_id=user.id
-    )
+    new_refresh_token = await rotate_refresh_token(session, jti=jti, user_id=user.id)
     if new_refresh_token is None:
         # Недействительный / истёкший / повторно использованный токен.
         raise unauthorized

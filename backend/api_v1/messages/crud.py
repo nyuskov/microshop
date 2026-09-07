@@ -1,5 +1,6 @@
 """CRUD-операции для сообщений."""
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import HTTPException, status
@@ -54,6 +55,7 @@ def message_to_dict(message: Message, user_id: int) -> dict:
         "reply_to_id": message.reply_to_id,
         "is_read": message.is_read,
         "is_pinned": message.is_pinned,
+        "edited_at": message.edited_at,
         "file": _file_payload(message),
         "reactions": _reactions_payload(message.reactions, user_id),
     }
@@ -70,6 +72,7 @@ def message_basic_to_dict(message: Message) -> dict:
         "reply_to_id": message.reply_to_id,
         "is_read": message.is_read,
         "is_pinned": message.is_pinned,
+        "edited_at": message.edited_at,
         "file": _file_payload(message),
         "reactions": [],
     }
@@ -413,6 +416,86 @@ async def set_reaction(
             },
             exclude_user_id=user_id,
         )
+    return result
+
+
+async def edit_message_text(
+    session: AsyncSession, *, message_id: int, user_id: int, text: str
+) -> dict:
+    """Редактирует текст сообщения (только автор), ставит edited_at."""
+    message = await _get_member_message(session, message_id, user_id)
+    if message.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Редактировать можно только своё сообщение",
+        )
+
+    message.text = text
+    message.edited_at = datetime.now(timezone.utc)
+    chat_id = message.chat_id
+    await session.commit()
+
+    result = await _reload_and_serialize(session, message_id, user_id)
+    await notify_chat(
+        session,
+        chat_id=chat_id,
+        payload={
+            "type": "message.changed",
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "kind": "edited",
+        },
+        exclude_user_id=user_id,
+    )
+    return result
+
+
+async def forward_message(
+    session: AsyncSession,
+    *,
+    source_message_id: int,
+    user_id: int,
+    chat_id: int,
+    reply_to_id: int | None = None,
+) -> dict:
+    """Пересылает сообщение (текст/вложение) в указанный чат от текущего юзера."""
+    source = await _load_message(session, source_message_id)
+    if source is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Сообщение не найдено",
+        )
+    # Отправитель должен состоять и в исходном, и в целевом чате.
+    await _ensure_chat_member_or_404(session, chat_id=source.chat_id, user_id=user_id)
+    await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
+    if reply_to_id is not None:
+        await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
+
+    forwarded = Message(
+        text=source.text or "",
+        chat_id=chat_id,
+        user_id=user_id,
+        reply_to_id=reply_to_id,
+        file_name=source.file_name,
+        file_url=source.file_url,
+        mime_type=source.mime_type,
+        file_size=source.file_size,
+    )
+    session.add(forwarded)
+    await session.commit()
+
+    result = await _reload_and_serialize(session, forwarded.id, user_id)
+    await notify_chat(
+        session,
+        chat_id=chat_id,
+        payload={
+            "type": "message.new",
+            "chat_id": chat_id,
+            "message_id": forwarded.id,
+            "sender_id": user_id,
+        },
+        exclude_user_id=user_id,
+    )
     return result
 
 

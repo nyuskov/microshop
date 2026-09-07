@@ -13,6 +13,8 @@
     "test:unit": "vitest",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
+    "typegen": "openapi-typescript https://localhost:8000/openapi.json -o src/types/generated.ts",
+    "typegen:dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 openapi-typescript https://localhost:8000/openapi.json -o src/types/generated.ts",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx --fix",
     "format": "prettier --write src/"
   },
@@ -49,6 +51,7 @@
     "globals": "^17.12.0",
     "jsdom": "^26.1.0",
     "npm-run-all2": "^8.0.4",
+    "openapi-typescript": "^7.13.0",
     "sass-embedded": "^1.93.2",
     "typescript": "~5.8.0",
     "typescript-eslint": "^8.69.0",

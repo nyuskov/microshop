@@ -8,6 +8,7 @@ import { useAuthStore } from './stores/auth' // Import the auth store
 // Import global styles first
 import './assets/style.css'
 import './assets/appearance.css'
+import './assets/a11y.css'
 
 import PrimeVue from 'primevue/config'
 import Theme from '@primeuix/themes/aura'

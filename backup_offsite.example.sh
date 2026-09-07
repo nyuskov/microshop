@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#
+# Пример: выгрузка локальных дампов БД microshop в удалённое хранилище (rclone).
+#
+# Использование:
+#   1. rclone config  — создать remote (пример remote-имени в RCLONE_REMOTE ниже)
+#   2. cp backup_offsite.example.sh backup_offsite.sh && chmod +x backup_offsite.sh
+#   3. Отредактируйте переменные в начале файла.
+#   4. Добавьте в crontab (см. docs/offsite-backup.md).
+#
+set -euo pipefail
+
+# Удалённое хранилище rclone, напр. "backup:bucket/microshop" (без завершающего /)
+RCLONE_REMOTE="${RCLONE_REMOTE:-backup:bucket/microshop}"
+# Директория с локальными дампами
+LOCAL_DUMP_DIR="${LOCAL_DUMP_DIR:-$(cd "$(dirname "$0")" && pwd)/db_dump}"
+# Поддиректория с архивами локальных дампов
+ARCHIVE_SUBDIR="${ARCHIVE_SUBDIR:-archive}"
+# Сколько последних архивных копий выгружать (0 = все)
+ARCHIVE_KEEP_OFFSITE="${ARCHIVE_KEEP_OFFSITE:-30}"
+# Лог
+LOG_FILE="${LOG_FILE:-${LOCAL_DUMP_DIR}/logs/offsite.log}"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >>"$LOG_FILE"; }
+
+command -v rclone >/dev/null 2>&1 || { log "rclone не найден"; exit 1; }
+[ -f "${LOCAL_DUMP_DIR}/microshop_latest.sql" ] || { log "нет свежего дампа — пропуск"; exit 0; }
+
+mkdir -p "$(dirname "$LOG_FILE")"
+
+log "Начало выгрузки в ${RCLONE_REMOTE}"
+
+# 1. Всегда выгружаем актуальный дамп.
+rclone copy "${LOCAL_DUMP_DIR}/microshop_latest.sql" "${RCLONE_REMOTE}/" \
+    --log-file="$LOG_FILE" 2>>"$LOG_FILE" || log "ошибка выгрузки latest"
+
+# 2. Последние N архивных копий.
+if [ "${ARCHIVE_KEEP_OFFSITE}" -gt 0 ] && [ -d "${LOCAL_DUMP_DIR}/${ARCHIVE_SUBDIR}" ]; then
+    mapfile -t files < <(ls -1t "${LOCAL_DUMP_DIR}/${ARCHIVE_SUBDIR}/"microshop_*.sql 2>/dev/null | head -n "${ARCHIVE_KEEP_OFFSITE}" || true)
+    for file in "${files[@]:-}"; do
+        [ -n "$file" ] || continue
+        rclone copy "$file" "${RCLONE_REMOTE}/${ARCHIVE_SUBDIR}/" \
+            --log-file="$LOG_FILE" 2>>"$LOG_FILE" || log "ошибка выгрузки $(basename "$file")"
+    done
+fi
+
+log "Выгрузка завершена"

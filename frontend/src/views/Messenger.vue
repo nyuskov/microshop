@@ -48,6 +48,7 @@
               class="panel-search-input"
               type="text"
               placeholder="Поиск"
+              aria-label="Поиск людей"
             />
           </div>
 
@@ -169,6 +170,7 @@
               class="panel-search-input"
               type="text"
               placeholder="Поиск по логину или телефону"
+              aria-label="Поиск контактов"
             />
           </div>
 
@@ -283,7 +285,11 @@
               class="inline-search-input"
               type="text"
               placeholder="Поиск по сообщениям"
+              aria-label="Поиск по сообщениям"
             />
+            <span v-if="serverMatchCount > 0" class="inline-search-count">
+              {{ serverMatchCount }} совп.
+            </span>
             <button class="icon-btn" @click="toggleInlineSearch">
               <i class="pi pi-times"></i>
             </button>
@@ -320,7 +326,12 @@
           </div>
 
           <!-- Сообщения -->
-          <div ref="messagesContainerRef" class="messages-scroll" @click="closePopups">
+          <div
+            ref="messagesContainerRef"
+            class="messages-scroll"
+            @click="closePopups"
+            @scroll.passive="onMessagesScroll"
+          >
             <div v-if="messagesLoading" class="chat-status">Загрузка сообщений…</div>
             <template v-else>
               <template
@@ -415,6 +426,9 @@
                     <span v-if="row.message.text" class="msg-text">{{ row.message.text }}</span>
 
                     <span class="msg-meta">
+                      <span v-if="row.message.edited_at" class="msg-edited" title="изменено">
+                        изменено
+                      </span>
                       <span class="msg-time">{{ formatMsgTime(row.message.timestamp) }}</span>
                       <span
                         v-if="isOwnMessage(row.message)"
@@ -470,6 +484,17 @@
                       <i class="pi pi-copy"></i>
                     </button>
                     <button
+                      v-if="isOwnMessage(row.message) && row.message.text"
+                      class="round-btn"
+                      title="Редактировать"
+                      @click="startEditMessage(row.message)"
+                    >
+                      <i class="pi pi-pencil"></i>
+                    </button>
+                    <button class="round-btn" title="Переслать" @click="openForward(row.message)">
+                      <i class="pi pi-share-alt"></i>
+                    </button>
+                    <button
                       v-if="isOwnMessage(row.message)"
                       class="round-btn danger"
                       title="Удалить"
@@ -503,6 +528,43 @@
           <div class="input-area">
             <div v-if="sendError" class="inline-error">{{ sendError }}</div>
 
+            <!-- Редактирование сообщения -->
+            <div v-if="editingMessage" class="reply-bar mode-bar">
+              <div class="reply-bar-info">
+                <span class="reply-bar-name">Редактирование</span>
+                <span class="reply-bar-text">{{ editingMessage.text }}</span>
+              </div>
+              <button class="icon-btn" title="Отмена" @click="cancelEditing">
+                <i class="pi pi-times"></i>
+              </button>
+            </div>
+
+            <!-- Пересылка сообщения -->
+            <div v-else-if="forwardSource" class="reply-bar mode-bar forward-bar">
+              <span class="reply-bar-name">Переслать:</span>
+              <select v-model.number="forwardChatId" class="forward-chat-select">
+                <option
+                  v-for="chat in chats"
+                  :key="chat.id"
+                  :value="chat.id"
+                  :disabled="chat.id === selectedChatId"
+                >
+                  {{ chatTitle(chat) }}
+                </option>
+              </select>
+              <button
+                class="round-btn"
+                title="Переслать"
+                :disabled="forwardChatId === null"
+                @click="sendForward"
+              >
+                <i class="pi pi-send"></i>
+              </button>
+              <button class="icon-btn" title="Отмена" @click="cancelForward">
+                <i class="pi pi-times"></i>
+              </button>
+            </div>
+
             <!-- Цитата ответа -->
             <div v-if="replyTarget" class="reply-bar">
               <div class="reply-bar-info">
@@ -519,12 +581,19 @@
               <button class="round-btn" title="Прикрепить файл" @click="attachInput?.click()">
                 <i class="pi pi-paperclip"></i>
               </button>
-              <input ref="attachInput" class="hidden-file" type="file" @change="onFileSelected" />
+              <input
+                ref="attachInput"
+                class="hidden-file"
+                type="file"
+                aria-label="Прикрепить файл"
+                @change="onFileSelected"
+              />
               <input
                 v-model="newMessage"
                 class="text-input"
                 type="text"
                 placeholder="Сообщение"
+                aria-label="Сообщение"
                 @keydown.enter.prevent="sendText"
               />
               <button class="round-btn" title="Эмодзи" @click="toggleEmojiMenu">
@@ -657,7 +726,10 @@ import {
   mediaUrl,
   openPrivateChat,
   removeMessageReaction,
+  searchMessages,
   searchUsers,
+  editMessage,
+  forwardMessage,
   sendAttachmentMessage,
   sendNewMessage,
   setMessagePinned,
@@ -1287,13 +1359,11 @@ const closeMenus = () => {
 const toggleReaction = async (message: Message, emoji: string) => {
   const mine = hasMyReaction(message, emoji)
   try {
-    if (mine) {
-      await removeMessageReaction(message.id)
-    } else {
-      await setMessageReaction(message.id, emoji)
-    }
+    const updated = mine
+      ? await removeMessageReaction(message.id)
+      : await setMessageReaction(message.id, emoji)
     emojiPickerFor.value = null
-    await refreshThread()
+    replaceMessageInThread(updated)
   } catch (error) {
     console.error('Не удалось изменить реакцию:', getErrorMessage(error))
   }
@@ -1313,14 +1383,97 @@ const loadChats = async () => {
   }
 }
 
-const loadMessages = async (chatId: number) => {
+// ---------- Пагинация истории ----------
+const MESSAGES_PAGE_SIZE = 80
+const noMoreOlder = ref(false)
+const loadingOlder = ref(false)
+
+const isNearBottom = (container: HTMLElement): boolean =>
+  container.scrollHeight - container.scrollTop - container.clientHeight < 120
+
+const replaceMessageInThread = (updated: Message) => {
+  messages.value = messages.value.map((m) => (m.id === updated.id ? updated : m))
+}
+
+const removeMessageFromThread = (messageId: number) => {
+  messages.value = messages.value.filter((m) => m.id !== messageId)
+}
+
+/** Загружает самую свежую страницу (при открытии чата). */
+const loadThreadLatest = async (chatId: number) => {
   messagesLoading.value = true
+  noMoreOlder.value = false
+  loadingOlder.value = false
   try {
-    messages.value = await fetchMessages(chatId)
+    messages.value = await fetchMessages(chatId, { limit: MESSAGES_PAGE_SIZE })
   } catch (error) {
     console.error('Не удалось загрузить сообщения:', getErrorMessage(error))
   } finally {
     messagesLoading.value = false
+  }
+}
+
+/**
+ * Объединяет свежую «последнюю страницу» с уже загруженными старыми
+ * сообщениями (не роняет загруженную выше историю) и при новых сообщениях
+ * прокручивает вниз, только если пользователь и так внизу.
+ */
+const mergeThreadLatest = async (chatId: number): Promise<boolean> => {
+  const previousIds = new Set(messages.value.map((m) => m.id))
+  const fresh = await fetchMessages(chatId, { limit: MESSAGES_PAGE_SIZE })
+  const freshIds = new Set(fresh.map((m) => m.id))
+  const keptOlder = messages.value.filter((m) => !freshIds.has(m.id))
+  messages.value = [...keptOlder, ...fresh].sort((a, b) => a.id - b.id)
+  const hasNew = fresh.some((m) => !previousIds.has(m.id))
+  const container = messagesContainerRef.value
+  if (hasNew && (!container || isNearBottom(container))) {
+    await nextTick()
+    scrollToBottom()
+  }
+  return hasNew
+}
+
+/** Подгружает более старые сообщения при прокрутке вверх. */
+const loadOlderMessages = async () => {
+  const chatId = selectedChatId.value
+  const container = messagesContainerRef.value
+  if (chatId === null || loadingOlder.value || noMoreOlder.value || messages.value.length === 0) {
+    return
+  }
+  const prevScrollHeight = container?.scrollHeight ?? 0
+  const prevScrollTop = container?.scrollTop ?? 0
+  const oldestId = messages.value.reduce<number | null>(
+    (min, m) => (min === null || m.id < min ? m.id : min),
+    null
+  )
+  loadingOlder.value = true
+  try {
+    const older = await fetchMessages(chatId, {
+      limit: MESSAGES_PAGE_SIZE,
+      beforeId: oldestId ?? undefined
+    })
+    const existingIds = new Set(messages.value.map((m) => m.id))
+    const toAdd = older.filter((m) => !existingIds.has(m.id))
+    if (older.length === 0 || toAdd.length === 0) {
+      noMoreOlder.value = true
+      return
+    }
+    messages.value = [...toAdd, ...messages.value].sort((a, b) => a.id - b.id)
+    await nextTick()
+    if (container) {
+      container.scrollTop = prevScrollTop + (container.scrollHeight - prevScrollHeight)
+    }
+  } catch (error) {
+    console.error('Не удалось загрузить более старые сообщения:', getErrorMessage(error))
+  } finally {
+    loadingOlder.value = false
+  }
+}
+
+const onMessagesScroll = () => {
+  const container = messagesContainerRef.value
+  if (container && container.scrollTop < 80) {
+    void loadOlderMessages()
   }
 }
 
@@ -1346,9 +1499,7 @@ const loadContacts = async () => {
 const refreshThread = async () => {
   const chatId = selectedChatId.value
   if (chatId === null) return
-  await Promise.all([loadMessages(chatId), loadPinned(chatId), loadChats()])
-  await nextTick()
-  scrollToBottom()
+  await Promise.all([mergeThreadLatest(chatId), loadPinned(chatId), loadChats()])
 }
 
 const scrollToBottom = () => {
@@ -1367,7 +1518,7 @@ const selectChat = async (chatId: number) => {
   inlineQuery.value = ''
   inlineSearchOpen.value = false
   clearReply()
-  await Promise.all([loadMessages(chatId), loadPinned(chatId)])
+  await Promise.all([loadThreadLatest(chatId), loadPinned(chatId)])
   scrollToBottom()
 }
 
@@ -1383,7 +1534,7 @@ const startChat = async (user: SearchUserResult) => {
     messages.value = []
     pinnedMessages.value = []
     clearReply()
-    await Promise.all([loadMessages(chat.id), loadPinned(chat.id)])
+    await Promise.all([loadThreadLatest(chat.id), loadPinned(chat.id)])
     scrollToBottom()
   } catch (error) {
     searchError.value = getErrorMessage(error, 'Не удалось начать переписку')
@@ -1413,6 +1564,18 @@ const sendText = async () => {
   sending.value = true
   sendError.value = ''
   try {
+    const editing = editingMessage.value
+    if (editing) {
+      const updated = await editMessage(editing.id, text)
+      newMessage.value = ''
+      editingMessage.value = null
+      replaceMessageInThread(updated)
+      sendTypingStop(chatId)
+      await loadPinned(chatId)
+      scrollToBottom()
+      return
+    }
+
     const message = await sendNewMessage(chatId, text, replyTarget.value?.id)
     newMessage.value = ''
     sendTypingStop(chatId)
@@ -1615,10 +1778,11 @@ const clearReply = () => {
 // ---------- Действия над сообщением ----------
 const togglePinMessage = async (message: Message) => {
   try {
-    await setMessagePinned(message.id, !message.is_pinned)
+    const updated = await setMessagePinned(message.id, !message.is_pinned)
+    replaceMessageInThread(updated)
     const chatId = selectedChatId.value
     if (chatId !== null) {
-      await Promise.all([loadMessages(chatId), loadPinned(chatId)])
+      await loadPinned(chatId)
     }
   } catch (error) {
     console.error('Не удалось изменить закрепление:', getErrorMessage(error))
@@ -1633,13 +1797,64 @@ const copyMessage = async (message: Message) => {
   }
 }
 
+// ---------- Редактирование / пересылка ----------
+const editingMessage = ref<Message | null>(null)
+const forwardSource = ref<Message | null>(null)
+const forwardChatId = ref<number | null>(null)
+
+const startEditMessage = (message: Message) => {
+  if (!isOwnMessage(message)) return
+  clearReply()
+  forwardSource.value = null
+  forwardChatId.value = null
+  editingMessage.value = message
+  newMessage.value = message.text || ''
+}
+
+const cancelEditing = () => {
+  editingMessage.value = null
+  newMessage.value = ''
+}
+
+const openForward = (message: Message) => {
+  cancelEditing()
+  forwardSource.value = message
+  forwardChatId.value =
+    chats.value.find((chat) => chat.id !== selectedChatId.value)?.id ?? chats.value[0]?.id ?? null
+}
+
+const cancelForward = () => {
+  forwardSource.value = null
+  forwardChatId.value = null
+}
+
+const sendForward = async () => {
+  const source = forwardSource.value
+  const targetChatId = forwardChatId.value
+  if (!source || targetChatId === null) return
+  try {
+    const sent = await forwardMessage(source.id, targetChatId)
+    cancelForward()
+    sendTypingStop(targetChatId)
+    if (selectedChatId.value === targetChatId) {
+      messages.value = appendMessage(messages.value, sent)
+      await loadPinned(targetChatId)
+    } else {
+      await loadChats()
+    }
+  } catch (error) {
+    console.error('Не удалось переслать сообщение:', getErrorMessage(error))
+  }
+}
+
 const deleteMessageOf = async (message: Message) => {
   if (!window.confirm('Удалить это сообщение?')) return
   try {
     await deleteMessage(message.id)
+    removeMessageFromThread(message.id)
     const chatId = selectedChatId.value
     if (chatId !== null) {
-      await Promise.all([loadMessages(chatId), loadPinned(chatId), loadChats()])
+      await Promise.all([loadPinned(chatId), loadChats()])
     }
   } catch (error) {
     console.error('Не удалось удалить сообщение:', getErrorMessage(error))
@@ -1680,6 +1895,80 @@ const toggleInlineSearch = () => {
   closeMenus()
   if (!inlineSearchOpen.value) inlineQuery.value = ''
 }
+
+// ---------- Поиск по сообщениям (серверный) ----------
+let inlineSearchTimer: number | null = null
+const serverMatchCount = ref(0)
+
+const revealMessageInThread = async (messageId: number) => {
+  if (highlightTimer !== undefined) {
+    window.clearTimeout(highlightTimer)
+    highlightTimer = undefined
+  }
+  highlightedMessageId.value = messageId
+  await nextTick()
+  const container = messagesContainerRef.value
+  const el = container
+    ? (container.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null)
+    : null
+  if (container && el) {
+    const containerRect = container.getBoundingClientRect()
+    const elRect = el.getBoundingClientRect()
+    container.scrollTop +=
+      elRect.top - containerRect.top - containerRect.height / 2 + elRect.height / 2
+  }
+  highlightTimer = window.setTimeout(() => {
+    highlightedMessageId.value = null
+  }, 2400)
+}
+
+/** Серверный поиск по всей истории + догрузка старых до найденного. */
+const runInlineServerSearch = async () => {
+  const chatId = selectedChatId.value
+  const query = inlineQuery.value.trim()
+  if (!query || chatId === null) {
+    serverMatchCount.value = 0
+    return
+  }
+  const results = await searchMessages(query, chatId)
+  serverMatchCount.value = results.length
+  if (results.length === 0) return
+
+  // Результаты приходят по возрастанию: первый — самый старый.
+  const oldestNeeded = results[0].id
+  const minLoaded = messages.value.length ? Math.min(...messages.value.map((m) => m.id)) : null
+  if (minLoaded !== null && minLoaded <= oldestNeeded) {
+    await revealMessageInThread(results[results.length - 1].id)
+    return
+  }
+  // Догружаем более старые, пока не накроем самый старый результат.
+  for (let i = 0; i < 20 && !noMoreOlder.value; i += 1) {
+    await loadOlderMessages()
+    const nextMin = messages.value.length ? Math.min(...messages.value.map((m) => m.id)) : null
+    if (nextMin !== null && nextMin <= oldestNeeded) break
+  }
+  const newest = results[results.length - 1]
+  if (messages.value.some((m) => m.id === newest.id)) {
+    await revealMessageInThread(newest.id)
+  }
+}
+
+watch(inlineQuery, (value) => {
+  if (inlineSearchTimer !== null) {
+    window.clearTimeout(inlineSearchTimer)
+    inlineSearchTimer = null
+  }
+  if (!value.trim() || selectedChatId.value === null) {
+    serverMatchCount.value = 0
+    return
+  }
+  inlineSearchTimer = window.setTimeout(() => {
+    inlineSearchTimer = null
+    void runInlineServerSearch().catch((error) => {
+      console.error('Не удалось выполнить поиск по сообщениям:', getErrorMessage(error))
+    })
+  }, 350)
+})
 
 // ---------- Эмодзи / GIF в поле ввода ----------
 const appendEmoji = (emoji: string) => {
@@ -1764,19 +2053,12 @@ const refreshOpenThreadQuiet = async () => {
   const chatId = selectedChatId.value
   if (chatId === null) return
   try {
-    const previousIds = new Set(messages.value.map((message) => message.id))
-    const fresh = await fetchMessages(chatId)
-    const hasNew = fresh.some((message) => !previousIds.has(message.id))
-    messages.value = fresh
+    await mergeThreadLatest(chatId)
     const pinned = await fetchPinnedMessages(chatId)
     const pinnedChanged =
       pinned.map((item) => item.id).join(',') !==
       pinnedMessages.value.map((item) => item.id).join(',')
     if (pinnedChanged) pinnedMessages.value = pinned
-    if (hasNew) {
-      await nextTick()
-      scrollToBottom()
-    }
   } catch (error) {
     console.error('Не удалось обновить сообщения:', getErrorMessage(error))
   }
@@ -1964,6 +2246,10 @@ onBeforeUnmount(() => {
   if (searchTimer !== null) {
     window.clearTimeout(searchTimer)
   }
+  if (inlineSearchTimer !== null) {
+    window.clearTimeout(inlineSearchTimer)
+    inlineSearchTimer = null
+  }
 })
 
 watch(
@@ -1996,6 +2282,8 @@ watch(
     if (oldId != null && oldId !== newId) sendTypingStop(oldId)
     closePopups()
     clearReply()
+    if (editingMessage.value) cancelEditing()
+    if (forwardSource.value) cancelForward()
     voiceRecOpen.value = false
     videoRecOpen.value = false
     resetRecordMode()
@@ -2908,6 +3196,30 @@ watch(
   outline: none;
   font-size: 14px;
   background: transparent;
+}
+
+.inline-search-count {
+  flex: none;
+  font-size: 12px;
+  color: #8a94a6;
+  white-space: nowrap;
+}
+
+.msg-edited {
+  font-size: 11px;
+  font-style: italic;
+  opacity: 0.75;
+  margin-right: 6px;
+}
+
+.forward-chat-select {
+  max-width: 220px;
+  padding: 4px 6px;
+  border: 1px solid #d4d9e0;
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  font-size: 13px;
 }
 
 /* ---------- Ввод ---------- */

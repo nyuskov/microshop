@@ -166,11 +166,3 @@ async def get_chats_for_user(
             detail="Пользователь не найден",
         )
     return user.chats
-
-
-@router.get("/{user_id}/posts/", response_model=list[schemas.PostSchema])
-async def get_posts_for_user(
-    user_id: int,
-    session: AsyncSession = Depends(db_helper.session_dependency),
-) -> list:
-    return await crud.get_posts_for_user(session, user_id)

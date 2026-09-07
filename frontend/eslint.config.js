@@ -5,6 +5,8 @@ import globals from 'globals'
 
 // Объединяем конфигурации
 export default [
+  // Сгенерированный файл типов (src/types/generated.ts) не линтуем.
+  { ignores: ['src/types/generated.ts'] },
   js.configs.recommended,
   ...vueTs(),
   vuePrettier,
