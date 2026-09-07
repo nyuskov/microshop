@@ -300,4 +300,24 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
     transform: scale(1.5);
   }
 }
+
+/* ---------- Мобильная адаптация ---------- */
+@media (max-width: 380px) {
+  .chat-header {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+  .chat-header .icon-btn {
+    width: 30px;
+    height: 30px;
+  }
+  .chat-avatar {
+    width: 36px;
+    height: 36px;
+  }
+  .avatar-wrap.online::after {
+    width: 11px;
+    height: 11px;
+  }
+}
 </style>

@@ -1003,4 +1003,9 @@ onBeforeUnmount(() => {
   text-align: center;
   color: #5b6b79;
 }
+
+/* Нижний отступ под «плавающие» жесты (safe-area) на мобильных. */
+.chat-scroll {
+  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+}
 </style>

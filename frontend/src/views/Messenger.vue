@@ -1657,6 +1657,7 @@ watch(
 /* ---------- Каркас (Quasar QLayout) ---------- */
 .messenger-shell {
   height: 100vh;
+  height: 100dvh; /* на мобильных браузерах с динамической адресной строкой */
   overflow: hidden;
   background: #6d7c8c;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -1667,6 +1668,7 @@ watch(
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   min-height: 0;
 }
 

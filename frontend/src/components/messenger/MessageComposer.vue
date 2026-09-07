@@ -460,4 +460,20 @@ watch(newMessage, () => {
   right: 14px;
   left: auto;
 }
+
+/* ---------- Мобильная адаптация ---------- */
+.input-area {
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (max-width: 420px) {
+  .input-row {
+    gap: 4px;
+    padding: 4px 6px;
+  }
+  .round-btn {
+    width: 30px;
+    height: 30px;
+  }
+}
 </style>
