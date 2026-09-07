@@ -11,7 +11,7 @@
           :class="{ active: themeStore.mode === opt.mode }"
           @click="themeStore.setThemeMode(opt.mode)"
         >
-          <q-icon :name="opt.icon" size="17px" />
+          <q-icon :name="opt.icon" size="18px" />
           <span>{{ opt.label }}</span>
         </button>
       </div>
@@ -46,7 +46,7 @@
           :title="bubble.label"
           @click="themeStore.setBubbleStyle(bubble.key)"
         >
-          <q-icon name="check" class="bubble-check" size="16px" />
+          <q-icon name="check" class="bubble-check" size="18px" />
         </button>
       </div>
     </section>
@@ -88,14 +88,14 @@
           @change="onWallpaperFile"
         />
         <button class="action-btn" @click="wallpaperInput?.click()">
-          <q-icon name="image" size="17px" /> Загрузить фото
+          <q-icon name="image" size="18px" /> Загрузить фото
         </button>
         <button
           v-if="themeStore.wallpaperKey === 'custom' || themeStore.wallpaperCustom"
           class="action-btn danger"
           @click="themeStore.clearCustomWallpaper()"
         >
-          <q-icon name="delete" size="17px" /> Убрать
+          <q-icon name="delete" size="18px" /> Убрать
         </button>
       </div>
       <p v-if="wallpaperError" class="wallpaper-error">{{ wallpaperError }}</p>
@@ -104,7 +104,7 @@
     <!-- Сброс -->
     <section class="appearance-section reset-row">
       <button class="action-btn reset" @click="onReset">
-        <q-icon name="refresh" size="17px" /> Сбросить настройки
+        <q-icon name="refresh" size="18px" /> Сбросить настройки
       </button>
     </section>
   </div>
@@ -218,6 +218,7 @@ const onReset = () => {
 .swatch-row {
   display: flex;
   flex-wrap: wrap;
+  padding-left: 5px;
   gap: 10px;
 }
 

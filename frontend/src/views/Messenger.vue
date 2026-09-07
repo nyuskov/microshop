@@ -21,6 +21,8 @@
         :selected-chat-id="selectedChatId"
         :loading-chats="loadingChats"
         :contacts-loading="contactsLoading"
+        :online-user-ids="onlineUserIds"
+        :typing-chat-ids="typingChatIds"
         @to-contacts="view = 'contacts'"
         @to-chats="view = 'chats'"
         @open-profile="goToProfile"
@@ -48,6 +50,7 @@
             :self-name="selfName"
             :self-avatar-url="selfAvatarUrl"
             :show-back="!isDesktop"
+            :peer-online="selectedChatPeerOnline"
             @back="goBackToList"
             @toggle-search="toggleInlineSearch"
             @open-profile="goToProfile"
@@ -389,6 +392,7 @@ const peerStatus = (chat: Chat): string => {
 // ---------- Присутствие + индикатор «печатает…» (состояние в composable) ----------
 const {
   peerPresence,
+  peerTypingUntil,
   isWithinOnlineWindow,
   applyPresence,
   isPeerTyping,
@@ -398,6 +402,20 @@ const {
 } = usePeerActivity({
   isMe: (userId) => userId === currentUserId.value
 })
+
+/** id пользователей, которые сейчас «в сети» (для индикатора на аватарах). */
+const onlineUserIds = computed<number[]>(() =>
+  Object.entries(peerPresence)
+    .filter(([, state]) => state.online)
+    .map(([userId]) => Number(userId))
+)
+
+/** id чатов, где собеседник сейчас «печатает…» (для списка диалогов). */
+const typingChatIds = computed<number[]>(() =>
+  Object.keys(peerTypingUntil)
+    .filter((chatId) => isPeerTyping(Number(chatId)))
+    .map((chatId) => Number(chatId))
+)
 
 /** Подмешивает присутствие из свежего ответа /chats (не перетирая WS-статус). */
 const syncPresenceFromChats = (list: Chat[]) => {
@@ -412,6 +430,14 @@ const syncPresenceFromChats = (list: Chat[]) => {
     }
   }
 }
+
+/** «В сети» ли собеседник открытого личного чата (точка на аватаре в шапке). */
+const selectedChatPeerOnline = computed<boolean>(() => {
+  const chat = selectedChat.value
+  if (!chat || chat.users.length !== 2) return false
+  const peer = otherUserOfChat(chat)
+  return peer !== undefined && onlineUserIds.value.includes(peer.id)
+})
 
 /** Подпись шапки личного чата: присутствие собеседника. */
 const presenceText = (chat: Chat): string => {
@@ -685,6 +711,7 @@ const sendText = async () => {
     if (editing) {
       const updated = await editMessage(editing.id, text)
       newMessage.value = ''
+      clearDraftFor(chatId)
       editingMessage.value = null
       replaceMessageInThread(updated)
       sendTypingStop(chatId)
@@ -695,6 +722,7 @@ const sendText = async () => {
 
     const message = await sendNewMessage(chatId, text, replyTarget.value?.id)
     newMessage.value = ''
+    clearDraftFor(chatId)
     sendTypingStop(chatId)
     clearReply()
     await refreshThread()
@@ -727,6 +755,7 @@ const onFileSelected = async (file: File) => {
       replyTarget.value?.id
     )
     newMessage.value = ''
+    clearDraftFor(chatId)
     clearReply()
     sendTypingStop(chatId)
     messages.value = appendMessage(messages.value, message)
@@ -850,12 +879,88 @@ const forwardSource = ref<Message | null>(null)
 /** Идёт ли отправка пересылок (блокирует кнопки диалога). */
 const forwardBusy = ref(false)
 
+// ---------- Черновики сообщений (автосохранение текста при смене чата) ----------
+// Ключ `userId:chatId` — черновики не «перетекают» между аккаунтами устройства.
+const DRAFTS_KEY = 'microshop_drafts'
+/** Момент последней программной установки текста поля (гасит «печатает…»). */
+let lastComposerProgrammaticEdit = 0
+
+const readDrafts = (): Record<string, string> => {
+  try {
+    const raw = window.localStorage.getItem(DRAFTS_KEY)
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {}
+  } catch {
+    return {}
+  }
+}
+
+const writeDrafts = (drafts: Record<string, string>) => {
+  try {
+    window.localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts))
+  } catch {
+    // Приватный режим/переполнение — черновик просто не сохранится.
+  }
+}
+
+const draftStorageKey = (chatId: number | null): string | null => {
+  const uid = currentUserId.value
+  if (uid === null || chatId === null) return null
+  return `${uid}:${chatId}`
+}
+
+/** Сохраняет набранный текст в черновик чата (в режиме правки не трогаем). */
+const saveDraftFor = (chatId: number | null) => {
+  const key = draftStorageKey(chatId)
+  if (key === null || editingMessage.value !== null) return
+  const text = newMessage.value
+  const drafts = readDrafts()
+  if (text.trim()) {
+    drafts[key] = text
+  } else {
+    delete drafts[key]
+  }
+  writeDrafts(drafts)
+}
+
+/** Черновик чата (пустая строка, если его нет). */
+const loadDraftFor = (chatId: number | null): string => {
+  const key = draftStorageKey(chatId)
+  if (key === null) return ''
+  return readDrafts()[key] ?? ''
+}
+
+/** Удаляет черновик чата (после фактической отправки). */
+const clearDraftFor = (chatId: number | null) => {
+  const key = draftStorageKey(chatId)
+  if (key === null) return
+  const drafts = readDrafts()
+  if (key in drafts) {
+    delete drafts[key]
+    writeDrafts(drafts)
+  }
+}
+
+/** Программно ставит текст поля — не считается «набором текста» для собеседника. */
+const setComposerText = (text: string) => {
+  lastComposerProgrammaticEdit = Date.now()
+  newMessage.value = text
+}
+
+/** Сохраняет черновик текущего чата (вызывается при перезагрузке/закрытии). */
+const handleBeforeUnload = () => {
+  saveDraftFor(selectedChatId.value)
+}
+
 const startEditMessage = (message: Message) => {
   if (!isOwnMessage(message)) return
   clearReply()
   cancelForward()
+  // Набранный текст не теряем: перед входом в режим правки убираем его в черновик.
+  if (selectedChatId.value !== null && newMessage.value.trim()) {
+    saveDraftFor(selectedChatId.value)
+  }
   editingMessage.value = message
-  newMessage.value = message.text || ''
+  setComposerText(message.text || '')
 }
 
 const cancelEditing = () => {
@@ -1109,6 +1214,8 @@ const sendTypingStop = (chatId: number) => {
 watch(newMessage, (value) => {
   const chatId = selectedChatId.value
   if (!value.trim() || chatId === null) return
+  // Программная установка (восстановление черновика/правка) не шлёт «печатает…».
+  if (Date.now() - lastComposerProgrammaticEdit < 500) return
   const now = Date.now()
   if (now - lastTypingSentAt >= TYPING_SEND_INTERVAL_MS) {
     lastTypingSentAt = now
@@ -1156,10 +1263,12 @@ watch(
 
 onMounted(async () => {
   await authStore.initializeApp()
+  window.addEventListener('beforeunload', handleBeforeUnload)
   scrollToBottom()
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
   stopRealtime()
   realtimeStore.setHandler(null)
   if (highlightTimer !== undefined) {
@@ -1199,7 +1308,10 @@ watch(
 watch(
   selectedChatId,
   (newId, oldId) => {
-    if (oldId != null && oldId !== newId) sendTypingStop(oldId)
+    if (oldId != null && oldId !== newId) {
+      sendTypingStop(oldId)
+      saveDraftFor(oldId)
+    }
     closePopups()
     clearReply()
     if (editingMessage.value) cancelEditing()
@@ -1212,6 +1324,8 @@ watch(
       window.clearTimeout(highlightTimer)
       highlightTimer = undefined
     }
+    // Восстанавливаем черновик открытого чата (после сброса состояния выше).
+    if (newId !== null) setComposerText(loadDraftFor(newId))
   },
   { immediate: true }
 )

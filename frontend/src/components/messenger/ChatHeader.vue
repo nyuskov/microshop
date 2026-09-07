@@ -3,9 +3,11 @@
     <button v-if="showBack" class="icon-btn back-btn" title="К списку чатов" @click="emit('back')">
       <q-icon name="arrow_back" size="21px" />
     </button>
-    <span class="avatar chat-avatar" :style="avatarStyle(title)">
-      <img v-if="peerAvatarUrl" :src="peerAvatarUrl" class="avatar-img" alt="" />
-      <template v-else>{{ initials(title) }}</template>
+    <span class="avatar-wrap" :class="{ online: peerOnline }">
+      <span class="avatar chat-avatar" :style="avatarStyle(title)">
+        <img v-if="peerAvatarUrl" :src="peerAvatarUrl" class="avatar-img" alt="" />
+        <template v-else>{{ initials(title) }}</template>
+      </span>
     </span>
     <div class="chat-header-info">
       <div class="chat-title-row">
@@ -63,6 +65,8 @@ const props = defineProps<{
   selfAvatarUrl: string | undefined
   /** Показывать ли кнопку «назад» (мобильный режим: drawer поверх списка). */
   showBack: boolean
+  /** «В сети» ли собеседник (точка на аватаре). */
+  peerOnline: boolean
 }>()
 
 const emit = defineEmits<{
@@ -145,6 +149,28 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* Индикатор «в сети» на аватаре собеседника */
+.avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.avatar-wrap.online::after {
+  content: '';
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ms-accent);
+  border: 2px solid var(--ms-surface);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+  z-index: 1;
 }
 
 .avatar.mini {

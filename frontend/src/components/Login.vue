@@ -3,6 +3,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { getErrorMessage } from '../services/errors'
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { formatPhoneForBackend, isValidPhoneNumber, prettyPhone } from '@/utils/phone'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -50,24 +51,6 @@ const isLoading = ref(false)
 const showNotice = computed(
   () => !!result.value && result.value !== 'Код OTP отправлен!' && result.value !== 'Вход успешен!'
 )
-
-const isValidPhoneNumber = (phone: string): boolean => {
-  const cleaned = phone.replace(/\D/g, '')
-  return cleaned.startsWith('7') && cleaned.length === 11
-}
-
-const formatPhoneForBackend = (phone: string): string => {
-  const cleaned = phone.replace(/\D/g, '')
-  return cleaned.startsWith('+') ? cleaned : `+${cleaned}`
-}
-
-/** Красивый формат номера для показа на экране ввода кода. */
-const prettyPhone = (phone: string): string => {
-  const digits = phone.replace(/\D/g, '').replace(/^7/, '')
-  if (digits.length < 10) return phone || '+7'
-  const d = digits.slice(0, 10)
-  return `+7 (${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6, 8)}-${d.slice(8, 10)}`
-}
 
 async function requestOtpHandler() {
   if (authStore.isAuthenticated) {

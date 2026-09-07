@@ -84,6 +84,7 @@ export function usePeerActivity(options: PeerActivityOptions) {
 
   return {
     peerPresence,
+    peerTypingUntil,
     isWithinOnlineWindow,
     applyPresence,
     clearPresence,

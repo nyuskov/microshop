@@ -95,14 +95,16 @@
             :class="{ active: selectedChatId === chat.id }"
             @click="selectChat(chat.id)"
           >
-            <span class="avatar" :style="avatarStyle(chatTitleOf(chat))">
-              <img
-                v-if="avatarUrlOf(chatPeerOf(chat))"
-                :src="avatarUrlOf(chatPeerOf(chat))"
-                class="avatar-img"
-                alt=""
-              />
-              <template v-else>{{ initials(chatTitleOf(chat)) }}</template>
+            <span class="avatar-wrap" :class="{ online: chatPeerOnline(chat) }">
+              <span class="avatar" :style="avatarStyle(chatTitleOf(chat))">
+                <img
+                  v-if="avatarUrlOf(chatPeerOf(chat))"
+                  :src="avatarUrlOf(chatPeerOf(chat))"
+                  class="avatar-img"
+                  alt=""
+                />
+                <template v-else>{{ initials(chatTitleOf(chat)) }}</template>
+              </span>
             </span>
             <span class="row-text">
               <span class="row-line">
@@ -112,9 +114,12 @@
                 </span>
               </span>
               <span class="row-line">
-                <span class="row-sub preview">
-                  <q-icon v-if="lastMessageIsOut(chat)" name="done" class="tick" size="16px" />
-                  {{ previewText(chat) }}
+                <span class="row-sub preview" :class="{ typing: isChatTyping(chat) }">
+                  <template v-if="isChatTyping(chat)">печатает…</template>
+                  <template v-else>
+                    <q-icon v-if="lastMessageIsOut(chat)" name="done" class="tick" size="16px" />
+                    {{ previewText(chat) }}
+                  </template>
                 </span>
                 <span v-if="chat.unread_count > 0" class="unread-badge">
                   {{ chat.unread_count }}
@@ -207,7 +212,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import { openPrivateChat, searchUsers, type SearchUserResult } from '@/services/chatService'
-import type { Chat } from '@/types'
+import type { Chat, ChatUser } from '@/types'
 import {
   avatarStyle,
   avatarUrlOf,
@@ -216,7 +221,7 @@ import {
   displayName,
   initials
 } from '@/utils/user'
-import { formatChatTime } from '@/utils/format'
+import { ONLINE_WINDOW_SECONDS, formatChatTime } from '@/utils/format'
 import { mediaTypeLabel } from '@/utils/media'
 
 const props = defineProps<{
@@ -227,6 +232,10 @@ const props = defineProps<{
   selectedChatId: number | null
   loadingChats: boolean
   contactsLoading: boolean
+  /** id пользователей, которые сейчас «в сети» (присутствие из WS). */
+  onlineUserIds?: number[]
+  /** id чатов, где собеседник сейчас печатает. */
+  typingChatIds?: number[]
 }>()
 
 const emit = defineEmits<{
@@ -273,6 +282,26 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 
 const chatPeerOf = (chat: Chat) => chatPeer(chat, props.currentUserId)
 const chatTitleOf = (chat: Chat): string => chatPeerTitle(chat, props.currentUserId)
+
+/** «В сети»: пользователь в списке присутствия либо был активен недавно. */
+const isUserOnline = (user: ChatUser | undefined | null): boolean => {
+  if (!user) return false
+  if (props.onlineUserIds?.includes(user.id)) return true
+  if (!user.last_seen) return false
+  const seen = new Date(user.last_seen).getTime()
+  if (Number.isNaN(seen)) return false
+  return Date.now() - seen <= ONLINE_WINDOW_SECONDS * 1000
+}
+
+/** Индикатор онлайн показываем только у личных (1-1) чатов. */
+const chatPeerOnline = (chat: Chat): boolean => {
+  if (chat.users.length !== 2) return false
+  return isUserOnline(chatPeerOf(chat))
+}
+
+/** Печатает ли сейчас собеседник в этом чате. */
+const isChatTyping = (chat: Chat): boolean =>
+  chat.users.length === 2 && (props.typingChatIds?.includes(chat.id) ?? false)
 
 const filteredChats = computed<Chat[]>(() => {
   const query = searchQuery.value.trim().toLowerCase()
@@ -466,6 +495,34 @@ onBeforeUnmount(() => {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* ---------- Индикатор «в сети» (точка на аватаре личного чата) ---------- */
+.avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.avatar-wrap.online::after {
+  content: '';
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--ms-accent);
+  border: 2px solid var(--ms-surface);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+  z-index: 1;
+}
+
+/* Индикатор «печатает…» в превью диалога */
+.row-sub.typing {
+  color: var(--ms-accent);
+  font-style: italic;
 }
 
 /* ---------- Заголовки панелей ---------- */

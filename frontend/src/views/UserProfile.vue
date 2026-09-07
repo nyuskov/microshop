@@ -4,6 +4,13 @@ import { useAuthStore } from '@/stores/auth'
 import { getErrorMessage } from '@/services/errors'
 import { removeAvatar, uploadAvatar } from '@/services/api'
 import { mediaUrl } from '@/services/chatService'
+import {
+  caretAfterNDigits,
+  formatPhoneForBackend,
+  isValidPhoneNumber,
+  localPhoneDigits,
+  maskPhoneLocal
+} from '@/utils/phone'
 
 const emit = defineEmits(['close-modal'])
 
@@ -65,7 +72,7 @@ watch(
     profileForm.username = user.username ?? ''
     profileForm.first_name = user.first_name ?? ''
     profileForm.last_name = user.last_name ?? ''
-    profileForm.phone_number = user.phone_number ?? ''
+    profileForm.phone_number = user.phone_number ? formatPhoneForBackend(user.phone_number) : ''
     profileForm.email = user.email ?? ''
     profileForm.status = user.status ?? ''
     profileForm.bio = profile?.bio ?? ''
@@ -182,8 +189,61 @@ const doLogout = async () => {
   }
 }
 
+// ---------- Поле телефона (нативный input + лёгкая маска) ----------
+const phoneFieldRef = ref<HTMLInputElement | null>(null)
+
+const phoneFieldValue = computed<string>(() =>
+  profileForm.phone_number ? maskPhoneLocal(localPhoneDigits(profileForm.phone_number)) : ''
+)
+
+const onPhoneFocus = () => {
+  // Пустое поле при фокусе показывает префикс «+7 (», чтобы сразу было понятно.
+  if (!profileForm.phone_number) {
+    const el = phoneFieldRef.value
+    if (el) {
+      el.value = maskPhoneLocal('')
+      const pos = el.value.length
+      el.setSelectionRange(pos, pos)
+    }
+  }
+}
+
+const onPhoneInput = (event: Event) => {
+  const el = event.target as HTMLInputElement
+  const caret = el.selectionStart ?? el.value.length
+  // Считаем «локальные» цифры до каретки. Если в строке уже есть префикс «(» —
+  // считаем только цифры после скобки (страна «+7» не редактируется), иначе —
+  // все цифры (сырой ввод/вставка без префикса).
+  const openParen = el.value.indexOf('(')
+  const digitsBeforeCaret =
+    openParen >= 0 && caret > openParen
+      ? (el.value.slice(openParen, caret).match(/\d/g) ?? []).length
+      : (el.value.slice(0, caret).match(/\d/g) ?? []).length
+  const local = localPhoneDigits(el.value)
+  const masked = maskPhoneLocal(local)
+  profileForm.phone_number = local ? `+7${local}` : ''
+  if (el.value !== masked) {
+    el.value = masked
+    const pos = caretAfterNDigits(masked, digitsBeforeCaret)
+    el.setSelectionRange(pos, pos)
+  }
+}
+
+const onPhoneBlur = () => {
+  if (!localPhoneDigits(profileForm.phone_number)) {
+    profileForm.phone_number = ''
+  }
+}
+
 const updateProfile = async () => {
   if (saving.value) return
+
+  const phone = profileForm.phone_number.trim()
+  if (phone && !isValidPhoneNumber(phone)) {
+    errorMessage.value = 'Введите корректный номер телефона в формате +7 (___) ___-__-__'
+    return
+  }
+
   saving.value = true
   success.value = false
   errorMessage.value = ''
@@ -192,7 +252,7 @@ const updateProfile = async () => {
     username: profileForm.username.trim(),
     first_name: profileForm.first_name.trim() || null,
     last_name: profileForm.last_name.trim() || null,
-    phone_number: profileForm.phone_number || null,
+    phone_number: phone || null,
     email: profileForm.email.trim() || null,
     status: profileForm.status.trim() || null
   }
@@ -345,16 +405,17 @@ const updateProfile = async () => {
           <div class="grid-2">
             <div class="field">
               <label for="pf-phone">Телефон</label>
-              <q-input
+              <input
                 id="pf-phone"
-                v-model="profileForm.phone_number"
-                mask="+7 (###) ###-##-##"
-                fill-mask=" "
-                outlined
-                dense
-                class="native-like q-phone-field"
+                ref="phoneFieldRef"
+                type="tel"
+                inputmode="tel"
+                autocomplete="tel"
+                :value="phoneFieldValue"
                 placeholder="+7 (___) ___-__-__"
-                hide-bottom-space
+                @focus="onPhoneFocus"
+                @input="onPhoneInput"
+                @blur="onPhoneBlur"
               />
             </div>
             <div class="field">
@@ -665,9 +726,7 @@ const updateProfile = async () => {
 
 .field input,
 .field textarea,
-.field select,
-.field :deep(.native-like),
-.native-like {
+.field select {
   width: 100%;
   box-sizing: border-box;
   border: 1.5px solid #dfe5ea;
@@ -683,15 +742,9 @@ const updateProfile = async () => {
   font-family: inherit;
 }
 
-.field :deep(.native-like) {
-  background: #fff;
-  border: 1.5px solid #dfe5ea;
-}
-
 .field input:focus,
 .field textarea:focus,
-.field select:focus,
-.field :deep(.native-like:focus) {
+.field select:focus {
   border-color: #2ea25e;
   box-shadow: 0 0 0 4px rgba(46, 162, 94, 0.13);
 }
