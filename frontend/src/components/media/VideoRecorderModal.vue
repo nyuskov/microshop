@@ -5,7 +5,7 @@
         <div class="vrm-head">
           <span>Видеосообщение (кружок)</span>
           <button class="vrm-close" title="Закрыть" @click="close">
-            <i class="pi pi-times"></i>
+            <q-icon name="close" size="20px" />
           </button>
         </div>
 
@@ -41,7 +41,7 @@
         <div class="vrm-actions">
           <template v-if="phase === 'live' || phase === 'recording'">
             <button class="vrm-btn danger-text" @click="close">
-              <i class="pi pi-times"></i> Отмена
+              <q-icon name="close" size="18px" /> Отмена
             </button>
             <button
               v-if="phase === 'live'"
@@ -49,19 +49,19 @@
               :disabled="!streamReady"
               @click="start"
             >
-              <i class="pi pi-circle"></i> Запись
+              <q-icon name="fiber_manual_record" size="18px" /> Запись
             </button>
             <button v-else class="vrm-btn record stop" @click="stop">
-              <i class="pi pi-stop"></i> Стоп
+              <q-icon name="stop" size="18px" /> Стоп
             </button>
           </template>
 
           <template v-else>
             <button class="vrm-btn" @click="retake">
-              <i class="pi pi-replay"></i> Перезаписать
+              <q-icon name="replay" size="18px" /> Перезаписать
             </button>
             <button class="vrm-btn accent" :disabled="sending" @click="send">
-              <i class="pi pi-send"></i> Отправить
+              <q-icon name="send" size="17px" /> Отправить
             </button>
           </template>
         </div>

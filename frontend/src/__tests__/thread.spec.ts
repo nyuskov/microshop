@@ -15,6 +15,7 @@ const makeMessage = (overrides: Partial<Message>): Message => ({
   edited_at: null,
   file: null,
   reactions: [],
+  forwarded_from: null,
   ...overrides
 })
 

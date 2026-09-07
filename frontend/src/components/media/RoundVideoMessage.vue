@@ -24,14 +24,14 @@
 
     <!-- Запись недоступна -->
     <div v-if="broken" class="rvm-error">
-      <i class="pi pi-exclamation-triangle"></i>
+      <q-icon name="warning" size="18px" />
       <span>Видео недоступно</span>
     </div>
 
     <!-- Центральная кнопка play (когда не играет) -->
     <div v-else-if="!isPlaying" class="rvm-center">
       <span class="rvm-play">
-        <i class="pi pi-play"></i>
+        <q-icon name="play_arrow" size="30px" />
       </span>
     </div>
 
@@ -42,7 +42,7 @@
       :title="muted ? 'Включить звук' : 'Выключить звук'"
       @click.stop="toggleMute"
     >
-      <i :class="muted ? 'pi pi-volume-off' : 'pi pi-volume-up'"></i>
+      <q-icon :name="muted ? 'volume_off' : 'volume_up'" size="18px" />
     </button>
 
     <!-- Развернуть на весь экран -->
@@ -52,7 +52,7 @@
       :title="'Смотреть «' + name + '» на весь экран'"
       @click.stop="openPreview"
     >
-      <i class="pi pi-expand"></i>
+      <q-icon name="fullscreen" size="18px" />
     </button>
   </div>
 
@@ -62,11 +62,11 @@
       <div class="rvm-modal-card">
         <div class="rvm-modal-head">
           <span class="rvm-modal-title">
-            <i class="pi pi-video"></i>
+            <q-icon name="videocam" size="18px" />
             {{ name }}
           </span>
           <button class="rvm-modal-close" title="Закрыть" @click="closePreview">
-            <i class="pi pi-times"></i>
+            <q-icon name="close" size="20px" />
           </button>
         </div>
         <video :src="src" class="rvm-modal-video" controls autoplay playsinline></video>

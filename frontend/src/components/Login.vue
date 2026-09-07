@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import InputMask from 'primevue/inputmask'
-import Message from 'primevue/message'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { getErrorMessage } from '../services/errors'
@@ -47,6 +45,11 @@ const otpCode = computed(() => otpDigits.map((digit) => digit.value).join(''))
 const severity = ref<'success' | 'error' | 'info' | 'warn'>('success')
 const result = ref('')
 const isLoading = ref(false)
+
+/** Показывать ли сообщение-уведомление (скрываем «штатные» успешные тексты). */
+const showNotice = computed(
+  () => !!result.value && result.value !== 'Код OTP отправлен!' && result.value !== 'Вход успешен!'
+)
 
 const isValidPhoneNumber = (phone: string): boolean => {
   const cleaned = phone.replace(/\D/g, '')
@@ -182,26 +185,26 @@ onMounted(() => {
       <!-- Шаг 1: номер телефона -->
       <div v-if="state === 'phone'" key="phone" class="step">
         <div class="brand">
-          <span class="brand-icon"><i class="pi pi-phone"></i></span>
+          <span class="brand-icon"><q-icon name="call" size="30px" /></span>
         </div>
         <h2 class="step-title">Вход по номеру телефона</h2>
         <p class="step-subtitle">Мы отправим SMS с кодом подтверждения.</p>
 
         <label class="field-label" for="phone-input">Номер телефона</label>
-        <div class="input-shell">
-          <InputMask
-            id="phone-input"
-            v-model="phoneOrUsername"
-            mask="+7 (999) 999-99-99"
-            placeholder="+7 (___) ___-__-__"
-            class="phone-input"
-            :auto-clear="false"
-          />
-        </div>
+        <q-input
+          id="phone-input"
+          v-model="phoneOrUsername"
+          mask="+7 (###) ###-##-##"
+          outlined
+          class="phone-input"
+          placeholder="+7 (___) ___-__-__"
+          aria-label="Номер телефона"
+          hide-bottom-space
+        />
 
         <button class="btn btn-primary" :disabled="isLoading" @click="requestOtpHandler">
           <span v-if="isLoading" class="spinner"></span>
-          <template v-else><i class="pi pi-send"></i></template>
+          <q-icon v-else name="send" size="17px" />
           <span>{{ isLoading ? 'Отправка…' : 'Получить код' }}</span>
         </button>
 
@@ -211,7 +214,7 @@ onMounted(() => {
       <!-- Шаг 2: код из SMS -->
       <div v-else key="otp" class="step">
         <div class="brand">
-          <span class="brand-icon"><i class="pi pi-shield"></i></span>
+          <span class="brand-icon"><q-icon name="verified_user" size="30px" /></span>
         </div>
         <h2 class="step-title">Введите код из SMS</h2>
         <p class="step-subtitle">
@@ -242,28 +245,22 @@ onMounted(() => {
 
           <button type="submit" class="btn btn-primary" :disabled="isLoading || otpCode.length < 6">
             <span v-if="isLoading" class="spinner"></span>
-            <template v-else><i class="pi pi-check"></i></template>
+            <q-icon v-else name="check" size="17px" />
             <span>{{ isLoading ? 'Вход…' : 'Войти' }}</span>
           </button>
         </form>
 
         <button class="link-btn" type="button" :disabled="isLoading" @click="goBackToPhoneInput">
-          <i class="pi pi-arrow-left"></i>
+          <q-icon name="arrow_back" size="17px" />
           Изменить номер
         </button>
       </div>
     </transition>
 
     <transition name="fade">
-      <Message
-        v-if="result && result !== 'Код OTP отправлен!' && result !== 'Вход успешен!'"
-        :severity="severity"
-        size="small"
-        variant="simple"
-        class="login-message"
-      >
+      <div v-if="showNotice" class="login-message" :class="'msg-' + severity" role="alert">
         {{ result }}
-      </Message>
+      </div>
     </transition>
   </div>
 </template>
@@ -271,7 +268,9 @@ onMounted(() => {
 <style scoped>
 .login-modal {
   width: 100%;
-  padding: 8px 4px;
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 8px 16px;
   box-sizing: border-box;
 }
 
@@ -328,44 +327,38 @@ onMounted(() => {
   margin-bottom: 7px;
 }
 
-.input-shell {
-  position: relative;
+/* Quasar-поле номера телефона — как прежнее большое поле входа */
+.phone-input {
   width: 100%;
-  display: flex;
-  align-items: center;
-  border: 1.5px solid #dfe5ea;
+}
+
+.phone-input :deep(.q-field__control) {
+  min-height: 52px;
   border-radius: 14px;
   background: #f7f9fb;
-  transition:
-    border-color 0.2s,
-    box-shadow 0.2s,
-    background 0.2s;
 }
 
-.input-shell:focus-within {
+.phone-input :deep(.q-field__control:before) {
+  border-color: #dfe5ea;
+}
+
+.phone-input :deep(.q-field__control:after) {
   border-color: #2ea25e;
-  background: #fff;
-  box-shadow: 0 0 0 4px rgba(46, 162, 94, 0.14);
 }
 
-.phone-input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  color: #1c2733;
-  padding: 14px 16px;
-  width: 100%;
-  min-width: 0;
+.phone-input :deep(.q-field__native) {
+  padding: 0 16px;
   text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: #1c2733;
 }
 
-.phone-input::placeholder {
+.phone-input :deep(input::placeholder) {
   color: #a9b5bf;
   font-weight: 500;
+  font-size: 15px;
 }
 
 .btn {
@@ -495,6 +488,33 @@ onMounted(() => {
 .login-message {
   margin-top: 14px;
   width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.login-message.msg-error {
+  background: #fdecec;
+  color: #c0392b;
+}
+
+.login-message.msg-success {
+  background: #e8f8ee;
+  color: #1e7a43;
+}
+
+.login-message.msg-info {
+  background: #e8f2fb;
+  color: #2f6da0;
+}
+
+.login-message.msg-warn {
+  background: #fdf3e3;
+  color: #9a6a14;
 }
 
 .fade-enter-active,

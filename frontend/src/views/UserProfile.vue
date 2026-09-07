@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { reactive, ref, watch, computed } from 'vue'
-import InputMask from 'primevue/inputmask'
 import { useAuthStore } from '@/stores/auth'
 import { getErrorMessage } from '@/services/errors'
 import { removeAvatar, uploadAvatar } from '@/services/api'
@@ -240,7 +239,7 @@ const updateProfile = async () => {
           >
             <img v-if="avatarSrc" :src="avatarSrc" class="avatar-photo" alt="Аватар" />
             <template v-else>{{ heroInitials }}</template>
-            <span class="avatar-camera"><i class="pi pi-camera"></i></span>
+            <span class="avatar-camera"><q-icon name="photo_camera" size="15px" /></span>
           </button>
           <button
             v-if="hasAvatar"
@@ -250,7 +249,7 @@ const updateProfile = async () => {
             :disabled="avatarUploading"
             @click.stop="removeAvatarClick"
           >
-            <i class="pi pi-times"></i>
+            <q-icon name="close" size="15px" />
           </button>
           <input
             ref="avatarInput"
@@ -267,7 +266,7 @@ const updateProfile = async () => {
             {{ profileForm.status.trim() }}
           </p>
           <p v-if="profileForm.phone_number" class="hero-phone">
-            <i class="pi pi-phone"></i> {{ profileForm.phone_number }}
+            <q-icon name="call" size="14px" /> {{ profileForm.phone_number }}
           </p>
           <p v-if="avatarUploading" class="avatar-status">
             <span class="mini-spinner"></span> Загрузка фото…
@@ -346,13 +345,16 @@ const updateProfile = async () => {
           <div class="grid-2">
             <div class="field">
               <label for="pf-phone">Телефон</label>
-              <InputMask
+              <q-input
                 id="pf-phone"
                 v-model="profileForm.phone_number"
-                mask="+7 (999) 999-99-99"
-                class="native-like"
+                mask="+7 (###) ###-##-##"
+                fill-mask=" "
+                outlined
+                dense
+                class="native-like q-phone-field"
                 placeholder="+7 (___) ___-__-__"
-                :auto-clear="false"
+                hide-bottom-space
               />
             </div>
             <div class="field">
@@ -388,39 +390,33 @@ const updateProfile = async () => {
               <span class="toggle-name">Уведомления о сообщениях</span>
               <span class="toggle-desc">Присылать оповещения о новых сообщениях</span>
             </div>
-            <label class="switch">
-              <input v-model="profileForm.notifications_enabled" type="checkbox" />
-              <span class="slider"></span>
-            </label>
+            <q-toggle v-model="profileForm.notifications_enabled" color="primary" keep-color />
           </div>
           <div class="toggle-row">
             <div class="toggle-text">
               <span class="toggle-name">Приватный режим</span>
               <span class="toggle-desc">Скрывать профиль от посторонних в поиске</span>
             </div>
-            <label class="switch">
-              <input v-model="profileForm.privacy_mode" type="checkbox" />
-              <span class="slider"></span>
-            </label>
+            <q-toggle v-model="profileForm.privacy_mode" color="primary" keep-color />
           </div>
         </section>
 
         <!-- Сообщения -->
         <transition name="fade">
           <div v-if="success" class="notice success">
-            <i class="pi pi-check-circle"></i> Профиль сохранён
+            <q-icon name="check_circle" size="18px" /> Профиль сохранён
           </div>
         </transition>
         <transition name="fade">
           <div v-if="errorMessage" class="notice error">
-            <i class="pi pi-exclamation-circle"></i> {{ errorMessage }}
+            <q-icon name="error" size="18px" /> {{ errorMessage }}
           </div>
         </transition>
 
         <!-- Действия -->
         <div class="logout-row">
           <button type="button" class="logout-btn" :disabled="saving" @click="doLogout">
-            <i class="pi pi-sign-out"></i>
+            <q-icon name="logout" size="17px" />
             Выйти из аккаунта
           </button>
         </div>
@@ -431,7 +427,7 @@ const updateProfile = async () => {
           </button>
           <button type="submit" class="btn primary" :disabled="saving">
             <span v-if="saving" class="spinner light"></span>
-            <template v-else><i class="pi pi-check"></i></template>
+            <q-icon v-else name="check" size="17px" />
             {{ saving ? 'Сохранение…' : 'Сохранить' }}
           </button>
         </div>

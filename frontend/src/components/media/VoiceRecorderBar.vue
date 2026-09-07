@@ -3,20 +3,20 @@
     <!-- Состояние записи -->
     <template v-if="state === 'recording'">
       <button class="vr-btn danger" title="Отменить запись" @click="cancel">
-        <i class="pi pi-times"></i>
+        <q-icon name="close" size="20px" />
       </button>
       <span class="vr-dot"></span>
       <span class="vr-label">Запись голосового сообщения</span>
       <span class="vr-timer">{{ formatClock(durationMs / 1000) }}</span>
       <button class="vr-btn accent" title="Остановить запись" @click="stopRecording">
-        <i class="pi pi-stop"></i>
+        <q-icon name="stop" size="20px" />
       </button>
     </template>
 
     <!-- Предпросмотр перед отправкой -->
     <template v-else>
       <button class="vr-btn danger" title="Удалить" @click="discard">
-        <i class="pi pi-trash"></i>
+        <q-icon name="delete" size="20px" />
       </button>
       <button
         class="vr-play"
@@ -24,12 +24,12 @@
         title="Прослушать"
         @click="togglePlay"
       >
-        <i :class="isPlaying ? 'pi pi-pause' : 'pi pi-play'"></i>
+        <q-icon :name="isPlaying ? 'pause' : 'play_arrow'" size="22px" />
       </button>
       <span class="vr-label">Голосовое сообщение</span>
       <span class="vr-timer">{{ formatClock(durationMs / 1000) }}</span>
       <button class="vr-btn accent" title="Отправить" :disabled="sending" @click="send">
-        <i class="pi pi-send"></i>
+        <q-icon name="send" size="18px" />
       </button>
     </template>
 

@@ -1,25 +1,17 @@
 <template>
-  <Dialog
-    v-model:visible="shouldShowModal"
-    modal
-    :closable="false"
-    :dismissable-mask="false"
-    :close-on-escape="false"
-    :show-header="false"
-    :style="{ width: '400px' }"
-    :contentStyle="{ padding: '26px 28px', borderRadius: '18px', overflow: 'hidden' }"
-  >
-    <Login
-      @close-modal="handleLoginClose"
-      :initial-state="state"
-      @state-changed="handleStateChanged"
-    />
-  </Dialog>
+  <q-dialog v-model="shouldShowModal" persistent @hide="onDialogHide">
+    <q-card class="login-dialog-card">
+      <Login
+        @close-modal="handleLoginClose"
+        :initial-state="state"
+        @state-changed="handleStateChanged"
+      />
+    </q-card>
+  </q-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import Dialog from 'primevue/dialog'
 import Login from './Login.vue'
 import { useAuthStore } from '../stores/auth'
 
@@ -77,8 +69,29 @@ const handleLoginClose = () => {
   emit('close-modal')
 }
 
+/** Закрытие по Esc/бэкдропу — тоже «закрыть» (но persistent не даёт). */
+const onDialogHide = () => {
+  if (!authStore.isAuthenticated) {
+    emit('close-modal')
+  }
+}
+
 // Обработка события от Login.vue, когда состояние меняется (phone -> otp)
 const handleStateChanged = (newState: 'phone' | 'otp') => {
   state.value = newState
 }
 </script>
+
+<style scoped>
+/* Форма входа — самодостаточная светлая карточка (тёмный текст), поэтому
+   всегда белая, независимо от темы мессенджера вокруг. */
+.login-dialog-card {
+  width: min(420px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  border-radius: 20px;
+  background: #ffffff !important;
+  color: #1c2733 !important;
+  border: 1px solid #e2e6ea;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+}
+</style>

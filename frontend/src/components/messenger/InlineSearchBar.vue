@@ -1,6 +1,6 @@
 <template>
   <div class="inline-search">
-    <i class="pi pi-search search-icon"></i>
+    <q-icon name="search" class="search-icon" size="17px" />
     <input
       v-model="query"
       class="inline-search-input"
@@ -10,7 +10,7 @@
     />
     <span v-if="count > 0" class="inline-search-count">{{ count }} совп.</span>
     <button class="icon-btn" title="Закрыть поиск" @click="emit('close')">
-      <i class="pi pi-times"></i>
+      <q-icon name="close" size="20px" />
     </button>
   </div>
 </template>

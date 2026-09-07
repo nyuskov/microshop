@@ -1,7 +1,7 @@
 <template>
   <div class="chat-header">
-    <button class="icon-btn back-btn" title="Контакты" @click="emit('open-contacts')">
-      <i class="pi pi-arrow-left"></i>
+    <button v-if="showBack" class="icon-btn back-btn" title="К списку чатов" @click="emit('back')">
+      <q-icon name="arrow_back" size="21px" />
     </button>
     <span class="avatar chat-avatar" :style="avatarStyle(title)">
       <img v-if="peerAvatarUrl" :src="peerAvatarUrl" class="avatar-img" alt="" />
@@ -27,11 +27,11 @@
           @pointercancel="onCallCancel"
           @contextmenu.prevent
         >
-          <i :class="callKind === 'video' ? 'pi pi-video' : 'pi pi-phone'"></i>
+          <q-icon :name="callKind === 'video' ? 'videocam' : 'call'" size="20px" />
         </button>
       </span>
       <button class="icon-btn" title="Поиск по сообщениям" @click="emit('toggle-search')">
-        <i class="pi pi-search"></i>
+        <q-icon name="search" size="20px" />
       </button>
       <button class="icon-btn" title="Профиль" @click="emit('open-profile')">
         <span class="avatar mini" :style="avatarStyle(selfName)">
@@ -61,10 +61,13 @@ const props = defineProps<{
   /** Имя текущего пользователя (для мини-аватара в кнопке «Профиль»). */
   selfName: string
   selfAvatarUrl: string | undefined
+  /** Показывать ли кнопку «назад» (мобильный режим: drawer поверх списка). */
+  showBack: boolean
 }>()
 
 const emit = defineEmits<{
-  (e: 'open-contacts'): void
+  /** «Назад» — на мобильном возврат к списку чатов (родитель открывает drawer). */
+  (e: 'back'): void
   (e: 'toggle-search'): void
   (e: 'open-profile'): void
   (e: 'start-call', kind: 'audio' | 'video'): void
@@ -99,7 +102,7 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
 }
 
 .back-btn {
-  display: none;
+  display: inline-flex;
 }
 
 .icon-btn {
@@ -242,12 +245,6 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   100% {
     opacity: 0;
     transform: scale(1.5);
-  }
-}
-
-@media (max-width: 820px) {
-  .back-btn {
-    display: inline-flex;
   }
 }
 </style>

@@ -26,13 +26,16 @@ export const mediaTypeLabel = (file: MessageFile): string => {
   return `Файл: ${file.name}`
 }
 
+/**
+ * Material-имя иконки вложения (для `<q-icon :name="fileIcon(file)" />`).
+ */
 export const fileIcon = (file: MessageFile): string => {
-  if (file.mime?.startsWith('image/')) return 'pi pi-image'
-  if (file.mime?.startsWith('video/')) return 'pi pi-video'
-  if (file.mime === 'application/pdf') return 'pi pi-file-pdf'
-  if (file.mime?.startsWith('audio/')) return 'pi pi-volume-up'
-  if (file.mime?.startsWith('text/')) return 'pi pi-file'
-  return 'pi pi-file'
+  if (file.mime?.startsWith('image/')) return 'image'
+  if (file.mime?.startsWith('video/')) return 'videocam'
+  if (file.mime === 'application/pdf') return 'picture_as_pdf'
+  if (file.mime?.startsWith('audio/')) return 'volume_up'
+  if (file.mime?.startsWith('text/')) return 'description'
+  return 'insert_drive_file'
 }
 
 /** Краткое описание сообщения для цитат, превью и закреплённых. */

@@ -1,6 +1,6 @@
 <template>
   <div class="pinned-bar" @click="emit('close-popups')">
-    <i class="pi pi-bookmark pinned-icon"></i>
+    <q-icon name="push_pin" class="pinned-icon" size="17px" />
     <div class="pinned-content">
       <div class="pinned-head">
         <span>Закреплённые сообщения</span>
@@ -24,7 +24,7 @@
       </div>
     </div>
     <button class="icon-btn" title="Развернуть" @click.stop="open = !open">
-      <i class="pi pi-chevron-down" :class="{ rotated: open }"></i>
+      <q-icon name="expand_more" :class="{ rotated: open }" size="20px" />
     </button>
   </div>
 </template>

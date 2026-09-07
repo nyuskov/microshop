@@ -7,7 +7,7 @@
     <div class="msg-bubble" :class="{ 'round-video-only': isRoundVideoOnly(message) }">
       <!-- Плашка «Переслано от …» -->
       <div v-if="forwardLabel" class="forward-banner">
-        <i class="pi pi-share-alt"></i>
+        <q-icon name="forward" size="13px" />
         <span>{{ forwardLabel }}</span>
       </div>
 
@@ -67,7 +67,7 @@
           rel="noopener"
         >
           <span class="attachment-card">
-            <i :class="fileIcon(message.file)"></i>
+            <q-icon :name="fileIcon(message.file)" size="26px" />
             <span class="attachment-info">
               <span class="attachment-name">{{ message.file.name }}</span>
               <span class="attachment-meta">{{ formatBytes(message.file.size) }}</span>
@@ -101,10 +101,10 @@
     <!-- Действия при наведении -->
     <div class="msg-actions" @click.stop>
       <button class="round-btn" title="Ответить" @click="emit('set-reply')">
-        <i class="pi pi-reply"></i>
+        <q-icon name="reply" size="17px" />
       </button>
       <button class="round-btn" title="Реакция" @click="emit('toggle-emoji-picker')">
-        <i class="pi pi-face-smile"></i>
+        <q-icon name="sentiment_satisfied_alt" size="17px" />
       </button>
       <button
         v-if="!message.is_pinned"
@@ -112,13 +112,13 @@
         title="Закрепить"
         @click="emit('toggle-pin')"
       >
-        <i class="pi pi-bookmark"></i>
+        <q-icon name="push_pin" size="17px" />
       </button>
       <button v-else class="round-btn" title="Открепить" @click="emit('toggle-pin')">
-        <i class="pi pi-bookmark-fill"></i>
+        <q-icon name="push_pin" size="17px" />
       </button>
       <button class="round-btn" title="Копировать" @click="emit('copy')">
-        <i class="pi pi-copy"></i>
+        <q-icon name="content_copy" size="17px" />
       </button>
       <button
         v-if="isOwn && message.text"
@@ -126,13 +126,13 @@
         title="Редактировать"
         @click="emit('edit')"
       >
-        <i class="pi pi-pencil"></i>
+        <q-icon name="edit" size="17px" />
       </button>
       <button class="round-btn" title="Переслать" @click="emit('forward')">
-        <i class="pi pi-share-alt"></i>
+        <q-icon name="forward" size="17px" />
       </button>
       <button v-if="isOwn" class="round-btn danger" title="Удалить" @click="emit('delete')">
-        <i class="pi pi-trash"></i>
+        <q-icon name="delete" size="17px" />
       </button>
     </div>
 

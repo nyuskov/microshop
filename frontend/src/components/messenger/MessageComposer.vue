@@ -9,7 +9,7 @@
         <span class="reply-bar-text">{{ editingMessage.text }}</span>
       </div>
       <button class="icon-btn" title="Отмена" @click="emit('cancel-edit')">
-        <i class="pi pi-times"></i>
+        <q-icon name="close" size="20px" />
       </button>
     </div>
 
@@ -20,7 +20,7 @@
         <span class="reply-bar-text">{{ messageSnippet(replyTarget) }}</span>
       </div>
       <button class="icon-btn" title="Отменить ответ" @click="emit('clear-reply')">
-        <i class="pi pi-times"></i>
+        <q-icon name="close" size="20px" />
       </button>
     </div>
 
@@ -31,7 +31,7 @@
     />
     <div v-else class="input-row">
       <button class="round-btn" title="Прикрепить файл" @click="attachInput?.click()">
-        <i class="pi pi-paperclip"></i>
+        <q-icon name="attach_file" size="20px" />
       </button>
       <input
         ref="attachInput"
@@ -49,7 +49,7 @@
         @keydown.enter.prevent="emit('send-text')"
       />
       <button class="round-btn" title="Эмодзи" @click="emit('toggle-emoji-menu')">
-        <i class="pi pi-face-smile"></i>
+        <q-icon name="sentiment_satisfied_alt" size="20px" />
       </button>
       <button
         class="round-btn gif-btn"
@@ -83,7 +83,7 @@
           @pointercancel="emit('mic-cancel')"
           @contextmenu.prevent
         >
-          <i :class="recordMode === 'video' ? 'pi pi-video' : 'pi pi-microphone'"></i>
+          <q-icon :name="recordMode === 'video' ? 'videocam' : 'mic'" size="20px" />
         </button>
         <span v-if="recordModeHint" class="record-mode-hint">{{ recordModeHint }}</span>
       </span>
@@ -94,7 +94,7 @@
         :disabled="sending"
         @click="emit('send-text')"
       >
-        <i class="pi pi-send"></i>
+        <q-icon name="send" size="18px" />
       </button>
 
       <template v-if="gifPanelOpen && chatId !== null">

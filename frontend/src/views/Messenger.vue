@@ -1,7 +1,18 @@
 <template>
-  <div class="messenger-shell">
-    <div class="messenger-body">
-      <!-- ======= Левая панель (Чаты / Контакты / поиск людей) ======= -->
+  <q-layout class="messenger-shell" view="hhh lpr fff">
+    <!-- ======= QDrawer: Чаты / Контакты (десктоп — постоянная панель,
+         мобильный — выдвижной drawer поверх чата) ======= -->
+    <q-drawer
+      v-model="drawerOpen"
+      side="left"
+      :width="drawerWidth"
+      :breakpoint="1023"
+      :show-if-above="true"
+      :overlay="!isDesktop"
+      :no-swipe-open="!isDesktop && selectedChatId !== null"
+      bordered
+      class="ms-drawer"
+    >
       <ChatSidebar
         :view="view"
         :current-user-id="currentUserId"
@@ -17,8 +28,10 @@
         @select-chat="selectChat"
         @chat-opened="onChatOpened"
       />
+    </q-drawer>
 
-      <!-- ======= Правая область чата ======= -->
+    <!-- ======= Правая область чата ======= -->
+    <q-page-container class="messenger-page">
       <main class="chat-panel" :style="chatBgStyle">
         <template v-if="!selectedChat">
           <ChatPlaceholder @open-contacts="view = 'contacts'" />
@@ -34,7 +47,8 @@
             :show-call-button="isPrivateChat(selectedChat)"
             :self-name="selfName"
             :self-avatar-url="selfAvatarUrl"
-            @open-contacts="view = 'contacts'"
+            :show-back="!isDesktop"
+            @back="goBackToList"
             @toggle-search="toggleInlineSearch"
             @open-profile="goToProfile"
             @start-call="startCall"
@@ -111,8 +125,8 @@
           />
         </template>
       </main>
-    </div>
-  </div>
+    </q-page-container>
+  </q-layout>
 
   <!-- Пересылка сообщения (список чатов) -->
   <ForwardDialog
@@ -126,36 +140,42 @@
     @forward="sendForward"
   />
 
-  <!-- Profile Modal -->
-  <Dialog
-    v-model:visible="showProfileModal"
-    header="Настройки профиля"
-    :modal="true"
-    :closable="true"
-    :style="{ width: '680px' }"
-    @hide="showProfileModal = false"
-  >
-    <Suspense>
-      <template #default>
-        <UserProfile @close-modal="showProfileModal = false" />
-      </template>
-      <template #fallback>
-        <div>Загрузка профиля...</div>
-      </template>
-    </Suspense>
-  </Dialog>
+  <!-- Profile Modal (Quasar) -->
+  <q-dialog v-model="showProfileModal" @hide="showProfileModal = false">
+    <q-card class="ms-modal ms-modal-profile">
+      <q-card-section class="row no-wrap items-center ms-modal-head">
+        <div class="text-subtitle1 text-weight-medium ellipsis">Настройки профиля</div>
+        <q-space />
+        <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
+      </q-card-section>
+      <q-separator />
+      <q-card-section class="ms-modal-body">
+        <Suspense>
+          <template #default>
+            <UserProfile @close-modal="showProfileModal = false" />
+          </template>
+          <template #fallback>
+            <div class="q-pa-md">Загрузка профиля...</div>
+          </template>
+        </Suspense>
+      </q-card-section>
+    </q-card>
+  </q-dialog>
 
-  <!-- Appearance Modal -->
-  <Dialog
-    v-model:visible="showAppearanceModal"
-    header="Оформление"
-    :modal="true"
-    :closable="true"
-    :style="{ width: '430px' }"
-    @hide="showAppearanceModal = false"
-  >
-    <AppearanceSettings />
-  </Dialog>
+  <!-- Appearance Modal (Quasar) -->
+  <q-dialog v-model="showAppearanceModal" @hide="showAppearanceModal = false">
+    <q-card class="ms-modal ms-modal-appearance">
+      <q-card-section class="row no-wrap items-center ms-modal-head">
+        <div class="text-subtitle1 text-weight-medium ellipsis">Оформление</div>
+        <q-space />
+        <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
+      </q-card-section>
+      <q-separator />
+      <q-card-section class="ms-modal-body">
+        <AppearanceSettings />
+      </q-card-section>
+    </q-card>
+  </q-dialog>
 
   <!-- Login Modal -->
   <LoginModal :visible="showLoginModal" @close-modal="onLoginModalClose" />
@@ -169,7 +189,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
-import Dialog from 'primevue/dialog'
+import { useQuasar } from 'quasar'
 import LoginModal from '@/components/LoginModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -225,6 +245,24 @@ const showAppearanceModal = ref(false)
 const showLoginModal = ref(true)
 const voiceRecOpen = ref(false)
 const videoRecOpen = ref(false)
+
+// ---------- Quasar: адаптивный layout (drawer на мобильном) ----------
+const $q = useQuasar()
+/** «Десктоп» = ширина окна ≥ 1024px (md и выше). Ниже — мобильный режим. */
+const isDesktop = computed(() => $q.screen.gt.sm)
+/** Открыт ли drawer со списком чатов (значим в мобильном режиме). */
+const drawerOpen = ref(true)
+/** Ширина панели чатов: фикс. 380px на десктопе, почти во весь экран на мобильном. */
+const drawerWidth = computed(() => (isDesktop.value ? 380 : Math.min($q.screen.width, 460)))
+
+/** На мобильном: «назад» из открытого чата — снова показать список (drawer). */
+const goBackToList = () => {
+  if (!isDesktop.value) {
+    drawerOpen.value = true
+  } else {
+    view.value = 'contacts'
+  }
+}
 
 // ---------- Данные ----------
 const view = ref<'chats' | 'contacts'>('chats')
@@ -605,10 +643,16 @@ const openChatThread = async (chatId: number) => {
   clearReply()
   await Promise.all([loadThreadLatest(chatId), loadPinned(chatId)])
   scrollToBottom()
+  // Мобильный режим: выбор чата закрывает drawer — нить на весь экран.
+  if (!isDesktop.value) drawerOpen.value = false
 }
 
 const selectChat = async (chatId: number) => {
-  if (selectedChatId.value === chatId) return
+  if (selectedChatId.value === chatId) {
+    // Мобильный: повторный выбор активного чата из списка снова открывает нить.
+    if (!isDesktop.value) drawerOpen.value = false
+    return
+  }
   await openChatThread(chatId)
 }
 
@@ -1174,23 +1218,20 @@ watch(
 </script>
 
 <style scoped>
-/* ---------- Каркас ---------- */
+/* ---------- Каркас (Quasar QLayout) ---------- */
 .messenger-shell {
   height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #6d7c8c;
-  /* Всё «лишнее» (подсказки/кольца анимации) не должно давать полосу прокрутки
-     страницы — прокручивается только список сообщений внутри. */
   overflow: hidden;
+  background: #6d7c8c;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
-.messenger-body {
-  flex: 1;
+/* QPageContainer: в нём только чат, растягиваем на всю высоту. */
+.messenger-page {
   display: flex;
+  flex-direction: column;
+  height: 100vh;
   min-height: 0;
-  background: #e7ebf0;
 }
 
 .chat-panel {
@@ -1206,5 +1247,37 @@ watch(
   );
   background-size: 22px 22px;
   background-color: #eef1f4;
+}
+
+/* Drawer со списком чатов: тень и высота на весь экран. */
+.ms-drawer :deep(.q-drawer__content) {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Quasar-модалки (профиль / оформление): карточки с рамкой ---------- */
+.ms-modal {
+  width: min(720px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  border-radius: 18px;
+  border: 1px solid var(--ms-border, #e2e6ea);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
+}
+
+.ms-modal-appearance {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.ms-modal-head {
+  padding: 8px 8px 8px 20px;
+  min-height: 52px;
+}
+
+/* Внутренние отступы контента от краёв карточки */
+.ms-modal-body {
+  padding: 8px 22px 24px;
+  max-height: 82vh;
+  overflow: auto;
 }
 </style>

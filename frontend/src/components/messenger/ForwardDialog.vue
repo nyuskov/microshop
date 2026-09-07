@@ -11,11 +11,11 @@
         <!-- Шапка -->
         <header class="fwd-head">
           <div class="fwd-title">
-            <i class="pi pi-share-alt"></i>
+            <q-icon name="forward" size="19px" />
             <span>Переслать</span>
           </div>
           <button class="fwd-icon-btn" title="Закрыть" @click="emit('close')">
-            <i class="pi pi-times"></i>
+            <q-icon name="close" size="20px" />
           </button>
         </header>
 
@@ -23,14 +23,14 @@
         <div class="fwd-preview">
           <span class="fwd-preview-label">Сообщение</span>
           <span class="fwd-preview-text">
-            <i v-if="source.file" :class="fileIcon(source.file)"></i>
+            <q-icon v-if="source.file" :name="fileIcon(source.file)" size="16px" />
             {{ messageSnippet(source) }}
           </span>
         </div>
 
         <!-- Поиск по чатам -->
         <div class="fwd-search">
-          <i class="pi pi-search fwd-search-icon"></i>
+          <q-icon name="search" class="fwd-search-icon" size="17px" />
           <input
             v-model="query"
             class="fwd-search-input"
@@ -63,7 +63,7 @@
               <span class="fwd-item-sub">{{ itemSubtitle(chat) }}</span>
             </span>
             <span class="fwd-check">
-              <i v-if="isSelected(chat.id)" class="pi pi-check"></i>
+              <q-icon v-if="isSelected(chat.id)" name="check" size="16px" />
             </span>
           </button>
 
@@ -86,7 +86,7 @@
               :disabled="sending || selectedIds.length === 0"
               @click="confirmForward"
             >
-              <i class="pi pi-share-alt"></i>
+              <q-icon name="forward" size="17px" />
               <span>{{ sending ? 'Пересылаю…' : 'Переслать' }}</span>
             </button>
           </div>

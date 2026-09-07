@@ -23,6 +23,7 @@ const makeMessage = (overrides: Partial<Message>): Message => ({
   edited_at: null,
   file: null,
   reactions: [],
+  forwarded_from: null,
   ...overrides
 })
 
@@ -63,12 +64,12 @@ describe('isImageFile / isRecordedVideoMessage', () => {
 })
 
 describe('fileIcon', () => {
-  it('подбирает иконку по mime', () => {
-    expect(fileIcon(makeFile({ mime: 'image/png' }))).toBe('pi pi-image')
-    expect(fileIcon(makeFile({ mime: 'video/mp4' }))).toBe('pi pi-video')
-    expect(fileIcon(makeFile({ mime: 'application/pdf' }))).toBe('pi pi-file-pdf')
-    expect(fileIcon(makeFile({ mime: 'audio/mpeg' }))).toBe('pi pi-volume-up')
-    expect(fileIcon(makeFile({ mime: 'text/plain' }))).toBe('pi pi-file')
-    expect(fileIcon(makeFile({ mime: 'application/zip' }))).toBe('pi pi-file')
+  it('подбирает Material-иконку по mime', () => {
+    expect(fileIcon(makeFile({ mime: 'image/png' }))).toBe('image')
+    expect(fileIcon(makeFile({ mime: 'video/mp4' }))).toBe('videocam')
+    expect(fileIcon(makeFile({ mime: 'application/pdf' }))).toBe('picture_as_pdf')
+    expect(fileIcon(makeFile({ mime: 'audio/mpeg' }))).toBe('volume_up')
+    expect(fileIcon(makeFile({ mime: 'text/plain' }))).toBe('description')
+    expect(fileIcon(makeFile({ mime: 'application/zip' }))).toBe('insert_drive_file')
   })
 })

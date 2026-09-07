@@ -1,0 +1,210 @@
+/* ==========================================================================
+   Quasar → темы microshop.
+   Слой, приводящий Material-компоненты Quasar к нашим токенам
+   (--ms-* из appearance.css), светлая/тёмная тема и выбранный акцент.
+   Подключён в main.ts ПОСЛЕ appearance.css, чтобы иметь приоритет.
+   ========================================================================== */
+
+/* Quasar «брендовые» переменные: прозрачно берём из наших токенов, чтобы
+   Material-компоненты (кнопки, переключатели, поля) следовали акценту и теме. */
+:root {
+    --q-primary: var(--ms-accent);
+    --q-secondary: var(--ms-icon-2);
+    --q-accent: var(--ms-info);
+    --q-positive: var(--ms-accent);
+    --q-negative: var(--ms-danger);
+    --q-info: var(--ms-info);
+    --q-warning: #ee7f1d;
+    --q-dark: var(--ms-shell);
+    --q-dark-page: var(--ms-body);
+    --q-light: var(--ms-surface);
+    --q-light-page: var(--ms-body);
+
+    /* Единый радиус для Material-поверхностей */
+    --q-radius: 12px;
+
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        Helvetica, Arial, sans-serif;
+}
+
+/* --- Поверхности и текст --- */
+/* Уменьшаем отступы вокруг QDialog, чтобы карточке доставалось больше ширины */
+html .q-dialog__inner {
+    padding: 16px;
+}
+
+html .q-drawer,
+html .q-drawer__content,
+html .q-menu,
+html .q-dialog__inner>.q-card,
+html .q-card {
+    background: var(--ms-surface);
+    color: var(--ms-text);
+}
+
+html[data-theme='dark'] .q-drawer,
+html[data-theme='dark'] .q-drawer__content,
+html[data-theme='dark'] .q-menu,
+html[data-theme='dark'] .q-dialog__inner>.q-card,
+html[data-theme='dark'] .q-card {
+    background: var(--ms-surface);
+    color: var(--ms-text);
+}
+
+.q-dialog__inner>.q-card {
+    border-radius: var(--q-radius);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+}
+
+/* --- Поля ввода --- */
+html .q-field__control {
+    background: var(--ms-surface-2);
+    color: var(--ms-text);
+}
+
+html .q-field--outlined .q-field__control:before,
+html .q-field--outlined .q-field__control:after {
+    border-color: var(--ms-border);
+}
+
+html .q-field--outlined.q-field--focused .q-field__control:after {
+    border-color: var(--ms-accent);
+    transform: scaleX(1);
+}
+
+html .q-field__native,
+html .q-field__prefix,
+html .q-field__suffix,
+html .q-field__input {
+    color: var(--ms-text-strong);
+}
+
+html .q-field__label {
+    color: var(--ms-muted);
+}
+
+html .q-field__marginal {
+    color: var(--ms-muted-2);
+}
+
+/* --- Кнопки --- */
+html .q-btn {
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0.2px;
+}
+
+html .q-btn.q-btn--unelevated,
+html .q-btn.q-btn--push {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14);
+}
+
+/* --- Элементы списков (меню, drawer) --- */
+html .q-item {
+    color: var(--ms-text);
+}
+
+html .q-item--active {
+    background: var(--ms-accent-soft);
+    color: var(--ms-accent-strong);
+}
+
+html .q-item.q-router-link--active,
+html .q-item--active .q-item__label,
+html .q-item--active .q-icon {
+    color: var(--ms-accent-strong);
+}
+
+html .q-item__label--caption {
+    color: var(--ms-muted);
+}
+
+/* --- Разделители --- */
+html .q-separator {
+    background: var(--ms-border);
+}
+
+/* --- Тулбар/шапки --- */
+html .q-toolbar {
+    background: var(--ms-surface);
+    color: var(--ms-text-strong);
+    min-height: 56px;
+}
+
+html[data-theme='dark'] .q-toolbar {
+    background: var(--ms-surface);
+    color: var(--ms-text-strong);
+}
+
+/* --- Переключатели --- */
+html .q-toggle__inner--truthy,
+html .q-checkbox__inner--truthy {
+    color: var(--ms-accent);
+}
+
+/* --- Текстовые/иконные ссылки акцента --- */
+html .text-primary {
+    color: var(--ms-accent) !important;
+}
+
+html .bg-primary {
+    background-color: var(--ms-accent) !important;
+    color: var(--ms-on-accent) !important;
+}
+
+html .text-negative {
+    color: var(--ms-danger) !important;
+}
+
+/* --- Подписи «плейсхолдер» и состояние disabled --- */
+html .q-field--disabled .q-field__native {
+    color: var(--ms-muted-3);
+}
+
+/* --- Тонкие скроллбары поверх (аккуратно, чтобы не мешать кастомным) --- */
+html .q-drawer__content::-webkit-scrollbar,
+html .q-dialog__inner::-webkit-scrollbar {
+    width: 6px;
+}
+
+html .q-drawer__content::-webkit-scrollbar-thumb,
+html .q-dialog__inner::-webkit-scrollbar-thumb {
+    background: var(--ms-border);
+    border-radius: 3px;
+}
+
+/* --- Инпуты со сплошным фоном (filled) для форм --- */
+html .q-field--filled .q-field__control,
+html .q-field--filled.q-field--focused .q-field__control {
+    background: var(--ms-surface-2);
+}
+
+/* --- Убираем «прыжок» при появлении рамки outlined --- */
+html .q-field--outlined .q-field__control {
+    padding-top: 0;
+}
+
+/* --- Максимизированные (мобильные) диалоги занимают весь экран --- */
+.q-dialog__inner--maximized,
+.q-dialog--maximized .q-dialog__inner {
+    padding: 0 !important;
+}
+
+.q-dialog--maximized .q-card {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100vh !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+}
+
+.q-dialog__inner--maximized .q-card>.q-card__section--vert.q-pa-none,
+.q-dialog--maximized .q-card>.q-card__section--vert.q-pa-none {
+    height: calc(100vh - 48px);
+    max-height: none;
+}
+
+/* Прозрачный подложка бэкдропа диалога в тёмной теме */
+html[data-theme='dark'] .q-dialog__backdrop {
+    background: rgba(0, 0, 0, 0.6);
+}

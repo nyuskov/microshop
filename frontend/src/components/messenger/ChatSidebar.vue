@@ -5,13 +5,13 @@
       <div class="panel-header">
         <div class="panel-header-left">
           <button class="icon-btn" title="Контакты" @click="emit('to-contacts')">
-            <i class="pi pi-user-plus"></i>
+            <q-icon name="person_add" size="20px" />
           </button>
         </div>
         <h2 class="panel-title">Чаты</h2>
         <div class="panel-header-right">
           <button class="icon-btn" title="Новое сообщение" @click="focusSearch">
-            <i class="pi pi-pencil"></i>
+            <q-icon name="edit" size="19px" />
           </button>
           <span class="ms-dropdown-wrap" @click.stop>
             <button
@@ -20,7 +20,7 @@
               title="Настройки"
               @click="toggleSettingsMenu"
             >
-              <i class="pi pi-ellipsis-v"></i>
+              <q-icon name="more_vert" size="20px" />
             </button>
             <div v-if="settingsMenuOpen" class="ms-dropdown">
               <button
@@ -29,7 +29,7 @@
                 class="ms-dropdown-item"
                 @click="runSettingsAction(action)"
               >
-                <i :class="action.icon"></i>
+                <q-icon :name="action.icon" size="19px" />
                 <span>{{ action.label }}</span>
               </button>
             </div>
@@ -38,7 +38,7 @@
       </div>
 
       <div class="panel-search">
-        <i class="pi pi-search search-icon"></i>
+        <q-icon name="search" class="search-icon" size="17px" />
         <input
           ref="searchInputRef"
           v-model="searchQuery"
@@ -73,7 +73,7 @@
                 }}<template v-if="user.phone_number"> · {{ user.phone_number }}</template></span
               >
             </span>
-            <i class="pi pi-comment row-arrow"></i>
+            <q-icon name="chevron_right" class="row-arrow" size="20px" />
           </button>
         </template>
         <div v-else class="search-status">Никого не найдено</div>
@@ -113,7 +113,7 @@
               </span>
               <span class="row-line">
                 <span class="row-sub preview">
-                  <i v-if="lastMessageIsOut(chat)" class="pi pi-check tick"></i>
+                  <q-icon v-if="lastMessageIsOut(chat)" name="done" class="tick" size="16px" />
                   {{ previewText(chat) }}
                 </span>
                 <span v-if="chat.unread_count > 0" class="unread-badge">
@@ -131,7 +131,7 @@
       <div class="panel-header">
         <div class="panel-header-left">
           <button class="icon-btn" title="Назад к чатам" @click="emit('to-chats')">
-            <i class="pi pi-arrow-left"></i>
+            <q-icon name="arrow_back" size="20px" />
           </button>
         </div>
         <h2 class="panel-title">Контакты</h2>
@@ -143,7 +143,7 @@
               title="Настройки"
               @click="toggleSettingsMenu"
             >
-              <i class="pi pi-ellipsis-v"></i>
+              <q-icon name="more_vert" size="20px" />
             </button>
             <div v-if="settingsMenuOpen" class="ms-dropdown">
               <button
@@ -152,7 +152,7 @@
                 class="ms-dropdown-item"
                 @click="runSettingsAction(action)"
               >
-                <i :class="action.icon"></i>
+                <q-icon :name="action.icon" size="19px" />
                 <span>{{ action.label }}</span>
               </button>
             </div>
@@ -161,7 +161,7 @@
       </div>
 
       <div class="panel-search">
-        <i class="pi pi-search search-icon"></i>
+        <q-icon name="search" class="search-icon" size="17px" />
         <input
           v-model="contactsQuery"
           class="panel-search-input"
@@ -196,7 +196,7 @@
               }}<template v-if="contact.phone_number"> · {{ contact.phone_number }}</template></span
             >
           </span>
-          <i class="pi pi-comment row-arrow"></i>
+          <q-icon name="chevron_right" class="row-arrow" size="20px" />
         </button>
       </div>
     </template>
@@ -240,8 +240,8 @@ const emit = defineEmits<{
 
 // Пункты верхнего меню «⋯» (сюда будут добавляться новые настройки).
 const SETTINGS_ACTIONS = [
-  { key: 'profile', label: 'Настройки профиля', icon: 'pi pi-user' },
-  { key: 'appearance', label: 'Оформление и тема', icon: 'pi pi-palette' }
+  { key: 'profile', label: 'Настройки профиля', icon: 'person' },
+  { key: 'appearance', label: 'Оформление и тема', icon: 'palette' }
 ] as const
 
 const rootEl = ref<HTMLElement | null>(null)
@@ -405,12 +405,14 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .side-panel {
-  width: 320px;
+  width: 100%;
+  height: 100%;
   background: #ffffff;
   border-right: 1px solid #e2e6ea;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
 }
 
 .icon-btn {
@@ -683,23 +685,9 @@ onBeforeUnmount(() => {
   color: #5b6b79;
 }
 
-@media (max-width: 820px) {
-  .side-panel {
-    width: 84px;
-  }
-
-  .side-panel .panel-title,
-  .side-panel .row-text,
-  .side-panel .panel-search,
-  .side-panel .section-label,
-  .side-panel .search-status,
-  .side-panel .empty-hint {
-    display: none;
-  }
-
-  .row-item {
-    justify-content: center;
-    padding: 8px;
-  }
+.ms-dropdown-item .q-icon {
+  width: 18px;
+  text-align: center;
+  color: #5b6b79;
 }
 </style>

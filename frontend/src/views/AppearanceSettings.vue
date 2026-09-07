@@ -11,7 +11,7 @@
           :class="{ active: themeStore.mode === opt.mode }"
           @click="themeStore.setThemeMode(opt.mode)"
         >
-          <i :class="opt.icon"></i>
+          <q-icon :name="opt.icon" size="17px" />
           <span>{{ opt.label }}</span>
         </button>
       </div>
@@ -46,7 +46,7 @@
           :title="bubble.label"
           @click="themeStore.setBubbleStyle(bubble.key)"
         >
-          <i class="pi pi-check bubble-check"></i>
+          <q-icon name="check" class="bubble-check" size="16px" />
         </button>
       </div>
     </section>
@@ -88,14 +88,14 @@
           @change="onWallpaperFile"
         />
         <button class="action-btn" @click="wallpaperInput?.click()">
-          <i class="pi pi-image"></i> Загрузить фото
+          <q-icon name="image" size="17px" /> Загрузить фото
         </button>
         <button
           v-if="themeStore.wallpaperKey === 'custom' || themeStore.wallpaperCustom"
           class="action-btn danger"
           @click="themeStore.clearCustomWallpaper()"
         >
-          <i class="pi pi-trash"></i> Убрать
+          <q-icon name="delete" size="17px" /> Убрать
         </button>
       </div>
       <p v-if="wallpaperError" class="wallpaper-error">{{ wallpaperError }}</p>
@@ -104,7 +104,7 @@
     <!-- Сброс -->
     <section class="appearance-section reset-row">
       <button class="action-btn reset" @click="onReset">
-        <i class="pi pi-refresh"></i> Сбросить настройки
+        <q-icon name="refresh" size="17px" /> Сбросить настройки
       </button>
     </section>
   </div>
@@ -123,9 +123,9 @@ import {
 const themeStore = useThemeStore()
 
 const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
-  { mode: 'light', label: 'Светлая', icon: 'pi pi-sun' },
-  { mode: 'dark', label: 'Тёмная', icon: 'pi pi-moon' },
-  { mode: 'system', label: 'Системная', icon: 'pi pi-desktop' }
+  { mode: 'light', label: 'Светлая', icon: 'light_mode' },
+  { mode: 'dark', label: 'Тёмная', icon: 'dark_mode' },
+  { mode: 'system', label: 'Системная', icon: 'computer' }
 ]
 
 const wallpaperInput = ref<HTMLInputElement | null>(null)

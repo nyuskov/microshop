@@ -159,7 +159,7 @@ html .messenger-shell {
     background: var(--ms-shell);
 }
 
-html .messenger-shell .messenger-body {
+html .messenger-shell .messenger-page {
     background: var(--ms-body);
 }
 

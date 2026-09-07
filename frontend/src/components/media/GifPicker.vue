@@ -2,7 +2,7 @@
   <div class="gif-picker" @mousedown.self="nothing">
     <div class="gif-picker-inner" @click.stop>
       <div class="gif-head">
-        <i class="pi pi-search gif-search-icon"></i>
+        <q-icon name="search" class="gif-search-icon" size="17px" />
         <input
           v-model="query"
           class="gif-search-input"
@@ -11,7 +11,7 @@
           @keydown.enter.prevent="doSearch()"
         />
         <button class="gif-search-btn" :disabled="loading" title="Найти" @click="doSearch()">
-          <i class="pi pi-arrow-right"></i>
+          <q-icon name="arrow_forward" size="18px" />
         </button>
       </div>
 

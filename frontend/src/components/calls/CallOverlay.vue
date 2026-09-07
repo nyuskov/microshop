@@ -15,10 +15,10 @@
             </p>
             <div class="call-controls incoming-controls">
               <button class="ctl-btn danger big" title="Отклонить" @click="callStore.declineCall()">
-                <i class="pi pi-phone off"></i>
+                <q-icon name="call_end" size="28px" />
               </button>
               <button class="ctl-btn accept big" title="Ответить" @click="callStore.acceptCall()">
-                <i :class="callStore.kind === 'video' ? 'pi pi-video' : 'pi pi-phone'"></i>
+                <q-icon :name="callStore.kind === 'video' ? 'videocam' : 'call'" size="28px" />
               </button>
             </div>
           </div>
@@ -34,7 +34,7 @@
             <p class="call-subtitle">Звоним…</p>
             <div class="call-controls incoming-controls">
               <button class="ctl-btn danger big" title="Отменить" @click="callStore.cancelCall()">
-                <i class="pi pi-phone off"></i>
+                <q-icon name="call_end" size="28px" />
               </button>
             </div>
           </div>
@@ -94,7 +94,7 @@
                 title="Микрофон"
                 @click="callStore.toggleMic()"
               >
-                <i class="pi pi-microphone"></i>
+                <q-icon name="mic" size="26px" />
               </button>
               <button
                 v-if="callStore.kind === 'video'"
@@ -103,10 +103,10 @@
                 title="Камера"
                 @click="callStore.toggleCamera()"
               >
-                <i class="pi pi-camera"></i>
+                <q-icon name="videocam" size="26px" />
               </button>
               <button class="ctl-btn danger big" title="Завершить" @click="callStore.endCall()">
-                <i class="pi pi-phone off"></i>
+                <q-icon name="call_end" size="28px" />
               </button>
             </div>
           </div>

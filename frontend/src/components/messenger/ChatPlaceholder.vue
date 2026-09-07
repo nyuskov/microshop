@@ -1,9 +1,17 @@
 <template>
   <div class="chat-placeholder">
-    <i class="pi pi-comments placeholder-icon"></i>
+    <q-icon name="forum" class="placeholder-icon" size="64px" />
     <h3>Выберите, кому хотели бы написать</h3>
     <p>Начните переписку: найдите собеседника по логину или телефону.</p>
-    <button class="ghost-btn" @click="emit('open-contacts')">Открыть контакты</button>
+    <q-btn
+      unelevated
+      no-caps
+      color="primary"
+      class="ghost-btn q-mt-sm"
+      @click="emit('open-contacts')"
+    >
+      Открыть контакты
+    </q-btn>
   </div>
 </template>
 
@@ -27,7 +35,6 @@ const emit = defineEmits<{
 }
 
 .placeholder-icon {
-  font-size: 4rem;
   color: #b9c6cf;
   margin-bottom: 14px;
 }
@@ -38,17 +45,6 @@ const emit = defineEmits<{
 }
 
 .ghost-btn {
-  margin-top: 14px;
-  border: 1px solid #b9c6cf;
-  background: #fff;
-  color: #3f7c56;
-  padding: 9px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.ghost-btn:hover {
-  background: #eef6ef;
+  margin-top: 6px;
 }
 </style>
