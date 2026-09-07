@@ -21,12 +21,7 @@
       <!-- ======= Правая область чата ======= -->
       <main class="chat-panel" :style="chatBgStyle">
         <template v-if="!selectedChat">
-          <div class="chat-placeholder">
-            <i class="pi pi-comments placeholder-icon"></i>
-            <h3>Выберите, кому хотели бы написать</h3>
-            <p>Начните переписку: найдите собеседника по логину или телефону.</p>
-            <button class="ghost-btn" @click="view = 'contacts'">Открыть контакты</button>
-          </div>
+          <ChatPlaceholder @open-contacts="view = 'contacts'" />
         </template>
 
         <template v-else>
@@ -46,52 +41,21 @@
           />
 
           <!-- Поиск по сообщениям -->
-          <div v-if="inlineSearchOpen" class="inline-search">
-            <i class="pi pi-search search-icon"></i>
-            <input
-              v-model="inlineQuery"
-              class="inline-search-input"
-              type="text"
-              placeholder="Поиск по сообщениям"
-              aria-label="Поиск по сообщениям"
-            />
-            <span v-if="serverMatchCount > 0" class="inline-search-count">
-              {{ serverMatchCount }} совп.
-            </span>
-            <button class="icon-btn" @click="toggleInlineSearch">
-              <i class="pi pi-times"></i>
-            </button>
-          </div>
+          <InlineSearchBar
+            v-if="inlineSearchOpen"
+            v-model:query="inlineQuery"
+            :count="serverMatchCount"
+            @close="toggleInlineSearch"
+          />
 
           <!-- Закреплённые сообщения -->
-          <div v-if="pinnedMessages.length" class="pinned-bar" @click="closePopups">
-            <i class="pi pi-bookmark pinned-icon"></i>
-            <div class="pinned-content">
-              <div class="pinned-head">
-                <span>Закреплённые сообщения</span>
-                <span class="pinned-count">{{ pinnedMessages.length }}</span>
-              </div>
-              <div v-if="pinnedOpen" class="pinned-list">
-                <div
-                  v-for="message in pinnedMessages"
-                  :key="message.id"
-                  class="pinned-item"
-                  role="button"
-                  tabindex="0"
-                  title="Перейти к сообщению"
-                  @click.stop="scrollToPinnedMessage(message.id)"
-                  @keydown.enter.prevent="scrollToPinnedMessage(message.id)"
-                  @keydown.space.prevent="scrollToPinnedMessage(message.id)"
-                >
-                  <span class="pinned-sender">{{ senderNameOfMessage(message) }}</span>
-                  {{ pinnedSnippet(message) }}
-                </div>
-              </div>
-            </div>
-            <button class="icon-btn" title="Развернуть" @click.stop="pinnedOpen = !pinnedOpen">
-              <i class="pi pi-chevron-down" :class="{ rotated: pinnedOpen }"></i>
-            </button>
-          </div>
+          <PinnedBar
+            v-if="pinnedRows.length"
+            v-model:open="pinnedOpen"
+            :rows="pinnedRows"
+            @scroll-to="scrollToPinnedMessage"
+            @close-popups="closePopups"
+          />
 
           <!-- Сообщения -->
           <div
@@ -251,6 +215,9 @@ import AppearanceSettings from './AppearanceSettings.vue'
 import CallOverlay from '@/components/calls/CallOverlay.vue'
 import ChatSidebar from '@/components/messenger/ChatSidebar.vue'
 import ChatHeader from '@/components/messenger/ChatHeader.vue'
+import ChatPlaceholder from '@/components/messenger/ChatPlaceholder.vue'
+import InlineSearchBar from '@/components/messenger/InlineSearchBar.vue'
+import PinnedBar from '@/components/messenger/PinnedBar.vue'
 import MessageRow from '@/components/messenger/MessageRow.vue'
 import MessageComposer from '@/components/messenger/MessageComposer.vue'
 import VideoRecorderModal from '@/components/media/VideoRecorderModal.vue'
@@ -314,6 +281,15 @@ const selectedChat = computed<Chat | null>(() => {
 })
 
 const messageRows = computed<ThreadRow[]>(() => buildMessageRows(messages.value, inlineQuery.value))
+
+/** Строки закреплённых сообщений для PinnedBar (имя + сниппет уже посчитаны). */
+const pinnedRows = computed(() =>
+  pinnedMessages.value.map((message) => ({
+    id: message.id,
+    sender: senderNameOfMessage(message),
+    snippet: pinnedSnippet(message)
+  }))
+)
 
 // ---------- Вспомогательные функции ----------
 const otherUserOfChat = (chat: Chat): ChatUser | undefined => {
@@ -1239,124 +1215,6 @@ watch(
   background-color: #eef1f4;
 }
 
-.icon-btn {
-  background: none;
-  border: none;
-  color: #52626f;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.05rem;
-  cursor: pointer;
-}
-
-.icon-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: #202b34;
-}
-
-/* ---------- Пустое состояние чата ---------- */
-.chat-placeholder {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: #7c8a96;
-  padding: 24px;
-  background: transparent;
-}
-
-.placeholder-icon {
-  font-size: 4rem;
-  color: #b9c6cf;
-  margin-bottom: 14px;
-}
-
-.chat-placeholder h3 {
-  margin: 0 0 6px;
-  color: #52626f;
-}
-
-.ghost-btn {
-  margin-top: 14px;
-  border: 1px solid #b9c6cf;
-  background: #fff;
-  color: #3f7c56;
-  padding: 9px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.ghost-btn:hover {
-  background: #eef6ef;
-}
-
-/* ---------- Закреплённые ---------- */
-.pinned-bar {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 8px 16px;
-  background: #fffdf4;
-  border-bottom: 1px solid #efe4c8;
-}
-
-.pinned-icon {
-  color: #c9a227;
-  font-size: 1rem;
-  margin-top: 3px;
-}
-
-.pinned-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.pinned-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  color: #8a7320;
-  font-weight: 600;
-}
-
-.pinned-count {
-  background: #f3e6b8;
-  color: #8a7320;
-  border-radius: 10px;
-  padding: 0 6px;
-  font-size: 11px;
-}
-
-.pinned-item {
-  font-size: 13.5px;
-  color: #4a4a3c;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-top: 3px;
-  padding: 4px 8px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.pinned-item:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
-
-.pinned-sender {
-  font-weight: 600;
-  color: #1e7a43;
-  margin-right: 6px;
-}
-
 /* ---------- Сообщения ---------- */
 .messages-scroll {
   flex: 1;
@@ -1386,39 +1244,5 @@ watch(
   text-align: center;
   color: #8a98a3;
   font-size: 13.5px;
-}
-
-.rotated {
-  transform: rotate(180deg);
-}
-
-/* Поиск по сообщениям */
-.inline-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  background: #ffffff;
-  border-bottom: 1px solid #e2e6ea;
-}
-
-.search-icon {
-  color: #8595a2;
-  font-size: 0.9rem;
-}
-
-.inline-search-input {
-  flex: 1;
-  border: none;
-  outline: none;
-  font-size: 14px;
-  background: transparent;
-}
-
-.inline-search-count {
-  flex: none;
-  font-size: 12px;
-  color: #8a94a6;
-  white-space: nowrap;
 }
 </style>
