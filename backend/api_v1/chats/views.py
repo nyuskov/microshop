@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user, touch_last_seen
@@ -27,7 +27,9 @@ def _serialize_chat(
         "id": chat.id,
         "name": chat.name,
         "users": [ChatUserSchema.model_validate(u) for u in chat.users],
-        "last_message": (message_basic_to_dict(last) if last is not None else None),
+        "last_message": (
+            message_basic_to_dict(last) if last is not None else None
+        ),
         "unread_count": unread_counts.get(chat.id, 0),
     }
 
@@ -50,11 +52,15 @@ async def get_my_chats(
     # Фронт поллит именно этот эндпоинт каждые ~3 c — здесь и обновляем присутствие.
     await touch_last_seen(user, session)
     chat_ids = [chat.id for chat in chats]
-    last_messages = await crud.get_last_messages(session=session, chat_ids=chat_ids)
+    last_messages = await crud.get_last_messages(
+        session=session, chat_ids=chat_ids
+    )
     unread_counts = await crud.get_unread_counts(
         session=session, chat_ids=chat_ids, user_id=user.id
     )
-    items = [_serialize_chat(chat, last_messages, unread_counts) for chat in chats]
+    items = [
+        _serialize_chat(chat, last_messages, unread_counts) for chat in chats
+    ]
     items.sort(key=_chat_sort_key, reverse=True)
     return items
 
@@ -71,8 +77,21 @@ async def create_or_open_private_chat(
         first_user_id=user.id,
         second_user_id=payload.user_id,
     )
-    last_messages = await crud.get_last_messages(session=session, chat_ids=[chat.id])
+    last_messages = await crud.get_last_messages(
+        session=session, chat_ids=[chat.id]
+    )
     unread_counts = await crud.get_unread_counts(
         session=session, chat_ids=[chat.id], user_id=user.id
     )
     return _serialize_chat(chat, last_messages, unread_counts)
+
+
+@router.delete("/{chat_id}/", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_chat(
+    chat_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Удаляет чат у текущего пользователя (покидает; при 0 участников — целиком)."""
+    await crud.leave_chat(session=session, chat_id=chat_id, user_id=user.id)
+    return None

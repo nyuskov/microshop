@@ -3,13 +3,18 @@
     <button v-if="showBack" class="icon-btn back-btn" title="К списку чатов" @click="emit('back')">
       <q-icon name="arrow_back" size="21px" />
     </button>
-    <span class="avatar-wrap" :class="{ online: peerOnline }">
+    <span
+      class="avatar-wrap"
+      :class="{ online: peerOnline }"
+      title="Информация о чате"
+      @click="emit('open-info')"
+    >
       <span class="avatar chat-avatar" :style="avatarStyle(title)">
         <img v-if="peerAvatarUrl" :src="peerAvatarUrl" class="avatar-img" alt="" />
         <template v-else>{{ initials(title) }}</template>
       </span>
     </span>
-    <div class="chat-header-info">
+    <div class="chat-header-info" title="Информация о чате" @click="emit('open-info')">
       <div class="chat-title-row">
         <div class="chat-title">{{ title }}</div>
         <span v-if="statusPill" class="chat-status-pill">{{ statusPill }}</span>
@@ -32,7 +37,7 @@
           <q-icon :name="callKind === 'video' ? 'videocam' : 'call'" size="20px" />
         </button>
       </span>
-      <button
+      <!-- <button
         class="icon-btn"
         :class="{ pinned }"
         :title="pinned ? 'Открепить чат' : 'Закрепить чат вверху списка'"
@@ -40,7 +45,7 @@
         @click="emit('toggle-pin')"
       >
         <q-icon name="push_pin" size="20px" />
-      </button>
+      </button> -->
       <button class="icon-btn" title="Поиск по сообщениям" @click="emit('toggle-search')">
         <q-icon name="search" size="20px" />
       </button>
@@ -85,6 +90,7 @@ const emit = defineEmits<{
   (e: 'back'): void
   (e: 'toggle-search'): void
   (e: 'open-profile'): void
+  (e: 'open-info'): void
   (e: 'start-call', kind: 'audio' | 'video'): void
   (e: 'toggle-pin'): void
 }>()
@@ -105,6 +111,11 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
 </script>
 
 <style scoped>
+.avatar-wrap,
+.chat-header-info {
+  cursor: pointer;
+}
+
 .chat-header {
   position: relative;
   display: flex;

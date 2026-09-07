@@ -11,6 +11,17 @@
       <div class="lb-topbar">
         <span class="lb-name" :title="current.name">{{ current.name }}</span>
         <span v-if="images.length > 1" class="lb-count">{{ index + 1 }} / {{ images.length }}</span>
+        <a
+          class="lb-icon-btn lb-download"
+          :href="current.url"
+          :download="current.name"
+          target="_blank"
+          rel="noopener"
+          title="Скачать"
+          aria-label="Скачать изображение"
+        >
+          <q-icon name="download" size="22px" />
+        </a>
         <button class="lb-icon-btn lb-close" title="Закрыть (Esc)" @click="emit('close')">
           <q-icon name="close" size="24px" />
         </button>
@@ -143,6 +154,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
   cursor: pointer;
+  text-decoration: none;
   transition: background 0.15s;
 }
 

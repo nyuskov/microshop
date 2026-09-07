@@ -24,7 +24,10 @@
         :online-user-ids="onlineUserIds"
         :typing-chat-ids="typingChatIds"
         :pinned-chat-ids="pinnedChatIds"
+        :drafts="draftsByChatId"
         @open-message="openGlobalMessage"
+        @toggle-pin="toggleChatPinned"
+        @delete-chat="deleteChatOf"
         @to-contacts="view = 'contacts'"
         @to-chats="view = 'chats'"
         @open-profile="goToProfile"
@@ -57,6 +60,7 @@
             @back="goBackToList"
             @toggle-search="toggleInlineSearch"
             @open-profile="goToProfile"
+            @open-info="openChatInfo"
             @start-call="startCall"
             @toggle-pin="toggleCurrentChatPin"
           />
@@ -185,6 +189,20 @@
     </q-card>
   </q-dialog>
 
+  <!-- Информация о чате -->
+  <q-dialog v-model="showChatInfoModal">
+    <template v-if="selectedChat">
+      <ChatInfo
+        :chat="selectedChat"
+        :current-user-id="currentUserId"
+        :subtitle="chatSubtitle(selectedChat)"
+        :messages="messages"
+        @close="showChatInfoModal = false"
+        @open-image="openChatInfoImage"
+      />
+    </template>
+  </q-dialog>
+
   <!-- Login Modal -->
   <LoginModal :visible="showLoginModal" @close-modal="onLoginModalClose" />
 
@@ -206,7 +224,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
 import { useQuasar } from 'quasar'
 import LoginModal from '@/components/LoginModal.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -226,6 +244,7 @@ import {
   setMessageReaction,
   removeMessageReaction,
   deleteMessage,
+  deleteChat,
   type SearchUserResult
 } from '@/services/chatService'
 import type { Chat, ChatUser, Message } from '@/types'
@@ -248,6 +267,7 @@ import PinnedBar from '@/components/messenger/PinnedBar.vue'
 import MessageThread from '@/components/messenger/MessageThread.vue'
 import MessageComposer from '@/components/messenger/MessageComposer.vue'
 import ForwardDialog from '@/components/messenger/ForwardDialog.vue'
+import ChatInfo from '@/components/messenger/ChatInfo.vue'
 import VideoRecorderModal from '@/components/media/VideoRecorderModal.vue'
 import ImageLightbox from '@/components/media/ImageLightbox.vue'
 import { useCallStore } from '@/stores/call'
@@ -262,6 +282,7 @@ const realtimeStore = useRealtimeStore()
 // ---------- Модальные окна ----------
 const showProfileModal = ref(false)
 const showAppearanceModal = ref(false)
+const showChatInfoModal = ref(false)
 const showLoginModal = ref(true)
 const voiceRecOpen = ref(false)
 const videoRecOpen = ref(false)
@@ -419,6 +440,17 @@ const lightboxStep = (delta: number) => {
   if (lightboxIndex.value === null || lightboxImages.value.length === 0) return
   const length = lightboxImages.value.length
   lightboxIndex.value = (lightboxIndex.value + delta + length) % length
+}
+
+// ---------- Информация о чате ----------
+const openChatInfo = () => {
+  showChatInfoModal.value = true
+}
+
+/** Открыть изображение из «Информации о чате» в лайтбоксе. */
+const openChatInfoImage = (messageId: number) => {
+  const message = messages.value.find((m) => m.id === messageId)
+  if (message) openImageFromMessage(message)
 }
 
 /** Строки закреплённых сообщений для PinnedBar (имя + сниппет уже посчитаны). */
@@ -776,6 +808,7 @@ const openChatThread = async (chatId: number) => {
   inlineSearchOpen.value = false
   clearReply()
   closeLightbox()
+  showChatInfoModal.value = false
   await Promise.all([loadThreadLatest(chatId), loadPinned(chatId)])
   scrollToBottom()
   // Мобильный режим: выбор чата закрывает drawer — нить на весь экран.
@@ -1011,6 +1044,29 @@ const writeDrafts = (drafts: Record<string, string>) => {
   }
 }
 
+/** Черновики текущего пользователя по id чата (для превью в списке диалогов). */
+const draftsByChatId = reactive<Record<number, string>>({})
+
+/** Загружает черновики пользователя из localStorage в реактивную карту. */
+const syncDraftsFromStorage = (uid: number | null) => {
+  for (const key of Object.keys(draftsByChatId)) {
+    delete draftsByChatId[Number(key)]
+  }
+  if (uid === null) return
+  const all = readDrafts()
+  const prefix = `${uid}:`
+  for (const [key, text] of Object.entries(all)) {
+    if (key.startsWith(prefix) && text.trim()) {
+      const chatId = Number(key.slice(prefix.length))
+      if (Number.isFinite(chatId)) draftsByChatId[chatId] = text
+    }
+  }
+}
+
+watch(currentUserId, () => syncDraftsFromStorage(currentUserId.value), {
+  immediate: true
+})
+
 const draftStorageKey = (chatId: number | null): string | null => {
   const uid = currentUserId.value
   if (uid === null || chatId === null) return null
@@ -1025,8 +1081,10 @@ const saveDraftFor = (chatId: number | null) => {
   const drafts = readDrafts()
   if (text.trim()) {
     drafts[key] = text
+    if (chatId !== null) draftsByChatId[chatId] = text
   } else {
     delete drafts[key]
+    if (chatId !== null) delete draftsByChatId[chatId]
   }
   writeDrafts(drafts)
 }
@@ -1047,6 +1105,7 @@ const clearDraftFor = (chatId: number | null) => {
     delete drafts[key]
     writeDrafts(drafts)
   }
+  if (chatId !== null) delete draftsByChatId[chatId]
 }
 
 /** Программно ставит текст поля — не считается «набором текста» для собеседника. */
@@ -1058,6 +1117,36 @@ const setComposerText = (text: string) => {
 /** Сохраняет черновик текущего чата (вызывается при перезагрузке/закрытии). */
 const handleBeforeUnload = () => {
   saveDraftFor(selectedChatId.value)
+}
+
+/** Название чата для подтверждения удаления. */
+const chatDeleteLabel = (chat: Chat): string => {
+  const peer = otherUserOfChat(chat)
+  return chat.users.length === 2 && peer ? displayName(peer) : chat.name
+}
+
+/** Удалить чат у себя (покинуть; при 0 участников удаляется целиком). */
+const deleteChatOf = async (chat: Chat) => {
+  const label = chatDeleteLabel(chat)
+  if (!window.confirm(`Удалить чат «${label}»? Переписка исчезнет из вашего списка.`)) {
+    return
+  }
+  try {
+    await deleteChat(chat.id)
+    chats.value = chats.value.filter((item) => item.id !== chat.id)
+    clearDraftFor(chat.id)
+    if (pinnedChatIds.value.includes(chat.id)) toggleChatPinned(chat.id)
+    if (selectedChatId.value === chat.id) {
+      selectedChatId.value = null
+      messages.value = []
+      pinnedMessages.value = []
+      highlightedMessageId.value = null
+      closeLightbox()
+      showChatInfoModal.value = false
+    }
+  } catch (error) {
+    console.error('Не удалось удалить чат:', getErrorMessage(error))
+  }
 }
 
 const startEditMessage = (message: Message) => {

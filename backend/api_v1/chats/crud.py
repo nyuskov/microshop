@@ -1,7 +1,7 @@
 """CRUD-операции для чатов."""
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -9,9 +9,13 @@ from api_v1.events.service import notify_user
 from core.models import Chat, Message, User, user_chat_association_table
 
 
-async def get_chat_with_users(session: AsyncSession, chat_id: int) -> Chat | None:
+async def get_chat_with_users(
+    session: AsyncSession, chat_id: int
+) -> Chat | None:
     """Возвращает чат вместе с его участниками."""
-    stmt = select(Chat).where(Chat.id == chat_id).options(selectinload(Chat.users))
+    stmt = (
+        select(Chat).where(Chat.id == chat_id).options(selectinload(Chat.users))
+    )
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
@@ -35,11 +39,14 @@ async def get_private_chat_id_between(
     stmt = (
         select(user_chat_association_table.c.chat_id)
         .where(
-            user_chat_association_table.c.user_id.in_([first_user_id, second_user_id])
+            user_chat_association_table.c.user_id.in_(
+                [first_user_id, second_user_id]
+            )
         )
         .group_by(user_chat_association_table.c.chat_id)
         .having(
-            func.count(func.distinct(user_chat_association_table.c.user_id)) == 2,
+            func.count(func.distinct(user_chat_association_table.c.user_id))
+            == 2,
             func.count(user_chat_association_table.c.user_id) == 2,
         )
     )
@@ -81,7 +88,9 @@ async def get_or_create_private_chat(
             detail="Пользователь не найден",
         )
 
-    chat_id = await get_private_chat_id_between(session, first_user_id, second_user_id)
+    chat_id = await get_private_chat_id_between(
+        session, first_user_id, second_user_id
+    )
     if chat_id is not None:
         chat = await get_chat_with_users(session, chat_id)
         if chat is not None:
@@ -149,3 +158,35 @@ async def get_unread_counts(
     )
     result = await session.execute(stmt)
     return {chat_id: count for chat_id, count in result.all()}
+
+
+async def leave_chat(
+    session: AsyncSession, *, chat_id: int, user_id: int
+) -> None:
+    """Убирает пользователя из чата («удалить чат у себя»).
+
+    Если участников не осталось — удаляет и сам чат, и его сообщения.
+    """
+    if not await is_user_chat_member(session, chat_id=chat_id, user_id=user_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Чат не найден",
+        )
+
+    await session.execute(
+        user_chat_association_table.delete().where(
+            user_chat_association_table.c.chat_id == chat_id,
+            user_chat_association_table.c.user_id == user_id,
+        )
+    )
+
+    remaining = await session.scalar(
+        select(func.count())
+        .select_from(user_chat_association_table)
+        .where(user_chat_association_table.c.chat_id == chat_id)
+    )
+    if (remaining or 0) == 0:
+        await session.execute(delete(Message).where(Message.chat_id == chat_id))
+        await session.execute(delete(Chat).where(Chat.id == chat_id))
+
+    await session.commit()

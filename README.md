@@ -6,28 +6,35 @@
 
 Веб-приложение-мессенджер (личные переписки 1-на-1 в стиле Telegram) с регистрацией/входом по номеру телефона через SMS-код (OTP).
 
+> Актуальное состояние фиксируется в этом разделе; ниже в README часть разделов описывает более ранние итерации и обновляется постепенно — при расхождении ориентируйтесь на код и этот раздел.
+
 Реализовано на данный момент:
 
-- **Мессенджер** (UI в стиле Telegram Web):
-  - список диалогов (с превью, временем, счётчиком непрочитанных, галочками прочтения ✓✓);
-  - поиск людей по логину или телефону и старт личного чата;
+- **Мессенджер** (адаптивный, десктоп + мобильный drawer):
+  - список диалогов: превью, время, счётчик непрочитанных, галочки прочтения ✓✓, **закреплённые чаты** (пин вверху), **онлайн-точка** на аватаре и «печатает…» в превью;
+  - поиск: **люди** (логин/телефон) и **глобальный поиск по сообщениям во всех чатах** (вкладки «Люди | Сообщения», переход к сообщению с подсветкой);
   - вкладка **«Контакты»** (все пользователи + поиск);
-  - отправка текста, **файлов и картинок**, **ответ (reply)** на сообщение, **закрепление** сообщений, **реакции-эмодзи**, действия при наведении (копировать/удалить/закрепить/ответить), поиск по сообщениям, **GIF** (кнопка «GIF» в поле ввода → поиск/тренды Giphy → бэкенд скачивает и отправляет как вложение);
-  - обновление сообщений **по polling** (3 с), без WebSocket;
-  - нижняя навигация: Контакты / Чаты (с бейджем непрочитанных) / Настройки.
-- **Профиль и настройки** (`UserProfile`): редактирование имени/логина/email/телефона/био/**текст-статуса**/даты рождения/языка/страны, переключатели уведомлений и приватного режима, **загрузка/удаление фото аватара**, выход из аккаунта. Текст-статус (`user.status`) виден у себя в профиле.
-- **Присутствие**: в шапке личного чата под именем собеседника показывается «в сети» или «был(а) N мин/ч/дней/лет назад» — по колонке `user.last_seen`, которая обновляется при любой активности по API (фронт и так поллит чаты каждые 3 с); онлайн = активность не старше ~30 с.
-- **Вход по телефону** (шаг «номер +7» → шаг «код из SMS») с красивым оформлением.
-- Бэкенд-модули кроме мессенджера: `products`, `posts`, `telegram` — **legacy/дополнительные**, с мессенджером не связаны.
+  - отправка текста (поле многострочное: Enter — отправить, Shift+Enter — перенос), **файлов/картинок/GIF**, **ответ (reply)**, **закрепление сообщений**, **реакции-эмодзи**, hover-действия (ответить/реакция/пин/копировать/редактировать/переслать/удалить), **редактирование**, **пересылка** (диалог с выбором нескольких чатов);
+  - **голосовые и видео-«кружки»** (запись в чате + плеер), **аудио/видеозвонки 1-1** (WebRTC, сигналинг по WS);
+  - **просмотр изображений на весь экран** (лайтбокс: листание по всем картинкам треда, скачивание);
+  - **«Информация о чате»** (карточка собеседника + общие изображения/файлы);
+  - **черновики** текста при переключении чатов (по пользователю, в localStorage);
+  - realtime: WebSocket-канал (message/chat.read/presence/typing) + «страховочный» polling 20 с;
+  - **присутствие**: «в сети» / «был(а) N … назад» (по `user.last_seen` + WS online/offline) в списке и шапке;
+  - **темы и оформление**: тёмная/светлая/системная, акцентный цвет, цвет «моих» сообщений, обои (пресеты или своё фото) — сохраняются в localStorage.
+- **Профиль и настройки** (`UserProfile`): имя/логин/email/**телефон** (маска +7)/био/**текст-статус**/дата рождения/язык/страна, уведомления, приватный режим, **аватар** (загрузка/удаление), выход.
+- **Вход по телефону** (шаг «номер +7» → «код из SMS»; OTP-коды в БД с попытками/кулдауном; rate-limit по IP).
+- Backend-качество: refresh-токены с ротацией/отзывом, rate-limit, pg_trgm-поиск, X-Request-ID и лог медленных запросов, Celery+RabbitMQ (SMS/GIF/очистка медиа по расписанию), health-эндпоинты, pytest, CI (black/isort/flake8/mypy/vue-tsc/eslint/vitest).
+- Legacy-модули `products`/`posts`/`telegram` — с мессенджером не связаны (кандидаты на удаление).
 
-Ограничения (сознательные): только личные чаты (групповых нет); нет WebSocket; SMS-отправка — заглушка (код печатается в лог контейнера `web`); тёмная тема частично.
+Ограничения (сознательные/текущие): только личные чаты (групповых нет — фича убрана); WebRTC-звонки без TURN (работают в локальных сетях); SMS — заглушка (код печатается в лог контейнера `web`); Web Push/PWA-уведомления не реализованы; секреты должны задаваться через `.env` (см. раздел 9).
 
 ## 2. Стек
 
 | Слой | Технологии |
 |---|---|
 | Backend | Python 3.13, FastAPI 0.115, SQLAlchemy 2 (async), asyncpg, Alembic, pydantic v2, pwdlib(Argon2), fastapi-users 15 (JWT) |
-| Frontend | Vue 3 (Composition API), TypeScript, Vite 7, Pinia, Vue Router, PrimeVue 4 + PrimeIcons, axios |
+| Frontend | Vue 3 (Composition API), TypeScript, Vite 7, Pinia, Vue Router, **Quasar 2 + @quasar/extras (Material-иконки)**, axios |
 | База данных | PostgreSQL (в docker) |
 | Инфраструктура | Docker Compose, Nginx (dev-прокси), HTTPS на самоподписанных сертификатах |
 | Пакеты | Backend — Poetry; Frontend — pnpm |
@@ -220,16 +227,19 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 | POST | `/auth/request-otp/` | запросить SMS-код | — |
 | POST | `/auth/verify-otp/` | проверить код → токен | — |
 | POST | `/auth/token/` | вход по логину+паролю | — |
-| GET | `/auth/basic-auth/`, `/auth/basic-auth-username/` | отладочные | Basic |
 | POST | `/jwt/auth/login`, `/jwt/auth/logout` | fastapi-users | — |
+| POST | `/jwt/auth/refresh` | ротация refresh-токена → новая пара access+refresh | токен (refresh) |
 | GET | `/jwt/users/me/` | мой профиль | токен |
 | PATCH | `/jwt/users/me/` | обновить профиль | токен |
-| GET | `/set-csrf-token` | CSRF-токен в cookie | — |
+| GET | `/messages/search/?q=&chat_id=` | поиск по тексту/имени файла (без chat_id — по всем чатам) | токен |
+| WS | `/ws/events?token=` | realtime-события (message/chat.read/presence/typing) | токен |
+| WS | `/ws/calls?token=` | сигналинг WebRTC-звонков | токен |
 | GET | `/chats/` | мои чаты + `unread_count` + `last_message` | токен |
 | POST | `/chats/private/` | найти/создать личный чат `{user_id}` | токен |
 | POST | `/messages/` | текст `{chat_id, text, reply_to_id?}` | токен |
 | POST | `/messages/attachment/` | файл (query: chat_id, filename, caption?, reply_to_id?, mime?) | токен |
-| GET | `/messages/{chat_id}/` | история (входящие помечаются прочитанными) | токен |
+| POST | `/messages/gif/` | GIF: URL → очередь (Celery скачивает и создаёт сообщение, 202) | токен |
+| GET | `/messages/{chat_id}/` | история (входящие помечаются прочитанными; `limit`/`before_id` — пагинация) | токен |
 | GET | `/messages/{chat_id}/pinned/` | закреплённые | токен |
 | PATCH | `/messages/{message_id}/pin/` | закрепить/открепить `{is_pinned}` | токен |
 | PUT | `/messages/{message_id}/reaction/` | поставить реакцию `{emoji}` | токен |
@@ -314,27 +324,27 @@ node node_modules/prettier/bin/prettier.cjs --write <files> # формат
 
 ### Ключевые точки
 
-- `main.ts` — PrimeVue (aura), тема через `data-theme=dark/light` (`stores/theme.ts`), инициализация auth.
+- `main.ts` — Quasar 2 (Dialog/Notify, lang ru, Material-иконки), тема/оформление через `stores/theme.ts` (`data-theme`, токены `--ms-*`), инициализация auth.
 - `router/index.ts` — `/` → `Messenger.vue`, `/auth/login/` → `Login`; guard на auth.
 - `stores/auth.ts`:
   - состояние: `user`, `current_user`, `isAuthenticated`, `accessToken`, `refreshToken` (в localStorage);
   - методы: `initializeApp`, `requestOtp`, `loginWithOtp`, `fetchUser`, `updateCurrentUser`, `logout`, `refreshTokens`;
   - `ApiUser`/`ApiUserProfile` — типы.
-- `services/api.ts` — axios-инстанс `api` (baseURL `https://localhost:8000/api/v1`, добавляет `Authorization`); экспортирует функции по пользователям/группам и `uploadAvatar`/`removeAvatar`; также `export { api }`.
-- `services/chatService.ts` — `mediaUrl`, `fetchMyChats`, `openPrivateChat`, `fetchMessages`, `fetchPinnedMessages`, `sendNewMessage`, `sendAttachmentMessage`, `setMessagePinned`, `setMessageReaction`/`removeMessageReaction`, `deleteMessage`, `searchUsers`, `fetchContacts`; тип `SearchUserResult`.
+- `services/api.ts` — axios-инстанс `api` (baseURL из `src/config.ts`: `API_ORIGIN + /api/v1`), `registerAuth(tokenProvider, onRefresh)`, интерцепторы (Bearer + авто-refresh на 401); экспорт `api`, `uploadAvatar`/`removeAvatar`. Адреса API/WS/media централизованы в `src/config.ts`.
+- `services/chatService.ts` — `mediaUrl`, `fetchMyChats`, `openPrivateChat`, `fetchMessages`, `fetchPinnedMessages`, `sendNewMessage`, `sendAttachmentMessage`, `setMessagePinned`, `setMessageReaction`/`removeMessageReaction`, `deleteMessage`, `searchMessages`, `forwardMessage`, `editMessage`, `searchUsers`, `fetchContacts`; тип `SearchUserResult`.
 - `types/index.ts` — `Chat`, `ChatUser`, `Message`, `MessageFile`, `ReactionSummary`, `CreateMessageRequest`, `OpenPrivateChatRequest`, `User`, `Profile`, `Group`.
-- **Бейджи/чтение**: сообщение считается прочитанным, когда собеседник открыл/читает чат (`GET /messages/{chat_id}/` помечает входящие `is_read`). На фронте: свои сообщения показывают `✓✓` (синее — прочитано); `unread_count` — бейджи в списке чатов и в нижней навигации.
+- **Бейджи/чтение**: сообщение считается прочитанным, когда собеседник открыл/читает чат (`GET /messages/{chat_id}/` помечает входящие `is_read`). На фронте: свои сообщения показывают `✓✓` (синее — прочитано); `unread_count` — бейджи в списке чатов.
 
 ### Экраны
 
-- `Messenger.vue` — Telegram-подобный вид: панель «Чаты/Контакты», поиск людей, лист диалогов, окно чата (пузыри вправо/влево, day-разделители, reply-цитата, закреплённые сверху, файлы/картинки, реакции, hover-действия, поиск по сообщениям), нижняя навигация. Модалки «Настройки профиля» (`UserProfile`) и входа (`LoginModal`). Polling каждые 3 с.
-- `UserProfile.vue` — редактирование профиля + аватар (клик по аватару → выбор файла, удаление фото, кнопка «Выйти»).
+- `Messenger.vue` — адаптивный Telegram-подобный вид: `q-layout` + `q-drawer` (панель «Чаты/Контакты»; на мобильном — выдвижной drawer), список диалогов (пины/онлайн/«печатает…»), окно чата (пузыри вправо/влево, day-разделители, reply-цитата, закреплённые сверху, файлы/картинки, реакции, hover-действия, inline-поиск по сообщениям). Модалки: «Настройки профиля» (`UserProfile`), «Оформление» (`AppearanceSettings`), «Информация о чате» (`ChatInfo`), вход (`LoginModal`), лайтбокс изображений (`ImageLightbox`). Обновления — WS-события + fallback-polling 20 с.
+- `UserProfile.vue` — редактирование профиля + аватар (клик по аватару → выбор файла, удаление фото, кнопка «Выйти»); телефон — нативный input с маской `+7 (…)`.
 - `Login.vue` / `LoginModal.vue` — вход по SMS (шаг телефон → OTP, автофокус кода).
-- Прочие (`Users.vue`, `Posts.vue`, `Products.vue`, `GroupsPage.vue`, `ManageGroupUsers.vue`, `SettingsView.vue`) — legacy-UI; `SettingsView` сейчас не используется.
+- Компоненты мессенджера вынесены в `components/messenger/` (`ChatSidebar`, `ChatHeader`, `MessageThread`, `MessageRow`, `MessageComposer`, `PinnedBar`, `InlineSearchBar`, `ChatPlaceholder`, `ChatInfo`, `ForwardDialog`); медиа — в `components/media/` (лайтбокс, голос/видео/кружки, GIF-пикер); звонки — `components/calls/`. Реактивное присутствие/печать — `composables/usePeerActivity`, realtime-оркестрация — `composables/useRealtimeSync`, запись — `useRecordButton`.
 
-### Особенности PrimeIcons
+### Иконки (Material)
 
-В выбранном наборе иконок **нет** `pi-pin`, `pi-smile`, `pi-check-double` — используйте `pi-bookmark`, `pi-face-smile`, галочки текстом `✓✓`.
+После миграции на Quasar используются Material-иконки через `<q-icon name="…">` (напр. `call`, `videocam`, `mic`, `push_pin`, `sentiment_satisfied_alt`, `check`, `send`, `download`…). Галочки прочтения — текстовые `✓✓`. Не используйте классы PrimeIcons `pi pi-*` (шрифт не подключён).
 
 ## 7. Общие правила и «грабли» (важно помнить)
 

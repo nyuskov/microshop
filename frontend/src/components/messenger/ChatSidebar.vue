@@ -143,45 +143,68 @@
           Найдите пользователя по логину или телефону и начните переписку
         </div>
         <div class="chat-scroll">
-          <button
-            v-for="chat in orderedChats"
-            :key="chat.id"
-            class="row-item"
-            :class="{ active: selectedChatId === chat.id }"
-            @click="selectChat(chat.id)"
-          >
-            <span class="avatar-wrap" :class="{ online: chatPeerOnline(chat) }">
-              <span class="avatar" :style="avatarStyle(chatTitleOf(chat))">
-                <img
-                  v-if="avatarUrlOf(chatPeerOf(chat))"
-                  :src="avatarUrlOf(chatPeerOf(chat))"
-                  class="avatar-img"
-                  alt=""
-                />
-                <template v-else>{{ initials(chatTitleOf(chat)) }}</template>
+          <div v-for="chat in orderedChats" :key="chat.id" class="chat-row">
+            <button
+              class="row-item"
+              :class="{ active: selectedChatId === chat.id }"
+              @click="selectChat(chat.id)"
+            >
+              <span class="avatar-wrap" :class="{ online: chatPeerOnline(chat) }">
+                <span class="avatar" :style="avatarStyle(chatTitleOf(chat))">
+                  <img
+                    v-if="avatarUrlOf(chatPeerOf(chat))"
+                    :src="avatarUrlOf(chatPeerOf(chat))"
+                    class="avatar-img"
+                    alt=""
+                  />
+                  <template v-else>{{ initials(chatTitleOf(chat)) }}</template>
+                </span>
               </span>
+              <span class="row-text">
+                <span class="row-line">
+                  <span class="row-title">{{ chatTitleOf(chat) }}</span>
+                  <span class="row-time">
+                    {{ chat.last_message ? formatChatTime(chat.last_message.timestamp) : '' }}
+                  </span>
+                </span>
+                <span class="row-line">
+                  <span
+                    class="row-sub preview"
+                    :class="{ typing: isChatTyping(chat), draft: draftOf(chat) !== null }"
+                  >
+                    <template v-if="isChatTyping(chat)">печатает…</template>
+                    <template v-else-if="draftOf(chat)">Черновик: {{ draftOf(chat) }}</template>
+                    <template v-else>
+                      <q-icon v-if="lastMessageIsOut(chat)" name="done" class="tick" size="16px" />
+                      {{ previewText(chat) }}
+                    </template>
+                  </span>
+                  <span v-if="chat.unread_count > 0" class="unread-badge">
+                    {{ chat.unread_count }}
+                  </span>
+                </span>
+              </span>
+            </button>
+            <span class="row-actions">
+              <button
+                class="row-act"
+                :class="{ on: isPinnedOf(chat.id) }"
+                :title="isPinnedOf(chat.id) ? 'Открепить чат' : 'Закрепить чат'"
+                aria-label="Закрепить чат"
+                @click="emit('toggle-pin', chat.id)"
+              >
+                <q-icon name="push_pin" size="15px" />
+              </button>
+              <button
+                class="row-act danger"
+                title="Удалить чат"
+                aria-label="Удалить чат"
+                @click="emit('delete-chat', chat)"
+              >
+                <q-icon name="delete" size="15px" />
+              </button>
             </span>
-            <span class="row-text">
-              <span class="row-line">
-                <span class="row-title">{{ chatTitleOf(chat) }}</span>
-                <span class="row-time">
-                  {{ chat.last_message ? formatChatTime(chat.last_message.timestamp) : '' }}
-                </span>
-              </span>
-              <span class="row-line">
-                <span class="row-sub preview" :class="{ typing: isChatTyping(chat) }">
-                  <template v-if="isChatTyping(chat)">печатает…</template>
-                  <template v-else>
-                    <q-icon v-if="lastMessageIsOut(chat)" name="done" class="tick" size="16px" />
-                    {{ previewText(chat) }}
-                  </template>
-                </span>
-                <span v-if="chat.unread_count > 0" class="unread-badge">
-                  {{ chat.unread_count }}
-                </span>
-              </span>
-            </span>
-          </button>
+          </div>
         </div>
       </template>
     </template>
@@ -298,6 +321,8 @@ const props = defineProps<{
   typingChatIds?: number[]
   /** id закреплённых чатов (показываются вверху списка). */
   pinnedChatIds?: number[]
+  /** Сохранённые черновики по id чата (показываются в превью). */
+  drafts?: Record<number, string>
 }>()
 
 const emit = defineEmits<{
@@ -308,6 +333,8 @@ const emit = defineEmits<{
   (e: 'select-chat', chatId: number): void
   (e: 'chat-opened', chat: Chat): void
   (e: 'open-message', chatId: number, messageId: number): void
+  (e: 'toggle-pin', chatId: number): void
+  (e: 'delete-chat', chat: Chat): void
 }>()
 
 // Пункты верхнего меню «⋯» (сюда будут добавляться новые настройки).
@@ -367,6 +394,15 @@ const chatPeerOnline = (chat: Chat): boolean => {
 /** Печатает ли сейчас собеседник в этом чате. */
 const isChatTyping = (chat: Chat): boolean =>
   chat.users.length === 2 && (props.typingChatIds?.includes(chat.id) ?? false)
+
+/** Закреплён ли чат. */
+const isPinnedOf = (chatId: number): boolean => props.pinnedChatIds?.includes(chatId) ?? false
+
+/** Сохранённый черновик чата (null — черновика нет). */
+const draftOf = (chat: Chat): string | null => {
+  const text = props.drafts?.[chat.id]
+  return text && text.trim() ? text : null
+}
 
 const filteredChats = computed<Chat[]>(() => {
   const query = searchQuery.value.trim().toLowerCase()
@@ -740,6 +776,66 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.row-sub.draft {
+  color: var(--ms-accent, #2ea25e);
+  font-style: italic;
+}
+
+/* Действия над чатом (закрепить/удалить) — показываются при наведении на строку */
+.chat-row {
+  position: relative;
+}
+
+.row-actions {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 14px;
+  background: var(--ms-surface, #ffffff);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.14);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+  z-index: 3;
+}
+
+.chat-row:hover .row-actions,
+.chat-row:focus-within .row-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.row-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ms-muted, #71808d);
+  cursor: pointer;
+}
+
+.row-act:hover {
+  background: var(--ms-hover, #f2f4f6);
+  color: var(--ms-text, #141d26);
+}
+
+.row-act.on {
+  color: var(--ms-accent, #2ea25e);
+}
+
+.row-act.danger:hover {
+  color: var(--ms-danger, #d64545);
+  background: var(--ms-danger-bg, #fdecec);
 }
 
 .chat-scroll {
