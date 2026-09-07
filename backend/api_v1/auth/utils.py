@@ -13,7 +13,11 @@ from core.models import db_helper
 from core.models.user import User
 from core.security import verify_password
 
-from ..users.crud import get_user_by_id, get_user_by_phone_number, get_user_by_username
+from ..users.crud import (
+    get_user_by_id,
+    get_user_by_phone_number,
+    get_user_by_username,
+)
 
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=f"{settings.api_v1_prefix}/auth/token/",

@@ -198,9 +198,19 @@ async def _validate_reply(
 
 
 async def list_chat_messages(
-    session: AsyncSession, *, chat_id: int, user_id: int
+    session: AsyncSession,
+    *,
+    chat_id: int,
+    user_id: int,
+    limit: int | None = None,
+    before_id: int | None = None,
 ) -> list[dict]:
-    """Возвращает сообщения чата и помечает входящие как прочитанные."""
+    """Возвращает сообщения чата и помечает входящие как прочитанные.
+
+    Без параметров возвращается вся история (как раньше). При ``limit``/``before_id``
+    отдаётся порция (до ``limit`` сообщений с id < ``before_id``) в хронологическом
+    порядке — для «подгрузки более старых» на клиенте.
+    """
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
 
     # Помечаем сообщения собеседника прочитанными
@@ -215,14 +225,22 @@ async def list_chat_messages(
     )
     await session.commit()
 
-    stmt = (
-        select(Message)
-        .where(Message.chat_id == chat_id)
-        .options(selectinload(Message.reactions))
-        .order_by(Message.timestamp, Message.id)
-    )
+    stmt = select(Message).where(Message.chat_id == chat_id)
+    if before_id is not None:
+        stmt = stmt.where(Message.id < before_id)
+
+    if limit is not None:
+        # Пагинация: берём порцию от новых к старым, затем разворачиваем.
+        stmt = stmt.order_by(Message.timestamp.desc(), Message.id.desc()).limit(limit)
+    else:
+        stmt = stmt.order_by(Message.timestamp, Message.id)
+
+    stmt = stmt.options(selectinload(Message.reactions))
     result = await session.execute(stmt)
-    return [message_to_dict(message, user_id) for message in result.scalars().all()]
+    rows = list(result.scalars().all())
+    if limit is not None:
+        rows.reverse()
+    return [message_to_dict(message, user_id) for message in rows]
 
 
 async def list_pinned_messages(

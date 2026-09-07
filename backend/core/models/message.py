@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import DateTime, ForeignKey, Index, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -15,6 +15,10 @@ if TYPE_CHECKING:
 
 class Message(IdIntPkMixin, Base):
     __tablename__ = "messages"
+    __table_args__ = (
+        # Выборки истории чата и «последнего сообщения» идут по (chat_id, timestamp).
+        Index("ix_messages_chat_timestamp", "chat_id", "timestamp"),
+    )
 
     text: Mapped[str]
     timestamp: Mapped[datetime] = mapped_column(
@@ -30,13 +34,9 @@ class Message(IdIntPkMixin, Base):
         ForeignKey("messages.id", ondelete="SET NULL")
     )
     # Статус прочтения для собеседника (только для личных чатов)
-    is_read: Mapped[bool] = mapped_column(
-        default=False, server_default=func.false()
-    )
+    is_read: Mapped[bool] = mapped_column(default=False, server_default=func.false())
     # Закреплено ли сообщение в чате
-    is_pinned: Mapped[bool] = mapped_column(
-        default=False, server_default=func.false()
-    )
+    is_pinned: Mapped[bool] = mapped_column(default=False, server_default=func.false())
 
     # Вложение (файл/изображение)
     file_name: Mapped[str | None] = mapped_column(String(255))

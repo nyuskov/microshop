@@ -187,9 +187,7 @@ async def send_gif_message(
             detail="Недопустимый адрес GIF",
         )
 
-    content = await asyncio.to_thread(
-        _download_gif_bytes, payload.url, MAX_UPLOAD_SIZE
-    )
+    content = await asyncio.to_thread(_download_gif_bytes, payload.url, MAX_UPLOAD_SIZE)
     file_url = _store_upload(content, "gif.gif")
     return await crud.send_attachment_message(
         session=session,
@@ -207,14 +205,21 @@ async def send_gif_message(
 @router.get("/{chat_id}/", response_model=list[MessageSchema])
 async def get_messages_for_chat(
     chat_id: int,
+    limit: int | None = Query(default=None, ge=1, le=500),
+    before_id: int | None = Query(default=None, ge=1),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
-    """Возвращает сообщения чата и помечает входящие как прочитанные."""
+    """Возвращает сообщения чата и помечает входящие как прочитанные.
+
+    Поддерживает пагинацию ``limit`` + ``before_id`` (для «более старых»).
+    """
     return await crud.list_chat_messages(
         session=session,
         chat_id=chat_id,
         user_id=user.id,
+        limit=limit,
+        before_id=before_id,
     )
 
 
