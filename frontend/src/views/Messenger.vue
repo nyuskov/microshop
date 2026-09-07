@@ -741,13 +741,13 @@ import type { Chat, ChatUser, Message } from '@/types'
 import { avatarStyle, displayName, initials } from '@/utils/user'
 import {
   ONLINE_WINDOW_SECONDS,
-  dayLabel,
   formatBytes,
   formatChatTime,
   formatMsgTime,
-  lastSeenLabel,
-  toDate
+  lastSeenLabel
 } from '@/utils/format'
+import { buildMessageRows, type MessageRow } from '@/utils/thread'
+import { useCallButton } from '@/composables/useCallButton'
 import {
   fileIcon,
   isAudioFile,
@@ -866,30 +866,9 @@ const filteredContacts = computed<SearchUserResult[]>(() => {
   )
 })
 
-type MessageRow = { kind: 'day'; label: string } | { kind: 'message'; message: Message }
-
-const messageRows = computed<MessageRow[]>(() => {
-  let list = messages.value
-  const query = inlineQuery.value.trim().toLowerCase()
-  if (query) {
-    list = list.filter((message) =>
-      `${message.text} ${message.file?.name ?? ''}`.toLowerCase().includes(query)
-    )
-  }
-
-  const rows: MessageRow[] = []
-  let lastDay = ''
-  for (const message of list) {
-    const date = toDate(message.timestamp)
-    const key = date.toDateString()
-    if (key !== lastDay) {
-      rows.push({ kind: 'day', label: dayLabel(date) })
-      lastDay = key
-    }
-    rows.push({ kind: 'message', message })
-  }
-  return rows
-})
+const messageRows = computed<MessageRow[]>(() =>
+  buildMessageRows(messages.value, inlineQuery.value)
+)
 
 // ---------- Вспомогательные функции ----------
 const otherUserOfChat = (chat: Chat): ChatUser | undefined => {
@@ -943,86 +922,14 @@ const startVideoCall = () => {
 }
 
 // ---------- Звонок в шапке чата: клик = звонок, удержание 0,5 c = смена типа ----------
-const CALL_OPTIONS = [
-  { kind: 'audio', label: 'Голосовой звонок', icon: 'pi pi-phone' },
-  { kind: 'video', label: 'Видеозвонок', icon: 'pi pi-video' }
-] as const
-
-// Текущий выбранный тип звонка (по умолчанию голосовой); запоминается между сессиями.
-const CALL_KIND_KEY = 'microshop_call_kind'
-const callKind = ref<'audio' | 'video'>(
-  (() => {
-    try {
-      return localStorage.getItem(CALL_KIND_KEY) === 'video' ? 'video' : 'audio'
-    } catch {
-      return 'audio'
+const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, onCallClick } =
+  useCallButton({
+    onTap: () => {
+      closeMenus()
+      if (callKind.value === 'video') startVideoCall()
+      else startVoiceCall()
     }
-  })()
-)
-const CALL_HOLD_MS = 500
-const callHolding = ref(false)
-let callPressTimer: number | null = null
-let suppressCallClick = false
-
-const callLabel = (kind: 'audio' | 'video'): string => {
-  const option = CALL_OPTIONS.find((item) => item.kind === kind)
-  return option ? option.label : ''
-}
-
-const clearCallTimer = () => {
-  if (callPressTimer !== null) {
-    window.clearTimeout(callPressTimer)
-    callPressTimer = null
-  }
-}
-
-const toggleCallKind = () => {
-  callKind.value = callKind.value === 'video' ? 'audio' : 'video'
-  try {
-    localStorage.setItem(CALL_KIND_KEY, callKind.value)
-  } catch {
-    /* ignore */
-  }
-}
-
-const onCallDown = () => {
-  clearCallTimer()
-  suppressCallClick = false
-  callHolding.value = true
-  callPressTimer = window.setTimeout(() => {
-    callPressTimer = null
-    callHolding.value = false
-    // Удержание — только переключаем тип, звонок не делаем.
-    suppressCallClick = true
-    toggleCallKind()
-  }, CALL_HOLD_MS)
-}
-
-const onCallUp = () => {
-  clearCallTimer()
-  callHolding.value = false
-}
-
-const onCallCancel = () => {
-  clearCallTimer()
-  callHolding.value = false
-  suppressCallClick = false
-}
-
-const onCallClick = () => {
-  // После долгого удержания браузер всё равно пришлёт click — пропускаем его.
-  if (suppressCallClick) {
-    suppressCallClick = false
-    return
-  }
-  startSelectedCall()
-}
-
-const startSelectedCall = () => {
-  closeMenus()
-  if (callKind.value === 'video') startVideoCall()
-  else startVoiceCall()
-}
+  })
 
 const chatTitle = (chat: Chat): string => {
   const other = otherUserOfChat(chat)
@@ -2105,7 +2012,6 @@ onBeforeUnmount(() => {
   clearPeerTypingState()
   clearMicTimer()
   clearModeHint()
-  clearCallTimer()
   if (highlightTimer !== undefined) {
     window.clearTimeout(highlightTimer)
     highlightTimer = undefined

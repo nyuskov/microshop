@@ -568,62 +568,6 @@ html .messenger-shell .chat-status {
     color: var(--ms-muted-2);
 }
 
-/* Нижняя навигация */
-html .messenger-shell .bottom-nav {
-    background: var(--ms-surface);
-    border-top-color: var(--ms-border);
-}
-
-html .messenger-shell .nav-btn {
-    color: var(--ms-muted);
-}
-
-html .messenger-shell .nav-btn.active {
-    color: var(--ms-accent);
-}
-
-html .messenger-shell .nav-btn:hover {
-    background: var(--ms-hover);
-}
-
-html .messenger-shell .nav-badge {
-    background: var(--ms-danger);
-    color: #ffffff;
-}
-
-/* Быстрый выбор обоев */
-html .messenger-shell .bg-picker {
-    background: var(--ms-surface);
-    border-color: var(--ms-border);
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
-}
-
-html .messenger-shell .bg-picker-head {
-    color: var(--ms-text);
-}
-
-html .messenger-shell .bg-option {
-    border-color: var(--ms-border);
-    background: var(--ms-surface);
-}
-
-html .messenger-shell .bg-option:hover {
-    border-color: var(--ms-icon-3);
-}
-
-html .messenger-shell .bg-option.active {
-    border-color: var(--ms-accent);
-    box-shadow: 0 0 0 1px var(--ms-accent) inset;
-}
-
-html .messenger-shell .bg-label {
-    color: var(--ms-muted);
-}
-
-html .messenger-shell .bg-swatch {
-    border-color: rgba(0, 0, 0, 0.08);
-}
-
 /* Панель записи голосового сообщения */
 html .messenger-shell .voice-recorder {
     background: var(--ms-surface);
