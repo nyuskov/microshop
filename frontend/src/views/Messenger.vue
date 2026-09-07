@@ -962,16 +962,40 @@ const toggleGifPanel = () => {
   emojiMenuOpen.value = false
 }
 
-const onGifSent = async (message: Message) => {
+// GIF создаётся фоновым воркером (бэкенд отвечает 202), а свои message.new
+// сервер не пушит — поэтому отправитель коротко опрашивает тред, пока GIF не
+// появится (потом вступает обычный fallback-опрос 20 с).
+const GIF_POLL_INTERVAL_MS = 1000
+const GIF_POLL_MAX_ATTEMPTS = 15
+
+const onGifSent = () => {
+  // Задача поставлена в очередь (202): сообщение пока не создано — не добавляем
+  // в ленту «пустышку». Воркер скачает GIF и создаст сообщение; здесь лишь
+  // закрываем панель, сбрасываем ответ/печать и коротко ждём появления GIF.
   gifPanelOpen.value = false
   clearReply()
-  messages.value = appendMessage(messages.value, message)
   const chatId = selectedChatId.value
-  if (chatId !== null) {
-    sendTypingStop(chatId)
-    await Promise.all([loadPinned(chatId), loadChats()])
-    scrollToBottom()
+  if (chatId === null) return
+  sendTypingStop(chatId)
+
+  const beforeMaxId = messages.value.reduce((max, m) => Math.max(max, m.id), 0)
+  let attempts = 0
+  const pollForGif = async () => {
+    if (chatId !== selectedChatId.value) return
+    attempts += 1
+    try {
+      await mergeThreadLatest(chatId)
+    } catch {
+      // одиночный сбой опроса не критичен — попробуем ещё раз
+    }
+    const currentMaxId = messages.value.reduce((max, m) => Math.max(max, m.id), 0)
+    if (currentMaxId <= beforeMaxId && attempts < GIF_POLL_MAX_ATTEMPTS) {
+      window.setTimeout(() => void pollForGif(), GIF_POLL_INTERVAL_MS)
+    }
   }
+  window.setTimeout(() => void pollForGif(), GIF_POLL_INTERVAL_MS)
+  void loadPinned(chatId)
+  void loadChats()
 }
 
 // ---------- События реального времени (WS-канал) вместо поллинга ----------

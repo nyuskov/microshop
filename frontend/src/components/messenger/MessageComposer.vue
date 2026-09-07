@@ -127,7 +127,7 @@
         <GifPicker
           :chat-id="chatId"
           :reply-to-id="replyTarget?.id ?? null"
-          @sent="(message) => emit('gif-sent', message)"
+          @sent="emit('gif-sent')"
         />
       </template>
 
@@ -192,7 +192,7 @@ const emit = defineEmits<{
   (e: 'mic-click'): void
   (e: 'toggle-emoji-menu'): void
   (e: 'toggle-gif'): void
-  (e: 'gif-sent', message: Message): void
+  (e: 'gif-sent'): void
   (e: 'append-emoji', emoji: string): void
 }>()
 

@@ -10,6 +10,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.rate_limit import rate_limit_key, rate_limiter
+from core.celery_app import get_task
 from core.config import settings
 from core.models import db_helper
 
@@ -43,9 +44,7 @@ PHONE_PATTERN = re.compile(
 _AUTH_LIMIT_WINDOW_SECONDS = 60
 
 
-async def _enforce_ip_limit(
-    request: Request, *, scope: str, limit: int
-) -> None:
+async def _enforce_ip_limit(request: Request, *, scope: str, limit: int) -> None:
     """Ограничивает число запросов с одного IP за окно времени."""
     client_ip = request.client.host if request.client is not None else "unknown"
     allowed = await rate_limiter.allow(
@@ -71,12 +70,29 @@ def validate_phone_number_format(phone_number: str) -> bool:
     return bool(PHONE_PATTERN.match(phone_number))
 
 
-def send_sms_otp(phone_number: str, otp_code: str) -> None:
-    """Заглушка отправки SMS. В проде — вызов API провайдера.
+def enqueue_sms_otp(phone_number: str, otp_code: str) -> None:
+    """Кладёт доставку OTP-кода в очередь Celery (RabbitMQ).
 
-    Dev-режим: код печатается в консоль/логи, чтобы его можно было ввести вручную.
+    Раньше отправка выполнялась синхронно прямо в теле запроса, блокируя
+    эндпоинт на время сетевого вызова к SMS-провайдеру. Теперь «тяжёлая»
+    отправка уходит в фоновый воркер (см. tasks/otp_tasks.py), а эндпоинт сразу
+    возвращает ответ.
+
+    Код печатается в web-логе (привычное место для dev-входа — как было до
+    переноса на Celery), а воркер дополнительно логирует его при фактической
+    «отправке». Если брокер RabbitMQ недоступен (например, локальный запуск web
+    без docker-стека) — вход не роняем: код уже виден в строке выше, а воркер
+    просто не получит задачу.
     """
     logger.info("SMS-заглушка: OTP-код для %s -> %s", phone_number, otp_code)
+    try:
+        task = get_task("tasks.otp_tasks.send_sms_otp")
+        task.delay(phone_number, otp_code)
+    except Exception:  # noqa: BLE001 - брокер может быть недоступен (dev без docker)
+        logger.warning(
+            "RabbitMQ недоступен: задача SMS не поставлена в очередь "
+            "(код отправки см. выше)"
+        )
 
 
 @router.post("/token/", response_model=Token)
@@ -148,7 +164,7 @@ async def request_otp(
         code=otp_code,
         ttl_seconds=settings.auth_otp_expire_seconds,
     )
-    send_sms_otp(phone_number, otp_code)
+    enqueue_sms_otp(phone_number, otp_code)
 
     return OTPResponse(detail="Код OTP отправлен.")
 

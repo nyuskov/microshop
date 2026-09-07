@@ -42,6 +42,21 @@ class Settings(BaseSettings):
         validation_alias="DATABASE_URL",
     )
     db_echo: bool = False
+
+    # RabbitMQ (брокер Celery + мост realtime-событий web<->worker).
+    # В docker задаются как RABBITMQ_URL=amqp://guest:***@rabbitmq:5672/.
+    rabbitmq_url: str = Field(
+        default="amqp://guest:guest@localhost:5672/",
+        validation_alias="RABBITMQ_URL",
+    )
+
+    # Очередь/обмен realtime-событий, которые worker публикует, а web слушает,
+    # чтобы раздать их в живые WebSocket-соединения (см. lifecycle/ws bridge).
+    events_exchange: str = "microshop.events"
+    events_queue: str = "microshop.events.web"
+
+    # Разрешённые источники CORS и пр. оставлены как есть.
+
     auth_jwt: AuthJWT = AuthJWT()
     auth_otp_expire_seconds: int = 300  # 5 минут
     # Сколько неверных попыток ввода OTP допустимо до «сгорания» кода.

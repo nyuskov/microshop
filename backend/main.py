@@ -1,6 +1,7 @@
 import logging
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
@@ -10,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from api_v1 import router_v1
+from api_v1.events.bridge import start_bridge, stop_bridge
 from core.config import settings
 from core.models import db_helper
 
@@ -23,9 +25,27 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Жизненный цикл приложения.
+
+    При старте запускаем фоновый мост realtime-событий (RabbitMQ): он нужен,
+    чтобы события, созданные Celery-воркером (например, новое GIF-сообщение),
+    доходили до живых WebSocket-сокетов этого процесса. Мост не блокирует старт
+    и переподключается сам, если брокер ещё недоступен.
+    """
+    await start_bridge()
+    try:
+        yield
+    finally:
+        await stop_bridge()
+
+
 app = FastAPI(
     title="Microshop",
     swagger_ui_parameters={"favicon_url": "/favicon.ico"},
+    lifespan=lifespan,
 )
 
 app.add_middleware(

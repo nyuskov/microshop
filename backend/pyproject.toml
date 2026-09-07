@@ -20,6 +20,8 @@ pwdlib = {extras = ["argon2"], version = "^0.3.0"}
 fastapi-users = {extras = ["sqlalchemy"], version = "^15.0.0"}
 pydantic-settings = "^2.0.0"
 pyjwt = "^2.13.0"
+celery = "^5.5.0"
+aio-pika = "^9.5.0"
 
 
 [tool.poetry.group.dev.dependencies]

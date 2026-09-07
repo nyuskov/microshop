@@ -82,7 +82,7 @@ microshop/
 
 ### Основной (Docker Compose) — рекомендуется
 
-Контейнеры: `web` (FastAPI :8000 HTTPS + авто-миграции), `db` (Postgres), `frontend` (Vite :5173 HTTPS), `nginx` (:8080 HTTP, dev-прокси к frontend и API).
+Контейнеры: `web` (FastAPI :8000 HTTPS + авто-миграции), `db` (Postgres), `rabbitmq` (брокер Celery/mост realtime, management UI :15672), `worker` (фоновые задачи Celery), `beat` (планировщик периодических задач), `frontend` (Vite :5173 HTTPS), `nginx` (:8080 HTTP, dev-прокси к frontend и API).
 
 ```bash
 ./entry.sh                 # = dump_db.sh && docker compose down -v --rmi all && build && up
@@ -152,11 +152,37 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 |---|---|---|
 | `DATABASE_URL` | `postgresql+asyncpg://postgres:Xx123456@localhost:5432/microshop` | URL БД |
 | `JWT_SECRET_KEY` | (значение в коде) | секрет HS256 |
+| `RABBITMQ_URL` | `amqp://guest:guest@localhost:5672/` | URL RabbitMQ (брокер Celery + мост realtime) |
+| `RABBITMQ_USER` / `RABBITMQ_PASSWORD` | — | учётка RabbitMQ (для контейнера `rabbitmq` и URL) |
 | `CORS_ORIGINS` | `https://localhost:5173`, `http(s)://localhost:5173` | CORS |
 | — | `api_v1_prefix=/api/v1` | префикс API |
 | — | `auth_otp_expire_seconds=300` | время жизни OTP |
 
 В docker-стеке `DATABASE_URL` задаётся в `docker-compose.yaml` для сервиса `web`. Файл `.env.dev` в корне сейчас закомментирован (не используется).
+
+#### Фоновые задачи: Celery + RabbitMQ
+
+Брокер очередей **RabbitMQ** (`rabbitmq`), воркер **Celery** (`worker`) и планировщик **`beat`** поднимаются в том же compose-стеке автоматически. Учётка RabbitMQ задаётся в `.env`: `RABBITMQ_USER`, `RABBITMQ_PASSWORD` (guest между контейнерами не работает — RabbitMQ пускает его только с localhost). Management UI: http://localhost:15672.
+
+Что уже переведено на фоновые задачи:
+
+| Задача | Модуль | Что делает | Вызывается |
+|---|---|---|---|
+| `send_sms_otp` | `tasks/otp_tasks.py` | доставка OTP-кода (SMS-заглушка) | эндпоинт `POST /auth/request-otp/` |
+| `download_gif_message` | `tasks/media_tasks.py` | скачивание GIF (Giphy/Tenor) + создание сообщения | `POST /messages/gif/` (отвечает 202) |
+| `cleanup_orphan_media` | `tasks/media_tasks.py` | очистка файлов media без ссылок в БД | **celery beat** ежедневно в 04:00 UTC |
+| `send_email` | `tasks/notifications.py` | каркас e-mail/уведомлений (заглушка) | — (структура для будущих) |
+
+**Важные следствия для разработки:**
+
+- **Код OTP для входа** печатается в лог контейнера `web` (как и до Celery) —
+  `docker compose logs -f web | grep SMS-заглушка`; воркер дополнительно
+  логирует его при фактической «отправке» (`docker compose logs -f worker`).
+- **GIF** создаётся асинхронно: эндпоинт отвечает `202 Accepted`, воркер скачивает файл в общий media и создаёт сообщение в БД, затем через **RabbitMQ-мост** web раздаёт `message.new` в живые WebSocket-сокеты (включая отправителя, т.к. свои сообщения фронт не добавляет локально). Если RabbitMQ недоступен — web-мост сам переподключается в фоне.
+- Realtime (presence/typing/chat.read) **не** переводилось на воркер: WebSocket-соединения живут в процессе `web`, поэтому доставка в сокеты остаётся в `web` (in-process manager). Воркер лишь *публикует* события в мост.
+- Ручной запуск: `docker compose exec worker poetry run celery -A core.celery_app inspect active` (диагностика). Логи: `docker compose logs -f worker beat`.
+
+Локально без Docker (для отладки тасок) нужен поднятый RabbitMQ (напр. `docker compose up -d rabbitmq`) и `RABBITMQ_URL`; воркер запускается `cd backend && poetry run celery -A core.celery_app worker --loglevel=INFO`.
 
 ## 5. Backend — детали
 
@@ -256,7 +282,7 @@ cd backend
 poetry run flake8 . --exclude=.mypy_cache,__pycache__
 poetry run isort .
 poetry run black .
-poetry run mypy main.py core api_v1
+poetry run mypy main.py core api_v1 tasks
 ```
 
 Замечания:
@@ -319,7 +345,7 @@ node node_modules/prettier/bin/prettier.cjs --write <files> # формат
 - Загрузка файлов/аватара — **без** `python-multipart` (сырое тело запроса). Не добавляйте `UploadFile`/`File`, иначе понадобится эта зависимость.
 - Сериализация сообщений — dict-хелперы в `messages/crud.py` (`message_to_dict`, `message_basic_to_dict`); реакции агрегируются `{emoji, count, reacted_by_me}`.
 - Не регенерируйте `.mypy_cache`/`__pycache__` в репо (часть файлов `root`-овые, не удалить без sudo). Mypy — с `--cache-dir=/tmp/...`.
-- Тестовая авторизация «по коду»: код печатается в лог контейнера `web`.
+- Тестовая авторизация «по коду»: код печатается в лог контейнера **`web`** (`docker compose logs -f web | grep SMS-заглушка`); отправка OTP уходит в Celery-воркер, который тоже логирует код при «отправке».
 - Перед e2e-проверкой API удобно создать временных пользователей через `POST /users/` + `POST /auth/token/`, а после удалить их по `username`-префиксу.
 
 ## 8. Частые команды
@@ -333,13 +359,21 @@ docker exec microshop-web-1 poetry run alembic upgrade head
 ./restore_db.sh              # восстановить из ./db_dump/microshop_latest.sql
 
 # Backend: автоформат + линт (на хосте)
-cd backend && poetry run isort . && poetry run black . && poetry run flake8 . --exclude=.mypy_cache,__pycache__ && poetry run mypy --cache-dir=/tmp/ms-mypy main.py core api_v1
+cd backend && poetry run isort . && poetry run black . && poetry run flake8 . --exclude=.mypy_cache,__pycache__ && poetry run mypy --cache-dir=/tmp/ms-mypy main.py core api_v1 tasks
 
 # Frontend: типы + линт
 cd frontend && node node_modules/vue-tsc/bin/vue-tsc.js --build --force && node node_modules/eslint/bin/eslint.js --no-cache src
 
-# Посмотреть код SMS-заглушки (для OTP-теста)
-docker logs microshop-web-1 | grep 'Sending SMS'
+# Посмотреть код OTP (SMS-заглушка): в web-логе (основное) и в воркере
+docker compose logs -f web | grep 'SMS-заглушка'
+docker compose logs -f worker | grep 'SMS-заглушка'
+
+# Фоновые задачи (Celery)
+docker compose logs -f worker beat          # логи воркера/планировщика
+docker compose restart worker beat          # перезапустить после правки тасок
+docker compose exec worker poetry run celery -A core.celery_app inspect active
+
+# RabbitMQ management UI: http://localhost:15672 (учётка из .env: RABBITMQ_USER/RABBITMQ_PASSWORD)
 
 # SQL напрямую в БД
 docker exec -it microshop-db-1 psql -U postgres -d microshop

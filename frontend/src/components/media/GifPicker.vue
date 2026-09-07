@@ -58,7 +58,6 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import type { Message } from '@/types'
 import { sendGifMessage } from '@/services/chatService'
 import { fetchTrendingGifs, hasGiphyKey, searchGifs, type GiphyGif } from '@/services/giphy'
 
@@ -67,8 +66,10 @@ const props = defineProps<{
   replyToId?: number | null
 }>()
 
+// Событие «sent» — это подтверждение постановки задачи: сообщение появится в
+// ленте чуть позже, когда фоновый воркер скачает GIF и web пришлёт message.new.
 const emit = defineEmits<{
-  (e: 'sent', message: Message): void
+  (e: 'sent'): void
 }>()
 
 const QUICK_QUERIES = ['😀', 'кот', 'привет', 'спасибо', 'праздник', 'круто']
@@ -111,8 +112,8 @@ const sendGif = async (gif: GiphyGif) => {
   sendingId.value = gif.id
   error.value = ''
   try {
-    const message = await sendGifMessage(props.chatId, gif.gif, props.replyToId ?? null)
-    emit('sent', message)
+    await sendGifMessage(props.chatId, gif.gif, props.replyToId ?? null)
+    emit('sent')
   } catch {
     error.value = 'Не удалось отправить GIF'
   } finally {

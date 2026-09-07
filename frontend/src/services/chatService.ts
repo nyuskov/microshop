@@ -101,18 +101,24 @@ export const sendAttachmentMessage = async (
   return response.data
 }
 
-/** Отправляет GIF по URL из интернета (бэкенд сам скачивает файл). */
+/**
+ * Ставит в очередь скачивание GIF и создание сообщения (фоново, Celery).
+ *
+ * Бэкенд отвечает 202 Accepted, не дожидаясь загрузки: сообщение создаст
+ * фоновый воркер, после чего web пришлёт событие ``message.new`` (realtime
+ * или фолбэк-опрос) — и сообщение появится в ленте само. Здесь ничего не
+ * возвращаем — сообщение приходит по событию.
+ */
 export const sendGifMessage = async (
   chatId: number,
   url: string,
   replyToId?: number | null
-): Promise<Message> => {
-  const response = await api.post<Message>('/messages/gif/', {
+): Promise<void> => {
+  await api.post('/messages/gif/', {
     chat_id: chatId,
     url,
     reply_to_id: replyToId ?? null
   })
-  return response.data
 }
 
 /** Закрепляет или открепляет сообщение. */

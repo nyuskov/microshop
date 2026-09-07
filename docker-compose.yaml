@@ -18,14 +18,87 @@ services:
       # остановится с понятной ошибкой, а не подставит захардкоженный пароль.
       - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}@rabbitmq:5672/
     depends_on:
       db:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks:
       - server_network
     # Монтируем исходный код backend внутрь контейнера
     volumes:
       - ./backend:/app
+
+  # Очередь/брокер для фоновых задач (Celery) и моста realtime-событий.
+  rabbitmq:
+    image: rabbitmq:4-management
+    ports:
+      # Management UI (для отладки). Внутренние подключения — только по сети.
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+    networks:
+      - server_network
+
+  # Воркер фоновых задач Celery (тот же образ backend, общий код/media).
+  worker:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    command: ["poetry", "run", "celery", "-A", "core.celery_app", "worker", "--loglevel=INFO", "--without-gossip", "--without-mingle", "--without-heartbeat"]
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}@rabbitmq:5672/
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - server_network
+    volumes:
+      - ./backend:/app
+    develop:
+      watch:
+        - path: ./backend
+          action: sync
+          target: /app
+          ignore:
+            - .git/
+
+  # Планировщик периодических задач (celery beat) — например, очистка media.
+  beat:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    command: ["poetry", "run", "celery", "-A", "core.celery_app", "beat", "--loglevel=INFO"]
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - server_network
+    volumes:
+      - ./backend:/app
+    develop:
+      watch:
+        - path: ./backend
+          action: sync
+          target: /app
+          ignore:
+            - .git/
 
   db:
     image: postgres:18

@@ -1,11 +1,6 @@
-import asyncio
 import uuid
 from pathlib import Path
-from urllib.error import HTTPError
 from urllib.parse import urlparse
-from urllib.request import HTTPRedirectHandler
-from urllib.request import Request as UrlRequest
-from urllib.request import build_opener
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
@@ -17,6 +12,7 @@ from api_v1.messages.schemas import EditMessageRequest, ForwardMessageRequest
 from api_v1.messages.schemas import Message as MessageSchema
 from api_v1.messages.schemas import MessageCreate
 from api_v1.upload_guard import validate_attachment_upload
+from core.celery_app import get_task
 from core.config import settings
 from core.models import User, db_helper
 
@@ -142,7 +138,8 @@ async def create_attachment_message(
     )
 
 
-# Хосты, с которых разрешено импортировать GIF.
+# Хосты, с которых разрешено импортировать GIF. Используются и для «быстрой»
+# валидации в эндпоинте (до постановки в очередь), и воркером для финальной.
 ALLOWED_GIF_HOSTS = {
     "giphy.com",
     "media.giphy.com",
@@ -157,59 +154,32 @@ ALLOWED_GIF_HOSTS = {
 }
 
 
-class _NoRedirectHandler(HTTPRedirectHandler):
-    """Запрещает следовать HTTP-редиректам при скачивании GIF.
+class GifQueueAccepted(BaseModel):
+    """Ответ о постановке GIF-задачи в очередь (сообщение ещё не создано)."""
 
-    urlopen по умолчанию следует редиректам — через них запрос можно увести на
-    внутренние адреса (SSRF). Здесь редирект превращается в ошибку.
-    """
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl) -> None:
-        raise HTTPError(req.full_url, code, msg, headers, fp)
+    status: str = "accepted"
+    detail: str = "GIF обрабатывается в фоне и появится в чате автоматически"
 
 
-def _download_gif_bytes(url: str, limit: int) -> bytes:
-    """Скачивает GIF по URL без редиректов (вызывается в отдельном потоке)."""
-    req = UrlRequest(url, headers={"User-Agent": "microshop/1.0"})
-    opener = build_opener(_NoRedirectHandler)
-    try:
-        with opener.open(req, timeout=20) as response:
-            content = response.read(limit + 1)
-            content_type = response.headers.get("Content-Type", "")
-    except HTTPError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Недопустимый адрес GIF",
-        ) from exc
-    except OSError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Не удалось загрузить GIF",
-        ) from exc
-
-    if len(content) > limit:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"GIF слишком большой (максимум {MAX_UPLOAD_MB} МБ)",
-        )
-    if not (
-        content_type.lower().startswith("image/gif")
-        or content[:6] in (b"GIF87a", b"GIF89a")
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="URL не ведёт на GIF-изображение",
-        )
-    return content
-
-
-@router.post("/gif/", response_model=MessageSchema)
+@router.post(
+    "/gif/",
+    response_model=GifQueueAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def send_gif_message(
     payload: GifMessageCreate,
     user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(db_helper.session_dependency),
-):
-    """Скачивает GIF из интернета (Giphy/Tenor) и отправляет как сообщение."""
+) -> GifQueueAccepted:
+    """Ставит в очередь Celery скачивание GIF и создание сообщения.
+
+    Раньше GIF скачивался синхронно в теле запроса (через ``asyncio.to_thread``),
+    удерживая соединение на время сетевой загрузки. Теперь эндпоинт только
+    валидирует URL (быстрый отказ при неверном адресе) и кладёт задачу в
+    RabbitMQ. Фоновый воркер (``tasks.media_tasks.download_gif_message``)
+    скачивает файл, пишет его в общий media-каталог и создаёт сообщение в БД,
+    после чего через мост realtime-событий web уведомляет живые WebSocket-клиенты
+    (``message.new``) — сообщение появляется в чате автоматически.
+    """
     parsed = urlparse(payload.url)
     host = (parsed.hostname or "").lower()
     if (
@@ -223,19 +193,19 @@ async def send_gif_message(
             detail="Недопустимый адрес GIF",
         )
 
-    content = await asyncio.to_thread(_download_gif_bytes, payload.url, MAX_UPLOAD_SIZE)
-    file_url = _store_upload(content, "gif.gif")
-    return await crud.send_attachment_message(
-        session=session,
-        chat_id=payload.chat_id,
-        user_id=user.id,
-        file_name=f"gif_{uuid.uuid4().hex[:8]}.gif",
-        file_url=file_url,
-        mime_type="image/gif",
-        file_size=len(content),
-        text="",
-        reply_to_id=payload.reply_to_id,
-    )
+    try:
+        get_task("tasks.media_tasks.download_gif_message").delay(
+            chat_id=payload.chat_id,
+            user_id=user.id,
+            url=payload.url,
+            reply_to_id=payload.reply_to_id,
+        )
+    except Exception:  # noqa: BLE001 - очередь (RabbitMQ) может быть недоступна
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Сервис обработки GIF временно недоступен. Попробуйте позже.",
+        )
+    return GifQueueAccepted()
 
 
 @router.get("/search/", response_model=list[MessageSchema])
