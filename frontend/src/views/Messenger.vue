@@ -743,6 +743,7 @@ import { formatBytes, formatChatTime, formatMsgTime, lastSeenLabel } from '@/uti
 import { buildMessageRows, type MessageRow } from '@/utils/thread'
 import { useCallButton } from '@/composables/useCallButton'
 import { usePeerActivity } from '@/composables/usePeerActivity'
+import { useRecordButton } from '@/composables/useRecordButton'
 import {
   fileIcon,
   isAudioFile,
@@ -1400,90 +1401,23 @@ const uploadRecordedMedia = async (payload: RecordedMedia, kind: 'voice' | 'vide
   }
 }
 
-// ---------- Одна кнопка аудио/видео ----------
-// Клик = запись сообщения выбранного режима; удержание 2 секунды = переключение
-// режима (микрофон ⇄ видео): значок меняется, сама запись НЕ начинается.
-const MIC_HOLD_MS = 500
-const recordMode = ref<'audio' | 'video'>('audio')
-const micHolding = ref(false)
-const recordModeHint = ref('')
-let micPressTimer: number | null = null
-let suppressMicClick = false
-let modeHintTimer: number | null = null
-
-const clearMicTimer = () => {
-  if (micPressTimer !== null) {
-    window.clearTimeout(micPressTimer)
-    micPressTimer = null
+// ---------- Одна кнопка аудио/видео (состояние в composable) ----------
+const {
+  recordMode,
+  micHolding,
+  recordModeHint,
+  onMicDown,
+  onMicUp,
+  onMicCancel,
+  onMicClick,
+  resetRecordMode
+} = useRecordButton({
+  isRecording: () => voiceRecOpen.value || videoRecOpen.value,
+  onRecord: (mode) => {
+    if (mode === 'video') openVideoRec()
+    else openVoiceRec()
   }
-}
-
-const clearModeHint = () => {
-  if (modeHintTimer !== null) {
-    window.clearTimeout(modeHintTimer)
-    modeHintTimer = null
-  }
-}
-
-const showModeHint = () => {
-  clearModeHint()
-  recordModeHint.value = recordMode.value === 'video' ? 'Запись видео' : 'Запись голоса'
-  modeHintTimer = window.setTimeout(() => {
-    recordModeHint.value = ''
-    modeHintTimer = null
-  }, 1500)
-}
-
-const setRecordMode = (mode: 'audio' | 'video') => {
-  if (recordMode.value === mode) return
-  recordMode.value = mode
-  showModeHint()
-}
-
-const resetRecordMode = () => {
-  recordMode.value = 'audio'
-  recordModeHint.value = ''
-  clearModeHint()
-}
-
-const onMicDown = () => {
-  if (voiceRecOpen.value || videoRecOpen.value) return
-  clearMicTimer()
-  suppressMicClick = false
-  micHolding.value = true
-  micPressTimer = window.setTimeout(() => {
-    micPressTimer = null
-    micHolding.value = false
-    // Переключаем режим, но запись не запускаем — она начнётся по клику.
-    suppressMicClick = true
-    setRecordMode(recordMode.value === 'video' ? 'audio' : 'video')
-  }, MIC_HOLD_MS)
-}
-
-const onMicUp = () => {
-  clearMicTimer()
-  micHolding.value = false
-}
-
-const onMicCancel = () => {
-  clearMicTimer()
-  micHolding.value = false
-  suppressMicClick = false
-}
-
-const onMicClick = () => {
-  // После долгого удержания браузер всё равно пришлёт click — пропускаем его,
-  // т.к. удержание уже переключило режим (иначе сразу началась бы запись).
-  if (suppressMicClick) {
-    suppressMicClick = false
-    return
-  }
-  if (recordMode.value === 'video') {
-    openVideoRec()
-  } else {
-    openVoiceRec()
-  }
-}
+})
 
 // ---------- Ответ (reply) ----------
 const setReply = (message: Message) => {
@@ -1952,8 +1886,6 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopRealtime()
   realtimeStore.setHandler(null)
-  clearMicTimer()
-  clearModeHint()
   if (highlightTimer !== undefined) {
     window.clearTimeout(highlightTimer)
     highlightTimer = undefined
