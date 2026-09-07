@@ -35,8 +35,8 @@ importers:
         specifier: ^4.0.0
         version: 4.0.0
       primeicons:
-        specifier: ^7.0.0
-        version: 7.0.0
+        specifier: ^8.0.0
+        version: 8.0.0
       primevue:
         specifier: ^4.5.5
         version: 4.5.5(vue@3.5.42(typescript@5.8.3))
@@ -980,11 +980,6 @@ packages:
 
   '@volar/typescript@2.4.28':
     resolution: {integrity: sha512-Ja6yvWrbis2QtN4ClAKreeUZPVYMARDYZl9LMEv1iQ1QdepB6wn0jTRxA9MftYmYa4DQ4k/DaSZpFPUfxl8giw==}
-    peerDependencies:
-      typescript: '*'
-    peerDependenciesMeta:
-      typescript:
-        optional: true
 
   '@vue/babel-helper-vue-transform-on@1.5.0':
     resolution: {integrity: sha512-0dAYkerNhhHutHZ34JtTl2czVQHUNWv6xEbkdF5W+Yrv5pCWsqjeORdOgbtW2I9gWlt+wBmVn+ttqN9ZxR5tzA==}
@@ -1985,8 +1980,8 @@ packages:
   primeflex@4.0.0:
     resolution: {integrity: sha512-UOEZCRjR36+sm5bUpDhS1xbA068l9VC6y1aTNVqQPtXuKIdPTqAWHRUxj3mKAoPrQ9W373ooJJMgNVXfiaw04g==}
 
-  primeicons@7.0.0:
-    resolution: {integrity: sha512-jK3Et9UzwzTsd6tzl2RmwrVY/b8raJ3QZLzoDACj+oTJ0oX7L9Hy+XnVwgo4QVKlKpnP/Ur13SXV/pVh4LzaDw==}
+  primeicons@8.0.0:
+    resolution: {integrity: sha512-eZGk+Mgb4fE+LkJi9LvllbnB4RVUF9kzmnLVnT3ZMY6stqKVh7TUJ0mFoMNIEgTnJSvhaGcJotDiSvtVvkHd7g==}
 
   primevue@4.5.5:
     resolution: {integrity: sha512-Kv5REIewCdP806QaoU+4nBXfmpzOGFKkZ9qH4KsL6MjiAQVc4PUzypt8erl4r3Vzh3nr3aWZIxkxYRRsLGiX2A==}
@@ -2439,7 +2434,6 @@ packages:
     engines: {node: '>=v14.21.3'}
     peerDependencies:
       vite: ^6.0.0 || ^7.0.0 || ^8.0.0
-      vue: '*'
 
   vite-plugin-vue-inspector@6.0.0:
     resolution: {integrity: sha512-OpyITJLgZNibxlrik1EmRtvXHDjLRxNPsWkGFTERZs2LgMEdG4W0WoFt5GIgp3a3jRou+eJR8U1zOBk/XQgEbw==}
@@ -3419,13 +3413,11 @@ snapshots:
 
   '@volar/source-map@2.4.28': {}
 
-  '@volar/typescript@2.4.28(typescript@5.8.3)':
+  '@volar/typescript@2.4.28':
     dependencies:
       '@volar/language-core': 2.4.28
       path-browserify: 1.0.1
       vscode-uri: 3.2.0
-    optionalDependencies:
-      typescript: 5.8.3
 
   '@vue/babel-helper-vue-transform-on@1.5.0': {}
 
@@ -4435,7 +4427,7 @@ snapshots:
 
   primeflex@4.0.0: {}
 
-  primeicons@7.0.0: {}
+  primeicons@8.0.0: {}
 
   primevue@4.5.5(vue@3.5.42(typescript@5.8.3)):
     dependencies:
@@ -4853,10 +4845,10 @@ snapshots:
       vite: 7.3.6(@types/node@22.20.1)(sass-embedded@1.103.1)(sass@1.103.1)
       vite-plugin-inspect: 11.4.1(vite@7.3.6(@types/node@22.20.1)(sass-embedded@1.103.1)(sass@1.103.1))
       vite-plugin-vue-inspector: 6.0.0(supports-color@10.2.2)(vite@7.3.6(@types/node@22.20.1)(sass-embedded@1.103.1)(sass@1.103.1))
-      vue: 3.5.42(typescript@5.8.3)
     transitivePeerDependencies:
       - '@nuxt/kit'
       - supports-color
+      - vue
 
   vite-plugin-vue-inspector@6.0.0(supports-color@10.2.2)(vite@7.3.6(@types/node@22.20.1)(sass-embedded@1.103.1)(sass@1.103.1)):
     dependencies:
@@ -4956,7 +4948,7 @@ snapshots:
 
   vue-tsc@3.3.11(typescript@5.8.3):
     dependencies:
-      '@volar/typescript': 2.4.28(typescript@5.8.3)
+      '@volar/typescript': 2.4.28
       '@vue/language-core': 3.3.11
       typescript: 5.8.3
 
