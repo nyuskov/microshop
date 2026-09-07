@@ -1829,6 +1829,9 @@ watch(
   display: flex;
   flex-direction: column;
   background: #6d7c8c;
+  /* Всё «лишнее» (подсказки/кольца анимации) не должно давать полосу прокрутки
+     страницы — прокручивается только список сообщений внутри. */
+  overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
