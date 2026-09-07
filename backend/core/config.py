@@ -1,16 +1,31 @@
+import logging
+import os
 from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+logger = logging.getLogger("microshop.config")
+
 BASE_DIR = Path(__file__).parent.parent
+
+# ВНИМАНИЕ (безопасность): значение ниже — ТОЛЬКО запасной dev-вариант для запуска
+# без окружения. Никогда не используйте его на реальном сервере. При docker-запуске
+# секрет обязательно приходит из корневого .env (переменная JWT_SECRET_KEY); если он
+# не задан — в лог пишется предупреждение (см. конец файла).
+_DEV_JWT_SECRET_KEY = (
+    "0b7a392c19cb1a102061ec65bb016b50cd506c2257739c6348df9e8d373bc405"
+)
 
 
 class AuthJWT(BaseSettings):
-    """Настройки JWT-аутентификации."""
+    """Настройки JWT-аутентификации.
+
+    ``secret_key`` читается из переменной окружения ``JWT_SECRET_KEY``.
+    """
 
     secret_key: str = Field(
-        default="d44c6e681a5a325c9bad6f7aee92d5cb6ebdbf1fd8732f90feef93ab1dbfb93a",
+        default=_DEV_JWT_SECRET_KEY,
         validation_alias="JWT_SECRET_KEY",
     )
     algorithm: str = "HS256"
@@ -44,3 +59,9 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+if not os.getenv("JWT_SECRET_KEY"):
+    logger.warning(
+        "JWT_SECRET_KEY не задан в окружении: используется НЕБЕЗОПАСНЫЙ dev-секрет. "
+        "Для docker-запуска задайте JWT_SECRET_KEY в корневом .env (см. .env.example)."
+    )

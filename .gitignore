@@ -137,6 +137,9 @@ celerybeat.pid
 # Environments
 .env
 .envrc
+# Все локальные env-файлы игнорируем, кроме примеров (.env.example)
+.env.*
+!.env.example
 .venv
 env/
 venv/
