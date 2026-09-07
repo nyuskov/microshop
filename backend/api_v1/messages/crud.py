@@ -1,5 +1,7 @@
 """CRUD-операции для сообщений."""
 
+from pathlib import Path
+
 from fastapi import HTTPException, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +11,9 @@ from api_v1.chats.crud import is_user_chat_member
 from core.models import Chat, Message, MessageReaction
 
 _NOT_MEMBER_DETAIL = "Вы не являетесь участником этого чата"
+
+# Каталог вложений сообщений (файлы сообщений, не аватары).
+MEDIA_DIR = Path(__file__).resolve().parent.parent.parent / "media"
 
 
 def _file_payload(message: Message) -> dict | None:
@@ -23,9 +28,7 @@ def _file_payload(message: Message) -> dict | None:
     }
 
 
-def _reactions_payload(
-    reactions: list[MessageReaction], user_id: int
-) -> list[dict]:
+def _reactions_payload(reactions: list[MessageReaction], user_id: int) -> list[dict]:
     """Агрегирует реакции по эмодзи."""
     aggregated: dict[str, dict] = {}
     for reaction in reactions:
@@ -71,9 +74,7 @@ def message_basic_to_dict(message: Message) -> dict:
     }
 
 
-async def _load_message(
-    session: AsyncSession, message_id: int
-) -> Message | None:
+async def _load_message(session: AsyncSession, message_id: int) -> Message | None:
     """Загружает сообщение вместе с реакциями."""
     stmt = (
         select(Message)
@@ -125,9 +126,7 @@ async def _get_member_message(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Сообщение не найдено",
         )
-    await _ensure_chat_member_or_404(
-        session, chat_id=message.chat_id, user_id=user_id
-    )
+    await _ensure_chat_member_or_404(session, chat_id=message.chat_id, user_id=user_id)
     return message
 
 
@@ -223,9 +222,7 @@ async def list_chat_messages(
         .order_by(Message.timestamp, Message.id)
     )
     result = await session.execute(stmt)
-    return [
-        message_to_dict(message, user_id) for message in result.scalars().all()
-    ]
+    return [message_to_dict(message, user_id) for message in result.scalars().all()]
 
 
 async def list_pinned_messages(
@@ -240,23 +237,40 @@ async def list_pinned_messages(
         .order_by(Message.timestamp, Message.id)
     )
     result = await session.execute(stmt)
-    return [
-        message_to_dict(message, user_id) for message in result.scalars().all()
-    ]
+    return [message_to_dict(message, user_id) for message in result.scalars().all()]
 
 
 async def delete_message(
     session: AsyncSession, *, message_id: int, user_id: int
 ) -> None:
-    """Удаляет сообщение (только автор)."""
+    """Удаляет сообщение (только автор) и его файл-вложение с диска."""
     message = await _get_member_message(session, message_id, user_id)
     if message.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Удалить можно только своё сообщение",
         )
+
+    file_path = _resolve_media_file(message.file_url)
     await session.delete(message)
     await session.commit()
+
+    # Файл удаляем после коммита, best-effort (не критично, если не удалится).
+    if file_path is not None:
+        try:
+            file_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _resolve_media_file(file_url: str | None) -> Path | None:
+    """Возвращает путь к файлу вложения по URL (или None)."""
+    if not file_url or not file_url.startswith("/media/"):
+        return None
+    # Не трогаем аватары и чужие пути.
+    if file_url.startswith("/media/avatars/") or "/" in file_url[8:]:
+        return None
+    return MEDIA_DIR / file_url.removeprefix("/media/")
 
 
 async def set_message_pinned(
@@ -294,9 +308,7 @@ async def set_reaction(
     else:
         if reaction is None:
             session.add(
-                MessageReaction(
-                    message_id=message_id, user_id=user_id, emoji=emoji
-                )
+                MessageReaction(message_id=message_id, user_id=user_id, emoji=emoji)
             )
         else:
             reaction.emoji = emoji

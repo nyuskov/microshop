@@ -27,6 +27,8 @@ black = "^24.8.0"
 flake8 = "^7.1.1"
 isort = "^5.13.2"
 mypy = "^1.11.1"
+pytest = "^9.1.1"
+pytest-asyncio = "^1.4.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -55,3 +57,10 @@ exclude = '''
 [tool.isort]
 profile = "black"
 multi_line_output = 3
+
+[tool.pytest.ini_options]
+# async-тесты (pytest-asyncio) запускаются автоматически.
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# Чтобы импортировались пакеты api_v1/core из корня backend.
+pythonpath = ["."]
