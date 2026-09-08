@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD
 
 on:
   push:
@@ -126,3 +126,32 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # === НОВАЯ ЗАДАЧА ДЛЯ АВТОМАТИЧЕСКОГО ДЕПЛОЯ НА ВАШ СЕРВЕР CLOUD.RU ===
+  deploy:
+    name: Deploy to Cloud.ru VM
+    runs-on: ubuntu-latest
+    # Запускается только после успешного завершения бэкенда, фронтенда и сканирования секретов
+    needs: [backend, frontend, secrets]
+    # Деплоим только при пуше в продакшн-ветки (main или master), чтобы код из dev не летел на прод без тестов
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    steps:
+      - name: Deploy via SSH to Cloud.ru VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            # Переходим в папку вашего проекта на сервере
+            cd ~/microshop
+            
+            # Скачиваем свежий код из гитхаба
+            git pull
+            
+            # Пересобираем контейнеры (Docker подтянет изменения в Dockerfile.prod, которые мы правили)
+            docker compose -f docker-compose.prod.yaml up -d --build
+            
+            # Очищаем старые неиспользуемые слои сборки, чтобы сэкономить место на SSD 30 ГБ
+            docker system prune -f
