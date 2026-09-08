@@ -136,6 +136,14 @@ async def api() -> _ApiCtx:
             yield _ApiCtx(client, factory)
         finally:
             app.dependency_overrides.clear()
+            # Сбрасываем in-memory состояние между тестами: скользящий rate
+            # limiter и «замки» OTP-номеров живут в процессе и иначе «протекали»
+            # бы между тестами (лимиты/блокировки из одного теста — в другой).
+            from api_v1.auth import otp_storage
+            from api_v1.rate_limit import rate_limiter
+
+            rate_limiter._windows.clear()
+            otp_storage._verify_lockouts.clear()
             await engine.dispose()
 
 
@@ -499,3 +507,108 @@ async def test_delete_chat_for_all_removes_for_everyone(api: _ApiCtx) -> None:
         headers=api.auth(t2),
     )
     assert resp_old.status_code == 404
+
+
+# --- OTP-вход (полный пользовательский сценарий) ---------------------------
+
+
+def _random_phone() -> str:
+    """Случайный номер в формате +7XXXXXXXXXX (валиден для PHONE_PATTERN)."""
+    digits = "".join(c for c in uuid.uuid4().hex if c.isdigit())
+    return f"+7{digits[:10].ljust(10, '0')}"
+
+
+async def _request_otp(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch, phone: str
+) -> str:
+    """Запрашивает OTP-код, перехватывая «SMS-отправку» и возвращая код."""
+    captured: list[str] = []
+
+    def _fake_enqueue(phone_number: str, otp_code: str) -> None:
+        captured.append(otp_code)
+
+    # Подменяем реальную постановку задачи в Celery: код запоминаем, в очередь
+    # (RabbitMQ) ничего не уходит.
+    monkeypatch.setattr("api_v1.auth.views.enqueue_sms_otp", _fake_enqueue)
+    resp = await api.client.post(
+        "/api/v1/auth/request-otp/",
+        json={"phone_number": phone},
+    )
+    assert resp.status_code == 200, resp.text
+    assert len(captured) == 1
+    return captured[0]
+
+
+async def test_otp_full_login_flow(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Запросили код → ввели верный → получили токены → /users/me видит номер."""
+    phone = _random_phone()
+    code = await _request_otp(api, monkeypatch, phone)
+
+    verify = await api.client.post(
+        "/api/v1/auth/verify-otp/",
+        json={"phone_number": phone, "otp": code},
+    )
+    assert verify.status_code == 200, verify.text
+    data = verify.json()
+    assert data["access_token"]
+    assert data["refresh_token"]
+    assert data["token_type"] == "bearer"
+
+    # Access-токен реально работает: профиль текущего пользователя.
+    me = await api.client.get(
+        "/api/v1/jwt/users/me/",
+        headers=api.auth(data["access_token"]),
+    )
+    assert me.status_code == 200, me.text
+    assert me.json()["phone_number"] == phone
+
+
+async def test_otp_wrong_code_rejected_then_correct(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    phone = _random_phone()
+    code = await _request_otp(api, monkeypatch, phone)
+
+    bad = await api.client.post(
+        "/api/v1/auth/verify-otp/",
+        json={"phone_number": phone, "otp": "000000"},
+    )
+    assert bad.status_code == 401
+
+    good = await api.client.post(
+        "/api/v1/auth/verify-otp/",
+        json={"phone_number": phone, "otp": code},
+    )
+    assert good.status_code == 200, good.text
+
+
+async def test_otp_bruteforce_burns_code_and_locks_phone(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """После исчерпания попыток номер блокируется — даже верный код не пройдёт."""
+    phone = _random_phone()
+    await _request_otp(api, monkeypatch, phone)
+
+    # Пять неверных попыток — 401 (попытки копятся в otp_codes.attempts).
+    for _ in range(5):
+        resp = await api.client.post(
+            "/api/v1/auth/verify-otp/",
+            json={"phone_number": phone, "otp": "000000"},
+        )
+        assert resp.status_code == 401, resp.text
+
+    # Шестая попытка: код «сгорел» → 429.
+    burned = await api.client.post(
+        "/api/v1/auth/verify-otp/",
+        json={"phone_number": phone, "otp": "000000"},
+    )
+    assert burned.status_code == 429
+
+    # Номер взят на паузу: дальнейший ввод (даже верного кода) → 429.
+    locked = await api.client.post(
+        "/api/v1/auth/verify-otp/",
+        json={"phone_number": phone, "otp": "999999"},
+    )
+    assert locked.status_code == 429

@@ -1,13 +1,10 @@
 """Тесты хранилища OTP.
 
-Чистые юнит-тесты хеширования выполняются всегда. Интеграционные тесты
-(БД) — только если задан ``TEST_DATABASE_URL`` (PostgreSQL), иначе пропускаются.
+Чистые юнит-тесты хеширования/блокировки выполняются всегда. Интеграционные
+(БД) используют общую фикстуру ``session`` из conftest: схема накатана alembic
+(в CI — отдельным шагом), таблицы между тестами очищаются TRUNCATE, а без
+``TEST_DATABASE_URL`` фикстура сама пропускает тесты.
 """
-
-import os
-
-import pytest
-import pytest_asyncio
 
 from api_v1.auth.otp_storage import (
     OtpVerifyResult,
@@ -18,11 +15,6 @@ from api_v1.auth.otp_storage import (
 )
 
 PHONE = "+79990001122"
-
-DB_TEST = pytest.mark.skipif(
-    os.getenv("TEST_DATABASE_URL") is None,
-    reason="TEST_DATABASE_URL не задан (нужен PostgreSQL для БД-тестов OTP)",
-)
 
 
 # --- Чистые unit-тесты -------------------------------------------------
@@ -61,7 +53,9 @@ def test_verify_lockout_blocks_and_expires() -> None:
         assert phone_verify_locked_out(PHONE)
 
         # Искусственно «прокручиваем» время — блокировка снимается и чистится.
-        otp_storage._verify_lockouts[PHONE] = otp_storage._now() - timedelta(seconds=1)
+        otp_storage._verify_lockouts[PHONE] = otp_storage._now() - timedelta(
+            seconds=1
+        )
         assert not phone_verify_locked_out(PHONE)
         assert PHONE not in otp_storage._verify_lockouts
     finally:
@@ -74,37 +68,9 @@ def test_verify_lockout_unset_phone_is_free() -> None:
     assert not phone_verify_locked_out("+79991112233")
 
 
-# --- Интеграционные тесты (нужен PostgreSQL) ---------------------------
+# --- Интеграционные тесты (нужен PostgreSQL, фикстура session из conftest) -
 
 
-@pytest_asyncio.fixture
-async def otp_engine():
-    """Создаёт engine на TEST_DATABASE_URL и таблицу otp_codes (только её)."""
-    from sqlalchemy.ext.asyncio import create_async_engine
-
-    from core.models import Base
-
-    url = os.environ["TEST_DATABASE_URL"]
-    engine = create_async_engine(url)
-    table = Base.metadata.tables["otp_codes"]
-    async with engine.begin() as conn:
-        await conn.run_sync(lambda sync_conn: table.create(sync_conn, checkfirst=True))
-    yield engine
-    async with engine.begin() as conn:
-        await conn.run_sync(lambda sync_conn: table.drop(sync_conn, checkfirst=True))
-    await engine.dispose()
-
-
-@pytest_asyncio.fixture
-async def session(otp_engine):
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
-    factory = async_sessionmaker(otp_engine, expire_on_commit=False)
-    async with factory() as session:
-        yield session
-
-
-@DB_TEST
 async def test_cooldown_blocks_resend(session) -> None:
     await store_otp(session, phone_number=PHONE, code="111111", ttl_seconds=300)
     # Сразу после отправки повторный запрос запрещён (кулдаун большой).
@@ -112,10 +78,11 @@ async def test_cooldown_blocks_resend(session) -> None:
         session, phone_number=PHONE, cooldown_seconds=60
     )
     # Нулевой кулдаун разрешает.
-    assert await can_request_new_code(session, phone_number=PHONE, cooldown_seconds=0)
+    assert await can_request_new_code(
+        session, phone_number=PHONE, cooldown_seconds=0
+    )
 
 
-@DB_TEST
 async def test_wrong_code_counts_attempts_then_burns(session) -> None:
     await store_otp(session, phone_number=PHONE, code="111111", ttl_seconds=300)
     for _ in range(3):
@@ -135,7 +102,6 @@ async def test_wrong_code_counts_attempts_then_burns(session) -> None:
     assert result is OtpVerifyResult.NOT_FOUND
 
 
-@DB_TEST
 async def test_correct_code_succeeds(session) -> None:
     await store_otp(session, phone_number=PHONE, code="123456", ttl_seconds=300)
     result = await verify_otp(
