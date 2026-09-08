@@ -13,9 +13,10 @@ COPY . .
 # Публичный origin API (тот же, что у nginx). Переопределяется через build-arg.
 ARG VITE_API_ORIGIN=http://localhost
 ENV VITE_API_ORIGIN=${VITE_API_ORIGIN}
-# Опциональные ключи (Giphy и т.п.) можно передать как build-args при необходимости.
-ARG VITE_GIPHY_API_KEY=
-ENV VITE_GIPHY_API_KEY=${VITE_GIPHY_API_KEY}
+# Ключ Giphy Vite читает из frontend/.env (этот файл входит в контекст сборки).
+# ВАЖНО: не задаём VITE_GIPHY_API_KEY через ARG/ENV — пустое значение ENV
+# перекрыло бы .env (Vite не перезаписывает существующие переменные окружения),
+# и панель GIF не увидела бы ключ на сервере.
 RUN pnpm run build-only
 
 # Этап 2 — раздача + прокси

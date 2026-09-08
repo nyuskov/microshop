@@ -921,6 +921,9 @@ const openChatThread = async (chatId: number) => {
   closeLightbox()
   showChatInfoModal.value = false
   await Promise.all([loadThreadLatest(chatId), loadPinned(chatId)])
+  // Ждём отрисовки сообщений, иначе scrollTop посчитается по пустой ленте
+  // и чат откроется не внизу (поле ввода и свежие сообщения окажутся ниже).
+  await nextTick()
   scrollToBottom()
   // Мобильный режим: выбор чата закрывает drawer — нить на весь экран.
   if (!isDesktop.value) drawerOpen.value = false
