@@ -142,6 +142,7 @@ jobs:
           script: |
             cd ~/microshop
             git pull
-            # Добавили флаг -p и --force-recreate, чтобы Docker гарантированно обновлял код
-            docker compose -f docker-compose.test.yaml -p microshop-test up -d --build --force-recreate
+            # Используем официальную команду принудительного сброса кэша при сборке
+            docker compose -f docker-compose.test.yaml -p microshop-test up -d --build --force-recreate --pull always
             docker system prune -f
+
