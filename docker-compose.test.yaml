@@ -87,7 +87,6 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
-      # Жестко заставляем RabbitMQ экономить память и сбрасывать всё на диск
       RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "+P 1048576"
       VM_MEMORY_HIGH_WATERMARK: "0.4"
     volumes:
@@ -107,7 +106,6 @@ services:
     build:
       context: .
       dockerfile: ./backend/Dockerfile
-    # --concurrency=1 критически важен, чтобы Celery не плодил процессы
     command: ["poetry", "run", "celery", "-A", "core.celery_app", "worker", "--loglevel=INFO", "--concurrency=1", "--without-gossip", "--without-mingle", "--without-heartbeat"]
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/microshop
@@ -154,11 +152,24 @@ services:
         VITE_API_ORIGIN: ${VITE_API_ORIGIN:-http://localhost}
     ports:
       - "80:80"
+      - "443:443" # Открываем порт для входящего HTTPS трафика
+    volumes:
+      - certbot_etc:/etc/letsencrypt
+      - certbot_var:/var/lib/letsencrypt
     depends_on:
       - web
     restart: unless-stopped
     networks:
       - server_network
+
+  # Сервис автоматического перевыпуска SSL-сертификатов (раз в 12 часов)
+  certbot:
+    image: certbot/certbot:v2.11.0
+    restart: unless-stopped
+    volumes:
+      - certbot_etc:/etc/letsencrypt
+      - certbot_var:/var/lib/letsencrypt
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done'"
 
 networks:
   server_network:
@@ -168,3 +179,5 @@ volumes:
   postgres_data:
   media_data:
   rabbitmq_data:
+  certbot_etc: # Новые тома для постоянного хранения SSL ключей
+  certbot_var:

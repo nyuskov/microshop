@@ -76,14 +76,12 @@ jobs:
         with:
           node-version: '22'
 
-      # Указываем экшену pnpm, где именно лежит наш package.json
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 9
           run_install: false
 
-      # Создаем настройки безопасности до установки, указывая правильный путь
       - name: Configure pnpm safety
         run: |
           echo "ignore-scripts=false" > frontend/.npmrc
@@ -122,19 +120,16 @@ jobs:
           fetch-depth: 0
 
       - name: Gitleaks
-        # Не блокирует CI (для организаций может требоваться GITLEAKS_LICENSE).
         continue-on-error: true
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # === НОВАЯ ЗАДАЧА ДЛЯ АВТОМАТИЧЕСКОГО ДЕПЛОЯ НА ВАШ СЕРВЕР CLOUD.RU ===
+  # АВТОМАТИЧЕСКИЙ ДЕПЛОЙ ПОСЛЕ УСПЕШНЫХ ТЕСТОВ
   deploy:
     name: Deploy to Cloud.ru VM
     runs-on: ubuntu-latest
-    # Запускается только после успешного завершения бэкенда, фронтенда и сканирования секретов
     needs: [backend, frontend, secrets]
-    # Деплоим только при пуше в продакшн-ветки (main или master), чтобы код из dev не летел на прод без тестов
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
 
     steps:
@@ -145,14 +140,7 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            # Переходим в папку вашего проекта на сервере
             cd ~/microshop
-            
-            # Скачиваем свежий код из гитхаба
             git pull
-            
-            # Пересобираем контейнеры (Docker подтянет изменения в Dockerfile.prod, которые мы правили)
             docker compose -f docker-compose.prod.yaml up -d --build
-            
-            # Очищаем старые неиспользуемые слои сборки, чтобы сэкономить место на SSD 30 ГБ
             docker system prune -f
