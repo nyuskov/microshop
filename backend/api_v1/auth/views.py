@@ -27,12 +27,7 @@ from .otp_storage import (
     verify_otp,
 )
 from .refresh_sessions import issue_refresh_token
-from .schemas import (
-    OTPResponse,
-    RequestOTPRequest,
-    TokenResponse,
-    VerifyOTPRequest,
-)
+from .schemas import OTPResponse, RequestOTPRequest, TokenResponse, VerifyOTPRequest
 from .utils import authenticate_user, get_current_user
 
 logger = logging.getLogger(__name__)
