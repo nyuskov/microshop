@@ -1,0 +1,170 @@
+name: microshop-test
+
+# Общая ротация docker-логов (важно, чтобы диск не переполнился).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "5m"
+    max-file: "2"
+
+services:
+  db:
+    logging: *default-logging
+    mem_limit: 256m
+    cpus: 0.5
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_URL: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: microshop
+    volumes:
+      - postgres_data:/var/lib/postgresql/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d microshop"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - server_network
+
+  migrate:
+    logging: *default-logging
+    mem_limit: 256m
+    cpus: 0.5
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    command: ["poetry", "run", "alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/microshop
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - server_network
+
+  web:
+    logging: *default-logging
+    mem_limit: 256m
+    cpus: 0.5
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    command: ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/microshop
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672/
+      UVICORN_RELOAD: "0"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - media_data:/app/media
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0', timeout=3).status==200 else 1)"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - server_network
+
+  rabbitmq:
+    logging: *default-logging
+    mem_limit: 256m
+    cpus: 0.3
+    image: rabbitmq:4-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      # Жестко заставляем RabbitMQ экономить память и сбрасывать всё на диск
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "+P 1048576"
+      VM_MEMORY_HIGH_WATERMARK: "0.4"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - server_network
+
+  worker:
+    logging: *default-logging
+    mem_limit: 256m
+    cpus: 0.4
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    # --concurrency=1 критически важен, чтобы Celery не плодил процессы
+    command: ["poetry", "run", "celery", "-A", "core.celery_app", "worker", "--loglevel=INFO", "--concurrency=1", "--without-gossip", "--without-mingle", "--without-heartbeat"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/microshop
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - media_data:/app/media
+    restart: unless-stopped
+    networks:
+      - server_network
+
+  beat:
+    logging: *default-logging
+    mem_limit: 64m
+    cpus: 0.1
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    command: ["poetry", "run", "celery", "-A", "core.celery_app", "beat", "--loglevel=INFO"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/microshop
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - server_network
+
+  frontend:
+    logging: *default-logging
+    mem_limit: 64m
+    cpus: 0.2
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_ORIGIN: ${VITE_API_ORIGIN:-http://localhost}
+    ports:
+      - "80:80"
+    depends_on:
+      - web
+    restart: unless-stopped
+    networks:
+      - server_network
+
+networks:
+  server_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  media_data:
+  rabbitmq_data:
