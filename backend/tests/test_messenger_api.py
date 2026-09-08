@@ -679,3 +679,34 @@ async def test_user_search_rate_limit(
         headers=api.auth(token),
     )
     assert limited.status_code == 429
+
+
+# --- Профили/чаты пользователей не должны быть публичными ------------------
+
+
+async def test_users_no_public_listing_or_foreign_chats(api: _ApiCtx) -> None:
+    """Список всех, профиль по id и чужие чаты больше не отдаются публично."""
+    me = await api.make_user()
+    token = await api.token_for(me)
+
+    # Публичного «списка всех пользователей» больше нет.
+    listing = await api.client.get("/api/v1/users/")
+    assert listing.status_code != 200
+
+    # Профиль произвольного пользователя по id — маршрут удалён (не 200).
+    by_id = await api.client.get(f"/api/v1/users/{me.id}/")
+    assert by_id.status_code == 404
+
+    # Чужие чаты не отдаются: маршрут удалён.
+    foreign_chats = await api.client.get(
+        f"/api/v1/users/{me.id}/chats/",
+        headers=api.auth(token),
+    )
+    assert foreign_chats.status_code == 404
+
+    # «Свои» данные по-прежнему доступны через /jwt/users/me.
+    me_resp = await api.client.get(
+        "/api/v1/jwt/users/me/",
+        headers=api.auth(token),
+    )
+    assert me_resp.status_code == 200, me_resp.text

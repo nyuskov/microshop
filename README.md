@@ -46,46 +46,58 @@
 ```
 microshop/
 ├── backend/                  # FastAPI
-│   ├── main.py               # создание app, CORS, роутер v1, mount /media
+│   ├── main.py               # app, CORS, X-Request-ID, /health, mount /media
 │   ├── core/
-│   │   ├── config.py         # Settings (DATABASE_URL, JWT, CORS, prefix)
+│   │   ├── config.py         # Settings (DATABASE_URL, JWT, RabbitMQ, лимиты, CORS)
 │   │   ├── security.py       # хеширование паролей (argon2)
+│   │   ├── celery_app.py     # Celery (worker/beat): брокер RabbitMQ
+│   │   ├── amqp.py           # fanout-мост realtime web<->worker
 │   │   └── models/           # ORM-модели + db_helper (session_dependency)
-│   ├── api_v1/               # фиче-модули: auth, users, chats, messages,
-│   │   │                     #   posts, products, telegram, tokens, general
-│   │   ├── __init__.py       # router_v1: сборка всех роутеров (prefix /api/v1)
+│   ├── api_v1/               # фиче-модули (роутеры собирает api_v1/__init__.py)
 │   │   ├── auth/             # OTP-логин, fastapi-users/JWT, get_current_user
-│   │   ├── users/            # профили, поиск, контакты, аватар
-│   │   ├── chats/            # личные чаты 1-1 (crud/schemas/views)
-│   │   └── messages/         # сообщения: reply/pin/reactions/files/чтение
-│   ├── alembic/versions/     # миграции (см. раздел 7)
+│   │   ├── users/            # профиль, поиск/контакты, аватар
+│   │   ├── chats/            # личные чаты 1-1
+│   │   ├── messages/         # сообщения: reply/pin/reactions/файлы/пересылка
+│   │   ├── calls/            # WebRTC-сигналинг (WS /ws/calls)
+│   │   ├── events/           # realtime-канал (WS /ws/events) + мост
+│   │   ├── rate_limit.py     # in-memory скользящий лимит (+ enforce_limit)
+│   │   ├── upload_guard.py   # валидация вложений (magic bytes, SSRF-guard)
+│   │   └── tokens/           # схема Token (использует auth)
+│   ├── alembic/versions/     # миграции (см. раздел 5)
+│   ├── scripts/              # cleanup_orphan_media.py (очистка медиа-сирот)
 │   ├── media/                # загруженные файлы сообщений и аватары (/media)
-│   └── certs/                # самоподписанные сертификаты (HTTPS)
-├── frontend/                 # Vue 3 + Vite
+│   ├── tests/                # pytest: unit + БД/API-интеграция (см. раздел 5)
+│   └── certs/                # самоподписанные сертификаты (HTTPS, dev)
+├── frontend/                 # Vue 3 + TS + Pinia + Quasar (pnpm)
 │   └── src/
-│       ├── views/Messenger.vue   # главный экран (лента + чат) + модалки
-│       ├── views/UserProfile.vue # настройки профиля (аватар, поля, выход)
-│       ├── components/Login.vue, LoginModal.vue  # вход по телефону
-│       ├── components/…          # прочие (Posts/Products/Groups — legacy UI)
-│       ├── stores/auth.ts        # Pinia: токены, текущий пользователь
-│       ├── stores/theme.ts       # тема light/dark
-│       ├── services/api.ts       # axios-клиент (Authorization) + пользователи/аватар
-│       ├── services/chatService.ts # чаты/сообщения/поиск/контакты/файлы/реакции
-│       ├── services/errors.ts    # getErrorMessage
-│       ├── types/index.ts        # Chat/Message/ChatUser/… типы API
-│       └── router/index.ts       # маршруты: "/" → Messenger, "/auth/login/"
-├── docker-compose.yaml        # основной дев-стек: web+db+frontend(nginx)
-├── docker-compose.dev.yaml    # лёгкий вариант (см. раздел 4)
-├── entry.sh                   # dump_db.sh && docker compose down -v && build && up
-├── dump_db.sh                 # сохранить дамп БД в ./db_dump (вызывается из entry.sh)
-├── restore_db.sh              # восстановить БД из дампа вручную
-├── cron_dump_db.sh            # обёртка дампа для cron: лог + ротация архива (см. разд. 4)
-├── install_cron_backup.sh     # установка ежедневного дампа в crontab пользователя
-├── db_dump/                   # дампы БД: microshop_latest.sql + archive/ + logs/ (в .gitignore)
-└── queries.sql                # черновик SQL-запросов
+│       ├── views/            # Messenger.vue, UserProfile.vue, AppearanceSettings.vue
+│       ├── components/       # Login.vue/LoginModal.vue; messenger/, media/, calls/, common/
+│       ├── stores/           # auth, theme (оформление), realtime, call
+│       ├── composables/      # usePeerActivity, useRealtimeSync, useRecordButton, useCallButton
+│       ├── services/         # api, chatService, giphy, recorder, errors
+│       ├── utils/            # user, phone, media, thread
+│       ├── types/index.ts    # Chat/Message/ChatUser/… типы API
+│       ├── config.ts         # API_ORIGIN / API_BASE_URL / WS_ORIGIN / mediaUrl
+│       ├── router/index.ts   # "/" → Messenger, "/auth/login/" → Login
+│       └── __tests__/        # vitest (unit-тесты)
+├── docker-compose.yaml       # дев-стек: db + rabbitmq + web + worker + beat + frontend + nginx
+├── docker-compose.dev.yaml   # лёгкий вариант (web+db+nginx)
+├── docker-compose.prod.yaml  # прод-стек (см. docs/production.md)
+├── nginx/                    # dev-прокси (dev.conf и пр.)
+├── entry.sh                  # dump_db.sh && docker compose down -v && build && up
+├── dump_db.sh / restore_db.sh              # дамп/восстановление БД
+├── backup_media.sh           # снимок media-файлов в db_dump (зовёт cron_dump_db.sh)
+├── cron_dump_db.sh / install_cron_backup.sh # ежедневный бэкап (БД + media) по cron
+├── backup_offsite.example.sh # пример выгрузки бэкапов в облако (rclone)
+├── db_dump/                  # дампы БД + media: latest + archive/ + logs/ (в .gitignore)
+├── docs/                     # production.md, offsite-backup.md
+├── .github/workflows/ci.yml  # backend (lint+mypy+pytest c Postgres) + frontend
+└── queries.sql
 ```
 
-> Файл `backend/api_v1/groups/` — пустой остаток удалённой фичи «группы» (модели нет).
+> Модули `posts`/`products`/`telegram`/`groups` и их таблицы **удалены** из кода/БД
+> (миграция `f6a7b8c9d0e1`); остались лишь root-owned `__pycache__` в `api_v1/`
+> (не удаляются без sudo, в git не попадают).
 
 ## 4. Запуск
 
@@ -204,8 +216,8 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 
 - Вход по телефону (OTP):
   1. `POST /api/v1/auth/request-otp/` с `{phone_number}` (формат `+7 (___) ___-__-__`). **SMS — заглушка**: код печатается в лог контейнера `web` (`Sending SMS to …: Your OTP code is …`).
-  2. `POST /api/v1/auth/verify-otp/` с `{phone_number, otp}` → `{access_token}`. Если пользователя нет — он создаётся автоматически с `username=phone_<hex>` и случайным паролем.
-- Вход по паролю (для отладки/тестов): `POST /api/v1/auth/token/` (OAuth2 form `username`/`password`) → `{access_token}`.
+  2. `POST /api/v1/auth/verify-otp/` с `{phone_number, otp}` → `{access_token, refresh_token}`. Если пользователя нет — он создаётся автоматически с `username=phone_<hex>` и случайным паролем.
+- Вход по паролю (для тестовых пользователей, созданных через `POST /users/`): `POST /api/v1/auth/token/` (OAuth2 form `username`/`password`) → `{access_token, refresh_token}`.
 - Все «личные» эндпоинты требуют заголовок `Authorization: Bearer <access_token>`.
 - `/jwt/*` — fastapi-users: `POST /jwt/auth/login|logout`, `GET/PATCH /jwt/users/me/`.
 - Custom-эндпоинты (`chats`, `messages`, `users/…`) используют `get_current_user` (`api_v1/auth/utils.py`), который принимает **те же** JWT от fastapi-users (в `decode_jwt` отключена проверка `aud`, субъект сверяется с БД). Защищённые от собственных токенов.
@@ -230,7 +242,9 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 
 | Метод | Путь | Описание | Доступ |
 |---|---|---|---|
-| GET | `/` | health «Hello World» | — |
+| GET | `/` | корень: «Hello World» | — |
+| GET | `/health` | liveness | — |
+| GET | `/health/ready` | readiness (проверка БД, 503 при недоступности) | — |
 | POST | `/auth/request-otp/` | запросить SMS-код | — |
 | POST | `/auth/verify-otp/` | проверить код → токен | — |
 | POST | `/auth/token/` | вход по логину+паролю | — |
@@ -243,35 +257,43 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 | WS | `/ws/calls?token=` | сигналинг WebRTC-звонков | токен |
 | GET | `/chats/` | мои чаты + `unread_count` + `last_message` | токен |
 | POST | `/chats/private/` | найти/создать личный чат `{user_id}` | токен |
+| DELETE | `/chats/{chat_id}/?for_all=` | удалить чат: `for_all=true` — у всех, иначе только у меня (204) | токен |
 | POST | `/messages/` | текст `{chat_id, text, reply_to_id?}` | токен |
+| POST | `/messages/forward/` | переслать в другой чат `{message_id, chat_id, reply_to_id?}` | токен |
+| PATCH | `/messages/{message_id}/` | отредактировать текст `{text}` (только автор) | токен |
 | POST | `/messages/attachment/` | файл (query: chat_id, filename, caption?, reply_to_id?, mime?) | токен |
 | POST | `/messages/gif/` | GIF: URL → очередь (Celery скачивает и создаёт сообщение, 202) | токен |
-| GET | `/messages/{chat_id}/` | история (входящие помечаются прочитанными; `limit`/`before_id` — пагинация) | токен |
+| GET | `/messages/{chat_id}/` | история (входящие помечаются прочитанными). Без параметров — последние **100**; `limit`/`before_id` — пагинация «вверх» | токен |
 | GET | `/messages/{chat_id}/pinned/` | закреплённые | токен |
 | PATCH | `/messages/{message_id}/pin/` | закрепить/открепить `{is_pinned}` | токен |
 | PUT | `/messages/{message_id}/reaction/` | поставить реакцию `{emoji}` | токен |
 | DELETE | `/messages/{message_id}/reaction/` | снять свою реакцию | токен |
 | DELETE | `/messages/{message_id}/` | удалить (только своё) | токен |
-| GET | `/users/` | все пользователи (с профилями) | — |
-| GET | `/users/contacts/` | все, кроме меня (для «Контактов») | токен |
 | GET | `/users/search/?q=` | поиск по логину/телефону (исключает себя) | токен |
-| GET | `/users/{user_id}/` | пользователь по id | — |
-| GET | `/users/{user_id}/chats/`, `/users/{user_id}/posts/` | вложенные списки | — |
-| POST | `/users/` | создать пользователя | — |
+| GET | `/users/contacts/` | все, кроме меня (для «Контактов») | токен |
+| POST | `/users/` | создать пользователя (для тестов/отладки) | — |
 | PUT | `/users/me/avatar/` | загрузить аватар (raw bytes) | токен |
 | DELETE | `/users/me/avatar/` | удалить аватар | токен |
-| GET/POST/PUT/PATCH/DELETE | `/products/…`, `/posts/…`, `/telegram/webhook` | **legacy** (с мессенджером не связаны) | разное |
 
 Проверка доступа к чату/сообщениям: только участник чата (иначе `403`); чат с самим собой — `400`; чужие сообщения удалять — `403`.
 
+> Публичные «читающие» эндпоинты `users` (`GET /users/`, `GET /users/{user_id}/`,
+> `GET /users/{user_id}/chats/`) и legacy `products`/`posts`/`telegram` **удалены**
+> (не использовались мессенджером и открывали чужие данные).
+>
+> На «дорогие»/«писательские» эндпоинты действует **per-user rate limit**
+> (в минуту, ключ — `user.id`): отправка/пересылка/загрузка/GIF и поиск по
+> сообщениям и людям; лимиты задаются в `core/config.py` (`*_limit_per_minute`).
+
 ### Модель данных (основное)
 
-- `user` — `id`, `username` (уник.), `phone_number` (уник., null), `first_name`, `last_name`, `email` (nullable), `hashed_password`, `avatar_url`, профиль, чаты (m2m), сообщения, посты.
-- `profile` — 1:1 к `user`: `bio`, `birth_date` (строка `YYYY-MM-DD`), `language`, `country`, `notifications_enabled`, `privacy_mode`.
+- `user` — `id`, `username` (уник.), `phone_number` (уник., null), `first_name`, `last_name`, `email` (nullable), `hashed_password`, `avatar_url`, `status` (текст-статус), `last_seen` (присутствие); профиль (1:1), чаты (m2m), сообщения.
+- `profile` — 1:1 к `user`: `bio`, `birth_date`, `language`, `country`, `notifications_enabled`, `privacy_mode`.
 - `chats` — `id`, `name`; участники через m2m `chat_user_association`. **Личный чат = ровно 2 участника**.
-- `messages` — `id`, `text`, `timestamp` (default now()), `user_id`, `chat_id`, `reply_to_id` (self FK), `is_read`, `is_pinned`, `file_name/file_url/mime_type/file_size`.
+- `messages` — `id`, `text`, `timestamp` (default now()), `user_id`, `chat_id`, `reply_to_id` (self FK), `is_read`, `is_pinned`, `edited_at`, `file_name/file_url/mime_type/file_size`, поля пересылки `forwarded_from_id`/`forwarded_sender_id`/`forwarded_sender_name`/`forwarded_chat_id` (снимок «от кого»). Индекс `(chat_id, timestamp)`.
 - `message_reactions` — PK `(message_id, user_id)`, `emoji` (по одной реакции на пользователя).
-- `post`/`product`/`order`/`group` — legacy/частично удалённые (группы и старые таблицы постов удалены миграциями; фича групп убрана).
+- `otp_codes` — OTP-коды телефонов (хеш кода, попытки, срок); `refresh_sessions` — refresh-токены с отзывом/ротацией.
+- Legacy-таблицы `post`/`product`/`order`/`group` — **удалены** (миграция `f6a7b8c9d0e1`); моделей нет.
 
 ### Миграции (Alembic, история)
 
@@ -289,6 +311,15 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 10. `2026_09_05_1200_add_fields_to_profile_model` — поля профиля
 11. `2026_09_05_1530-ee0f5b7a9c21` — расширение messages (reply/read/pin/file) + `message_reactions`
 12. `2026_09_05_1700-9f3a2b6c4d01` — `user.avatar_url`
+13. `2026_09_06_1200-c9e8f7a6b5c4` — `user.status`
+14. `2026_09_06_1300-d5e6f7a8b9c0` — `user.last_seen`
+15. `2026_09_07_1200-c3d4e5f6a7b8` — pg_trgm + GIN-индексы (поиск users)
+16. `2026_09_07_1500-a1f2e3d4b5c6` — `otp_codes`
+17. `2026_09_07_1540-d4e5f6a7b8c9` — `refresh_sessions`
+18. `2026_09_07_1600-b2c3d4e5f6a7` — индекс `messages (chat_id, timestamp)`
+19. `2026_09_07_1620-e5f6a7b8c9d0` — `messages.edited_at`
+20. `2026_09_07_1650-f6a7b8c9d0e1` — DROP legacy-таблиц (`product`/`post`/`order`/`group`)
+21. `2026_09_07_1800-f0e1d2c3b4a5` — пересылка: forward-поля в `messages` — **голова**
 
 Применение: `cd backend && poetry run alembic upgrade head`. В docker-стеке миграции выполняются автоматически при старте контейнера `web`.
 
@@ -308,6 +339,7 @@ poetry run mypy main.py core api_v1 tasks
 - `mypy` лучше запускать с `--cache-dir=/tmp/<xxx>`, чтобы не плодить `root`-овые `.mypy_cache` в репозитории.
 - `api_v1/users/schemas.py` **исключён из Black** (`tool.black.exclude`) — форматируйте вручную.
 - В alembic-версиях допустимы строки длиннее 88 (per-file-ignore E501).
+- Тесты: `poetry run pytest -q` (unit-тесты идут всегда; БД/API-интеграция — только при заданном `TEST_DATABASE_URL`, см. `backend/tests/`; для HTTP-тестов нужен `httpx` из dev-зависимостей). mypy по тестам не гоняется (`main.py core api_v1`).
 
 ## 6. Frontend — детали
 
@@ -404,7 +436,7 @@ docker exec -it microshop-db-1 psql -U postgres -d microshop
 - SMS-провайдер не подключён (код пишется в лог).
 - Профиль и вход — намеренно «светлые листы» (карточка целиком светлая в обеих темах, читаема в тёмной); остальной интерфейс токенизирован под свет/тьму.
 - Удаление аватара/файлов не затрагивает записи истории (намеренно).
-- Legacy-модули (products/posts/telegram) не поддерживаются в рамках мессенджера.
+- Legacy-модули (`products`/`posts`/`telegram`) и публичные «читающие» `users`-эндпоинты **удалены** (не было ни в роутере, ни в БД).
 
 ## 9. Улучшения и безопасность (2026-09-07)
 
@@ -417,6 +449,7 @@ docker exec -it microshop-db-1 psql -U postgres -d microshop
 - OTP-коды теперь хранятся в **БД** (`otp_codes`, хеш + счётчик попыток), а не в памяти — переживают рестарт и работают при нескольких воркерах.
 - Защита от перебора: лимит неверных попыток (`AUTH_OTP_MAX_ATTEMPTS`, по умолч. 5), кулдаун повторной отправки (`AUTH_OTP_RESEND_COOLDOWN_SECONDS`, 30 с, HTTP 429 + `Retry-After`).
 - Удалены отладочные эндпоинты `/auth/basic-auth*`.
+- Доп. защита (2026-09-08): часовой лимит запросов кода на номер (`AUTH_OTP_REQUEST_PER_PHONE_PER_HOUR`, 10) и блокировка номера после перебора (`AUTH_OTP_VERIFY_LOCKOUT_SECONDS`, 120 с, HTTP 429).
 
 ### Загрузка файлов
 - Вложения и аватары проверяются: расширение из белого списка + сигнатура (magic bytes) для изображений. HTML/SVG/JS/XML и неизвестные типы отклоняются (защита от stored-XSS через `/media/...`).
@@ -425,7 +458,7 @@ docker exec -it microshop-db-1 psql -U postgres -d microshop
 ### Присутствие и БД
 - `last_seen` больше не обновляется в `get_current_user` (не было лишних commit на каждый read-only запрос); теперь присутствие обновляется в poll-эндпоинте `GET /chats/`.
 - При удалении сообщения его файл удаляется с диска (best-effort).
-- `GET /messages/{chat_id}/` поддерживает пагинацию: `?limit=` и `?before_id=` (по умолчанию — вся история, как раньше). Добавлен индекс `(chat_id, timestamp)`.
+- `GET /messages/{chat_id}/` всегда отдаёт страницу: по умолчанию последние **100** (`DEFAULT_MESSAGE_PAGE_SIZE`); `?limit=`/`?before_id=` — пагинация «вверх». Добавлен индекс `(chat_id, timestamp)`.
 
 ### Docker
 - Образы закреплены: `postgres:18`, `nginx:1.27-alpine`; у `db` появился `healthcheck`, `web` стартует после `service_healthy`.
@@ -457,4 +490,4 @@ docker exec -it microshop-db-1 psql -U postgres -d microshop
 - **Очистка «сирот» медиа**: `backend/scripts/cleanup_orphan_media.py` (dry-run по умолчанию, `--delete` для удаления) — находит файлы в `media/`, на которые нет ссылок в БД. Запуск: `poetry run python -m scripts.cleanup_orphan_media [--delete]` (с доступом к БД, напр. в контейнере `web`).
 - `CORS_ORIGINS` можно задать в `.env` (JSON-список), см. `.env.example`.
 
-> Осталось (крупные, по порядку): real-time (WebSocket) для сообщений, декомпозиция `Messenger.vue`, TURN для звонков, подгрузка старых сообщений в UI, индикатор «печатает», расширение тестов.
+> Осталось (по состоянию на 2026-09-08): TURN для WebRTC-звонков, Web Push/PWA-уведомления, Sentry/метрики, Redis/общий стор для rate-limit и WS при масштабировании на несколько `web`, e2e-смоук (Playwright). Real-time-канал, декомпозиция `Messenger.vue`, подгрузка старых сообщений, индикатор «печатает», refresh-токены и расширение тестов — сделано.

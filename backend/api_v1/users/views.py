@@ -34,13 +34,6 @@ def _remove_avatar_file(avatar_url: str | None) -> None:
         pass
 
 
-@router.get("/", response_model=list[schemas.UserWithDetailsSchema])
-async def get_users(
-    session: AsyncSession = Depends(db_helper.session_dependency),
-) -> list[User]:
-    return await crud.get_users_with_profile(session)
-
-
 @router.get("/search/", response_model=list[schemas.UserSearchResultSchema])
 async def search_users(
     q: str = Query(default="", min_length=1, max_length=64),
@@ -58,9 +51,7 @@ async def search_users(
         window_seconds=60,
         detail="Слишком много запросов. Попробуйте позже.",
     )
-    return await crud.search_users_by_query(
-        session, query, exclude_user_id=user.id
-    )
+    return await crud.search_users_by_query(session, query, exclude_user_id=user.id)
 
 
 @router.get("/contacts/", response_model=list[schemas.UserSearchResultSchema])
@@ -143,20 +134,6 @@ async def delete_my_avatar(
     return {"avatar_url": None}
 
 
-@router.get("/{user_id}/", response_model=schemas.UserWithDetailsSchema)
-async def get_user(
-    user_id: int,
-    session: AsyncSession = Depends(db_helper.session_dependency),
-) -> User:
-    user = await crud.get_user_with_profile(session, user_id)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не найден",
-        )
-    return user
-
-
 @router.post(
     "/",
     response_model=schemas.UserCreatedResponseSchema,
@@ -169,17 +146,3 @@ async def create_user(
     user = User(**user_in.model_dump(exclude={"password"}))
     user.hashed_password = get_password_hash(user_in.password)
     return await crud.create_user(session, user)
-
-
-@router.get("/{user_id}/chats/", response_model=list[schemas.ChatSchema])
-async def get_chats_for_user(
-    user_id: int,
-    session: AsyncSession = Depends(db_helper.session_dependency),
-) -> list:
-    user = await crud.get_user_with_chats(session, user_id)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не найден",
-        )
-    return user.chats
