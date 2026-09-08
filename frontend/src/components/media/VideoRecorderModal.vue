@@ -44,12 +44,15 @@
               <q-icon name="close" size="18px" /> Отмена
             </button>
             <button
-              v-if="phase === 'live'"
+              v-if="phase === 'live' && !error"
               class="vrm-btn record"
               :disabled="!streamReady"
               @click="start"
             >
               <q-icon name="fiber_manual_record" size="18px" /> Запись
+            </button>
+            <button v-else-if="phase === 'live'" class="vrm-btn" @click="retryCamera">
+              <q-icon name="refresh" size="18px" /> Повторить доступ
             </button>
             <button v-else class="vrm-btn record stop" @click="stop">
               <q-icon name="stop" size="18px" /> Стоп
@@ -72,7 +75,13 @@
 
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref } from 'vue'
-import { formatClock, pickMimeType, stopMediaStream, type RecordedMedia } from '@/services/recorder'
+import {
+  formatClock,
+  pickMimeType,
+  stopMediaStream,
+  describeMediaError,
+  type RecordedMedia
+} from '@/services/recorder'
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -117,11 +126,17 @@ const openCamera = async (): Promise<boolean> => {
       liveVideoRef.value.srcObject = mediaStream
     }
     return true
-  } catch {
-    error.value = 'Не удалось получить доступ к камере и микрофону.'
+  } catch (err) {
+    error.value = describeMediaError(err)
     streamReady.value = false
     return false
   }
+}
+
+const retryCamera = () => {
+  error.value = ''
+  streamReady.value = false
+  void openCamera()
 }
 
 const start = async () => {

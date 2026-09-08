@@ -49,6 +49,28 @@ export function stopMediaStream(stream: MediaStream | null): void {
   stream.getTracks().forEach((track) => track.stop())
 }
 
+/** Понятное описание ошибки доступа к микрофону/камере. */
+export function describeMediaError(error: unknown): string {
+  const name = error instanceof DOMException ? error.name : error instanceof Error ? error.name : ''
+  switch (name) {
+    case 'NotAllowedError':
+      return (
+        'Нет доступа к микрофону/камере. Разрешите доступ: откройте сайт в Chrome, ' +
+        'нажмите значок 🔒 рядом с адресом и включите «Микрофон» и «Камера», ' +
+        'затем повторите. В установленном приложении доступ настраивается там же.'
+      )
+    case 'NotFoundError':
+      return 'Не найдено устройство записи (микрофон/камера).'
+    case 'NotReadableError':
+      return 'Микрофон/камера заняты другим приложением. Закройте его и повторите.'
+    case 'SecurityError':
+    case 'InsecureContextError':
+      return 'Запись доступна только по HTTPS.'
+    default:
+      return 'Не удалось получить доступ к микрофону/камере.'
+  }
+}
+
 /** Форматирует секунды как m:ss. */
 export function formatClock(totalSeconds: number): string {
   const sec = Math.max(0, Math.floor(totalSeconds))

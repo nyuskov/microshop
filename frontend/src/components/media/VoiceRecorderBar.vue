@@ -1,7 +1,19 @@
 <template>
   <div class="voice-recorder">
+    <!-- Ошибка доступа к микрофону -->
+    <template v-if="errorText">
+      <button class="vr-btn danger" title="Закрыть" @click="cancel">
+        <q-icon name="close" size="20px" />
+      </button>
+      <span class="vr-err-icon"><q-icon name="mic_off" size="20px" /></span>
+      <span class="vr-err-text">{{ errorText }}</span>
+      <button class="vr-btn accent" title="Повторить" @click="retry">
+        <q-icon name="refresh" size="20px" />
+      </button>
+    </template>
+
     <!-- Состояние записи -->
-    <template v-if="state === 'recording'">
+    <template v-else-if="state === 'recording'">
       <button class="vr-btn danger" title="Отменить запись" @click="cancel">
         <q-icon name="close" size="20px" />
       </button>
@@ -39,7 +51,13 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { formatClock, pickMimeType, stopMediaStream, type RecordedMedia } from '@/services/recorder'
+import {
+  formatClock,
+  pickMimeType,
+  stopMediaStream,
+  describeMediaError,
+  type RecordedMedia
+} from '@/services/recorder'
 
 const emit = defineEmits<{
   (e: 'cancel'): void
@@ -50,6 +68,7 @@ const state = ref<'recording' | 'preview'>('recording')
 const durationMs = ref(0)
 const isPlaying = ref(false)
 const sending = ref(false)
+const errorText = ref('')
 const previewAudioRef = ref<HTMLAudioElement | null>(null)
 
 let mediaStream: MediaStream | null = null
@@ -90,6 +109,7 @@ const beginRecording = async () => {
       finalize()
     }
     recorder.start()
+    state.value = 'recording'
     durationMs.value = 0
     durationTimer = window.setInterval(() => {
       durationMs.value += 100
@@ -98,11 +118,20 @@ const beginRecording = async () => {
     maxTimer = window.setTimeout(() => {
       if (state.value === 'recording') stopRecording()
     }, 120_000)
-  } catch {
-    // Нет доступа к микрофону — просто закрываем.
-    emit('cancel')
+  } catch (error) {
+    // Нет доступа к микрофону — показываем понятную ошибку и кнопку «Повторить».
+    errorText.value = describeMediaError(error)
     dispose()
   }
+}
+
+const retry = () => {
+  disposed = false
+  recorder = null
+  mediaStream = null
+  errorText.value = ''
+  state.value = 'recording'
+  void beginRecording()
 }
 
 const finalize = () => {
@@ -195,10 +224,29 @@ onBeforeUnmount(() => {
 .voice-recorder {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px 10px;
   background: #ffffff;
   border-radius: 12px;
   padding: 7px 12px;
+}
+
+/* Состояние ошибки доступа к микрофону */
+.vr-err-icon {
+  color: #d64545;
+  flex-shrink: 0;
+  display: inline-flex;
+}
+
+.vr-err-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: #b04040;
+  background: #fdecec;
+  border-radius: 8px;
+  padding: 6px 9px;
 }
 
 .vr-dot {
