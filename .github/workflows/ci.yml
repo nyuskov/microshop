@@ -46,7 +46,7 @@ jobs:
           key: poetry-${{ runner.os }}-${{ hashFiles('backend/poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry install --with dev --no-interaction
+        run: poetry install --with dev --no-interaction --no-root
 
       - name: Apply migrations (alembic)
         env:
@@ -91,7 +91,9 @@ jobs:
           key: pnpm-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm config set ignore-scripts false
+          pnpm install --no-frozen-lockfile
 
       - name: Type check (vue-tsc)
         run: pnpm exec vue-tsc --noEmit -p tsconfig.app.json
