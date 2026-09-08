@@ -26,12 +26,7 @@ from .otp_storage import (
     verify_otp,
 )
 from .refresh_sessions import issue_refresh_token
-from .schemas import (
-    OTPResponse,
-    RequestOTPRequest,
-    TokenResponse,
-    VerifyOTPRequest,
-)
+from .schemas import OTPResponse, RequestOTPRequest, TokenResponse, VerifyOTPRequest
 from .utils import authenticate_user
 
 logger = logging.getLogger(__name__)
@@ -46,9 +41,7 @@ PHONE_PATTERN = re.compile(
 _AUTH_LIMIT_WINDOW_SECONDS = 60
 
 
-async def _enforce_ip_limit(
-    request: Request, *, scope: str, limit: int
-) -> None:
+async def _enforce_ip_limit(request: Request, *, scope: str, limit: int) -> None:
     """Ограничивает число запросов с одного IP за окно времени."""
     client_ip = request.client.host if request.client is not None else "unknown"
     await enforce_limit(
@@ -88,9 +81,7 @@ def enqueue_sms_otp(phone_number: str, otp_code: str) -> None:
     try:
         task = get_task("tasks.otp_tasks.send_sms_otp")
         task.delay(phone_number, otp_code)
-    except (
-        Exception
-    ):  # noqa: BLE001 - брокер может быть недоступен (dev без docker)
+    except Exception:  # noqa: BLE001 - брокер может быть недоступен (dev без docker)
         logger.warning(
             "RabbitMQ недоступен: задача SMS не поставлена в очередь "
             "(код отправки см. выше)"
@@ -210,8 +201,7 @@ async def verify_otp_endpoint(
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=(
-                "Слишком много неверных попыток. "
-                f"Попробуйте через {lockout} секунд."
+                "Слишком много неверных попыток. " f"Попробуйте через {lockout} секунд."
             ),
             headers={"Retry-After": str(lockout)},
         )

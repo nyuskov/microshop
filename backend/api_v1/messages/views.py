@@ -28,9 +28,7 @@ MAX_UPLOAD_SIZE = settings.max_upload_size_bytes
 MAX_UPLOAD_MB = MAX_UPLOAD_SIZE // (1024 * 1024)
 
 
-async def _enforce_user_rate_limit(
-    user: User, *, scope: str, limit: int
-) -> None:
+async def _enforce_user_rate_limit(user: User, *, scope: str, limit: int) -> None:
     """Per-user лимит (по user.id) на «дорогие»/«писательские» действия."""
     await enforce_limit(
         scope=scope,

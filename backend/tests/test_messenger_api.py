@@ -78,9 +78,7 @@ class _ApiCtx:
         assert response.status_code == 200, response.text
         return response.json()
 
-    async def list_messages(
-        self, token: str, chat_id: int, **params
-    ) -> list[dict]:
+    async def list_messages(self, token: str, chat_id: int, **params) -> list[dict]:
         response = await self.client.get(
             f"/api/v1/messages/{chat_id}/",
             params=params,
@@ -133,9 +131,7 @@ async def api() -> _ApiCtx:
 
     app.dependency_overrides[db_helper.session_dependency] = _override_session
     transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport, base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         try:
             yield _ApiCtx(client, factory)
         finally:
@@ -177,15 +173,9 @@ async def test_private_chat_find_or_create_and_visible_to_both(
     assert again["id"] == chat["id"]
 
     # Оба участника видят чат в своём списке, посторонний — нет.
-    list1 = (
-        await api.client.get("/api/v1/chats/", headers=api.auth(t1))
-    ).json()
-    list2 = (
-        await api.client.get("/api/v1/chats/", headers=api.auth(t2))
-    ).json()
-    list3 = (
-        await api.client.get("/api/v1/chats/", headers=api.auth(t3))
-    ).json()
+    list1 = (await api.client.get("/api/v1/chats/", headers=api.auth(t1))).json()
+    list2 = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
+    list3 = (await api.client.get("/api/v1/chats/", headers=api.auth(t3))).json()
     assert any(c["id"] == chat["id"] for c in list1)
     assert any(c["id"] == chat["id"] for c in list2)
     assert all(c["id"] != chat["id"] for c in list3)
@@ -249,9 +239,7 @@ async def test_messages_pagination(api: _ApiCtx) -> None:
     assert [m["id"] for m in last_two] == ids[-2:]
 
     # before_id=msg3 + limit=2 — две более старые (msg1, msg2).
-    older = await api.list_messages(
-        t1, chat["id"], limit=2, before_id=sent[3]["id"]
-    )
+    older = await api.list_messages(t1, chat["id"], limit=2, before_id=sent[3]["id"])
     assert [m["id"] for m in older] == ids[1:3]
 
     # Пагинация до начала истории не зацикливается.
@@ -485,12 +473,8 @@ async def test_delete_chat_for_me_keeps_history_for_peer(api: _ApiCtx) -> None:
     assert resp.status_code == 204
 
     # У u1 чат исчез, у u2 остался с историей.
-    list1 = (
-        await api.client.get("/api/v1/chats/", headers=api.auth(t1))
-    ).json()
-    list2 = (
-        await api.client.get("/api/v1/chats/", headers=api.auth(t2))
-    ).json()
+    list1 = (await api.client.get("/api/v1/chats/", headers=api.auth(t1))).json()
+    list2 = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
     assert all(c["id"] != chat["id"] for c in list1)
     assert any(c["id"] == chat["id"] for c in list2)
     assert await api.list_messages(t2, chat["id"])
@@ -512,12 +496,8 @@ async def test_delete_chat_for_all_removes_for_everyone(api: _ApiCtx) -> None:
     )
     assert resp.status_code == 204
 
-    list1 = (
-        await api.client.get("/api/v1/chats/", headers=api.auth(t1))
-    ).json()
-    list2 = (
-        await api.client.get("/api/v1/chats/", headers=api.auth(t2))
-    ).json()
+    list1 = (await api.client.get("/api/v1/chats/", headers=api.auth(t1))).json()
+    list2 = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
     assert all(c["id"] != chat["id"] for c in list1)
     assert all(c["id"] != chat["id"] for c in list2)
 
@@ -795,25 +775,19 @@ async def test_chats_last_message_and_unread_count(api: _ApiCtx) -> None:
     await api.send(t1, chat["id"], "привет собеседник")
 
     # Собеседник видит чат: last_message + 1 непрочитанное.
-    list2 = (
-        await api.client.get("/api/v1/chats/", headers=api.auth(t2))
-    ).json()
+    list2 = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
     item2 = next(c for c in list2 if c["id"] == chat["id"])
     assert item2["last_message"]["text"] == "привет собеседник"
     assert item2["unread_count"] == 1
 
     # Автор своих сообщений непрочитанными не считает.
-    list1 = (
-        await api.client.get("/api/v1/chats/", headers=api.auth(t1))
-    ).json()
+    list1 = (await api.client.get("/api/v1/chats/", headers=api.auth(t1))).json()
     item1 = next(c for c in list1 if c["id"] == chat["id"])
     assert item1["unread_count"] == 0
 
     # Собеседник открыл чат (GET истории) — прочитано, счётчик обнулился.
     await api.list_messages(t2, chat["id"])
-    list2b = (
-        await api.client.get("/api/v1/chats/", headers=api.auth(t2))
-    ).json()
+    list2b = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
     item2b = next(c for c in list2b if c["id"] == chat["id"])
     assert item2b["unread_count"] == 0
     assert item2b["last_message"]["is_read"] is True

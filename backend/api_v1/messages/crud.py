@@ -42,9 +42,7 @@ def _file_payload(message: Message) -> dict | None:
     }
 
 
-def _reactions_payload(
-    reactions: list[MessageReaction], user_id: int
-) -> list[dict]:
+def _reactions_payload(reactions: list[MessageReaction], user_id: int) -> list[dict]:
     """Агрегирует реакции по эмодзи."""
     aggregated: dict[str, dict] = {}
     for reaction in reactions:
@@ -117,9 +115,7 @@ def message_basic_to_dict(message: Message) -> dict:
     }
 
 
-async def _load_message(
-    session: AsyncSession, message_id: int
-) -> Message | None:
+async def _load_message(session: AsyncSession, message_id: int) -> Message | None:
     """Загружает сообщение вместе с реакциями."""
     stmt = (
         select(Message)
@@ -185,9 +181,7 @@ async def _get_member_message(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Сообщение не найдено",
         )
-    await _ensure_chat_member_or_404(
-        session, chat_id=message.chat_id, user_id=user_id
-    )
+    await _ensure_chat_member_or_404(session, chat_id=message.chat_id, user_id=user_id)
     return message
 
 
@@ -317,9 +311,7 @@ async def list_chat_messages(
 
     # Всегда работаем «страницами»: от новых к старым, затем разворачиваем.
     page_size = limit if limit is not None else DEFAULT_MESSAGE_PAGE_SIZE
-    stmt = stmt.order_by(Message.timestamp.desc(), Message.id.desc()).limit(
-        page_size
-    )
+    stmt = stmt.order_by(Message.timestamp.desc(), Message.id.desc()).limit(page_size)
 
     stmt = stmt.options(selectinload(Message.reactions))
     result = await session.execute(stmt)
@@ -352,9 +344,7 @@ async def list_pinned_messages(
         .order_by(Message.timestamp, Message.id)
     )
     result = await session.execute(stmt)
-    return [
-        message_to_dict(message, user_id) for message in result.scalars().all()
-    ]
+    return [message_to_dict(message, user_id) for message in result.scalars().all()]
 
 
 async def delete_message(
@@ -454,9 +444,7 @@ async def set_reaction(
     else:
         if reaction is None:
             session.add(
-                MessageReaction(
-                    message_id=message_id, user_id=user_id, emoji=emoji
-                )
+                MessageReaction(message_id=message_id, user_id=user_id, emoji=emoji)
             )
         else:
             reaction.emoji = emoji
@@ -526,9 +514,7 @@ async def forward_message(
             detail="Сообщение не найдено",
         )
     # Отправитель должен состоять и в исходном, и в целевом чате.
-    await _ensure_chat_member_or_404(
-        session, chat_id=source.chat_id, user_id=user_id
-    )
+    await _ensure_chat_member_or_404(session, chat_id=source.chat_id, user_id=user_id)
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
@@ -548,9 +534,7 @@ async def forward_message(
         forwarded_from_id=source.id,
         forwarded_sender_id=source.user_id,
         forwarded_sender_name=(
-            _user_display_name(source_sender)
-            if source_sender is not None
-            else ""
+            _user_display_name(source_sender) if source_sender is not None else ""
         ),
         forwarded_chat_id=source.chat_id,
     )
@@ -603,14 +587,10 @@ async def search_messages(
         )
         stmt = stmt.where(Message.chat_id.in_(user_chats))
     else:
-        await _ensure_chat_member_or_404(
-            session, chat_id=chat_id, user_id=user_id
-        )
+        await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
         stmt = stmt.where(Message.chat_id == chat_id)
 
-    stmt = stmt.order_by(Message.timestamp.desc(), Message.id.desc()).limit(
-        limit
-    )
+    stmt = stmt.order_by(Message.timestamp.desc(), Message.id.desc()).limit(limit)
     result = await session.execute(stmt)
     rows = list(result.scalars().all())
     rows.reverse()

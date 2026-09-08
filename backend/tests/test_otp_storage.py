@@ -53,9 +53,7 @@ def test_verify_lockout_blocks_and_expires() -> None:
         assert phone_verify_locked_out(PHONE)
 
         # Искусственно «прокручиваем» время — блокировка снимается и чистится.
-        otp_storage._verify_lockouts[PHONE] = otp_storage._now() - timedelta(
-            seconds=1
-        )
+        otp_storage._verify_lockouts[PHONE] = otp_storage._now() - timedelta(seconds=1)
         assert not phone_verify_locked_out(PHONE)
         assert PHONE not in otp_storage._verify_lockouts
     finally:
@@ -78,9 +76,7 @@ async def test_cooldown_blocks_resend(session) -> None:
         session, phone_number=PHONE, cooldown_seconds=60
     )
     # Нулевой кулдаун разрешает.
-    assert await can_request_new_code(
-        session, phone_number=PHONE, cooldown_seconds=0
-    )
+    assert await can_request_new_code(session, phone_number=PHONE, cooldown_seconds=0)
 
 
 async def test_wrong_code_counts_attempts_then_burns(session) -> None:
