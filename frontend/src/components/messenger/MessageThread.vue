@@ -42,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
 import type { Message } from '@/types'
 import type { MessageRow as ThreadRow } from '@/utils/thread'
 import MessageRow from '@/components/messenger/MessageRow.vue'
@@ -54,7 +54,7 @@ interface MessageQuote {
   text: string
 }
 
-defineProps<{
+const props = defineProps<{
   rows: ThreadRow[]
   loading: boolean
   currentUserId: number | null
@@ -128,6 +128,43 @@ const reveal = (messageId: number): boolean => {
 
 // Родитель управляет прокруткой (отправка/догрузка/переход к закреплённому).
 defineExpose({ scrollToBottom, isNearBottom, capture, restoreScroll, reveal })
+
+// ---------- Первичная прокрутка в самый низ ----------
+// При первом открытии чата (лента была пустой → появились сообщения) после
+// отрисовки и двух кадров уходим в самый низ, чтобы были видны свежие
+// сообщения, а не середина истории.
+let autoScrolledToBottom = false
+
+const waitTwoFrames = () =>
+  new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  })
+
+const scrollInitialToBottom = async () => {
+  if (autoScrolledToBottom) return
+  autoScrolledToBottom = true
+  await nextTick()
+  await waitTwoFrames()
+  if (containerRef.value) {
+    containerRef.value.scrollTop = containerRef.value.scrollHeight
+  }
+}
+
+watch(
+  () => props.rows.length,
+  (length) => {
+    if (length === 0) {
+      autoScrolledToBottom = false
+      return
+    }
+    void scrollInitialToBottom()
+  },
+  { flush: 'post' }
+)
+
+onMounted(() => {
+  if (props.rows.length > 0) void scrollInitialToBottom()
+})
 </script>
 
 <style scoped>
