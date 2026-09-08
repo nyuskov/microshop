@@ -24,9 +24,11 @@
         :online-user-ids="onlineUserIds"
         :typing-chat-ids="typingChatIds"
         :pinned-chat-ids="pinnedChatIds"
+        :muted-chat-ids="mutedChatIds"
         :drafts="draftsByChatId"
         @open-message="openGlobalMessage"
         @toggle-pin="toggleChatPinned"
+        @toggle-mute="toggleChatMuted"
         @delete-chat="openDeleteChatModal"
         @to-contacts="view = 'contacts'"
         @to-chats="view = 'chats'"
@@ -454,6 +456,58 @@ const selectedChatPinned = computed<boolean>(
 const toggleCurrentChatPin = () => {
   const chat = selectedChat.value
   if (chat !== null) toggleChatPinned(chat.id)
+}
+
+// ---------- Замьюченные чаты (без всплывающих уведомлений) ----------
+const MUTED_CHATS_KEY = 'microshop_muted_chats'
+
+const readMutedChats = (): number[] => {
+  const uid = currentUserId.value
+  if (uid === null) return []
+  try {
+    const raw = window.localStorage.getItem(MUTED_CHATS_KEY)
+    const all = raw ? (JSON.parse(raw) as Record<string, number[]>) : {}
+    const list = all[String(uid)]
+    return Array.isArray(list) ? list.filter((id) => typeof id === 'number') : []
+  } catch {
+    return []
+  }
+}
+
+const writeMutedChats = () => {
+  const uid = currentUserId.value
+  if (uid === null) return
+  try {
+    const raw = window.localStorage.getItem(MUTED_CHATS_KEY)
+    const all = raw ? (JSON.parse(raw) as Record<string, number[]>) : {}
+    all[String(uid)] = mutedChatIds.value
+    window.localStorage.setItem(MUTED_CHATS_KEY, JSON.stringify(all))
+  } catch {
+    // localStorage недоступен — настройка просто не сохранится.
+  }
+}
+
+const mutedChatIds = ref<number[]>([])
+
+watch(
+  currentUserId,
+  () => {
+    mutedChatIds.value = readMutedChats()
+  },
+  { immediate: true }
+)
+
+const isChatMuted = (chatId: number): boolean => mutedChatIds.value.includes(chatId)
+
+const toggleChatMuted = (chatId: number) => {
+  const next = new Set(mutedChatIds.value)
+  if (next.has(chatId)) {
+    next.delete(chatId)
+  } else {
+    next.add(chatId)
+  }
+  mutedChatIds.value = Array.from(next)
+  writeMutedChats()
 }
 
 // ---------- Просмотр изображений (lightbox) ----------
@@ -1209,6 +1263,7 @@ const confirmDeleteChat = async () => {
     chats.value = chats.value.filter((item) => item.id !== chat.id)
     clearDraftFor(chat.id)
     if (pinnedChatIds.value.includes(chat.id)) toggleChatPinned(chat.id)
+    if (isChatMuted(chat.id)) toggleChatMuted(chat.id)
     if (selectedChatId.value === chat.id) {
       selectedChatId.value = null
       messages.value = []
@@ -1495,6 +1550,8 @@ const lastNotifyAt: Record<number, number> = {}
 const NOTIFY_DEDUPE_MS = 3500
 
 const notifyNewMessage = (chatId: number) => {
+  // Замьюченные чаты не показывают всплывающие уведомления (бейдж остаётся).
+  if (isChatMuted(chatId)) return
   const now = Date.now()
   if (now - (lastNotifyAt[chatId] ?? 0) < NOTIFY_DEDUPE_MS) return
   // Показываем, только если чат не открыт или вкладка свёрнута.

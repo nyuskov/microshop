@@ -164,6 +164,13 @@
                 <span class="row-line">
                   <span class="row-title">{{ chatTitleOf(chat) }}</span>
                   <span class="row-time">
+                    <q-icon
+                      v-if="isMutedOf(chat.id)"
+                      name="notifications_off"
+                      size="14px"
+                      class="row-muted"
+                      aria-hidden="true"
+                    />
                     {{ chat.last_message ? formatChatTime(chat.last_message.timestamp) : '' }}
                   </span>
                 </span>
@@ -188,6 +195,19 @@
             <span class="row-actions">
               <button
                 class="row-act"
+                :class="{ on: isMutedOf(chat.id) }"
+                :title="isMutedOf(chat.id) ? 'Включить уведомления' : 'Замьютить чат'"
+                :aria-label="isMutedOf(chat.id) ? 'Включить уведомления' : 'Замьютить чат'"
+                :aria-pressed="isMutedOf(chat.id)"
+                @click="emit('toggle-mute', chat.id)"
+              >
+                <q-icon
+                  :name="isMutedOf(chat.id) ? 'notifications_off' : 'notifications'"
+                  size="15px"
+                />
+              </button>
+              <button
+                class="row-act"
                 :class="{ on: isPinnedOf(chat.id) }"
                 :title="isPinnedOf(chat.id) ? 'Открепить чат' : 'Закрепить чат'"
                 aria-label="Закрепить чат"
@@ -202,6 +222,16 @@
                 @click="emit('delete-chat', chat)"
               >
                 <q-icon name="delete" size="15px" />
+              </button>
+            </span>
+            <span class="row-more">
+              <button
+                class="row-more-btn"
+                title="Действия с чатом"
+                aria-label="Действия с чатом"
+                @click.stop.prevent="openRowMenu(chat, $event)"
+              >
+                <q-icon name="more_vert" size="20px" />
               </button>
             </span>
           </div>
@@ -284,6 +314,33 @@
       </div>
     </template>
   </aside>
+
+  <!-- Меню действий чата (мобильная «⋯» вместо трёх кнопок) -->
+  <Teleport to="body">
+    <div
+      v-if="rowMenu"
+      ref="rowMenuEl"
+      class="row-menu-pop"
+      role="menu"
+      :style="{ left: rowMenu.x + 'px', top: rowMenu.y + 'px' }"
+    >
+      <button class="row-menu-item" role="menuitem" @click="runRowAction('mute')">
+        <q-icon
+          :name="isMutedOf(rowMenu.chat.id) ? 'notifications' : 'notifications_off'"
+          size="18px"
+        />
+        <span>{{ isMutedOf(rowMenu.chat.id) ? 'Включить уведомления' : 'Замьютить чат' }}</span>
+      </button>
+      <button class="row-menu-item" role="menuitem" @click="runRowAction('pin')">
+        <q-icon name="push_pin" size="18px" />
+        <span>{{ isPinnedOf(rowMenu.chat.id) ? 'Открепить чат' : 'Закрепить чат' }}</span>
+      </button>
+      <button class="row-menu-item danger" role="menuitem" @click="runRowAction('delete')">
+        <q-icon name="delete" size="18px" />
+        <span>Удалить чат</span>
+      </button>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -321,6 +378,8 @@ const props = defineProps<{
   typingChatIds?: number[]
   /** id закреплённых чатов (показываются вверху списка). */
   pinnedChatIds?: number[]
+  /** id замьюченных чатов (без всплывающих уведомлений). */
+  mutedChatIds?: number[]
   /** Сохранённые черновики по id чата (показываются в превью). */
   drafts?: Record<number, string>
 }>()
@@ -334,6 +393,7 @@ const emit = defineEmits<{
   (e: 'chat-opened', chat: Chat): void
   (e: 'open-message', chatId: number, messageId: number): void
   (e: 'toggle-pin', chatId: number): void
+  (e: 'toggle-mute', chatId: number): void
   (e: 'delete-chat', chat: Chat): void
 }>()
 
@@ -397,6 +457,62 @@ const isChatTyping = (chat: Chat): boolean =>
 
 /** Закреплён ли чат. */
 const isPinnedOf = (chatId: number): boolean => props.pinnedChatIds?.includes(chatId) ?? false
+
+/** Замьючен ли чат. */
+const isMutedOf = (chatId: number): boolean => props.mutedChatIds?.includes(chatId) ?? false
+
+/** Меню действий над чатом (мобильная версия: «⋯» вместо трёх кнопок). */
+interface RowMenuState {
+  chat: Chat
+  x: number
+  y: number
+}
+
+const rowMenu = ref<RowMenuState | null>(null)
+const rowMenuEl = ref<HTMLElement | null>(null)
+let rowMenuOutsideHandler: ((event: PointerEvent) => void) | null = null
+
+const closeRowMenu = () => {
+  rowMenu.value = null
+  if (rowMenuOutsideHandler) {
+    document.removeEventListener('pointerdown', rowMenuOutsideHandler)
+    rowMenuOutsideHandler = null
+  }
+}
+
+const openRowMenu = (chat: Chat, event: MouseEvent) => {
+  // Координаты — от точки касания/клика, с ограничением, чтобы меню не уезжало
+  // за экран (работает и при клике у нижнего/правого края).
+  rowMenu.value = {
+    chat,
+    x: Math.max(8, Math.min(event.clientX, window.innerWidth - 200)),
+    y: Math.max(8, Math.min(event.clientY, window.innerHeight - 190))
+  }
+  if (rowMenuOutsideHandler) {
+    document.removeEventListener('pointerdown', rowMenuOutsideHandler)
+  }
+  rowMenuOutsideHandler = (pointerEvent: PointerEvent) => {
+    const el = rowMenuEl.value
+    if (el && !el.contains(pointerEvent.target as Node)) closeRowMenu()
+  }
+  document.addEventListener('pointerdown', rowMenuOutsideHandler)
+}
+
+const runRowAction = (kind: 'mute' | 'pin' | 'delete') => {
+  const state = rowMenu.value
+  closeRowMenu()
+  if (!state) return
+  if (kind === 'mute') emit('toggle-mute', state.chat.id)
+  else if (kind === 'pin') emit('toggle-pin', state.chat.id)
+  else emit('delete-chat', state.chat)
+}
+
+onBeforeUnmount(() => {
+  if (rowMenuOutsideHandler) {
+    document.removeEventListener('pointerdown', rowMenuOutsideHandler)
+    rowMenuOutsideHandler = null
+  }
+})
 
 /** Сохранённый черновик чата (null — черновика нет). */
 const draftOf = (chat: Chat): string | null => {
@@ -819,6 +935,13 @@ onBeforeUnmount(() => {
   background: var(--ms-danger-bg, #fdecec);
 }
 
+/* Индикатор «чат замьючен» рядом со временем */
+.row-muted {
+  color: var(--ms-muted, #71808d);
+  margin-right: 2px;
+  vertical-align: -2px;
+}
+
 .chat-scroll {
   flex: 1;
   overflow-y: auto;
@@ -988,5 +1111,89 @@ onBeforeUnmount(() => {
 /* Нижний отступ под «плавающие» жесты (safe-area) на мобильных. */
 .chat-scroll {
   padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Мобильная кнопка «⋯» (по умолчанию скрыта — используется вместо трёх кнопок
+   только на устройствах без hover). */
+.row-more {
+  display: none;
+}
+
+.row-more-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ms-muted, #71808d);
+  cursor: pointer;
+}
+
+.row-more-btn:active {
+  background: var(--ms-hover, #f2f4f6);
+}
+
+/* На устройствах без hover (телефоны) вместо трёх кнопок показываем одну «⋯»,
+   открывающую меню действий. Блок в конце — чтобы перебить базовые правила. */
+@media (hover: none) {
+  .row-actions {
+    display: none;
+  }
+  .row-more {
+    display: block;
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 3;
+  }
+  .chat-row .row-item {
+    padding-right: 52px;
+  }
+}
+
+/* Всплывающее меню действий чата (Teleport в body) */
+.row-menu-pop {
+  position: fixed;
+  z-index: 9000;
+  min-width: 196px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--ms-surface, #ffffff);
+  border: 1px solid var(--ms-border, #e2e6ea);
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
+}
+
+.row-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ms-text, #141d26);
+  font: inherit;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-menu-item:hover {
+  background: var(--ms-hover, #f2f4f6);
+}
+
+.row-menu-item.danger {
+  color: var(--ms-danger, #d64545);
+}
+
+.row-menu-item.danger:hover {
+  background: var(--ms-danger-bg, #fdecec);
 }
 </style>
