@@ -1,23 +1,31 @@
 import { fileURLToPath, URL } from 'node:url'
-import { readFileSync } from 'fs'
+import { readFileSync, existsSync } from 'fs' // Добавили existsSync для проверки файлов
 
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
-// import vueDevTools from 'vite-plugin-vue-devtools' // Comment out vueDevTools
 import checker from 'vite-plugin-checker'
-// vite-plugin-eslint не поставляет типы
 // @ts-expect-error - модуль без типов
 import eslint from 'vite-plugin-eslint'
 
-// https://vite.dev/config/
+// БЕЗОПАСНАЯ ПРОВЕРКА СЕРТИФИКАТОВ ДЛЯ CI/CD ТЕСТОВ
+// Проверяем, существуют ли файлы. Если их нет (как в GitHub Actions), конфигурация не упадет.
+const hasCerts =
+  existsSync('/app/certs_from_backend/server.key') &&
+  existsSync('/app/certs_from_backend/server.crt')
+
+const httpsConfig = hasCerts
+  ? {
+      key: readFileSync('/app/certs_from_backend/server.key'),
+      cert: readFileSync('/app/certs_from_backend/server.crt')
+    }
+  : undefined // Если файлов нет (в CI), отключаем HTTPS, чтобы тесты прошли
+
 export default defineConfig({
   plugins: [
     vue(),
     vueJsx(),
-    // vueDevTools(), // Disabled to potentially remove vite-plugin-vue-inspector
     checker({
-      // e.g. use TypeScript check
       typescript: true
     }),
     eslint()
@@ -27,25 +35,12 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
-  // Server configuration options go here if needed
-  // Example: port, host, proxy
-  // SPA fallback is handled automatically by Vite's serveStatic middleware for the dist directory,
-  // or implicitly during development for the index.html entry point.
   server: {
-    // Указываем хост 0.0.0.0, чтобы сервер был доступен снаружи контейнера
     host: '0.0.0.0',
-    // Указываем порт 5173 (по умолчанию, можно опустить, но для ясности оставим)
     port: 5173,
-    // Настраиваем HTTPS вручную, используя готовые сертификаты
-    https: {
-      // Предполагаем, что сертификаты будут смонтированы в /app/certs_from_backend в контейнере
-      key: readFileSync('/app/certs_from_backend/server.key'),
-      cert: readFileSync('/app/certs_from_backend/server.crt')
-    },
+    // Подставляем нашу безопасную конфигурацию вместо жесткого readFileSync
+    https: httpsConfig,
     proxy: {
-      // Проксируем API/WebSocket и медиа на бэкенд, чтобы фронт ходил на
-      // тот же origin (без CORS и без жёсткой привязки к localhost —
-      // работает и при открытии с LAN-адреса, например с телефона).
       '/api': {
         target: 'https://web:8000',
         changeOrigin: true,
@@ -59,13 +54,10 @@ export default defineConfig({
       }
     },
     hmr: {
-      overlay: false // Disable the HMR error overlay
+      overlay: false
     }
   },
-  // Разбивка бандла: стабильные vendor-чанки (quasar отдельно, vue-стек отдельно),
-  // чтобы не грузить один 800+кБ файл и лучше кэшировать неизменяемые библиотеки.
   build: {
-    // quasar — единый большой фреймворк-чанк, поэтому порог чуть выше типового.
     chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
