@@ -68,9 +68,6 @@ jobs:
   frontend:
     name: Frontend (type-check + lint + unit)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
 
@@ -79,36 +76,35 @@ jobs:
         with:
           node-version: '22'
 
+      # Указываем экшену pnpm, где именно лежит наш package.json
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 9
+          run_install: false
 
-      - name: Cache pnpm store
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+      # Создаем настройки безопасности до установки, указывая правильный путь
+      - name: Configure pnpm safety
+        run: |
+          echo "ignore-scripts=false" > frontend/.npmrc
+          echo "only-built-dependencies[]=@parcel/watcher" >> frontend/.npmrc
+          echo "only-built-dependencies[]=esbuild" >> frontend/.npmrc
+          echo "only-built-dependencies[]=vue-demi" >> frontend/.npmrc
 
       - name: Install dependencies
-        run: |
-          echo "ignore-scripts=false" > .npmrc
-          echo "only-built-dependencies[]=@parcel/watcher" >> .npmrc
-          echo "only-built-dependencies[]=esbuild" >> .npmrc
-          echo "only-built-dependencies[]=vue-demi" >> .npmrc
-          pnpm install --no-frozen-lockfile --prefix .
+        run: pnpm install --no-frozen-lockfile --prefix frontend
 
       - name: Type check (vue-tsc)
-        run: pnpm exec vue-tsc --noEmit -p tsconfig.app.json
+        run: pnpm --prefix frontend exec vue-tsc --noEmit -p tsconfig.app.json
 
       - name: Lint (eslint)
-        run: pnpm exec eslint --no-cache src
+        run: pnpm --prefix frontend exec eslint --no-cache src
 
       - name: Unit tests (vitest)
-        run: pnpm exec vitest run
+        run: pnpm --prefix frontend exec vitest run
 
       - name: Production build (vite)
-        run: pnpm exec vite build
+        run: pnpm --prefix frontend exec vite build
 
       - name: Upload frontend build artifact
         uses: actions/upload-artifact@v4
