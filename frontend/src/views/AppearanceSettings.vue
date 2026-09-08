@@ -165,7 +165,11 @@ const onReset = () => {
   gap: 18px;
   max-height: 70vh;
   overflow-y: auto;
+  overflow-x: hidden;
+  width: 100%;
+  min-width: 0;
   padding-right: 4px;
+  box-sizing: border-box;
 }
 
 .appearance-section {
@@ -185,11 +189,12 @@ const onReset = () => {
 
 .opt-row {
   display: flex;
+  flex-wrap: wrap; /* на узких экранах пилюли переносятся, а не вылезают */
   gap: 8px;
 }
 
 .opt-pill {
-  flex: 1;
+  flex: 1 1 0%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -201,6 +206,7 @@ const onReset = () => {
   color: var(--ms-text, #1c2733);
   font-size: 13.5px;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
   transition: 0.12s;
 }
@@ -273,7 +279,9 @@ const onReset = () => {
 
 .wallpaper-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* minmax(0, 1fr) — колонки могут сжиматься уже min-content подписи,
+     иначе на узких экранах сетка вылезает за ширину диалога. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -287,6 +295,8 @@ const onReset = () => {
   flex-direction: column;
   align-items: center;
   gap: 5px;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .wallpaper-tile:hover {
@@ -359,6 +369,14 @@ const onReset = () => {
   margin: 0;
   font-size: 12.5px;
   color: var(--ms-danger, #d64545);
+}
+
+/* На узких экранах уменьшаем число колонок сетки обоев, чтобы плитки и
+   подписи помещались по ширине (как профиль схлопывает свои сетки). */
+@media (max-width: 420px) {
+  .wallpaper-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .reset-row {
