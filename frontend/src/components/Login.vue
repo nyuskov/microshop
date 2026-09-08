@@ -2,22 +2,24 @@
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { getErrorMessage } from '../services/errors'
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { formatPhoneForBackend, isValidPhoneNumber, prettyPhone } from '@/utils/phone'
+
+type LoginState = 'phone' | 'password' | 'create'
 
 const router = useRouter()
 const authStore = useAuthStore()
 
 const props = defineProps<{
-  initialState?: 'phone' | 'otp'
+  initialState?: LoginState
 }>()
 
 const emit = defineEmits<{
-  'state-changed': ['phone' | 'otp']
+  'state-changed': [LoginState]
   'close-modal': []
 }>()
 
-const state = ref<'phone' | 'otp'>('phone')
+const state = ref<LoginState>('phone')
 
 onMounted(() => {
   if (authStore.isAuthenticated) {
@@ -32,27 +34,22 @@ onMounted(() => {
 })
 
 const phoneOrUsername = ref('')
-const otpDigit1 = ref('')
-const otpDigit2 = ref('')
-const otpDigit3 = ref('')
-const otpDigit4 = ref('')
-const otpDigit5 = ref('')
-const otpDigit6 = ref('')
-
-const otpDigits = [otpDigit1, otpDigit2, otpDigit3, otpDigit4, otpDigit5, otpDigit6]
-
-const otpCode = computed(() => otpDigits.map((digit) => digit.value).join(''))
+const password = ref('')
+const passwordConfirm = ref('')
+const passwordFieldRef = ref<HTMLInputElement | null>(null)
+/** Есть ли у номера уже заданный пароль (иначе — предлагаем создать). */
+const hasPassword = ref(false)
+/** Аккаунта ещё не существует (новый номер). */
+const isNewNumber = ref(false)
 
 const severity = ref<'success' | 'error' | 'info' | 'warn'>('success')
 const result = ref('')
 const isLoading = ref(false)
 
 /** Показывать ли сообщение-уведомление (скрываем «штатные» успешные тексты). */
-const showNotice = computed(
-  () => !!result.value && result.value !== 'Код OTP отправлен!' && result.value !== 'Вход успешен!'
-)
+const showNotice = computed(() => !!result.value && result.value !== 'Вход успешен!')
 
-async function requestOtpHandler() {
+async function continueWithPhone() {
   if (authStore.isAuthenticated) {
     emit('close-modal')
     return
@@ -67,27 +64,41 @@ async function requestOtpHandler() {
   isLoading.value = true
   result.value = ''
   try {
-    await authStore.requestOtp(formatPhoneForBackend(phoneOrUsername.value))
-    state.value = 'otp'
+    const phone = formatPhoneForBackend(phoneOrUsername.value)
+    const status = await authStore.passwordStatus(phone)
+    isNewNumber.value = !status.registered
+    hasPassword.value = status.has_password
+    password.value = ''
+    passwordConfirm.value = ''
+    state.value = status.has_password ? 'password' : 'create'
     emit('state-changed', state.value)
+    void nextTick(focusPassword)
   } catch (error: unknown) {
-    console.error('Request OTP failed:', error)
-    result.value = getErrorMessage(error, 'Не удалось отправить код OTP.')
+    console.error('Password status failed:', error)
+    result.value = getErrorMessage(error, 'Не удалось проверить номер.')
     severity.value = 'error'
   } finally {
     isLoading.value = false
   }
 }
 
-async function onFormSubmit() {
+const focusPassword = () => {
+  passwordFieldRef.value?.focus()
+}
+
+function resetPasswordFields() {
+  password.value = ''
+  passwordConfirm.value = ''
+}
+
+async function onLoginSubmit() {
   if (authStore.isAuthenticated) {
     emit('close-modal')
     return
   }
 
-  const fullOtpCode = otpCode.value
-  if (fullOtpCode.length !== 6 || isNaN(Number(fullOtpCode))) {
-    result.value = 'Код OTP должен состоять из 6 цифр.'
+  if (!password.value) {
+    result.value = 'Введите пароль.'
     severity.value = 'error'
     return
   }
@@ -95,15 +106,56 @@ async function onFormSubmit() {
   isLoading.value = true
   result.value = ''
   try {
-    await authStore.loginWithOtp(formatPhoneForBackend(phoneOrUsername.value), fullOtpCode, router)
-    state.value = 'phone'
-    otpDigits.forEach((digit) => (digit.value = ''))
+    await authStore.loginWithPassword(
+      formatPhoneForBackend(phoneOrUsername.value),
+      password.value,
+      router
+    )
+    resetPasswordFields()
     phoneOrUsername.value = ''
     result.value = ''
     emit('close-modal')
   } catch (error: unknown) {
-    console.error('Login with OTP failed:', error)
-    result.value = getErrorMessage(error, 'Вход не удался.')
+    console.error('Login failed:', error)
+    result.value = getErrorMessage(error, 'Неверный номер или пароль.')
+    severity.value = 'error'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+async function onCreateSubmit() {
+  if (authStore.isAuthenticated) {
+    emit('close-modal')
+    return
+  }
+
+  if (password.value.length < 6) {
+    result.value = 'Пароль должен быть не короче 6 символов.'
+    severity.value = 'error'
+    return
+  }
+  if (password.value !== passwordConfirm.value) {
+    result.value = 'Пароли не совпадают.'
+    severity.value = 'error'
+    return
+  }
+
+  isLoading.value = true
+  result.value = ''
+  try {
+    await authStore.registerWithPassword(
+      formatPhoneForBackend(phoneOrUsername.value),
+      password.value,
+      router
+    )
+    resetPasswordFields()
+    phoneOrUsername.value = ''
+    result.value = ''
+    emit('close-modal')
+  } catch (error: unknown) {
+    console.error('Create password failed:', error)
+    result.value = getErrorMessage(error, 'Не удалось создать пароль.')
     severity.value = 'error'
   } finally {
     isLoading.value = false
@@ -113,53 +165,9 @@ async function onFormSubmit() {
 function goBackToPhoneInput() {
   state.value = 'phone'
   emit('state-changed', state.value)
-  otpDigits.forEach((digit) => (digit.value = ''))
+  resetPasswordFields()
   result.value = ''
 }
-
-const moveFocus = (currentIndex: number, event: Event) => {
-  const target = event.target as HTMLInputElement
-
-  if (target.value && currentIndex < 5) {
-    otpDigits[currentIndex + 1].value = ''
-    const nextInput = document.getElementById(`otp-digit-${currentIndex + 2}`)
-    if (nextInput) {
-      nextInput.focus()
-    }
-  }
-
-  if (
-    event instanceof KeyboardEvent &&
-    event.key === 'Backspace' &&
-    !target.value &&
-    currentIndex > 0
-  ) {
-    const prevInput = document.getElementById(`otp-digit-${currentIndex}`)
-    if (prevInput) {
-      prevInput.focus()
-    }
-  }
-}
-
-/** Фокусируем первое поле OTP при переходе на шаг ввода кода. */
-const focusFirstOtp = () => {
-  const first = document.getElementById('otp-digit-1')
-  if (first) {
-    first.focus()
-  }
-}
-
-watch(state, (value) => {
-  if (value === 'otp') {
-    nextTick(focusFirstOtp)
-  }
-})
-
-onMounted(() => {
-  if (state.value === 'otp') {
-    focusFirstOtp()
-  }
-})
 </script>
 
 <template>
@@ -170,8 +178,8 @@ onMounted(() => {
         <div class="brand">
           <span class="brand-icon"><q-icon name="call" size="30px" /></span>
         </div>
-        <h2 class="step-title">Вход по номеру телефона</h2>
-        <p class="step-subtitle">Мы отправим SMS с кодом подтверждения.</p>
+        <h2 class="step-title">Вход</h2>
+        <p class="step-subtitle">Введите номер телефона — войдёте по паролю.</p>
 
         <label class="field-label" for="phone-input">Номер телефона</label>
         <q-input
@@ -183,53 +191,106 @@ onMounted(() => {
           placeholder="+7 (___) ___-__-__"
           aria-label="Номер телефона"
           hide-bottom-space
+          @keyup.enter="continueWithPhone"
         />
 
-        <button class="btn btn-primary" :disabled="isLoading" @click="requestOtpHandler">
+        <button class="btn btn-primary" :disabled="isLoading" @click="continueWithPhone">
           <span v-if="isLoading" class="spinner"></span>
-          <q-icon v-else name="send" size="17px" />
-          <span>{{ isLoading ? 'Отправка…' : 'Получить код' }}</span>
+          <q-icon v-else name="arrow_forward" size="17px" />
+          <span>{{ isLoading ? 'Проверка…' : 'Продолжить' }}</span>
         </button>
 
-        <p class="privacy-hint">Код придёт в SMS. Никому его не сообщайте.</p>
+        <p class="privacy-hint">Если пароля ещё нет — предложим его создать.</p>
       </div>
 
-      <!-- Шаг 2: код из SMS -->
-      <div v-else key="otp" class="step">
+      <!-- Шаг 2а: ввод пароля (номер уже зарегистрирован) -->
+      <div v-else-if="state === 'password'" key="password" class="step">
         <div class="brand">
-          <span class="brand-icon"><q-icon name="verified_user" size="30px" /></span>
+          <span class="brand-icon"><q-icon name="lock" size="30px" /></span>
         </div>
-        <h2 class="step-title">Введите код из SMS</h2>
+        <h2 class="step-title">Введите пароль</h2>
         <p class="step-subtitle">
-          Мы отправили код на номер
+          Для номера
           <strong>{{ prettyPhone(phoneOrUsername) }}</strong>
+          уже задан пароль.
         </p>
 
-        <form class="otp-form" @submit.prevent="onFormSubmit">
-          <div class="otp-grid">
-            <input
-              v-for="(digitRef, index) in otpDigits"
-              :id="`otp-digit-${index + 1}`"
-              :key="index"
-              v-model="digitRef.value"
-              type="text"
-              maxlength="1"
-              inputmode="numeric"
-              pattern="[0-9]"
-              autocomplete="one-time-code"
-              class="otp-box"
-              :class="{ filled: digitRef.value }"
-              :aria-label="`Цифра ${index + 1} кода`"
-              @input="(e) => moveFocus(index, e)"
-              @keydown.backspace="(e) => moveFocus(index, e)"
-              @paste.prevent
-            />
-          </div>
+        <form class="otp-form" @submit.prevent="onLoginSubmit">
+          <label class="field-label" for="password-input">Пароль</label>
+          <q-input
+            id="password-input"
+            ref="passwordFieldRef"
+            v-model="password"
+            type="password"
+            outlined
+            class="phone-input"
+            placeholder="Введите пароль"
+            autocomplete="current-password"
+            aria-label="Пароль"
+            hide-bottom-space
+          />
 
-          <button type="submit" class="btn btn-primary" :disabled="isLoading || otpCode.length < 6">
+          <button type="submit" class="btn btn-primary" :disabled="isLoading">
             <span v-if="isLoading" class="spinner"></span>
             <q-icon v-else name="check" size="17px" />
             <span>{{ isLoading ? 'Вход…' : 'Войти' }}</span>
+          </button>
+        </form>
+
+        <button class="link-btn" type="button" :disabled="isLoading" @click="goBackToPhoneInput">
+          <q-icon name="arrow_back" size="17px" />
+          Изменить номер
+        </button>
+      </div>
+
+      <!-- Шаг 2б: создание пароля (новый номер или пароль ещё не задан) -->
+      <div v-else key="create" class="step">
+        <div class="brand">
+          <span class="brand-icon"><q-icon name="person_add" size="30px" /></span>
+        </div>
+        <h2 class="step-title">{{ isNewNumber ? 'Создание аккаунта' : 'Придумайте пароль' }}</h2>
+        <p class="step-subtitle">
+          {{
+            isNewNumber
+              ? `Номер ${prettyPhone(phoneOrUsername)} ещё не зарегистрирован — придумайте пароль.`
+              : `Для номера ${prettyPhone(phoneOrUsername)} ещё нет пароля — задайте его.`
+          }}
+        </p>
+
+        <form class="otp-form" @submit.prevent="onCreateSubmit">
+          <label class="field-label" for="new-password-input">Пароль</label>
+          <q-input
+            id="new-password-input"
+            ref="passwordFieldRef"
+            v-model="password"
+            type="password"
+            outlined
+            class="phone-input"
+            placeholder="Не короче 6 символов"
+            autocomplete="new-password"
+            aria-label="Новый пароль"
+            hide-bottom-space
+            @keyup.enter="onCreateSubmit"
+          />
+
+          <label class="field-label gap-top" for="confirm-password-input">Повторите пароль</label>
+          <q-input
+            id="confirm-password-input"
+            v-model="passwordConfirm"
+            type="password"
+            outlined
+            class="phone-input"
+            placeholder="Повторите пароль"
+            autocomplete="new-password"
+            aria-label="Повтор пароля"
+            hide-bottom-space
+            @keyup.enter="onCreateSubmit"
+          />
+
+          <button type="submit" class="btn btn-primary" :disabled="isLoading">
+            <span v-if="isLoading" class="spinner"></span>
+            <q-icon v-else name="check" size="17px" />
+            <span>{{ isLoading ? 'Создание…' : 'Создать пароль и войти' }}</span>
           </button>
         </form>
 
@@ -312,6 +373,10 @@ onMounted(() => {
   text-transform: uppercase;
   letter-spacing: 0.4px;
   margin-bottom: 7px;
+}
+
+.field-label.gap-top {
+  margin-top: 12px;
 }
 
 /* Quasar-поле номера телефона — как прежнее большое поле входа */

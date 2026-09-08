@@ -117,6 +117,75 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
+    /** Применяет ответ с токенами и завершает вход (общий для способов входа). */
+    async applyTokenResponse(
+      data: { access_token?: string; refresh_token?: string | null },
+      router: Router | null = null
+    ) {
+      if (!data?.access_token) {
+        throw new Error('Server response did not contain access token.')
+      }
+      this.accessToken = data.access_token
+      this.refreshToken = data.refresh_token ?? null
+      this.isAuthenticated = true
+      this.saveState()
+
+      try {
+        await this.fetchUser()
+      } catch (fetchError) {
+        this.resetAuth()
+        throw fetchError
+      }
+
+      if (router && this.current_user !== null) {
+        await router.push({ name: 'Messenger' })
+      }
+    },
+
+    /** Статус пароля для номера: зарегистрирован ли и задан ли пароль. */
+    async passwordStatus(
+      phoneNumber: string
+    ): Promise<{ registered: boolean; has_password: boolean }> {
+      const response = await api.post('/auth/password/status/', {
+        phone_number: phoneNumber
+      })
+      return response.data as { registered: boolean; has_password: boolean }
+    },
+
+    /** Вход по номеру телефона и паролю. */
+    async loginWithPassword(phoneNumber: string, password: string, router: Router | null = null) {
+      try {
+        const response = await api.post('/auth/password/login/', {
+          phone_number: phoneNumber,
+          password
+        })
+        await this.applyTokenResponse(response.data, router)
+      } catch (error) {
+        console.error('Login with password error:', error)
+        this.resetAuth()
+        throw error
+      }
+    },
+
+    /** Создаёт пароль для номера (аккаунт при необходимости) и входит. */
+    async registerWithPassword(
+      phoneNumber: string,
+      password: string,
+      router: Router | null = null
+    ) {
+      try {
+        const response = await api.post('/auth/password/register/', {
+          phone_number: phoneNumber,
+          password
+        })
+        await this.applyTokenResponse(response.data, router)
+      } catch (error) {
+        console.error('Register with password error:', error)
+        this.resetAuth()
+        throw error
+      }
+    },
+
     async logout(router: Router | null = null) {
       this.resetAuth()
       if (router) {

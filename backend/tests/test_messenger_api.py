@@ -842,3 +842,104 @@ async def test_telegram_bind_link_and_status(api: _ApiCtx) -> None:
         await api.client.get("/api/v1/auth/telegram/status/", headers=headers)
     ).json()
     assert status2["bound"] is False
+
+
+# --- Вход по паролю (временная замена OTP/SMS) ----------------------------
+
+
+async def test_password_register_login_and_status(api: _ApiCtx) -> None:
+    """Новый номер: статус без пароля → создаём пароль → вход по паролю."""
+    phone = _random_phone()
+
+    st0 = await api.client.post(
+        "/api/v1/auth/password/status/", json={"phone_number": phone}
+    )
+    assert st0.status_code == 200, st0.text
+    assert st0.json() == {"registered": False, "has_password": False}
+
+    # Короткий пароль отклоняется.
+    short = await api.client.post(
+        "/api/v1/auth/password/register/",
+        json={"phone_number": phone, "password": "123"},
+    )
+    assert short.status_code == 400
+
+    reg = await api.client.post(
+        "/api/v1/auth/password/register/",
+        json={"phone_number": phone, "password": "secret-pass-1"},
+    )
+    assert reg.status_code == 200, reg.text
+    data = reg.json()
+    assert data["access_token"] and data["refresh_token"]
+
+    # Теперь у номера есть пароль.
+    st1 = await api.client.post(
+        "/api/v1/auth/password/status/", json={"phone_number": phone}
+    )
+    assert st1.json() == {"registered": True, "has_password": True}
+
+    # Повторная регистрация с паролем — нельзя.
+    again = await api.client.post(
+        "/api/v1/auth/password/register/",
+        json={"phone_number": phone, "password": "another-pass-2"},
+    )
+    assert again.status_code == 400
+
+    # Вход с неверным паролем — 401.
+    bad = await api.client.post(
+        "/api/v1/auth/password/login/",
+        json={"phone_number": phone, "password": "wrong-pass"},
+    )
+    assert bad.status_code == 401
+
+    # Вход с верным паролем даёт рабочий токен.
+    login = await api.client.post(
+        "/api/v1/auth/password/login/",
+        json={"phone_number": phone, "password": "secret-pass-1"},
+    )
+    assert login.status_code == 200, login.text
+    me = await api.client.get(
+        "/api/v1/jwt/users/me/",
+        headers=api.auth(login.json()["access_token"]),
+    )
+    assert me.status_code == 200
+    assert me.json()["phone_number"] == phone
+
+
+async def test_password_register_sets_password_for_otp_created_user(
+    api: _ApiCtx,
+) -> None:
+    """Аккаунт, созданный ранее через OTP (без своего пароля), может задать его."""
+    phone = _random_phone()
+
+    # Симулируем OTP-аккаунт: пароль случайный, password_set=False.
+    async with api.factory() as session:
+        from core.models import User as _User
+
+        user = _User(
+            username=f"phone_{uuid.uuid4().hex[:8]}",
+            phone_number=phone,
+            hashed_password="not-a-real-password",
+            is_active=True,
+            is_verified=True,
+        )
+        session.add(user)
+        await session.commit()
+
+    st = await api.client.post(
+        "/api/v1/auth/password/status/", json={"phone_number": phone}
+    )
+    assert st.json() == {"registered": True, "has_password": False}
+
+    reg = await api.client.post(
+        "/api/v1/auth/password/register/",
+        json={"phone_number": phone, "password": "brand-new-pass"},
+    )
+    assert reg.status_code == 200, reg.text
+
+    # Вход по заданному паролю работает.
+    login = await api.client.post(
+        "/api/v1/auth/password/login/",
+        json={"phone_number": phone, "password": "brand-new-pass"},
+    )
+    assert login.status_code == 200, login.text

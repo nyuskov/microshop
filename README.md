@@ -25,11 +25,11 @@
   - **присутствие**: «в сети» / «был(а) N … назад» (по `user.last_seen` + WS online/offline) в списке и шапке;
   - **темы и оформление**: тёмная/светлая/системная, акцентный цвет, цвет «моих» сообщений, обои (пресеты или своё фото) — сохраняются в localStorage.
 - **Профиль и настройки** (`UserProfile`): имя/логин/email/**телефон** (маска +7)/био/**текст-статус**/дата рождения/язык/страна, уведомления, приватный режим, **аватар** (загрузка/удаление), выход.
-- **Вход по телефону** (шаг «номер +7» → «код из SMS»; OTP-коды в БД с попытками/кулдауном; rate-limit по IP).
+- **Вход по номеру + пароль** (если у номера нет пароля — предлагаем создать; OTP/SMS временно не используется в UI, эндпоинты сохранены).
 - Backend-качество: refresh-токены с ротацией/отзывом, rate-limit, pg_trgm-поиск, X-Request-ID и лог медленных запросов, Celery+RabbitMQ (SMS/GIF/очистка медиа по расписанию), health-эндпоинты, pytest, CI (black/isort/flake8/mypy/vue-tsc/eslint/vitest).
 - Legacy-модули `products`/`posts`/`telegram` — с мессенджером не связаны (кандидаты на удаление).
 
-Ограничения (сознательные/текущие): только личные чаты (групповых нет — фича убрана); WebRTC-звонки без TURN (работают в локальных сетях); Web Push/PWA-уведомления не реализованы; секреты должны задаваться через `.env` (см. раздел 9). Доставка OTP — SMS Aero (основной канал, обычные SMS) → лог (только dev, когда шлюз не настроен).
+Ограничения (сознательные/текущие): только личные чаты (групповых нет — фича убрана); WebRTC-звонки без TURN (работают в локальных сетях); Web Push/PWA-уведомления не реализованы; секреты должны задаваться через `.env` (см. раздел 9). Вход в UI сейчас — **по номеру и паролю** (при первом входе предлагается создать пароль); SMS/OTP временно отключён до подключения платного шлюза (SMS Aero/Telegram — см. `.env.example`).
 
 ## 2. Стек
 
@@ -215,13 +215,19 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 
 ### Аутентификация (важно)
 
-- Вход по телефону (OTP):
-  1. `POST /api/v1/auth/request-otp/` с `{phone_number}` (формат `+7 (___) ___-__-__`).
-     Доставка кода: **SMS Aero** (обычное SMS на телефон) → (доп.) Telegram
-     Gateway/бот, если настроены → (иначе, dev) лог контейнера `web`.
-     См. `.env.example` (`SMS_AERO_EMAIL`, `SMS_AERO_API_KEY`).
-  2. `POST /api/v1/auth/verify-otp/` с `{phone_number, otp}` → `{access_token, refresh_token}`. Если пользователя нет — он создаётся автоматически с `username=phone_<hex>` и случайным паролем.
-- Вход по паролю (для тестовых пользователей, созданных через `POST /users/`): `POST /api/v1/auth/token/` (OAuth2 form `username`/`password`) → `{access_token, refresh_token}`.
+- **Вход по номеру + пароль (основной, временно без SMS/OTP)**: пока платный шлюз не
+  подключён, экран входа не использует OTP:
+  1. `POST /api/v1/auth/password/status/` с `{phone_number}` → `{registered, has_password}` —
+     решаем, просить пароль или предложить создать.
+  2. Нет аккаунта или у номера ещё нет пароля → `POST /api/v1/auth/password/register/`
+     с `{phone_number, password}` → создаёт аккаунт (или задаёт пароль старому OTP-аккаунту)
+     и сразу возвращает токены.
+  3. Пароль задан → `POST /api/v1/auth/password/login/` с `{phone_number, password}` → токены.
+     Также работает OAuth2 form `username`/`password` (`POST /auth/token/`).
+- **OTP/SMS (зарезервировано на будущее)**: эндпоинты `POST /auth/request-otp/` +
+  `POST /auth/verify-otp/` остаются в коде. Аккаунт, созданный через OTP, помечается
+  `password_set=false` (случайный пароль) — при входе ему предложат придумать свой.
+  Доставка кода при настроенном канале: SMS Aero → Telegram → лог (см. `.env.example`).
 - Все «личные» эндпоинты требуют заголовок `Authorization: Bearer <access_token>`.
 - `/jwt/*` — fastapi-users: `POST /jwt/auth/login|logout`, `GET/PATCH /jwt/users/me/`.
 - Custom-эндпоинты (`chats`, `messages`, `users/…`) используют `get_current_user` (`api_v1/auth/utils.py`), который принимает **те же** JWT от fastapi-users (в `decode_jwt` отключена проверка `aud`, субъект сверяется с БД). Защищённые от собственных токенов.
@@ -249,9 +255,12 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 | GET | `/` | корень: «Hello World» | — |
 | GET | `/health` | liveness | — |
 | GET | `/health/ready` | readiness (проверка БД, 503 при недоступности) | — |
-| POST | `/auth/request-otp/` | запросить SMS-код | — |
-| POST | `/auth/verify-otp/` | проверить код → токен | — |
-| POST | `/auth/token/` | вход по логину+паролю | — |
+| POST | `/auth/password/status/` | есть ли аккаунт/пароль у номера | — |
+| POST | `/auth/password/register/` | создать аккаунт/пароль → токен | — |
+| POST | `/auth/password/login/` | вход по номеру+паролю → токен | — |
+| POST | `/auth/token/` | вход по логину+паролю (OAuth2 form) | — |
+| POST | `/auth/request-otp/` | запросить SMS-код (зарезервировано, UI не использует) | — |
+| POST | `/auth/verify-otp/` | проверить OTP → токен (зарезервировано) | — |
 | POST | `/jwt/auth/login`, `/jwt/auth/logout` | fastapi-users | — |
 | POST | `/jwt/auth/refresh` | ротация refresh-токена → новая пара access+refresh | токен (refresh) |
 | GET | `/jwt/users/me/` | мой профиль | токен |

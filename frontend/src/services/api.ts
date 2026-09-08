@@ -54,6 +54,7 @@ const NO_AUTO_REFRESH_PATHS = [
   '/auth/request-otp/',
   '/auth/verify-otp/',
   '/auth/token/',
+  '/auth/password/',
   '/jwt/auth/refresh'
 ]
 

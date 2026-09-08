@@ -145,4 +145,6 @@ async def create_user(
 ) -> User:
     user = User(**user_in.model_dump(exclude={"password"}))
     user.hashed_password = get_password_hash(user_in.password)
+    # Пароль задан явно — разрешаем вход по телефону+паролю.
+    user.password_set = True
     return await crud.create_user(session, user)

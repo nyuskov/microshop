@@ -14,9 +14,14 @@ from api_v1.rate_limit import enforce_limit, rate_limit_key, rate_limiter
 from core.celery_app import get_task
 from core.config import settings
 from core.models import TelegramBindLink, User, db_helper
+from core.security import get_password_hash
 
 from ..tokens.schemas import Token
-from ..users.crud import get_or_create_user_by_phone_number
+from ..users.crud import (
+    create_user_by_phone_number,
+    get_or_create_user_by_phone_number,
+    get_user_by_phone_number,
+)
 from .jwt import get_jwt_strategy
 from .otp_storage import (
     OtpVerifyResult,
@@ -27,7 +32,15 @@ from .otp_storage import (
     verify_otp,
 )
 from .refresh_sessions import issue_refresh_token
-from .schemas import OTPResponse, RequestOTPRequest, TokenResponse, VerifyOTPRequest
+from .schemas import (
+    OTPResponse,
+    PasswordRequest,
+    PasswordStatusRequest,
+    PasswordStatusResponse,
+    RequestOTPRequest,
+    TokenResponse,
+    VerifyOTPRequest,
+)
 from .utils import authenticate_user, get_current_user
 
 logger = logging.getLogger(__name__)
@@ -230,6 +243,123 @@ async def verify_otp_endpoint(
         )
 
     user = await get_or_create_user_by_phone_number(session, phone_number)
+    access_token = await get_jwt_strategy().write_token(user)
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=await issue_refresh_token(session, user_id=user.id),
+    )
+
+
+# --- Вход по паролю (временная замена OTP/SMS) ---------------------------
+# Пока SMS/Telegram-доставка недоступна (нет платного шлюза), вход — по номеру
+# телефона и паролю. Если у номера ещё нет заданного пароля (password_set=False),
+# предлагаем его создать. OTP-эндпоинты ниже остаются в коде для будущего.
+
+_PASSWORD_MIN_LENGTH = 6
+_PASSWORD_MAX_LENGTH = 128
+
+
+def _validate_new_password(password: str) -> str:
+    """Проверяет длину нового пароля и возвращает его (или HTTP 400)."""
+    if not (_PASSWORD_MIN_LENGTH <= len(password) <= _PASSWORD_MAX_LENGTH):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Пароль должен быть длиной от {_PASSWORD_MIN_LENGTH} "
+                f"до {_PASSWORD_MAX_LENGTH} символов."
+            ),
+        )
+    return password
+
+
+@router.post("/password/status/", response_model=PasswordStatusResponse)
+async def password_status(
+    request_data: PasswordStatusRequest,
+    request: Request,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> PasswordStatusResponse:
+    """Есть ли у номера аккаунт и задан ли для него пароль."""
+    await _enforce_ip_limit(request, scope="auth:password-status", limit=30)
+    phone_number = request_data.phone_number
+    if not validate_phone_number_format(phone_number):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Неверный формат номера телефона.",
+        )
+    user = await get_user_by_phone_number(session, phone_number)
+    if user is None:
+        return PasswordStatusResponse(registered=False, has_password=False)
+    return PasswordStatusResponse(registered=True, has_password=user.password_set)
+
+
+@router.post("/password/register/", response_model=TokenResponse)
+async def register_with_password(
+    request_data: PasswordRequest,
+    request: Request,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> TokenResponse:
+    """Создаёт пароль для номера (и аккаунт, если его нет) и сразу входит."""
+    await _enforce_ip_limit(request, scope="auth:password-register", limit=10)
+    phone_number = request_data.phone_number
+    if not validate_phone_number_format(phone_number):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Неверный формат номера телефона.",
+        )
+    password = _validate_new_password(request_data.password)
+
+    user = await get_user_by_phone_number(session, phone_number)
+    if user is not None and user.password_set:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="У этого номера уже есть пароль. Войдите с ним.",
+        )
+
+    hashed = get_password_hash(password)
+    if user is None:
+        user = await create_user_by_phone_number(session, phone_number, hashed)
+    else:
+        # Аккаунт создан ранее через OTP: задаём «настоящий» пароль.
+        user.hashed_password = hashed
+        user.password_set = True
+        await session.commit()
+
+    access_token = await get_jwt_strategy().write_token(user)
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=await issue_refresh_token(session, user_id=user.id),
+    )
+
+
+@router.post("/password/login/", response_model=TokenResponse)
+async def password_login(
+    request_data: PasswordRequest,
+    request: Request,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> TokenResponse:
+    """Вход по номеру телефона и паролю."""
+    await _enforce_ip_limit(
+        request,
+        scope="auth:password-login",
+        limit=settings.auth_token_login_limit_per_minute,
+    )
+    phone_number = request_data.phone_number
+    if not validate_phone_number_format(phone_number):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Неверный формат номера телефона.",
+        )
+
+    user = await authenticate_user(phone_number, request_data.password, session)
+    if user is None or not user.password_set:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный номер или пароль.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     access_token = await get_jwt_strategy().write_token(user)
     return TokenResponse(
         access_token=access_token,

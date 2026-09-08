@@ -127,3 +127,24 @@ async def get_or_create_user_by_phone_number(
         last_name=None,
     )
     return await create_user(session, new_user)
+
+
+async def create_user_by_phone_number(
+    session: AsyncSession, phone_number: str, hashed_password: str
+) -> User:
+    """Создаёт пользователя по номеру с заданным паролем (password_set=True).
+
+    Используется для входа/регистрации по паролю, когда OTP/SMS недоступен.
+    """
+    new_user = User(
+        username=f"phone_{uuid4().hex[:8]}",
+        phone_number=phone_number,
+        hashed_password=hashed_password,
+        is_active=True,
+        is_verified=True,
+        password_set=True,
+        email=None,
+        first_name=None,
+        last_name=None,
+    )
+    return await create_user(session, new_user)

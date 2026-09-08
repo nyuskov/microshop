@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from fastapi_users.db import SQLAlchemyBaseUserTable
-from sqlalchemy import BigInteger, DateTime, String
+from sqlalchemy import BigInteger, Boolean, DateTime, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .associations import user_chat_association_table
@@ -23,6 +23,15 @@ class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
     first_name: Mapped[str] = mapped_column(String(32), nullable=True)
     last_name: Mapped[str] = mapped_column(String(32), nullable=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
+    # Задал ли пользователь собственный пароль (вход по телефону+пароль).
+    # У аккаунтов, созданных через OTP/SMS, пароль случайный и password_set=False:
+    # при входе по телефону им предлагается придумать свой пароль.
+    password_set: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=text("false"),
+        nullable=False,
+    )
     # email может отсутствовать при входе по телефону, поэтому nullable
     email: Mapped[str | None] = mapped_column(  # type: ignore[assignment]
         String(length=320), nullable=True
