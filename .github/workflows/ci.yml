@@ -96,7 +96,7 @@ jobs:
           echo "only-built-dependencies[]=@parcel/watcher" >> .npmrc
           echo "only-built-dependencies[]=esbuild" >> .npmrc
           echo "only-built-dependencies[]=vue-demi" >> .npmrc
-          pnpm install --no-frozen-lockfile
+          pnpm install --no-frozen-lockfile --prefix .
 
       - name: Type check (vue-tsc)
         run: pnpm exec vue-tsc --noEmit -p tsconfig.app.json
