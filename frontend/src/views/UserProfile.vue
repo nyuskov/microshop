@@ -2,7 +2,13 @@
 import { reactive, ref, watch, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { getErrorMessage } from '@/services/errors'
-import { removeAvatar, uploadAvatar } from '@/services/api'
+import {
+  removeAvatar,
+  telegramBind,
+  telegramBindStatus,
+  telegramUnbind,
+  uploadAvatar
+} from '@/services/api'
 import { mediaUrl } from '@/services/chatService'
 import {
   caretAfterNDigits,
@@ -165,6 +171,62 @@ const doLogout = async () => {
     emit('close-modal')
   }
 }
+
+// ---------- Telegram (резервный канал доставки кодов) ----------
+const tgBound = ref(false)
+const tgBusy = ref(false)
+const tgMessage = ref('')
+
+const refreshTgStatus = async () => {
+  try {
+    tgBound.value = await telegramBindStatus()
+    tgMessage.value = ''
+  } catch (error) {
+    tgMessage.value = getErrorMessage(error)
+  }
+}
+
+const bindTelegram = async () => {
+  if (tgBusy.value) return
+  tgBusy.value = true
+  tgMessage.value = ''
+  try {
+    const result = await telegramBind()
+    if (result.deep_link) {
+      window.open(result.deep_link, '_blank', 'noopener,noreferrer')
+      tgMessage.value = 'Откройте ссылку в Telegram и нажмите Start, затем — «Проверить».'
+    } else {
+      tgMessage.value =
+        'Бот не настроен на сервере (нет TELEGRAM_BOT_USERNAME). Коды продолжат приходить по SMS/в лог.'
+    }
+  } catch (error) {
+    tgMessage.value = getErrorMessage(error)
+  } finally {
+    tgBusy.value = false
+  }
+}
+
+const unbindTelegram = async () => {
+  if (tgBusy.value) return
+  tgBusy.value = true
+  tgMessage.value = ''
+  try {
+    await telegramUnbind()
+    tgBound.value = false
+  } catch (error) {
+    tgMessage.value = getErrorMessage(error)
+  } finally {
+    tgBusy.value = false
+  }
+}
+
+watch(
+  () => authStore.current_user,
+  (user) => {
+    if (user) void refreshTgStatus()
+  },
+  { immediate: true }
+)
 
 // ---------- Поле телефона (нативный input + лёгкая маска) ----------
 const phoneFieldRef = ref<HTMLInputElement | null>(null)
@@ -437,6 +499,54 @@ const updateProfile = async () => {
             </div>
             <q-toggle v-model="profileForm.privacy_mode" color="primary" keep-color />
           </div>
+        </section>
+
+        <!-- Telegram: доставка кодов входа -->
+        <section class="card-section">
+          <h3 class="section-title">Telegram</h3>
+          <div class="toggle-row">
+            <div class="toggle-text">
+              <span class="toggle-name">
+                {{ tgBound ? 'Telegram привязан' : 'Telegram не привязан' }}
+              </span>
+              <span class="toggle-desc">
+                {{
+                  tgBound
+                    ? 'Коды входа будут приходить в ваш чат с ботом'
+                    : 'Коды приходят по SMS; можно привязать Telegram-бота'
+                }}
+              </span>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px">
+            <button
+              v-if="!tgBound"
+              type="button"
+              class="btn ghost"
+              :disabled="tgBusy"
+              @click="bindTelegram"
+            >
+              Привязать Telegram
+            </button>
+            <button
+              v-else
+              type="button"
+              class="btn ghost"
+              :disabled="tgBusy"
+              @click="unbindTelegram"
+            >
+              Отвязать
+            </button>
+            <button type="button" class="btn ghost" :disabled="tgBusy" @click="refreshTgStatus">
+              Проверить
+            </button>
+          </div>
+          <p
+            v-if="tgMessage"
+            style="color: var(--ms-muted, #71808d); font-size: 0.85rem; margin: 8px 0 0"
+          >
+            {{ tgMessage }}
+          </p>
         </section>
 
         <!-- Сообщения -->

@@ -791,3 +791,54 @@ async def test_chats_last_message_and_unread_count(api: _ApiCtx) -> None:
     item2b = next(c for c in list2b if c["id"] == chat["id"])
     assert item2b["unread_count"] == 0
     assert item2b["last_message"]["is_read"] is True
+
+
+# --- Привязка Telegram (резервный канал доставки OTP) ---------------------
+
+
+async def test_telegram_bind_requires_auth(api: _ApiCtx) -> None:
+    anon = await api.client.post("/api/v1/auth/telegram/bind/")
+    assert anon.status_code == 401
+
+
+async def test_telegram_bind_link_and_status(api: _ApiCtx) -> None:
+    u = await api.make_user()
+    token = await api.token_for(u)
+    headers = api.auth(token)
+
+    # Создание ссылки привязки.
+    bind = await api.client.post("/api/v1/auth/telegram/bind/", headers=headers)
+    assert bind.status_code == 200, bind.text
+    body = bind.json()
+    assert body["code"]
+    # deep_link может отсутствовать (если username бота не задан), код — всегда.
+    assert body.get("deep_link") is None or body["deep_link"].endswith(
+        f"?start=bind_{body['code']}"
+    )
+
+    # Пока чат не привязан.
+    status0 = (
+        await api.client.get("/api/v1/auth/telegram/status/", headers=headers)
+    ).json()
+    assert status0["bound"] is False
+
+    # Имитируем бота: он «привязал» чат (ставит tg_chat_id).
+    async with api.factory() as session:
+        db_user = await session.get(User, u.id)
+        assert db_user is not None
+        db_user.tg_chat_id = 123456789
+        await session.commit()
+
+    status1 = (
+        await api.client.get("/api/v1/auth/telegram/status/", headers=headers)
+    ).json()
+    assert status1["bound"] is True
+
+    # Отвязка.
+    unbind = await api.client.post("/api/v1/auth/telegram/unbind/", headers=headers)
+    assert unbind.status_code == 200
+    assert unbind.json()["bound"] is False
+    status2 = (
+        await api.client.get("/api/v1/auth/telegram/status/", headers=headers)
+    ).json()
+    assert status2["bound"] is False

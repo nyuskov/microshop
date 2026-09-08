@@ -29,7 +29,7 @@
 - Backend-качество: refresh-токены с ротацией/отзывом, rate-limit, pg_trgm-поиск, X-Request-ID и лог медленных запросов, Celery+RabbitMQ (SMS/GIF/очистка медиа по расписанию), health-эндпоинты, pytest, CI (black/isort/flake8/mypy/vue-tsc/eslint/vitest).
 - Legacy-модули `products`/`posts`/`telegram` — с мессенджером не связаны (кандидаты на удаление).
 
-Ограничения (сознательные/текущие): только личные чаты (групповых нет — фича убрана); WebRTC-звонки без TURN (работают в локальных сетях); SMS — заглушка (код печатается в лог контейнера `web`); Web Push/PWA-уведомления не реализованы; секреты должны задаваться через `.env` (см. раздел 9).
+Ограничения (сознательные/текущие): только личные чаты (групповых нет — фича убрана); WebRTC-звонки без TURN (работают в локальных сетях); Web Push/PWA-уведомления не реализованы; секреты должны задаваться через `.env` (см. раздел 9). Доставка OTP — Telegram Gateway (основной) → обычный Telegram-бот (резервный) → лог (только dev, когда каналы не настроены).
 
 ## 2. Стек
 
@@ -215,7 +215,11 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 ### Аутентификация (важно)
 
 - Вход по телефону (OTP):
-  1. `POST /api/v1/auth/request-otp/` с `{phone_number}` (формат `+7 (___) ___-__-__`). **SMS — заглушка**: код печатается в лог контейнера `web` (`Sending SMS to …: Your OTP code is …`).
+  1. `POST /api/v1/auth/request-otp/` с `{phone_number}` (формат `+7 (___) ___-__-__`).
+     Доставка кода: **Telegram Gateway** → (если недоступен/не настроен) **обычный
+     Telegram-бот** привязанному пользователю → (иначе, dev) лог контейнера `web`.
+     См. `.env.example` (`TELEGRAM_GATEWAY_TOKEN`, `TELEGRAM_BOT_TOKEN`,
+     `TELEGRAM_BOT_USERNAME`) и «Привязка Telegram» в профиле.
   2. `POST /api/v1/auth/verify-otp/` с `{phone_number, otp}` → `{access_token, refresh_token}`. Если пользователя нет — он создаётся автоматически с `username=phone_<hex>` и случайным паролем.
 - Вход по паролю (для тестовых пользователей, созданных через `POST /users/`): `POST /api/v1/auth/token/` (OAuth2 form `username`/`password`) → `{access_token, refresh_token}`.
 - Все «личные» эндпоинты требуют заголовок `Authorization: Bearer <access_token>`.
@@ -433,7 +437,7 @@ docker exec -it microshop-db-1 psql -U postgres -d microshop
 
 - Групповые чаты не реализованы (модель личных чатов).
 - Realtime — WebSocket-канал + «страховочный» polling 20 с (поллинг 3 с убран).
-- SMS-провайдер не подключён (код пишется в лог).
+- SMS-провайдер (Gateway) не подключён — код логируется в dev; в проде задайте `TELEGRAM_GATEWAY_TOKEN` (и/или обычного бота).
 - Профиль и вход — намеренно «светлые листы» (карточка целиком светлая в обеих темах, читаема в тёмной); остальной интерфейс токенизирован под свет/тьму.
 - Удаление аватара/файлов не затрагивает записи истории (намеренно).
 - Legacy-модули (`products`/`posts`/`telegram`) и публичные «читающие» `users`-эндпоинты **удалены** (не было ни в роутере, ни в БД).

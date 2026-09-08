@@ -102,6 +102,32 @@ class Settings(BaseSettings):
         validation_alias="CORS_ORIGINS",
     )
 
+    # --- Доставка OTP через Telegram ---
+    # Основной канал — Telegram Gateway (официальный API, SMS на телефон).
+    # Резервный — обычный Telegram-бот (код в личку пользователю, который
+    # «привязал» свой чат). Если оба не настроены — код логируется (dev-режим).
+    telegram_gateway_token: str | None = Field(
+        default=None, validation_alias="TELEGRAM_GATEWAY_TOKEN"
+    )
+    telegram_gateway_base_url: str = Field(
+        default="https://gateway.telegram.org",
+        validation_alias="TELEGRAM_GATEWAY_BASE_URL",
+    )
+    # Токен обычного бота (@BotFather). Нужен и для доставки кода в личку, и
+    # для привязки чата по /start bind_<код>.
+    telegram_bot_token: str | None = Field(
+        default=None, validation_alias="TELEGRAM_BOT_TOKEN"
+    )
+    # Username бота (для ссылки t.me/<username>?start=...). Если пусто — привязка
+    # вернёт только код, без готовой ссылки.
+    telegram_bot_username: str | None = Field(
+        default=None, validation_alias="TELEGRAM_BOT_USERNAME"
+    )
+    # Как часто воркер опрашивает бота на новые /start (сек).
+    telegram_poll_interval_seconds: int = 5
+    # Срок жизни кода привязки Telegram (сек).
+    telegram_bind_link_ttl_seconds: int = 600
+
 
 settings = Settings()
 

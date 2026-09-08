@@ -3,6 +3,7 @@
 import logging
 import re
 import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -12,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api_v1.rate_limit import enforce_limit, rate_limit_key, rate_limiter
 from core.celery_app import get_task
 from core.config import settings
-from core.models import db_helper
+from core.models import TelegramBindLink, User, db_helper
 
 from ..tokens.schemas import Token
 from ..users.crud import get_or_create_user_by_phone_number
@@ -27,7 +28,7 @@ from .otp_storage import (
 )
 from .refresh_sessions import issue_refresh_token
 from .schemas import OTPResponse, RequestOTPRequest, TokenResponse, VerifyOTPRequest
-from .utils import authenticate_user
+from .utils import authenticate_user, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -66,18 +67,13 @@ def validate_phone_number_format(phone_number: str) -> bool:
 def enqueue_sms_otp(phone_number: str, otp_code: str) -> None:
     """Кладёт доставку OTP-кода в очередь Celery (RabbitMQ).
 
-    Раньше отправка выполнялась синхронно прямо в теле запроса, блокируя
-    эндпоинт на время сетевого вызова к SMS-провайдеру. Теперь «тяжёлая»
-    отправка уходит в фоновый воркер (см. tasks/otp_tasks.py), а эндпоинт сразу
-    возвращает ответ.
-
-    Код печатается в web-логе (привычное место для dev-входа — как было до
-    переноса на Celery), а воркер дополнительно логирует его при фактической
-    «отправке». Если брокер RabbitMQ недоступен (например, локальный запуск web
-    без docker-стека) — вход не роняем: код уже виден в строке выше, а воркер
-    просто не получит задачу.
+    Доставку выполняет воркер (см. tasks/otp_tasks.py): Telegram Gateway →
+    обычный бот → dev-лог. Здесь код печатаем ТОЛЬКО если ни один канал не
+    настроен (чистый dev-запуск без токенов) — иначе код утёк бы в web-лог.
+    Если брокер недоступен — вход не роняем: код уже виден выше (dev).
     """
-    logger.info("SMS-заглушка: OTP-код для %s -> %s", phone_number, otp_code)
+    if not settings.telegram_gateway_token and not settings.telegram_bot_token:
+        logger.info("SMS-заглушка (dev): OTP-код для %s -> %s", phone_number, otp_code)
     try:
         task = get_task("tasks.otp_tasks.send_sms_otp")
         task.delay(phone_number, otp_code)
@@ -235,3 +231,54 @@ async def verify_otp_endpoint(
         token_type="bearer",
         refresh_token=await issue_refresh_token(session, user_id=user.id),
     )
+
+
+# --- Привязка Telegram (резервный канал доставки OTP) ---------------------
+
+
+@router.post("/telegram/bind/")
+async def create_telegram_bind_link(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> dict[str, str | None]:
+    """Создаёт ссылку привязки Telegram-чата к аккаунту.
+
+    Пользователь открывает ``t.me/<bot>?start=bind_<код>`` и жмёт Start — воркер
+    (``tasks.telegram.telegram_poll_updates``) проставит ``tg_chat_id``, после
+    чего коды входа будут приходить в Telegram даже без Telegram Gateway.
+    Ссылка одноразовая и живёт ``telegram_bind_link_ttl_seconds``.
+    """
+    now = datetime.now(timezone.utc)
+    code = secrets.token_hex(12)  # 24 hex-символа — влезает в payload start (64)
+    session.add(
+        TelegramBindLink(
+            code=code,
+            user_id=user.id,
+            expires_at=now + timedelta(seconds=settings.telegram_bind_link_ttl_seconds),
+        )
+    )
+    await session.commit()
+
+    username = settings.telegram_bot_username
+    deep_link = f"https://t.me/{username}?start=bind_{code}" if username else None
+    return {"code": code, "deep_link": deep_link}
+
+
+@router.get("/telegram/status/")
+async def telegram_bind_status(
+    user: User = Depends(get_current_user),
+) -> dict[str, bool]:
+    """Привязан ли Telegram-чат к аккаунту (для доставки кодов)."""
+    return {"bound": user.tg_chat_id is not None}
+
+
+@router.post("/telegram/unbind/")
+async def unbind_telegram(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> dict[str, bool]:
+    """Отвязывает Telegram-чат от аккаунта."""
+    if user.tg_chat_id is not None:
+        user.tg_chat_id = None
+        await session.commit()
+    return {"bound": False}

@@ -14,6 +14,7 @@ FastAPI, но нужен доступ к моделям/БД — поэтому 
 инфраструктурные модули ``core``, не тянущие FastAPI-приложение.
 """
 
+from datetime import timedelta
 from typing import Any
 
 from celery import Celery  # type: ignore[import-untyped]
@@ -33,6 +34,7 @@ celery_app = Celery(
         "tasks.otp_tasks",
         "tasks.media_tasks",
         "tasks.notifications",
+        "tasks.telegram",
     ],
 )
 
@@ -81,6 +83,13 @@ celery_app.conf.beat_schedule = {
     "cleanup-orphan-media-daily": {
         "task": "tasks.media_tasks.cleanup_orphan_media",
         "schedule": crontab(hour=4, minute=0),
+        "options": {"queue": "microshop"},
+    },
+    # Поллинг обычного Telegram-бота: привязка чатов (/start bind_...) —
+    # резервный канал доставки OTP. Работает, только если задан бот-токен.
+    "telegram-poll-updates": {
+        "task": "tasks.telegram.telegram_poll_updates",
+        "schedule": timedelta(seconds=settings.telegram_poll_interval_seconds),
         "options": {"queue": "microshop"},
     },
 }

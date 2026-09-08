@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from fastapi_users.db import SQLAlchemyBaseUserTable
-from sqlalchemy import DateTime, String
+from sqlalchemy import BigInteger, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .associations import user_chat_association_table
@@ -33,6 +33,11 @@ class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
     # Время последней активности — для присутствия («в сети» / «был(а) N назад»).
     last_seen: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    # ID Telegram-чата с нашим ботом (привязка) — для доставки OTP в личку,
+    # когда Telegram Gateway недоступен/не настроен.
+    tg_chat_id: Mapped[int | None] = mapped_column(
+        BigInteger, unique=True, nullable=True
     )
 
     profile: Mapped["Profile"] = relationship(back_populates="user")

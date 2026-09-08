@@ -1,22 +1,47 @@
-"""Фоновые задачи: доставка OTP-кода (SMS/e-mail).
+"""Фоновые задачи: доставка OTP-кода (Telegram Gateway → обычный бот → dev-лог).
 
-Раньше ``send_sms_otp`` вызывался синхронно прямо в теле ``/auth/request-otp/``,
-блокируя запрос на время сетевого вызова к SMS-провайдеру. Теперь это — Celery-
-задача: эндпоинт лишь кладёт её в очередь RabbitMQ и сразу возвращает ответ, а
-сам «тяжёлый» вызов (реальный SMS/email API провайдера в проде) исполняет
-воркер в фоне. Это уменьшает латентность эндпоинта и делает отправку
-устойчивой к ретраям.
+Эндпоинт ``/auth/request-otp/`` лишь кладёт задачу в RabbitMQ (см.
+``enqueue_sms_otp`` в auth/views), а реальную доставку выполняет воркер — чтобы
+не блокировать HTTP-запрос сетью и иметь возможность ретраить. Каналы по
+приоритету:
+  1) Telegram Gateway (официально — SMS на телефон);
+  2) обычный Telegram-бот — в чат, привязанный к номеру (см. tasks/telegram.py);
+  3) если ни один канал недоступен/не привязан — код пишется в лог (dev-вход).
 """
 
 import logging
 
+from sqlalchemy import select
+
+from core import telegram
 from core.celery_app import celery_app
+from core.config import settings
+from core.models import User
+from tasks.base import make_engine, make_session, run_async
 
 logger = logging.getLogger(__name__)
 
 # Время жизни (сек) задачи, за которое воркер должен успеть её обработать,
 # прежде чем Celery решит, что она зависла. 5 минут с запасом.
 _OTP_TASK_MAX_SECONDS = 300
+
+
+def _bound_telegram_chat(phone_number: str) -> int | None:
+    """Возвращает привязанный к номеру Telegram-чат (или None)."""
+    return run_async(_bound_telegram_chat_async(phone_number))
+
+
+async def _bound_telegram_chat_async(phone_number: str) -> int | None:
+    engine = make_engine()
+    session = make_session(engine)
+    try:
+        user = (
+            await session.execute(select(User).where(User.phone_number == phone_number))
+        ).scalar_one_or_none()
+        return user.tg_chat_id if user is not None else None
+    finally:
+        await session.close()
+        await engine.dispose()
 
 
 @celery_app.task(
@@ -28,11 +53,44 @@ _OTP_TASK_MAX_SECONDS = 300
     acks_late=False,
 )
 def send_sms_otp(self, phone_number: str, otp_code: str) -> None:
-    """Отправляет OTP-код пользователю (SMS-заглушка; в проде — API провайдера).
+    """Доставляет OTP-код пользователю (Telegram Gateway → бот → dev-лог)."""
+    ttl_seconds = settings.auth_otp_expire_seconds
 
-    Пока это заглушка: код печатается в лог воркера, чтобы его можно было
-    ввести вручную для входа. При переходе на реального провайдера заменяется
-    на сетевой вызов; при сбое сетевого вызова задачу можно переотправить через
-    ``self.retry(...)``.
-    """
-    logger.info("SMS-заглушка: OTP-код для %s -> %s", phone_number, otp_code)
+    # 1) Telegram Gateway — основной канал (верификационное сообщение на телефон).
+    if settings.telegram_gateway_token:
+        try:
+            request_id = telegram.gateway_send_verification(
+                phone_number, otp_code, ttl_seconds
+            )
+            logger.info(
+                "OTP для %s отправлен через Telegram Gateway (request_id=%s)",
+                phone_number,
+                request_id,
+            )
+            return
+        except telegram.TelegramApiError as exc:
+            logger.warning(
+                "Telegram Gateway недоступен (%s) — переключаюсь на бота", exc
+            )
+
+    # 2) Обычный бот — если к этому номеру привязан Telegram-чат.
+    if settings.telegram_bot_token:
+        chat_id = _bound_telegram_chat(phone_number)
+        if chat_id is not None:
+            try:
+                text = (
+                    f"🔐 Код подтверждения Microshop: {otp_code}\n"
+                    "Никому не сообщайте код."
+                )
+                telegram.bot_send_message(chat_id, text)
+                logger.info(
+                    "OTP для %s отправлен в Telegram-чат %s",
+                    phone_number,
+                    chat_id,
+                )
+                return
+            except telegram.TelegramApiError as exc:
+                logger.warning("Telegram-бот не смог доставить код (%s)", exc)
+
+    # 3) Dev-fallback: каналы не настроены или недоступны — печатаем код.
+    logger.info("SMS-заглушка (dev): OTP-код для %s -> %s", phone_number, otp_code)
