@@ -142,5 +142,5 @@ jobs:
           script: |
             cd ~/microshop
             git pull
-            docker compose -f docker-compose.prod.yaml up -d --build
+            docker compose -f docker-compose.test.yaml up -d --build
             docker system prune -f
