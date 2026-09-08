@@ -144,9 +144,21 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           script: |
+            set -e
             cd ~/microshop
             git pull
             # Используем официальную команду принудительного сброса кэша при сборке
             docker compose -f docker-compose.test.yaml -p microshop-test up -d --build --force-recreate --pull always
+            # Явный прогон миграций: при `up -d` одноразовый migrate-сервис может
+            # не отработать/не пересоздаться — запускаем его вручную (идемпотентно).
+            docker compose -f docker-compose.test.yaml -p microshop-test run --rm migrate
+            # Проверка, что схема реально обновилась (иначе деплой считается упавшим).
+            # ВНИМАНИЕ: колонка ниже специфична для текущей миграции — при будущих
+            # миграциях строку проверки стоит актуализировать.
+            docker compose -f docker-compose.test.yaml -p microshop-test exec -T db psql -U postgres -d microshop -tAc \
+              "SELECT 1 FROM information_schema.columns WHERE table_name='user' AND column_name='tg_chat_id'" \
+              | grep -q 1 \
+              || { echo "::error::MIGRATION CHECK FAILED: user.tg_chat_id отсутствует на сервере"; exit 1; }
+            echo "::notice::Deploy OK: миграции применены"
             docker system prune -f
 
