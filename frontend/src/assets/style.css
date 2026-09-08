@@ -1,233 +1,27 @@
-/* Global Styles and CSS Variables */
+/* ==========================================================================
+   Базовые стили приложения.
+   Цвета и токены тем живут в assets/appearance.css (--ms-*); здесь только
+   глобальные сбросы и то, что не покрыто компонентами.
+   ========================================================================== */
 
-:root {
-  /* Light Theme Colors - Updated Palette */
-  --primary-color: #ff6b35; /* Brighter Orange */
-  --primary-light: #f4a261; /* Current Secondary */
-  --secondary-color: #e9c46a; /* Yellowy-Orange/Gold */
-  --accent-color: #e76f51; /* Reddish Orange */
-  --background-color: #ffffff; /* Pure White */
-  --surface-color: #f8f9fa; /* Very light grey */
-  --surface-color-dark: #f1f3f4; /* Slightly darker for contrast */
-  --text-color: #000000; /* Pure Black */
-  --text-light: #6c757d; /* Medium Grey */
-  --text-lighter: #adb5bd; /* Lighter Grey */
-  --border-color: #dee2e6; /* Light Grey */
-  --border-color-dark: #adb5bd; /* Medium Grey */
-  --success-color: #2a9d8f; /* Soft Green */
-  --warning-color: #ff6b35; /* Orange (same as primary) */
-  --danger-color: #e63946; /* Red */
-  --info-color: #457b9d; /* Blue */
-  --shadow-small: 0 2px 4px rgba(0, 0, 0, 0.1);
-  --shadow-medium: 0 4px 8px rgba(0, 0, 0, 0.1);
-  --shadow-large: 0 8px 16px rgba(0, 0, 0, 0.1);
-}
-
-/* Dark Theme Colors - Updated Palette */
-html[data-theme='dark'] {
-  --primary-color: #ff6b35; /* Brighter Orange */
-  --primary-light: #f4a261; /* Current Secondary */
-  --secondary-color: #e9c46a; /* Yellowy-Orange/Gold */
-  --accent-color: #e76f51; /* Reddish Orange */
-  --background-color: #1e1e1e; /* Darker Black */
-  --surface-color: #2d2d2d; /* Dark Grey */
-  --surface-color-dark: #3c3c3c; /* Slightly darker for contrast */
-  --text-color: #ffffff; /* Pure White */
-  --text-light: #adb5bd; /* Light Grey */
-  --text-lighter: #6c757d; /* Medium Grey */
-  --border-color: #444444; /* Dark Grey */
-  --border-color-dark: #555555; /* Medium Dark Grey */
-  --success-color: #2a9d8f; /* Soft Green */
-  --danger-color: #e63946; /* Red */
-  --warning-color: #ff6b35; /* Orange (same as primary) */
-  --info-color: #457b9d; /* Blue */
-  --shadow-small: 0 2px 4px rgba(0, 0, 0, 0.3);
-  --shadow-medium: 0 4px 8px rgba(0, 0, 0, 0.3);
-  --shadow-large: 0 8px 16px rgba(0, 0, 0, 0.3);
-}
-
-/* Base styles */
+/* ---------- Base ---------- */
 body {
   margin: 0;
   padding: 0;
-  font-family: var(--font-family-base);
-  color: var(--text-color);
-  background-color: var(--background-color);
-  line-height: 1.6;
-  transition:
-    background-color,
-    color 0.3s ease;
-  /* Smooth transition for theme change */
-}
-
-/* Common utility classes */
-.container {
-  max-width: var(--container-max-width);
-  margin: 0 auto;
-  padding: 0 var(--spacing-medium);
-}
-
-.card {
-  background-color: var(--surface-color);
-  border-radius: var(--border-radius);
-  box-shadow: var(--shadow-medium);
-  padding: var(--spacing-large);
-  margin-bottom: var(--spacing-medium);
-  border: var(--border-width) var(--border-style) var(--border-color);
-  color: var(--text-color);
-  /* Ensure text color is applied */
-  transition: box-shadow 0.2s ease;
-}
-
-.card:hover {
-  box-shadow: var(--shadow-large);
-}
-
-.btn {
-  display: inline-block;
-  padding: var(--spacing-small) var(--spacing-medium);
-  margin: var(--spacing-tiny); /* Add default margin */
-  font-family: var(--font-family-base);
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-bold);
-  text-align: center;
-  text-decoration: none;
-  border: none;
-  border-radius: var(--border-radius);
-  cursor: pointer;
-  transition:
-    background-color 0.2s ease-in-out,
-    transform 0.1s ease,
-    box-shadow 0.2s ease;
+  font-family: var(--ms-font);
+  color: var(--ms-text);
+  background-color: var(--ms-body);
   line-height: 1.5;
-  color: white;
-  /* Ensure button text is white */
-  min-height: 40px; /* Minimum height for better touch targets */
-  box-shadow: var(--shadow-small); /* Add initial shadow */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-.btn:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-medium); /* Increase shadow on hover */
-}
-
-.btn:focus {
-  outline: 2px solid var(--primary-light);
-  outline-offset: 2px;
-}
-
-.btn-primary {
-  background-color: var(--primary-color);
-}
-
-.btn-primary:hover {
-  background-color: var(--secondary-color);
-}
-
-.btn-danger {
-  background-color: var(--danger-color);
-}
-
-.btn-danger:hover {
-  background-color: #d90429;
-  /* Darker shade of danger color */
-}
-
-.btn-warning {
-  /* Explicitly define warning button style */
-  background-color: var(--warning-color);
-  color: var(--text-color);
-  /* Ensure text contrasts well */
-}
-
-.btn-warning:hover {
-  background-color: color-mix(in srgb, var(--warning-color) 80%, white);
-  /* Slightly lighter on hover */
-}
-
-.btn-info {
-  /* Define info button style for 'publish' */
-  background-color: var(--info-color);
-  color: var(--text-color);
-}
-
-.btn-info:hover {
-  background-color: color-mix(in srgb, var(--info-color) 80%, white);
-}
-
-.btn-sm {
-  padding: calc(var(--spacing-small) * 0.75) var(--spacing-small);
-  font-size: var(--font-size-small);
-}
-
-.form-control {
-  width: 100%;
-  padding: var(--spacing-small);
-  margin-bottom: var(--spacing-medium);
-  border: var(--border-width) var(--border-style) var(--border-color);
-  border-radius: var(--border-radius);
-  font-family: var(--font-family-base);
-  font-size: var(--font-size-base);
-  box-sizing: border-box;
-  background-color: var(--surface-color);
-  color: var(--text-color);
-}
-
-.form-control:focus {
-  outline: none;
-  border-color: var(--primary-light);
-  box-shadow: 0 0 0 3px rgba(244, 162, 97, 0.25);
-  /* Glow effect using primary */
-}
-
-.text-muted {
-  color: var(--text-light);
-}
-
-.text-center {
-  text-align: center;
-}
-
-/* Typography */
-:root,
-html[data-theme='dark'] {
-  --font-family-base: 'Inter', 'Segoe UI', Roboto, sans-serif;
-  --font-size-base: 1rem;
-  --font-size-small: 0.875rem;
-  --font-size-large: 1.25rem;
-  --font-weight-normal: 400;
-  --font-weight-bold: 700;
-}
-
-/* Spacing */
-:root,
-html[data-theme='dark'] {
-  --spacing-tiny: 0.25rem;
-  --spacing-small: 0.5rem;
-  --spacing-medium: 1rem;
-  --spacing-large: 1.5rem;
-  --spacing-huge: 3rem;
-}
-
-/* Borders */
-:root,
-html[data-theme='dark'] {
-  --border-radius: 0.5rem;
-  --border-width: 1px;
-  --border-style: solid;
-}
-
-/* Shadows */
-:root,
-html[data-theme='dark'] {
-  --shadow-small: 0 2px 4px rgba(0, 0, 0, 0.1);
-  --shadow-medium: 0 4px 8px rgba(0, 0, 0, 0.1);
-  --shadow-large: 0 8px 16px rgba(0, 0, 0, 0.1);
-}
-
-/* Layout */
-:root,
-html[data-theme='dark'] {
-  --container-max-width: 1200px;
-  --sidebar-width: 250px;
+/* Наследуем шрифт и цвет в нативные элементы форм/кнопок. */
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
 }

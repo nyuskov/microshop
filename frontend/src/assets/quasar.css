@@ -23,8 +23,7 @@
     /* Единый радиус для Material-поверхностей */
     --q-radius: 12px;
 
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-        Helvetica, Arial, sans-serif;
+    font-family: var(--ms-font);
 }
 
 /* --- Поверхности и текст --- */
@@ -38,15 +37,6 @@ html .q-drawer__content,
 html .q-menu,
 html .q-dialog__inner>.q-card,
 html .q-card {
-    background: var(--ms-surface);
-    color: var(--ms-text);
-}
-
-html[data-theme='dark'] .q-drawer,
-html[data-theme='dark'] .q-drawer__content,
-html[data-theme='dark'] .q-menu,
-html[data-theme='dark'] .q-dialog__inner>.q-card,
-html[data-theme='dark'] .q-card {
     background: var(--ms-surface);
     color: var(--ms-text);
 }
@@ -131,11 +121,6 @@ html .q-toolbar {
     min-height: 56px;
 }
 
-html[data-theme='dark'] .q-toolbar {
-    background: var(--ms-surface);
-    color: var(--ms-text-strong);
-}
-
 /* --- Переключатели --- */
 html .q-toggle__inner--truthy,
 html .q-checkbox__inner--truthy {
@@ -207,4 +192,24 @@ html .q-field--outlined .q-field__control {
 /* Прозрачный подложка бэкдропа диалога в тёмной теме */
 html[data-theme='dark'] .q-dialog__backdrop {
     background: rgba(0, 0, 0, 0.6);
+}
+
+/* --- Иконки: Quasar рендерит <q-icon> с классом .material-icons ---
+   Направляем этот класс на подключённый в main.ts шрифт Material Icons
+   (outlined): тот же набор имён, более современное начертание. */
+.material-icons {
+    font-family: 'Material Icons Outlined';
+    font-weight: normal;
+    font-style: normal;
+    display: inline-block;
+    line-height: 1;
+    text-transform: none;
+    letter-spacing: normal;
+    word-wrap: normal;
+    white-space: nowrap;
+    direction: ltr;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'liga';
 }

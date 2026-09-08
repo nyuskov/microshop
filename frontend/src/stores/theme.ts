@@ -204,11 +204,15 @@ export const useThemeStore = defineStore('theme', {
       }
 
       const accent = ACCENT_PRESETS.find((item) => item.key === this.accentKey)
-      document.documentElement.style.setProperty(
-        '--ms-accent',
-        accent?.hex ?? ACCENT_PRESETS[0].hex
-      )
+      const accentHex = accent?.hex ?? ACCENT_PRESETS[0].hex
+      document.documentElement.style.setProperty('--ms-accent', accentHex)
       document.documentElement.setAttribute('data-bubble', this.bubbleKey)
+
+      // Цвет панели браузера: светлая тема — акцент, тёмная — цвет фона приложения.
+      const themeColor = document.querySelector('meta[name="theme-color"]')
+      if (themeColor) {
+        themeColor.setAttribute('content', resolved === 'dark' ? '#10151c' : accentHex)
+      }
       this.saveAppearance()
     },
 

@@ -108,25 +108,6 @@ const emit = defineEmits<{
   margin-right: 6px;
 }
 
-.icon-btn {
-  background: none;
-  border: none;
-  color: #52626f;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.05rem;
-  cursor: pointer;
-}
-
-.icon-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: #202b34;
-}
-
 .rotated {
   transform: rotate(180deg);
 }

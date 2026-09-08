@@ -11,6 +11,7 @@ import {
   localPhoneDigits,
   maskPhoneLocal
 } from '@/utils/phone'
+import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
 
 const emit = defineEmits(['close-modal'])
 
@@ -92,33 +93,9 @@ const fullName = computed(() =>
 
 const heroName = computed(() => fullName.value || profileForm.username || 'Пользователь')
 
-const heroInitials = computed(() => {
-  const clean = heroName.value.trim()
-  if (!clean) return '?'
-  const parts = clean.split(/\s+/)
-  if (parts.length >= 2) {
-    return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase()
-  }
-  return clean.slice(0, 2).toUpperCase()
-})
+const heroInitials = computed(() => userInitials(heroName.value))
 
-const AVATAR_COLORS = [
-  'linear-gradient(135deg,#5b9bd5,#2e75b6)',
-  'linear-gradient(135deg,#69b578,#2f8f5b)',
-  'linear-gradient(135deg,#e58e7a,#c25e4a)',
-  'linear-gradient(135deg,#b28ce0,#7c53b8)',
-  'linear-gradient(135deg,#f0a35e,#d97b2b)',
-  'linear-gradient(135deg,#6fc3c9,#2f9aa3)'
-]
-
-const avatarStyle = computed(() => {
-  const name = heroName.value
-  let hash = 0
-  for (let i = 0; i < name.length; i += 1) {
-    hash = (hash * 31 + name.charCodeAt(i)) >>> 0
-  }
-  return { background: AVATAR_COLORS[hash % AVATAR_COLORS.length] }
-})
+const avatarStyle = computed(() => userAvatarStyle(heroName.value))
 
 // ---------- Сохранение ----------
 const saving = ref(false)
@@ -500,7 +477,7 @@ const updateProfile = async () => {
 <style scoped>
 .profile-sheet {
   color: #1c2733;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--ms-font);
 }
 
 .loading-block {
@@ -745,8 +722,8 @@ const updateProfile = async () => {
 .field input:focus,
 .field textarea:focus,
 .field select:focus {
-  border-color: #2ea25e;
-  box-shadow: 0 0 0 4px rgba(46, 162, 94, 0.13);
+  border-color: var(--ms-accent, #2ea25e);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ms-accent, #2ea25e) 15%, transparent);
 }
 
 .field textarea {
@@ -790,49 +767,6 @@ const updateProfile = async () => {
   font-size: 12.5px;
   color: #8295a3;
   margin-top: 2px;
-}
-
-.switch {
-  position: relative;
-  width: 46px;
-  height: 26px;
-  flex-shrink: 0;
-  cursor: pointer;
-}
-
-.switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.slider {
-  position: absolute;
-  inset: 0;
-  background: #cdd6dd;
-  border-radius: 26px;
-  transition: background 0.2s;
-}
-
-.slider::before {
-  content: '';
-  position: absolute;
-  width: 20px;
-  height: 20px;
-  left: 3px;
-  top: 3px;
-  background: #fff;
-  border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  transition: transform 0.2s;
-}
-
-.switch input:checked + .slider {
-  background: #2ea25e;
-}
-
-.switch input:checked + .slider::before {
-  transform: translateX(20px);
 }
 
 /* Кнопки и уведомления */
@@ -895,9 +829,13 @@ const updateProfile = async () => {
 }
 
 .btn.primary {
-  background: linear-gradient(135deg, #34c979 0%, #1e9b51 100%);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ms-accent, #2ea25e) 86%, #ffffff) 0%,
+    var(--ms-accent, #2ea25e) 100%
+  );
   color: #fff;
-  box-shadow: 0 8px 18px rgba(30, 155, 81, 0.24);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--ms-accent, #2ea25e) 28%, transparent);
 }
 
 .btn.primary:hover:not(:disabled) {

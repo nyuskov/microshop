@@ -171,7 +171,7 @@ const confirmForward = () => {
   justify-content: center;
   padding: 16px;
   animation: fwd-fade 0.15s ease-out;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--ms-font);
 }
 
 .fwd-card {

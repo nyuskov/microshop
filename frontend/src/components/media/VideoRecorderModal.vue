@@ -244,7 +244,7 @@ void openCamera()
   justify-content: center;
   background: rgba(10, 14, 18, 0.72);
   backdrop-filter: blur(3px);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--ms-font);
   padding: 18px;
 }
 

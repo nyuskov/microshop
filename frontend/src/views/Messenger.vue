@@ -251,7 +251,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
+import {
+  ref,
+  reactive,
+  onMounted,
+  onBeforeUnmount,
+  watch,
+  nextTick,
+  computed,
+  defineAsyncComponent
+} from 'vue'
 import { Notify, useQuasar } from 'quasar'
 import LoginModal from '@/components/LoginModal.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -283,9 +292,6 @@ import { mediaUrl } from '@/config'
 import { usePeerActivity } from '@/composables/usePeerActivity'
 import { useRealtimeSync } from '@/composables/useRealtimeSync'
 import { useRecordButton } from '@/composables/useRecordButton'
-import UserProfile from './UserProfile.vue'
-import AppearanceSettings from './AppearanceSettings.vue'
-import CallOverlay from '@/components/calls/CallOverlay.vue'
 import ChatSidebar from '@/components/messenger/ChatSidebar.vue'
 import ChatHeader from '@/components/messenger/ChatHeader.vue'
 import ChatPlaceholder from '@/components/messenger/ChatPlaceholder.vue'
@@ -293,10 +299,19 @@ import InlineSearchBar from '@/components/messenger/InlineSearchBar.vue'
 import PinnedBar from '@/components/messenger/PinnedBar.vue'
 import MessageThread from '@/components/messenger/MessageThread.vue'
 import MessageComposer from '@/components/messenger/MessageComposer.vue'
-import ForwardDialog from '@/components/messenger/ForwardDialog.vue'
-import ChatInfo from '@/components/messenger/ChatInfo.vue'
-import VideoRecorderModal from '@/components/media/VideoRecorderModal.vue'
-import ImageLightbox from '@/components/media/ImageLightbox.vue'
+
+// Тяжёлые модалки/оверлеи подгружаем асинхронно — они нужны только после
+// действия пользователя (профиль/оформление/инфо о чате, звонок, лайтбокс,
+// видеозапись), это уменьшает стартовый чанк приложения.
+const UserProfile = defineAsyncComponent(() => import('./UserProfile.vue'))
+const AppearanceSettings = defineAsyncComponent(() => import('./AppearanceSettings.vue'))
+const CallOverlay = defineAsyncComponent(() => import('@/components/calls/CallOverlay.vue'))
+const ForwardDialog = defineAsyncComponent(() => import('@/components/messenger/ForwardDialog.vue'))
+const ChatInfo = defineAsyncComponent(() => import('@/components/messenger/ChatInfo.vue'))
+const VideoRecorderModal = defineAsyncComponent(
+  () => import('@/components/media/VideoRecorderModal.vue')
+)
+const ImageLightbox = defineAsyncComponent(() => import('@/components/media/ImageLightbox.vue'))
 import { useCallStore } from '@/stores/call'
 import { useRealtimeStore } from '@/stores/realtime'
 import { mediaFileName, type RecordedMedia } from '@/services/recorder'
@@ -1660,7 +1675,7 @@ watch(
   height: 100dvh; /* на мобильных браузерах с динамической адресной строкой */
   overflow: hidden;
   background: #6d7c8c;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--ms-font);
 }
 
 /* QPageContainer: в нём только чат, растягиваем на всю высоту. */
@@ -1698,13 +1713,26 @@ watch(
 .ms-modal {
   width: min(720px, calc(100vw - 32px));
   max-width: calc(100vw - 32px);
-  border-radius: 18px;
+  border-radius: var(--ms-radius-lg, 18px);
   border: 1px solid var(--ms-border, #e2e6ea);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
 }
 
 .ms-modal-appearance {
   width: min(560px, calc(100vw - 32px));
+}
+
+/* Профиль — всегда «светлый лист» (как форма входа): внутри только светлые
+   карточки/поля (UserProfile), поэтому и сама карточка принудительно светлая,
+   чтобы в тёмной теме диалог был цельным, а в светлой — без изменений. */
+.ms-modal-profile {
+  background: #ffffff !important;
+  color: #1c2733 !important;
+  border-color: #e2e6ea !important;
+}
+
+.ms-modal-profile :deep(.q-separator) {
+  background: #eef1f3;
 }
 
 .ms-modal-head {
@@ -1722,7 +1750,7 @@ watch(
 /* ---------- Модалка удаления чата ---------- */
 .delchat-card {
   width: min(400px, calc(100vw - 32px));
-  border-radius: 18px;
+  border-radius: var(--ms-radius-lg, 18px);
 }
 
 .delchat-head {

@@ -6,6 +6,9 @@
 
 /* ---------- Токены: светлая тема (значения = исходный вид) ---------- */
 :root {
+    /* Рендер нативных контролов/скроллбаров под светлую схему */
+    color-scheme: light;
+
     /* Каркас */
     --ms-shell: #6d7c8c;
     --ms-body: #e7ebf0;
@@ -55,10 +58,22 @@
     --ms-accent-strong: color-mix(in srgb, var(--ms-accent) 88%, #000000);
     --ms-accent-soft: color-mix(in srgb, var(--ms-accent) 16%, #ffffff);
     --ms-accent-border: color-mix(in srgb, var(--ms-accent) 55%, #ffffff);
+
+    /* Типографика и геометрия (общие для обеих тем) */
+    --ms-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        'Helvetica Neue', Arial, sans-serif;
+    --ms-radius-sm: 10px;
+    --ms-radius: 12px;
+    --ms-radius-lg: 18px;
+    --ms-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+    --ms-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.16);
 }
 
 /* ---------- Токены: тёмная тема ---------- */
 html[data-theme='dark'] {
+    /* Нативные контролы/скроллбары — тёмные */
+    color-scheme: dark;
+
     --ms-shell: #0b0f14;
     --ms-body: #10151c;
     --ms-surface: #171e26;
@@ -171,6 +186,39 @@ html .messenger-shell .side-panel {
 html .messenger-shell .chat-panel {
     background-color: var(--ms-chat-bg);
     background-image: var(--ms-chat-dots);
+}
+
+/* Базовая геометрия круглых кнопок (общая для всех компонентов Messenger;
+   цвета и hover переопределяются ниже и в scoped-стилях компонентов).
+   Селекторы без префикса html/— специфичность НИЖЕ scoped, поэтому локальные
+   оверрайды (медиа-брейкпоинты, .icon-btn.open и т.п.) продолжают работать. */
+.icon-btn {
+    background: none;
+    border: none;
+    color: #52626f;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.05rem;
+    cursor: pointer;
+}
+
+.round-btn {
+    background: none;
+    border: none;
+    color: #5b6b79;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 0;
 }
 
 /* Общие элементы */
@@ -447,7 +495,7 @@ html .messenger-shell .msg-ticks {
 }
 
 html .messenger-shell .msg-ticks.read {
-    color: var(--ms-link);
+    color: var(--ms-tick);
 }
 
 html .messenger-shell .reply-quote {
@@ -605,4 +653,59 @@ html .messenger-shell .vr-play {
 
 html .messenger-shell .vr-play:hover {
     background: var(--ms-accent-strong);
+}
+
+/* ==========================================================================
+   Микро-взаимодействия и плавная смена темы.
+   Не вешаем transition на каждый элемент — только на крупные поверхности и
+   кнопки, чтобы не было тормозов на длинных лентах сообщений.
+   ========================================================================== */
+
+/* Плавный переход фона при смене темы (применяется на весь Messenger). */
+html .messenger-shell,
+html .messenger-shell .side-panel,
+html .messenger-shell .chat-panel,
+html .messenger-shell .chat-header,
+html .messenger-shell .panel-header,
+html .messenger-shell .input-area {
+    transition: background-color 0.25s ease, border-color 0.25s ease;
+}
+
+/* Короткий «отклик» на наведение/нажатие для интерактивных элементов. */
+html .messenger-shell .icon-btn,
+html .messenger-shell .round-btn,
+html .messenger-shell .send-btn,
+html .messenger-shell .ghost-btn,
+html .messenger-shell .row-item,
+html .messenger-shell .reaction-chip,
+html .messenger-shell .ms-dropdown-item,
+html .messenger-shell .gif-chip,
+html .messenger-shell .emoji-option {
+    transition: background-color 0.16s ease, color 0.16s ease,
+        border-color 0.16s ease, opacity 0.16s ease, transform 0.1s ease;
+}
+
+/* Лёгкое «ужатие» круглых кнопок при клике. */
+html .messenger-shell .icon-btn:active,
+html .messenger-shell .round-btn:active,
+html .messenger-shell .send-btn:active {
+    transform: scale(0.9);
+}
+
+/* Едва заметное приподнятие строки чата при наведении (hover-устройства). */
+@media (hover: hover) {
+    html .messenger-shell .row-item:not(.active):hover {
+        background: var(--ms-hover);
+    }
+}
+
+/* ==========================================================================
+   Доступность: единый видимый фокус при навигации с клавиатуры.
+   ========================================================================== */
+html .messenger-shell button:focus-visible,
+html .messenger-shell a:focus-visible,
+html .messenger-shell [role='button']:focus-visible,
+html .messenger-shell [role='menuitem']:focus-visible {
+    outline: 2px solid var(--ms-accent);
+    outline-offset: 2px;
 }

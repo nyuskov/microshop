@@ -421,27 +421,7 @@ const hasMyReaction = (message: Message, emoji: string): boolean =>
   color: #8a98a3;
 }
 
-/* Общие круглые кнопки */
-.round-btn {
-  background: none;
-  border: none;
-  color: #5b6b79;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1rem;
-  cursor: pointer;
-  padding: 0;
-}
-
-.round-btn:hover {
-  background: rgba(0, 0, 0, 0.07);
-  color: #1d2731;
-}
-
+/* Общие круглые кнопки (геометрия — в assets/appearance.css) */
 .round-btn.danger:hover {
   color: #d64545;
 }

@@ -202,45 +202,6 @@ watch(newMessage, () => {
   position: relative;
 }
 
-.icon-btn {
-  background: none;
-  border: none;
-  color: #52626f;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.05rem;
-  cursor: pointer;
-}
-
-.icon-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: #202b34;
-}
-
-.round-btn {
-  background: none;
-  border: none;
-  color: #5b6b79;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1rem;
-  cursor: pointer;
-  padding: 0;
-}
-
-.round-btn:hover {
-  background: rgba(0, 0, 0, 0.07);
-  color: #1d2731;
-}
-
 .round-btn.muted {
   color: #9aa7b2;
 }

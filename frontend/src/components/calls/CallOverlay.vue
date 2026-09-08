@@ -127,6 +127,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useCallStore } from '@/stores/call'
 import { mediaUrl } from '@/services/chatService'
+import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
 
 const callStore = useCallStore()
 
@@ -147,29 +148,9 @@ const displayName = computed<string>(() => {
   return name ? name : `Пользователь ${callStore.peerId ?? ''}`.trim()
 })
 
-const displayNameInitials = computed<string>(() => {
-  const clean = displayName.value.trim()
-  if (!clean) return '?'
-  const parts = clean.split(/\s+/)
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
-  return clean.slice(0, 2).toUpperCase()
-})
+const displayNameInitials = computed<string>(() => userInitials(displayName.value))
 
-const avatarStyle = (name: string): Record<string, string> => {
-  const colors = [
-    'linear-gradient(135deg,#5b9bd5,#2e75b6)',
-    'linear-gradient(135deg,#69b578,#2f8f5b)',
-    'linear-gradient(135deg,#e58e7a,#c25e4a)',
-    'linear-gradient(135deg,#b28ce0,#7c53b8)',
-    'linear-gradient(135deg,#f0a35e,#d97b2b)',
-    'linear-gradient(135deg,#6fc3c9,#2f9aa3)'
-  ]
-  let hash = 0
-  for (let i = 0; i < name.length; i += 1) {
-    hash = (hash * 31 + name.charCodeAt(i)) >>> 0
-  }
-  return { background: colors[hash % colors.length] }
-}
+const avatarStyle = (name: string): Record<string, string> => userAvatarStyle(name)
 
 const attachStreams = () => {
   const remote = callStore.getRemoteStream()
@@ -234,7 +215,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   background: radial-gradient(1200px 700px at 50% 20%, #243143, #10161e 70%);
   color: #fff;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--ms-font);
   user-select: none;
   overflow: hidden;
 }
@@ -434,11 +415,11 @@ onBeforeUnmount(() => {
 }
 
 .ctl-btn.accept {
-  background: #2ea25e;
+  background: var(--ms-accent, #2ea25e);
 }
 
 .ctl-btn.accept:hover {
-  background: #39b56c;
+  background: var(--ms-accent-strong, #26884a);
 }
 
 .ctl-btn.danger {

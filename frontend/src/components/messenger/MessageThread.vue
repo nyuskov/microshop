@@ -34,7 +34,9 @@
           @open-image="emit('open-image', row.message)"
         />
       </template>
-      <div v-if="!rows.length" class="chat-status">Сообщений пока нет. Напишите первым!</div>
+      <div v-if="!rows.length" class="chat-status">
+        <EmptyState compact title="Сообщений пока нет. Напишите первым!" />
+      </div>
     </template>
   </div>
 </template>
@@ -44,6 +46,7 @@ import { ref } from 'vue'
 import type { Message } from '@/types'
 import type { MessageRow as ThreadRow } from '@/utils/thread'
 import MessageRow from '@/components/messenger/MessageRow.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 
 interface MessageQuote {
   name: string

@@ -269,7 +269,7 @@ const closePreview = () => {
   background: rgba(8, 11, 15, 0.82);
   backdrop-filter: blur(3px);
   padding: 18px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--ms-font);
 }
 
 .rvm-modal-card {

@@ -61,5 +61,29 @@ export default defineConfig({
     hmr: {
       overlay: false // Disable the HMR error overlay
     }
+  },
+  // Разбивка бандла: стабильные vendor-чанки (quasar отдельно, vue-стек отдельно),
+  // чтобы не грузить один 800+кБ файл и лучше кэшировать неизменяемые библиотеки.
+  build: {
+    // quasar — единый большой фреймворк-чанк, поэтому порог чуть выше типового.
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('quasar')) return 'quasar'
+          if (
+            id.includes('/vue/') ||
+            id.includes('@vue') ||
+            id.includes('vue-router') ||
+            id.includes('pinia')
+          ) {
+            return 'vue-vendor'
+          }
+          if (id.includes('/axios/') || id.includes('/zod/')) return 'http-vendor'
+          return undefined
+        }
+      }
+    }
   }
 })

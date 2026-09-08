@@ -326,7 +326,8 @@ node node_modules/prettier/bin/prettier.cjs --write <files> # формат
 
 ### Ключевые точки
 
-- `main.ts` — Quasar 2 (Dialog/Notify, lang ru, Material-иконки), тема/оформление через `stores/theme.ts` (`data-theme`, токены `--ms-*`), инициализация auth.
+- `main.ts` — Quasar 2 (Dialog/Notify, lang ru, **Material-иконки outlined** — `@quasar/extras/material-icons-outlined`; Quasar рендерит `<q-icon>` с классом `.material-icons`, на него в `quasar.css` повешен алиас шрифта), тема/оформление через `stores/theme.ts` (`data-theme`, токены `--ms-*`; тема ставится ДО первого кадра inline-скриптом в `index.html`, чтобы не мигала), инициализация auth.
+- Оформление: токены тем `--ms-*` + `color-scheme` и глобальные оверрайды над scoped-стилями — в `assets/appearance.css`; `assets/quasar.css` приводит Material-компоненты к токенам; базовая геометрия кнопок (`.icon-btn`/`.round-btn`) — общая в `appearance.css`; «пустые состояния» — общий компонент `components/common/EmptyState.vue`; иконка приложения — `public/favicon.svg` (+ `manifest.webmanifest`).
 - `router/index.ts` — `/` → `Messenger.vue`, `/auth/login/` → `Login`; guard на auth.
 - `stores/auth.ts`:
   - состояние: `user`, `current_user`, `isAuthenticated`, `accessToken`, `refreshToken` (в localStorage);
@@ -344,9 +345,9 @@ node node_modules/prettier/bin/prettier.cjs --write <files> # формат
 - `Login.vue` / `LoginModal.vue` — вход по SMS (шаг телефон → OTP, автофокус кода).
 - Компоненты мессенджера вынесены в `components/messenger/` (`ChatSidebar`, `ChatHeader`, `MessageThread`, `MessageRow`, `MessageComposer`, `PinnedBar`, `InlineSearchBar`, `ChatPlaceholder`, `ChatInfo`, `ForwardDialog`); медиа — в `components/media/` (лайтбокс, голос/видео/кружки, GIF-пикер); звонки — `components/calls/`. Реактивное присутствие/печать — `composables/usePeerActivity`, realtime-оркестрация — `composables/useRealtimeSync`, запись — `useRecordButton`.
 
-### Иконки (Material)
+### Иконки (Material, outlined)
 
-После миграции на Quasar используются Material-иконки через `<q-icon name="…">` (напр. `call`, `videocam`, `mic`, `push_pin`, `sentiment_satisfied_alt`, `check`, `send`, `download`…). Галочки прочтения — текстовые `✓✓`. Не используйте классы PrimeIcons `pi pi-*` (шрифт не подключён).
+После миграции на Quasar используются Material-иконки через `<q-icon name="…">` (напр. `call`, `videocam`, `mic`, `push_pin`, `sentiment_satisfied_alt`, `check`, `send`, `download`…). Подключён вариант **outlined** (`material-icons-outlined.css`): Quasar рендерит `<q-icon>` с классом `.material-icons`, которому в `quasar.css` задан `font-family: 'Material Icons Outlined'` — тот же набор имён, более современное начертание. Галочки прочтения — текстовые `✓✓`. Не используйте классы PrimeIcons `pi pi-*` (шрифт не подключён).
 
 ## 7. Общие правила и «грабли» (важно помнить)
 
@@ -394,9 +395,9 @@ docker exec -it microshop-db-1 psql -U postgres -d microshop
 ## 9. Известные ограничения / TODO
 
 - Групповые чаты не реализованы (модель личных чатов).
-- Нет WebSocket — используется polling 3 с.
+- Realtime — WebSocket-канал + «страховочный» polling 20 с (поллинг 3 с убран).
 - SMS-провайдер не подключён (код пишется в лог).
-- Dark-тема и оформление профиля/логина не полностью адаптированы под тёмный режим.
+- Профиль и вход — намеренно «светлые листы» (карточка целиком светлая в обеих темах, читаема в тёмной); остальной интерфейс токенизирован под свет/тьму.
 - Удаление аватара/файлов не затрагивает записи истории (намеренно).
 - Legacy-модули (products/posts/telegram) не поддерживаются в рамках мессенджера.
 
