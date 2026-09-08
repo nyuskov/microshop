@@ -1753,6 +1753,7 @@ watch(
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  overflow: hidden; /* не даём контенту распирать панель и создавать скролл страницы */
   background-image: radial-gradient(
     circle at 1px 1px,
     rgba(120, 144, 156, 0.12) 1px,

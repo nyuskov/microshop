@@ -133,7 +133,9 @@ defineExpose({ scrollToBottom, isNearBottom, capture, restoreScroll, reveal })
 <style scoped>
 .messages-scroll {
   flex: 1;
+  min-height: 0; /* чтобы лента скроллилась внутри, а не растягивала панель */
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px 16px;
   display: flex;
   flex-direction: column;
