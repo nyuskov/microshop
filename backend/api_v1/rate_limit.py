@@ -9,6 +9,8 @@ import logging
 import time
 from collections import defaultdict, deque
 
+from fastapi import HTTPException, status
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,3 +53,29 @@ rate_limiter = SlidingWindowLimiter()
 def rate_limit_key(scope: str, value: str) -> str:
     """Ключ лимита: область применения + значение (например, IP-адрес)."""
     return f"{scope}:{value}"
+
+
+async def enforce_limit(
+    *,
+    scope: str,
+    value: str,
+    limit: int,
+    window_seconds: int,
+    detail: str,
+) -> None:
+    """Проверяет скользящий лимит и бросает HTTP 429 при превышении.
+
+    Используется и для публичных (по IP), и для авторизованных (по user.id)
+    эндпоинтов — единая точка, чтобы не дублировать логику по вьюхам.
+    """
+    allowed = await rate_limiter.allow(
+        rate_limit_key(scope, value),
+        limit=limit,
+        window_seconds=window_seconds,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=detail,
+            headers={"Retry-After": str(window_seconds)},
+        )

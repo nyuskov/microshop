@@ -11,6 +11,7 @@ from api_v1.messages import crud
 from api_v1.messages.schemas import EditMessageRequest, ForwardMessageRequest
 from api_v1.messages.schemas import Message as MessageSchema
 from api_v1.messages.schemas import MessageCreate
+from api_v1.rate_limit import enforce_limit
 from api_v1.upload_guard import validate_attachment_upload
 from core.celery_app import get_task
 from core.config import settings
@@ -25,6 +26,19 @@ MEDIA_DIR = Path(__file__).resolve().parent.parent.parent / "media"
 # Лимит размера вложения настраивается через env (см. Settings.max_upload_size_bytes).
 MAX_UPLOAD_SIZE = settings.max_upload_size_bytes
 MAX_UPLOAD_MB = MAX_UPLOAD_SIZE // (1024 * 1024)
+
+
+async def _enforce_user_rate_limit(
+    user: User, *, scope: str, limit: int
+) -> None:
+    """Per-user лимит (по user.id) на «дорогие»/«писательские» действия."""
+    await enforce_limit(
+        scope=scope,
+        value=str(user.id),
+        limit=limit,
+        window_seconds=60,
+        detail="Слишком много запросов. Попробуйте позже.",
+    )
 
 
 class PinRequest(BaseModel):
@@ -57,6 +71,11 @@ async def create_new_message(
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
     """Отправляет текстовое сообщение от имени текущего пользователя."""
+    await _enforce_user_rate_limit(
+        user,
+        scope="messages:send",
+        limit=settings.message_send_limit_per_minute,
+    )
     return await crud.send_text_message(
         session=session,
         chat_id=message.chat_id,
@@ -89,6 +108,11 @@ async def forward_message(
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
     """Пересылает сообщение из одного своего чата в другой."""
+    await _enforce_user_rate_limit(
+        user,
+        scope="messages:forward",
+        limit=settings.message_forward_limit_per_minute,
+    )
     return await crud.forward_message(
         session=session,
         source_message_id=payload.message_id,
@@ -110,6 +134,11 @@ async def create_attachment_message(
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
     """Отправляет файл/изображение как сообщение (тело запроса — байты файла)."""
+    await _enforce_user_rate_limit(
+        user,
+        scope="messages:upload",
+        limit=settings.message_upload_limit_per_minute,
+    )
     content = await request.body()
     if not content:
         raise HTTPException(
@@ -180,6 +209,11 @@ async def send_gif_message(
     после чего через мост realtime-событий web уведомляет живые WebSocket-клиенты
     (``message.new``) — сообщение появляется в чате автоматически.
     """
+    await _enforce_user_rate_limit(
+        user,
+        scope="messages:gif",
+        limit=settings.message_upload_limit_per_minute,
+    )
     parsed = urlparse(payload.url)
     host = (parsed.hostname or "").lower()
     if (
@@ -220,6 +254,11 @@ async def search_messages_endpoint(
     query = q.strip()
     if not query:
         return []
+    await _enforce_user_rate_limit(
+        user,
+        scope="messages:search",
+        limit=settings.message_search_limit_per_minute,
+    )
     return await crud.search_messages(
         session,
         user_id=user.id,

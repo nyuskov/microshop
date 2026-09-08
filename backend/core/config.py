@@ -13,7 +13,9 @@ BASE_DIR = Path(__file__).parent.parent
 # без окружения. Никогда не используйте его на реальном сервере. При docker-запуске
 # секрет обязательно приходит из корневого .env (переменная JWT_SECRET_KEY); если он
 # не задан — в лог пишется предупреждение (см. конец файла).
-_DEV_JWT_SECRET_KEY = "0b7a392c19cb1a102061ec65bb016b50cd506c2257739c6348df9e8d373bc405"
+_DEV_JWT_SECRET_KEY = (
+    "0b7a392c19cb1a102061ec65bb016b50cd506c2257739c6348df9e8d373bc405"
+)
 
 
 class AuthJWT(BaseSettings):
@@ -75,6 +77,16 @@ class Settings(BaseSettings):
     auth_otp_request_limit_per_minute: int = 5
     auth_otp_verify_limit_per_minute: int = 10
     auth_token_login_limit_per_minute: int = 20
+
+    # Rate limiting «дорогих»/«писательских» АВТОРИЗОВАННЫХ эндпоинтов.
+    # Ключ — пользователь (а не IP): защита от злоупотребления/случайного
+    # runaway на уровне аккаунта (спам сообщениями, тяжёлый поиск, загрузки).
+    message_send_limit_per_minute: int = 30
+    message_forward_limit_per_minute: int = 20
+    message_upload_limit_per_minute: int = 10
+    message_search_limit_per_minute: int = 60
+    user_search_limit_per_minute: int = 60
+    avatar_upload_limit_per_minute: int = 10
 
     # Лимиты загрузок (в байтах), переопределяются через env.
     max_upload_size_bytes: int = 15 * 1024 * 1024

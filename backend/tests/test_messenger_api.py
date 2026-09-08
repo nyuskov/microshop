@@ -612,3 +612,70 @@ async def test_otp_bruteforce_burns_code_and_locks_phone(
         json={"phone_number": phone, "otp": "999999"},
     )
     assert locked.status_code == 429
+
+
+# --- Per-user rate limit на «дорогих»/«писательских» эндпоинтах ------------
+
+
+async def test_send_message_rate_limit(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Превышение лимита отправки одним пользователем → 429."""
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "message_send_limit_per_minute", 3)
+
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    t1 = await api.token_for(u1)
+    chat = await api.private_chat(t1, u2.id)
+
+    # Первые три отправки проходят.
+    for _ in range(3):
+        await api.send(t1, chat["id"], "норм")
+
+    # Четвёртая — 429 (лимит на пользователя, не на IP).
+    resp = await api.client.post(
+        "/api/v1/messages/",
+        json={"chat_id": chat["id"], "text": "лишнее"},
+        headers=api.auth(t1),
+    )
+    assert resp.status_code == 429
+
+    # Другой пользователь своим лимитом не исчерпан (ключ — user.id).
+    t2 = await api.token_for(u2)
+    ok = await api.client.post(
+        "/api/v1/messages/",
+        json={"chat_id": chat["id"], "text": "от второго"},
+        headers=api.auth(t2),
+    )
+    assert ok.status_code == 200, ok.text
+
+
+async def test_user_search_rate_limit(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Поиск людей тоже ограничен в минуту на пользователя."""
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "user_search_limit_per_minute", 2)
+
+    me = await api.make_user()
+    target = await api.make_user()
+    token = await api.token_for(me)
+    query = target.username[:8]
+
+    for _ in range(2):
+        resp = await api.client.get(
+            "/api/v1/users/search/",
+            params={"q": query},
+            headers=api.auth(token),
+        )
+        assert resp.status_code == 200, resp.text
+
+    limited = await api.client.get(
+        "/api/v1/users/search/",
+        params={"q": query},
+        headers=api.auth(token),
+    )
+    assert limited.status_code == 429

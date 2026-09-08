@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user
+from api_v1.rate_limit import enforce_limit
 from api_v1.upload_guard import validate_image_upload
 from api_v1.users import crud, schemas
 from core.config import settings
@@ -50,7 +51,16 @@ async def search_users(
     query = q.strip()
     if not query:
         return []
-    return await crud.search_users_by_query(session, query, exclude_user_id=user.id)
+    await enforce_limit(
+        scope="users:search",
+        value=str(user.id),
+        limit=settings.user_search_limit_per_minute,
+        window_seconds=60,
+        detail="Слишком много запросов. Попробуйте позже.",
+    )
+    return await crud.search_users_by_query(
+        session, query, exclude_user_id=user.id
+    )
 
 
 @router.get("/contacts/", response_model=list[schemas.UserSearchResultSchema])
@@ -70,6 +80,13 @@ async def upload_my_avatar(
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
     """Загружает фото на аватар текущего пользователя (тело — байты файла)."""
+    await enforce_limit(
+        scope="users:avatar",
+        value=str(user.id),
+        limit=settings.avatar_upload_limit_per_minute,
+        window_seconds=60,
+        detail="Слишком много запросов. Попробуйте позже.",
+    )
     ext = ext.lower().lstrip(".")
     if ext not in ALLOWED_AVATAR_EXTS:
         raise HTTPException(
