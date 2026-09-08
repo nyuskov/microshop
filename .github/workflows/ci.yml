@@ -102,7 +102,11 @@ jobs:
         run: pnpm --prefix frontend exec vitest run
 
       - name: Production build (vite)
+        env:
+          VITE_TELEGRAM_BOT_USERNAME: ${{ secrets.VITE_TELEGRAM_BOT_USERNAME }}
+          VITE_API_ORIGIN: https://pismo.space
         run: pnpm --prefix frontend exec vite build
+
 
       - name: Upload frontend build artifact
         uses: actions/upload-artifact@v4
