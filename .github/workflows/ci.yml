@@ -142,5 +142,6 @@ jobs:
           script: |
             cd ~/microshop
             git pull
-            docker compose -f docker-compose.test.yaml up -d --build
+            # Добавили флаг -p и --force-recreate, чтобы Docker гарантированно обновлял код
+            docker compose -f docker-compose.test.yaml -p microshop-test up -d --build --force-recreate
             docker system prune -f
