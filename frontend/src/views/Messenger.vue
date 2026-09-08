@@ -317,6 +317,7 @@ const ImageLightbox = defineAsyncComponent(() => import('@/components/media/Imag
 import { useCallStore } from '@/stores/call'
 import { useRealtimeStore } from '@/stores/realtime'
 import { mediaFileName, type RecordedMedia } from '@/services/recorder'
+import { enablePushNotifications } from '@/services/pwa'
 
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
@@ -1661,11 +1662,45 @@ watch(
 onMounted(async () => {
   await authStore.initializeApp()
   window.addEventListener('beforeunload', handleBeforeUnload)
+  window.addEventListener('message', handleWindowMessage)
   scrollToBottom()
+
+  // Web Push (PWA): после входа один раз запрашиваем разрешение/подписку.
+  if (authStore.isAuthenticated) {
+    void enablePushNotifications()
+  }
+
+  // Холодный старт по уведомлению: открыли через /?chat=<id>.
+  const chatParam = new URLSearchParams(window.location.search).get('chat')
+  if (chatParam && /^\d+$/.test(chatParam)) {
+    void openChatFromPush(Number(chatParam))
+  }
 })
+
+/** Открывает чат по push-уведомлению (данные приходят из service worker). */
+const openChatFromPush = async (chatId: number) => {
+  if (!authStore.isAuthenticated) return
+  if (!chats.value.some((c) => c.id === chatId)) {
+    try {
+      chats.value = await fetchMyChats()
+    } catch {
+      return
+    }
+  }
+  await openChatThread(chatId)
+  if (!isDesktop.value) drawerOpen.value = false
+}
+
+/** Слушаем сообщения от service worker (клик по уведомлению). */
+const handleWindowMessage = (event: MessageEvent) => {
+  const data = event.data as { type?: string; chat_id?: number } | null
+  if (!data || data.type !== 'open-chat' || typeof data.chat_id !== 'number') return
+  void openChatFromPush(data.chat_id)
+}
 
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload)
+  window.removeEventListener('message', handleWindowMessage)
   stopRealtime()
   realtimeStore.setHandler(null)
   if (highlightTimer !== undefined) {

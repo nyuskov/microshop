@@ -142,6 +142,21 @@ class Settings(BaseSettings):
     # Подпись отправителя, зарегистрированная в SMS Aero (если нужна).
     sms_aero_sign: str | None = Field(default=None, validation_alias="SMS_AERO_SIGN")
 
+    # --- Web Push уведомления (PWA, когда приложение закрыто) ---
+    # VAPID-ключи генерируются один раз (см. README). Пока они не заданы —
+    # push выключен (публичный ключ пустой, отправка не выполняется).
+    web_push_vapid_public_key: str | None = Field(
+        default=None, validation_alias="WEB_PUSH_VAPID_PUBLIC_KEY"
+    )
+    web_push_vapid_private_key: str | None = Field(
+        default=None, validation_alias="WEB_PUSH_VAPID_PRIVATE_KEY"
+    )
+    # Контакт для push-сервиса (mailto:).
+    web_push_vapid_subject: str = Field(
+        default="mailto:admin@pismo.space",
+        validation_alias="WEB_PUSH_VAPID_SUBJECT",
+    )
+
 
 settings = Settings()
 

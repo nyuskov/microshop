@@ -103,3 +103,58 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(staleWhileRevalidate(request))
   }
 })
+
+// ---------- Web Push (уведомления о новых сообщениях) ----------
+
+self.addEventListener('push', (event) => {
+  let payload = {}
+  try {
+    payload = event.data ? event.data.json() : {}
+  } catch {
+    payload = { body: event.data ? event.data.text() : '' }
+  }
+  const title = payload.title || 'Microshop'
+  const options = {
+    body: payload.body || '',
+    icon: payload.icon || '/icons/icon-192.png',
+    badge: payload.badge || '/icons/icon-192.png',
+    data: payload.data || {},
+    tag: payload.data && payload.data.chat_id ? 'chat-' + payload.data.chat_id : undefined
+  }
+  event.waitUntil(self.registration.showNotification(title, options))
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const data = event.notification.data || {}
+  event.waitUntil(
+    (async () => {
+      // Если окно приложения открыто — фокусируем и просим открыть нужный чат.
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      for (const client of windows) {
+        if ('focus' in client) {
+          client.focus()
+          if (data.type === 'message' && data.chat_id) {
+            client.postMessage({
+              type: 'open-chat',
+              chat_id: data.chat_id,
+              message_id: data.message_id || null
+            })
+          }
+          return
+        }
+      }
+      // Приложение закрыто — открываем и передаём id чата в URL (?chat=).
+      const url =
+        data.type === 'message' && data.chat_id ? '/?chat=' + encodeURIComponent(data.chat_id) : '/'
+      const win = await self.clients.openWindow(url)
+      if (win && data.type === 'message' && data.chat_id) {
+        win.postMessage({
+          type: 'open-chat',
+          chat_id: data.chat_id,
+          message_id: data.message_id || null
+        })
+      }
+    })()
+  )
+})

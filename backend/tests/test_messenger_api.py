@@ -943,3 +943,28 @@ async def test_password_register_sets_password_for_otp_created_user(
         json={"phone_number": phone, "password": "brand-new-pass"},
     )
     assert login.status_code == 200, login.text
+
+
+# --- Web Push (PWA-уведомления) -------------------------------------------
+
+
+async def test_push_public_key_empty_when_no_vapid(api: _ApiCtx) -> None:
+    """Без VAPID-ключей push отключён (публичный ключ пустой)."""
+    r = await api.client.get("/api/v1/push/public-key/")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["public_key"] == ""
+    assert body["enabled"] is False
+
+
+async def test_push_subscribe_requires_auth(api: _ApiCtx) -> None:
+    """Регистрация подписки — только для авторизованного пользователя."""
+    r = await api.client.post(
+        "/api/v1/push/subscribe/",
+        json={
+            "endpoint": "https://push.example.com/sub/abc",
+            "p256dh": "AAAA-test",
+            "auth": "BBBB-test",
+        },
+    )
+    assert r.status_code == 401
