@@ -15,8 +15,18 @@
 
 name: microshop-prod
 
+# Общая ротация docker-логов.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
+    logging: *default-logging
+    mem_limit: 1g
+    cpus: 2.0
     image: postgres:18
     restart: unless-stopped
     environment:
@@ -36,6 +46,9 @@ services:
 
   # Разовые миграции перед стартом web.
   migrate:
+    logging: *default-logging
+    mem_limit: 512m
+    cpus: 1.0
     build:
       context: .
       dockerfile: ./backend/Dockerfile
@@ -50,6 +63,9 @@ services:
       - server_network
 
   web:
+    logging: *default-logging
+    mem_limit: 768m
+    cpus: 1.5
     build:
       context: .
       dockerfile: ./backend/Dockerfile
@@ -84,6 +100,9 @@ services:
 
   # Брокер очередей (Celery + мост realtime-событий). Порт наружу не публикуем.
   rabbitmq:
+    logging: *default-logging
+    mem_limit: 512m
+    cpus: 1.0
     image: rabbitmq:4-management
     restart: unless-stopped
     environment:
@@ -103,6 +122,9 @@ services:
   # Воркер фоновых задач Celery. Общий media-каталог с web (worker пишет файлы,
   # web отдаёт их через /media и раздаёт realtime-события).
   worker:
+    logging: *default-logging
+    mem_limit: 1g
+    cpus: 1.5
     build:
       context: .
       dockerfile: ./backend/Dockerfile
@@ -124,6 +146,9 @@ services:
 
   # Планировщик периодических задач (celery beat) — очистка media по расписанию.
   beat:
+    logging: *default-logging
+    mem_limit: 256m
+    cpus: 0.5
     build:
       context: .
       dockerfile: ./backend/Dockerfile
@@ -140,6 +165,9 @@ services:
       - server_network
 
   frontend:
+    logging: *default-logging
+    mem_limit: 128m
+    cpus: 0.5
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod

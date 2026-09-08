@@ -63,6 +63,13 @@ class Settings(BaseSettings):
     auth_otp_max_attempts: int = 5
     # Минимальная пауза между повторными отправками кода на номер.
     auth_otp_resend_cooldown_seconds: int = 30
+    # Максимум запросов кода на ОДИН номер в час (защита от «SMS-бомбинга»
+    # номера жертвы с распределённых IP; не зависит от IP-лимитов).
+    auth_otp_request_per_phone_per_hour: int = 10
+    # На сколько секунд блокируется ввод кода для номера после «сгорания»
+    # (превышения попыток) — чтобы нельзя было бесконечно циклить
+    # «новый код → 5 попыток перебора».
+    auth_otp_verify_lockout_seconds: int = 120
 
     # Rate limiting публичных auth-эндпоинтов (лимит запросов в минуту с одного IP).
     auth_otp_request_limit_per_minute: int = 5

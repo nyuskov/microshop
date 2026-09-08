@@ -20,16 +20,13 @@ from .jwt import get_jwt_strategy
 from .otp_storage import (
     OtpVerifyResult,
     can_request_new_code,
+    mark_phone_verify_lockout,
+    phone_verify_locked_out,
     store_otp,
     verify_otp,
 )
 from .refresh_sessions import issue_refresh_token
-from .schemas import (
-    OTPResponse,
-    RequestOTPRequest,
-    TokenResponse,
-    VerifyOTPRequest,
-)
+from .schemas import OTPResponse, RequestOTPRequest, TokenResponse, VerifyOTPRequest
 from .utils import authenticate_user
 
 logger = logging.getLogger(__name__)
@@ -47,16 +44,34 @@ _AUTH_LIMIT_WINDOW_SECONDS = 60
 async def _enforce_ip_limit(request: Request, *, scope: str, limit: int) -> None:
     """Ограничивает число запросов с одного IP за окно времени."""
     client_ip = request.client.host if request.client is not None else "unknown"
-    allowed = await rate_limiter.allow(
-        rate_limit_key(scope, client_ip),
+    await _enforce_limit(
+        scope=scope,
+        value=client_ip,
         limit=limit,
         window_seconds=_AUTH_LIMIT_WINDOW_SECONDS,
+        detail="Слишком много запросов. Попробуйте позже.",
+    )
+
+
+async def _enforce_limit(
+    *,
+    scope: str,
+    value: str,
+    limit: int,
+    window_seconds: int,
+    detail: str,
+) -> None:
+    """Общий скользящий лимит (по IP или по номеру телефона)."""
+    allowed = await rate_limiter.allow(
+        rate_limit_key(scope, value),
+        limit=limit,
+        window_seconds=window_seconds,
     )
     if not allowed:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Слишком много запросов. Попробуйте позже.",
-            headers={"Retry-After": str(_AUTH_LIMIT_WINDOW_SECONDS)},
+            detail=detail,
+            headers={"Retry-After": str(window_seconds)},
         )
 
 
@@ -157,6 +172,24 @@ async def request_otp(
             headers={"Retry-After": str(cooldown)},
         )
 
+    # Часовой лимит запросов кода на конкретный номер (независимо от IP).
+    # Проверяем ПОСЛЕ кулдауна, чтобы неудачные попытки (заблокированные
+    # кулдауном) не расходовали «бюджет» номера.
+    phone_hour_limit = settings.auth_otp_request_per_phone_per_hour
+    if not await rate_limiter.allow(
+        rate_limit_key("auth:request-otp-phone", phone_number),
+        limit=phone_hour_limit,
+        window_seconds=3600,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                "Слишком много запросов кода на этот номер за последний час. "
+                "Попробуйте позже."
+            ),
+            headers={"Retry-After": "3600"},
+        )
+
     otp_code = generate_otp_code()
     await store_otp(
         session,
@@ -182,6 +215,19 @@ async def verify_otp_endpoint(
         limit=settings.auth_otp_verify_limit_per_minute,
     )
     phone_number = request_data.phone_number
+
+    # Блокировка номера после перебора: не даём сразу запросить новый код
+    # и продолжить подбор.
+    if phone_verify_locked_out(phone_number):
+        lockout = settings.auth_otp_verify_lockout_seconds
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                "Слишком много неверных попыток. " f"Попробуйте через {lockout} секунд."
+            ),
+            headers={"Retry-After": str(lockout)},
+        )
+
     result = await verify_otp(
         session,
         phone_number=phone_number,
@@ -190,6 +236,11 @@ async def verify_otp_endpoint(
     )
     if result is not OtpVerifyResult.OK:
         if result is OtpVerifyResult.TOO_MANY:
+            # Код «сгорел» — ставим номер на паузу от дальнейшего перебора.
+            mark_phone_verify_lockout(
+                phone_number,
+                duration_seconds=settings.auth_otp_verify_lockout_seconds,
+            )
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Слишком много неверных попыток. Запросите новый код.",

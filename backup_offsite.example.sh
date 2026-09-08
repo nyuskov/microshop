@@ -44,4 +44,18 @@ if [ "${ARCHIVE_KEEP_OFFSITE}" -gt 0 ] && [ -d "${LOCAL_DUMP_DIR}/${ARCHIVE_SUBD
     done
 fi
 
+# 3. Медиафайлы (вложения/аватары) — снимок из ./backup_media.sh, если есть.
+if [ -f "${LOCAL_DUMP_DIR}/media_latest.tar.gz" ]; then
+    rclone copy "${LOCAL_DUMP_DIR}/media_latest.tar.gz" "${RCLONE_REMOTE}/" \
+        --log-file="$LOG_FILE" 2>>"$LOG_FILE" || log "ошибка выгрузки media_latest"
+    if [ "${ARCHIVE_KEEP_OFFSITE}" -gt 0 ] && [ -d "${LOCAL_DUMP_DIR}/${ARCHIVE_SUBDIR}" ]; then
+        mapfile -t mfiles < <(ls -1t "${LOCAL_DUMP_DIR}/${ARCHIVE_SUBDIR}/"media_*.tar.gz 2>/dev/null | head -n "${ARCHIVE_KEEP_OFFSITE}" || true)
+        for file in "${mfiles[@]:-}"; do
+            [ -n "$file" ] || continue
+            rclone copy "$file" "${RCLONE_REMOTE}/${ARCHIVE_SUBDIR}/" \
+                --log-file="$LOG_FILE" 2>>"$LOG_FILE" || log "ошибка выгрузки $(basename "$file")"
+        done
+    fi
+fi
+
 log "Выгрузка завершена"

@@ -113,11 +113,15 @@ docker compose up --build  # из корня microshop
 |---|---|---|
 | Автодамп перед сбросом | `./entry.sh` | дамп в `./db_dump/microshop_latest.sql`, затем `down -v` |
 | Ручной дамп | `./dump_db.sh` | в любой момент (сервис `db` поднимет сам, если нужно) |
-| **Автодамп по cron** | `./install_cron_backup.sh` (однократно) | ежедневно в 03:00 — см. ниже |
+| Ручной бэкап media | `./backup_media.sh` | в любой момент — файлы вложений/аватаров в `db_dump/` |
+| **Автодамп по cron** | `./install_cron_backup.sh` (однократно) | ежедневно в 03:00 — БД **и** media, см. ниже |
 | Авто-restore | `docker compose up` | только когда volume БД создан заново/пуст (после `down -v`): postgres сам выполняет `./db_dump/*.sql` из `/docker-entrypoint-initdb.d` |
 | Ручной restore | `./restore_db.sh [файл.sql]` | перезаписывает данные в запущенной БД (осторожно!) |
 
-- Актуальный дамп: `db_dump/microshop_latest.sql`; архивные копии по датам — `db_dump/archive/`. Папка `db_dump/` в `.gitignore` (в git лежат только пустые `.gitkeep`).
+- Актуальный дамп БД: `db_dump/microshop_latest.sql`; актуальный снимок media:
+  `db_dump/media_latest.tar.gz`; архивные копии по датам — `db_dump/archive/`
+  (`microshop_<дата>.sql` и `media_<дата>.tar.gz`). Папка `db_dump/` в `.gitignore`
+  (в git лежат только пустые `.gitkeep`).
 
 #### Автоматический дамп по cron (регулярное резервное копирование)
 
@@ -132,8 +136,9 @@ CRON_SCHEDULE='0 */6 * * *' ./install_cron_backup.sh
 Что происходит по расписанию (скрипт `./cron_dump_db.sh`):
 
 - запускается `./dump_db.sh` — обновляется `db_dump/microshop_latest.sql` и создаётся архивная копия `db_dump/archive/microshop_<дата>.sql`;
+- запускается `./backup_media.sh` — обновляется `db_dump/media_latest.tar.gz` (вложения/аватары из `backend/media` либо docker-тома `*_media_data`) и создаётся архив `db_dump/archive/media_<дата>.tar.gz`;
 - пишется лог в `db_dump/logs/cron.log`;
-- хранится только последние **30** архивных копий (лимит задаётся переменной `ARCHIVE_KEEP`, лог — `DUMP_LOG_FILE`).
+- хранится только последние **30** архивных копий каждого типа (лимит задаётся переменной `ARCHIVE_KEEP`, лог — `DUMP_LOG_FILE`).
 
 Проверка/удаление задачи:
 

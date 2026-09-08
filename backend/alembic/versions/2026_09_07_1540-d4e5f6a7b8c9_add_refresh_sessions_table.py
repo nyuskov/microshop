@@ -31,9 +31,7 @@ def upgrade() -> None:
             sa.ForeignKey("user.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        sa.Column(
-            "jti_hash", sa.String(length=64), nullable=False, unique=True
-        ),
+        sa.Column("jti_hash", sa.String(length=64), nullable=False, unique=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -44,9 +42,7 @@ def upgrade() -> None:
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("replaced_by", sa.String(length=64), nullable=True),
     )
-    op.create_index(
-        "ix_refresh_sessions_user_id", "refresh_sessions", ["user_id"]
-    )
+    op.create_index("ix_refresh_sessions_user_id", "refresh_sessions", ["user_id"])
 
 
 def downgrade() -> None:

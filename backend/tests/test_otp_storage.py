@@ -43,6 +43,37 @@ def test_hash_is_sha256_hex() -> None:
     int(code_hash, 16)  # валидный hex
 
 
+# --- In-memory блокировка номера после перебора ------------------------
+
+
+def test_verify_lockout_blocks_and_expires() -> None:
+    from datetime import timedelta
+
+    from api_v1.auth import otp_storage
+    from api_v1.auth.otp_storage import (
+        mark_phone_verify_lockout,
+        phone_verify_locked_out,
+    )
+
+    try:
+        # Сразу после пометки номер заблокирован.
+        mark_phone_verify_lockout(PHONE, duration_seconds=60)
+        assert phone_verify_locked_out(PHONE)
+
+        # Искусственно «прокручиваем» время — блокировка снимается и чистится.
+        otp_storage._verify_lockouts[PHONE] = otp_storage._now() - timedelta(seconds=1)
+        assert not phone_verify_locked_out(PHONE)
+        assert PHONE not in otp_storage._verify_lockouts
+    finally:
+        otp_storage._verify_lockouts.pop(PHONE, None)
+
+
+def test_verify_lockout_unset_phone_is_free() -> None:
+    from api_v1.auth.otp_storage import phone_verify_locked_out
+
+    assert not phone_verify_locked_out("+79991112233")
+
+
 # --- Интеграционные тесты (нужен PostgreSQL) ---------------------------
 
 

@@ -1,6 +1,15 @@
 # docker-compose.yml
+
+# Общая ротация docker-логов (json-file не растёт бесконечно).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   web:
+    logging: *default-logging
     build:
       context: .
       dockerfile: ./backend/Dockerfile
@@ -32,6 +41,7 @@ services:
 
   # Очередь/брокер для фоновых задач (Celery) и моста realtime-событий.
   rabbitmq:
+    logging: *default-logging
     image: rabbitmq:4-management
     ports:
       # Management UI (для отладки). Внутренние подключения — только по сети.
@@ -50,6 +60,7 @@ services:
 
   # Воркер фоновых задач Celery (тот же образ backend, общий код/media).
   worker:
+    logging: *default-logging
     build:
       context: .
       dockerfile: ./backend/Dockerfile
@@ -77,6 +88,7 @@ services:
 
   # Планировщик периодических задач (celery beat) — например, очистка media.
   beat:
+    logging: *default-logging
     build:
       context: .
       dockerfile: ./backend/Dockerfile
@@ -101,6 +113,7 @@ services:
             - .git/
 
   db:
+    logging: *default-logging
     image: postgres:18
     volumes:
         - postgres_data:/var/lib/postgresql/
@@ -123,6 +136,7 @@ services:
 
   # НОВЫЙ СЕРВИС FRONTEND
   frontend:
+    logging: *default-logging
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
@@ -151,6 +165,7 @@ services:
 
 
   nginx:
+    logging: *default-logging
     image: nginx:1.27-alpine
     build:
       context: .

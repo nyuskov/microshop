@@ -26,6 +26,39 @@ class OtpVerifyResult(str, Enum):
     TOO_MANY = "too_many"
 
 
+# In-memory «замки» на номер после исчерпания попыток ввода кода (phone -> когда
+# разблокируется). Хранятся в памяти процесса: как и IP rate limiter, это валидно
+# для однопроцессного запуска. Нужно, чтобы после «сгорания» кода нельзя было
+# сразу запросить новый и снова перебирать: перебор прерывается на N минут.
+_verify_lockouts: dict[str, datetime] = {}
+
+
+def mark_phone_verify_lockout(phone_number: str, *, duration_seconds: int) -> None:
+    """Блокирует ввод кода для номера на ``duration_seconds`` секунд."""
+    _verify_lockouts[phone_number] = _now() + timedelta(seconds=duration_seconds)
+    # Держим словарь небольшим: вычищаем истёкшие замки при каждой пометке.
+    if len(_verify_lockouts) > 1024:
+        _prune_verify_lockouts()
+
+
+def phone_verify_locked_out(phone_number: str) -> bool:
+    """True, если для номера активна блокировка ввода кода (после перебора)."""
+    until = _verify_lockouts.get(phone_number)
+    if until is None:
+        return False
+    if until <= _now():
+        _verify_lockouts.pop(phone_number, None)
+        return False
+    return True
+
+
+def _prune_verify_lockouts() -> None:
+    now = _now()
+    expired = [p for p, until in _verify_lockouts.items() if until <= now]
+    for phone in expired:
+        _verify_lockouts.pop(phone, None)
+
+
 def _hash_code(phone_number: str, code: str) -> str:
     """Хеширует код с «солью» из секрета приложения — сам код в БД не хранится."""
     payload = f"{phone_number}:{code}:{settings.auth_jwt.secret_key}"

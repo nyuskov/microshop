@@ -232,14 +232,17 @@ async def search_messages_endpoint(
 @router.get("/{chat_id}/", response_model=list[MessageSchema])
 async def get_messages_for_chat(
     chat_id: int,
-    limit: int | None = Query(default=None, ge=1, le=500),
+    # По умолчанию отдаём последнюю страницу (не всю историю): за более
+    # старыми клиент идёт пагинацией через limit+before_id.
+    limit: int = Query(default=100, ge=1, le=500),
     before_id: int | None = Query(default=None, ge=1),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
     """Возвращает сообщения чата и помечает входящие как прочитанные.
 
-    Поддерживает пагинацию ``limit`` + ``before_id`` (для «более старых»).
+    Без параметров — последние ``limit`` (100) сообщений. Поддерживает
+    пагинацию ``limit`` + ``before_id`` (для «более старых»).
     """
     return await crud.list_chat_messages(
         session=session,

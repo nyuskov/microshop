@@ -36,9 +36,16 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
         exit 1
     fi
 
+    # Медиафайлы (вложения/аватары) — отдельный архив; ошибка не роняет дамп БД.
+    if ./backup_media.sh; then
+        log "Бэкап media успешно снят."
+    else
+        log "!!! Бэкап media завершился с ошибкой (код $?)."
+    fi
+
     # Чистим старые архивные копии: оставляем последние ARCHIVE_KEEP.
     if [[ "$ARCHIVE_KEEP" =~ ^[0-9]+$ ]] && [[ "$ARCHIVE_KEEP" -gt 0 ]]; then
-        # Имена вида microshop_YYYYMMDD_HHMMSS.sql: сортировка по имени == по времени.
+        # Дампы БД: имена вида microshop_YYYYMMDD_HHMMSS.sql: сортировка по имени == по времени.
         mapfile -t old_files < <(
             ls -1 "$ARCHIVE_DIR" 2>/dev/null \
                 | grep -E '\.sql$' \
@@ -49,6 +56,19 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
             [[ -z "$file" ]] && continue
             rm -f -- "$ARCHIVE_DIR/$file"
             log "Удалён старый архив: $file"
+        done
+
+        # Архивы media: имена media_YYYYMMDD_HHMMSS.tar.gz.
+        mapfile -t old_media < <(
+            ls -1 "$ARCHIVE_DIR" 2>/dev/null \
+                | grep -E '^media_[0-9]{8}_[0-9]{6}\.tar\.gz$' \
+                | sort -r \
+                | tail -n +$((ARCHIVE_KEEP + 1)) || true
+        )
+        for file in "${old_media[@]:-}"; do
+            [[ -z "$file" ]] && continue
+            rm -f -- "$ARCHIVE_DIR/$file"
+            log "Удалён старый media-архив: $file"
         done
     fi
 

@@ -20,6 +20,12 @@ from core.models import (
 
 _NOT_MEMBER_DETAIL = "Вы не являетесь участником этого чата"
 
+# Размер «страницы» истории по умолчанию. Раньше запрос без параметров отдавал
+# ВСЮ историю чата — с ростом переписки это становилось опасным (память/сеть).
+# Теперь всегда возвращается порция (последние сообщения); за более старыми
+# клиент идёт через ``before_id`` (см. list_chat_messages).
+DEFAULT_MESSAGE_PAGE_SIZE = 100
+
 # Каталог вложений сообщений (файлы сообщений, не аватары).
 MEDIA_DIR = Path(__file__).resolve().parent.parent.parent / "media"
 
@@ -36,7 +42,9 @@ def _file_payload(message: Message) -> dict | None:
     }
 
 
-def _reactions_payload(reactions: list[MessageReaction], user_id: int) -> list[dict]:
+def _reactions_payload(
+    reactions: list[MessageReaction], user_id: int
+) -> list[dict]:
     """Агрегирует реакции по эмодзи."""
     aggregated: dict[str, dict] = {}
     for reaction in reactions:
@@ -109,7 +117,9 @@ def message_basic_to_dict(message: Message) -> dict:
     }
 
 
-async def _load_message(session: AsyncSession, message_id: int) -> Message | None:
+async def _load_message(
+    session: AsyncSession, message_id: int
+) -> Message | None:
     """Загружает сообщение вместе с реакциями."""
     stmt = (
         select(Message)
@@ -123,7 +133,21 @@ async def _load_message(session: AsyncSession, message_id: int) -> Message | Non
 async def _reload_and_serialize(
     session: AsyncSession, message_id: int, user_id: int
 ) -> dict:
-    """Перезагружает сообщение после изменений и возвращает словарь API."""
+    """Перезагружает сообщение после изменений и возвращает словарь API.
+
+    Сообщение могло уже быть загружено в identity-map этой сессии (например,
+    в set_reaction мы взяли его в начале запроса). После commit с
+    ``expire_on_commit=False`` его коллекция ``reactions`` осталась бы прежней
+    (пустой при добавлении реакции), поэтому принудительно «протухаем» объект —
+    повторный selectinload вернёт актуальное состояние из БД.
+    """
+    message = await _load_message(session, message_id)
+    if message is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось загрузить сообщение",
+        )
+    session.expire(message)
     message = await _load_message(session, message_id)
     if message is None:
         raise HTTPException(
@@ -161,7 +185,9 @@ async def _get_member_message(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Сообщение не найдено",
         )
-    await _ensure_chat_member_or_404(session, chat_id=message.chat_id, user_id=user_id)
+    await _ensure_chat_member_or_404(
+        session, chat_id=message.chat_id, user_id=user_id
+    )
     return message
 
 
@@ -264,11 +290,11 @@ async def list_chat_messages(
     limit: int | None = None,
     before_id: int | None = None,
 ) -> list[dict]:
-    """Возвращает сообщения чата и помечает входящие как прочитанные.
+    """Возвращает порцию сообщений чата и помечает входящие как прочитанные.
 
-    Без параметров возвращается вся история (как раньше). При ``limit``/``before_id``
-    отдаётся порция (до ``limit`` сообщений с id < ``before_id``) в хронологическом
-    порядке — для «подгрузки более старых» на клиенте.
+    Отдаётся до ``limit`` (по умолчанию ``DEFAULT_MESSAGE_PAGE_SIZE``) самых
+    свежих сообщений; при ``before_id`` — более старые, чем указанное id
+    (пагинация «вверх»). Результат — в хронологическом порядке.
     """
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
 
@@ -289,17 +315,16 @@ async def list_chat_messages(
     if before_id is not None:
         stmt = stmt.where(Message.id < before_id)
 
-    if limit is not None:
-        # Пагинация: берём порцию от новых к старым, затем разворачиваем.
-        stmt = stmt.order_by(Message.timestamp.desc(), Message.id.desc()).limit(limit)
-    else:
-        stmt = stmt.order_by(Message.timestamp, Message.id)
+    # Всегда работаем «страницами»: от новых к старым, затем разворачиваем.
+    page_size = limit if limit is not None else DEFAULT_MESSAGE_PAGE_SIZE
+    stmt = stmt.order_by(Message.timestamp.desc(), Message.id.desc()).limit(
+        page_size
+    )
 
     stmt = stmt.options(selectinload(Message.reactions))
     result = await session.execute(stmt)
     rows = list(result.scalars().all())
-    if limit is not None:
-        rows.reverse()
+    rows.reverse()
     items = [message_to_dict(message, user_id) for message in rows]
     if marked_read:
         await notify_chat(
@@ -327,7 +352,9 @@ async def list_pinned_messages(
         .order_by(Message.timestamp, Message.id)
     )
     result = await session.execute(stmt)
-    return [message_to_dict(message, user_id) for message in result.scalars().all()]
+    return [
+        message_to_dict(message, user_id) for message in result.scalars().all()
+    ]
 
 
 async def delete_message(
@@ -427,7 +454,9 @@ async def set_reaction(
     else:
         if reaction is None:
             session.add(
-                MessageReaction(message_id=message_id, user_id=user_id, emoji=emoji)
+                MessageReaction(
+                    message_id=message_id, user_id=user_id, emoji=emoji
+                )
             )
         else:
             reaction.emoji = emoji
@@ -497,7 +526,9 @@ async def forward_message(
             detail="Сообщение не найдено",
         )
     # Отправитель должен состоять и в исходном, и в целевом чате.
-    await _ensure_chat_member_or_404(session, chat_id=source.chat_id, user_id=user_id)
+    await _ensure_chat_member_or_404(
+        session, chat_id=source.chat_id, user_id=user_id
+    )
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
@@ -517,7 +548,9 @@ async def forward_message(
         forwarded_from_id=source.id,
         forwarded_sender_id=source.user_id,
         forwarded_sender_name=(
-            _user_display_name(source_sender) if source_sender is not None else ""
+            _user_display_name(source_sender)
+            if source_sender is not None
+            else ""
         ),
         forwarded_chat_id=source.chat_id,
     )
@@ -570,10 +603,14 @@ async def search_messages(
         )
         stmt = stmt.where(Message.chat_id.in_(user_chats))
     else:
-        await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
+        await _ensure_chat_member_or_404(
+            session, chat_id=chat_id, user_id=user_id
+        )
         stmt = stmt.where(Message.chat_id == chat_id)
 
-    stmt = stmt.order_by(Message.timestamp.desc(), Message.id.desc()).limit(limit)
+    stmt = stmt.order_by(Message.timestamp.desc(), Message.id.desc()).limit(
+        limit
+    )
     result = await session.execute(stmt)
     rows = list(result.scalars().all())
     rows.reverse()
