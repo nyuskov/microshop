@@ -128,6 +128,20 @@ class Settings(BaseSettings):
     # Срок жизни кода привязки Telegram (сек).
     telegram_bind_link_ttl_seconds: int = 600
 
+    # --- Доставка OTP через SMS-шлюз SMS Aero (основной канал) ---
+    # Аккаунт https://smsaero.ru: логин (email) и API-ключ. Если не заданы —
+    # код пишется в лог (dev-режим). API v2: gateway.smsaero.ru/v2/sms/send.
+    sms_aero_base_url: str = Field(
+        default="https://gateway.smsaero.ru",
+        validation_alias="SMS_AERO_BASE_URL",
+    )
+    sms_aero_email: str | None = Field(default=None, validation_alias="SMS_AERO_EMAIL")
+    sms_aero_api_key: str | None = Field(
+        default=None, validation_alias="SMS_AERO_API_KEY"
+    )
+    # Подпись отправителя, зарегистрированная в SMS Aero (если нужна).
+    sms_aero_sign: str | None = Field(default=None, validation_alias="SMS_AERO_SIGN")
+
 
 settings = Settings()
 

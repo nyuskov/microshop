@@ -28,7 +28,10 @@ services:
       - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
       - RABBITMQ_URL=amqp://${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}@rabbitmq:5672/
-      # Доставка OTP через Telegram (опционально, значения из .env).
+      # Доставка OTP: SMS Aero (осн., значения из .env) + Telegram (опционально).
+      - SMS_AERO_EMAIL=${SMS_AERO_EMAIL:-}
+      - SMS_AERO_API_KEY=${SMS_AERO_API_KEY:-}
+      - SMS_AERO_SIGN=${SMS_AERO_SIGN:-}
       - TELEGRAM_GATEWAY_TOKEN=${TELEGRAM_GATEWAY_TOKEN:-}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}
@@ -73,7 +76,10 @@ services:
       - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
       - RABBITMQ_URL=amqp://${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}@rabbitmq:5672/
-      # Доставка OTP (работу делает воркер).
+      # Доставка OTP (работу делает воркер): SMS Aero + Telegram (опционально).
+      - SMS_AERO_EMAIL=${SMS_AERO_EMAIL:-}
+      - SMS_AERO_API_KEY=${SMS_AERO_API_KEY:-}
+      - SMS_AERO_SIGN=${SMS_AERO_SIGN:-}
       - TELEGRAM_GATEWAY_TOKEN=${TELEGRAM_GATEWAY_TOKEN:-}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}

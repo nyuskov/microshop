@@ -29,7 +29,7 @@
 - Backend-качество: refresh-токены с ротацией/отзывом, rate-limit, pg_trgm-поиск, X-Request-ID и лог медленных запросов, Celery+RabbitMQ (SMS/GIF/очистка медиа по расписанию), health-эндпоинты, pytest, CI (black/isort/flake8/mypy/vue-tsc/eslint/vitest).
 - Legacy-модули `products`/`posts`/`telegram` — с мессенджером не связаны (кандидаты на удаление).
 
-Ограничения (сознательные/текущие): только личные чаты (групповых нет — фича убрана); WebRTC-звонки без TURN (работают в локальных сетях); Web Push/PWA-уведомления не реализованы; секреты должны задаваться через `.env` (см. раздел 9). Доставка OTP — Telegram Gateway (основной) → обычный Telegram-бот (резервный) → лог (только dev, когда каналы не настроены).
+Ограничения (сознательные/текущие): только личные чаты (групповых нет — фича убрана); WebRTC-звонки без TURN (работают в локальных сетях); Web Push/PWA-уведомления не реализованы; секреты должны задаваться через `.env` (см. раздел 9). Доставка OTP — SMS Aero (основной канал, обычные SMS) → лог (только dev, когда шлюз не настроен).
 
 ## 2. Стек
 
@@ -194,16 +194,17 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 
 | Задача | Модуль | Что делает | Вызывается |
 |---|---|---|---|
-| `send_sms_otp` | `tasks/otp_tasks.py` | доставка OTP-кода (SMS-заглушка) | эндпоинт `POST /auth/request-otp/` |
+| `send_sms_otp` | `tasks/otp_tasks.py` | доставка OTP-кода (SMS Aero → Telegram → лог) | эндпоинт `POST /auth/request-otp/` |
 | `download_gif_message` | `tasks/media_tasks.py` | скачивание GIF (Giphy/Tenor) + создание сообщения | `POST /messages/gif/` (отвечает 202) |
 | `cleanup_orphan_media` | `tasks/media_tasks.py` | очистка файлов media без ссылок в БД | **celery beat** ежедневно в 04:00 UTC |
 | `send_email` | `tasks/notifications.py` | каркас e-mail/уведомлений (заглушка) | — (структура для будущих) |
 
 **Важные следствия для разработки:**
 
-- **Код OTP для входа** печатается в лог контейнера `web` (как и до Celery) —
-  `docker compose logs -f web | grep SMS-заглушка`; воркер дополнительно
-  логирует его при фактической «отправке» (`docker compose logs -f worker`).
+- **Код OTP для входа** печатается в лог контейнера `web` ТОЛЬКО если не настроен
+  ни один канал доставки (`SMS_AERO_*`/Telegram) — `docker compose logs -f web |
+  grep SMS-заглушка`; при настроенном SMS Aero код уходит обычным SMS и в лог
+  не пишется (воркер логирует только факт отправки).
 - **GIF** создаётся асинхронно: эндпоинт отвечает `202 Accepted`, воркер скачивает файл в общий media и создаёт сообщение в БД, затем через **RabbitMQ-мост** web раздаёт `message.new` в живые WebSocket-сокеты (включая отправителя, т.к. свои сообщения фронт не добавляет локально). Если RabbitMQ недоступен — web-мост сам переподключается в фоне.
 - Realtime (presence/typing/chat.read) **не** переводилось на воркер: WebSocket-соединения живут в процессе `web`, поэтому доставка в сокеты остаётся в `web` (in-process manager). Воркер лишь *публикует* события в мост.
 - Ручной запуск: `docker compose exec worker poetry run celery -A core.celery_app inspect active` (диагностика). Логи: `docker compose logs -f worker beat`.
@@ -216,10 +217,9 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 
 - Вход по телефону (OTP):
   1. `POST /api/v1/auth/request-otp/` с `{phone_number}` (формат `+7 (___) ___-__-__`).
-     Доставка кода: **Telegram Gateway** → (если недоступен/не настроен) **обычный
-     Telegram-бот** привязанному пользователю → (иначе, dev) лог контейнера `web`.
-     См. `.env.example` (`TELEGRAM_GATEWAY_TOKEN`, `TELEGRAM_BOT_TOKEN`,
-     `TELEGRAM_BOT_USERNAME`) и «Привязка Telegram» в профиле.
+     Доставка кода: **SMS Aero** (обычное SMS на телефон) → (доп.) Telegram
+     Gateway/бот, если настроены → (иначе, dev) лог контейнера `web`.
+     См. `.env.example` (`SMS_AERO_EMAIL`, `SMS_AERO_API_KEY`).
   2. `POST /api/v1/auth/verify-otp/` с `{phone_number, otp}` → `{access_token, refresh_token}`. Если пользователя нет — он создаётся автоматически с `username=phone_<hex>` и случайным паролем.
 - Вход по паролю (для тестовых пользователей, созданных через `POST /users/`): `POST /api/v1/auth/token/` (OAuth2 form `username`/`password`) → `{access_token, refresh_token}`.
 - Все «личные» эндпоинты требуют заголовок `Authorization: Bearer <access_token>`.
@@ -437,7 +437,7 @@ docker exec -it microshop-db-1 psql -U postgres -d microshop
 
 - Групповые чаты не реализованы (модель личных чатов).
 - Realtime — WebSocket-канал + «страховочный» polling 20 с (поллинг 3 с убран).
-- SMS-провайдер (Gateway) не подключён — код логируется в dev; в проде задайте `TELEGRAM_GATEWAY_TOKEN` (и/или обычного бота).
+- SMS-провайдер (SMS Aero) не подключён — код логируется в dev; в проде задайте `SMS_AERO_EMAIL`/`SMS_AERO_API_KEY` (см. `.env.example`). ВНИМАНИЕ: хостинг в РФ может не иметь доступа к `api.telegram.org`, поэтому Telegram-каналы (Gateway/бот) там не заработают.
 - Профиль и вход — намеренно «светлые листы» (карточка целиком светлая в обеих темах, читаема в тёмной); остальной интерфейс токенизирован под свет/тьму.
 - Удаление аватара/файлов не затрагивает записи истории (намеренно).
 - Legacy-модули (`products`/`posts`/`telegram`) и публичные «читающие» `users`-эндпоинты **удалены** (не было ни в роутере, ни в БД).

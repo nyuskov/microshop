@@ -14,6 +14,7 @@
 """
 
 import logging
+import time
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -38,6 +39,14 @@ _LAST_UPDATE_ID: int | None = None
 _SEEN_UPDATE_IDS: set[int] = set()
 _MAX_SEEN = 2000
 
+# Бэкофф при недоступности api.telegram.org: не долбим сеть каждые 5 сек
+# (на части хостингов исходящий доступ к Telegram заблокирован). После серии
+# ошибок пауза растёт до _POLL_BACKOFF_MAX_SECONDS и сбрасывается при успехе.
+_NEXT_POLL_AT: float = 0.0
+_POLL_FAILURES: int = 0
+_POLL_BACKOFF_BASE_SECONDS = 10
+_POLL_BACKOFF_MAX_SECONDS = 600
+
 
 def _seen_update(update_id: int) -> bool:
     if update_id in _SEEN_UPDATE_IDS:
@@ -59,17 +68,28 @@ def _seen_update(update_id: int) -> bool:
 )
 def telegram_poll_updates(self) -> None:
     """Один «тик» поллинга апдейтов бота (вызывается celery beat)."""
-    global _LAST_UPDATE_ID  # noqa: PLW0603 - состояние поллинга держим в памяти
+    # noqa: PLW0603 - состояние поллинга держим в памяти процесса
+    global _LAST_UPDATE_ID, _NEXT_POLL_AT, _POLL_FAILURES
     if not settings.telegram_bot_token:
         return
+    if time.monotonic() < _NEXT_POLL_AT:
+        return  # сеть/API недоступны — ждём окончания бэкоффа
     try:
         updates = telegram.bot_get_updates(
             offset=((_LAST_UPDATE_ID + 1) if _LAST_UPDATE_ID is not None else None),
             timeout=5,
         )
     except telegram.TelegramApiError as exc:
-        logger.warning("getUpdates: %s", exc)
+        _POLL_FAILURES += 1
+        delay = min(
+            _POLL_BACKOFF_MAX_SECONDS,
+            _POLL_BACKOFF_BASE_SECONDS * (2 ** min(_POLL_FAILURES - 1, 6)),
+        )
+        _NEXT_POLL_AT = time.monotonic() + delay
+        logger.warning("getUpdates: %s — следующая попытка через %ss", exc, delay)
         return
+    _POLL_FAILURES = 0
+    _NEXT_POLL_AT = 0.0
 
     max_id = _LAST_UPDATE_ID
     for update in updates:

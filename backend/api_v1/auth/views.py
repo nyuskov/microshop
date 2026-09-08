@@ -27,7 +27,12 @@ from .otp_storage import (
     verify_otp,
 )
 from .refresh_sessions import issue_refresh_token
-from .schemas import OTPResponse, RequestOTPRequest, TokenResponse, VerifyOTPRequest
+from .schemas import (
+    OTPResponse,
+    RequestOTPRequest,
+    TokenResponse,
+    VerifyOTPRequest,
+)
 from .utils import authenticate_user, get_current_user
 
 logger = logging.getLogger(__name__)
@@ -67,12 +72,17 @@ def validate_phone_number_format(phone_number: str) -> bool:
 def enqueue_sms_otp(phone_number: str, otp_code: str) -> None:
     """Кладёт доставку OTP-кода в очередь Celery (RabbitMQ).
 
-    Доставку выполняет воркер (см. tasks/otp_tasks.py): Telegram Gateway →
-    обычный бот → dev-лог. Здесь код печатаем ТОЛЬКО если ни один канал не
-    настроен (чистый dev-запуск без токенов) — иначе код утёк бы в web-лог.
-    Если брокер недоступен — вход не роняем: код уже виден выше (dev).
+    Доставку выполняет воркер (см. tasks/otp_tasks.py): SMS Aero → Telegram
+    Gateway → обычный бот → dev-лог. Здесь код печатаем ТОЛЬКО если ни один
+    канал не настроен (чистый dev-запуск без ключей) — иначе код утёк бы в
+    web-лог. Если брокер недоступен — вход не роняем: код уже виден выше (dev).
     """
-    if not settings.telegram_gateway_token and not settings.telegram_bot_token:
+    if (
+        not settings.sms_aero_email
+        and not settings.sms_aero_api_key
+        and not settings.telegram_gateway_token
+        and not settings.telegram_bot_token
+    ):
         logger.info("SMS-заглушка (dev): OTP-код для %s -> %s", phone_number, otp_code)
     try:
         task = get_task("tasks.otp_tasks.send_sms_otp")

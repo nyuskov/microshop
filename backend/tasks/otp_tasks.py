@@ -1,19 +1,20 @@
-"""Фоновые задачи: доставка OTP-кода (Telegram Gateway → обычный бот → dev-лог).
+"""Фоновые задачи: доставка OTP-кода (SMS Aero → Telegram → dev-лог).
 
 Эндпоинт ``/auth/request-otp/`` лишь кладёт задачу в RabbitMQ (см.
 ``enqueue_sms_otp`` в auth/views), а реальную доставку выполняет воркер — чтобы
 не блокировать HTTP-запрос сетью и иметь возможность ретраить. Каналы по
 приоритету:
-  1) Telegram Gateway (официально — SMS на телефон);
-  2) обычный Telegram-бот — в чат, привязанный к номеру (см. tasks/telegram.py);
-  3) если ни один канал недоступен/не привязан — код пишется в лог (dev-вход).
+  1) SMS Aero (smsaero.ru) — основной канал, код приходит обычным SMS;
+  2) Telegram Gateway — если задан токен (дополнительно);
+  3) обычный Telegram-бот — в чат, привязанный к номеру (см. tasks/telegram.py);
+  4) если ни один канал не настроен/недоступен — код пишется в лог (dev-вход).
 """
 
 import logging
 
 from sqlalchemy import select
 
-from core import telegram
+from core import smsaero, telegram
 from core.celery_app import celery_app
 from core.config import settings
 from core.models import User
@@ -53,10 +54,24 @@ async def _bound_telegram_chat_async(phone_number: str) -> int | None:
     acks_late=False,
 )
 def send_sms_otp(self, phone_number: str, otp_code: str) -> None:
-    """Доставляет OTP-код пользователю (Telegram Gateway → бот → dev-лог)."""
+    """Доставляет OTP-код (SMS Aero → Telegram Gateway → бот → dev-лог)."""
     ttl_seconds = settings.auth_otp_expire_seconds
 
-    # 1) Telegram Gateway — основной канал (верификационное сообщение на телефон).
+    # 1) SMS Aero — основной канал: обычное SMS на телефон.
+    if settings.sms_aero_email and settings.sms_aero_api_key:
+        try:
+            text = f"Microshop: код входа {otp_code}. Никому не сообщайте код."
+            msg_id = smsaero.send_sms(phone_number, text)
+            logger.info(
+                "OTP для %s отправлен по SMS (SMS Aero, id=%s)",
+                phone_number,
+                msg_id,
+            )
+            return
+        except smsaero.SmsAeroError as exc:
+            logger.warning("SMS Aero недоступен (%s) — переключаюсь на Telegram", exc)
+
+    # 2) Telegram Gateway — доп. канал (верификационное сообщение).
     if settings.telegram_gateway_token:
         try:
             request_id = telegram.gateway_send_verification(
@@ -73,7 +88,7 @@ def send_sms_otp(self, phone_number: str, otp_code: str) -> None:
                 "Telegram Gateway недоступен (%s) — переключаюсь на бота", exc
             )
 
-    # 2) Обычный бот — если к этому номеру привязан Telegram-чат.
+    # 3) Обычный бот — если к этому номеру привязан Telegram-чат.
     if settings.telegram_bot_token:
         chat_id = _bound_telegram_chat(phone_number)
         if chat_id is not None:
@@ -92,5 +107,5 @@ def send_sms_otp(self, phone_number: str, otp_code: str) -> None:
             except telegram.TelegramApiError as exc:
                 logger.warning("Telegram-бот не смог доставить код (%s)", exc)
 
-    # 3) Dev-fallback: каналы не настроены или недоступны — печатаем код.
+    # 4) Dev-fallback: каналы не настроены или недоступны — печатаем код.
     logger.info("SMS-заглушка (dev): OTP-код для %s -> %s", phone_number, otp_code)

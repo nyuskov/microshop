@@ -58,8 +58,10 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672/
       UVICORN_RELOAD: "0"
-      # Доставка OTP через Telegram (опционально). Gateway — основной канал;
-      # обычный бот — резервный (код в личку привязанному пользователю).
+      # Доставка OTP: SMS Aero (осн. канал); Telegram Gateway/бот — опционально.
+      SMS_AERO_EMAIL: ${SMS_AERO_EMAIL:-}
+      SMS_AERO_API_KEY: ${SMS_AERO_API_KEY:-}
+      SMS_AERO_SIGN: ${SMS_AERO_SIGN:-}
       TELEGRAM_GATEWAY_TOKEN: ${TELEGRAM_GATEWAY_TOKEN:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
@@ -117,7 +119,10 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/microshop
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
-      # Доставка OTP: Telegram Gateway (осн.) + обычный бот (fallback).
+      # Доставка OTP: SMS Aero (осн.) + Telegram (Gateway/бот) как доп. каналы.
+      SMS_AERO_EMAIL: ${SMS_AERO_EMAIL:-}
+      SMS_AERO_API_KEY: ${SMS_AERO_API_KEY:-}
+      SMS_AERO_SIGN: ${SMS_AERO_SIGN:-}
       TELEGRAM_GATEWAY_TOKEN: ${TELEGRAM_GATEWAY_TOKEN:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_GATEWAY_BASE_URL: ${TELEGRAM_GATEWAY_BASE_URL:-https://gateway.telegram.org}

@@ -115,25 +115,4 @@ export const removeAvatar = async (): Promise<void> => {
 }
 // --- Конец функций для аватара ---
 
-// --- Привязка Telegram (резервный канал доставки OTP) ---
-export interface TelegramBindResult {
-  code: string
-  deep_link: string | null
-}
-
-export const telegramBind = async (): Promise<TelegramBindResult> => {
-  const response = await api.post('/auth/telegram/bind/')
-  return response.data as TelegramBindResult
-}
-
-export const telegramBindStatus = async (): Promise<boolean> => {
-  const response = await api.get('/auth/telegram/status/')
-  return Boolean(response.data?.bound)
-}
-
-export const telegramUnbind = async (): Promise<void> => {
-  await api.post('/auth/telegram/unbind/')
-}
-// --- Конец функций привязки Telegram ---
-
 export { api }
