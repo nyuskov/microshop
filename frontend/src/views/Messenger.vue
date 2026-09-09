@@ -119,8 +119,7 @@
             :reply-target="replyTarget"
             :reply-bar-name="replyBarName"
             :editing-message="editingMessage"
-            :emoji-menu-open="emojiMenuOpen"
-            :gif-panel-open="gifPanelOpen"
+            :extras-panel="extrasPanel"
             :voice-rec-open="voiceRecOpen"
             :record-mode="recordMode"
             :mic-holding="micHolding"
@@ -135,8 +134,8 @@
             @mic-up="onMicUp"
             @mic-cancel="onMicCancel"
             @mic-click="onMicClick"
-            @toggle-emoji-menu="toggleEmojiMenu"
-            @toggle-gif="toggleGifPanel"
+            @toggle-extras="toggleExtras"
+            @set-extras-tab="setExtrasTab"
             @gif-sent="onGifSent"
             @append-emoji="appendEmoji"
           />
@@ -429,8 +428,9 @@ const replyTarget = ref<Message | null>(null)
 const inlineSearchOpen = ref(false)
 const inlineQuery = ref('')
 const emojiPickerFor = ref<number | null>(null)
-const emojiMenuOpen = ref(false)
-const gifPanelOpen = ref(false)
+// Единое меню доп.контента поля ввода: 'emoji' | 'gif' | закрыто.
+const extrasTab = ref<'emoji' | 'gif'>('emoji')
+const extrasPanel = ref<'none' | 'emoji' | 'gif'>('none')
 const pinnedOpen = ref(true)
 const highlightedMessageId = ref<number | null>(null)
 let highlightTimer: number | undefined
@@ -824,8 +824,7 @@ const onToggleEmojiPicker = (message: Message) => {
 
 const closePopups = () => {
   emojiPickerFor.value = null
-  emojiMenuOpen.value = false
-  gifPanelOpen.value = false
+  extrasPanel.value = 'none'
 }
 
 const toggleReaction = async (message: Message, emoji: string) => {
@@ -1548,17 +1547,15 @@ watch(inlineQuery, (value) => {
 // ---------- Эмодзи / GIF в поле ввода ----------
 const appendEmoji = (emoji: string) => {
   newMessage.value = `${newMessage.value}${emoji}`
-  emojiMenuOpen.value = false
 }
 
-const toggleEmojiMenu = () => {
-  emojiMenuOpen.value = !emojiMenuOpen.value
-  gifPanelOpen.value = false
+const toggleExtras = () => {
+  extrasPanel.value = extrasPanel.value === 'none' ? extrasTab.value : 'none'
 }
 
-const toggleGifPanel = () => {
-  gifPanelOpen.value = !gifPanelOpen.value
-  emojiMenuOpen.value = false
+const setExtrasTab = (tab: 'emoji' | 'gif') => {
+  extrasTab.value = tab
+  extrasPanel.value = tab
 }
 
 // GIF создаётся фоновым воркером (бэкенд отвечает 202), а свои message.new
@@ -1571,7 +1568,7 @@ const onGifSent = () => {
   // Задача поставлена в очередь (202): сообщение пока не создано — не добавляем
   // в ленту «пустышку». Воркер скачает GIF и создаст сообщение; здесь лишь
   // закрываем панель, сбрасываем ответ/печать и коротко ждём появления GIF.
-  gifPanelOpen.value = false
+  extrasPanel.value = 'none'
   clearReply()
   const chatId = selectedChatId.value
   if (chatId === null) return

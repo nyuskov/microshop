@@ -248,9 +248,24 @@ html .messenger-shell .round-btn.muted {
     color: var(--ms-icon-3);
 }
 
-/* Одна кнопка записи голосового/видео (клик = голосовое, удержание 2 c = видео) */
-html .messenger-shell .mic-hold-btn.holding {
+html .messenger-shell .round-btn.active {
+    background: var(--ms-accent-soft);
     color: var(--ms-accent);
+}
+
+/* Одна кнопка записи голосового/видео (клик = голосовое, удержание 2 c = видео) */
+html .messenger-shell .mic-hold-btn.mode-video {
+    background: var(--ms-accent-soft);
+    color: var(--ms-accent);
+}
+
+html .messenger-shell .mic-hold-btn.holding {
+    background: var(--ms-accent);
+    color: #ffffff;
+}
+
+html .messenger-shell .mic-hold-btn.holding .q-icon {
+    color: #ffffff;
 }
 
 html .messenger-shell .mic-hold-btn.holding::after {

@@ -30,7 +30,12 @@
       @send="(payload) => emit('voice-send', payload)"
     />
     <div v-else class="input-row">
-      <button class="round-btn" title="Прикрепить файл" @click="attachInput?.click()">
+      <button
+        v-if="!hasText"
+        class="round-btn"
+        title="Прикрепить файл"
+        @click="attachInput?.click()"
+      >
         <q-icon name="attach_file" size="20px" />
       </button>
       <input
@@ -50,18 +55,15 @@
         @keydown="onTextKeydown"
         @input="autoGrow"
       ></textarea>
-      <button class="round-btn" title="Эмодзи" @click="emit('toggle-emoji-menu')">
+      <button
+        class="round-btn"
+        :class="{ active: extrasPanel !== 'none' }"
+        title="Эмодзи и GIF"
+        @click="emit('toggle-extras')"
+      >
         <q-icon name="sentiment_satisfied_alt" size="20px" />
       </button>
-      <button
-        class="round-btn gif-btn"
-        :class="{ active: gifPanelOpen }"
-        title="GIF"
-        @click="emit('toggle-gif')"
-      >
-        GIF
-      </button>
-      <span class="mic-wrap">
+      <span v-if="!hasText" class="mic-wrap">
         <button
           class="round-btn mic-hold-btn"
           :class="{
@@ -99,30 +101,49 @@
         <q-icon name="send" size="18px" />
       </button>
 
-      <template v-if="gifPanelOpen && chatId !== null">
-        <GifPicker
-          :chat-id="chatId"
-          :reply-to-id="replyTarget?.id ?? null"
-          @sent="emit('gif-sent')"
-        />
-      </template>
-
-      <div v-if="emojiMenuOpen" class="emoji-picker bottom">
-        <button
-          v-for="emoji in INPUT_EMOJIS"
-          :key="emoji"
-          class="emoji-option"
-          @click="emit('append-emoji', emoji)"
-        >
-          {{ emoji }}
-        </button>
+      <div v-if="extrasPanel !== 'none'" class="extras-menu">
+        <div class="extras-tabs">
+          <button
+            type="button"
+            class="extras-tab"
+            :class="{ active: extrasPanel === 'emoji' }"
+            @click="emit('set-extras-tab', 'emoji')"
+          >
+            Эмодзи
+          </button>
+          <button
+            type="button"
+            class="extras-tab"
+            :class="{ active: extrasPanel === 'gif' }"
+            @click="emit('set-extras-tab', 'gif')"
+          >
+            GIF
+          </button>
+        </div>
+        <div v-if="extrasPanel === 'emoji'" class="extras-grid">
+          <button
+            v-for="emoji in INPUT_EMOJIS"
+            :key="emoji"
+            class="emoji-option"
+            @click="emit('append-emoji', emoji)"
+          >
+            {{ emoji }}
+          </button>
+        </div>
+        <div v-else-if="extrasPanel === 'gif' && chatId !== null" class="extras-gif">
+          <GifPicker
+            :chat-id="chatId"
+            :reply-to-id="replyTarget?.id ?? null"
+            @sent="emit('gif-sent')"
+          />
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type { Message } from '@/types'
 import { messageSnippet } from '@/utils/media'
 import VoiceRecorderBar from '@/components/media/VoiceRecorderBar.vue'
@@ -137,8 +158,8 @@ defineProps<{
   /** Название в шапке цитаты ответа (вычисляется родителем). */
   replyBarName: string
   editingMessage: Message | null
-  emojiMenuOpen: boolean
-  gifPanelOpen: boolean
+  /** Единое меню доп.контента: 'emoji' | 'gif' (открыто) либо 'none'. */
+  extrasPanel: 'none' | 'emoji' | 'gif'
   voiceRecOpen: boolean
   recordMode: 'audio' | 'video'
   micHolding: boolean
@@ -147,6 +168,9 @@ defineProps<{
 
 // Текст в поле ввода (v-model) изменяется в композере.
 const newMessage = defineModel<string>('newMessage', { required: true })
+
+/** Есть ли текст в поле (для скрытия кнопок файла/микрофона при наборе). */
+const hasText = computed(() => newMessage.value.trim().length > 0)
 
 const emit = defineEmits<{
   (e: 'send-text'): void
@@ -159,8 +183,8 @@ const emit = defineEmits<{
   (e: 'mic-up'): void
   (e: 'mic-cancel'): void
   (e: 'mic-click'): void
-  (e: 'toggle-emoji-menu'): void
-  (e: 'toggle-gif'): void
+  (e: 'toggle-extras'): void
+  (e: 'set-extras-tab', tab: 'emoji' | 'gif'): void
   (e: 'gif-sent'): void
   (e: 'append-emoji', emoji: string): void
 }>()
@@ -499,26 +523,73 @@ watch(newMessage, () => {
   display: none;
 }
 
-/* Палитра эмодзи в поле ввода (над строкой ввода; сетка — чтобы не уезжала
-   за левый край на узких экранах и помещалось много смайлов) */
-.emoji-picker {
+/* Единое меню «Эмодзи / GIF» (над строкой ввода) */
+.extras-menu {
   position: absolute;
-  top: auto;
   bottom: 58px;
   right: 14px;
-  left: auto;
-  width: auto;
+  width: min(360px, calc(100vw - 28px));
   background: #ffffff;
   border-radius: 16px;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+  padding: 8px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.extras-tabs {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #eef0f2;
+  padding-bottom: 6px;
+}
+
+.extras-tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  border-radius: 9px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #5b6b79;
+  cursor: pointer;
+}
+
+.extras-tab.active {
+  background: #e3f2e5;
+  color: #1e9b51;
+}
+
+.extras-grid {
   display: grid;
   grid-template-columns: repeat(8, 32px);
   gap: 2px;
-  padding: 8px;
-  z-index: 30;
-  max-width: calc(100vw - 28px);
-  max-height: min(300px, 45vh);
+  max-height: 240px;
   overflow-y: auto;
+}
+
+/* GIF внутри единого меню: выключаем собственное абсолютное позиционирование */
+.extras-menu :deep(.gif-picker) {
+  position: static;
+  bottom: auto;
+  right: auto;
+  width: 100%;
+  max-width: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  z-index: auto;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.extras-menu :deep(.gif-picker-inner) {
+  max-height: none;
 }
 
 .emoji-option {
