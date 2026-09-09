@@ -2,7 +2,51 @@
   <aside ref="rootEl" class="side-panel">
     <!-- Диалоги -->
     <template v-if="view === 'chats'">
-      <div class="panel-header">
+      <!-- Режим выделения чатов (вход по удержанию) -->
+      <div v-if="selectionMode" class="selection-bar">
+        <button class="icon-btn" title="Отмена" @click="exitSelection">
+          <q-icon name="close" size="20px" />
+        </button>
+        <span class="selection-count">{{ selectedIds.length }}</span>
+        <div class="selection-actions">
+          <button
+            class="icon-btn"
+            :class="{ on: selectionAllMuted }"
+            :title="selectionAllMuted ? 'Включить уведомления' : 'Замьютить выбранные'"
+            aria-label="Мьют/анмьют выбранных"
+            @click="onBulkMute"
+          >
+            <q-icon :name="selectionAllMuted ? 'notifications' : 'notifications_off'" size="20px" />
+          </button>
+          <button
+            class="icon-btn"
+            :class="{ on: selectionAllPinned }"
+            :title="selectionAllPinned ? 'Открепить выбранные' : 'Закрепить выбранные'"
+            aria-label="Пин/анпин выбранных"
+            @click="onBulkPin"
+          >
+            <q-icon name="push_pin" size="20px" />
+          </button>
+          <button
+            class="icon-btn danger"
+            title="Удалить выбранные"
+            aria-label="Удалить выбранные"
+            @click="onBulkDelete"
+          >
+            <q-icon name="delete" size="20px" />
+          </button>
+          <button
+            class="icon-btn"
+            :class="{ on: allVisibleSelected }"
+            title="Выбрать все"
+            aria-label="Выбрать все"
+            @click="toggleSelectAll"
+          >
+            <q-icon name="done_all" size="20px" />
+          </button>
+        </div>
+      </div>
+      <div v-else class="panel-header">
         <div class="panel-header-left">
           <button class="icon-btn" title="Контакты" @click="emit('to-contacts')">
             <q-icon name="person_add" size="20px" />
@@ -37,7 +81,7 @@
         </div>
       </div>
 
-      <div class="panel-search">
+      <div v-if="!selectionMode" class="panel-search">
         <q-icon name="search" class="search-icon" size="17px" />
         <input
           ref="searchInputRef"
@@ -146,9 +190,19 @@
           <div v-for="chat in orderedChats" :key="chat.id" class="chat-row">
             <button
               class="row-item"
-              :class="{ active: selectedChatId === chat.id }"
-              @click="selectChat(chat.id)"
+              :class="{
+                active: !selectionMode && selectedChatId === chat.id,
+                selected: isSelected(chat.id)
+              }"
+              @pointerdown="onRowPointerDown(chat.id)"
+              @pointerup="onRowPointerUp"
+              @pointercancel="onRowPointerCancel"
+              @pointerleave="onRowPointerUp"
+              @click="onRowClick(chat.id)"
             >
+              <span v-if="selectionMode" class="row-selector" :class="{ on: isSelected(chat.id) }">
+                <q-icon v-if="isSelected(chat.id)" name="check" size="15px" />
+              </span>
               <span class="avatar-wrap" :class="{ online: chatPeerOnline(chat) }">
                 <span class="avatar" :style="avatarStyle(chatTitleOf(chat))">
                   <img
@@ -192,48 +246,6 @@
                 </span>
               </span>
             </button>
-            <span class="row-actions">
-              <button
-                class="row-act"
-                :class="{ on: isMutedOf(chat.id) }"
-                :title="isMutedOf(chat.id) ? 'Включить уведомления' : 'Замьютить чат'"
-                :aria-label="isMutedOf(chat.id) ? 'Включить уведомления' : 'Замьютить чат'"
-                :aria-pressed="isMutedOf(chat.id)"
-                @click="emit('toggle-mute', chat.id)"
-              >
-                <q-icon
-                  :name="isMutedOf(chat.id) ? 'notifications_off' : 'notifications'"
-                  size="15px"
-                />
-              </button>
-              <button
-                class="row-act"
-                :class="{ on: isPinnedOf(chat.id) }"
-                :title="isPinnedOf(chat.id) ? 'Открепить чат' : 'Закрепить чат'"
-                aria-label="Закрепить чат"
-                @click="emit('toggle-pin', chat.id)"
-              >
-                <q-icon name="push_pin" size="15px" />
-              </button>
-              <button
-                class="row-act danger"
-                title="Удалить чат"
-                aria-label="Удалить чат"
-                @click="emit('delete-chat', chat)"
-              >
-                <q-icon name="delete" size="15px" />
-              </button>
-            </span>
-            <span class="row-more">
-              <button
-                class="row-more-btn"
-                title="Действия с чатом"
-                aria-label="Действия с чатом"
-                @click.stop.prevent="openRowMenu(chat, $event)"
-              >
-                <q-icon name="more_vert" size="20px" />
-              </button>
-            </span>
           </div>
         </div>
       </template>
@@ -314,33 +326,6 @@
       </div>
     </template>
   </aside>
-
-  <!-- Меню действий чата (мобильная «⋯» вместо трёх кнопок) -->
-  <Teleport to="body">
-    <div
-      v-if="rowMenu"
-      ref="rowMenuEl"
-      class="row-menu-pop"
-      role="menu"
-      :style="{ left: rowMenu.x + 'px', top: rowMenu.y + 'px' }"
-    >
-      <button class="row-menu-item" role="menuitem" @click="runRowAction('mute')">
-        <q-icon
-          :name="isMutedOf(rowMenu.chat.id) ? 'notifications' : 'notifications_off'"
-          size="18px"
-        />
-        <span>{{ isMutedOf(rowMenu.chat.id) ? 'Включить уведомления' : 'Замьютить чат' }}</span>
-      </button>
-      <button class="row-menu-item" role="menuitem" @click="runRowAction('pin')">
-        <q-icon name="push_pin" size="18px" />
-        <span>{{ isPinnedOf(rowMenu.chat.id) ? 'Открепить чат' : 'Закрепить чат' }}</span>
-      </button>
-      <button class="row-menu-item danger" role="menuitem" @click="runRowAction('delete')">
-        <q-icon name="delete" size="18px" />
-        <span>Удалить чат</span>
-      </button>
-    </div>
-  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -395,6 +380,9 @@ const emit = defineEmits<{
   (e: 'toggle-pin', chatId: number): void
   (e: 'toggle-mute', chatId: number): void
   (e: 'delete-chat', chat: Chat): void
+  (e: 'bulk-mute', chatIds: number[], muted: boolean): void
+  (e: 'bulk-pin', chatIds: number[], pinned: boolean): void
+  (e: 'bulk-delete', chatIds: number[]): void
 }>()
 
 // Пункты верхнего меню «⋯» (сюда будут добавляться новые настройки).
@@ -461,57 +449,123 @@ const isPinnedOf = (chatId: number): boolean => props.pinnedChatIds?.includes(ch
 /** Замьючен ли чат. */
 const isMutedOf = (chatId: number): boolean => props.mutedChatIds?.includes(chatId) ?? false
 
-/** Меню действий над чатом (мобильная версия: «⋯» вместо трёх кнопок). */
-interface RowMenuState {
-  chat: Chat
-  x: number
-  y: number
+// ---------- Режим выделения чатов (long-press; как в Telegram) ----------
+// Вход: удержание на чате (~0,5 с). В режиме выделения клик по чату —
+// отметить/снять; сверху появляется панель действий (мьют/удалить/выбрать все).
+const selectionMode = ref(false)
+const selectedIds = ref<number[]>([])
+
+const isSelected = (chatId: number): boolean => selectedIds.value.includes(chatId)
+
+const exitSelection = () => {
+  selectionMode.value = false
+  selectedIds.value = []
 }
 
-const rowMenu = ref<RowMenuState | null>(null)
-const rowMenuEl = ref<HTMLElement | null>(null)
-let rowMenuOutsideHandler: ((event: PointerEvent) => void) | null = null
+const toggleSelect = (chatId: number) => {
+  const next = new Set(selectedIds.value)
+  if (next.has(chatId)) {
+    next.delete(chatId)
+  } else {
+    next.add(chatId)
+  }
+  selectedIds.value = Array.from(next)
+  if (selectedIds.value.length === 0) selectionMode.value = false
+}
 
-const closeRowMenu = () => {
-  rowMenu.value = null
-  if (rowMenuOutsideHandler) {
-    document.removeEventListener('pointerdown', rowMenuOutsideHandler)
-    rowMenuOutsideHandler = null
+let holdTimer: number | null = null
+let suppressClick = false
+
+const cancelHold = () => {
+  if (holdTimer !== null) {
+    window.clearTimeout(holdTimer)
+    holdTimer = null
   }
 }
 
-const openRowMenu = (chat: Chat, event: MouseEvent) => {
-  // Координаты — от точки касания/клика, с ограничением, чтобы меню не уезжало
-  // за экран (работает и при клике у нижнего/правого края).
-  rowMenu.value = {
-    chat,
-    x: Math.max(8, Math.min(event.clientX, window.innerWidth - 200)),
-    y: Math.max(8, Math.min(event.clientY, window.innerHeight - 190))
-  }
-  if (rowMenuOutsideHandler) {
-    document.removeEventListener('pointerdown', rowMenuOutsideHandler)
-  }
-  rowMenuOutsideHandler = (pointerEvent: PointerEvent) => {
-    const el = rowMenuEl.value
-    if (el && !el.contains(pointerEvent.target as Node)) closeRowMenu()
-  }
-  document.addEventListener('pointerdown', rowMenuOutsideHandler)
+const onRowPointerDown = (chatId: number) => {
+  if (selectionMode.value) return
+  cancelHold()
+  suppressClick = false
+  holdTimer = window.setTimeout(() => {
+    holdTimer = null
+    selectionMode.value = true
+    selectedIds.value = [chatId]
+    suppressClick = true // клик, которым завершилось удержание, чат не открывает
+  }, 480)
 }
 
-const runRowAction = (kind: 'mute' | 'pin' | 'delete') => {
-  const state = rowMenu.value
-  closeRowMenu()
-  if (!state) return
-  if (kind === 'mute') emit('toggle-mute', state.chat.id)
-  else if (kind === 'pin') emit('toggle-pin', state.chat.id)
-  else emit('delete-chat', state.chat)
+const onRowPointerUp = () => {
+  cancelHold()
 }
 
-onBeforeUnmount(() => {
-  if (rowMenuOutsideHandler) {
-    document.removeEventListener('pointerdown', rowMenuOutsideHandler)
-    rowMenuOutsideHandler = null
+const onRowPointerCancel = () => {
+  cancelHold()
+  suppressClick = false
+}
+
+const onRowClick = (chatId: number) => {
+  if (suppressClick) {
+    suppressClick = false
+    return
   }
+  if (selectionMode.value) {
+    toggleSelect(chatId)
+    return
+  }
+  selectChat(chatId)
+}
+
+const allVisibleSelected = computed<boolean>(() => {
+  const visible = orderedChats.value.map((chat) => chat.id)
+  return visible.length > 0 && visible.every((id) => selectedIds.value.includes(id))
+})
+
+const selectionAllMuted = computed<boolean>(() => {
+  if (selectedIds.value.length === 0) return false
+  return selectedIds.value.every((id) => isMutedOf(id))
+})
+
+const selectionAllPinned = computed<boolean>(() => {
+  if (selectedIds.value.length === 0) return false
+  return selectedIds.value.every((id) => isPinnedOf(id))
+})
+
+const toggleSelectAll = () => {
+  if (allVisibleSelected.value) {
+    exitSelection()
+  } else {
+    selectedIds.value = orderedChats.value.map((chat) => chat.id)
+    if (selectedIds.value.length === 0) selectionMode.value = false
+  }
+}
+
+const onBulkMute = () => {
+  const ids = [...selectedIds.value]
+  if (ids.length === 0) return
+  const muted = !selectionAllMuted.value
+  exitSelection()
+  emit('bulk-mute', ids, muted)
+}
+
+const onBulkPin = () => {
+  const ids = [...selectedIds.value]
+  if (ids.length === 0) return
+  const pinned = !selectionAllPinned.value
+  exitSelection()
+  emit('bulk-pin', ids, pinned)
+}
+
+const onBulkDelete = () => {
+  const ids = [...selectedIds.value]
+  if (ids.length === 0) return
+  exitSelection()
+  emit('bulk-delete', ids)
+}
+
+// Выход из режима выделения при внешних изменениях (смена вкладки/чата).
+watch([() => props.view, () => props.selectedChatId], () => {
+  if (selectionMode.value) exitSelection()
 })
 
 /** Сохранённый черновик чата (null — черновика нет). */
@@ -880,59 +934,9 @@ onBeforeUnmount(() => {
   font-style: italic;
 }
 
-/* Действия над чатом (закрепить/удалить) — показываются при наведении на строку */
+/* Действия над чатом теперь только через режим выделения (удержание). */
 .chat-row {
   position: relative;
-}
-
-.row-actions {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 14px;
-  background: var(--ms-surface, #ffffff);
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.14);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.12s;
-  z-index: 3;
-}
-
-.chat-row:hover .row-actions,
-.chat-row:focus-within .row-actions {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.row-act {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--ms-muted, #71808d);
-  cursor: pointer;
-}
-
-.row-act:hover {
-  background: var(--ms-hover, #f2f4f6);
-  color: var(--ms-text, #141d26);
-}
-
-.row-act.on {
-  color: var(--ms-accent, #2ea25e);
-}
-
-.row-act.danger:hover {
-  color: var(--ms-danger, #d64545);
-  background: var(--ms-danger-bg, #fdecec);
 }
 
 /* Индикатор «чат замьючен» рядом со временем */
@@ -1113,87 +1117,56 @@ onBeforeUnmount(() => {
   padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
 }
 
-/* Мобильная кнопка «⋯» (по умолчанию скрыта — используется вместо трёх кнопок
-   только на устройствах без hover). */
-.row-more {
-  display: none;
-}
-
-.row-more-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--ms-muted, #71808d);
-  cursor: pointer;
-}
-
-.row-more-btn:active {
-  background: var(--ms-hover, #f2f4f6);
-}
-
-/* На устройствах без hover (телефоны) вместо трёх кнопок показываем одну «⋯»,
-   открывающую меню действий. Блок в конце — чтобы перебить базовые правила. */
-@media (hover: none) {
-  .row-actions {
-    display: none;
-  }
-  .row-more {
-    display: block;
-    position: absolute;
-    right: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 3;
-  }
-  .chat-row .row-item {
-    padding-right: 52px;
-  }
-}
-
-/* Всплывающее меню действий чата (Teleport в body) */
-.row-menu-pop {
-  position: fixed;
-  z-index: 9000;
-  min-width: 196px;
+/* ---------- Режим выделения чатов (вход по удержанию) ---------- */
+.selection-bar {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ms-border, #e2e6ea);
   background: var(--ms-surface, #ffffff);
-  border: 1px solid var(--ms-border, #e2e6ea);
-  border-radius: 12px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
 }
 
-.row-menu-item {
+.selection-count {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ms-text, #141d26);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.selection-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--ms-text, #141d26);
-  font: inherit;
-  font-size: 0.95rem;
-  text-align: left;
-  cursor: pointer;
+  gap: 2px;
 }
 
-.row-menu-item:hover {
-  background: var(--ms-hover, #f2f4f6);
-}
-
-.row-menu-item.danger {
+.selection-actions .icon-btn.danger {
   color: var(--ms-danger, #d64545);
 }
 
-.row-menu-item.danger:hover {
-  background: var(--ms-danger-bg, #fdecec);
+/* Кружок-чекбокс слева в строке чата при выделении. */
+.row-selector {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--ms-muted, #93a0ab);
+  border-radius: 50%;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+
+.row-selector.on {
+  background: var(--ms-accent, #2ea25e);
+  border-color: var(--ms-accent, #2ea25e);
+}
+
+.row-item.selected {
+  background: var(--ms-accent-soft, #e3f2e5);
 }
 </style>

@@ -29,6 +29,9 @@
         @open-message="openGlobalMessage"
         @toggle-pin="toggleChatPinned"
         @toggle-mute="toggleChatMuted"
+        @bulk-mute="bulkSetMuted"
+        @bulk-pin="bulkSetPinned"
+        @bulk-delete="openBulkDeleteChats"
         @delete-chat="openDeleteChatModal"
         @to-contacts="view = 'contacts'"
         @to-chats="view = 'chats'"
@@ -209,15 +212,22 @@
   <q-dialog v-model="showDeleteChatModal">
     <q-card class="delchat-card">
       <q-card-section class="row no-wrap items-center delchat-head">
-        <div class="text-subtitle1 text-weight-medium ellipsis">Удалить чат</div>
+        <div class="text-subtitle1 text-weight-medium ellipsis">
+          {{ deleteChatBulkIds.length ? 'Удалить чаты' : 'Удалить чат' }}
+        </div>
         <q-space />
         <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
       </q-card-section>
       <q-separator />
       <q-card-section class="delchat-body">
         <p class="delchat-text">
-          Удалить чат с <b>{{ deleteChatTitle }}</b
-          >?
+          <template v-if="deleteChatBulkIds.length">
+            Удалить выбранные чаты ({{ deleteChatBulkIds.length }})?
+          </template>
+          <template v-else>
+            Удалить чат с <b>{{ deleteChatTitle }}</b
+            >?
+          </template>
         </p>
         <q-radio v-model="deleteChatScope" val="me" label="Только у меня" />
         <div class="delchat-hint">Чат исчезнет из вашего списка; у собеседника останется.</div>
@@ -455,6 +465,17 @@ const toggleChatPinned = (chatId: number) => {
   writePinnedChats()
 }
 
+/** Закрепить/открепить сразу несколько чатов (режим выделения). */
+const bulkSetPinned = (chatIds: number[], pinned: boolean) => {
+  const next = new Set(pinnedChatIds.value)
+  chatIds.forEach((id) => {
+    if (pinned) next.add(id)
+    else next.delete(id)
+  })
+  pinnedChatIds.value = Array.from(next)
+  writePinnedChats()
+}
+
 /** Закреплён ли открытый чат (состояние кнопки в шапке). */
 const selectedChatPinned = computed<boolean>(
   () => selectedChat.value !== null && isChatPinned(selectedChat.value.id)
@@ -483,6 +504,23 @@ const toggleChatMuted = async (chatId: number) => {
   } catch (error) {
     chat.muted = !next
     console.error('Не удалось изменить mute чата:', getErrorMessage(error))
+  }
+}
+
+/** Массово включает/выключает уведомления выбранных чатов. */
+const bulkSetMuted = async (chatIds: number[], muted: boolean) => {
+  const targets = chatIds
+    .map((id) => chats.value.find((item) => item.id === id))
+    .filter((chat): chat is Chat => chat !== undefined)
+  for (const chat of targets) {
+    const previous = chat.muted
+    chat.muted = muted
+    try {
+      await setChatMuted(chat.id, muted)
+    } catch (error) {
+      chat.muted = previous
+      console.error('Не удалось изменить mute чата:', getErrorMessage(error))
+    }
   }
 }
 
@@ -1221,6 +1259,7 @@ const chatDeleteLabel = (chat: Chat): string => {
 // ---------- Модалка «Удалить чат» (для себя / для всех) ----------
 const showDeleteChatModal = ref(false)
 const deleteChatTarget = ref<Chat | null>(null)
+const deleteChatBulkIds = ref<number[]>([])
 const deleteChatScope = ref<'me' | 'all'>('me')
 
 const deleteChatTitle = computed<string>(() =>
@@ -1230,32 +1269,58 @@ const deleteChatTitle = computed<string>(() =>
 /** Открывает модалку удаления (вместо window.confirm). */
 const openDeleteChatModal = (chat: Chat) => {
   deleteChatTarget.value = chat
+  deleteChatBulkIds.value = []
   deleteChatScope.value = 'me'
   showDeleteChatModal.value = true
 }
 
+/** Удаление нескольких выбранных чатов (режим выделения). */
+const openBulkDeleteChats = (chatIds: number[]) => {
+  if (chatIds.length === 0) return
+  deleteChatTarget.value = null
+  deleteChatBulkIds.value = chatIds
+  deleteChatScope.value = 'me'
+  showDeleteChatModal.value = true
+}
+
+/** Локальная чистка после удаления чата (список/черновик/пин/открытый тред). */
+const removeDeletedChat = (chat: Chat) => {
+  chats.value = chats.value.filter((item) => item.id !== chat.id)
+  clearDraftFor(chat.id)
+  if (pinnedChatIds.value.includes(chat.id)) toggleChatPinned(chat.id)
+  // Mute снимается на сервере самим удалением/выходом из чата.
+  if (selectedChatId.value === chat.id) {
+    selectedChatId.value = null
+    messages.value = []
+    pinnedMessages.value = []
+    highlightedMessageId.value = null
+    closeLightbox()
+    showChatInfoModal.value = false
+  }
+}
+
 /** Подтверждение из модалки: удалить «только у меня» или «для всех». */
 const confirmDeleteChat = async () => {
-  const chat = deleteChatTarget.value
-  if (!chat) return
+  const ids = deleteChatBulkIds.value.length
+    ? deleteChatBulkIds.value
+    : deleteChatTarget.value
+      ? [deleteChatTarget.value.id]
+      : []
+  if (ids.length === 0) return
   showDeleteChatModal.value = false
+  const targets = ids
+    .map((id) => chats.value.find((item) => item.id === id))
+    .filter((chat): chat is Chat => chat !== undefined)
   deleteChatTarget.value = null
+  deleteChatBulkIds.value = []
+  const forAll = deleteChatScope.value === 'all'
   try {
-    await deleteChat(chat.id, deleteChatScope.value === 'all')
-    chats.value = chats.value.filter((item) => item.id !== chat.id)
-    clearDraftFor(chat.id)
-    if (pinnedChatIds.value.includes(chat.id)) toggleChatPinned(chat.id)
-    // Mute снимается на сервере самим удалением/выходом из чата.
-    if (selectedChatId.value === chat.id) {
-      selectedChatId.value = null
-      messages.value = []
-      pinnedMessages.value = []
-      highlightedMessageId.value = null
-      closeLightbox()
-      showChatInfoModal.value = false
+    for (const chat of targets) {
+      await deleteChat(chat.id, forAll)
+      removeDeletedChat(chat)
     }
   } catch (error) {
-    console.error('Не удалось удалить чат:', getErrorMessage(error))
+    console.error('Не удалось удалить чаты:', getErrorMessage(error))
   }
 }
 
