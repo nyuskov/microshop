@@ -61,6 +61,12 @@ class Message(BaseModel):
     is_pinned: bool = False
     encrypted: bool = False
     edited_at: datetime | None = None
+    # Системная отметка о звонке.
+    kind: str = "text"
+    call_kind: str | None = None
+    call_state: str | None = None
+    call_duration: int | None = None
+    call_caller_id: int | None = None
     file: MessageFile | None = None
     reactions: list[ReactionSummary] = Field(default_factory=list)
     forwarded_from: ForwardedFrom | None = None

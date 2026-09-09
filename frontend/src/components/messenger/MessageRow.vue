@@ -1,5 +1,12 @@
 <template>
+  <div v-if="message.kind === 'call'" class="msg msg-call" :data-message-id="message.id">
+    <div class="call-note">
+      <q-icon :name="callIcon" size="15px" aria-hidden="true" />
+      <span>{{ callText }}</span>
+    </div>
+  </div>
   <div
+    v-else
     class="msg"
     :class="[isOwn ? 'out' : 'in', { 'msg-highlight': highlighted }]"
     :data-message-id="message.id"
@@ -156,6 +163,8 @@ import type { Message } from '@/types'
 import { mediaUrl } from '@/config'
 import { formatBytes, formatMsgTime } from '@/utils/format'
 import {
+  callMessageIcon,
+  callMessageText,
   fileIcon,
   isAudioFile,
   isImageFile,
@@ -215,6 +224,10 @@ const mediaAbsolute = (path: string): string => mediaUrl(path)
 
 const hasMyReaction = (message: Message, emoji: string): boolean =>
   message.reactions.some((reaction) => reaction.reacted_by_me && reaction.emoji === emoji)
+
+/** Текст и иконка системной отметки о звонке. */
+const callText = computed<string>(() => callMessageText(props.message) ?? 'Звонок')
+const callIcon = computed<string>(() => callMessageIcon(props.message))
 </script>
 
 <style scoped>
@@ -224,6 +237,23 @@ const hasMyReaction = (message: Message, emoji: string): boolean =>
   flex-direction: column;
   margin: 3px 0;
   max-width: 60%;
+}
+
+.msg-call {
+  max-width: 100%;
+  align-self: center;
+  margin: 6px 0;
+}
+
+.call-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--ms-surface-2, #eef1f4);
+  color: var(--ms-muted, #71808d);
+  border-radius: 14px;
+  padding: 4px 12px;
+  font-size: 12.5px;
 }
 
 .msg.out {

@@ -52,6 +52,12 @@ export interface Message {
   is_read: boolean
   is_pinned: boolean
   encrypted?: boolean
+  /** kind: 'text' — обычное; 'call' — системная отметка о звонке. */
+  kind?: 'text' | 'call'
+  call_kind?: 'audio' | 'video'
+  call_state?: 'completed' | 'missed' | 'declined'
+  call_duration?: number
+  call_caller_id?: number
   edited_at: string | null
   file: MessageFile | null
   reactions: ReactionSummary[]

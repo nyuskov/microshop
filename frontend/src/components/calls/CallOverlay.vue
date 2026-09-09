@@ -114,6 +114,15 @@
             <div class="call-controls active-controls">
               <button
                 class="ctl-btn"
+                :class="{ 'speaker-on': speakerOn }"
+                :title="speakerOn ? 'Обычный режим' : 'Громкая связь'"
+                :aria-pressed="speakerOn"
+                @click="toggleSpeaker"
+              >
+                <q-icon :name="speakerOn ? 'volume_up' : 'volume_down'" size="26px" />
+              </button>
+              <button
+                class="ctl-btn"
                 :class="{ off: !callStore.micOn }"
                 title="Микрофон"
                 @click="callStore.toggleMic()"
@@ -162,6 +171,20 @@ const noticeVisible = ref(false)
 let noticeTimer: ReturnType<typeof setTimeout> | undefined
 let attachTimer: ReturnType<typeof setInterval> | undefined
 
+// «Громкая связь»: по умолчанию обычная громкость, кнопкой — на максимум.
+const speakerOn = ref(false)
+
+const applySpeaker = () => {
+  if (remoteAudioEl.value) {
+    remoteAudioEl.value.volume = speakerOn.value ? 1 : 0.55
+  }
+}
+
+const toggleSpeaker = () => {
+  speakerOn.value = !speakerOn.value
+  applySpeaker()
+}
+
 const avatarUrl = computed<string | undefined>(() => {
   const path = callStore.peerAvatar
   return path ? mediaUrl(path) : undefined
@@ -195,6 +218,7 @@ const attachStreams = () => {
   if (localVideoEl.value && localVideoEl.value.srcObject !== local) {
     localVideoEl.value.srcObject = local
   }
+  applySpeaker()
 }
 
 watch(
@@ -207,6 +231,7 @@ watch(
     } else if (attachTimer !== undefined) {
       window.clearInterval(attachTimer)
       attachTimer = undefined
+      speakerOn.value = false
     }
   }
 )
@@ -398,6 +423,10 @@ onBeforeUnmount(() => {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   transform: scaleX(-1);
   z-index: 5;
+}
+
+.ctl-btn.speaker-on {
+  color: var(--ms-accent, #2ea25e);
 }
 
 /* ---------- Управление ---------- */

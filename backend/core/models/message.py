@@ -58,6 +58,12 @@ class Message(IdIntPkMixin, Base):
     # расшифровывают только клиенты собеседников. Ставится на новых текстовых
     # сообщениях в личных чатах; старые/незашифрованные остаются без флага.
     encrypted: Mapped[bool] = mapped_column(default=False, server_default=func.false())
+    # Системная отметка о звонке (kind='call'): тип/исход/длительность/инициатор.
+    kind: Mapped[str] = mapped_column(String(10), default="text", server_default="text")
+    call_kind: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    call_state: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    call_duration: Mapped[int | None] = mapped_column(nullable=True)
+    call_caller_id: Mapped[int | None] = mapped_column(nullable=True)
     # Время последнего редактирования текста (null — не редактировалось).
     edited_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

@@ -11,14 +11,17 @@
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from api_v1.chats.crud import get_private_chat_id_between
+from api_v1.events.service import notify_chat
 from api_v1.push import crud as push_crud
 from core.config import settings
-from core.models import User, db_helper
+from core.models import Message, User, db_helper
 
 from ..auth.utils import get_current_user, resolve_user_from_websocket
 from .manager import call_manager
@@ -70,6 +73,90 @@ RELAY_MESSAGE_TYPES = frozenset(
     }
 )
 
+# ---------- История звонков (системные сообщения в чат) ----------
+# Сервер видит сигналинг и фиксирует исход звонка: completed/missed/declined.
+_CALL_TRACK_TYPES = frozenset(
+    {"call-offer", "call-answer", "call-cancel", "call-decline", "call-end"}
+)
+_active_calls: dict[str, dict[str, Any]] = {}
+
+
+async def _track_call_event(
+    message_type: str,
+    from_user_id: int,
+    to_user_id: int,
+    data: dict[str, Any],
+) -> None:
+    call_id = data.get("call_id")
+    if not call_id:
+        return
+    if message_type == "call-offer":
+        _active_calls[call_id] = {
+            "caller": from_user_id,
+            "callee": to_user_id,
+            "kind": data.get("kind"),
+            "started": None,
+        }
+        return
+    meta = _active_calls.get(call_id)
+    if meta is None:
+        return
+    if message_type == "call-answer":
+        meta["started"] = datetime.now(timezone.utc)
+        return
+    # Завершение/отмена/отказ.
+    _active_calls.pop(call_id, None)
+    if message_type == "call-end" and meta.get("started") is not None:
+        started = meta["started"]
+        duration = max(
+            0, int((datetime.now(timezone.utc) - started).total_seconds())
+        )
+        await _persist_call_record(meta, "completed", duration)
+    elif message_type == "call-decline":
+        await _persist_call_record(meta, "declined", 0)
+    elif message_type == "call-cancel":
+        await _persist_call_record(meta, "missed", 0)
+
+
+async def _persist_call_record(
+    meta: dict[str, Any], state: str, duration: int
+) -> None:
+    """Пишет системное сообщение о звонке в личный чат участников."""
+    caller = meta.get("caller")
+    callee = meta.get("callee")
+    if not caller or not callee:
+        return
+    try:
+        async with db_helper.session_factory() as session:
+            chat_id = await get_private_chat_id_between(session, caller, callee)
+            if chat_id is None:
+                return
+            message = Message(
+                text="",
+                chat_id=chat_id,
+                user_id=caller,
+                kind="call",
+                call_kind=meta.get("kind") or "audio",
+                call_state=state,
+                call_duration=duration,
+                call_caller_id=caller,
+            )
+            session.add(message)
+            await session.commit()
+            await notify_chat(
+                session,
+                chat_id=chat_id,
+                payload={
+                    "type": "message.new",
+                    "chat_id": chat_id,
+                    "message_id": message.id,
+                    "sender_id": caller,
+                },
+                exclude_user_id=None,
+            )
+    except Exception:  # noqa: BLE001 - история звонка не роняет сигналинг
+        logger.exception("Не удалось записать отметку о звонке")
+
 
 async def _relay_message(from_user_id: int, data: dict[str, Any]) -> None:
     """Пересылает сообщение сигналинга от одного участника другому."""
@@ -83,11 +170,16 @@ async def _relay_message(from_user_id: int, data: dict[str, Any]) -> None:
     envelope["from_user_id"] = from_user_id
     message_type = data.get("type")
 
+    if message_type in _CALL_TRACK_TYPES:
+        await _track_call_event(message_type, from_user_id, to_user_id, data)
+
     delivered = await call_manager.send_to_user(to_user_id, envelope)
     if delivered:
         # Доставлено — парковка для этого вызова больше не нужна.
         if message_type in ("call-cancel", "call-decline", "call-end"):
-            await call_manager.discard_pending_offer(to_user_id, data.get("call_id"))
+            await call_manager.discard_pending_offer(
+                to_user_id, data.get("call_id")
+            )
         return
 
     # Абонент офлайн.
@@ -110,7 +202,9 @@ async def _relay_message(from_user_id: int, data: dict[str, Any]) -> None:
             )
     elif message_type in ("call-cancel", "call-decline", "call-end"):
         # Отменяем/снимаем «висящий» вызов у офлайн-абонента.
-        await call_manager.discard_pending_offer(to_user_id, data.get("call_id"))
+        await call_manager.discard_pending_offer(
+            to_user_id, data.get("call_id")
+        )
 
 
 async def _park_offer_and_push(

@@ -41,6 +41,10 @@ export const fileIcon = (file: MessageFile): string => {
 
 /** Краткое описание сообщения для цитат, превью и закреплённых. */
 export const messageSnippet = (message: Message): string => {
+  if (message.kind === 'call') {
+    const callText = callMessageText(message)
+    return callText ? `📞 ${callText}` : '📞 Звонок'
+  }
   if (message.encrypted && isEncryptedPayload(message.text)) return '🔒 Сообщение'
   if (message.file) {
     if (isImageFile(message.file)) return '📷 Изображение'
@@ -49,6 +53,31 @@ export const messageSnippet = (message: Message): string => {
     return `📎 ${message.file.name}`
   }
   return message.text || ''
+}
+
+/** Отметка о звонке: текст для списка чатов и системной строки в чате. */
+export const callMessageText = (message: Message): string | null => {
+  if (message.kind !== 'call') return null
+  const isVideo = message.call_kind === 'video'
+  const name = isVideo ? 'Видеозвонок' : 'Аудиозвонок'
+  if (message.call_state === 'completed') {
+    const total = message.call_duration ?? 0
+    const mm = Math.floor(total / 60)
+    const ss = total % 60
+    return `${name} · ${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+  }
+  if (message.call_state === 'missed') {
+    return `Пропущенный ${isVideo ? 'видеозвонок' : 'звонок'}`
+  }
+  if (message.call_state === 'declined') return `${name} отклонён`
+  return name
+}
+
+/** Иконка отметки о звонке (Material). */
+export const callMessageIcon = (message: Message): string => {
+  if (message.call_state === 'missed') return 'call_missed'
+  if (message.call_state === 'declined') return 'call_end'
+  return message.call_kind === 'video' ? 'videocam' : 'call'
 }
 
 // ---------- Клиентская оптимизация фото перед загрузкой ----------
