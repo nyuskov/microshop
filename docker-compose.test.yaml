@@ -197,6 +197,27 @@ services:
       - certbot_var:/var/lib/letsencrypt
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done'"
 
+  # TURN-сервер для WebRTC-звонков за «симметричным» NAT (мобильные операторы).
+  # Creds в .env (TURN_USERNAME/TURN_PASSWORD). Внешние порты: 3478/udp+tcp,
+  # релей 49160-49200/udp — открыть в security group.
+  coturn:
+    image: coturn/coturn:4.6
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --min-port=49160
+      - --max-port=49200
+      - --realm=${TURN_REALM:-pismo.space}
+      - --user=${TURN_USERNAME}:${TURN_PASSWORD}
+      - --fingerprint
+      - --lt-cred-mech
+      - --no-cli
+      - --no-tls
+      - --no-dtls
+      - --external-ip=82.202.137.248/10.0.0.5
+
 networks:
   server_network:
     driver: bridge
