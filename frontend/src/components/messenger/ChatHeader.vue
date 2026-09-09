@@ -1,5 +1,5 @@
 <template>
-  <div class="chat-header">
+  <div ref="rootEl" class="chat-header">
     <button v-if="showBack" class="icon-btn back-btn" title="К списку чатов" @click="emit('back')">
       <q-icon name="arrow_back" size="21px" />
     </button>
@@ -37,30 +37,35 @@
           <q-icon :name="callKind === 'video' ? 'videocam' : 'call'" size="20px" />
         </button>
       </span>
-      <!-- <button
-        class="icon-btn"
-        :class="{ pinned }"
-        :title="pinned ? 'Открепить чат' : 'Закрепить чат вверху списка'"
-        :aria-pressed="pinned"
-        @click="emit('toggle-pin')"
-      >
-        <q-icon name="push_pin" size="20px" />
-      </button> -->
-      <button class="icon-btn" title="Поиск по сообщениям" @click="emit('toggle-search')">
-        <q-icon name="search" size="20px" />
-      </button>
-      <button class="icon-btn" title="Профиль" @click="emit('open-profile')">
-        <span class="avatar mini" :style="avatarStyle(selfName)">
-          <img v-if="selfAvatarUrl" :src="selfAvatarUrl" class="avatar-img" alt="" />
-          <template v-else>{{ selfInitial }}</template>
-        </span>
-      </button>
+
+      <!-- Остальные действия — под «⋯»: в шапке видна только кнопка звонка. -->
+      <span class="ms-dropdown-wrap" @click.stop>
+        <button
+          class="icon-btn"
+          :class="{ open: chatMenuOpen }"
+          title="Ещё"
+          aria-label="Ещё"
+          @click="toggleChatMenu"
+        >
+          <q-icon name="more_vert" size="20px" />
+        </button>
+        <div v-if="chatMenuOpen" class="ms-dropdown">
+          <button class="ms-dropdown-item" @click="runChatAction('search')">
+            <q-icon name="search" size="19px" />
+            <span>Поиск по сообщениям</span>
+          </button>
+          <button class="ms-dropdown-item" @click="runChatAction('info')">
+            <q-icon name="info_outline" size="19px" />
+            <span>Информация о чате</span>
+          </button>
+        </div>
+      </span>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Chat } from '@/types'
 import { avatarStyle, avatarUrlOf, chatPeer, chatPeerTitle, initials } from '@/utils/user'
 import { useCallButton } from '@/composables/useCallButton'
@@ -74,9 +79,6 @@ const props = defineProps<{
   statusPill: string
   /** Показывать ли кнопку звонка (личный чат). */
   showCallButton: boolean
-  /** Имя текущего пользователя (для мини-аватара в кнопке «Профиль»). */
-  selfName: string
-  selfAvatarUrl: string | undefined
   /** Показывать ли кнопку «назад» (мобильный режим: drawer поверх списка). */
   showBack: boolean
   /** «В сети» ли собеседник (точка на аватаре). */
@@ -89,7 +91,6 @@ const emit = defineEmits<{
   /** «Назад» — на мобильном возврат к списку чатов (родитель открывает drawer). */
   (e: 'back'): void
   (e: 'toggle-search'): void
-  (e: 'open-profile'): void
   (e: 'open-info'): void
   (e: 'start-call', kind: 'audio' | 'video'): void
   (e: 'toggle-pin'): void
@@ -99,7 +100,39 @@ const peer = computed(() => chatPeer(props.chat, props.currentUserId))
 const title = computed<string>(() => chatPeerTitle(props.chat, props.currentUserId))
 const peerAvatarUrl = computed<string | undefined>(() => avatarUrlOf(peer.value))
 
-const selfInitial = computed<string>(() => (props.selfName ? initials(props.selfName) : 'U'))
+// Меню «⋯» в шапке: закрывается по клику вне панели.
+const rootEl = ref<HTMLElement | null>(null)
+const chatMenuOpen = ref(false)
+let outsideHandler: ((event: PointerEvent) => void) | null = null
+watch(chatMenuOpen, (open) => {
+  if (outsideHandler) {
+    document.removeEventListener('pointerdown', outsideHandler)
+    outsideHandler = null
+  }
+  if (open) {
+    outsideHandler = (event: PointerEvent) => {
+      const el = rootEl.value
+      if (el && !el.contains(event.target as Node)) chatMenuOpen.value = false
+    }
+    document.addEventListener('pointerdown', outsideHandler)
+  }
+})
+onBeforeUnmount(() => {
+  if (outsideHandler) {
+    document.removeEventListener('pointerdown', outsideHandler)
+    outsideHandler = null
+  }
+})
+
+const toggleChatMenu = () => {
+  chatMenuOpen.value = !chatMenuOpen.value
+}
+
+const runChatAction = (action: 'search' | 'info') => {
+  chatMenuOpen.value = false
+  if (action === 'search') emit('toggle-search')
+  else if (action === 'info') emit('open-info')
+}
 
 // Кнопка звонка: клик = звонок выбранного типа, удержание 0,5 c = смена типа.
 const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, onCallClick } =
@@ -180,12 +213,6 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   border: 2px solid var(--ms-surface);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
   z-index: 1;
-}
-
-.avatar.mini {
-  width: 30px;
-  height: 30px;
-  font-size: 0.72rem;
 }
 
 .chat-avatar {
@@ -290,6 +317,58 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
     opacity: 0;
     transform: scale(1.5);
   }
+}
+
+/* Меню «⋯» в шапке чата */
+.ms-dropdown-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.icon-btn.open {
+  color: var(--ms-accent, #1e9b51);
+}
+
+.ms-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 210px;
+  background: #ffffff;
+  border: 1px solid #e2e6ea;
+  border-radius: 12px;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.18);
+  padding: 6px;
+  z-index: 130;
+  display: flex;
+  flex-direction: column;
+}
+
+.ms-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 9px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+  font-family: inherit;
+  color: #1c2733;
+  white-space: nowrap;
+}
+
+.ms-dropdown-item:hover {
+  background: #f2f4f6;
+}
+
+.ms-dropdown-item .q-icon {
+  width: 18px;
+  text-align: center;
+  color: #5b6b79;
 }
 
 /* ---------- Мобильная адаптация ---------- */

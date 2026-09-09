@@ -54,8 +54,8 @@
         </div>
         <h2 class="panel-title">Чаты</h2>
         <div class="panel-header-right">
-          <button class="icon-btn" title="Новое сообщение" @click="focusSearch">
-            <q-icon name="edit" size="19px" />
+          <button class="icon-btn" title="Поиск" aria-label="Поиск" @click="openSearch">
+            <q-icon name="search" size="20px" />
           </button>
           <span class="ms-dropdown-wrap" @click.stop>
             <button
@@ -81,22 +81,36 @@
         </div>
       </div>
 
-      <div v-if="!selectionMode" class="panel-search">
-        <q-icon name="search" class="search-icon" size="17px" />
+      <!-- Глобальный поиск: открывается по значку и прячет верхний хидер,
+           как панель действий при выделении чатов удержанием. -->
+      <div v-if="!selectionMode && searchOpen" class="panel-search search-head">
+        <button class="icon-btn search-back" title="Назад" aria-label="Назад" @click="closeSearch">
+          <q-icon name="arrow_back" size="20px" />
+        </button>
         <input
           ref="searchInputRef"
           v-model="searchQuery"
           class="panel-search-input"
           type="text"
-          placeholder="Поиск"
-          aria-label="Поиск людей"
+          placeholder="Поиск людей и сообщений"
+          aria-label="Глобальный поиск"
+          @keydown.esc="closeSearch"
         />
+        <button
+          v-if="searchQuery.trim()"
+          class="icon-btn search-clear"
+          title="Очистить"
+          aria-label="Очистить"
+          @click="searchQuery = ''"
+        >
+          <q-icon name="close" size="18px" />
+        </button>
       </div>
 
       <div v-if="searchError" class="inline-error">{{ searchError }}</div>
 
       <!-- Результаты поиска: люди / сообщения -->
-      <div v-if="searchQuery.trim()" class="people-results">
+      <div v-if="searchOpen && searchQuery.trim()" class="people-results">
         <div class="search-mode-tabs" role="tablist" aria-label="Область поиска">
           <button
             class="search-mode-tab"
@@ -178,10 +192,10 @@
         <div v-else-if="searchMode === 'messages'" class="search-status">Ничего не найдено</div>
       </div>
 
-      <div v-if="loadingChats" class="search-status">Загрузка…</div>
+      <div v-if="!searchOpen && loadingChats" class="search-status">Загрузка…</div>
 
-      <!-- Недавние диалоги -->
-      <template v-else>
+      <!-- Недавние диалоги (скрыты, пока открыт глобальный поиск) -->
+      <template v-else-if="!searchOpen">
         <div class="section-label">Недавние</div>
         <div v-if="!orderedChats.length" class="empty-hint">
           Найдите пользователя по логину или телефону и начните переписку
@@ -247,6 +261,14 @@
               </span>
             </button>
           </div>
+        </div>
+      </template>
+
+      <!-- Пустой глобальный поиск: подсказка вместо списка -->
+      <template v-else-if="searchOpen && !searchQuery.trim()">
+        <div class="search-hint">
+          <q-icon name="search" class="search-hint-icon" size="30px" />
+          <p>Поиск по людям и сообщениям<br />во всех чатах</p>
         </div>
       </template>
     </template>
@@ -632,10 +654,23 @@ const runSettingsAction = (action: (typeof SETTINGS_ACTIONS)[number]) => {
   else if (action.key === 'appearance') emit('open-appearance')
 }
 
-const focusSearch = () => {
+const searchOpen = ref(false)
+
+/** Открыть глобальный поиск (прячет верхний хидер, фокус в поле). */
+const openSearch = () => {
   settingsMenuOpen.value = false
-  // Небольшая задержка, чтобы закрытие меню не съело фокус.
+  searchOpen.value = true
   requestAnimationFrame(() => searchInputRef.value?.focus())
+}
+
+/** Закрыть глобальный поиск и сбросить запрос. */
+const closeSearch = () => {
+  searchOpen.value = false
+  searchQuery.value = ''
+  userResults.value = []
+  messageResults.value = []
+  searching.value = false
+  searchError.value = ''
 }
 
 const selectChat = (chatId: number) => {
@@ -648,8 +683,7 @@ const openChatWithUser = async (user: SearchUserResult) => {
   searchError.value = ''
   try {
     const chat = await openPrivateChat(user.id)
-    searchQuery.value = ''
-    userResults.value = []
+    closeSearch()
     settingsMenuOpen.value = false
     emit('chat-opened', chat)
   } catch (error) {
@@ -689,9 +723,7 @@ const messageSnippetText = (message: Message): string => {
 
 /** Переход к найденному сообщению в его чате. */
 const openMessageResult = (message: Message) => {
-  searchQuery.value = ''
-  userResults.value = []
-  messageResults.value = []
+  closeSearch()
   settingsMenuOpen.value = false
   emit('open-message', message.chat_id, message.id)
 }
@@ -709,9 +741,10 @@ const openChatWithContact = async (contact: SearchUserResult) => {
   }
 }
 
-// Закрываем «⋯» при смене вкладки или выбранного чата извне.
+// Закрываем «⋯» и глобальный поиск при смене вкладки или выбранного чата извне.
 watch([() => props.view, () => props.selectedChatId], () => {
   settingsMenuOpen.value = false
+  if (searchOpen.value) closeSearch()
 })
 
 let searchTimer: number | null = null
@@ -876,6 +909,44 @@ onBeforeUnmount(() => {
   background: transparent;
   font-size: 14px;
   color: #1c2733;
+}
+
+/* Глобальный поиск (открывается по значку вместо верхнего хидера) */
+.search-head {
+  margin: 8px 10px 10px;
+  padding: 3px 6px;
+  gap: 6px;
+}
+
+.search-back,
+.search-clear {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+}
+
+.search-head .panel-search-input {
+  min-width: 0;
+}
+
+.search-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 48px 24px;
+  text-align: center;
+  color: var(--ms-muted-2, #93a0ab);
+}
+
+.search-hint-icon {
+  color: var(--ms-icon-3, #c3cdd4);
+}
+
+.search-hint p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
 }
 
 /* ---------- Списки ---------- */
