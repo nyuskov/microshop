@@ -303,7 +303,7 @@
             class="icon-btn"
             title="Добавить из контактов телефона"
             aria-label="Добавить из контактов телефона"
-            @click="openPhoneImport"
+            @click="onAddFromPhone"
           >
             <q-icon name="contacts" size="20px" />
           </button>
@@ -342,34 +342,79 @@
         />
       </div>
 
-      <div v-if="contactsLoading" class="search-status">Загрузка…</div>
-      <div v-else-if="!filteredContacts.length" class="empty-hint">Контакты не найдены</div>
-      <div v-else class="chat-scroll">
-        <button
-          v-for="contact in filteredContacts"
-          :key="contact.id"
-          class="row-item"
-          @click="openChatWithContact(contact)"
-        >
-          <span class="avatar" :style="avatarStyle(displayName(contact))">
-            <img
-              v-if="avatarUrlOf(contact)"
-              :src="avatarUrlOf(contact)"
-              class="avatar-img"
-              alt=""
-            />
-            <template v-else>{{ initials(displayName(contact)) }}</template>
-          </span>
-          <span class="row-text">
-            <span class="row-title">{{ displayName(contact) }}</span>
-            <span class="row-sub"
-              >@{{ contact.username
-              }}<template v-if="contact.phone_number"> · {{ contact.phone_number }}</template></span
-            >
-          </span>
-          <q-icon name="chevron_right" class="row-arrow" size="20px" />
-        </button>
+      <!-- Результаты импорта из телефонной книги (показываются прямо в списке) -->
+      <div v-if="phoneMatched !== null && !phoneImportOpen" class="phone-inline">
+        <div class="phone-inline-head">
+          <span class="phone-result-title"> Из телефонной книги: {{ phoneMatched.length }} </span>
+          <button
+            class="phone-inline-clear"
+            title="Закрыть результаты"
+            aria-label="Закрыть результаты"
+            @click="clearPhoneMatch"
+          >
+            <q-icon name="close" size="18px" />
+          </button>
+        </div>
+        <p v-if="phoneError" class="phone-error">{{ phoneError }}</p>
+        <div v-if="!phoneBusy && !phoneMatched.length" class="empty-hint">
+          Никого из вашей книги нет в мессенджере
+        </div>
+        <div v-else class="phone-inline-list">
+          <button
+            v-for="user in phoneMatched"
+            :key="user.id"
+            class="row-item"
+            @click="openPhoneMatch(user)"
+          >
+            <span class="avatar" :style="avatarStyle(displayName(user))">
+              <img v-if="avatarUrlOf(user)" :src="avatarUrlOf(user)" class="avatar-img" alt="" />
+              <template v-else>{{ initials(displayName(user)) }}</template>
+            </span>
+            <span class="row-text">
+              <span class="row-title">{{ displayName(user) }}</span>
+              <span class="row-sub"
+                >@{{ user.username
+                }}<template v-if="user.phone_number"> · {{ user.phone_number }}</template></span
+              >
+            </span>
+            <q-icon name="chat_bubble" class="row-arrow" size="18px" />
+          </button>
+        </div>
       </div>
+
+      <!-- Обычный список контактов (скрыт, пока показаны результаты из книги) -->
+      <template v-if="phoneMatched === null || phoneImportOpen">
+        <div v-if="contactsLoading" class="search-status">Загрузка…</div>
+        <div v-else-if="!filteredContacts.length" class="empty-hint">Контакты не найдены</div>
+        <div v-else class="chat-scroll">
+          <button
+            v-for="contact in filteredContacts"
+            :key="contact.id"
+            class="row-item"
+            @click="openChatWithContact(contact)"
+          >
+            <span class="avatar" :style="avatarStyle(displayName(contact))">
+              <img
+                v-if="avatarUrlOf(contact)"
+                :src="avatarUrlOf(contact)"
+                class="avatar-img"
+                alt=""
+              />
+              <template v-else>{{ initials(displayName(contact)) }}</template>
+            </span>
+            <span class="row-text">
+              <span class="row-title">{{ displayName(contact) }}</span>
+              <span class="row-sub"
+                >@{{ contact.username
+                }}<template v-if="contact.phone_number">
+                  · {{ contact.phone_number }}</template
+                ></span
+              >
+            </span>
+            <q-icon name="chevron_right" class="row-arrow" size="20px" />
+          </button>
+        </div>
+      </template>
     </template>
   </aside>
 
@@ -959,6 +1004,27 @@ const pickDeviceContacts = async () => {
   }
 }
 
+/** Убирает результаты импорта из книги (крестик). */
+const clearPhoneMatch = () => {
+  phoneMatched.value = null
+  phoneError.value = ''
+}
+
+/**
+ * «Добавить из контактов телефона»: сразу открываем системную книгу,
+ * без промежуточного окна. Результаты показываем прямо в списке контактов.
+ * Если браузер не умеет открывать книгу (десктоп) — вставка номеров вручную.
+ */
+const onAddFromPhone = () => {
+  phoneError.value = ''
+  phoneMatched.value = null
+  if (phoneContactsSupported.value) {
+    void pickDeviceContacts()
+  } else {
+    openPhoneImport()
+  }
+}
+
 /** Поиск по вставленным вручную номерам. */
 const findByManualPhones = () => {
   const lines = manualPhones.value.split(/[\n,;]+/)
@@ -967,7 +1033,9 @@ const findByManualPhones = () => {
 
 /** Открыть чат с пользователем, найденным по номеру. */
 const openPhoneMatch = async (user: SearchUserResult) => {
-  closePhoneImport()
+  phoneImportOpen.value = false
+  phoneMatched.value = null
+  phoneError.value = ''
   await openChatWithContact(user)
 }
 
@@ -1742,5 +1810,55 @@ onBeforeUnmount(() => {
 .phone-row-icon {
   color: var(--ms-accent, #2ea25e);
   flex: none;
+}
+
+/* Встроенные результаты импорта из телефонной книги (без промежуточного окна) */
+.phone-inline {
+  padding: 4px 12px 6px;
+  border-top: 1px solid var(--ms-border, #eef1f3);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.phone-inline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 2px 2px;
+}
+
+.phone-inline-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  color: var(--ms-muted, #71808d);
+  cursor: pointer;
+}
+
+.phone-inline-clear:hover {
+  background: var(--ms-hover, #eef1f4);
+}
+
+.phone-inline-list {
+  overflow-y: auto;
+  max-height: 34vh;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.phone-inline .row-item {
+  border-radius: 10px;
+}
+
+.phone-inline .phone-result-title {
+  margin: 0;
 }
 </style>
