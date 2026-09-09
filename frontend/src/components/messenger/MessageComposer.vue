@@ -499,6 +499,16 @@ watch(newMessage, () => {
   min-height: 24px;
   max-height: 140px;
   font-family: inherit;
+  /* Прячем скроллбар поля: иначе после набора рядом со смайлом остаётся
+     серая вертикальная полоса (прокрутка при этом сохраняется). */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.text-input::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .send-btn {
