@@ -82,12 +82,14 @@ export const setChatMuted = async (chatId: number, muted: boolean): Promise<bool
 export const sendNewMessage = async (
   chatId: number,
   text: string,
-  replyToId?: number | null
+  replyToId?: number | null,
+  encrypted = false
 ): Promise<Message> => {
   const payload: CreateMessageRequest = {
     chat_id: chatId,
     text,
-    reply_to_id: replyToId ?? null
+    reply_to_id: replyToId ?? null,
+    encrypted
   }
   const response = await api.post<Message>('/messages/', payload)
   return response.data

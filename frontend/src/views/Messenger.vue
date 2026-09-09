@@ -62,6 +62,7 @@
             :show-back="!isDesktop"
             :peer-online="selectedChatPeerOnline"
             :pinned="selectedChatPinned"
+            :e2ee="selectedChatE2ee"
             @back="goBackToList"
             @toggle-search="toggleInlineSearch"
             @open-info="openChatInfo"
@@ -108,6 +109,12 @@
             @delete="deleteMessageOf"
             @open-image="openImageFromMessage"
           />
+
+          <!-- Примечание E2EE (как в Telegram) над строкой ввода -->
+          <div v-if="selectedChatE2ee" class="chat-e2ee-note">
+            <q-icon name="lock" size="13px" aria-hidden="true" />
+            <span>Сообщения защищены сквозным шифрованием</span>
+          </div>
 
           <!-- Панель ввода (композер) -->
           <MessageComposer
@@ -294,6 +301,17 @@ import {
   setChatMuted,
   type SearchUserResult
 } from '@/services/chatService'
+import {
+  ENCRYPTED_FALLBACK,
+  bootstrapE2ee,
+  chatAesKey,
+  decryptText,
+  encryptText,
+  isE2eeAvailable,
+  isEncryptedPayload,
+  peerPublicKey,
+  resetE2eeSession
+} from '@/services/e2ee'
 import type { Chat, ChatUser, Message } from '@/types'
 import { avatarUrlOf, displayName } from '@/utils/user'
 import { lastSeenLabel } from '@/utils/format'
@@ -645,6 +663,67 @@ const findPeerUser = (
 
 const isPrivateChat = (chat: Chat | null): boolean => !!chat && chat.users.length === 2
 
+// ---------- Сквозное шифрование (E2EE): ключи, шифрование/расшифровка ----------
+/** Мой ключ готов и опубликован на сервере (можно шифровать исходящие). */
+const e2eeMyKeyReady = ref(false)
+/** Для открытого чата: есть ли у собеседника опубликованный ключ. */
+const e2eePeerReadyByChat = ref<Record<number, boolean>>({})
+
+const peerIdOfChat = (chat: Chat | null): number | null => {
+  if (!isPrivateChat(chat)) return null
+  const peer = otherUserOfChat(chat as Chat)
+  return peer ? peer.id : null
+}
+
+/** Подтягивает ключ собеседника чата (для отправки и индикатора в шапке). */
+const prepareChatE2ee = async (chatId: number): Promise<void> => {
+  const uid = currentUserId.value
+  const chat = chats.value.find((c) => c.id === chatId) ?? selectedChat.value
+  const peerId = peerIdOfChat(chat ?? null)
+  if (uid === null || peerId === null || !isE2eeAvailable()) return
+  const pub = await peerPublicKey(peerId)
+  e2eePeerReadyByChat.value = {
+    ...e2eePeerReadyByChat.value,
+    [chatId]: !!pub
+  }
+}
+
+/** E2EE активен для открытого чата (бейдж/подпись в шапке). */
+const selectedChatE2ee = computed<boolean>(() => {
+  const chat = selectedChat.value
+  if (!chat || !e2eeMyKeyReady.value) return false
+  return !!e2eePeerReadyByChat.value[chat.id]
+})
+
+/**
+ * Расшифровывает E2EE-сообщения списка «в памяти» (плоский текст не храним).
+ * Если расшифровать нечем/нечем — подставляем заглушку, а не шифротекст.
+ */
+const applyDecryptMessages = async (chatId: number, list: Message[]): Promise<Message[]> => {
+  const need = list.filter((m) => m.encrypted && isEncryptedPayload(m.text))
+  if (need.length === 0) return list
+  const uid = currentUserId.value
+  const chat = chats.value.find((c) => c.id === chatId)
+  const peerId = peerIdOfChat(chat ?? null)
+  const fallback = (m: Message): Message =>
+    m.encrypted && isEncryptedPayload(m.text) ? { ...m, text: ENCRYPTED_FALLBACK } : m
+  if (uid === null || peerId === null) return list.map(fallback)
+  const key = await chatAesKey(uid, peerId, chatId)
+  if (!key) return list.map(fallback)
+  const out: Message[] = []
+  for (const m of list) {
+    if (!m.encrypted || !isEncryptedPayload(m.text)) {
+      out.push(m)
+      continue
+    }
+    const plain = await decryptText(key, m.text)
+    out.push(
+      plain === null ? { ...m, text: ENCRYPTED_FALLBACK } : { ...m, text: plain, encrypted: false }
+    )
+  }
+  return out
+}
+
 const isOwnMessage = (message: Message): boolean =>
   currentUserId.value !== null && message.user_id === currentUserId.value
 
@@ -874,7 +953,10 @@ const loadThreadLatest = async (chatId: number) => {
   noMoreOlder.value = false
   loadingOlder.value = false
   try {
-    messages.value = await fetchMessages(chatId, { limit: MESSAGES_PAGE_SIZE })
+    messages.value = await applyDecryptMessages(
+      chatId,
+      await fetchMessages(chatId, { limit: MESSAGES_PAGE_SIZE })
+    )
   } catch (error) {
     console.error('Не удалось загрузить сообщения:', getErrorMessage(error))
   } finally {
@@ -889,7 +971,8 @@ const loadThreadLatest = async (chatId: number) => {
  */
 const mergeThreadLatest = async (chatId: number): Promise<boolean> => {
   const previousIds = new Set(messages.value.map((m) => m.id))
-  const fresh = await fetchMessages(chatId, { limit: MESSAGES_PAGE_SIZE })
+  const freshRaw = await fetchMessages(chatId, { limit: MESSAGES_PAGE_SIZE })
+  const fresh = await applyDecryptMessages(chatId, freshRaw)
   const freshIds = new Set(fresh.map((m) => m.id))
   const keptOlder = messages.value.filter((m) => !freshIds.has(m.id))
   messages.value = [...keptOlder, ...fresh].sort((a, b) => a.id - b.id)
@@ -916,10 +999,11 @@ const loadOlderMessages = async () => {
   )
   loadingOlder.value = true
   try {
-    const older = await fetchMessages(chatId, {
+    const olderRaw = await fetchMessages(chatId, {
       limit: MESSAGES_PAGE_SIZE,
       beforeId: oldestId ?? undefined
     })
+    const older = await applyDecryptMessages(chatId, olderRaw)
     const existingIds = new Set(messages.value.map((m) => m.id))
     const toAdd = older.filter((m) => !existingIds.has(m.id))
     if (older.length === 0 || toAdd.length === 0) {
@@ -970,6 +1054,7 @@ const scrollToBottom = () => {
 const openChatThread = async (chatId: number) => {
   selectedChatId.value = chatId
   sendError.value = ''
+  void prepareChatE2ee(chatId)
   messages.value = []
   pinnedMessages.value = []
   inlineQuery.value = ''
@@ -1043,7 +1128,28 @@ const sendText = async () => {
       return
     }
 
-    const message = await sendNewMessage(chatId, text, replyTarget.value?.id)
+    // E2EE: если обе стороны опубликовали ключи — шифруем текст перед отправкой.
+    let wireText = text
+    let wireEncrypted = false
+    const uid = currentUserId.value
+    const e2eePeerId = peerIdOfChat(selectedChat.value)
+    if (uid !== null && e2eePeerId !== null && e2eeMyKeyReady.value) {
+      const aes = await chatAesKey(uid, e2eePeerId, chatId)
+      if (aes) {
+        wireText = await encryptText(aes, text)
+        wireEncrypted = true
+        e2eePeerReadyByChat.value = {
+          ...e2eePeerReadyByChat.value,
+          [chatId]: true
+        }
+      }
+    }
+    const message = await sendNewMessage(chatId, wireText, replyTarget.value?.id, wireEncrypted)
+    if (wireEncrypted) {
+      // Локально в ленте показываем открытый текст; шифротекст живёт на сервере.
+      message.text = text
+      message.encrypted = false
+    }
     newMessage.value = ''
     clearDraftFor(chatId)
     sendTypingStop(chatId)
@@ -1715,12 +1821,17 @@ watch(
   ready,
   async (isReady) => {
     if (isReady) {
+      const uid = currentUserId.value
+      e2eeMyKeyReady.value = uid !== null && isE2eeAvailable() ? await bootstrapE2ee(uid) : false
       await Promise.all([loadChats(), loadContacts()])
       startRealtime()
       void callStore.connect()
     } else {
       stopRealtime()
       callStore.disconnect()
+      resetE2eeSession()
+      e2eeMyKeyReady.value = false
+      e2eePeerReadyByChat.value = {}
       chats.value = []
       messages.value = []
       pinnedMessages.value = []
@@ -2010,5 +2121,22 @@ watch(
 
 .delchat-actions {
   padding: 8px 12px;
+}
+
+/* Примечание «защищено сквозным шифрованием» над строкой ввода (как в Telegram) */
+.chat-e2ee-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 14px 4px;
+  color: var(--ms-muted, #7b8a96);
+  font-size: 12px;
+  pointer-events: none;
+  background: transparent;
+}
+
+.chat-e2ee-note .q-icon {
+  color: var(--ms-accent, #2ea25e);
 }
 </style>

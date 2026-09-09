@@ -54,6 +54,10 @@ class Message(IdIntPkMixin, Base):
     is_read: Mapped[bool] = mapped_column(default=False, server_default=func.false())
     # Закреплено ли сообщение в чате
     is_pinned: Mapped[bool] = mapped_column(default=False, server_default=func.false())
+    # Сквозное шифрование (E2EE): в text лежит шифротекст (base64), который
+    # расшифровывают только клиенты собеседников. Ставится на новых текстовых
+    # сообщениях в личных чатах; старые/незашифрованные остаются без флага.
+    encrypted: Mapped[bool] = mapped_column(default=False, server_default=func.false())
     # Время последнего редактирования текста (null — не редактировалось).
     edited_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

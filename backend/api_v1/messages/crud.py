@@ -90,6 +90,7 @@ def message_to_dict(message: Message, user_id: int) -> dict:
         "reply_to_id": message.reply_to_id,
         "is_read": message.is_read,
         "is_pinned": message.is_pinned,
+        "encrypted": message.encrypted,
         "edited_at": message.edited_at,
         "file": _file_payload(message),
         "reactions": _reactions_payload(message.reactions, user_id),
@@ -108,6 +109,7 @@ def message_basic_to_dict(message: Message) -> dict:
         "reply_to_id": message.reply_to_id,
         "is_read": message.is_read,
         "is_pinned": message.is_pinned,
+        "encrypted": message.encrypted,
         "edited_at": message.edited_at,
         "file": _file_payload(message),
         "reactions": [],
@@ -192,14 +194,19 @@ async def send_text_message(
     text: str,
     user_id: int,
     reply_to_id: int | None = None,
+    encrypted: bool = False,
 ) -> dict:
-    """Отправляет текстовое сообщение."""
+    """Отправляет текстовое сообщение (опционально — E2EE-шифротекст)."""
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
 
     message = Message(
-        text=text, chat_id=chat_id, user_id=user_id, reply_to_id=reply_to_id
+        text=text,
+        chat_id=chat_id,
+        user_id=user_id,
+        reply_to_id=reply_to_id,
+        encrypted=encrypted,
     )
     session.add(message)
     await session.commit()
@@ -477,6 +484,11 @@ async def edit_message_text(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Редактировать можно только своё сообщение",
         )
+    if message.encrypted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Зашифрованные сообщения нельзя редактировать",
+        )
 
     message.text = text
     message.edited_at = datetime.now(timezone.utc)
@@ -518,6 +530,11 @@ async def forward_message(
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
+    if source.encrypted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Зашифрованные сообщения нельзя пересылать",
+        )
 
     # Снимок автора оригинала для плашки «Переслано от …».
     source_sender = await session.get(User, source.user_id)

@@ -9,6 +9,7 @@ class MessageCreate(BaseModel):
     text: str = ""
     chat_id: int
     reply_to_id: int | None = None
+    encrypted: bool = False
 
 
 class EditMessageRequest(BaseModel):
@@ -58,6 +59,7 @@ class Message(BaseModel):
     reply_to_id: int | None = None
     is_read: bool = False
     is_pinned: bool = False
+    encrypted: bool = False
     edited_at: datetime | None = None
     file: MessageFile | None = None
     reactions: list[ReactionSummary] = Field(default_factory=list)

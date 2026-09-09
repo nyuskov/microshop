@@ -17,9 +17,18 @@
     <div class="chat-header-info" title="Информация о чате" @click="emit('open-info')">
       <div class="chat-title-row">
         <div class="chat-title">{{ title }}</div>
+        <span
+          v-if="e2ee"
+          class="chat-e2ee-pill"
+          title="Сквозное шифрование включено: сообщения читаете только вы и собеседник"
+        >
+          <q-icon name="lock" size="13px" aria-hidden="true" />
+        </span>
         <span v-if="statusPill" class="chat-status-pill">{{ statusPill }}</span>
       </div>
-      <div class="chat-subtitle">{{ subtitle }}</div>
+      <div class="chat-subtitle">
+        <span class="chat-subtitle-text">{{ subtitle }}</span>
+      </div>
     </div>
     <div class="chat-header-actions">
       <span v-if="showCallButton" class="call-group" @click.stop>
@@ -79,6 +88,8 @@ const props = defineProps<{
   showBack: boolean
   /** «В сети» ли собеседник (точка на аватаре). */
   peerOnline: boolean
+  /** Включено ли сквозное шифрование в этом чате (показываем 🔒). */
+  e2ee?: boolean
   /** Закреплён ли этот чат в списке диалогов. */
   pinned?: boolean
 }>()
@@ -257,11 +268,34 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
 }
 
 .chat-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
   font-size: 13px;
   color: #7b8a96;
+}
+
+.chat-subtitle-text {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Плашка-замок (E2EE) рядом с именем собеседника, как в секретных чатах */
+.chat-e2ee-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ms-accent, #2ea25e);
+  background: var(--ms-accent-soft, #e3f2e5);
+  border: 1px solid var(--ms-accent-border, rgba(46, 162, 94, 0.35));
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
 }
 
 .chat-header-actions {

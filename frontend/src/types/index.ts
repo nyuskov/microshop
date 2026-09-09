@@ -49,6 +49,7 @@ export interface Message {
   reply_to_id: number | null
   is_read: boolean
   is_pinned: boolean
+  encrypted?: boolean
   edited_at: string | null
   file: MessageFile | null
   reactions: ReactionSummary[]
@@ -59,6 +60,7 @@ export interface CreateMessageRequest {
   text: string
   chat_id: number
   reply_to_id?: number | null
+  encrypted?: boolean
 }
 
 export interface OpenPrivateChatRequest {

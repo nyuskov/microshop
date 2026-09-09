@@ -1,6 +1,7 @@
 /** Утилиты определения и описания вложений сообщений. */
 
 import type { Message, MessageFile } from '@/types'
+import { isEncryptedPayload } from '@/services/e2ee'
 
 export const isImageFile = (file: MessageFile): boolean => file.mime?.startsWith('image/') ?? false
 
@@ -40,6 +41,7 @@ export const fileIcon = (file: MessageFile): string => {
 
 /** Краткое описание сообщения для цитат, превью и закреплённых. */
 export const messageSnippet = (message: Message): string => {
+  if (message.encrypted && isEncryptedPayload(message.text)) return '🔒 Сообщение'
   if (message.file) {
     if (isImageFile(message.file)) return '📷 Изображение'
     if (isAudioFile(message.file)) return '🎤 Голосовое'

@@ -85,7 +85,9 @@ def send_message_push(
         or not settings.web_push_vapid_private_key
     ):
         return
-    run_async(_send_message_push_async(recipient_ids, chat_id, message_id, sender_id))
+    run_async(
+        _send_message_push_async(recipient_ids, chat_id, message_id, sender_id)
+    )
 
 
 async def _send_message_push_async(
@@ -103,11 +105,15 @@ async def _send_message_push_async(
         title = _display_name(sender) if sender else "Новое сообщение"
         body = "Новое сообщение"
         if message is not None:
-            text = (message.text or "").strip()
-            if text:
-                body = text if len(text) <= 120 else text[:117] + "…"
-            elif message.file_name:
-                body = f"Вложение: {message.file_name}"
+            if message.encrypted:
+                # E2EE: на сервере лежит шифротекст — в уведомление текст не шлём.
+                body = "🔒 Сообщение защищено сквозным шифрованием"
+            else:
+                text = (message.text or "").strip()
+                if text:
+                    body = text if len(text) <= 120 else text[:117] + "…"
+                elif message.file_name:
+                    body = f"Вложение: {message.file_name}"
 
         stmt = select(PushSubscription).where(
             PushSubscription.user_id.in_(recipient_ids)
@@ -156,12 +162,18 @@ async def _send_message_push_async(
                         sub.endpoint[-24:],
                         exc,
                     )
-            except Exception as exc:  # noqa: BLE001 - сеть/таймауты не роняют задачу
-                logger.warning("push error (endpoint …%s): %s", sub.endpoint[-24:], exc)
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - сеть/таймауты не роняют задачу
+                logger.warning(
+                    "push error (endpoint …%s): %s", sub.endpoint[-24:], exc
+                )
 
         if stale_ids:
             await session.execute(
-                delete(PushSubscription).where(PushSubscription.id.in_(stale_ids))
+                delete(PushSubscription).where(
+                    PushSubscription.id.in_(stale_ids)
+                )
             )
             await session.commit()
             logger.info("Удалено устаревших push-подписок: %s", len(stale_ids))
@@ -222,7 +234,9 @@ async def _send_call_push_async(
         name = _display_name(caller) if caller else "Пользователь"
         kind_label = "Видеозвонок" if kind == "video" else "Аудиозвонок"
 
-        stmt = select(PushSubscription).where(PushSubscription.user_id == user_id)
+        stmt = select(PushSubscription).where(
+            PushSubscription.user_id == user_id
+        )
         subscriptions = list((await session.execute(stmt)).scalars().all())
         if not subscriptions:
             return
@@ -267,7 +281,9 @@ async def _send_call_push_async(
                         sub.endpoint[-24:],
                         exc,
                     )
-            except Exception as exc:  # noqa: BLE001 - сеть/таймауты не роняют задачу
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - сеть/таймауты не роняют задачу
                 logger.warning(
                     "call-push error (endpoint …%s): %s",
                     sub.endpoint[-24:],
@@ -276,7 +292,9 @@ async def _send_call_push_async(
 
         if stale_ids:
             await session.execute(
-                delete(PushSubscription).where(PushSubscription.id.in_(stale_ids))
+                delete(PushSubscription).where(
+                    PushSubscription.id.in_(stale_ids)
+                )
             )
             await session.commit()
             logger.info("Удалено устаревших push-подписок: %s", len(stale_ids))

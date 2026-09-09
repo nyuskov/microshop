@@ -372,6 +372,7 @@ import {
   type SearchUserResult
 } from '@/services/chatService'
 import type { Chat, ChatUser, Message } from '@/types'
+import { isEncryptedPayload } from '@/services/e2ee'
 import {
   avatarStyle,
   avatarUrlOf,
@@ -652,6 +653,7 @@ const lastMessageIsOut = (chat: Chat): boolean => {
 const previewText = (chat: Chat): string => {
   const last = chat.last_message
   if (!last) return 'Нет сообщений'
+  if (last.encrypted && isEncryptedPayload(last.text)) return '🔒 Сообщение'
   const prefix = props.currentUserId !== null && last.user_id === props.currentUserId ? 'Вы: ' : ''
   const body = last.file ? mediaTypeLabel(last.file) : last.text
   if (last.forwarded_from) return `${prefix}↪ Переслано: ${body}`
@@ -730,6 +732,7 @@ const messageSenderPrefix = (message: Message): string =>
 
 /** Текст сниппета сообщения (текст или тип вложения). */
 const messageSnippetText = (message: Message): string => {
+  if (message.encrypted && isEncryptedPayload(message.text)) return '🔒 Сообщение'
   if (message.text) return message.text
   return message.file ? mediaTypeLabel(message.file) : ''
 }
