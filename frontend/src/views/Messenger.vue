@@ -33,8 +33,8 @@
         @bulk-pin="bulkSetPinned"
         @bulk-delete="openBulkDeleteChats"
         @delete-chat="openDeleteChatModal"
-        @to-contacts="view = 'contacts'"
-        @to-chats="view = 'chats'"
+        @to-contacts="openContacts"
+        @to-chats="goToChats"
         @open-profile="goToProfile"
         @open-appearance="openAppearance"
         @select-chat="selectChat"
@@ -46,7 +46,7 @@
     <q-page-container class="messenger-page">
       <main class="chat-panel" :style="chatBgStyle">
         <template v-if="!selectedChat">
-          <ChatPlaceholder @open-contacts="view = 'contacts'" />
+          <ChatPlaceholder @open-contacts="openContacts" />
         </template>
 
         <template v-else>
@@ -361,10 +361,52 @@ const drawerWidth = computed(() => (isDesktop.value ? 380 : Math.min($q.screen.w
 /** На мобильном: «назад» из открытого чата — снова показать список (drawer). */
 const goBackToList = () => {
   if (!isDesktop.value) {
+    // Если открытие чата записано в историю — идём «назад» по ней (popstate
+    // откроет список), иначе просто показываем список.
+    if (window.history.state && window.history.state.microshopNav) {
+      window.history.back()
+      return
+    }
     drawerOpen.value = true
   } else {
     view.value = 'contacts'
   }
+}
+
+// ---------- Мобильная «назад»: история приложения вместо выхода ----------
+// Каждый «прямой» переход (открытие чата/контактов/модалки) кладёт маркер в
+// историю; на popstate откатываем экран на шаг. На «корне» (список чатов)
+// системная «назад» выходит из приложения.
+const pushMobileNav = () => {
+  if (!isDesktop.value) {
+    try {
+      window.history.pushState({ microshopNav: true }, '')
+    } catch {
+      /* история недоступна — игнорируем */
+    }
+  }
+}
+
+const onAppPopState = () => {
+  if (isDesktop.value) return
+  // Модалки поверх всего — закрываем.
+  if (showProfileModal.value || showAppearanceModal.value || showChatInfoModal.value) {
+    showProfileModal.value = false
+    showAppearanceModal.value = false
+    showChatInfoModal.value = false
+    return
+  }
+  // Вкладка «Контакты» -> «Чаты».
+  if (view.value === 'contacts') {
+    view.value = 'chats'
+    return
+  }
+  // Открытая нить (drawer скрыт) -> список.
+  if (selectedChatId.value !== null && !drawerOpen.value) {
+    drawerOpen.value = true
+    return
+  }
+  // Корень — выходим (позволяем браузеру завершить).
 }
 
 // ---------- Данные ----------
@@ -554,6 +596,7 @@ const lightboxStep = (delta: number) => {
 
 // ---------- Информация о чате ----------
 const openChatInfo = () => {
+  pushMobileNav()
   showChatInfoModal.value = true
 }
 
@@ -943,13 +986,20 @@ const openChatThread = async (chatId: number) => {
   )
   scrollToBottom()
   // Мобильный режим: выбор чата закрывает drawer — нить на весь экран.
-  if (!isDesktop.value) drawerOpen.value = false
+  // Запоминаем шаг в истории, чтобы системная «назад» вернула к списку.
+  if (!isDesktop.value) {
+    pushMobileNav()
+    drawerOpen.value = false
+  }
 }
 
 const selectChat = async (chatId: number) => {
   if (selectedChatId.value === chatId) {
     // Мобильный: повторный выбор активного чата из списка снова открывает нить.
-    if (!isDesktop.value) drawerOpen.value = false
+    if (!isDesktop.value) {
+      pushMobileNav()
+      drawerOpen.value = false
+    }
     return
   }
   await openChatThread(chatId)
@@ -1631,11 +1681,27 @@ watch(newMessage, (value) => {
 })
 
 // ---------- Навигация ----------
+const openContacts = () => {
+  pushMobileNav()
+  view.value = 'contacts'
+}
+
+const goToChats = () => {
+  // Если в «Контакты» пришли через историю — возвращаемся по ней.
+  if (!isDesktop.value && window.history.state && window.history.state.microshopNav) {
+    window.history.back()
+    return
+  }
+  view.value = 'chats'
+}
+
 const goToProfile = () => {
+  pushMobileNav()
   showProfileModal.value = true
 }
 
 const openAppearance = () => {
+  pushMobileNav()
   showAppearanceModal.value = true
 }
 
@@ -1692,6 +1758,7 @@ onMounted(async () => {
   window.addEventListener('beforeunload', handleBeforeUnload)
   window.addEventListener('message', handleWindowMessage)
   window.addEventListener('visibilitychange', handleCallVisibility)
+  window.addEventListener('popstate', onAppPopState)
   scrollToBottom()
 
   // Холодный старт по уведомлению: открыли через /?chat=<id>.
@@ -1737,6 +1804,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload)
   window.removeEventListener('message', handleWindowMessage)
   window.removeEventListener('visibilitychange', handleCallVisibility)
+  window.removeEventListener('popstate', onAppPopState)
   stopRealtime()
   realtimeStore.setHandler(null)
   if (highlightTimer !== undefined) {
