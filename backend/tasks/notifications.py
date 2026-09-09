@@ -85,7 +85,9 @@ def send_message_push(
         or not settings.web_push_vapid_private_key
     ):
         return
-    run_async(_send_message_push_async(recipient_ids, chat_id, message_id, sender_id))
+    run_async(
+        _send_message_push_async(recipient_ids, chat_id, message_id, sender_id)
+    )
 
 
 async def _send_message_push_async(
@@ -156,12 +158,18 @@ async def _send_message_push_async(
                         sub.endpoint[-24:],
                         exc,
                     )
-            except Exception as exc:  # noqa: BLE001 - сеть/таймауты не роняют задачу
-                logger.warning("push error (endpoint …%s): %s", sub.endpoint[-24:], exc)
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - сеть/таймауты не роняют задачу
+                logger.warning(
+                    "push error (endpoint …%s): %s", sub.endpoint[-24:], exc
+                )
 
         if stale_ids:
             await session.execute(
-                delete(PushSubscription).where(PushSubscription.id.in_(stale_ids))
+                delete(PushSubscription).where(
+                    PushSubscription.id.in_(stale_ids)
+                )
             )
             await session.commit()
             logger.info("Удалено устаревших push-подписок: %s", len(stale_ids))
@@ -179,3 +187,113 @@ def _display_name(user: User) -> str:
     if user.last_name:
         return user.last_name
     return user.username
+
+
+@celery_app.task(
+    name="tasks.notifications.send_call_push",
+    bind=True,
+    max_retries=1,
+    default_retry_delay=5,
+    soft_time_limit=30,
+)
+def send_call_push(
+    self,
+    user_id: int,
+    call_id: str | None,
+    caller_id: int,
+    kind: str | None,
+) -> None:
+    """Web Push о входящем звонке (приложение закрыто/офлайн).
+
+    Показывает системное уведомление «Вам звонят…» с кнопками «Ответить»/
+    «Отклонить»; тап открывает приложение, где «висящий» offer уже ждёт
+    (см. ``calls.manager.park_offer``).
+    """
+    if (
+        not settings.web_push_vapid_public_key
+        or not settings.web_push_vapid_private_key
+    ):
+        return
+    run_async(_send_call_push_async(user_id, call_id, caller_id, kind))
+
+
+async def _send_call_push_async(
+    user_id: int,
+    call_id: str | None,
+    caller_id: int,
+    kind: str | None,
+) -> None:
+    engine = make_engine()
+    session = make_session(engine)
+    try:
+        caller = await session.get(User, caller_id)
+        name = _display_name(caller) if caller else "Пользователь"
+        kind_label = "Видеозвонок" if kind == "video" else "Аудиозвонок"
+
+        stmt = select(PushSubscription).where(
+            PushSubscription.user_id == user_id
+        )
+        subscriptions = list((await session.execute(stmt)).scalars().all())
+        if not subscriptions:
+            return
+
+        stale_ids: list[int] = []
+        payload = json.dumps(
+            {
+                "title": "Входящий звонок",
+                "body": f"{name} · {kind_label}",
+                "icon": "/icons/icon-192.png",
+                "badge": "/icons/icon-192.png",
+                "data": {
+                    "type": "call",
+                    "call_id": call_id,
+                    "peer_id": caller_id,
+                    "kind": kind,
+                },
+            },
+            ensure_ascii=False,
+        )
+        for sub in subscriptions:
+            try:
+                webpush(
+                    subscription_info={
+                        "endpoint": sub.endpoint,
+                        "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
+                    },
+                    data=payload,
+                    vapid_private_key=settings.web_push_vapid_private_key,
+                    vapid_claims={"sub": settings.web_push_vapid_subject},
+                    timeout=10,
+                )
+            except WebPushException as exc:
+                status_code = getattr(
+                    getattr(exc, "response", None), "status_code", None
+                )
+                if status_code in (404, 410):
+                    stale_ids.append(sub.id)
+                else:
+                    logger.warning(
+                        "call-push не доставлен (endpoint …%s): %s",
+                        sub.endpoint[-24:],
+                        exc,
+                    )
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - сеть/таймауты не роняют задачу
+                logger.warning(
+                    "call-push error (endpoint …%s): %s",
+                    sub.endpoint[-24:],
+                    exc,
+                )
+
+        if stale_ids:
+            await session.execute(
+                delete(PushSubscription).where(
+                    PushSubscription.id.in_(stale_ids)
+                )
+            )
+            await session.commit()
+            logger.info("Удалено устаревших push-подписок: %s", len(stale_ids))
+    finally:
+        await session.close()
+        await engine.dispose()

@@ -16,7 +16,7 @@
  */
 
 const CACHE_PREFIX = 'microshop-v'
-const CACHE_VERSION = 4
+const CACHE_VERSION = 5
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 
 self.addEventListener('install', (event) => {
@@ -104,7 +104,7 @@ self.addEventListener('fetch', (event) => {
   }
 })
 
-// ---------- Web Push (уведомления о новых сообщениях) ----------
+// ---------- Web Push (уведомления о сообщениях и входящих звонках) ----------
 
 self.addEventListener('push', (event) => {
   let payload = {}
@@ -113,14 +113,24 @@ self.addEventListener('push', (event) => {
   } catch {
     payload = { body: event.data ? event.data.text() : '' }
   }
-  const chatId = payload.data && payload.data.chat_id
+  const data = payload.data || {}
+  const chatId = data.chat_id
+  const callId = data.type === 'call' ? data.call_id : null
   const title = payload.title || 'Microshop'
   const options = {
     body: payload.body || '',
     icon: payload.icon || '/icons/icon-192.png',
     badge: payload.badge || '/icons/icon-192.png',
-    data: payload.data || {},
-    tag: chatId ? 'chat-' + chatId : undefined
+    data,
+    tag: callId ? 'call-' + callId : chatId ? 'chat-' + chatId : undefined
+  }
+  // Входящий звонок (приложение закрыто): держим уведомление и добавляем кнопки.
+  if (data.type === 'call') {
+    options.requireInteraction = true
+    options.actions = [
+      { action: 'answer', title: 'Ответить' },
+      { action: 'decline', title: 'Отклонить' }
+    ]
   }
   event.waitUntil(self.registration.showNotification(title, options))
 })
