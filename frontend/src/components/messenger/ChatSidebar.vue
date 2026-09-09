@@ -48,6 +48,17 @@
       </div>
       <div v-else class="panel-header">
         <div class="panel-header-left">
+          <button
+            class="self-profile-btn"
+            title="Профиль"
+            aria-label="Профиль"
+            @click="emit('open-profile')"
+          >
+            <span class="avatar self-avatar" :style="avatarStyle(selfName)">
+              <img v-if="selfAvatarUrl" :src="selfAvatarUrl" class="avatar-img" alt="" />
+              <template v-else>{{ selfName ? initials(selfName) : 'U' }}</template>
+            </span>
+          </button>
           <button class="icon-btn" title="Контакты" @click="emit('to-contacts')">
             <q-icon name="person_add" size="20px" />
           </button>
@@ -389,6 +400,9 @@ const props = defineProps<{
   mutedChatIds?: number[]
   /** Сохранённые черновики по id чата (показываются в превью). */
   drafts?: Record<number, string>
+  /** Имя и аватар текущего пользователя (кнопка «Профиль» слева). */
+  selfName: string
+  selfAvatarUrl: string | undefined
 }>()
 
 const emit = defineEmits<{
@@ -409,7 +423,6 @@ const emit = defineEmits<{
 
 // Пункты верхнего меню «⋯» (сюда будут добавляться новые настройки).
 const SETTINGS_ACTIONS = [
-  { key: 'profile', label: 'Настройки профиля', icon: 'person' },
   { key: 'appearance', label: 'Оформление и тема', icon: 'palette' }
 ] as const
 
@@ -650,8 +663,7 @@ const toggleSettingsMenu = () => {
 
 const runSettingsAction = (action: (typeof SETTINGS_ACTIONS)[number]) => {
   settingsMenuOpen.value = false
-  if (action.key === 'profile') emit('open-profile')
-  else if (action.key === 'appearance') emit('open-appearance')
+  if (action.key === 'appearance') emit('open-appearance')
 }
 
 const searchOpen = ref(false)
@@ -885,6 +897,31 @@ onBeforeUnmount(() => {
 .panel-header-right {
   display: flex;
   gap: 2px;
+}
+
+/* Кнопка «Профиль»: вместо иконки показываем мини-аватар пользователя. */
+.self-profile-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.self-profile-btn:hover {
+  background: var(--ms-hover, #f2f4f6);
+}
+
+.self-avatar {
+  width: 30px;
+  height: 30px;
+  font-size: 0.72rem;
 }
 
 .panel-search {

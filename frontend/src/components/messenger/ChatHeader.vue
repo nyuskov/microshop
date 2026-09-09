@@ -50,13 +50,9 @@
           <q-icon name="more_vert" size="20px" />
         </button>
         <div v-if="chatMenuOpen" class="ms-dropdown">
-          <button class="ms-dropdown-item" @click="runChatAction('search')">
+          <button class="ms-dropdown-item" @click="runChatAction">
             <q-icon name="search" size="19px" />
             <span>Поиск по сообщениям</span>
-          </button>
-          <button class="ms-dropdown-item" @click="runChatAction('info')">
-            <q-icon name="info_outline" size="19px" />
-            <span>Информация о чате</span>
           </button>
         </div>
       </span>
@@ -128,10 +124,9 @@ const toggleChatMenu = () => {
   chatMenuOpen.value = !chatMenuOpen.value
 }
 
-const runChatAction = (action: 'search' | 'info') => {
+const runChatAction = () => {
   chatMenuOpen.value = false
-  if (action === 'search') emit('toggle-search')
-  else if (action === 'info') emit('open-info')
+  emit('toggle-search')
 }
 
 // Кнопка звонка: клик = звонок выбранного типа, удержание 0,5 c = смена типа.

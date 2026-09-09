@@ -26,6 +26,8 @@
         :pinned-chat-ids="pinnedChatIds"
         :muted-chat-ids="mutedChatIds"
         :drafts="draftsByChatId"
+        :self-name="selfName"
+        :self-avatar-url="selfAvatarUrl"
         @open-message="openGlobalMessage"
         @toggle-pin="toggleChatPinned"
         @toggle-mute="toggleChatMuted"
@@ -293,7 +295,7 @@ import {
   type SearchUserResult
 } from '@/services/chatService'
 import type { Chat, ChatUser, Message } from '@/types'
-import { displayName } from '@/utils/user'
+import { avatarUrlOf, displayName } from '@/utils/user'
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import { isImageFile, messageSnippet } from '@/utils/media'
@@ -440,6 +442,12 @@ const chatBgStyle = computed(() => ({ background: themeStore.wallpaperCss }))
 
 // ---------- Вычисляемые значения ----------
 const currentUserId = computed<number | null>(() => authStore.current_user?.id ?? null)
+
+/** Своё имя/аватар — для кнопки «Профиль» (аватар) слева в списке чатов. */
+const selfName = computed<string>(() =>
+  authStore.current_user ? displayName(authStore.current_user) : ''
+)
+const selfAvatarUrl = computed<string | undefined>(() => avatarUrlOf(authStore.current_user))
 
 const selectedChat = computed<Chat | null>(() => {
   if (selectedChatId.value === null) return null
