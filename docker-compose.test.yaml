@@ -82,7 +82,7 @@ services:
         - CMD
         - python
         - -c
-        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0', timeout=3).status==200 else 1)"
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status==200 else 1)"
       interval: 15s
       timeout: 5s
       retries: 3
@@ -216,7 +216,7 @@ services:
       - --no-cli
       - --no-tls
       - --no-dtls
-      - --external-ip=82.202.137.248/10.0.0.5
+      - --external-ip=176.108.249.9
 
 networks:
   server_network:
