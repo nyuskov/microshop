@@ -107,6 +107,7 @@
             @copy="copyMessage"
             @edit="startEditMessage"
             @forward="openForward"
+            @save="saveMessageToSelf"
             @delete="deleteMessageOf"
             @open-image="openImageFromMessage"
           />
@@ -653,6 +654,19 @@ const applyChatE2ee = async (chatId: number, enabled: boolean) => {
 const onChatInfoToggleE2ee = (enabled: boolean) => {
   const chat = selectedChat.value
   if (chat !== null) void applyChatE2ee(chat.id, enabled)
+}
+
+/** «Сохранить в Сохранённые сообщения» — пересылка сообщения в self-чат. */
+const saveMessageToSelf = async (message: Message) => {
+  const selfChat = chats.value.find((chat) => chat.is_self)
+  const current = selectedChat.value
+  // В самом «Сохранённых» или для служебных сообщений (звонки) не дублируем.
+  if (!selfChat || message.kind === 'call' || (current !== null && current.is_self)) return
+  try {
+    await forwardMessage(message.id, selfChat.id)
+  } catch (error) {
+    console.error('Не удалось сохранить сообщение:', getErrorMessage(error))
+  }
 }
 
 // ---------- Просмотр изображений (lightbox) ----------

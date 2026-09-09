@@ -137,6 +137,14 @@
       <button class="round-btn" title="Переслать" @click="emit('forward')">
         <q-icon name="forward" size="17px" />
       </button>
+      <button
+        v-if="canSave"
+        class="round-btn"
+        title="Сохранить в Сохранённые"
+        @click="emit('save')"
+      >
+        <q-icon name="bookmark" size="17px" />
+      </button>
       <button v-if="isOwn" class="round-btn danger" title="Удалить" @click="emit('delete')">
         <q-icon name="delete" size="17px" />
       </button>
@@ -214,6 +222,7 @@ const emit = defineEmits<{
   (e: 'copy'): void
   (e: 'edit'): void
   (e: 'forward'): void
+  (e: 'save'): void
   (e: 'delete'): void
   (e: 'open-image'): void
 }>()
@@ -228,6 +237,9 @@ const hasMyReaction = (message: Message, emoji: string): boolean =>
 /** Текст и иконка системной отметки о звонке. */
 const callText = computed<string>(() => callMessageText(props.message) ?? 'Звонок')
 const callIcon = computed<string>(() => callMessageIcon(props.message))
+
+/** «Сохранить» доступно для обычных сообщений (не для отметок о звонках). */
+const canSave = computed<boolean>(() => props.message.kind !== 'call')
 </script>
 
 <style scoped>

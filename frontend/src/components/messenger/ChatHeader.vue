@@ -9,8 +9,12 @@
       title="Информация о чате"
       @click="emit('open-info')"
     >
-      <span class="avatar chat-avatar" :style="avatarStyle(title)">
-        <img v-if="peerAvatarUrl" :src="peerAvatarUrl" class="avatar-img" alt="" />
+      <span
+        class="avatar chat-avatar"
+        :style="props.chat.is_self ? savedAvatarStyle : avatarStyle(title)"
+      >
+        <q-icon v-if="props.chat.is_self" name="bookmark" size="22px" aria-hidden="true" />
+        <img v-else-if="peerAvatarUrl" :src="peerAvatarUrl" class="avatar-img" alt="" />
         <template v-else>{{ initials(title) }}</template>
       </span>
     </span>
@@ -105,6 +109,10 @@ const emit = defineEmits<{
 
 const peer = computed(() => chatPeer(props.chat, props.currentUserId))
 const title = computed<string>(() => chatPeerTitle(props.chat, props.currentUserId))
+// Аватар-«книжечка» для «Сохранённых сообщений».
+const savedAvatarStyle: Record<string, string> = {
+  background: 'linear-gradient(135deg, #3b82f6, #1e40af)'
+}
 const peerAvatarUrl = computed<string | undefined>(() => avatarUrlOf(peer.value))
 
 // Меню «⋯» в шапке: закрывается по клику вне панели.

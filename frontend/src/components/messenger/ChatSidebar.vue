@@ -230,9 +230,13 @@
                 <q-icon v-if="isSelected(chat.id)" name="check" size="15px" />
               </span>
               <span class="avatar-wrap" :class="{ online: chatPeerOnline(chat) }">
-                <span class="avatar" :style="avatarStyle(chatTitleOf(chat))">
+                <span
+                  class="avatar"
+                  :style="chat.is_self ? savedStyle : avatarStyle(chatTitleOf(chat))"
+                >
+                  <q-icon v-if="chat.is_self" name="bookmark" size="20px" aria-hidden="true" />
                   <img
-                    v-if="avatarUrlOf(chatPeerOf(chat))"
+                    v-else-if="avatarUrlOf(chatPeerOf(chat))"
                     :src="avatarUrlOf(chatPeerOf(chat))"
                     class="avatar-img"
                     alt=""
@@ -459,6 +463,10 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 
 const chatPeerOf = (chat: Chat) => chatPeer(chat, props.currentUserId)
 const chatTitleOf = (chat: Chat): string => chatPeerTitle(chat, props.currentUserId)
+// Аватар-«книжечка» для «Сохранённых сообщений».
+const savedStyle: Record<string, string> = {
+  background: 'linear-gradient(135deg, #3b82f6, #1e40af)'
+}
 
 /** «В сети»: пользователь в списке присутствия либо был активен недавно. */
 const isUserOnline = (user: ChatUser | undefined | null): boolean => {

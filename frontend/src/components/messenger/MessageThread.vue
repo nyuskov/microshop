@@ -30,6 +30,7 @@
           @copy="emit('copy', row.message)"
           @edit="emit('edit', row.message)"
           @forward="emit('forward', row.message)"
+          @save="emit('save', row.message)"
           @delete="emit('delete', row.message)"
           @open-image="emit('open-image', row.message)"
         />
@@ -97,6 +98,7 @@ const emit = defineEmits<{
   (e: 'copy', message: Message): void
   (e: 'edit', message: Message): void
   (e: 'forward', message: Message): void
+  (e: 'save', message: Message): void
   (e: 'delete', message: Message): void
   (e: 'open-image', message: Message): void
 }>()
