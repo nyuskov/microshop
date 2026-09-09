@@ -258,7 +258,16 @@
     <div v-if="callLaunchScreen === 'ring' && callStore.status === 'idle'" class="call-launch-wait">
       <div class="clw-card">
         <span class="clw-ring" aria-hidden="true"></span>
+        <p v-if="callLaunchPeerName" class="clw-peer">{{ callLaunchPeerName }}</p>
         <p class="clw-text">Входящий звонок…</p>
+        <button
+          type="button"
+          class="clw-decline"
+          aria-label="Отклонить звонок"
+          @click="dismissCallLaunch"
+        >
+          <q-icon name="call_end" size="26px" />
+        </button>
       </div>
     </div>
     <div v-else-if="callLaunchScreen === 'missed'" class="call-launch-wait call-launch-missed">
@@ -1910,15 +1919,35 @@ type CallLaunchScreen = 'none' | 'ring' | 'missed'
 const callLaunch = ref<{ callId: string; peerId: number } | null>(null)
 const callLaunchScreen = ref<CallLaunchScreen>('none')
 let callLaunchTimer: ReturnType<typeof setTimeout> | undefined
-const CALL_LAUNCH_WAIT_MS = 20_000
+const CALL_LAUNCH_WAIT_MS = 15_000
+
+/** Имя собеседника для экрана «Входящий звонок…». */
+const callLaunchPeerName = computed<string>(() => {
+  const peerId = callLaunch.value?.peerId
+  if (peerId === undefined) return ''
+  const peer = findPeerUser(peerId)
+  return peer ? displayName(peer) : ''
+})
+
+const stopCallLaunchScreen = () => {
+  callStore.stopRinging()
+  callLaunchScreen.value = 'none'
+  if (callLaunchTimer !== undefined) {
+    window.clearTimeout(callLaunchTimer)
+    callLaunchTimer = undefined
+  }
+}
 
 const showCallLaunchRing = () => {
   if (!callLaunch.value) return
   callLaunchScreen.value = 'ring'
+  // Звук с самого открытия, пока WS не доставит offer (дальше стор сам звонит).
+  callStore.ringIncoming()
   if (callLaunchTimer !== undefined) window.clearTimeout(callLaunchTimer)
   callLaunchTimer = window.setTimeout(() => {
     if (callLaunchScreen.value !== 'ring') return
     callLaunchScreen.value = 'missed'
+    callStore.stopRinging()
     callLaunchTimer = window.setTimeout(() => {
       callLaunchScreen.value = 'none'
       callLaunch.value = null
@@ -1927,12 +1956,12 @@ const showCallLaunchRing = () => {
   }, CALL_LAUNCH_WAIT_MS)
 }
 
-const stopCallLaunchScreen = () => {
-  callLaunchScreen.value = 'none'
-  if (callLaunchTimer !== undefined) {
-    window.clearTimeout(callLaunchTimer)
-    callLaunchTimer = undefined
-  }
+/** Пользователь сам закрыл экран «Входящий звонок…» (до доставки offer). */
+const dismissCallLaunch = () => {
+  const launch = callLaunch.value
+  if (launch) callStore.declineCallTo(launch.peerId, launch.callId)
+  callLaunch.value = null
+  stopCallLaunchScreen()
 }
 
 watch(
@@ -2118,6 +2147,22 @@ watch(
     if (prevStatus === 'incoming' && status !== 'incoming') {
       stopHiddenRingLoop()
       void closeCallRings()
+    }
+  }
+)
+
+// Запуск из уведомления о звонке: offer доставлен (появился реальный звонок) —
+// убираем промежуточный экран. Рингтон уже продолжает стор (здесь не глушим).
+watch(
+  () => callStore.status,
+  (status) => {
+    if (status !== 'idle' && callLaunchScreen.value !== 'none') {
+      callLaunchScreen.value = 'none'
+      if (callLaunchTimer !== undefined) {
+        window.clearTimeout(callLaunchTimer)
+        callLaunchTimer = undefined
+      }
+      callLaunch.value = null
     }
   }
 )
@@ -2335,6 +2380,38 @@ watch(
   color: #fff;
   font-size: 18px;
   font-weight: 600;
+}
+
+.clw-peer {
+  margin: 0;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  max-width: 78vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clw-decline {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e5484d;
+  color: #fff;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease;
+}
+
+.clw-decline:hover {
+  background: #d6383d;
+  transform: scale(1.06);
 }
 
 .call-launch-missed .clw-text {

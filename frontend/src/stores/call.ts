@@ -71,36 +71,70 @@ function stopRingtone() {
   }
 }
 
-function tone(freq: number, duration: number, when: number, volume: number) {
+type RingStep = { f: number; d: number }
+
+/** Мелодия входящего звонка — мягкий восходящий перезвон (не «пиканье»). */
+const INCOMING_RING: RingStep[] = [
+  { f: 659.25, d: 0.16 }, // E5
+  { f: 783.99, d: 0.16 }, // G5
+  { f: 987.77, d: 0.16 }, // B5
+  { f: 1318.51, d: 0.55 } // E6
+]
+/** Гудки «вызова» для звонящего — мягкий спокойный тон. */
+const OUTGOING_RING: RingStep[] = [
+  { f: 523.25, d: 0.3 }, // C5
+  { f: 523.25, d: 0.3 }
+]
+
+/** Нота-«колокольчик»: тёплый треугольник + мягкая октавная гармоника. */
+function ringNote(freq: number, start: number, duration: number, volume: number) {
   if (!audioContext) return
-  const osc = audioContext.createOscillator()
-  const gain = audioContext.createGain()
-  osc.type = 'sine'
-  osc.frequency.value = freq
-  gain.gain.setValueAtTime(0.0001, when)
-  gain.gain.exponentialRampToValueAtTime(volume, when + 0.02)
-  gain.gain.exponentialRampToValueAtTime(0.0001, when + duration)
-  osc.connect(gain)
-  gain.connect(audioContext.destination)
-  osc.start(when)
-  osc.stop(when + duration + 0.05)
+  const play = (type: OscillatorType, f: number, vol: number, decay: number) => {
+    const ctx = audioContext as AudioContext
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = type
+    osc.frequency.value = f
+    gain.gain.setValueAtTime(0.0001, start)
+    gain.gain.exponentialRampToValueAtTime(vol, start + 0.012)
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration * decay)
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start(start)
+    osc.stop(start + duration + 0.05)
+  }
+  play('triangle', freq, volume, 1)
+  play('sine', freq * 2, volume * 0.22, 0.8)
 }
 
-function playSequence(freq: number, pattern: number[], volume: number) {
+/** Проигрывает мелодию по кругу (между повторами — короткая пауза). */
+function playMelody(steps: RingStep[], volume: number) {
   if (ringTimer !== undefined) {
     window.clearTimeout(ringTimer)
   }
   ringTimer = window.setTimeout(function tick() {
     const ctx = audioContext
     if (!ctx) return
-    const start = ctx.currentTime + 0.05
+    const start = ctx.currentTime + 0.06
     let cursor = start
-    pattern.forEach((dur) => {
-      tone(freq, dur, cursor, volume)
-      cursor += dur + 0.08
+    steps.forEach((s) => {
+      ringNote(s.f, cursor, s.d, volume)
+      cursor += s.d + 0.09
     })
-    ringTimer = window.setTimeout(tick, (cursor - start + 0.3) * 1000)
-  }, 100)
+    const periodMs = (cursor - start + 0.7) * 1000
+    ringTimer = window.setTimeout(tick, periodMs)
+  }, 120)
+}
+
+/** Лёгкая вибрация при входящем звонке (Android, когда страница видима). */
+function vibrateRing() {
+  try {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate([200, 90, 200, 90, 200, 90, 200])
+    }
+  } catch {
+    /* вибрация недоступна — не критично */
+  }
 }
 
 /** Возобновляет аудио-контекст, если браузер приостановил его (автоплей). */
@@ -136,11 +170,12 @@ function startRingtone(kind: 'outgoing' | 'incoming') {
     audioContext = new Ctor()
     bindAudioUnlockOnce()
     resumeAudioIfSuspended()
-    // Исходящий — короткие гудки 425 Гц; входящий — «телефонный» рингтон 700/900 Гц.
+    // Входящий — приятный перезвон; исходящему — мягкие гудки.
     if (kind === 'outgoing') {
-      playSequence(425, [0.28, 0.28, 0.28, 0.28], 0.12)
+      playMelody(OUTGOING_RING, 0.1)
     } else {
-      playSequence(700, [0.22, 0.22], 0.12)
+      playMelody(INCOMING_RING, 0.16)
+      vibrateRing()
     }
   } catch {
     /* Аудио недоступно — звонок идёт без гудков */
@@ -458,6 +493,26 @@ export const useCallStore = defineStore('call', {
         to_user_id: this.peerId ?? 0,
         call_id: this.callId ?? ''
       })
+      this._cleanup()
+    },
+
+    /** Входящий рингтон для экрана «Входящий звонок…» (до доставки offer). */
+    ringIncoming() {
+      startRingtone('incoming')
+    },
+
+    /** Полностью останавливает рингтон/гудки. */
+    stopRinging() {
+      stopRingtone()
+    },
+
+    /** Отказ по звонку, когда offer ещё не доставлен (экран запуска из push). */
+    declineCallTo(peerId: number, callId: string) {
+      if (this.status !== 'idle') {
+        this.declineCall()
+        return
+      }
+      sendMessage({ type: 'call-decline', to_user_id: peerId, call_id: callId })
       this._cleanup()
     },
 
