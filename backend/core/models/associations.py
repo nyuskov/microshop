@@ -1,14 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import (
-    Column,
-    DateTime,
-    ForeignKey,
-    Integer,
-    String,
-    Table,
-    func,
-)
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Table, func
 
 from .base import Base
 

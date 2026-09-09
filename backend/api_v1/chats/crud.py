@@ -6,13 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api_v1.events.service import notify_chat, notify_user
-from core.models import (
-    Chat,
-    ChatMute,
-    Message,
-    User,
-    user_chat_association_table,
-)
+from core.models import Chat, ChatMute, Message, User, user_chat_association_table
 from core.models.associations import ROLE_ADMIN, ROLE_CREATOR, ROLE_MEMBER
 
 
