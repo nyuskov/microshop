@@ -6,7 +6,13 @@
         <template v-if="callStore.status === 'incoming'">
           <div class="call-card">
             <span class="call-avatar" :style="avatarStyle(displayName)">
-              <img v-if="avatarUrl" :src="avatarUrl" class="avatar-img" alt="" />
+              <img
+                v-if="avatarUrl && !avatarImgFailed"
+                :src="avatarUrl"
+                class="avatar-img"
+                alt=""
+                @error="avatarImgFailed = true"
+              />
               <template v-else>{{ displayNameInitials }}</template>
             </span>
             <h2 class="call-name">{{ displayName }}</h2>
@@ -27,7 +33,13 @@
         <template v-else-if="callStore.status === 'outgoing'">
           <div class="call-card">
             <span class="call-avatar" :style="avatarStyle(displayName)">
-              <img v-if="avatarUrl" :src="avatarUrl" class="avatar-img" alt="" />
+              <img
+                v-if="avatarUrl && !avatarImgFailed"
+                :src="avatarUrl"
+                class="avatar-img"
+                alt=""
+                @error="avatarImgFailed = true"
+              />
               <template v-else>{{ displayNameInitials }}</template>
             </span>
             <h2 class="call-name">{{ displayName }}</h2>
@@ -55,7 +67,13 @@
             <!-- Аудио-режим: аватар поверх фона -->
             <template v-if="callStore.kind === 'audio'">
               <span class="call-avatar huge" :style="avatarStyle(displayName)">
-                <img v-if="avatarUrl" :src="avatarUrl" class="avatar-img" alt="" />
+                <img
+                  v-if="avatarUrl && !avatarImgFailed"
+                  :src="avatarUrl"
+                  class="avatar-img"
+                  alt=""
+                  @error="avatarImgFailed = true"
+                />
                 <template v-else>{{ displayNameInitials }}</template>
               </span>
               <h2 class="call-name audio-name">{{ displayName }}</h2>
@@ -67,7 +85,13 @@
             <!-- Видео-режим: HUD сверху -->
             <div v-else class="video-hud">
               <span class="hud-avatar" :style="avatarStyle(displayName)">
-                <img v-if="avatarUrl" :src="avatarUrl" class="avatar-img" alt="" />
+                <img
+                  v-if="avatarUrl && !avatarImgFailed"
+                  :src="avatarUrl"
+                  class="avatar-img"
+                  alt=""
+                  @error="avatarImgFailed = true"
+                />
                 <template v-else>{{ displayNameInitials }}</template>
               </span>
               <div class="hud-info">
@@ -151,6 +175,13 @@ const displayName = computed<string>(() => {
 const displayNameInitials = computed<string>(() => userInitials(displayName.value))
 
 const avatarStyle = (name: string): Record<string, string> => userAvatarStyle(name)
+
+// Если аватар не загрузился — показываем инициалы на градиенте вместо «битой»
+// картинки (которая на некоторых устройствах рисуется чёрным квадратом).
+const avatarImgFailed = ref(false)
+watch(avatarUrl, () => {
+  avatarImgFailed.value = false
+})
 
 const attachStreams = () => {
   const remote = callStore.getRemoteStream()

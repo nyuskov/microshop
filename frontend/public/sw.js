@@ -124,9 +124,13 @@ self.addEventListener('push', (event) => {
     data,
     tag: callId ? 'call-' + callId : chatId ? 'chat-' + chatId : undefined
   }
-  // Входящий звонок (приложение закрыто): держим уведомление и добавляем кнопки.
+  // Входящий звонок (приложение закрыто/в фоне): держим уведомление на экране,
+  // со звуком и вибрацией (как входящий вызов), добавляем кнопки.
   if (data.type === 'call') {
     options.requireInteraction = true
+    options.renotify = true
+    options.silent = false
+    options.vibrate = [250, 120, 250, 120, 250, 120, 250]
     options.actions = [
       { action: 'answer', title: 'Ответить' },
       { action: 'decline', title: 'Отклонить' }

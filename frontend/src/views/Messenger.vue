@@ -1971,23 +1971,50 @@ watch(
 
 // ---------- Входящий звонок при свёрнутом приложении (системное уведомление) ----------
 // Если звонок пришёл, а приложение свёрнуто/в фоне — показываем системный
-// «будильник» (кнопки Ответить/Отклонить). Тап открывает приложение к звонку.
-const ringIncomingCallWhenHidden = () => {
-  if (!document.hidden) return
-  if (callStore.status !== 'incoming' || callStore.peerId === null || !callStore.callId) return
-  const peerName =
-    callStore.peerName && !callStore.peerName.startsWith('@') ? callStore.peerName : ''
-  void showIncomingCallRing({
-    title: peerName || 'Входящий звонок',
-    body: callStore.kind === 'video' ? 'Видеозвонок' : 'Аудиозвонок',
-    callId: callStore.callId,
-    peerId: callStore.peerId
-  })
+// «будильник» (кнопки Ответить/Отклонить) и, пока приложение в фоне, повторяем
+// его как рингтон (тот же tag + renotify -> Android снова играет звук/вибрацию).
+let hiddenRingLoop: ReturnType<typeof setInterval> | undefined
+
+const stopHiddenRingLoop = () => {
+  if (hiddenRingLoop !== undefined) {
+    window.clearInterval(hiddenRingLoop)
+    hiddenRingLoop = undefined
+  }
 }
 
-/** Приложение свернули во время входящего звонка — тоже будим. */
+const buildCallRing = () => {
+  const peerName =
+    callStore.peerName && !callStore.peerName.startsWith('@') ? callStore.peerName : ''
+  return {
+    title: peerName || 'Входящий звонок',
+    body: callStore.kind === 'video' ? 'Видеозвонок' : 'Аудиозвонок',
+    callId: callStore.callId ?? '',
+    peerId: callStore.peerId ?? 0
+  }
+}
+
+const ringIncomingCallWhenHidden = () => {
+  if (!document.hidden) {
+    stopHiddenRingLoop()
+    return
+  }
+  if (callStore.status !== 'incoming' || callStore.peerId === null || !callStore.callId) return
+  void showIncomingCallRing(buildCallRing())
+  if (hiddenRingLoop === undefined) {
+    hiddenRingLoop = window.setInterval(() => {
+      if (!document.hidden || callStore.status !== 'incoming') {
+        stopHiddenRingLoop()
+        return
+      }
+      void showIncomingCallRing(buildCallRing())
+    }, 3500)
+  }
+}
+
+/** Приложение свернули во время входящего звонка — будим и «звоним». */
 const handleCallVisibility = () => {
   if (document.hidden) ringIncomingCallWhenHidden()
+  else stopHiddenRingLoop()
 }
 
 // Звонок ушёл из состояния «входящий» (принят/отменён/завершён) — убираем уведомление.
@@ -1995,6 +2022,7 @@ watch(
   () => callStore.status,
   (status, prevStatus) => {
     if (prevStatus === 'incoming' && status !== 'incoming') {
+      stopHiddenRingLoop()
       void closeCallRings()
     }
   }

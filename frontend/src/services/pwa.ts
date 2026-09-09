@@ -198,7 +198,10 @@ export async function showIncomingCallRing(opts: {
       badge: '/icons/badge-96.png',
       tag: 'call-' + opts.callId,
       requireInteraction: true,
-      // actions/renotify нет в старых типах NotificationOptions — приводим.
+      renotify: true,
+      silent: false,
+      vibrate: [250, 120, 250, 120, 250, 120, 250],
+      // actions/renotify/vibrate нет в старых типах NotificationOptions — приводим.
       actions: [
         { action: 'answer', title: 'Ответить' },
         { action: 'decline', title: 'Отклонить' }

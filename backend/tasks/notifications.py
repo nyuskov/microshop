@@ -85,7 +85,9 @@ def send_message_push(
         or not settings.web_push_vapid_private_key
     ):
         return
-    run_async(_send_message_push_async(recipient_ids, chat_id, message_id, sender_id))
+    run_async(
+        _send_message_push_async(recipient_ids, chat_id, message_id, sender_id)
+    )
 
 
 async def _send_message_push_async(
@@ -160,12 +162,18 @@ async def _send_message_push_async(
                         sub.endpoint[-24:],
                         exc,
                     )
-            except Exception as exc:  # noqa: BLE001 - сеть/таймауты не роняют задачу
-                logger.warning("push error (endpoint …%s): %s", sub.endpoint[-24:], exc)
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - сеть/таймауты не роняют задачу
+                logger.warning(
+                    "push error (endpoint …%s): %s", sub.endpoint[-24:], exc
+                )
 
         if stale_ids:
             await session.execute(
-                delete(PushSubscription).where(PushSubscription.id.in_(stale_ids))
+                delete(PushSubscription).where(
+                    PushSubscription.id.in_(stale_ids)
+                )
             )
             await session.commit()
             logger.info("Удалено устаревших push-подписок: %s", len(stale_ids))
@@ -226,7 +234,9 @@ async def _send_call_push_async(
         name = _display_name(caller) if caller else "Пользователь"
         kind_label = "Видеозвонок" if kind == "video" else "Аудиозвонок"
 
-        stmt = select(PushSubscription).where(PushSubscription.user_id == user_id)
+        stmt = select(PushSubscription).where(
+            PushSubscription.user_id == user_id
+        )
         subscriptions = list((await session.execute(stmt)).scalars().all())
         if not subscriptions:
             return
@@ -237,7 +247,7 @@ async def _send_call_push_async(
                 "title": "Входящий звонок",
                 "body": f"{name} · {kind_label}",
                 "icon": "/icons/icon-192.png",
-                "badge": "/icons/icon-192.png",
+                "badge": "/icons/badge-96.png",
                 "data": {
                     "type": "call",
                     "call_id": call_id,
@@ -271,7 +281,9 @@ async def _send_call_push_async(
                         sub.endpoint[-24:],
                         exc,
                     )
-            except Exception as exc:  # noqa: BLE001 - сеть/таймауты не роняют задачу
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - сеть/таймауты не роняют задачу
                 logger.warning(
                     "call-push error (endpoint …%s): %s",
                     sub.endpoint[-24:],
@@ -280,7 +292,9 @@ async def _send_call_push_async(
 
         if stale_ids:
             await session.execute(
-                delete(PushSubscription).where(PushSubscription.id.in_(stale_ids))
+                delete(PushSubscription).where(
+                    PushSubscription.id.in_(stale_ids)
+                )
             )
             await session.commit()
             logger.info("Удалено устаревших push-подписок: %s", len(stale_ids))

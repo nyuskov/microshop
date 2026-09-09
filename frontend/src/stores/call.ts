@@ -47,6 +47,7 @@ let pendingOffer: { callId: string; kind: CallKind; sdp: string } | null = null
 
 let ringTimer: ReturnType<typeof setTimeout> | undefined
 let audioContext: AudioContext | null = null
+let unlockBound = false
 
 function socketUrl(token: string): string {
   return `${WS_ORIGIN}${WS_PATH}?token=${encodeURIComponent(token)}`
@@ -102,6 +103,29 @@ function playSequence(freq: number, pattern: number[], volume: number) {
   }, 100)
 }
 
+/** Возобновляет аудио-контекст, если браузер приостановил его (автоплей). */
+function resumeAudioIfSuspended() {
+  if (audioContext && audioContext.state === 'suspended') {
+    void audioContext.resume().catch(() => undefined)
+  }
+}
+
+/**
+ * Браузеры блокируют звук без «жеста» пользователя. Привязываем возобновление
+ * контекста к первому же клику/тапу — тогда рингтон сработает даже для
+ * входящего звонка (пришедшего без участия пользователя).
+ */
+function bindAudioUnlockOnce() {
+  if (unlockBound || typeof window === 'undefined') return
+  unlockBound = true
+  const events = ['pointerdown', 'keydown', 'touchstart'] as const
+  events.forEach((eventName) =>
+    window.addEventListener(eventName, resumeAudioIfSuspended, { passive: true })
+  )
+}
+
+bindAudioUnlockOnce()
+
 function startRingtone(kind: 'outgoing' | 'incoming') {
   stopRingtone()
   try {
@@ -110,9 +134,8 @@ function startRingtone(kind: 'outgoing' | 'incoming') {
       (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!Ctor) return
     audioContext = new Ctor()
-    if (audioContext.state === 'suspended') {
-      void audioContext.resume().catch(() => undefined)
-    }
+    bindAudioUnlockOnce()
+    resumeAudioIfSuspended()
     // Исходящий — короткие гудки 425 Гц; входящий — «телефонный» рингтон 700/900 Гц.
     if (kind === 'outgoing') {
       playSequence(425, [0.28, 0.28, 0.28, 0.28], 0.12)
