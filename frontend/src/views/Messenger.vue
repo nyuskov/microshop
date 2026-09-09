@@ -1662,6 +1662,17 @@ watch(
   { immediate: true }
 )
 
+// Web Push (PWA): кроме холодного старта уже авторизованным (см. onMounted),
+// запрашиваем разрешение/подписку и в момент входа в текущей сессии. Иначе
+// после логина через OTP подписка не создастся до перезагрузки страницы и
+// push не будет приходить, когда PWA свёрнуто/закрыто.
+// enablePushNotifications идемпотентна — повторные вызовы безопасны.
+watch(ready, (isReady) => {
+  if (isReady) {
+    void enablePushNotifications()
+  }
+})
+
 onMounted(async () => {
   await authStore.initializeApp()
   window.addEventListener('beforeunload', handleBeforeUnload)
