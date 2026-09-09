@@ -36,6 +36,8 @@ export interface Chat {
   users: ChatUser[]
   last_message: Message | null
   unread_count: number
+  /** Замьючен ли чат для текущего пользователя (хранится на сервере). */
+  muted?: boolean
 }
 
 export interface Message {

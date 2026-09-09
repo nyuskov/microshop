@@ -78,7 +78,9 @@ class _ApiCtx:
         assert response.status_code == 200, response.text
         return response.json()
 
-    async def list_messages(self, token: str, chat_id: int, **params) -> list[dict]:
+    async def list_messages(
+        self, token: str, chat_id: int, **params
+    ) -> list[dict]:
         response = await self.client.get(
             f"/api/v1/messages/{chat_id}/",
             params=params,
@@ -131,7 +133,9 @@ async def api() -> _ApiCtx:
 
     app.dependency_overrides[db_helper.session_dependency] = _override_session
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as client:
         try:
             yield _ApiCtx(client, factory)
         finally:
@@ -173,9 +177,15 @@ async def test_private_chat_find_or_create_and_visible_to_both(
     assert again["id"] == chat["id"]
 
     # Оба участника видят чат в своём списке, посторонний — нет.
-    list1 = (await api.client.get("/api/v1/chats/", headers=api.auth(t1))).json()
-    list2 = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
-    list3 = (await api.client.get("/api/v1/chats/", headers=api.auth(t3))).json()
+    list1 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t1))
+    ).json()
+    list2 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t2))
+    ).json()
+    list3 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t3))
+    ).json()
     assert any(c["id"] == chat["id"] for c in list1)
     assert any(c["id"] == chat["id"] for c in list2)
     assert all(c["id"] != chat["id"] for c in list3)
@@ -239,7 +249,9 @@ async def test_messages_pagination(api: _ApiCtx) -> None:
     assert [m["id"] for m in last_two] == ids[-2:]
 
     # before_id=msg3 + limit=2 — две более старые (msg1, msg2).
-    older = await api.list_messages(t1, chat["id"], limit=2, before_id=sent[3]["id"])
+    older = await api.list_messages(
+        t1, chat["id"], limit=2, before_id=sent[3]["id"]
+    )
     assert [m["id"] for m in older] == ids[1:3]
 
     # Пагинация до начала истории не зацикливается.
@@ -473,8 +485,12 @@ async def test_delete_chat_for_me_keeps_history_for_peer(api: _ApiCtx) -> None:
     assert resp.status_code == 204
 
     # У u1 чат исчез, у u2 остался с историей.
-    list1 = (await api.client.get("/api/v1/chats/", headers=api.auth(t1))).json()
-    list2 = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
+    list1 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t1))
+    ).json()
+    list2 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t2))
+    ).json()
     assert all(c["id"] != chat["id"] for c in list1)
     assert any(c["id"] == chat["id"] for c in list2)
     assert await api.list_messages(t2, chat["id"])
@@ -496,8 +512,12 @@ async def test_delete_chat_for_all_removes_for_everyone(api: _ApiCtx) -> None:
     )
     assert resp.status_code == 204
 
-    list1 = (await api.client.get("/api/v1/chats/", headers=api.auth(t1))).json()
-    list2 = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
+    list1 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t1))
+    ).json()
+    list2 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t2))
+    ).json()
     assert all(c["id"] != chat["id"] for c in list1)
     assert all(c["id"] != chat["id"] for c in list2)
 
@@ -775,19 +795,25 @@ async def test_chats_last_message_and_unread_count(api: _ApiCtx) -> None:
     await api.send(t1, chat["id"], "привет собеседник")
 
     # Собеседник видит чат: last_message + 1 непрочитанное.
-    list2 = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
+    list2 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t2))
+    ).json()
     item2 = next(c for c in list2 if c["id"] == chat["id"])
     assert item2["last_message"]["text"] == "привет собеседник"
     assert item2["unread_count"] == 1
 
     # Автор своих сообщений непрочитанными не считает.
-    list1 = (await api.client.get("/api/v1/chats/", headers=api.auth(t1))).json()
+    list1 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t1))
+    ).json()
     item1 = next(c for c in list1 if c["id"] == chat["id"])
     assert item1["unread_count"] == 0
 
     # Собеседник открыл чат (GET истории) — прочитано, счётчик обнулился.
     await api.list_messages(t2, chat["id"])
-    list2b = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
+    list2b = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t2))
+    ).json()
     item2b = next(c for c in list2b if c["id"] == chat["id"])
     assert item2b["unread_count"] == 0
     assert item2b["last_message"]["is_read"] is True
@@ -835,7 +861,9 @@ async def test_telegram_bind_link_and_status(api: _ApiCtx) -> None:
     assert status1["bound"] is True
 
     # Отвязка.
-    unbind = await api.client.post("/api/v1/auth/telegram/unbind/", headers=headers)
+    unbind = await api.client.post(
+        "/api/v1/auth/telegram/unbind/", headers=headers
+    )
     assert unbind.status_code == 200
     assert unbind.json()["bound"] is False
     status2 = (
@@ -948,13 +976,22 @@ async def test_password_register_sets_password_for_otp_created_user(
 # --- Web Push (PWA-уведомления) -------------------------------------------
 
 
-async def test_push_public_key_empty_when_no_vapid(api: _ApiCtx) -> None:
-    """Без VAPID-ключей push отключён (публичный ключ пустой)."""
+async def test_push_public_key_state(api: _ApiCtx) -> None:
+    """Публичный ключ: с VAPID — отдаётся, без VAPID — пустой/выключен."""
+    from core.config import settings
+
     r = await api.client.get("/api/v1/push/public-key/")
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["public_key"] == ""
-    assert body["enabled"] is False
+    if (
+        settings.web_push_vapid_public_key
+        and settings.web_push_vapid_private_key
+    ):
+        assert body["enabled"] is True
+        assert len(body["public_key"]) > 0
+    else:
+        assert body["public_key"] == ""
+        assert body["enabled"] is False
 
 
 async def test_push_subscribe_requires_auth(api: _ApiCtx) -> None:
@@ -968,3 +1005,89 @@ async def test_push_subscribe_requires_auth(api: _ApiCtx) -> None:
         },
     )
     assert r.status_code == 401
+
+
+# --- Mute чата (серверный; без Web Push в замьюченный чат) ------------------
+
+
+async def test_chat_mute_via_api(api: _ApiCtx) -> None:
+    """Mute включается/снимается через API и отражается в списке /chats/."""
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    u3 = await api.make_user()
+    t1 = await api.token_for(u1)
+    t2 = await api.token_for(u2)
+    t3 = await api.token_for(u3)
+
+    chat = await api.private_chat(t1, u2.id)
+    chat_id = chat["id"]
+
+    async def muted_flag(token: str) -> bool:
+        r = await api.client.get("/api/v1/chats/", headers=api.auth(token))
+        assert r.status_code == 200, r.text
+        return next(c["muted"] for c in r.json() if c["id"] == chat_id)
+
+    assert await muted_flag(t1) is False
+
+    r = await api.client.put(
+        f"/api/v1/chats/{chat_id}/mute/", headers=api.auth(t1)
+    )
+    assert r.status_code == 200 and r.json()["muted"] is True
+    assert await muted_flag(t1) is True
+    # У собеседника mute не «протекает».
+    assert await muted_flag(t2) is False
+
+    r = await api.client.delete(
+        f"/api/v1/chats/{chat_id}/mute/", headers=api.auth(t1)
+    )
+    assert r.status_code == 200 and r.json()["muted"] is False
+    assert await muted_flag(t1) is False
+
+    # Не участник не может замьютить чужой чат.
+    r = await api.client.put(
+        f"/api/v1/chats/{chat_id}/mute/", headers=api.auth(t3)
+    )
+    assert r.status_code == 404
+
+
+async def test_muted_chat_skips_push_recipients(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """В замьюченный чат Web Push не планируется (realtime остаётся)."""
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    t1 = await api.token_for(u1)
+    t2 = await api.token_for(u2)
+
+    chat = await api.private_chat(t1, u2.id)
+    chat_id = chat["id"]
+
+    captured: list[tuple[list[int], int, dict]] = []
+
+    def fake_enqueue(
+        recipients: list[int], chat_id: int, payload: dict
+    ) -> None:
+        captured.append((list(recipients), chat_id, payload))
+
+    monkeypatch.setattr(
+        "api_v1.events.service._maybe_enqueue_message_push", fake_enqueue
+    )
+
+    # u2 замьютил чат → в получателях push его нет.
+    r = await api.client.put(
+        f"/api/v1/chats/{chat_id}/mute/", headers=api.auth(t2)
+    )
+    assert r.status_code == 200
+    await api.send(t1, chat_id, "привет в замьюченный чат")
+    assert captured, "ожидали планирование push-рассылки"
+    recipients, _, _ = captured[-1]
+    assert u2.id not in recipients
+
+    # После снятия mute — u2 снова в получателях push.
+    r = await api.client.delete(
+        f"/api/v1/chats/{chat_id}/mute/", headers=api.auth(t2)
+    )
+    assert r.status_code == 200
+    await api.send(t1, chat_id, "привет после анмута")
+    recipients, _, _ = captured[-1]
+    assert u2.id in recipients

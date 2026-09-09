@@ -283,6 +283,7 @@ import {
   removeMessageReaction,
   deleteMessage,
   deleteChat,
+  setChatMuted,
   type SearchUserResult
 } from '@/services/chatService'
 import type { Chat, ChatUser, Message } from '@/types'
@@ -459,56 +460,26 @@ const toggleCurrentChatPin = () => {
   if (chat !== null) toggleChatPinned(chat.id)
 }
 
-// ---------- Замьюченные чаты (без всплывающих уведомлений) ----------
-const MUTED_CHATS_KEY = 'microshop_muted_chats'
-
-const readMutedChats = (): number[] => {
-  const uid = currentUserId.value
-  if (uid === null) return []
-  try {
-    const raw = window.localStorage.getItem(MUTED_CHATS_KEY)
-    const all = raw ? (JSON.parse(raw) as Record<string, number[]>) : {}
-    const list = all[String(uid)]
-    return Array.isArray(list) ? list.filter((id) => typeof id === 'number') : []
-  } catch {
-    return []
-  }
-}
-
-const writeMutedChats = () => {
-  const uid = currentUserId.value
-  if (uid === null) return
-  try {
-    const raw = window.localStorage.getItem(MUTED_CHATS_KEY)
-    const all = raw ? (JSON.parse(raw) as Record<string, number[]>) : {}
-    all[String(uid)] = mutedChatIds.value
-    window.localStorage.setItem(MUTED_CHATS_KEY, JSON.stringify(all))
-  } catch {
-    // localStorage недоступен — настройка просто не сохранится.
-  }
-}
-
-const mutedChatIds = ref<number[]>([])
-
-watch(
-  currentUserId,
-  () => {
-    mutedChatIds.value = readMutedChats()
-  },
-  { immediate: true }
-)
+// ---------- Замьюченные чаты (без уведомлений; mute хранится на сервере) ----------
+// Сервер не шлёт Web Push в замьюченные чаты (таблица chat_mutes), а здесь mute
+// управляет только локальными всплывающими уведомлениями и индикаторами. Состояние
+// приходит в каждом чате списка (поле muted) и обновляется при синхронизации.
+const mutedChatIds = computed(() => chats.value.filter((chat) => chat.muted).map((chat) => chat.id))
 
 const isChatMuted = (chatId: number): boolean => mutedChatIds.value.includes(chatId)
 
-const toggleChatMuted = (chatId: number) => {
-  const next = new Set(mutedChatIds.value)
-  if (next.has(chatId)) {
-    next.delete(chatId)
-  } else {
-    next.add(chatId)
+const toggleChatMuted = async (chatId: number) => {
+  const chat = chats.value.find((item) => item.id === chatId)
+  if (!chat) return
+  const next = !chat.muted
+  // Оптимистично обновляем, при ошибке — откатываем.
+  chat.muted = next
+  try {
+    await setChatMuted(chatId, next)
+  } catch (error) {
+    chat.muted = !next
+    console.error('Не удалось изменить mute чата:', getErrorMessage(error))
   }
-  mutedChatIds.value = Array.from(next)
-  writeMutedChats()
 }
 
 // ---------- Просмотр изображений (lightbox) ----------
@@ -1270,7 +1241,7 @@ const confirmDeleteChat = async () => {
     chats.value = chats.value.filter((item) => item.id !== chat.id)
     clearDraftFor(chat.id)
     if (pinnedChatIds.value.includes(chat.id)) toggleChatPinned(chat.id)
-    if (isChatMuted(chat.id)) toggleChatMuted(chat.id)
+    // Mute снимается на сервере самим удалением/выходом из чата.
     if (selectedChatId.value === chat.id) {
       selectedChatId.value = null
       messages.value = []

@@ -11,7 +11,7 @@ from sqlalchemy import distinct, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
-from core.models import user_chat_association_table
+from core.models import ChatMute, user_chat_association_table
 
 from .manager import events_manager
 
@@ -41,6 +41,13 @@ async def presence_peer_ids(session: AsyncSession, user_id: int) -> list[int]:
     return list(result.scalars().all())
 
 
+async def muted_user_ids(session: AsyncSession, chat_id: int) -> set[int]:
+    """Возвращает id участников, замьютивших этот чат (им не шлём push)."""
+    stmt = select(ChatMute.user_id).where(ChatMute.chat_id == chat_id)
+    result = await session.execute(stmt)
+    return set(result.scalars().all())
+
+
 async def notify_chat(
     session: AsyncSession,
     *,
@@ -55,8 +62,13 @@ async def notify_chat(
 
     # Web Push: при новом сообщении уведомляем получателей, чьё приложение
     # закрыто (подписки PWA). Событие кладём в очередь Celery, чтобы не
-    # блокировать HTTP-запрос сетью до push-сервиса.
-    _maybe_enqueue_message_push(recipients, chat_id, payload)
+    # блокировать HTTP-запрос сетью до push-сервиса. Тем, кто замьютил чат,
+    # push не отправляем (realtime-событие для них остаётся).
+    if payload.get("type") != "message.new":
+        return
+    muted = await muted_user_ids(session, chat_id)
+    push_recipients = [user_id for user_id in recipients if user_id not in muted]
+    _maybe_enqueue_message_push(push_recipients, chat_id, payload)
 
 
 def _maybe_enqueue_message_push(

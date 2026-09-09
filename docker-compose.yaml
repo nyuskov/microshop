@@ -35,6 +35,10 @@ services:
       - TELEGRAM_GATEWAY_TOKEN=${TELEGRAM_GATEWAY_TOKEN:-}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}
+      # Web Push (PWA): VAPID-ключи; пока пусто — push выключен.
+      - WEB_PUSH_VAPID_PUBLIC_KEY=${WEB_PUSH_VAPID_PUBLIC_KEY:-}
+      - WEB_PUSH_VAPID_PRIVATE_KEY=${WEB_PUSH_VAPID_PRIVATE_KEY:-}
+      - WEB_PUSH_VAPID_SUBJECT=${WEB_PUSH_VAPID_SUBJECT:-mailto:admin@pismo.space}
     depends_on:
       db:
         condition: service_healthy
@@ -83,6 +87,10 @@ services:
       - TELEGRAM_GATEWAY_TOKEN=${TELEGRAM_GATEWAY_TOKEN:-}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}
+      # Web Push (PWA): отправка в воркере; VAPID-ключи.
+      - WEB_PUSH_VAPID_PUBLIC_KEY=${WEB_PUSH_VAPID_PUBLIC_KEY:-}
+      - WEB_PUSH_VAPID_PRIVATE_KEY=${WEB_PUSH_VAPID_PRIVATE_KEY:-}
+      - WEB_PUSH_VAPID_SUBJECT=${WEB_PUSH_VAPID_SUBJECT:-mailto:admin@pismo.space}
     depends_on:
       db:
         condition: service_healthy

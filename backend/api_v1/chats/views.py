@@ -20,6 +20,7 @@ def _serialize_chat(
     chat: Chat,
     last_messages: dict[int, Message],
     unread_counts: dict[int, int],
+    muted_ids: set[int],
 ) -> dict:
     """Преобразует чат в словарь для ответа API."""
     last = last_messages.get(chat.id)
@@ -29,6 +30,7 @@ def _serialize_chat(
         "users": [ChatUserSchema.model_validate(u) for u in chat.users],
         "last_message": (message_basic_to_dict(last) if last is not None else None),
         "unread_count": unread_counts.get(chat.id, 0),
+        "muted": chat.id in muted_ids,
     }
 
 
@@ -54,7 +56,12 @@ async def get_my_chats(
     unread_counts = await crud.get_unread_counts(
         session=session, chat_ids=chat_ids, user_id=user.id
     )
-    items = [_serialize_chat(chat, last_messages, unread_counts) for chat in chats]
+    muted_ids = await crud.get_muted_chat_ids(
+        session=session, user_id=user.id, chat_ids=chat_ids
+    )
+    items = [
+        _serialize_chat(chat, last_messages, unread_counts, muted_ids) for chat in chats
+    ]
     items.sort(key=_chat_sort_key, reverse=True)
     return items
 
@@ -75,7 +82,36 @@ async def create_or_open_private_chat(
     unread_counts = await crud.get_unread_counts(
         session=session, chat_ids=[chat.id], user_id=user.id
     )
-    return _serialize_chat(chat, last_messages, unread_counts)
+    muted_ids = await crud.get_muted_chat_ids(
+        session=session, user_id=user.id, chat_ids=[chat.id]
+    )
+    return _serialize_chat(chat, last_messages, unread_counts, muted_ids)
+
+
+@router.put("/{chat_id}/mute/")
+async def mute_chat(
+    chat_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> dict[str, bool]:
+    """Заглушает уведомления чата для текущего пользователя."""
+    muted = await crud.set_chat_muted(
+        session=session, chat_id=chat_id, user_id=user.id, muted=True
+    )
+    return {"muted": muted}
+
+
+@router.delete("/{chat_id}/mute/")
+async def unmute_chat(
+    chat_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> dict[str, bool]:
+    """Возобновляет уведомления чата для текущего пользователя."""
+    muted = await crud.set_chat_muted(
+        session=session, chat_id=chat_id, user_id=user.id, muted=False
+    )
+    return {"muted": muted}
 
 
 @router.delete("/{chat_id}/", status_code=status.HTTP_204_NO_CONTENT)

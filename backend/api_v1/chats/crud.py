@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api_v1.events.service import notify_user
-from core.models import Chat, Message, User, user_chat_association_table
+from core.models import Chat, ChatMute, Message, User, user_chat_association_table
 
 
 async def get_chat_with_users(session: AsyncSession, chat_id: int) -> Chat | None:
@@ -151,6 +151,53 @@ async def get_unread_counts(
     return {chat_id: count for chat_id, count in result.all()}
 
 
+async def get_muted_chat_ids(
+    session: AsyncSession, *, user_id: int, chat_ids: list[int]
+) -> set[int]:
+    """Возвращает id чатов из ``chat_ids``, замьюченных пользователем."""
+    if not chat_ids:
+        return set()
+    stmt = select(ChatMute.chat_id).where(
+        ChatMute.user_id == user_id,
+        ChatMute.chat_id.in_(chat_ids),
+    )
+    result = await session.execute(stmt)
+    return set(result.scalars().all())
+
+
+async def set_chat_muted(
+    session: AsyncSession, *, chat_id: int, user_id: int, muted: bool
+) -> bool:
+    """Включает/выключает mute чата для пользователя (проверяя членство).
+
+    Возвращает итоговое состояние mute.
+    """
+    if not await is_user_chat_member(session, chat_id=chat_id, user_id=user_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Чат не найден",
+        )
+    if muted:
+        exists = await session.scalar(
+            select(ChatMute.user_id).where(
+                ChatMute.user_id == user_id,
+                ChatMute.chat_id == chat_id,
+            )
+        )
+        if exists is None:
+            session.add(ChatMute(user_id=user_id, chat_id=chat_id))
+            await session.commit()
+    else:
+        await session.execute(
+            delete(ChatMute).where(
+                ChatMute.user_id == user_id,
+                ChatMute.chat_id == chat_id,
+            )
+        )
+        await session.commit()
+    return muted
+
+
 async def leave_chat(
     session: AsyncSession, *, chat_id: int, user_id: int, for_all: bool = False
 ) -> None:
@@ -182,6 +229,13 @@ async def leave_chat(
         user_chat_association_table.delete().where(
             user_chat_association_table.c.chat_id == chat_id,
             user_chat_association_table.c.user_id == user_id,
+        )
+    )
+    # Уходя из чата, снимаем и свой mute (иначе останется «висящая» запись).
+    await session.execute(
+        delete(ChatMute).where(
+            ChatMute.chat_id == chat_id,
+            ChatMute.user_id == user_id,
         )
     )
 

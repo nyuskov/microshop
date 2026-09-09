@@ -30,3 +30,5 @@ class Chat(BaseModel):
     users: list[ChatUserSchema] = []
     last_message: MessageSchema | None = None
     unread_count: int = 0
+    # Замьючен ли чат для текущего пользователя (без уведомлений).
+    muted: bool = False

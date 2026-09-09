@@ -13,8 +13,10 @@ let registration: ServiceWorkerRegistration | null = null
 
 /** Регистрирует SW и вызывает onUpdate, когда доступна новая версия. */
 export function registerServiceWorker(onUpdate: () => void): void {
-  // Service worker — только в production-сборке (в dev мешает HMR).
-  if (!import.meta.env.PROD) return
+  // SW нужен и в dev-сборке — иначе нельзя локально проверить Web Push.
+  // Он работает только в secure-контексте (localhost/HTTPS): на других http-
+  // origin ('serviceWorker' in navigator === false) молча пропускаем. В dev
+  // после первой регистрации возможен один авто-reload (взятие контроля).
   if (!('serviceWorker' in navigator)) return
 
   window.addEventListener('load', () => {
@@ -86,8 +88,8 @@ async function fetchVapidPublicKey(): Promise<string> {
 export async function enablePushNotifications(): Promise<
   'granted' | 'denied' | 'unsupported' | 'disabled'
 > {
-  // Service worker и Push API — только в production-сборке (и на HTTPS).
-  if (!import.meta.env.PROD) return 'unsupported'
+  // Push API доступен только в secure-контексте (localhost/HTTPS).
+  // В dev-сборке тоже включаем — чтобы проверять пуши локально.
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported'
   if (!('Notification' in window)) return 'unsupported'
 
@@ -130,7 +132,6 @@ export async function enablePushNotifications(): Promise<
 
 /** Отписывается от Web Push (удаляет подписку на сервере и в браузере). */
 export async function disablePushNotifications(): Promise<void> {
-  if (!import.meta.env.PROD) return
   try {
     if ('serviceWorker' in navigator) {
       const reg = await navigator.serviceWorker.ready

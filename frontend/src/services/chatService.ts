@@ -70,6 +70,14 @@ export const deleteChat = async (chatId: number, forAll = false): Promise<void> 
   })
 }
 
+/** Заглушает (`muted=true`) или включает (`muted=false`) уведомления чата. */
+export const setChatMuted = async (chatId: number, muted: boolean): Promise<boolean> => {
+  const response = muted
+    ? await api.put<{ muted: boolean }>(`/chats/${chatId}/mute/`)
+    : await api.delete<{ muted: boolean }>(`/chats/${chatId}/mute/`)
+  return response.data?.muted ?? muted
+}
+
 /** Отправляет текстовое сообщение от имени текущего пользователя. */
 export const sendNewMessage = async (
   chatId: number,
