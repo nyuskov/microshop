@@ -53,15 +53,15 @@
         </template>
 
         <template v-else-if="callStore.status === 'active'">
-          <!-- Видео собеседника -->
+          <!-- Видео собеседника (звук выводим через Web Audio, видео — muted) -->
           <video
             v-if="callStore.kind === 'video'"
             ref="remoteVideoEl"
             class="remote-video"
             autoplay
             playsinline
+            muted
           ></video>
-          <audio ref="remoteAudioEl" autoplay></audio>
 
           <div class="active-ui" :class="{ audio: callStore.kind === 'audio' }">
             <!-- Аудио-режим: аватар поверх фона -->
@@ -165,26 +165,19 @@ import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/util
 const callStore = useCallStore()
 
 const remoteVideoEl = ref<HTMLVideoElement | null>(null)
-const remoteAudioEl = ref<HTMLAudioElement | null>(null)
 const localVideoEl = ref<HTMLVideoElement | null>(null)
 const noticeVisible = ref(false)
 let noticeTimer: ReturnType<typeof setTimeout> | undefined
 let attachTimer: ReturnType<typeof setInterval> | undefined
 
-// «Громкая связь»: по умолчанию тихо (ближе к «к уху»), кнопкой — на максимум.
-// В видео-звонке звук собеседника играет сам <video>, поэтому громкость
-// применяем именно к нему (иначе отдельный <audio> дублировал бы звук).
-const EARP_VOLUME = 0.35
+// «Громкая связь»: по умолчанию тихо («к уху»), кнопкой — на максимум.
+// Громкость задаём через Web Audio gain в call.ts — element.volume на
+// телефонах игнорируется, поэтому без этого «тихий» режим не работал бы.
+const EARP_VOLUME = 0.3
 const speakerOn = ref(false)
 
-const activeRemoteAudio = (): HTMLMediaElement | null =>
-  callStore.kind === 'video' ? remoteVideoEl.value : remoteAudioEl.value
-
 const applySpeaker = () => {
-  const el = activeRemoteAudio()
-  if (el) {
-    el.volume = speakerOn.value ? 1 : EARP_VOLUME
-  }
+  callStore.setOutputVolume(speakerOn.value ? 1 : EARP_VOLUME)
 }
 
 const toggleSpeaker = () => {
@@ -227,20 +220,8 @@ const attachStreams = () => {
   const remote = callStore.getRemoteStream()
   const isVideo = callStore.kind === 'video'
 
-  // Аудио собеседника играет РОВНО один элемент: в видео-звонке — сам <video>
-  // (в нём есть и звук), отдельный <audio> в этом случае не дублирует вывод
-  // (двойное воспроизведение давало эхо/«фон» и мешало регулировке громкости).
-  const audioEl = remoteAudioEl.value
-  if (audioEl) {
-    audioEl.muted = isVideo
-    if (isVideo) {
-      if (audioEl.srcObject) audioEl.srcObject = null
-    } else if (audioEl.srcObject !== remote) {
-      audioEl.srcObject = remote
-    }
-    ensurePlaying(audioEl)
-  }
-
+  // Видео собеседника показываем в <video> (элемент muted — звук идёт через
+  // Web Audio в call.ts, чтобы не было дубля и чтобы громкость реально работала).
   const remoteVideo = remoteVideoEl.value
   const videoTracks = remote ? remote.getVideoTracks().length : 0
   if (isVideo && remoteVideo) {

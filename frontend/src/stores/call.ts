@@ -181,6 +181,79 @@ function bindAudioUnlockOnce() {
 
 bindAudioUnlockOnce()
 
+/* --------------- Вывод звука собеседника (Web Audio gain) ---------------
+   На телефонах/части браузеров element.volume у медиа-стримов игнорируется,
+   поэтому «тихий» режим (до включения громкой связи) делаем через честный
+   GainNode: громкость применяется гарантированно и не зависит от элемента. */
+let callOutputCtx: AudioContext | null = null
+let callOutputGain: GainNode | null = null
+let callOutputSource: MediaStreamAudioSourceNode | null = null
+let callOutputStream: MediaStream | null = null
+
+/** Создаёт/возобновляет контекст вывода. Звать в жесте пользователя. */
+function ensureCallOutput() {
+  if (!callOutputCtx) {
+    const Ctor =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!Ctor) return
+    callOutputCtx = new Ctor()
+    callOutputGain = callOutputCtx.createGain()
+    callOutputGain.gain.value = 0.3
+    callOutputGain.connect(callOutputCtx.destination)
+  }
+  if (callOutputCtx.state === 'suspended') {
+    void callOutputCtx.resume().catch(() => undefined)
+  }
+}
+
+/** Подключает удалённый поток в цепочку вывода (после ontrack). */
+function wireRemoteOutput(stream: MediaStream | null) {
+  if (!stream || stream.getAudioTracks().length === 0) return
+  if (stream === callOutputStream && callOutputSource) return
+  if (callOutputSource) {
+    try {
+      callOutputSource.disconnect()
+    } catch {
+      /* ignore */
+    }
+    callOutputSource = null
+  }
+  ensureCallOutput()
+  if (!callOutputCtx || !callOutputGain) return
+  try {
+    callOutputSource = callOutputCtx.createMediaStreamSource(stream)
+    callOutputSource.connect(callOutputGain)
+    callOutputStream = stream
+  } catch {
+    /* не удалось подключить вывод — не критично */
+  }
+}
+
+/** Громкость собеседника: 1 — громко, меньше — «к уху». */
+function setRemoteOutputVolume(volume: number) {
+  if (callOutputGain && callOutputCtx) {
+    callOutputGain.gain.setValueAtTime(volume, callOutputCtx.currentTime)
+  }
+}
+
+function teardownCallOutput() {
+  if (callOutputSource) {
+    try {
+      callOutputSource.disconnect()
+    } catch {
+      /* ignore */
+    }
+    callOutputSource = null
+  }
+  callOutputGain = null
+  callOutputStream = null
+  if (callOutputCtx) {
+    void callOutputCtx.close().catch(() => undefined)
+    callOutputCtx = null
+  }
+}
+
 function startRingtone(kind: 'outgoing' | 'incoming') {
   stopRingtone()
   try {
@@ -422,6 +495,8 @@ export const useCallStore = defineStore('call', {
     /** Начать звонок собеседнику (голос или видео). */
     async startCall(peer: CallPeer, kind: CallKind) {
       if (this.status !== 'idle') return
+      // Контекст вывода создаём в жесте пользователя (иначе аудио заглушится).
+      ensureCallOutput()
       this.resetNotice()
       this.$patch({
         status: 'outgoing',
@@ -479,6 +554,8 @@ export const useCallStore = defineStore('call', {
     async acceptCall() {
       if (this.status !== 'incoming' || !pendingOffer) return
       stopRingtone()
+      // Контекст вывода создаём в жесте пользователя (иначе аудио заглушится).
+      ensureCallOutput()
       const kind = pendingOffer.kind
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -591,6 +668,11 @@ export const useCallStore = defineStore('call', {
       }
     },
 
+    /** Громкость собеседника: 1 — громко, <1 — «к уху» (Web Audio gain). */
+    setOutputVolume(volume: number) {
+      setRemoteOutputVolume(volume)
+    },
+
     /** Переключить микрофон. */
     toggleMic() {
       this.micOn = !this.micOn
@@ -661,6 +743,7 @@ export const useCallStore = defineStore('call', {
       }
       stopAllTracks(localMedia)
       stopAllTracks(remoteMedia)
+      teardownCallOutput()
       localMedia = null
       remoteMedia = null
       pendingOffer = null
@@ -698,6 +781,8 @@ export const useCallStore = defineStore('call', {
         if (!stream.getTracks().includes(event.track)) {
           stream.addTrack(event.track)
         }
+        // Звук собеседника — через Web Audio (не зависит от element.volume).
+        wireRemoteOutput(stream)
       }
     }
   }
