@@ -16,7 +16,7 @@
  */
 
 const CACHE_PREFIX = 'microshop-v'
-const CACHE_VERSION = 5
+const CACHE_VERSION = 6
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 
 self.addEventListener('install', (event) => {
@@ -161,8 +161,14 @@ self.addEventListener('notificationclick', (event) => {
             return
           }
         }
-        // Приложение было полностью закрыто — просто открываем его.
-        await self.clients.openWindow('/')
+        // Приложение было полностью закрыто — открываем прямо к экрану звонка
+        // (?call/<peer>); сам offer доставит WS после подключения (park_offer).
+        const callUrl =
+          '/?call=' +
+          encodeURIComponent(data.call_id || '') +
+          '&peer=' +
+          encodeURIComponent(data.peer_id || '')
+        await self.clients.openWindow(callUrl)
         return
       }
 

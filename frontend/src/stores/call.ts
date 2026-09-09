@@ -31,7 +31,7 @@ interface SignalingMessage {
 }
 
 const WS_PATH = '/api/v1/ws/calls'
-const RING_OUT_TIMEOUT_MS = 30_000
+const RING_OUT_TIMEOUT_MS = 45_000
 
 // ICE-серверы централизованы в config.ts (переопределяются через VITE_ICE_SERVERS);
 // для звонков за «симметричным» NAT нужен TURN-сервер (см. docs/turn.md).

@@ -251,6 +251,21 @@
   <!-- Login Modal -->
   <LoginModal :visible="showLoginModal" @close-modal="onLoginModalClose" />
 
+  <!-- Промежуточный экран при запуске из уведомления о звонке -->
+  <Teleport to="body">
+    <div v-if="callLaunchScreen === 'ring' && callStore.status === 'idle'" class="call-launch-wait">
+      <div class="clw-card">
+        <span class="clw-ring" aria-hidden="true"></span>
+        <p class="clw-text">Входящий звонок…</p>
+      </div>
+    </div>
+    <div v-else-if="callLaunchScreen === 'missed'" class="call-launch-wait call-launch-missed">
+      <div class="clw-card">
+        <p class="clw-text">Вызов завершён</p>
+      </div>
+    </div>
+  </Teleport>
+
   <!-- Звонки -->
   <CallOverlay />
 
@@ -1852,6 +1867,40 @@ const onLoginModalClose = () => {
 // ---------- Жизненный цикл ----------
 const ready = computed(() => authStore.isAuthenticated && currentUserId.value !== null)
 
+// ---------- Запуск из уведомления о звонке ----------
+// Приложение открыли тапом по push «Вам звонят…» (?call=<id>&peer=<uid>).
+// Пока сигнальный WS не доставит припаркованный offer, показываем
+// полноэкранный «Входящий звонок…», чтобы не «моргал» список чатов.
+// Если offer так и не пришёл (вызов сброшен/истёк) — «Вызов завершён».
+type CallLaunchScreen = 'none' | 'ring' | 'missed'
+const callLaunch = ref<{ callId: string; peerId: number } | null>(null)
+const callLaunchScreen = ref<CallLaunchScreen>('none')
+let callLaunchTimer: ReturnType<typeof setTimeout> | undefined
+const CALL_LAUNCH_WAIT_MS = 20_000
+
+const showCallLaunchRing = () => {
+  if (!callLaunch.value) return
+  callLaunchScreen.value = 'ring'
+  if (callLaunchTimer !== undefined) window.clearTimeout(callLaunchTimer)
+  callLaunchTimer = window.setTimeout(() => {
+    if (callLaunchScreen.value !== 'ring') return
+    callLaunchScreen.value = 'missed'
+    callLaunchTimer = window.setTimeout(() => {
+      callLaunchScreen.value = 'none'
+      callLaunch.value = null
+      callLaunchTimer = undefined
+    }, 3500)
+  }, CALL_LAUNCH_WAIT_MS)
+}
+
+const stopCallLaunchScreen = () => {
+  callLaunchScreen.value = 'none'
+  if (callLaunchTimer !== undefined) {
+    window.clearTimeout(callLaunchTimer)
+    callLaunchTimer = undefined
+  }
+}
+
 watch(
   ready,
   async (isReady) => {
@@ -1861,6 +1910,7 @@ watch(
       await Promise.all([loadChats(), loadContacts()])
       startRealtime()
       void callStore.connect()
+      if (callLaunch.value) showCallLaunchRing()
     } else {
       stopRealtime()
       callStore.disconnect()
@@ -1905,10 +1955,19 @@ onMounted(async () => {
   window.addEventListener('popstate', onAppPopState)
   scrollToBottom()
 
-  // Холодный старт по уведомлению: открыли через /?chat=<id>.
-  const chatParam = new URLSearchParams(window.location.search).get('chat')
-  if (chatParam && /^\d+$/.test(chatParam)) {
-    void openChatFromPush(Number(chatParam))
+  // Холодный старт по уведомлению.
+  const launchParams = new URLSearchParams(window.location.search)
+  const callIdParam = launchParams.get('call')
+  const peerIdParam = launchParams.get('peer')
+  if (callIdParam && peerIdParam && /^\d+$/.test(peerIdParam)) {
+    // Приложение открыли по звонку (?call=<id>&peer=<uid>).
+    callLaunch.value = { callId: callIdParam, peerId: Number(peerIdParam) }
+  } else {
+    // Открыли через /?chat=<id>.
+    const chatParam = launchParams.get('chat')
+    if (chatParam && /^\d+$/.test(chatParam)) {
+      void openChatFromPush(Number(chatParam))
+    }
   }
 })
 
@@ -1959,6 +2018,7 @@ onBeforeUnmount(() => {
     window.clearTimeout(inlineSearchTimer)
     inlineSearchTimer = null
   }
+  stopCallLaunchScreen()
 })
 
 watch(
@@ -2201,5 +2261,50 @@ watch(
 
 .chat-e2ee-note .q-icon {
   color: var(--ms-accent, #2ea25e);
+}
+
+/* Экран «Входящий звонок…» при запуске из push-уведомления о звонке */
+.call-launch-wait {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(9, 13, 18, 0.92);
+}
+
+.clw-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.clw-ring {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  border: 4px solid rgba(255, 255, 255, 0.15);
+  border-top-color: var(--ms-accent, #2ea25e);
+  animation: clw-spin 1.1s linear infinite;
+}
+
+@keyframes clw-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.clw-text {
+  margin: 0;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.call-launch-missed .clw-text {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.85);
 }
 </style>
