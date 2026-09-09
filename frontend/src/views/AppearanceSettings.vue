@@ -159,17 +159,15 @@ const onReset = () => {
 </script>
 
 <style scoped>
+/* Контент растёт естественно — прокручивает общий контейнер модалки
+   (.ms-modal-body), как в профиле. Внутреннего скроллбара нет, поэтому
+   полоса не прижимается вплотную к опциям. */
 .appearance-settings {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  max-height: 70vh;
-  overflow-y: auto;
-  overflow-x: hidden;
   width: 100%;
   min-width: 0;
-  padding-right: 4px;
-  box-sizing: border-box;
 }
 
 .appearance-section {
