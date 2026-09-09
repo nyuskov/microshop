@@ -48,17 +48,6 @@
       </div>
       <div v-else class="panel-header">
         <div class="panel-header-left">
-          <button
-            class="self-profile-btn"
-            title="Профиль"
-            aria-label="Профиль"
-            @click="emit('open-profile')"
-          >
-            <span class="avatar self-avatar" :style="avatarStyle(selfName)">
-              <img v-if="selfAvatarUrl" :src="selfAvatarUrl" class="avatar-img" alt="" />
-              <template v-else>{{ selfName ? initials(selfName) : 'U' }}</template>
-            </span>
-          </button>
           <button class="icon-btn" title="Контакты" @click="emit('to-contacts')">
             <q-icon name="person_add" size="20px" />
           </button>
@@ -89,6 +78,18 @@
               </button>
             </div>
           </span>
+          <!-- Профиль (свой аватар) — в правом крае, чтобы не путался с «Контактами» -->
+          <button
+            class="self-profile-btn"
+            title="Профиль"
+            aria-label="Профиль"
+            @click="emit('open-profile')"
+          >
+            <span class="avatar self-avatar" :style="avatarStyle(selfName)">
+              <img v-if="selfAvatarUrl" :src="selfAvatarUrl" class="avatar-img" alt="" />
+              <template v-else>{{ selfName ? initials(selfName) : 'U' }}</template>
+            </span>
+          </button>
         </div>
       </div>
 
