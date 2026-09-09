@@ -105,7 +105,7 @@
     </div>
 
     <!-- Действия при наведении (появляются ПОД сообщением) -->
-    <div class="msg-actions" @click.stop>
+    <div ref="barRef" class="msg-actions" @click.stop>
       <button
         class="round-btn"
         :class="{ active: emojiPickerOpen }"
@@ -132,7 +132,7 @@
       </button>
 
       <!-- Остальные действия — в выпадающем меню -->
-      <div v-if="moreOpen" class="more-menu" @click.stop>
+      <div v-if="moreOpen" class="more-menu" :class="{ up: popoverUp }" @click.stop>
         <button class="more-item" @click="onPin">
           <q-icon name="push_pin" size="16px" />
           <span>{{ message.is_pinned ? 'Открепить' : 'Закрепить' }}</span>
@@ -156,7 +156,7 @@
       </div>
 
       <!-- Выбор эмодзи-реакции -->
-      <div v-if="emojiPickerOpen" class="emoji-picker" @click.stop>
+      <div v-if="emojiPickerOpen" class="emoji-picker" :class="{ up: popoverUp }" @click.stop>
         <button
           v-for="emoji in REACTION_EMOJIS"
           :key="emoji"
@@ -172,7 +172,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type { Message } from '@/types'
 import { mediaUrl } from '@/config'
 import { formatBytes, formatMsgTime } from '@/utils/format'
@@ -273,6 +273,38 @@ const canSave = computed<boolean>(() => props.message.kind !== 'call')
 /** Открыто ли меню «Ещё» (остальные действия). */
 const moreOpen = ref(false)
 
+/** Поповер (меню/палитра) раскрыт ПОД панелью действий, а не над ней. */
+const popoverUp = ref(false)
+/** Корень панели действий — для замера места под/над ней. */
+const barRef = ref<HTMLElement | null>(null)
+
+/** Выбрать направление поповера: вниз, если хватает места, иначе вверх. */
+const measurePopover = async () => {
+  await nextTick()
+  const bar = barRef.value
+  if (!bar) return
+  const pop = bar.querySelector<HTMLElement>('.more-menu, .emoji-picker')
+  if (!pop) return
+  const container = bar.closest<HTMLElement>('.messages-scroll')
+  const height = pop.offsetHeight
+  if (!container) {
+    popoverUp.value = false
+    return
+  }
+  const cr = container.getBoundingClientRect()
+  const br = bar.getBoundingClientRect()
+  const spaceBelow = cr.bottom - br.bottom
+  const spaceAbove = br.top - cr.top
+  popoverUp.value = spaceBelow < height + 8 && spaceAbove >= height + 8
+}
+
+watch(
+  () => props.emojiPickerOpen,
+  (open) => {
+    if (open) void measurePopover()
+  }
+)
+
 /** Закрыть «плавающие» элементы (меню «Ещё» и палитру реакций), если открыты. */
 const closeFloating = () => {
   moreOpen.value = false
@@ -287,6 +319,7 @@ const onReaction = () => {
 const toggleMore = () => {
   if (props.emojiPickerOpen) emit('toggle-emoji-picker')
   moreOpen.value = !moreOpen.value
+  if (moreOpen.value) void measurePopover()
 }
 
 const onReply = () => {
@@ -556,16 +589,20 @@ const onDelete = () => {
   color: #d64545;
 }
 
-/* Действия при наведении — панель прижата к НИЖНЕМУ краю сообщения */
+/* Действия при наведении — панель прижата к НИЖНЕМУ краю сообщения.
+   Зазора НЕТ (top:100%), иначе при опускании мыши панель пропадала бы.
+   Визуальный отступ и «мост» для курсора даёт прозрачная верхняя кромка. */
 .msg-actions {
   position: absolute;
-  top: calc(100% + 3px);
+  top: 100%;
+  border-top: 8px solid transparent;
   background: #ffffff;
-  border-radius: 16px;
+  background-clip: padding-box;
+  border-radius: 18px;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
   display: flex;
   gap: 2px;
-  padding: 2px 4px;
+  padding: 2px 4px 3px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.12s;
@@ -592,10 +629,10 @@ const onDelete = () => {
   font-size: 0.9rem;
 }
 
-/* Палитра эмодзи — над панелью действий, т.е. у нижнего края сообщения */
+/* Палитра эмодзи — по умолчанию ПОД панелью действий; у нижнего края — над ней */
 .emoji-picker {
   position: absolute;
-  bottom: calc(100% + 6px);
+  top: calc(100% + 6px);
   background: #ffffff;
   border-radius: 14px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
@@ -604,6 +641,11 @@ const onDelete = () => {
   gap: 2px;
   padding: 6px;
   z-index: 12;
+}
+
+.emoji-picker.up {
+  top: auto;
+  bottom: calc(100% + 6px);
 }
 
 .msg.in .msg-actions .emoji-picker {
@@ -616,10 +658,10 @@ const onDelete = () => {
   left: auto;
 }
 
-/* Меню «Ещё» — тоже над панелью, у нижнего края сообщения */
+/* Меню «Ещё» — по умолчанию ПОД панелью действий; у нижнего края — над ней */
 .more-menu {
   position: absolute;
-  bottom: calc(100% + 6px);
+  top: calc(100% + 6px);
   background: #ffffff;
   border-radius: 12px;
   box-shadow: 0 2px 14px rgba(0, 0, 0, 0.24);
@@ -628,6 +670,11 @@ const onDelete = () => {
   padding: 4px;
   min-width: 216px;
   z-index: 13;
+}
+
+.more-menu.up {
+  top: auto;
+  bottom: calc(100% + 6px);
 }
 
 .msg.in .msg-actions .more-menu {
