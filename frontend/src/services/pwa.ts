@@ -195,7 +195,7 @@ export async function showIncomingCallRing(opts: {
     const options = {
       body: opts.body,
       icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
+      badge: '/icons/badge-96.png',
       tag: 'call-' + opts.callId,
       requireInteraction: true,
       // actions/renotify нет в старых типах NotificationOptions — приводим.

@@ -128,7 +128,7 @@ async def _send_message_push_async(
                 "title": title,
                 "body": body,
                 "icon": "/icons/icon-192.png",
-                "badge": "/icons/icon-192.png",
+                "badge": "/icons/badge-96.png",
                 "data": {
                     "type": "message",
                     "chat_id": chat_id,
