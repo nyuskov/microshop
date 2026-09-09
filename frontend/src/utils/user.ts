@@ -63,6 +63,8 @@ export const chatPeer = (chat: Chat, currentUserId: number | null): ChatUser | u
 
 /** Отображаемое название чата (для личных чатов — имя собеседника). */
 export const chatPeerTitle = (chat: Chat, currentUserId: number | null): string => {
+  // «Сохранённые сообщения» — это чат с собой, показываем его название.
+  if (chat.is_self) return chat.name || 'Сохранённые сообщения'
   const peer = chatPeer(chat, currentUserId)
   return peer ? displayName(peer) : chat.name
 }

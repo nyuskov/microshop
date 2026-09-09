@@ -1517,6 +1517,7 @@ const deleteChatTitle = computed<string>(() =>
 
 /** Открывает модалку удаления (вместо window.confirm). */
 const openDeleteChatModal = (chat: Chat) => {
+  if (chat.is_self) return // «Сохранённые сообщения» удалить нельзя
   deleteChatTarget.value = chat
   deleteChatBulkIds.value = []
   deleteChatScope.value = 'me'
@@ -1525,9 +1526,10 @@ const openDeleteChatModal = (chat: Chat) => {
 
 /** Удаление нескольких выбранных чатов (режим выделения). */
 const openBulkDeleteChats = (chatIds: number[]) => {
-  if (chatIds.length === 0) return
+  const ids = chatIds.filter((id) => !chats.value.find((item) => item.id === id)?.is_self)
+  if (ids.length === 0) return
   deleteChatTarget.value = null
-  deleteChatBulkIds.value = chatIds
+  deleteChatBulkIds.value = ids
   deleteChatScope.value = 'me'
   showDeleteChatModal.value = true
 }

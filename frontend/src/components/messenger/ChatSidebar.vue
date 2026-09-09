@@ -615,8 +615,8 @@ const filteredChats = computed<Chat[]>(() => {
   const query = searchQuery.value.trim().toLowerCase()
   if (!query) return props.chats
   return props.chats.filter((chat) => {
+    const title = chatTitleOf(chat)
     const peer = chatPeerOf(chat)
-    const title = peer ? displayName(peer) : chat.name
     const phone = peer?.phone_number ?? ''
     return (
       title.toLowerCase().includes(query) ||
@@ -626,13 +626,15 @@ const filteredChats = computed<Chat[]>(() => {
   })
 })
 
-/** Чаты для показа: сначала закреплённые (в прежнем относительном порядке). */
+/** Чаты для показа: «Сохранённые сообщения», затем закреплённые, затем остальные. */
 const orderedChats = computed<Chat[]>(() => {
   const pinned = new Set(props.pinnedChatIds ?? [])
-  if (pinned.size === 0) return filteredChats.value
-  const top = filteredChats.value.filter((chat) => pinned.has(chat.id))
-  const rest = filteredChats.value.filter((chat) => !pinned.has(chat.id))
-  return [...top, ...rest]
+  const self = filteredChats.value.filter((chat) => chat.is_self)
+  const others = filteredChats.value.filter((chat) => !chat.is_self)
+  if (pinned.size === 0) return [...self, ...others]
+  const top = others.filter((chat) => pinned.has(chat.id))
+  const rest = others.filter((chat) => !pinned.has(chat.id))
+  return [...self, ...top, ...rest]
 })
 
 const filteredContacts = computed<SearchUserResult[]>(() => {

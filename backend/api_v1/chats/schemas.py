@@ -34,6 +34,8 @@ class Chat(BaseModel):
     muted: bool = False
     # Тип чата: True — «зашифрованный» (E2EE), False — «обычный». По умолчанию обычный.
     e2ee_enabled: bool = False
+    # «Сохранённые сообщения» (личный чат с собой).
+    is_self: bool = False
 
 
 class ChatE2eeUpdate(BaseModel):

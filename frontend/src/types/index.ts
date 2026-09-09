@@ -40,6 +40,8 @@ export interface Chat {
   muted?: boolean
   /** Тип чата: true — «зашифрованный» (E2EE), false/нет — «обычный». */
   e2ee_enabled?: boolean
+  /** «Сохранённые сообщения» (личный чат с собой; удалить нельзя). */
+  is_self?: boolean
 }
 
 export interface Message {

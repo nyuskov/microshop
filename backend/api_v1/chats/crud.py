@@ -6,12 +6,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api_v1.events.service import notify_user
-from core.models import Chat, ChatMute, Message, User, user_chat_association_table
+from core.models import (
+    Chat,
+    ChatMute,
+    Message,
+    User,
+    user_chat_association_table,
+)
 
 
-async def get_chat_with_users(session: AsyncSession, chat_id: int) -> Chat | None:
+async def get_chat_with_users(
+    session: AsyncSession, chat_id: int
+) -> Chat | None:
     """Возвращает чат вместе с его участниками."""
-    stmt = select(Chat).where(Chat.id == chat_id).options(selectinload(Chat.users))
+    stmt = (
+        select(Chat).where(Chat.id == chat_id).options(selectinload(Chat.users))
+    )
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
@@ -55,11 +65,14 @@ async def get_private_chat_id_between(
     stmt = (
         select(user_chat_association_table.c.chat_id)
         .where(
-            user_chat_association_table.c.user_id.in_([first_user_id, second_user_id])
+            user_chat_association_table.c.user_id.in_(
+                [first_user_id, second_user_id]
+            )
         )
         .group_by(user_chat_association_table.c.chat_id)
         .having(
-            func.count(func.distinct(user_chat_association_table.c.user_id)) == 2,
+            func.count(func.distinct(user_chat_association_table.c.user_id))
+            == 2,
             func.count(user_chat_association_table.c.user_id) == 2,
         )
     )
@@ -101,7 +114,9 @@ async def get_or_create_private_chat(
             detail="Пользователь не найден",
         )
 
-    chat_id = await get_private_chat_id_between(session, first_user_id, second_user_id)
+    chat_id = await get_private_chat_id_between(
+        session, first_user_id, second_user_id
+    )
     if chat_id is not None:
         chat = await get_chat_with_users(session, chat_id)
         if chat is not None:
@@ -129,6 +144,30 @@ async def get_user_chats(session: AsyncSession, user_id: int) -> list[Chat]:
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def get_or_create_self_chat(session: AsyncSession, user: User) -> Chat:
+    """Возвращает (или создаёт) личный чат «Сохранённые сообщения»."""
+    stmt = (
+        select(Chat)
+        .join(
+            user_chat_association_table,
+            user_chat_association_table.c.chat_id == Chat.id,
+        )
+        .where(
+            Chat.is_self.is_(True),
+            user_chat_association_table.c.user_id == user.id,
+        )
+        .options(selectinload(Chat.users))
+    )
+    chat = (await session.execute(stmt)).scalars().first()
+    if chat is not None:
+        return chat
+    chat = Chat(name="Сохранённые сообщения", is_self=True)
+    chat.users = [user]
+    session.add(chat)
+    await session.commit()
+    return chat
 
 
 async def get_last_messages(
@@ -232,6 +271,13 @@ async def leave_chat(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Чат не найден",
+        )
+
+    chat = await session.get(Chat, chat_id)
+    if chat is not None and chat.is_self:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="«Сохранённые сообщения» нельзя удалить",
         )
 
     if for_all:
