@@ -112,6 +112,15 @@ export const useRealtimeStore = defineStore('realtime', {
             return
           }
           if (Date.now() - started > 9000) {
+            // Не даём рукопожатию висеть вечно (VPN/фаервол может «глушить» без
+            // ответа): закрываем — onclose запустит переподключение по расписанию.
+            if (socket && socket.readyState === WebSocket.CONNECTING) {
+              try {
+                socket.close()
+              } catch {
+                /* ignore */
+              }
+            }
             resolve(this.connected)
             return
           }

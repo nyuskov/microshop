@@ -86,6 +86,10 @@
               <p class="call-subtitle audio-sub">
                 Голосовой звонок · {{ callStore.formattedTime }}
               </p>
+              <span class="call-e2ee" title="Медиа защищено сквозным шифрованием (DTLS-SRTP)">
+                <q-icon name="lock" size="11px" aria-hidden="true" />
+                Сквозное шифрование
+              </span>
             </template>
 
             <!-- Видео-режим: HUD сверху -->
@@ -103,6 +107,13 @@
               <div class="hud-info">
                 <div class="hud-name">{{ displayName }}</div>
                 <div class="hud-time">{{ callStore.formattedTime }}</div>
+                <span
+                  class="call-e2ee video"
+                  title="Медиа защищено сквозным шифрованием (DTLS-SRTP)"
+                >
+                  <q-icon name="lock" size="10px" aria-hidden="true" />
+                  Сквозное шифрование
+                </span>
               </div>
             </div>
 
@@ -180,7 +191,7 @@ let attachTimer: ReturnType<typeof setInterval> | undefined
 // «Громкая связь»: по умолчанию тихо («к уху»), кнопкой — на максимум.
 // Громкость задаём через Web Audio gain в call.ts — element.volume на
 // телефонах игнорируется, поэтому без этого «тихий» режим не работал бы.
-const EARP_VOLUME = 0.3
+const EARP_VOLUME = 0.12
 const speakerOn = ref(false)
 
 const fallbackEl = (): HTMLMediaElement | null =>
@@ -468,6 +479,33 @@ onBeforeUnmount(() => {
 .hud-time {
   font-size: 12.5px;
   color: rgba(255, 255, 255, 0.75);
+}
+
+/* Плашка «сквозное шифрование» (WebRTC = DTLS-SRTP) */
+.call-e2ee {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11.5px;
+  background: rgba(46, 162, 94, 0.18);
+  border: 1px solid rgba(46, 162, 94, 0.4);
+  border-radius: 999px;
+  padding: 2px 9px;
+  user-select: none;
+}
+
+.call-e2ee .q-icon {
+  color: #58d68d;
+  font-size: 1.05rem;
+}
+
+.call-e2ee.video {
+  align-self: flex-start;
+  margin-top: 3px;
+  font-size: 10px;
+  padding: 1px 7px;
 }
 
 .local-video {

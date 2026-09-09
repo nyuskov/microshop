@@ -199,7 +199,7 @@ function ensureCallOutput() {
     if (!Ctor) return
     callOutputCtx = new Ctor()
     callOutputGain = callOutputCtx.createGain()
-    callOutputGain.gain.value = 0.3
+    callOutputGain.gain.value = 0.12
     callOutputGain.connect(callOutputCtx.destination)
   }
   if (callOutputCtx.state === 'suspended') {

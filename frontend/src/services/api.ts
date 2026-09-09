@@ -31,7 +31,10 @@ export function registerAuth(tokenProvider: AccessTokenProvider, onRefresh: Refr
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  withCredentials: true // Важно для передачи cookies с токеном
+  withCredentials: true, // Важно для передачи cookies с токеном
+  // Без таймаута запрос к «чёрной дыре» (VPN/фаервол глотает пакеты без ответа)
+  // висел бы вечно — весь мессенджер «замерзал» бы на «Загрузка…».
+  timeout: 15000
 })
 
 // --- Единый источник Authorization ---
