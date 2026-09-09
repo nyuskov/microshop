@@ -47,7 +47,7 @@
         rows="1"
         placeholder="Сообщение"
         aria-label="Сообщение"
-        @keydown.enter.exact.prevent="emit('send-text')"
+        @keydown="onTextKeydown"
         @input="autoGrow"
       ></textarea>
       <button class="round-btn" title="Эмодзи" @click="emit('toggle-emoji-menu')">
@@ -165,7 +165,108 @@ const emit = defineEmits<{
   (e: 'append-emoji', emoji: string): void
 }>()
 
-const INPUT_EMOJIS = ['😀', '😁', '😂', '🤣', '😊', '😍', '😎', '🤔', '👍', '👎', '❤️', '🔥']
+const INPUT_EMOJIS = [
+  '😀',
+  '😁',
+  '😂',
+  '🤣',
+  '😊',
+  '😍',
+  '😘',
+  '😜',
+  '🤪',
+  '😎',
+  '🤩',
+  '🥳',
+  '😇',
+  '🙂',
+  '😉',
+  '😌',
+  '😔',
+  '😢',
+  '😭',
+  '😤',
+  '😡',
+  '🤯',
+  '😱',
+  '🥶',
+  '😴',
+  '🤒',
+  '🤢',
+  '🥺',
+  '🤗',
+  '🫡',
+  '😅',
+  '🙃',
+  '👍',
+  '👎',
+  '👏',
+  '🙌',
+  '🤝',
+  '💪',
+  '🙏',
+  '👌',
+  '✌️',
+  '🤞',
+  '🖐️',
+  '🤙',
+  '👋',
+  '💅',
+  '🤘',
+  '🫶',
+  '❤️',
+  '🧡',
+  '💛',
+  '💚',
+  '💙',
+  '💜',
+  '🖤',
+  '🤍',
+  '💖',
+  '💔',
+  '🔥',
+  '✨',
+  '⭐',
+  '🌟',
+  '🎉',
+  '🎂',
+  '🎁',
+  '🎊',
+  '🚀',
+  '🏆',
+  '⚽',
+  '🏀',
+  '🎮',
+  '🎧',
+  '🎵',
+  '🎸',
+  '☕',
+  '🍕',
+  '🍔',
+  '🍟',
+  '🍰',
+  '🌮',
+  '🍣',
+  '🍩',
+  '🍺',
+  '🥂',
+  '🌹',
+  '🌸',
+  '🌈',
+  '☀️',
+  '❄️',
+  '⚡',
+  '🍀',
+  '👀',
+  '💬',
+  '✅',
+  '❌',
+  '❓',
+  '❗',
+  '💯',
+  '😴',
+  '🤔'
+]
 
 const attachInput = ref<HTMLInputElement | null>(null)
 
@@ -174,6 +275,25 @@ const onFileSelected = (event: Event) => {
   const file = input.files?.[0]
   input.value = ''
   if (file) emit('file-selected', file)
+}
+
+// ---------- Ввод с клавиатуры ----------
+// Десктоп: Enter — отправка, Shift+Enter — новая строка.
+// Мобильный (тач): Enter виртуальной клавиатуры вставляет перевод строки,
+// отправить можно кнопкой «Отправить» (как в Telegram/WhatsApp).
+const isTouchPrimary = () =>
+  typeof window !== 'undefined' &&
+  !!window.matchMedia &&
+  window.matchMedia('(pointer: coarse)').matches
+
+const onTextKeydown = (event: KeyboardEvent) => {
+  if (event.key !== 'Enter') return
+  // Shift+Enter — перенос строки (браузер делает сам), не перехватываем.
+  if (event.shiftKey) return
+  // Тач-устройства: Enter = перевод строки (не отправка).
+  if (isTouchPrimary()) return
+  event.preventDefault()
+  emit('send-text')
 }
 
 // ---------- Авто-рост многострочного поля ----------
@@ -379,17 +499,26 @@ watch(newMessage, () => {
   display: none;
 }
 
-/* Палитра эмодзи в поле ввода (расположена над строкой ввода) */
+/* Палитра эмодзи в поле ввода (над строкой ввода; сетка — чтобы не уезжала
+   за левый край на узких экранах и помещалось много смайлов) */
 .emoji-picker {
   position: absolute;
-  top: -46px;
+  top: auto;
+  bottom: 58px;
+  right: 14px;
+  left: auto;
+  width: auto;
   background: #ffffff;
-  border-radius: 18px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-  display: flex;
+  border-radius: 16px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+  display: grid;
+  grid-template-columns: repeat(8, 32px);
   gap: 2px;
-  padding: 6px 8px;
-  z-index: 10;
+  padding: 8px;
+  z-index: 30;
+  max-width: calc(100vw - 28px);
+  max-height: min(300px, 45vh);
+  overflow-y: auto;
 }
 
 .emoji-option {
@@ -412,14 +541,6 @@ watch(newMessage, () => {
 
 .emoji-option.active {
   background: #e3f2e5;
-}
-
-.emoji-picker.bottom {
-  position: absolute;
-  top: auto;
-  bottom: 56px;
-  right: 14px;
-  left: auto;
 }
 
 /* ---------- Мобильная адаптация ---------- */
