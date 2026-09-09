@@ -6,8 +6,10 @@ FROM node:22-alpine AS build
 WORKDIR /app
 RUN corepack enable
 ENV CI=true
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --no-frozen-lockfile; pnpm approve-builds --all
+# pnpm-workspace.yaml обязателен при install: в нём `allowBuilds: true` для
+# esbuild/vue-demi/@parcel/watcher. Без него pnpm >=10 блокирует их build-скрипты
+# и падает с ERR_PNPM_IGNORED_BUILDS.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --no-frozen-lockfile
 COPY . .
 # Публичный origin API (тот же, что у nginx). Переопределяется через build-arg.

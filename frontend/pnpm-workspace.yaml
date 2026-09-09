@@ -1,10 +1,8 @@
+# pnpm 12 (12.3.4) разрешает build-скрипты зависимостей через `allowBuilds`
+# в pnpm-workspace.yaml. Здесь `true` = запускать postinstall этих пакетов
+# (esbuild/vue-demi/@parcel/watcher) — как было раньше после `pnpm approve-builds`.
+# Значения `false`/`set this to true or false` приводят к ERR_PNPM_IGNORED_BUILDS.
 allowBuilds:
-  '@parcel/watcher': false
-  esbuild: false
-  vue-demi: false
-
-# buildConfig:
-#   allowBuildScriptsForPackages:
-#     - "@parcel/watcher"
-#     - "esbuild"
-#     - "vue-demi"
+  '@parcel/watcher': true
+  esbuild: true
+  vue-demi: true
