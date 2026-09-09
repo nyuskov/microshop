@@ -1903,11 +1903,14 @@ watch(
 <style scoped>
 /* ---------- Каркас (Quasar QLayout) ---------- */
 .messenger-shell {
-  /* %-цепочка (html/body/#app height:100%) — работает и без поддержки dvh;
-     dvh — точнее под динамическую адресную строку. */
-  height: 100%;
-  height: 100vh;
-  height: 100dvh;
+  /* Жёстко занимаем видимую область (в т.ч. при показе адресной строки и
+     клавиатуры): position:fixed -> низ (поле ввода) всегда прижат к экрану,
+     внешнего скролла документа нет. */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   overflow: hidden;
   background: #6d7c8c;
   font-family: var(--ms-font);
@@ -1918,8 +1921,6 @@ watch(
   display: flex;
   flex-direction: column;
   height: 100%;
-  height: 100vh;
-  height: 100dvh;
   min-height: 0;
 }
 
