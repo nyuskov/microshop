@@ -717,7 +717,6 @@ const onDelete = () => {
 .msg-actions {
   position: absolute;
   top: 100%;
-  border-top: 5px solid transparent;
   background: #ffffff;
   background-clip: padding-box;
   border-radius: 18px;
