@@ -104,69 +104,75 @@
       </button>
     </div>
 
-    <!-- Действия при наведении -->
+    <!-- Действия при наведении (появляются ПОД сообщением) -->
     <div class="msg-actions" @click.stop>
-      <button class="round-btn" title="Ответить" @click="emit('set-reply')">
-        <q-icon name="reply" size="17px" />
-      </button>
-      <button class="round-btn" title="Реакция" @click="emit('toggle-emoji-picker')">
+      <button
+        class="round-btn"
+        :class="{ active: emojiPickerOpen }"
+        title="Реакция"
+        @click="onReaction"
+      >
         <q-icon name="sentiment_satisfied_alt" size="17px" />
       </button>
-      <button
-        v-if="!message.is_pinned"
-        class="round-btn"
-        title="Закрепить"
-        @click="emit('toggle-pin')"
-      >
-        <q-icon name="push_pin" size="17px" />
+      <button class="round-btn" title="Ответить" @click="onReply">
+        <q-icon name="reply" size="17px" />
       </button>
-      <button v-else class="round-btn" title="Открепить" @click="emit('toggle-pin')">
-        <q-icon name="push_pin" size="17px" />
-      </button>
-      <button class="round-btn" title="Копировать" @click="emit('copy')">
-        <q-icon name="content_copy" size="17px" />
-      </button>
-      <button
-        v-if="isOwn && message.text"
-        class="round-btn"
-        title="Редактировать"
-        @click="emit('edit')"
-      >
-        <q-icon name="edit" size="17px" />
-      </button>
-      <button class="round-btn" title="Переслать" @click="emit('forward')">
+      <button class="round-btn" title="Переслать" @click="onForward">
         <q-icon name="forward" size="17px" />
       </button>
       <button
-        v-if="canSave"
         class="round-btn"
-        title="Сохранить в Сохранённые"
-        @click="emit('save')"
+        :class="{ active: moreOpen }"
+        title="Ещё"
+        aria-haspopup="true"
+        :aria-expanded="moreOpen"
+        @click="toggleMore"
       >
-        <q-icon name="bookmark" size="17px" />
+        <q-icon name="more_horiz" size="17px" />
       </button>
-      <button v-if="isOwn" class="round-btn danger" title="Удалить" @click="emit('delete')">
-        <q-icon name="delete" size="17px" />
-      </button>
-    </div>
 
-    <!-- Выбор эмодзи-реакции -->
-    <div v-if="emojiPickerOpen" class="emoji-picker" @click.stop>
-      <button
-        v-for="emoji in REACTION_EMOJIS"
-        :key="emoji"
-        class="emoji-option"
-        :class="{ active: hasMyReaction(message, emoji) }"
-        @click="emit('toggle-reaction', emoji)"
-      >
-        {{ emoji }}
-      </button>
+      <!-- Остальные действия — в выпадающем меню -->
+      <div v-if="moreOpen" class="more-menu" @click.stop>
+        <button class="more-item" @click="onPin">
+          <q-icon name="push_pin" size="16px" />
+          <span>{{ message.is_pinned ? 'Открепить' : 'Закрепить' }}</span>
+        </button>
+        <button class="more-item" @click="onCopy">
+          <q-icon name="content_copy" size="16px" />
+          <span>Копировать</span>
+        </button>
+        <button v-if="isOwn && message.text" class="more-item" @click="onEdit">
+          <q-icon name="edit" size="16px" />
+          <span>Редактировать</span>
+        </button>
+        <button v-if="canSave" class="more-item" @click="onSave">
+          <q-icon name="bookmark" size="16px" />
+          <span>Сохранить в Сохранённые</span>
+        </button>
+        <button v-if="isOwn" class="more-item danger" @click="onDelete">
+          <q-icon name="delete" size="16px" />
+          <span>Удалить</span>
+        </button>
+      </div>
+
+      <!-- Выбор эмодзи-реакции -->
+      <div v-if="emojiPickerOpen" class="emoji-picker" @click.stop>
+        <button
+          v-for="emoji in REACTION_EMOJIS"
+          :key="emoji"
+          class="emoji-option"
+          :class="{ active: hasMyReaction(message, emoji) }"
+          @click="onPickEmoji(emoji)"
+        >
+          {{ emoji }}
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { Message } from '@/types'
 import { mediaUrl } from '@/config'
 import { formatBytes, formatMsgTime } from '@/utils/format'
@@ -227,7 +233,30 @@ const emit = defineEmits<{
   (e: 'open-image'): void
 }>()
 
-const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '😮', '😢', '👏', '🎉']
+const REACTION_EMOJIS = [
+  '👍',
+  '❤️',
+  '🔥',
+  '😂',
+  '🤣',
+  '😮',
+  '😢',
+  '😭',
+  '😡',
+  '🎉',
+  '👏',
+  '🙏',
+  '🤔',
+  '🤯',
+  '🥰',
+  '😍',
+  '😎',
+  '😴',
+  '🤝',
+  '💯',
+  '👎',
+  '❤️‍🔥'
+]
 
 const mediaAbsolute = (path: string): string => mediaUrl(path)
 
@@ -240,6 +269,65 @@ const callIcon = computed<string>(() => callMessageIcon(props.message))
 
 /** «Сохранить» доступно для обычных сообщений (не для отметок о звонках). */
 const canSave = computed<boolean>(() => props.message.kind !== 'call')
+
+/** Открыто ли меню «Ещё» (остальные действия). */
+const moreOpen = ref(false)
+
+/** Закрыть «плавающие» элементы (меню «Ещё» и палитру реакций), если открыты. */
+const closeFloating = () => {
+  moreOpen.value = false
+  if (props.emojiPickerOpen) emit('toggle-emoji-picker')
+}
+
+const onReaction = () => {
+  moreOpen.value = false
+  emit('toggle-emoji-picker')
+}
+
+const toggleMore = () => {
+  if (props.emojiPickerOpen) emit('toggle-emoji-picker')
+  moreOpen.value = !moreOpen.value
+}
+
+const onReply = () => {
+  closeFloating()
+  emit('set-reply')
+}
+
+const onForward = () => {
+  closeFloating()
+  emit('forward')
+}
+
+const onPickEmoji = (emoji: string) => {
+  moreOpen.value = false
+  emit('toggle-reaction', emoji)
+}
+
+const onPin = () => {
+  moreOpen.value = false
+  emit('toggle-pin')
+}
+
+const onCopy = () => {
+  moreOpen.value = false
+  emit('copy')
+}
+
+const onEdit = () => {
+  moreOpen.value = false
+  emit('edit')
+}
+
+const onSave = () => {
+  moreOpen.value = false
+  emit('save')
+}
+
+const onDelete = () => {
+  moreOpen.value = false
+  emit('delete')
+}
 </script>
 
 <style scoped>
@@ -468,10 +556,10 @@ const canSave = computed<boolean>(() => props.message.kind !== 'call')
   color: #d64545;
 }
 
-/* Действия при наведении */
+/* Действия при наведении — панель прижата к НИЖНЕМУ краю сообщения */
 .msg-actions {
   position: absolute;
-  top: -14px;
+  top: calc(100% + 3px);
   background: #ffffff;
   border-radius: 16px;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
@@ -502,6 +590,79 @@ const canSave = computed<boolean>(() => props.message.kind !== 'call')
   width: 28px;
   height: 28px;
   font-size: 0.9rem;
+}
+
+/* Палитра эмодзи — над панелью действий, т.е. у нижнего края сообщения */
+.emoji-picker {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
+  display: grid;
+  grid-template-columns: repeat(8, 32px);
+  gap: 2px;
+  padding: 6px;
+  z-index: 12;
+}
+
+.msg.in .msg-actions .emoji-picker {
+  left: 0;
+  right: auto;
+}
+
+.msg.out .msg-actions .emoji-picker {
+  right: 0;
+  left: auto;
+}
+
+/* Меню «Ещё» — тоже над панелью, у нижнего края сообщения */
+.more-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.24);
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  min-width: 216px;
+  z-index: 13;
+}
+
+.msg.in .msg-actions .more-menu {
+  left: 0;
+  right: auto;
+}
+
+.msg.out .msg-actions .more-menu {
+  right: 0;
+  left: auto;
+}
+
+.more-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #2f3b44;
+  font-size: 13.5px;
+  font-family: inherit;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.more-item:hover {
+  background: #f0f2f4;
+}
+
+.more-item.danger {
+  color: #d64545;
 }
 
 /* Реакции */
@@ -535,27 +696,7 @@ const canSave = computed<boolean>(() => props.message.kind !== 'call')
   font-weight: 600;
 }
 
-/* Палитра эмодзи */
-.emoji-picker {
-  position: absolute;
-  top: -46px;
-  background: #ffffff;
-  border-radius: 18px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-  display: flex;
-  gap: 2px;
-  padding: 6px 8px;
-  z-index: 10;
-}
-
-.msg.in .emoji-picker {
-  left: 4px;
-}
-
-.msg.out .emoji-picker {
-  right: 4px;
-}
-
+/* Эмодзи внутри палитры */
 .emoji-option {
   background: transparent;
   border: none;

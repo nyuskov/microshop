@@ -580,6 +580,22 @@ html .messenger-shell .emoji-option.active {
     background: var(--ms-accent-soft);
 }
 
+html .messenger-shell .more-menu {
+    background: var(--ms-surface);
+}
+
+html .messenger-shell .more-item {
+    color: var(--ms-text);
+}
+
+html .messenger-shell .more-item:hover {
+    background: var(--ms-hover);
+}
+
+html .messenger-shell .more-item.danger {
+    color: var(--ms-danger);
+}
+
 /* Поиск по сообщениям */
 html .messenger-shell .inline-search {
     background: var(--ms-surface);
