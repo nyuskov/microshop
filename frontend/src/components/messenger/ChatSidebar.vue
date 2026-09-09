@@ -299,6 +299,14 @@
         </div>
         <h2 class="panel-title">Контакты</h2>
         <div class="panel-header-right">
+          <button
+            class="icon-btn"
+            title="Добавить из контактов телефона"
+            aria-label="Добавить из контактов телефона"
+            @click="openPhoneImport"
+          >
+            <q-icon name="contacts" size="20px" />
+          </button>
           <span class="ms-dropdown-wrap" @click.stop>
             <button
               class="icon-btn"
@@ -364,12 +372,104 @@
       </div>
     </template>
   </aside>
+
+  <!-- Импорт контактов из телефонной книги -->
+  <Teleport to="body">
+    <div
+      v-if="phoneImportOpen"
+      class="phone-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Добавить из контактов телефона"
+      @mousedown.self="closePhoneImport"
+    >
+      <div class="phone-card">
+        <header class="phone-head">
+          <div class="phone-title">
+            <q-icon name="contacts" size="18px" />
+            <span>Из контактов телефона</span>
+          </div>
+          <button class="phone-xbtn" title="Закрыть" @click="closePhoneImport">
+            <q-icon name="close" size="20px" />
+          </button>
+        </header>
+
+        <div class="phone-body">
+          <button
+            v-if="phoneContactsSupported"
+            class="phone-primary"
+            :disabled="phoneBusy"
+            @click="pickDeviceContacts"
+          >
+            <q-icon name="phone_android" size="20px" />
+            <span>{{ phoneBusy ? 'Открываем…' : 'Выбрать из телефонной книги' }}</span>
+          </button>
+          <p v-else class="phone-hint">
+            Браузер не открывает книгу напрямую — вставьте номера ниже (по одному в строке).
+          </p>
+
+          <div class="phone-or"><span>или</span></div>
+
+          <label class="phone-label" for="phone-textarea">Номера телефонов</label>
+          <textarea
+            id="phone-textarea"
+            v-model="manualPhones"
+            class="phone-textarea"
+            rows="5"
+            placeholder="+7 999 123-45-67&#10;+7 912 000-00-00"
+          ></textarea>
+
+          <div class="phone-actions">
+            <button class="phone-btn ghost" :disabled="phoneBusy" @click="closePhoneImport">
+              Отмена
+            </button>
+            <button class="phone-btn primary" :disabled="phoneBusy" @click="findByManualPhones">
+              {{ phoneBusy ? 'Поиск…' : 'Найти в мессенджере' }}
+            </button>
+          </div>
+
+          <p v-if="phoneError" class="phone-error">{{ phoneError }}</p>
+
+          <template v-if="phoneMatched !== null">
+            <p class="phone-result-title">Найдено в мессенджере: {{ phoneMatched.length }}</p>
+            <div v-if="!phoneMatched.length" class="phone-empty">
+              Никого из вашей книги нет в мессенджере
+            </div>
+            <div v-else class="phone-results">
+              <button
+                v-for="user in phoneMatched"
+                :key="user.id"
+                class="phone-row"
+                @click="openPhoneMatch(user)"
+              >
+                <span class="avatar" :style="avatarStyle(displayName(user))">
+                  <img
+                    v-if="avatarUrlOf(user)"
+                    :src="avatarUrlOf(user)"
+                    class="avatar-img"
+                    alt=""
+                  />
+                  <template v-else>{{ initials(displayName(user)) }}</template>
+                </span>
+                <span class="phone-row-text">
+                  <span class="phone-row-name">{{ displayName(user) }}</span>
+                  <span class="phone-row-phone">@{{ user.username }}</span>
+                </span>
+                <q-icon name="chat_bubble" class="phone-row-icon" size="18px" />
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import {
+  matchUsersByPhone,
   openPrivateChat,
   searchMessages,
   searchUsers,
@@ -765,6 +865,95 @@ const openChatWithContact = async (contact: SearchUserResult) => {
     // Ошибка показывается только на вкладке «Чаты» (как в исходном Messenger).
     searchError.value = getErrorMessage(error, 'Не удалось начать переписку')
   }
+}
+
+// ---------- Импорт контактов из телефонной книги ----------
+const phoneImportOpen = ref(false)
+const phoneBusy = ref(false)
+const phoneError = ref('')
+const manualPhones = ref('')
+const phoneMatched = ref<SearchUserResult[] | null>(null)
+
+interface NativePhoneContact {
+  name?: string | string[]
+  tel?: string[]
+}
+interface NavigatorWithContacts extends Navigator {
+  contacts?: {
+    select(props: string[], options: { multiple: boolean }): Promise<NativePhoneContact[]>
+  }
+}
+
+/** Поддерживает ли браузер системный выбор контактов (Android Chrome/Edge, PWA). */
+const phoneContactsSupported = computed<boolean>(() => {
+  const nav = navigator as NavigatorWithContacts
+  return typeof nav.contacts?.select === 'function'
+})
+
+const openPhoneImport = () => {
+  phoneImportOpen.value = true
+  phoneError.value = ''
+  phoneMatched.value = null
+  manualPhones.value = ''
+}
+
+const closePhoneImport = () => {
+  if (phoneBusy.value) return
+  phoneImportOpen.value = false
+}
+
+const normalizePhone = (raw: string): string => raw.replace(/\D/g, '')
+
+/** Запускает поиск пользователей по номерам. */
+const runPhoneMatch = async (phones: string[]) => {
+  phoneError.value = ''
+  const clean = phones.map(normalizePhone).filter((p) => p.length >= 7)
+  if (clean.length === 0) {
+    phoneError.value = 'Не удалось определить номера. Проверьте ввод.'
+    phoneMatched.value = []
+    return
+  }
+  phoneBusy.value = true
+  try {
+    phoneMatched.value = await matchUsersByPhone(clean)
+  } catch (error) {
+    phoneError.value = getErrorMessage(error, 'Не удалось найти в мессенджере')
+  } finally {
+    phoneBusy.value = false
+  }
+}
+
+/** Выбор контактов из системной книги. */
+const pickDeviceContacts = async () => {
+  const nav = navigator as NavigatorWithContacts
+  if (!nav.contacts) return
+  phoneBusy.value = true
+  phoneError.value = ''
+  try {
+    const contacts = await nav.contacts.select(['tel', 'name'], { multiple: true })
+    const phones = contacts.flatMap((c) => c.tel ?? [])
+    await runPhoneMatch(phones)
+  } catch (error) {
+    const err = error as { name?: string }
+    // Отмена выбора — не ошибка.
+    if (err?.name && err.name !== 'NotAllowedError') {
+      phoneError.value = getErrorMessage(error, 'Не удалось открыть контакты')
+    }
+  } finally {
+    phoneBusy.value = false
+  }
+}
+
+/** Поиск по вставленным вручную номерам. */
+const findByManualPhones = () => {
+  const lines = manualPhones.value.split(/[\n,;]+/)
+  void runPhoneMatch(lines)
+}
+
+/** Открыть чат с пользователем, найденным по номеру. */
+const openPhoneMatch = async (user: SearchUserResult) => {
+  closePhoneImport()
+  await openChatWithContact(user)
 }
 
 // Закрываем «⋯» и глобальный поиск при смене вкладки или выбранного чата извне.
@@ -1290,5 +1479,253 @@ onBeforeUnmount(() => {
 
 .row-item.selected {
   background: var(--ms-accent-soft, #e3f2e5);
+}
+
+/* ---------- Импорт контактов телефона ---------- */
+.phone-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  background: rgba(15, 20, 26, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  font-family: var(--ms-font);
+}
+
+.phone-card {
+  width: min(440px, 100%);
+  max-height: min(680px, calc(100vh - 40px));
+  display: flex;
+  flex-direction: column;
+  background: var(--ms-surface, #ffffff);
+  color: var(--ms-text, #1c2733);
+  border-radius: 18px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+
+.phone-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 6px;
+}
+
+.phone-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ms-text-strong, #141d26);
+}
+
+.phone-title .q-icon {
+  color: var(--ms-accent, #2ea25e);
+}
+
+.phone-xbtn {
+  background: none;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ms-icon, #52626f);
+  cursor: pointer;
+}
+
+.phone-xbtn:hover {
+  background: var(--ms-hover, #f2f4f6);
+  color: var(--ms-text-strong, #141d26);
+}
+
+.phone-body {
+  padding: 8px 16px 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.phone-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: 12px;
+  padding: 11px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--ms-accent, #2ea25e);
+  color: #fff;
+}
+
+.phone-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.phone-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ms-muted, #71808d);
+}
+
+.phone-or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  color: var(--ms-muted, #93a0ab);
+  font-size: 12px;
+}
+
+.phone-or::before,
+.phone-or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--ms-border, #e2e6ea);
+}
+
+.phone-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ms-muted, #71808d);
+  margin-bottom: 5px;
+}
+
+.phone-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid var(--ms-border, #e2e6ea);
+  background: var(--ms-surface-2, #f0f2f5);
+  color: var(--ms-text, #1c2733);
+  border-radius: 10px;
+  padding: 9px 11px;
+  font-size: 13.5px;
+  font-family: inherit;
+  outline: none;
+}
+
+.phone-textarea:focus {
+  border-color: var(--ms-accent, #2ea25e);
+  background: var(--ms-surface, #ffffff);
+}
+
+.phone-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.phone-btn {
+  border: none;
+  border-radius: 10px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.phone-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.phone-btn.ghost {
+  background: var(--ms-surface-2, #f0f2f5);
+  color: var(--ms-text, #1c2733);
+}
+
+.phone-btn.primary {
+  background: var(--ms-accent, #2ea25e);
+  color: #fff;
+}
+
+.phone-error {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--ms-danger, #d64545);
+}
+
+.phone-result-title {
+  margin: 14px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ms-muted, #71808d);
+}
+
+.phone-empty {
+  padding: 12px 4px;
+  font-size: 13.5px;
+  color: var(--ms-muted, #71808d);
+}
+
+.phone-results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.phone-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: 12px;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: inherit;
+}
+
+.phone-row:hover {
+  background: var(--ms-hover, #f2f4f6);
+}
+
+.phone-row .avatar {
+  width: 40px;
+  height: 40px;
+}
+
+.phone-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.phone-row-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ms-text-strong, #141d26);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.phone-row-phone {
+  font-size: 12.5px;
+  color: var(--ms-muted, #71808d);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.phone-row-icon {
+  color: var(--ms-accent, #2ea25e);
+  flex: none;
 }
 </style>

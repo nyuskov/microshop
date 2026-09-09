@@ -1,5 +1,6 @@
 """CRUD-операции для пользователей."""
 
+import re
 import secrets
 from uuid import uuid4
 
@@ -29,9 +30,13 @@ async def get_user_by_id(session: AsyncSession, user_id: int) -> User | None:
     return await session.get(User, user_id)
 
 
-async def get_user_by_username(session: AsyncSession, username: str) -> User | None:
+async def get_user_by_username(
+    session: AsyncSession, username: str
+) -> User | None:
     """Возвращает пользователя по имени."""
-    result = await session.execute(select(User).where(User.username == username))
+    result = await session.execute(
+        select(User).where(User.username == username)
+    )
     return result.scalar_one_or_none()
 
 
@@ -80,16 +85,55 @@ async def get_user_by_phone_number(
     return result.scalar_one_or_none()
 
 
-async def get_user_with_profile(session: AsyncSession, user_id: int) -> User | None:
+def canonical_phone(raw: str) -> str:
+    """Каноничный номер: только цифры; российский 8… → 7…."""
+    digits = re.sub(r"\D", "", raw or "")
+    if len(digits) == 11 and digits.startswith("8"):
+        digits = "7" + digits[1:]
+    return digits
+
+
+async def get_users_by_phones(
+    session: AsyncSession,
+    phones: list[str],
+    *,
+    exclude_user_id: int | None = None,
+) -> list[User]:
+    """Возвращает пользователей, чьи номера есть в списке (точное совпадение)."""
+    wanted = {canonical_phone(p) for p in phones if canonical_phone(p)}
+    if not wanted:
+        return []
+    result = await session.execute(select(User))
+    matched: list[User] = []
+    for user in result.scalars().all():
+        if user.id == exclude_user_id:
+            continue
+        if user.phone_number and canonical_phone(user.phone_number) in wanted:
+            matched.append(user)
+    matched.sort(key=lambda u: (u.username or "").lower())
+    return matched
+
+
+async def get_user_with_profile(
+    session: AsyncSession, user_id: int
+) -> User | None:
     """Возвращает пользователя вместе с профилем."""
-    stmt = select(User).where(User.id == user_id).options(selectinload(User.profile))
+    stmt = (
+        select(User)
+        .where(User.id == user_id)
+        .options(selectinload(User.profile))
+    )
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
 
-async def get_user_with_chats(session: AsyncSession, user_id: int) -> User | None:
+async def get_user_with_chats(
+    session: AsyncSession, user_id: int
+) -> User | None:
     """Возвращает пользователя вместе с его чатами."""
-    stmt = select(User).where(User.id == user_id).options(selectinload(User.chats))
+    stmt = (
+        select(User).where(User.id == user_id).options(selectinload(User.chats))
+    )
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 

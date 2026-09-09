@@ -56,6 +56,24 @@ class UserSearchResultSchema(BaseModel):
     last_seen: datetime | None = None
 
 
+class PhoneMatchRequest(BaseModel):
+    """Номера из телефонной книги для поиска в мессенджере."""
+
+    phones: list[str] = Field(default_factory=list)
+
+    @field_validator("phones")
+    @classmethod
+    def validate_phones(cls, value: list[str]) -> list[str]:
+        if len(value) > 500:
+            raise ValueError("Слишком много номеров")
+        cleaned: list[str] = []
+        for item in value:
+            if len(item) > 40:
+                raise ValueError("Номер слишком длинный")
+            cleaned.append(item.strip())
+        return cleaned
+
+
 class UserWithDetailsSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -71,9 +89,9 @@ class UserWithDetailsSchema(BaseModel):
     profile: ProfileSchema | None
     chats: list[ChatSchema] = Field(default_factory=list)
 
-    _empty_str_to_none = field_validator("first_name", "last_name", mode="before")(
-        _empty_str_to_none
-    )
+    _empty_str_to_none = field_validator(
+        "first_name", "last_name", mode="before"
+    )(_empty_str_to_none)
 
 
 class UserUpdateWithProfileSchema(BaseModel):
@@ -107,9 +125,9 @@ class CreateUser(BaseModel):
             raise ValueError("Неверный формат номера телефона")
         return value
 
-    _empty_str_to_none = field_validator("first_name", "last_name", mode="before")(
-        _empty_str_to_none
-    )
+    _empty_str_to_none = field_validator(
+        "first_name", "last_name", mode="before"
+    )(_empty_str_to_none)
 
 
 class UserCreatedResponseSchema(BaseModel):

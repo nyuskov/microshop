@@ -201,6 +201,12 @@ export const searchUsers = async (query: string): Promise<SearchUserResult[]> =>
   return response.data
 }
 
+/** Ищет пользователей мессенджера по номерам из телефонной книги. */
+export const matchUsersByPhone = async (phones: string[]): Promise<SearchUserResult[]> => {
+  const response = await api.post<SearchUserResult[]>('/users/match-by-phone/', { phones })
+  return response.data
+}
+
 /** Возвращает всех пользователей, кроме текущего (вкладка «Контакты»). */
 export const fetchContacts = async (): Promise<SearchUserResult[]> => {
   const response = await api.get<SearchUserResult[]>('/users/contacts/')

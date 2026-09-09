@@ -51,7 +51,9 @@ async def search_users(
         window_seconds=60,
         detail="Слишком много запросов. Попробуйте позже.",
     )
-    return await crud.search_users_by_query(session, query, exclude_user_id=user.id)
+    return await crud.search_users_by_query(
+        session, query, exclude_user_id=user.id
+    )
 
 
 @router.get("/contacts/", response_model=list[schemas.UserSearchResultSchema])
@@ -61,6 +63,20 @@ async def get_contacts(
 ) -> list[User]:
     """Возвращает всех пользователей, кроме текущего (для вкладки «Контакты»)."""
     return await crud.get_contacts(session, exclude_user_id=user.id)
+
+
+@router.post(
+    "/match-by-phone/", response_model=list[schemas.UserSearchResultSchema]
+)
+async def match_users_by_phone(
+    payload: schemas.PhoneMatchRequest,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> list[User]:
+    """Находит пользователей мессенджера по номерам из телефонной книги."""
+    return await crud.get_users_by_phones(
+        session, payload.phones, exclude_user_id=user.id
+    )
 
 
 @router.put("/me/avatar/", response_model=schemas.UserAvatarResponse)
