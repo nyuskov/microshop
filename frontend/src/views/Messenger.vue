@@ -1770,8 +1770,11 @@ watch(
 <style scoped>
 /* ---------- Каркас (Quasar QLayout) ---------- */
 .messenger-shell {
+  /* %-цепочка (html/body/#app height:100%) — работает и без поддержки dvh;
+     dvh — точнее под динамическую адресную строку. */
+  height: 100%;
   height: 100vh;
-  height: 100dvh; /* на мобильных браузерах с динамической адресной строкой */
+  height: 100dvh;
   overflow: hidden;
   background: #6d7c8c;
   font-family: var(--ms-font);
@@ -1781,6 +1784,7 @@ watch(
 .messenger-page {
   display: flex;
   flex-direction: column;
+  height: 100%;
   height: 100vh;
   height: 100dvh;
   min-height: 0;
