@@ -206,18 +206,41 @@ watch(avatarUrl, () => {
   avatarImgFailed.value = false
 })
 
+// Явно запускаем воспроизведение (на мобильных autoplay-атрибут не всегда
+// стартует после назначения srcObject, из-за чего видео чёрное при живом звуке).
+const ensurePlaying = (el: HTMLMediaElement | null) => {
+  if (el && el.srcObject && el.paused) {
+    void el.play().catch(() => undefined)
+  }
+}
+
+let lastRemoteVideoTracks = 0
+
 const attachStreams = () => {
   const remote = callStore.getRemoteStream()
   if (remoteAudioEl.value && remoteAudioEl.value.srcObject !== remote) {
     remoteAudioEl.value.srcObject = remote
   }
-  if (remoteVideoEl.value && remoteVideoEl.value.srcObject !== remote) {
-    remoteVideoEl.value.srcObject = remote
+  const remoteVideo = remoteVideoEl.value
+  const videoTracks = remote ? remote.getVideoTracks().length : 0
+  if (remoteVideo) {
+    const needsBind =
+      remoteVideo.srcObject !== remote ||
+      // Видеотрек мог прийти позже аудио — пере-привязываем, чтобы «проснуться».
+      (videoTracks > 0 && videoTracks !== lastRemoteVideoTracks && remoteVideo.srcObject === remote)
+    if (needsBind) {
+      remoteVideo.srcObject = null
+      remoteVideo.srcObject = remote
+    }
+    ensurePlaying(remoteVideo)
   }
+  lastRemoteVideoTracks = videoTracks
   const local = callStore.getLocalStream()
   if (localVideoEl.value && localVideoEl.value.srcObject !== local) {
     localVideoEl.value.srcObject = local
   }
+  ensurePlaying(localVideoEl.value)
+  ensurePlaying(remoteAudioEl.value)
   applySpeaker()
 }
 

@@ -33,6 +33,15 @@ interface SignalingMessage {
 const WS_PATH = '/api/v1/ws/calls'
 const RING_OUT_TIMEOUT_MS = 45_000
 
+// «Лёгкое» видео: невысокое разрешение и частота — видеозвонок должен работать
+// и через TURN-релей на мобильной сети (высокий битрейт 720p «валит» медиа,
+// тогда как аудио-звонок проходит). Битрейт дополнительно режется кодом ниже.
+const VIDEO_CONSTRAINTS: MediaTrackConstraints = {
+  width: { ideal: 640, max: 640 },
+  height: { ideal: 480, max: 480 },
+  frameRate: { ideal: 24, max: 30 }
+}
+
 // ICE-серверы централизованы в config.ts (переопределяются через VITE_ICE_SERVERS);
 // для звонков за «симметричным» NAT нужен TURN-сервер (см. docs/turn.md).
 const ICE_SERVERS: RTCConfiguration = { iceServers: CONFIG_ICE_SERVERS }
@@ -440,7 +449,7 @@ export const useCallStore = defineStore('call', {
             echoCancellation: true,
             noiseSuppression: true
           },
-          video: kind === 'video' ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false
+          video: kind === 'video' ? VIDEO_CONSTRAINTS : false
         })
         localMedia = stream
         peerConnection = new RTCPeerConnection(ICE_SERVERS)
@@ -474,7 +483,7 @@ export const useCallStore = defineStore('call', {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true },
-          video: kind === 'video' ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false
+          video: kind === 'video' ? VIDEO_CONSTRAINTS : false
         })
         localMedia = stream
         peerConnection = new RTCPeerConnection(ICE_SERVERS)
@@ -560,6 +569,26 @@ export const useCallStore = defineStore('call', {
       this.secondsTimer = window.setInterval(() => {
         this.seconds += 1
       }, 1000)
+      // Режем битрейт видео, чтобы звонок стабильно шёл через TURN/мобильный.
+      void this._capVideoBitrate()
+    },
+
+    /** Ограничивает битрейт отправляемого видео (~300 Кбит/с). */
+    async _capVideoBitrate(): Promise<void> {
+      try {
+        const sender = peerConnection?.getSenders().find((s) => s.track && s.track.kind === 'video')
+        if (!sender) return
+        const params = sender.getParameters()
+        if (!params.encodings || params.encodings.length === 0) {
+          params.encodings = [{}]
+        }
+        params.encodings.forEach((encoding) => {
+          encoding.maxBitrate = 300_000
+        })
+        await sender.setParameters(params)
+      } catch {
+        /* ограничение битрейта — не критично */
+      }
     },
 
     /** Переключить микрофон. */
