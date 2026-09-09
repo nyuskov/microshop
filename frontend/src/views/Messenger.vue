@@ -263,7 +263,7 @@ import {
   computed,
   defineAsyncComponent
 } from 'vue'
-import { Notify, useQuasar } from 'quasar'
+import { useQuasar } from 'quasar'
 import LoginModal from '@/components/LoginModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -318,7 +318,11 @@ const ImageLightbox = defineAsyncComponent(() => import('@/components/media/Imag
 import { useCallStore } from '@/stores/call'
 import { useRealtimeStore } from '@/stores/realtime'
 import { mediaFileName, type RecordedMedia } from '@/services/recorder'
-import { enablePushNotifications } from '@/services/pwa'
+import {
+  disablePushNotifications,
+  enablePushNotifications,
+  getPushPermission
+} from '@/services/pwa'
 
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
@@ -460,13 +464,11 @@ const toggleCurrentChatPin = () => {
   if (chat !== null) toggleChatPinned(chat.id)
 }
 
-// ---------- Замьюченные чаты (без уведомлений; mute хранится на сервере) ----------
-// Сервер не шлёт Web Push в замьюченные чаты (таблица chat_mutes), а здесь mute
-// управляет только локальными всплывающими уведомлениями и индикаторами. Состояние
-// приходит в каждом чате списка (поле muted) и обновляется при синхронизации.
+// ---------- Замьюченные чаты (без push-уведомлений; mute хранится на сервере) ----------
+// Сервер не шлёт Web Push в замьюченные чаты (таблица chat_mutes). Здесь mute
+// управляет только индикаторами (значок в списке). Состояние приходит в каждом
+// чате списка (поле muted) и обновляется при синхронизации.
 const mutedChatIds = computed(() => chats.value.filter((chat) => chat.muted).map((chat) => chat.id))
-
-const isChatMuted = (chatId: number): boolean => mutedChatIds.value.includes(chatId)
 
 const toggleChatMuted = async (chatId: number) => {
   const chat = chats.value.find((item) => item.id === chatId)
@@ -1523,44 +1525,11 @@ watch(
   { immediate: true }
 )
 
-// Дедупликация уведомлений по чату.
-const lastNotifyAt: Record<number, number> = {}
-const NOTIFY_DEDUPE_MS = 3500
-
-const notifyNewMessage = (chatId: number) => {
-  // Замьюченные чаты не показывают всплывающие уведомления (бейдж остаётся).
-  if (isChatMuted(chatId)) return
-  const now = Date.now()
-  if (now - (lastNotifyAt[chatId] ?? 0) < NOTIFY_DEDUPE_MS) return
-  // Показываем, только если чат не открыт или вкладка свёрнута.
-  if (!document.hidden && selectedChatId.value === chatId) return
-  lastNotifyAt[chatId] = now
-  // Ждём обновления списка чатов — появится last_message с текстом.
-  window.setTimeout(() => {
-    const chat = chats.value.find((item) => item.id === chatId)
-    if (!chat) return
-    const sender = otherUserOfChat(chat)
-    const title = sender ? displayName(sender) : chat.name
-    const text = chat.last_message ? messageSnippet(chat.last_message) : 'Новое сообщение'
-    Notify.create({
-      type: 'info',
-      caption: title,
-      message: text,
-      position: 'top-right',
-      timeout: 4000,
-      actions: [
-        {
-          label: 'Открыть',
-          color: 'white',
-          handler: () => {
-            void openChatThread(chatId)
-          }
-        },
-        { icon: 'close', color: 'white', round: true, dense: true }
-      ]
-    })
-  }, 350)
-}
+// Всплывающие уведомления — ТОЛЬКО системные Web Push (service worker).
+// In-app «тостов» нет: пока приложение открыто, сообщения и так видны в ленте
+// (плюс счётчик непрочитанных в заголовке вкладки и бейджи), а когда оно
+// свёрнуто/закрыто — приходит системный push. В замьюченные чаты push не
+// отправляется (см. сервер, таблица chat_mutes).
 
 const { start: startRealtime, stop: stopRealtime } = useRealtimeSync({
   isAuthenticated: () => authStore.isAuthenticated,
@@ -1570,8 +1539,7 @@ const { start: startRealtime, stop: stopRealtime } = useRealtimeSync({
   onTyping: markPeerTyping,
   onTypingStop: clearPeerTyping,
   onChatsSync: refreshChatsQuiet,
-  onThreadSync: refreshOpenThreadQuiet,
-  onMessageNew: notifyNewMessage
+  onThreadSync: refreshOpenThreadQuiet
 })
 
 // ---------- Отправка индикатора «печатает…» ----------
@@ -1633,27 +1601,30 @@ watch(
   { immediate: true }
 )
 
-// Web Push (PWA): кроме холодного старта уже авторизованным (см. onMounted),
-// запрашиваем разрешение/подписку и в момент входа в текущей сессии. Иначе
-// после логина через OTP подписка не создастся до перезагрузки страницы и
-// push не будет приходить, когда PWA свёрнуто/закрыто.
-// enablePushNotifications идемпотентна — повторные вызовы безопасны.
-watch(ready, (isReady) => {
-  if (isReady) {
+// Web Push (PWA): подписку создаём, только если в профиле включено
+// «Уведомления о сообщениях» (там же и выключаем). Включено -> подписываемся
+// (повторный вызов безопасен), выключено -> отписываемся. При „denied“/
+// „unsupported“ не дёргаем API.
+const pushOptIn = computed(() => authStore.current_user?.profile?.notifications_enabled ?? true)
+
+const ensurePushState = () => {
+  if (!ready.value) return
+  if (pushOptIn.value) {
+    const permission = getPushPermission()
+    if (permission === 'denied' || permission === 'unsupported') return
     void enablePushNotifications()
+  } else {
+    void disablePushNotifications()
   }
-})
+}
+
+watch([ready, pushOptIn], ensurePushState)
 
 onMounted(async () => {
   await authStore.initializeApp()
   window.addEventListener('beforeunload', handleBeforeUnload)
   window.addEventListener('message', handleWindowMessage)
   scrollToBottom()
-
-  // Web Push (PWA): после входа один раз запрашиваем разрешение/подписку.
-  if (authStore.isAuthenticated) {
-    void enablePushNotifications()
-  }
 
   // Холодный старт по уведомлению: открыли через /?chat=<id>.
   const chatParam = new URLSearchParams(window.location.search).get('chat')

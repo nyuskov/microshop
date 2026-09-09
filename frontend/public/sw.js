@@ -16,7 +16,7 @@
  */
 
 const CACHE_PREFIX = 'microshop-v'
-const CACHE_VERSION = 1
+const CACHE_VERSION = 3
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 
 self.addEventListener('install', (event) => {
@@ -113,13 +113,14 @@ self.addEventListener('push', (event) => {
   } catch {
     payload = { body: event.data ? event.data.text() : '' }
   }
+  const chatId = payload.data && payload.data.chat_id
   const title = payload.title || 'Microshop'
   const options = {
     body: payload.body || '',
     icon: payload.icon || '/icons/icon-192.png',
     badge: payload.badge || '/icons/icon-192.png',
     data: payload.data || {},
-    tag: payload.data && payload.data.chat_id ? 'chat-' + payload.data.chat_id : undefined
+    tag: chatId ? 'chat-' + chatId : undefined
   }
   event.waitUntil(self.registration.showNotification(title, options))
 })

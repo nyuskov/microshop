@@ -151,3 +151,26 @@ export async function disablePushNotifications(): Promise<void> {
     /* ignore */
   }
 }
+
+// ---------- Состояние push (для UI-подсказки «Разрешить уведомления») ----------
+
+export type PushPermission = 'granted' | 'denied' | 'default' | 'unsupported'
+
+/** Текущее разрешение на уведомления (или 'unsupported', если Push недоступен). */
+export function getPushPermission(): PushPermission {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported'
+  if (!('Notification' in window)) return 'unsupported'
+  return Notification.permission as PushPermission
+}
+
+/** Есть ли уже активная Web Push-подписка в этом браузере. */
+export async function isPushSubscribed(): Promise<boolean> {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false
+    const reg = await navigator.serviceWorker.ready
+    const subscription = await reg.pushManager.getSubscription()
+    return subscription !== null
+  } catch {
+    return false
+  }
+}

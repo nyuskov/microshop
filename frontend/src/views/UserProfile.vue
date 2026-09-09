@@ -12,6 +12,7 @@ import {
   maskPhoneLocal
 } from '@/utils/phone'
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
+import { disablePushNotifications, enablePushNotifications } from '@/services/pwa'
 
 const emit = defineEmits(['close-modal'])
 
@@ -253,6 +254,30 @@ const updateProfile = async () => {
     saving.value = false
   }
 }
+
+// ---------- Уведомления: тумблер профиля управляет Web Push-подпиской ----------
+// Включение — запрашиваем разрешение браузера и подписываемся (вызов идёт из
+// клика по тумблеру = жест пользователя, обязателен на мобильных). Выключение —
+// отписываемся от Web Push на этом устройстве.
+const onNotificationsToggle = async (val: boolean) => {
+  if (val) {
+    const res = await enablePushNotifications()
+    if (res !== 'granted') {
+      profileForm.notifications_enabled = false
+      errorMessage.value =
+        res === 'denied'
+          ? 'Уведомления заблокированы браузером. Разрешите их в настройках сайта и попробуйте снова.'
+          : res === 'unsupported'
+            ? 'Push-уведомления недоступны: нужен HTTPS или localhost.'
+            : 'Не удалось включить push-уведомления.'
+    } else {
+      errorMessage.value = ''
+    }
+  } else {
+    errorMessage.value = ''
+    await disablePushNotifications()
+  }
+}
 </script>
 
 <template>
@@ -426,9 +451,16 @@ const updateProfile = async () => {
           <div class="toggle-row">
             <div class="toggle-text">
               <span class="toggle-name">Уведомления о сообщениях</span>
-              <span class="toggle-desc">Присылать оповещения о новых сообщениях</span>
+              <span class="toggle-desc"
+                >Системные push-уведомления, когда приложение свёрнуто или закрыто</span
+              >
             </div>
-            <q-toggle v-model="profileForm.notifications_enabled" color="primary" keep-color />
+            <q-toggle
+              v-model="profileForm.notifications_enabled"
+              color="primary"
+              keep-color
+              @update:model-value="onNotificationsToggle"
+            />
           </div>
           <div class="toggle-row">
             <div class="toggle-text">
