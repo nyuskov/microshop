@@ -16,7 +16,7 @@
  */
 
 const CACHE_PREFIX = 'microshop-v'
-const CACHE_VERSION = 9
+const CACHE_VERSION = 10
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 
 self.addEventListener('install', (event) => {
@@ -180,8 +180,38 @@ self.addEventListener('notificationclick', (event) => {
     (async () => {
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
 
-      // Входящий звонок: тап/«Ответить» открывает приложение к экрану звонка.
+      // Входящий звонок: «Ответить»/тап открывают приложение к экрану звонка.
       if (data.type === 'call') {
+        // «Отклонить» — сначала на сервер (без фокуса/открытия приложения).
+        if (action === 'decline') {
+          const ok = await swApiPost('/api/v1/calls/decline/', {
+            call_id: data.call_id || '',
+            to_user_id: data.peer_id || null
+          })
+          // Живой странице тихо сообщаем (гасит рингтон/уведомления) — НЕ фокусируем.
+          for (const client of windows) {
+            if ('focus' in client) {
+              client.postMessage({
+                type: 'call-notification',
+                action: 'decline',
+                call_id: data.call_id || null,
+                peer_id: data.peer_id || null
+              })
+            }
+          }
+          if (!ok && windows.length === 0) {
+            // Нет токена/сети и нет окна — откроем и отклоним в приложении.
+            await self.clients.openWindow(
+              '/?call=' +
+                encodeURIComponent(data.call_id || '') +
+                '&peer=' +
+                encodeURIComponent(data.peer_id || '') +
+                '&action=decline'
+            )
+          }
+          return
+        }
+        // «Ответить»/тап: окно есть — отдаём действие странице (с фокусом).
         for (const client of windows) {
           if ('focus' in client) {
             client.focus()
@@ -194,26 +224,7 @@ self.addEventListener('notificationclick', (event) => {
             return
           }
         }
-        // Приложение закрыто.
-        if (action === 'decline') {
-          // «Отклонить» шлём на сервер прямо отсюда — приложение НЕ открываем.
-          const ok = await swApiPost('/api/v1/calls/decline/', {
-            call_id: data.call_id || '',
-            to_user_id: data.peer_id || null
-          })
-          if (!ok) {
-            // Не вышло (нет токена/сети) — откроем и отклоним уже в приложении.
-            await self.clients.openWindow(
-              '/?call=' +
-                encodeURIComponent(data.call_id || '') +
-                '&peer=' +
-                encodeURIComponent(data.peer_id || '') +
-                '&action=decline'
-            )
-          }
-          return
-        }
-        // «Ответить»/тап по телу — открываем приложение к экрану звонка.
+        // Приложение закрыто — открываем к экрану звонка.
         const callUrl =
           '/?call=' +
           encodeURIComponent(data.call_id || '') +
@@ -227,12 +238,29 @@ self.addEventListener('notificationclick', (event) => {
 
       // Уведомление о сообщении: «Пометить как прочитанное» либо открыть чат.
       const markRead = action === 'mark-read'
+      if (markRead && data.type === 'message' && data.chat_id) {
+        // «Пометить как прочитанное» — сначала на сервер (без открытия).
+        const ok = await swApiPost('/api/v1/messages/read/', { chat_id: data.chat_id })
+        // Живой странице тихо обновляем счётчик — НЕ фокусируем окно.
+        for (const client of windows) {
+          if ('focus' in client) {
+            client.postMessage({ type: 'mark-chat-read', chat_id: data.chat_id })
+          }
+        }
+        if (!ok && windows.length === 0) {
+          await self.clients.openWindow(
+            '/?chat=' + encodeURIComponent(data.chat_id) + '&markread=1'
+          )
+        }
+        return
+      }
+      // Тап по телу уведомления — открываем/фокусируем чат.
       for (const client of windows) {
         if ('focus' in client) {
           client.focus()
           if (data.type === 'message' && data.chat_id) {
             client.postMessage({
-              type: markRead ? 'mark-chat-read' : 'open-chat',
+              type: 'open-chat',
               chat_id: data.chat_id,
               message_id: data.message_id || null
             })
@@ -240,18 +268,7 @@ self.addEventListener('notificationclick', (event) => {
           return
         }
       }
-      // Приложение закрыто.
-      if (markRead && data.type === 'message' && data.chat_id) {
-        // «Пометить как прочитанное» — на сервер, приложение не открываем.
-        const ok = await swApiPost('/api/v1/messages/read/', { chat_id: data.chat_id })
-        if (!ok) {
-          await self.clients.openWindow(
-            '/?chat=' + encodeURIComponent(data.chat_id) + '&markread=1'
-          )
-        }
-        return
-      }
-      // Тап по телу уведомления — открываем чат.
+      // Приложение закрыто — открываем чат.
       const url =
         data.type === 'message' && data.chat_id ? '/?chat=' + encodeURIComponent(data.chat_id) : '/'
       const win = await self.clients.openWindow(url)
