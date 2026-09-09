@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy.orm import Mapped, relationship
+from sqlalchemy import func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .associations import user_chat_association_table
 from .base import Base
@@ -15,6 +16,13 @@ class Chat(IdIntPkMixin, Base):
     __tablename__ = "chats"
 
     name: Mapped[str]
+
+    # Тип чата: False — «обычный» (сервер хранит текст как есть → текст виден в
+    # превью и уведомлениях); True — «зашифрованный» (E2EE: в text лежит только
+    # шифротекст, сервер его не читает). По умолчанию обычный.
+    e2ee_enabled: Mapped[bool] = mapped_column(
+        default=False, server_default=func.false()
+    )
 
     users: Mapped[list["User"]] = relationship(
         "User",

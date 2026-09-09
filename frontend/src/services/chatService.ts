@@ -78,6 +78,14 @@ export const setChatMuted = async (chatId: number, muted: boolean): Promise<bool
   return response.data?.muted ?? muted
 }
 
+/** Включает/выключает сквозное шифрование (тип чата: обычный/зашифрованный). */
+export const setChatE2ee = async (chatId: number, enabled: boolean): Promise<boolean> => {
+  const response = await api.put<{ e2ee_enabled: boolean }>(`/chats/${chatId}/e2ee/`, {
+    enabled
+  })
+  return response.data?.e2ee_enabled ?? enabled
+}
+
 /** Отправляет текстовое сообщение от имени текущего пользователя. */
 export const sendNewMessage = async (
   chatId: number,

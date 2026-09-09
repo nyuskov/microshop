@@ -23,6 +23,27 @@
         </div>
       </template>
 
+      <!-- Тип чата: обычный / зашифрованный (E2EE) -->
+      <div v-if="peer" class="ci-section ci-e2ee">
+        <div class="ci-e2ee-row">
+          <div class="ci-e2ee-info">
+            <div class="ci-e2ee-title">Сквозное шифрование</div>
+            <div class="ci-e2ee-desc">
+              Обычный чат — текст виден в превью и уведомлениях. Зашифрованный — сообщения читают
+              только участники, но текст скрыт в превью/уведомлениях.
+            </div>
+          </div>
+          <q-toggle
+            :model-value="e2eeEnabled"
+            color="primary"
+            keep-color
+            :disable="e2eeBusy"
+            aria-label="Сквозное шифрование"
+            @update:model-value="onToggleE2ee"
+          />
+        </div>
+      </div>
+
       <div v-if="images.length" class="ci-section">
         <h4 class="ci-title">Изображения</h4>
         <div class="ci-grid">
@@ -79,12 +100,22 @@ const props = defineProps<{
   subtitle: string
   /** Сообщения открытого треда (для списка общих медиа). */
   messages: Message[]
+  /** Включено ли сквозное шифрование (тип чата «зашифрованный»). */
+  e2eeEnabled?: boolean
+  /** Идёт ли сохранение переключения типа чата. */
+  e2eeBusy?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'open-image', messageId: number): void
+  (e: 'toggle-e2ee', enabled: boolean): void
 }>()
+
+/** Переключатель «Сквозное шифрование» в карточке чата. */
+const onToggleE2ee = (val: boolean | string | null) => {
+  emit('toggle-e2ee', val === true || val === 'true')
+}
 
 const peer = computed<ChatUser | undefined>(() => chatPeer(props.chat, props.currentUserId))
 const peerName = computed<string>(() => {
@@ -269,5 +300,33 @@ const files = computed(() =>
   color: var(--ms-muted, #71808d);
   padding: 10px 0;
   text-align: center;
+}
+
+/* Тип чата: обычный / зашифрованный (E2EE) */
+.ci-e2ee-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--ms-surface-2, #f0f2f5);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.ci-e2ee-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ci-e2ee-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ms-text, #141d26);
+}
+
+.ci-e2ee-desc {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--ms-muted, #71808d);
 }
 </style>

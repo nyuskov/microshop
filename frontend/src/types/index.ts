@@ -38,6 +38,8 @@ export interface Chat {
   unread_count: number
   /** Замьючен ли чат для текущего пользователя (хранится на сервере). */
   muted?: boolean
+  /** Тип чата: true — «зашифрованный» (E2EE), false/нет — «обычный». */
+  e2ee_enabled?: boolean
 }
 
 export interface Message {

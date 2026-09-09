@@ -201,6 +201,14 @@ async def send_text_message(
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
 
+    # «Обычный» чат (E2EE выключен) не принимает шифротекст — пишем как есть,
+    # чтобы превью/уведомления оставались читаемыми (сервер видит текст).
+    chat_e2ee = await session.scalar(
+        select(Chat.e2ee_enabled).where(Chat.id == chat_id)
+    )
+    if not chat_e2ee:
+        encrypted = False
+
     message = Message(
         text=text,
         chat_id=chat_id,

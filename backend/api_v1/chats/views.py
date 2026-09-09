@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api_v1.auth.utils import get_current_user, touch_last_seen
 from api_v1.chats import crud
 from api_v1.chats.schemas import Chat as ChatSchema
-from api_v1.chats.schemas import ChatUserSchema, PrivateChatCreate
+from api_v1.chats.schemas import ChatE2eeUpdate, ChatUserSchema, PrivateChatCreate
 from api_v1.messages.crud import message_basic_to_dict
 from core.models import Chat, Message, User, db_helper
 
@@ -31,6 +31,7 @@ def _serialize_chat(
         "last_message": (message_basic_to_dict(last) if last is not None else None),
         "unread_count": unread_counts.get(chat.id, 0),
         "muted": chat.id in muted_ids,
+        "e2ee_enabled": chat.e2ee_enabled,
     }
 
 
@@ -86,6 +87,23 @@ async def create_or_open_private_chat(
         session=session, user_id=user.id, chat_ids=[chat.id]
     )
     return _serialize_chat(chat, last_messages, unread_counts, muted_ids)
+
+
+@router.put("/{chat_id}/e2ee/")
+async def set_chat_e2ee_mode(
+    chat_id: int,
+    payload: ChatE2eeUpdate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> dict[str, bool]:
+    """Переключает тип чата: обычный (False) / зашифрованный E2EE (True)."""
+    enabled = await crud.set_chat_e2ee(
+        session=session,
+        chat_id=chat_id,
+        user_id=user.id,
+        enabled=payload.enabled,
+    )
+    return {"e2ee_enabled": enabled}
 
 
 @router.put("/{chat_id}/mute/")

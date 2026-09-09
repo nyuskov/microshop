@@ -32,3 +32,11 @@ class Chat(BaseModel):
     unread_count: int = 0
     # Замьючен ли чат для текущего пользователя (без уведомлений).
     muted: bool = False
+    # Тип чата: True — «зашифрованный» (E2EE), False — «обычный». По умолчанию обычный.
+    e2ee_enabled: bool = False
+
+
+class ChatE2eeUpdate(BaseModel):
+    """Переключение типа чата (обычный/зашифрованный)."""
+
+    enabled: bool

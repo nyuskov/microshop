@@ -96,9 +96,7 @@ class CallConnectionManager:
         offer.pop("_expires_at", None)
         return offer
 
-    async def discard_pending_offer(
-        self, callee_id: int, call_id: str | None
-    ) -> None:
+    async def discard_pending_offer(self, callee_id: int, call_id: str | None) -> None:
         """Убирает парковку, если она относится к указанному вызову."""
         if not call_id:
             return

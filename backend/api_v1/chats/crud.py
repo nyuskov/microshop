@@ -28,6 +28,26 @@ async def is_user_chat_member(
     return result.scalar_one_or_none() is not None
 
 
+async def set_chat_e2ee(
+    session: AsyncSession, *, chat_id: int, user_id: int, enabled: bool
+) -> bool:
+    """Включает/выключает сквозное шифрование (тип чата) для участника."""
+    if not await is_user_chat_member(session, chat_id, user_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Чат не найден",
+        )
+    chat = await session.get(Chat, chat_id)
+    if chat is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Чат не найден",
+        )
+    chat.e2ee_enabled = enabled
+    await session.commit()
+    return chat.e2ee_enabled
+
+
 async def get_private_chat_id_between(
     session: AsyncSession, first_user_id: int, second_user_id: int
 ) -> int | None:

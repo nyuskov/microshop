@@ -208,6 +208,8 @@
         :current-user-id="currentUserId"
         :subtitle="chatSubtitle(selectedChat)"
         :messages="messages"
+        :e2ee-enabled="!!selectedChat.e2ee_enabled"
+        @toggle-e2ee="onChatInfoToggleE2ee"
         @close="showChatInfoModal = false"
         @open-image="openChatInfoImage"
       />
@@ -315,6 +317,7 @@ import {
   deleteMessage,
   deleteChat,
   setChatMuted,
+  setChatE2ee,
   type SearchUserResult
 } from '@/services/chatService'
 import {
@@ -617,6 +620,32 @@ const bulkSetMuted = async (chatIds: number[], muted: boolean) => {
   }
 }
 
+// ---------- Тип чата: обычный / зашифрованный (E2EE) ----------
+// По умолчанию чаты «обычные» — текст хранится на сервере как есть и виден в
+// превью списка и в уведомлениях. Включение E2EE переводит чат в «зашифрованный»:
+// новые текстовые сообщения шифруются, сервер их не читает.
+const applyChatE2ee = async (chatId: number, enabled: boolean) => {
+  const chat = chats.value.find((item) => item.id === chatId)
+  if (!chat || chat.e2ee_enabled === enabled) return
+  const previous = chat.e2ee_enabled
+  // Оптимистично обновляем, при ошибке — откатываем.
+  chat.e2ee_enabled = enabled
+  try {
+    await setChatE2ee(chatId, enabled)
+    // Обновляем готовность ключа собеседника — от неё зависит замок в шапке.
+    void prepareChatE2ee(chatId)
+  } catch (error) {
+    chat.e2ee_enabled = previous
+    console.error('Не удалось изменить тип чата:', getErrorMessage(error))
+  }
+}
+
+/** Обработчик переключателя типа чата в «Информации о чате». */
+const onChatInfoToggleE2ee = (enabled: boolean) => {
+  const chat = selectedChat.value
+  if (chat !== null) void applyChatE2ee(chat.id, enabled)
+}
+
 // ---------- Просмотр изображений (lightbox) ----------
 const lightboxImages = computed(() =>
   messages.value
@@ -723,7 +752,9 @@ const prepareChatE2ee = async (chatId: number): Promise<void> => {
 /** E2EE активен для открытого чата (бейдж/подпись в шапке). */
 const selectedChatE2ee = computed<boolean>(() => {
   const chat = selectedChat.value
-  if (!chat || !e2eeMyKeyReady.value) return false
+  // Замок показываем только если чат «зашифрованный» (тип включён) и обе стороны
+  // реально готовы шифровать (есть ключи устройства).
+  if (!chat || !chat.e2ee_enabled || !e2eeMyKeyReady.value) return false
   return !!e2eePeerReadyByChat.value[chat.id]
 })
 
@@ -1161,12 +1192,15 @@ const sendText = async () => {
       return
     }
 
-    // E2EE: если обе стороны опубликовали ключи — шифруем текст перед отправкой.
+    // E2EE шифрует, только если чат «зашифрованный» (e2ee_enabled) и обе стороны
+    // опубликовали ключи. Обычные чаты идут открытым текстом (текст виден в
+    // превью списка и в push-уведомлениях — как в обычных чатах Telegram).
     let wireText = text
     let wireEncrypted = false
     const uid = currentUserId.value
+    const e2eeChatOn = !!selectedChat.value?.e2ee_enabled
     const e2eePeerId = peerIdOfChat(selectedChat.value)
-    if (uid !== null && e2eePeerId !== null && e2eeMyKeyReady.value) {
+    if (e2eeChatOn && uid !== null && e2eePeerId !== null && e2eeMyKeyReady.value) {
       const aes = await chatAesKey(uid, e2eePeerId, chatId)
       if (aes) {
         wireText = await encryptText(aes, text)
