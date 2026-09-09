@@ -46,6 +46,10 @@ class Message(IdIntPkMixin, Base):
     forwarded_sender_name: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )
+    # Снимок аватара автора оригинала (чтобы показывать его в «Переслано от …»).
+    forwarded_sender_avatar_url: Mapped[str | None] = mapped_column(
+        String(2048), nullable=True
+    )
     forwarded_chat_id: Mapped[int | None] = mapped_column(
         ForeignKey("chats.id", ondelete="SET NULL"),
         nullable=True,

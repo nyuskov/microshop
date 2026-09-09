@@ -45,6 +45,7 @@ class ForwardedFrom(BaseModel):
     id: int
     sender_id: int | None = None
     sender_name: str = ""
+    sender_avatar_url: str | None = None
     chat_id: int | None = None
 
 

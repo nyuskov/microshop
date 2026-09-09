@@ -33,10 +33,24 @@
       @click.stop="onSelectClick"
     ></div>
     <div class="msg-bubble" :class="{ 'round-video-only': isRoundVideoOnly(message) }">
-      <!-- Плашка «Переслано от …» -->
-      <div v-if="forwardLabel" class="forward-banner">
-        <q-icon name="forward" size="13px" />
-        <span>{{ forwardLabel }}</span>
+      <!-- Плашка «Переслано от …» (клик — открыть автора) -->
+      <div
+        v-if="forwardLabel"
+        class="forward-banner"
+        :class="{ clickable: forwarderClickable }"
+        :title="forwarderClickable ? 'Открыть чат с автором' : undefined"
+        @click.stop="onForwarderClick"
+      >
+        <span class="forward-sender-avatar" :style="forwarderAvatarStyle" aria-hidden="true">
+          <img
+            v-if="forwarderAvatarUrl"
+            :src="forwarderAvatarUrl"
+            class="forward-sender-avatar-img"
+            alt=""
+          />
+          <template v-else>{{ forwarderInitials }}</template>
+        </span>
+        <span class="forward-label-text">{{ forwardLabel }}</span>
       </div>
 
       <!-- Ответ-цитата -->
@@ -133,13 +147,13 @@
         title="Реакция"
         @click="onReaction"
       >
-        <q-icon name="sentiment_satisfied_alt" size="17px" />
+        <q-icon name="sentiment_satisfied_alt" size="20px" />
       </button>
       <button class="round-btn" title="Ответить" @click="onReply">
-        <q-icon name="reply" size="17px" />
+        <q-icon name="reply" size="20px" />
       </button>
       <button class="round-btn" title="Переслать" @click="onForward">
-        <q-icon name="forward" size="17px" />
+        <q-icon name="forward" size="20px" />
       </button>
       <button
         class="round-btn"
@@ -149,7 +163,7 @@
         :aria-expanded="moreOpen"
         @click="toggleMore"
       >
-        <q-icon name="more_horiz" size="17px" />
+        <q-icon name="more_horiz" size="20px" />
       </button>
 
       <!-- Остальные действия — в выпадающем меню -->
@@ -196,6 +210,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import type { Message } from '@/types'
 import { mediaUrl } from '@/config'
+import { avatarStyle, initials } from '@/utils/user'
 import { formatBytes, formatMsgTime } from '@/utils/format'
 import {
   callMessageIcon,
@@ -248,6 +263,7 @@ const forwardLabel = computed<string | null>(() => {
 
 const emit = defineEmits<{
   (e: 'quote-click'): void
+  (e: 'forwarder-click'): void
   (e: 'select-start'): void
   (e: 'toggle-select'): void
   (e: 'toggle-emoji-picker'): void
@@ -261,6 +277,24 @@ const emit = defineEmits<{
   (e: 'delete'): void
   (e: 'open-image'): void
 }>()
+
+// ---------- «Переслано от …»: аватар автора и переход к нему ----------
+const forwarderName = computed<string>(
+  () => props.message.forwarded_from?.sender_name?.trim() || ''
+)
+const forwarderAvatarUrl = computed<string | null>(() => {
+  const url = props.message.forwarded_from?.sender_avatar_url
+  return url ? mediaAbsolute(url) : null
+})
+const forwarderClickable = computed<boolean>(() => {
+  const senderId = props.message.forwarded_from?.sender_id
+  return senderId !== null && senderId !== undefined && senderId !== props.viewerId
+})
+const forwarderInitials = computed<string>(() => initials(forwarderName.value || '?'))
+const forwarderAvatarStyle = computed(() => avatarStyle(forwarderName.value || '?'))
+const onForwarderClick = () => {
+  if (forwarderClickable.value) emit('forwarder-click')
+}
 
 const REACTION_EMOJIS = [
   '👍',
@@ -548,10 +582,28 @@ const onDelete = () => {
   user-select: none;
 }
 
-.forward-banner i {
-  font-size: 11px;
-  opacity: 0.85;
+.forward-banner.clickable {
+  cursor: pointer;
+}
+
+.forward-sender-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 8.5px;
+  font-weight: 700;
+  overflow: hidden;
+}
+
+.forward-sender-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 /* Ответ-цитата */
@@ -665,14 +717,14 @@ const onDelete = () => {
 .msg-actions {
   position: absolute;
   top: 100%;
-  border-top: 8px solid transparent;
+  border-top: 5px solid transparent;
   background: #ffffff;
   background-clip: padding-box;
   border-radius: 18px;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
   display: flex;
   gap: 2px;
-  padding: 2px 4px 3px;
+  padding: 0 4px 1px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.12s;
@@ -694,9 +746,9 @@ const onDelete = () => {
 }
 
 .msg-actions .round-btn {
-  width: 28px;
-  height: 28px;
-  font-size: 0.9rem;
+  width: 32px;
+  height: 32px;
+  font-size: 1.05rem;
 }
 
 /* Палитра эмодзи — по умолчанию ПОД панелью действий; у нижнего края — над ней */

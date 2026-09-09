@@ -75,6 +75,7 @@ def _forwarded_payload(message: Message) -> dict | None:
         "id": message.forwarded_from_id,
         "sender_id": message.forwarded_sender_id,
         "sender_name": message.forwarded_sender_name or "",
+        "sender_avatar_url": message.forwarded_sender_avatar_url or None,
         "chat_id": message.forwarded_chat_id,
     }
 
@@ -598,6 +599,9 @@ async def forward_message(
         forwarded_sender_id=source.user_id,
         forwarded_sender_name=(
             _user_display_name(source_sender) if source_sender is not None else ""
+        ),
+        forwarded_sender_avatar_url=(
+            source_sender.avatar_url if source_sender is not None else None
         ),
         forwarded_chat_id=source.chat_id,
     )

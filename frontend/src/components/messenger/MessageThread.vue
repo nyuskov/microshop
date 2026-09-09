@@ -28,6 +28,7 @@
           @quote-click="emit('quote-click', row.message)"
           @select-start="emit('select-start', row.message)"
           @toggle-select="emit('toggle-select', row.message)"
+          @forwarder-click="emit('forwarder-click', row.message)"
           @toggle-emoji-picker="emit('toggle-emoji-picker', row.message)"
           @set-reply="emit('set-reply', row.message)"
           @toggle-reaction="emit('toggle-reaction', row.message, $event)"
@@ -102,6 +103,7 @@ const emit = defineEmits<{
   (e: 'quote-click', message: Message): void
   (e: 'select-start', message: Message): void
   (e: 'toggle-select', message: Message): void
+  (e: 'forwarder-click', message: Message): void
   (e: 'toggle-emoji-picker', message: Message): void
   (e: 'set-reply', message: Message): void
   (e: 'toggle-reaction', message: Message, emoji: string): void

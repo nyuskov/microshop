@@ -27,6 +27,8 @@ export interface ForwardedFrom {
   id: number
   sender_id: number | null
   sender_name: string
+  /** Аватар автора оригинала (снимок на момент пересылки). */
+  sender_avatar_url?: string | null
   chat_id: number | null
 }
 

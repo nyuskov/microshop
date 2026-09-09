@@ -150,6 +150,7 @@
             @quote-click="quoteClick"
             @select-start="startMessageSelection"
             @toggle-select="toggleMessageSelect"
+            @forwarder-click="openForwarderChat"
             @toggle-emoji-picker="onToggleEmojiPicker"
             @set-reply="setReply"
             @toggle-reaction="toggleReaction"
@@ -369,6 +370,7 @@ import {
   searchMessages,
   editMessage,
   forwardMessage,
+  openPrivateChat,
   sendAttachmentMessage,
   sendNewMessage,
   setMessagePinned,
@@ -1561,6 +1563,25 @@ const bulkDeleteMessages = async () => {
   const chatId = selectedChatId.value
   if (chatId !== null) {
     await Promise.all([loadPinned(chatId), loadChats()])
+  }
+}
+
+/** Клик по «Переслано от …» — открыть приватный чат с автором оригинала. */
+const openForwarderChat = async (message: Message) => {
+  const senderId = message.forwarded_from?.sender_id
+  if (senderId == null || senderId === currentUserId.value) return
+  exitMessageSelection()
+  closePopups()
+  clearReply()
+  if (editingMessage.value) cancelEditing()
+  if (forwardSource.value) cancelForward()
+  try {
+    const chat = await openPrivateChat(senderId)
+    upsertChat(chat)
+    view.value = 'chats'
+    await openChatThread(chat.id)
+  } catch (error) {
+    console.error('Не удалось открыть чат с автором:', getErrorMessage(error))
   }
 }
 
