@@ -196,6 +196,7 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
 .chat-header-info {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .chat-title-row {
@@ -203,6 +204,7 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   align-items: center;
   gap: 6px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .chat-title {
@@ -212,7 +214,8 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .chat-status-pill {
@@ -243,6 +246,8 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   display: flex;
   align-items: center;
   gap: 2px;
+  flex-shrink: 0;
+  padding-left: 4px;
 }
 
 .icon-btn.pinned {
@@ -288,6 +293,27 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
 }
 
 /* ---------- Мобильная адаптация ---------- */
+@media (max-width: 480px) {
+  .chat-header {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  /* На узких экранах имя/статус меньше — чтобы длинный статус-пилюля не
+     прилипал к иконкам справа (звонок/поиск/профиль). */
+  .chat-title {
+    font-size: 15px;
+  }
+  .chat-subtitle {
+    font-size: 12px;
+  }
+  .chat-status-pill {
+    max-width: 40%;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 9px;
+  }
+}
+
 @media (max-width: 380px) {
   .chat-header {
     padding: 6px 8px;
@@ -304,6 +330,10 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   .avatar-wrap.online::after {
     width: 11px;
     height: 11px;
+  }
+  .chat-status-pill {
+    max-width: 34%;
+    font-size: 9.5px;
   }
 }
 </style>
