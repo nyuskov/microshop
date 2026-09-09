@@ -34,7 +34,20 @@
           @open-image="emit('open-image', row.message)"
         />
       </template>
-      <div v-if="!rows.length" class="chat-status">
+      <div v-for="p in pending ?? []" :key="p.localId" class="pending-row">
+        <div class="pending-bubble">
+          <img v-if="p.previewUrl" :src="p.previewUrl" class="pending-preview" alt="" />
+          <q-icon v-else name="attach_file" class="pending-file-icon" size="16px" />
+          <span class="pending-meta">
+            <span class="pending-label">{{ p.label }}</span>
+            <span class="pending-status">
+              <span class="pending-spinner" aria-hidden="true"></span>
+              Отправка…
+            </span>
+          </span>
+        </div>
+      </div>
+      <div v-if="!rows.length && (pending ?? []).length === 0" class="chat-status">
         <EmptyState compact title="Сообщений пока нет. Напишите первым!" />
       </div>
     </template>
@@ -54,6 +67,13 @@ interface MessageQuote {
   text: string
 }
 
+/** Временный пузырь «Отправка…» (вложение ещё грузится на сервер). */
+interface PendingUpload {
+  localId: number
+  label: string
+  previewUrl?: string | null
+}
+
 const props = defineProps<{
   rows: ThreadRow[]
   loading: boolean
@@ -62,6 +82,8 @@ const props = defineProps<{
   emojiPickerFor: number | null
   /** Резолвит данные ответа-цитаты для строки (null — цитата не загружена). */
   quoteOf: (message: Message) => MessageQuote | null
+  /** Вложения, которые сейчас отправляются (показываются внизу ленты). */
+  pending?: PendingUpload[]
 }>()
 
 const emit = defineEmits<{
@@ -198,5 +220,85 @@ onMounted(() => {
   text-align: center;
   color: #8a98a3;
   font-size: 13.5px;
+}
+
+/* Временный пузырь «Отправка…» для загружаемого вложения (справа, как своё) */
+.pending-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 2px 0;
+}
+
+.pending-bubble {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: min(70%, 320px);
+  background: var(--ms-accent-soft, #e3f2e5);
+  border: 1px solid var(--ms-accent-border, rgba(46, 162, 94, 0.3));
+  border-radius: 16px 6px 16px 16px;
+  padding: 6px 10px;
+  min-width: 0;
+}
+
+.pending-preview {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.pending-file-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(46, 162, 94, 0.12);
+  color: var(--ms-accent, #2ea25e);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+}
+
+.pending-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pending-label {
+  font-size: 12.5px;
+  color: var(--ms-text, #1c2733);
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pending-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ms-muted, #7b8a96);
+}
+
+.pending-spinner {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--ms-accent, #2ea25e);
+  border-top-color: transparent;
+  animation: pending-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pending-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

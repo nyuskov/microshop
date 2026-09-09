@@ -96,6 +96,7 @@
             :highlighted-message-id="highlightedMessageId"
             :emoji-picker-for="emojiPickerFor"
             :quote-of="quoteFor"
+            :pending="pendingUploads"
             @background-click="closePopups"
             @reach-top="loadOlderMessages"
             @quote-click="quoteClick"
@@ -316,7 +317,7 @@ import type { Chat, ChatUser, Message } from '@/types'
 import { avatarUrlOf, displayName } from '@/utils/user'
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
-import { isImageFile, messageSnippet } from '@/utils/media'
+import { isImageFile, messageSnippet, optimizeImageFile } from '@/utils/media'
 import { mediaUrl } from '@/config'
 import { usePeerActivity } from '@/composables/usePeerActivity'
 import { useRealtimeSync } from '@/composables/useRealtimeSync'
@@ -429,6 +430,22 @@ const onAppPopState = () => {
 const view = ref<'chats' | 'contacts'>('chats')
 const chats = ref<Chat[]>([])
 const messages = ref<Message[]>([])
+
+// ---------- Временные пузыри «Отправка…» для загружаемых вложений ----------
+interface PendingUpload {
+  localId: number
+  label: string
+  previewUrl?: string | null
+}
+const pendingUploads = ref<PendingUpload[]>([])
+let pendingSeq = 0
+
+const clearPendingUploads = () => {
+  for (const p of pendingUploads.value) {
+    if (p.previewUrl) URL.revokeObjectURL(p.previewUrl)
+  }
+  pendingUploads.value = []
+}
 const pinnedMessages = ref<Message[]>([])
 const contacts = ref<SearchUserResult[]>([])
 const loadingChats = ref(false)
@@ -1057,6 +1074,7 @@ const openChatThread = async (chatId: number) => {
   void prepareChatE2ee(chatId)
   messages.value = []
   pinnedMessages.value = []
+  clearPendingUploads()
   inlineQuery.value = ''
   inlineSearchOpen.value = false
   clearReply()
@@ -1174,24 +1192,41 @@ const onFileSelected = async (file: File) => {
   const chatId = selectedChatId.value
   if (chatId === null) return
 
-  sendingFile.value = true
   sendError.value = ''
+  // Сразу показываем временный пузырь (для фото — с превью), чтобы было видно,
+  // что отправка идёт; затем заменяем его настоящим сообщением.
+  const isImage = file.type.startsWith('image/')
+  const previewUrl = isImage ? URL.createObjectURL(file) : null
+  const pending: PendingUpload = {
+    localId: --pendingSeq,
+    label: file.name || 'Вложение',
+    previewUrl
+  }
+  pendingUploads.value = [...pendingUploads.value, pending]
+  void nextTick(scrollToBottom)
+
+  sendingFile.value = true
   try {
+    // Фото с камеры/галереи сжимаем на клиенте — грузится быстрее.
+    const uploadFile = isImage ? await optimizeImageFile(file) : file
     const message = await sendAttachmentMessage(
       chatId,
-      file,
+      uploadFile,
       newMessage.value.trim(),
       replyTarget.value?.id
     )
+    pendingUploads.value = pendingUploads.value.filter((p) => p.localId !== pending.localId)
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
     newMessage.value = ''
     clearDraftFor(chatId)
     clearReply()
     sendTypingStop(chatId)
     messages.value = appendMessage(messages.value, message)
-    await loadPinned(chatId)
-    await loadChats()
+    await Promise.all([loadPinned(chatId), loadChats()])
     scrollToBottom()
   } catch (error) {
+    pendingUploads.value = pendingUploads.value.filter((p) => p.localId !== pending.localId)
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
     sendError.value = getErrorMessage(error, 'Не удалось отправить файл')
   } finally {
     sendingFile.value = false
