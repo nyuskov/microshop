@@ -16,7 +16,7 @@
  */
 
 const CACHE_PREFIX = 'microshop-v'
-const CACHE_VERSION = 8
+const CACHE_VERSION = 9
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 
 self.addEventListener('install', (event) => {
@@ -143,6 +143,35 @@ self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification(title, options))
 })
 
+// ---------- Доступ к API из service worker (кнопки уведомлений) ----------
+
+/** Читает access-токен из кэша, куда его дублирует страница (см. swToken.ts). */
+async function swReadToken() {
+  try {
+    const cache = await caches.open('microshop-auth')
+    const res = await cache.match('/__auth_token')
+    return res ? await res.text() : null
+  } catch {
+    return null
+  }
+}
+
+/** POST с Bearer-токеном: возвращает true при 2xx. */
+async function swApiPost(path, body) {
+  const token = await swReadToken()
+  if (!token) return false
+  try {
+    const resp = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify(body)
+    })
+    return resp.ok
+  } catch {
+    return false
+  }
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const data = event.notification.data || {}
@@ -165,9 +194,26 @@ self.addEventListener('notificationclick', (event) => {
             return
           }
         }
-        // Приложение было полностью закрыто — открываем прямо к экрану звонка
-        // (?call/<peer>&action=…); сам offer доставит WS после подключения
-        // (park_offer), а действие выполнит приложение.
+        // Приложение закрыто.
+        if (action === 'decline') {
+          // «Отклонить» шлём на сервер прямо отсюда — приложение НЕ открываем.
+          const ok = await swApiPost('/api/v1/calls/decline/', {
+            call_id: data.call_id || '',
+            to_user_id: data.peer_id || null
+          })
+          if (!ok) {
+            // Не вышло (нет токена/сети) — откроем и отклоним уже в приложении.
+            await self.clients.openWindow(
+              '/?call=' +
+                encodeURIComponent(data.call_id || '') +
+                '&peer=' +
+                encodeURIComponent(data.peer_id || '') +
+                '&action=decline'
+            )
+          }
+          return
+        }
+        // «Ответить»/тап по телу — открываем приложение к экрану звонка.
         const callUrl =
           '/?call=' +
           encodeURIComponent(data.call_id || '') +
@@ -194,15 +240,24 @@ self.addEventListener('notificationclick', (event) => {
           return
         }
       }
-      // Приложение закрыто — открываем и передаём id чата в URL.
+      // Приложение закрыто.
+      if (markRead && data.type === 'message' && data.chat_id) {
+        // «Пометить как прочитанное» — на сервер, приложение не открываем.
+        const ok = await swApiPost('/api/v1/messages/read/', { chat_id: data.chat_id })
+        if (!ok) {
+          await self.clients.openWindow(
+            '/?chat=' + encodeURIComponent(data.chat_id) + '&markread=1'
+          )
+        }
+        return
+      }
+      // Тап по телу уведомления — открываем чат.
       const url =
-        data.type === 'message' && data.chat_id
-          ? '/?chat=' + encodeURIComponent(data.chat_id) + (markRead ? '&markread=1' : '')
-          : '/'
+        data.type === 'message' && data.chat_id ? '/?chat=' + encodeURIComponent(data.chat_id) : '/'
       const win = await self.clients.openWindow(url)
       if (win && data.type === 'message' && data.chat_id) {
         win.postMessage({
-          type: markRead ? 'mark-chat-read' : 'open-chat',
+          type: 'open-chat',
           chat_id: data.chat_id,
           message_id: data.message_id || null
         })

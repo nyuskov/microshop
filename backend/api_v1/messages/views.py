@@ -53,6 +53,10 @@ class GifMessageCreate(BaseModel):
     reply_to_id: int | None = None
 
 
+class MarkChatReadRequest(BaseModel):
+    chat_id: int
+
+
 def _store_upload(content: bytes, filename: str) -> str:
     """Сохраняет файл в media-каталог и возвращает относительный URL."""
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
@@ -82,6 +86,19 @@ async def create_new_message(
         reply_to_id=message.reply_to_id,
         encrypted=message.encrypted,
     )
+
+
+@router.post("/read/")
+async def mark_chat_read(
+    payload: MarkChatReadRequest,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> dict[str, bool]:
+    """Помечает чат прочитанным (кнопка push «Пометить как прочитанное»)."""
+    ok = await crud.mark_chat_read(
+        session=session, chat_id=payload.chat_id, user_id=user.id
+    )
+    return {"ok": ok}
 
 
 @router.patch("/{message_id}/", response_model=MessageSchema)

@@ -13,18 +13,50 @@
 import logging
 from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 
 from api_v1.push import crud as push_crud
 from core.config import settings
-from core.models import db_helper
+from core.models import User, db_helper
 
-from ..auth.utils import resolve_user_from_websocket
+from ..auth.utils import get_current_user, resolve_user_from_websocket
 from .manager import call_manager
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ws", tags=["Calls"])
+# REST-роутер звонков (для push-кнопки «Отклонить» из service worker).
+router_rest = APIRouter(prefix="/calls", tags=["Calls"])
+
+
+class CallDeclineRequest(BaseModel):
+    """Отказ по входящему звонку из уведомления (service worker)."""
+
+    call_id: str
+    to_user_id: int
+
+
+@router_rest.post("/decline/")
+async def decline_call(
+    payload: CallDeclineRequest,
+    user: User = Depends(get_current_user),
+) -> dict[str, bool]:
+    """Отклоняет входящий звонок, не открывая приложение."""
+    # Снимаем припаркованный offer получателя, если он ещё «висит».
+    await call_manager.discard_pending_offer(user.id, payload.call_id)
+    delivered = await call_manager.send_to_user(
+        payload.to_user_id,
+        {
+            "type": "call-decline",
+            "call_id": payload.call_id,
+            "to_user_id": payload.to_user_id,
+            "from_user_id": user.id,
+            "reason": "declined",
+        },
+    )
+    return {"ok": delivered}
+
 
 #: Типы сообщений, которые сервер пересылает адресату без изменений.
 RELAY_MESSAGE_TYPES = frozenset(

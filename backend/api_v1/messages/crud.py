@@ -347,6 +347,34 @@ async def list_chat_messages(
     return items
 
 
+async def mark_chat_read(session: AsyncSession, *, chat_id: int, user_id: int) -> bool:
+    """Помечает все входящие сообщения чата прочитанными (без выгрузки истории)."""
+    await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
+    result = await session.execute(
+        update(Message)
+        .where(
+            Message.chat_id == chat_id,
+            Message.user_id != user_id,
+            Message.is_read.is_(False),
+        )
+        .values(is_read=True)
+    )
+    await session.commit()
+    marked_read = (result.rowcount or 0) > 0
+    if marked_read:
+        await notify_chat(
+            session,
+            chat_id=chat_id,
+            payload={
+                "type": "chat.read",
+                "chat_id": chat_id,
+                "reader_id": user_id,
+            },
+            exclude_user_id=user_id,
+        )
+    return marked_read
+
+
 async def list_pinned_messages(
     session: AsyncSession, *, chat_id: int, user_id: int
 ) -> list[dict]:

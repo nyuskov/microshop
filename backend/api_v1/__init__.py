@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from .auth.jwt import router as jwt_router
 from .auth.views import router as auth_router
 from .calls.views import router as calls_router
+from .calls.views import router_rest as calls_rest_router
 from .chats.views import router as chats_router
 from .events.views import router as events_router
 from .keys.views import router as keys_router
@@ -20,4 +21,5 @@ router_v1.include_router(keys_router)
 router_v1.include_router(messages_router)
 router_v1.include_router(push_router)
 router_v1.include_router(calls_router)
+router_v1.include_router(calls_rest_router)
 router_v1.include_router(events_router)

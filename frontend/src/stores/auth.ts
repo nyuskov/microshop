@@ -268,6 +268,8 @@ export const useAuthStore = defineStore('auth', {
           refreshToken: this.refreshToken
         })
       )
+      // Дублируем токен в кэш, читаемый service worker (кнопки уведомлений).
+      void import('@/services/swToken').then((m) => m.saveSwToken(this.accessToken))
     },
 
     resetAuth() {
