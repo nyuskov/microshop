@@ -2,7 +2,12 @@
   <Teleport to="body">
     <transition name="call-fade">
       <!-- Полноэкранный звонок -->
-      <div v-if="callStore.status !== 'idle'" class="call-overlay" @mousedown.stop>
+      <div
+        v-if="callStore.status !== 'idle'"
+        class="call-overlay"
+        @mousedown.stop
+        @pointerdown="callStore.resumeOutput()"
+      >
         <template v-if="callStore.status === 'incoming'">
           <div class="call-card">
             <span class="call-avatar" :style="avatarStyle(displayName)">
@@ -53,15 +58,16 @@
         </template>
 
         <template v-else-if="callStore.status === 'active'">
-          <!-- Видео собеседника (звук выводим через Web Audio, видео — muted) -->
+          <!-- Видео собеседника (звук — Web Audio или фолбэк элемента) -->
           <video
             v-if="callStore.kind === 'video'"
             ref="remoteVideoEl"
             class="remote-video"
             autoplay
             playsinline
-            muted
           ></video>
+          <!-- Аудио-звонок: элемент для воспроизведения/фолбэка (mute задаётся в коде) -->
+          <audio v-if="callStore.kind === 'audio'" ref="remoteAudioEl" autoplay playsinline></audio>
 
           <div class="active-ui" :class="{ audio: callStore.kind === 'audio' }">
             <!-- Аудио-режим: аватар поверх фона -->
@@ -165,6 +171,7 @@ import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/util
 const callStore = useCallStore()
 
 const remoteVideoEl = ref<HTMLVideoElement | null>(null)
+const remoteAudioEl = ref<HTMLAudioElement | null>(null)
 const localVideoEl = ref<HTMLVideoElement | null>(null)
 const noticeVisible = ref(false)
 let noticeTimer: ReturnType<typeof setTimeout> | undefined
@@ -176,8 +183,19 @@ let attachTimer: ReturnType<typeof setInterval> | undefined
 const EARP_VOLUME = 0.3
 const speakerOn = ref(false)
 
+const fallbackEl = (): HTMLMediaElement | null =>
+  callStore.kind === 'video' ? remoteVideoEl.value : remoteAudioEl.value
+
 const applySpeaker = () => {
-  callStore.setOutputVolume(speakerOn.value ? 1 : EARP_VOLUME)
+  if (callStore.outputReady()) {
+    // Web Audio работает — громкость честная (тихо/громко).
+    callStore.setOutputVolume(speakerOn.value ? 1 : EARP_VOLUME)
+  } else {
+    // Web Audio не готов — звук идёт через элемент (громкость элемента на части
+    // телефонов игнорируется, но по крайней мере звонок слышно).
+    const el = fallbackEl()
+    if (el) el.volume = speakerOn.value ? 1 : EARP_VOLUME
+  }
 }
 
 const toggleSpeaker = () => {
@@ -220,22 +238,40 @@ const attachStreams = () => {
   const remote = callStore.getRemoteStream()
   const isVideo = callStore.kind === 'video'
 
-  // Видео собеседника показываем в <video> (элемент muted — звук идёт через
-  // Web Audio в call.ts, чтобы не было дубля и чтобы громкость реально работала).
-  const remoteVideo = remoteVideoEl.value
-  const videoTracks = remote ? remote.getVideoTracks().length : 0
-  if (isVideo && remoteVideo) {
-    const needsBind =
-      remoteVideo.srcObject !== remote ||
-      // Видеотрек мог прийти позже аудио — пере-привязываем, чтобы «проснуться».
-      (videoTracks > 0 && videoTracks !== lastRemoteVideoTracks && remoteVideo.srcObject === remote)
-    if (needsBind) {
-      remoteVideo.srcObject = null
-      remoteVideo.srcObject = remote
+  // Пытаемся держать Web Audio запущенным; если он не готов — звук идёт
+  // напрямую через элемент (фолбэк), чтобы звонок не был немым.
+  callStore.resumeOutput()
+  const viaWeb = callStore.outputReady()
+
+  if (isVideo) {
+    const remoteVideo = remoteVideoEl.value
+    const videoTracks = remote ? remote.getVideoTracks().length : 0
+    if (remoteVideo) {
+      const needsBind =
+        remoteVideo.srcObject !== remote ||
+        // Видеотрек мог прийти позже аудио — пере-привязываем, чтобы «проснуться».
+        (videoTracks > 0 &&
+          videoTracks !== lastRemoteVideoTracks &&
+          remoteVideo.srcObject === remote)
+      if (needsBind) {
+        remoteVideo.srcObject = null
+        remoteVideo.srcObject = remote
+      }
+      // Web Audio играет звук → глушим элемент (только картинка); иначе — фолбэк.
+      remoteVideo.muted = viaWeb
+      ensurePlaying(remoteVideo)
     }
-    ensurePlaying(remoteVideo)
+    lastRemoteVideoTracks = videoTracks
   }
-  lastRemoteVideoTracks = videoTracks
+
+  const audioEl = remoteAudioEl.value
+  if (audioEl) {
+    if (audioEl.srcObject !== remote) {
+      audioEl.srcObject = remote
+    }
+    audioEl.muted = viaWeb
+    ensurePlaying(audioEl)
+  }
 
   const local = callStore.getLocalStream()
   if (localVideoEl.value && localVideoEl.value.srcObject !== local) {

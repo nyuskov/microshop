@@ -673,6 +673,18 @@ export const useCallStore = defineStore('call', {
       setRemoteOutputVolume(volume)
     },
 
+    /** Готов ли Web Audio вывод (контекст запущен и поток подключён). */
+    outputReady(): boolean {
+      return (
+        callOutputCtx !== null && callOutputCtx.state === 'running' && callOutputSource !== null
+      )
+    },
+
+    /** Возобновить Web Audio (вызывать по тапу/каждому тику). */
+    resumeOutput() {
+      ensureCallOutput()
+    },
+
     /** Переключить микрофон. */
     toggleMic() {
       this.micOn = !this.micOn
