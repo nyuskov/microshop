@@ -71,3 +71,25 @@ export const chatPeerTitle = (chat: Chat, currentUserId: number | null): string 
 
 /** Личный чат ровно с двумя участниками. */
 export const isPrivateChat = (chat: Chat): boolean => chat.users.length === 2
+
+/** Групповой чат (общий для нескольких участников). */
+export const isGroupChat = (chat: Chat): boolean =>
+  chat.is_group === true || (!chat.is_self && chat.users.length > 2)
+
+/**
+ * Отображаемое название чата.
+ * Группа — собственное название; личный чат — имя собеседника;
+ * «Сохранённые сообщения» — как в chatPeerTitle.
+ */
+export const chatTitle = (chat: Chat, currentUserId: number | null): string => {
+  if (isGroupChat(chat)) return chat.name || 'Группа'
+  return chatPeerTitle(chat, currentUserId)
+}
+
+/** Аватар группы (None — группы нет/нет фото; нужен initials-фолбэк). */
+export const groupAvatarUrl = (chat: Chat): string | undefined =>
+  isGroupChat(chat) && chat.avatar_url ? mediaUrl(chat.avatar_url) : undefined
+
+/** Находит участника группы по id (для имён авторов в ленте). */
+export const chatMemberOf = (chat: Chat | undefined, userId: number): ChatUser | undefined =>
+  chat?.users.find((user) => user.id === userId)

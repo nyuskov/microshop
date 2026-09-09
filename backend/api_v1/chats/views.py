@@ -1,13 +1,29 @@
+import uuid
 from datetime import datetime
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user, touch_last_seen
 from api_v1.chats import crud
 from api_v1.chats.schemas import Chat as ChatSchema
-from api_v1.chats.schemas import ChatE2eeUpdate, ChatUserSchema, PrivateChatCreate
+from api_v1.chats.schemas import (
+    ChatDetail,
+    ChatE2eeUpdate,
+    ChatMemberSchema,
+    ChatUserSchema,
+    GroupCreate,
+    GroupMembersAdd,
+    GroupRoleUpdate,
+    GroupUpdate,
+    PrivateChatCreate,
+)
+from api_v1.events.service import notify_chat, notify_user
 from api_v1.messages.crud import message_basic_to_dict
+from api_v1.rate_limit import enforce_limit
+from api_v1.upload_guard import validate_image_upload
+from core.config import settings
 from core.models import Chat, Message, User, db_helper
 
 router = APIRouter(
@@ -15,12 +31,31 @@ router = APIRouter(
     tags=["Chats"],
 )
 
+# Аватары групповых чатов храним в том же каталоге, что и аватары пользователей
+# (его раздаёт StaticFiles на /media). Лимит — как у пользовательских аватаров.
+AVATAR_DIR = Path(__file__).resolve().parent.parent.parent / "media" / "avatars"
+MAX_AVATAR_SIZE = settings.max_avatar_size_bytes
+MAX_AVATAR_MB = MAX_AVATAR_SIZE // (1024 * 1024)
+ALLOWED_AVATAR_EXTS = {"png", "jpg", "jpeg", "gif", "webp"}
+
+
+def _remove_chat_avatar_file(avatar_url: str | None) -> None:
+    """Удаляет файл аватара группы (best-effort)."""
+    if not avatar_url or not avatar_url.startswith("/media/avatars/"):
+        return
+    path = AVATAR_DIR / Path(avatar_url).name
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
 
 def _serialize_chat(
     chat: Chat,
     last_messages: dict[int, Message],
     unread_counts: dict[int, int],
     muted_ids: set[int],
+    my_role: str = "member",
 ) -> dict:
     """Преобразует чат в словарь для ответа API."""
     last = last_messages.get(chat.id)
@@ -33,7 +68,42 @@ def _serialize_chat(
         "muted": chat.id in muted_ids,
         "e2ee_enabled": chat.e2ee_enabled,
         "is_self": chat.is_self,
+        "is_group": chat.is_group,
+        "avatar_url": chat.avatar_url,
+        "description": chat.description,
+        "member_count": len(chat.users) if chat.is_group else 0,
+        "my_role": my_role,
+        "creator_id": chat.creator_id,
     }
+
+
+async def _serialize_chat_full(session: AsyncSession, chat: Chat, user_id: int) -> dict:
+    """Сериализует один чат с учётом непрочитанных/mute/роли текущего юзера."""
+    last_messages = await crud.get_last_messages(session=session, chat_ids=[chat.id])
+    unread_counts = await crud.get_unread_counts(
+        session=session, chat_ids=[chat.id], user_id=user_id
+    )
+    muted_ids = await crud.get_muted_chat_ids(
+        session=session, user_id=user_id, chat_ids=[chat.id]
+    )
+    role = await crud.get_member_role(session=session, chat_id=chat.id, user_id=user_id)
+    return _serialize_chat(
+        chat,
+        last_messages,
+        unread_counts,
+        muted_ids,
+        my_role=role or "member",
+    )
+
+
+async def _ensure_group(chat: Chat | None) -> Chat:
+    """Возвращает чат, если это группа (иначе 404)."""
+    if chat is None or not chat.is_group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Группа не найдена",
+        )
+    return chat
 
 
 def _chat_sort_key(item: dict):
@@ -65,8 +135,18 @@ async def get_my_chats(
     muted_ids = await crud.get_muted_chat_ids(
         session=session, user_id=user.id, chat_ids=chat_ids
     )
+    my_roles = await crud.get_my_roles(
+        session=session, chat_ids=chat_ids, user_id=user.id
+    )
     items = [
-        _serialize_chat(chat, last_messages, unread_counts, muted_ids) for chat in chats
+        _serialize_chat(
+            chat,
+            last_messages,
+            unread_counts,
+            muted_ids,
+            my_role=my_roles.get(chat.id, "member"),
+        )
+        for chat in chats
     ]
     items.sort(key=_chat_sort_key, reverse=True)
     return items
@@ -84,14 +164,7 @@ async def create_or_open_private_chat(
         first_user_id=user.id,
         second_user_id=payload.user_id,
     )
-    last_messages = await crud.get_last_messages(session=session, chat_ids=[chat.id])
-    unread_counts = await crud.get_unread_counts(
-        session=session, chat_ids=[chat.id], user_id=user.id
-    )
-    muted_ids = await crud.get_muted_chat_ids(
-        session=session, user_id=user.id, chat_ids=[chat.id]
-    )
-    return _serialize_chat(chat, last_messages, unread_counts, muted_ids)
+    return await _serialize_chat_full(session, chat, user.id)
 
 
 @router.put("/{chat_id}/e2ee/")
@@ -144,8 +217,282 @@ async def delete_chat(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
-    """Удаляет чат: только у себя (по умолчанию) либо для всех участников."""
+    """Удаляет чат: только у себя (по умолчанию) либо для всех участников.
+
+    Для групп ``for_all=True`` — удаление группы целиком (только создатель);
+    ``for_all=False`` — «покинуть группу» для участника.
+    """
     await crud.leave_chat(
         session=session, chat_id=chat_id, user_id=user.id, for_all=for_all
     )
     return None
+
+
+@router.post("/groups/", response_model=ChatSchema)
+async def create_group_chat(
+    payload: GroupCreate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Создаёт групповой чат: текущий пользователь — создатель."""
+    await enforce_limit(
+        scope="chats:create_group",
+        value=str(user.id),
+        limit=settings.group_create_limit_per_hour,
+        window_seconds=3600,
+        detail="Слишком много групп. Попробуйте позже.",
+    )
+    chat = await crud.create_group_chat(
+        session=session,
+        user_id=user.id,
+        name=payload.name,
+        user_ids=payload.user_ids,
+        description=payload.description,
+    )
+    # Приглашённым сообщаем о новом чате, чтобы он появился у них в списке.
+    for uid in dict.fromkeys(payload.user_ids):
+        if uid != user.id:
+            await notify_user(
+                uid,
+                {"type": "chat.new", "chat_id": chat.id, "user_id": user.id},
+            )
+    return await _serialize_chat_full(session, chat, user.id)
+
+
+@router.get("/{chat_id}/", response_model=ChatDetail)
+async def get_chat_detail(
+    chat_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Возвращает карточку чата с участниками и их ролями (для группы)."""
+    chat = await crud.get_chat_with_users(session=session, chat_id=chat_id)
+    if chat is None or not await crud.is_user_chat_member(
+        session, chat_id=chat_id, user_id=user.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Чат не найден",
+        )
+    my_role = await crud.get_member_role(
+        session=session, chat_id=chat_id, user_id=user.id
+    )
+    base = _serialize_chat(chat, {}, {}, set(), my_role=my_role or "member")
+
+    members: list[ChatMemberSchema] = []
+    if chat.is_group:
+        rows = await crud.get_chat_members(session=session, chat_id=chat_id)
+        # Создатель — всегда первым, затем админы и участники.
+        rank = {"creator": 0, "admin": 1, "member": 2}
+        rows.sort(key=lambda item: (rank.get(item[1], 3), item[0].id))
+        for member_user, role in rows:
+            payload = ChatUserSchema.model_validate(member_user).model_dump()
+            members.append(ChatMemberSchema(**payload, role=role))
+    return ChatDetail(**base, members=members)
+
+
+@router.patch("/{chat_id}/", response_model=ChatSchema)
+async def update_group_info(
+    chat_id: int,
+    payload: GroupUpdate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Меняет название/описание группы (создатель/админ)."""
+    chat = await crud.update_group_info(
+        session=session,
+        chat_id=chat_id,
+        actor_id=user.id,
+        name=payload.name,
+        description=payload.description,
+    )
+    return await _serialize_chat_full(session, chat, user.id)
+
+
+@router.post("/{chat_id}/members/", response_model=ChatSchema)
+async def add_group_members(
+    chat_id: int,
+    payload: GroupMembersAdd,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Добавляет участников в группу (создатель/админ)."""
+    await _ensure_group(await crud.get_chat_with_users(session, chat_id))
+
+    actor_role = await crud.get_member_role(
+        session=session, chat_id=chat_id, user_id=user.id
+    )
+    if actor_role not in ("creator", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Недостаточно прав для добавления участников",
+        )
+
+    added = await crud.add_group_members(
+        session=session, chat_id=chat_id, user_ids=payload.user_ids
+    )
+    chat = await crud.get_chat_with_users(session, chat_id)
+    if chat is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось загрузить группу",
+        )
+    for uid in added:
+        await notify_user(
+            uid,
+            {"type": "chat.new", "chat_id": chat_id, "user_id": user.id},
+        )
+    if added:
+        await notify_chat(
+            session,
+            chat_id=chat_id,
+            payload={
+                "type": "chat.updated",
+                "chat_id": chat_id,
+                "action": "members_added",
+            },
+            exclude_user_id=user.id,
+        )
+    return await _serialize_chat_full(session, chat, user.id)
+
+
+@router.delete(
+    "/{chat_id}/members/{user_id}/",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def kick_group_member(
+    chat_id: int,
+    user_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Исключает участника из группы (создатель/админ)."""
+    await _ensure_group(await crud.get_chat_with_users(session, chat_id))
+    await crud.kick_group_member(
+        session=session, chat_id=chat_id, actor_id=user.id, user_id=user_id
+    )
+    return None
+
+
+@router.patch(
+    "/{chat_id}/members/{user_id}/role/",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def set_group_member_role(
+    chat_id: int,
+    user_id: int,
+    payload: GroupRoleUpdate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Назначает/снимает админа группы (только создатель)."""
+    await _ensure_group(await crud.get_chat_with_users(session, chat_id))
+    await crud.set_group_member_role(
+        session=session,
+        chat_id=chat_id,
+        actor_id=user.id,
+        user_id=user_id,
+        role=payload.role,
+    )
+    return None
+
+
+@router.post("/{chat_id}/avatar/", response_model=ChatSchema)
+async def upload_group_avatar(
+    chat_id: int,
+    request: Request,
+    ext: str = Query(default="png", max_length=8),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Загружает аватар группы (тело — байты изображения)."""
+    chat = await _ensure_group(await crud.get_chat_with_users(session, chat_id))
+
+    actor_role = await crud.get_member_role(
+        session=session, chat_id=chat_id, user_id=user.id
+    )
+    if actor_role not in ("creator", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Менять аватар могут только создатель и админы",
+        )
+
+    await enforce_limit(
+        scope="chats:group_avatar",
+        value=str(user.id),
+        limit=settings.avatar_upload_limit_per_minute,
+        window_seconds=60,
+        detail="Слишком много запросов. Попробуйте позже.",
+    )
+    ext = ext.lower().lstrip(".")
+    if ext not in ALLOWED_AVATAR_EXTS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Недопустимый формат файла",
+        )
+
+    content = await request.body()
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пустой файл",
+        )
+    if len(content) > MAX_AVATAR_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Файл слишком большой (максимум {MAX_AVATAR_MB} МБ)",
+        )
+    validate_image_upload(f"avatar.{ext}", content)
+
+    _remove_chat_avatar_file(chat.avatar_url)
+    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+    stored_name = f"chat_{chat.id}_{uuid.uuid4().hex}.{ext}"
+    (AVATAR_DIR / stored_name).write_bytes(content)
+    chat.avatar_url = f"/media/avatars/{stored_name}"
+    await session.commit()
+
+    await notify_chat(
+        session,
+        chat_id=chat_id,
+        payload={
+            "type": "chat.updated",
+            "chat_id": chat_id,
+            "action": "avatar",
+        },
+        exclude_user_id=user.id,
+    )
+    return await _serialize_chat_full(session, chat, user.id)
+
+
+@router.delete("/{chat_id}/avatar/", response_model=ChatSchema)
+async def delete_group_avatar(
+    chat_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Удаляет аватар группы (создатель/админ)."""
+    chat = await _ensure_group(await crud.get_chat_with_users(session, chat_id))
+
+    actor_role = await crud.get_member_role(
+        session=session, chat_id=chat_id, user_id=user.id
+    )
+    if actor_role not in ("creator", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Менять аватар могут только создатель и админы",
+        )
+
+    _remove_chat_avatar_file(chat.avatar_url)
+    chat.avatar_url = None
+    await session.commit()
+    await notify_chat(
+        session,
+        chat_id=chat_id,
+        payload={
+            "type": "chat.updated",
+            "chat_id": chat_id,
+            "action": "avatar",
+        },
+        exclude_user_id=user.id,
+    )
+    return await _serialize_chat_full(session, chat, user.id)

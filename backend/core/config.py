@@ -85,6 +85,8 @@ class Settings(BaseSettings):
     message_search_limit_per_minute: int = 60
     user_search_limit_per_minute: int = 60
     avatar_upload_limit_per_minute: int = 10
+    # Сколько групп можно создать в час (лимит на аккаунт).
+    group_create_limit_per_hour: int = 20
 
     # Лимиты загрузок (в байтах), переопределяются через env.
     max_upload_size_bytes: int = 15 * 1024 * 1024

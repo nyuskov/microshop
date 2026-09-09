@@ -24,6 +24,8 @@ export interface RealtimeSyncOptions {
   onThreadSync: () => Promise<void> | void
   /** Пришло новое сообщение от собеседника (для уведомлений). */
   onMessageNew?: (chatId: number) => void
+  /** Меня удалили/я вышел из чата (убрать его из локального списка). */
+  onChatRemoved?: (chatId: number) => void
 }
 
 export function useRealtimeSync(options: RealtimeSyncOptions) {
@@ -61,6 +63,18 @@ export function useRealtimeSync(options: RealtimeSyncOptions) {
         options.onTypingStop(event.chat_id)
         return
       case 'chat.new':
+        scheduleChatsSync()
+        return
+      case 'chat.updated':
+        // Состав/название/аватар группы изменились — обновляем список (и,
+        // если чат открыт, его карточку в ленте).
+        scheduleChatsSync()
+        if (event.chat_id === options.getSelectedChatId()) scheduleThreadSync()
+        return
+      case 'chat.removed':
+        // Сервер шлёт это событие только исключённому/покинувшему участнику —
+        // убираем чат из локального списка и закрываем, если он был открыт.
+        options.onChatRemoved?.(event.chat_id)
         scheduleChatsSync()
         return
       case 'message.new':

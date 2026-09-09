@@ -236,8 +236,8 @@
                 >
                   <q-icon v-if="chat.is_self" name="bookmark" size="20px" aria-hidden="true" />
                   <img
-                    v-else-if="avatarUrlOf(chatPeerOf(chat))"
-                    :src="avatarUrlOf(chatPeerOf(chat))"
+                    v-else-if="chatAvatarOf(chat)"
+                    :src="chatAvatarOf(chat)"
                     class="avatar-img"
                     alt=""
                   />
@@ -481,9 +481,11 @@ import {
   avatarStyle,
   avatarUrlOf,
   chatPeer,
-  chatPeerTitle,
+  chatTitle,
   displayName,
-  initials
+  groupAvatarUrl,
+  initials,
+  isGroupChat
 } from '@/utils/user'
 import { ONLINE_WINDOW_SECONDS, formatChatTime, formatMsgTime } from '@/utils/format'
 import { mediaTypeLabel } from '@/utils/media'
@@ -525,10 +527,13 @@ const emit = defineEmits<{
   (e: 'bulk-mute', chatIds: number[], muted: boolean): void
   (e: 'bulk-pin', chatIds: number[], pinned: boolean): void
   (e: 'bulk-delete', chatIds: number[]): void
+  /** Открыть диалог «Новая группа». */
+  (e: 'create-group'): void
 }>()
 
 // Пункты верхнего меню «⋯» (сюда будут добавляться новые настройки).
 const SETTINGS_ACTIONS = [
+  { key: 'group', label: 'Новая группа', icon: 'group_add' },
   { key: 'appearance', label: 'Оформление и тема', icon: 'palette' }
 ] as const
 
@@ -562,7 +567,10 @@ const contactsQuery = ref('')
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
 const chatPeerOf = (chat: Chat) => chatPeer(chat, props.currentUserId)
-const chatTitleOf = (chat: Chat): string => chatPeerTitle(chat, props.currentUserId)
+const chatTitleOf = (chat: Chat): string => chatTitle(chat, props.currentUserId)
+/** Аватар чата: у группы — своё фото, у личного — аватар собеседника. */
+const chatAvatarOf = (chat: Chat): string | undefined =>
+  isGroupChat(chat) ? groupAvatarUrl(chat) : avatarUrlOf(chatPeerOf(chat))
 // Аватар-«книжечка» для «Сохранённых сообщений».
 const savedStyle: Record<string, string> = {
   background: 'linear-gradient(135deg, #3b82f6, #1e40af)'
@@ -764,7 +772,13 @@ const previewText = (chat: Chat): string => {
   const last = chat.last_message
   if (!last) return 'Нет сообщений'
   if (last.encrypted && isEncryptedPayload(last.text)) return '🔒 Сообщение'
-  const prefix = props.currentUserId !== null && last.user_id === props.currentUserId ? 'Вы: ' : ''
+  const me = props.currentUserId
+  const mine = me !== null && last.user_id === me
+  let prefix = mine ? 'Вы: ' : ''
+  if (!mine && isGroupChat(chat)) {
+    const author = chat.users.find((user) => user.id === last.user_id)
+    if (author) prefix = `${displayName(author)}: `
+  }
   const body = last.file ? mediaTypeLabel(last.file) : last.text
   if (last.forwarded_from) return `${prefix}↪ Переслано: ${body}`
   return `${prefix}${body}`
@@ -776,6 +790,7 @@ const toggleSettingsMenu = () => {
 
 const runSettingsAction = (action: (typeof SETTINGS_ACTIONS)[number]) => {
   settingsMenuOpen.value = false
+  if (action.key === 'group') emit('create-group')
   if (action.key === 'appearance') emit('open-appearance')
 }
 
@@ -827,13 +842,13 @@ const chatOfMessage = (message: Message): Chat | undefined =>
 /** Название чата для результата поиска по сообщениям. */
 const messageChatTitle = (message: Message): string => {
   const chat = chatOfMessage(message)
-  return chat ? chatPeerTitle(chat, props.currentUserId) : `#${message.chat_id}`
+  return chat ? chatTitle(chat, props.currentUserId) : `#${message.chat_id}`
 }
 
 /** Аватар чата (собеседника) для результата поиска. */
 const messageChatAvatar = (message: Message): string | undefined => {
   const chat = chatOfMessage(message)
-  return chat ? avatarUrlOf(chatPeerOf(chat)) : undefined
+  return chat ? chatAvatarOf(chat) : undefined
 }
 
 /** Префикс «Вы: » для своих сообщений в результате поиска. */

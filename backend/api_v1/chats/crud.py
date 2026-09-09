@@ -5,8 +5,15 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from api_v1.events.service import notify_user
-from core.models import Chat, ChatMute, Message, User, user_chat_association_table
+from api_v1.events.service import notify_chat, notify_user
+from core.models import (
+    Chat,
+    ChatMute,
+    Message,
+    User,
+    user_chat_association_table,
+)
+from core.models.associations import ROLE_ADMIN, ROLE_CREATOR, ROLE_MEMBER
 
 
 async def get_chat_with_users(session: AsyncSession, chat_id: int) -> Chat | None:
@@ -42,6 +49,11 @@ async def set_chat_e2ee(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Чат не найден",
+        )
+    if chat.is_group or chat.is_self:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Сквозное шифрование доступно только в личных чатах",
         )
     chat.e2ee_enabled = enabled
     await session.commit()
@@ -178,21 +190,64 @@ async def get_last_messages(
 async def get_unread_counts(
     session: AsyncSession, chat_ids: list[int], user_id: int
 ) -> dict[int, int]:
-    """Возвращает количество непрочитанных сообщений для каждого чата."""
+    """Возвращает количество непрочитанных сообщений для каждого чата.
+
+    В личных чатах считаем непрочитанными входящие сообщения с ``is_read=False``.
+    В групповых — сообщения, пришедшие после курсора прочтения участника
+    (``chat_user_association.last_read_message_id``), т.к. на общий флаг
+    ``Message.is_read`` опираться нельзя (его «прочитал» кто-то другой).
+    """
     if not chat_ids:
         return {}
 
-    stmt = (
-        select(Message.chat_id, func.count(Message.id))
-        .where(
-            Message.chat_id.in_(chat_ids),
-            Message.user_id != user_id,
-            Message.is_read.is_(False),
-        )
-        .group_by(Message.chat_id)
+    rows = await session.execute(
+        select(Chat.id, Chat.is_group).where(Chat.id.in_(chat_ids))
     )
-    result = await session.execute(stmt)
-    return {chat_id: count for chat_id, count in result.all()}
+    chat_kinds = rows.all()
+    counts: dict[int, int] = {}
+
+    group_ids = [chat_id for chat_id, is_group in chat_kinds if is_group]
+    if group_ids:
+        cursor_rows = await session.execute(
+            select(
+                user_chat_association_table.c.chat_id,
+                user_chat_association_table.c.last_read_message_id,
+            ).where(
+                user_chat_association_table.c.chat_id.in_(group_ids),
+                user_chat_association_table.c.user_id == user_id,
+            )
+        )
+        cursors = {
+            chat_id: (last_read or 0) for chat_id, last_read in cursor_rows.all()
+        }
+        for chat_id in group_ids:
+            stmt = (
+                select(func.count())
+                .select_from(Message)
+                .where(
+                    Message.chat_id == chat_id,
+                    Message.user_id != user_id,
+                    Message.id > cursors.get(chat_id, 0),
+                )
+            )
+            count = await session.scalar(stmt)
+            counts[chat_id] = count or 0
+
+    private_ids = [chat_id for chat_id, _ in chat_kinds if chat_id not in counts]
+    if private_ids:
+        count_stmt = (
+            select(Message.chat_id, func.count(Message.id))
+            .where(
+                Message.chat_id.in_(private_ids),
+                Message.user_id != user_id,
+                Message.is_read.is_(False),
+            )
+            .group_by(Message.chat_id)
+        )
+        result = await session.execute(count_stmt)
+        for chat_id, count in result.all():
+            counts[chat_id] = count or 0
+    return counts
 
 
 async def get_muted_chat_ids(
@@ -251,6 +306,11 @@ async def leave_chat(
     участников не осталось, удаляет и чат, и его сообщения.
 
     ``for_all=True`` — «для всех»: удаляет чат целиком (участники, сообщения).
+
+    Для групповых чатов семантика своя:
+      * ``for_all=True`` — удаление группы целиком; разрешено только создателю;
+      * ``for_all=False`` — «покинуть группу»; создатель не может выйти, пока в
+        группе есть другие участники (ему нужно удалить группу целиком).
     """
     if not await is_user_chat_member(session, chat_id=chat_id, user_id=user_id):
         raise HTTPException(
@@ -265,7 +325,28 @@ async def leave_chat(
             detail="«Сохранённые сообщения» нельзя удалить",
         )
 
+    is_group = chat is not None and chat.is_group
+
     if for_all:
+        members: list[int] = []
+        if is_group:
+            role = await get_member_role(session, chat_id=chat_id, user_id=user_id)
+            if role != "creator":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Удалить группу может только её создатель",
+                )
+            # Запоминаем участников до удаления, чтобы уведомить их.
+            member_rows = await session.execute(
+                select(user_chat_association_table.c.user_id).where(
+                    user_chat_association_table.c.chat_id == chat_id
+                )
+            )
+            members = [
+                member_id
+                for member_id in member_rows.scalars().all()
+                if member_id != user_id
+            ]
         await session.execute(
             user_chat_association_table.delete().where(
                 user_chat_association_table.c.chat_id == chat_id
@@ -274,7 +355,35 @@ async def leave_chat(
         await session.execute(delete(Message).where(Message.chat_id == chat_id))
         await session.execute(delete(Chat).where(Chat.id == chat_id))
         await session.commit()
+        # Сообщаем остальным участникам, что группы больше нет.
+        for member_id in members:
+            await notify_user(
+                member_id,
+                {
+                    "type": "chat.removed",
+                    "chat_id": chat_id,
+                    "user_id": user_id,
+                },
+            )
         return
+
+    if is_group:
+        role = await get_member_role(session, chat_id=chat_id, user_id=user_id)
+        remaining_total = await session.scalar(
+            select(func.count())
+            .select_from(user_chat_association_table)
+            .where(user_chat_association_table.c.chat_id == chat_id)
+        )
+        # Создатель покидает группу, только когда он последний участник
+        # (тогда группа удаляется). Иначе — пусть передаст роль или удалит группу.
+        if role == "creator" and (remaining_total or 0) > 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Создатель не может покинуть группу с участниками. "
+                    "Удалите группу целиком"
+                ),
+            )
 
     await session.execute(
         user_chat_association_table.delete().where(
@@ -298,5 +407,385 @@ async def leave_chat(
     if (remaining or 0) == 0:
         await session.execute(delete(Message).where(Message.chat_id == chat_id))
         await session.execute(delete(Chat).where(Chat.id == chat_id))
+        await session.commit()
+        return
 
     await session.commit()
+
+    # Участники, оставшиеся в группе, должны увидеть обновлённый состав.
+    if is_group:
+        await notify_chat(
+            session,
+            chat_id=chat_id,
+            payload={
+                "type": "chat.updated",
+                "chat_id": chat_id,
+                "user_id": user_id,
+                "action": "left",
+            },
+            exclude_user_id=user_id,
+        )
+
+
+# ======================================================================
+# Групповые чаты
+# ======================================================================
+
+
+async def get_member_role(
+    session: AsyncSession, *, chat_id: int, user_id: int
+) -> str | None:
+    """Возвращает роль участника в чате (None — не участник)."""
+    stmt = select(user_chat_association_table.c.role).where(
+        user_chat_association_table.c.chat_id == chat_id,
+        user_chat_association_table.c.user_id == user_id,
+    )
+    return await session.scalar(stmt)
+
+
+async def get_my_roles(
+    session: AsyncSession, chat_ids: list[int], user_id: int
+) -> dict[int, str]:
+    """Возвращает роль текущего пользователя для каждого из ``chat_ids``."""
+    if not chat_ids:
+        return {}
+    stmt = select(
+        user_chat_association_table.c.chat_id,
+        user_chat_association_table.c.role,
+    ).where(
+        user_chat_association_table.c.chat_id.in_(chat_ids),
+        user_chat_association_table.c.user_id == user_id,
+    )
+    result = await session.execute(stmt)
+    return {chat_id: role for chat_id, role in result.all()}
+
+
+async def get_chat_members(
+    session: AsyncSession, chat_id: int
+) -> list[tuple[User, str]]:
+    """Возвращает участников чата вместе с их ролями (в порядке вступления)."""
+    stmt = (
+        select(User, user_chat_association_table.c.role)
+        .join(
+            user_chat_association_table,
+            user_chat_association_table.c.user_id == User.id,
+        )
+        .where(user_chat_association_table.c.chat_id == chat_id)
+        .order_by(user_chat_association_table.c.joined_at)
+    )
+    result = await session.execute(stmt)
+    return [(user, role) for user, role in result.all()]
+
+
+async def create_group_chat(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    name: str,
+    user_ids: list[int],
+    description: str | None = None,
+) -> Chat:
+    """Создаёт групповой чат: создатель + перечисленные участники."""
+    all_ids = list(dict.fromkeys([user_id, *user_ids]))
+
+    users_result = await session.execute(select(User).where(User.id.in_(all_ids)))
+    found = {user.id: user for user in users_result.scalars().all()}
+    if user_id not in found or len(found) != len(all_ids):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Один из пользователей не найден",
+        )
+
+    chat = Chat(
+        name=name.strip() or "Группа",
+        description=(description or "").strip() or None,
+        is_group=True,
+        creator_id=user_id,
+    )
+    session.add(chat)
+    await session.flush()
+
+    rows = [
+        {
+            "chat_id": chat.id,
+            "user_id": uid,
+            "role": ROLE_CREATOR if uid == user_id else ROLE_MEMBER,
+        }
+        for uid in all_ids
+    ]
+    await session.execute(user_chat_association_table.insert(), rows)
+    await session.commit()
+
+    reloaded = await get_chat_with_users(session, chat.id)
+    if reloaded is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось создать группу",
+        )
+    return reloaded
+
+
+async def add_group_members(
+    session: AsyncSession,
+    *,
+    chat_id: int,
+    user_ids: list[int],
+) -> list[int]:
+    """Добавляет участников в группу, возвращает id добавленных пользователей.
+
+    Уже состоящих в группе пропускает. Для новых участников курсор прочтения
+    сразу ставится на последнее сообщение — история до вступления не считается
+    непрочитанной.
+    """
+    existing = await session.execute(
+        select(user_chat_association_table.c.user_id).where(
+            user_chat_association_table.c.chat_id == chat_id
+        )
+    )
+    existing_ids = set(existing.scalars().all())
+
+    to_add = [uid for uid in dict.fromkeys(user_ids) if uid not in existing_ids]
+    if not to_add:
+        return []
+
+    users_result = await session.execute(select(User.id).where(User.id.in_(to_add)))
+    found = set(users_result.scalars().all())
+    to_add = [uid for uid in to_add if uid in found]
+    if not to_add:
+        return []
+
+    max_message_id = await session.scalar(
+        select(func.max(Message.id)).where(Message.chat_id == chat_id)
+    )
+    rows = [
+        {
+            "chat_id": chat_id,
+            "user_id": uid,
+            "role": ROLE_MEMBER,
+            "last_read_message_id": max_message_id,
+        }
+        for uid in to_add
+    ]
+    await session.execute(user_chat_association_table.insert(), rows)
+    await session.commit()
+    return to_add
+
+
+async def kick_group_member(
+    session: AsyncSession,
+    *,
+    chat_id: int,
+    actor_id: int,
+    user_id: int,
+) -> None:
+    """Исключает участника из группы (создатель/админ)."""
+    if user_id == actor_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Чтобы выйти из группы, нажмите «Покинуть группу»",
+        )
+
+    actor_role = await get_member_role(session, chat_id=chat_id, user_id=actor_id)
+    if actor_role not in (ROLE_CREATOR, ROLE_ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Недостаточно прав для исключения участника",
+        )
+
+    target_role = await get_member_role(session, chat_id=chat_id, user_id=user_id)
+    if target_role is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не состоит в группе",
+        )
+    # Админ может исключать только обычных участников; создателя — никто.
+    if target_role == ROLE_CREATOR:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Нельзя исключить создателя группы",
+        )
+    if actor_role == ROLE_ADMIN and target_role == ROLE_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Админ не может исключать другого админа",
+        )
+
+    await session.execute(
+        user_chat_association_table.delete().where(
+            user_chat_association_table.c.chat_id == chat_id,
+            user_chat_association_table.c.user_id == user_id,
+        )
+    )
+    await session.execute(
+        delete(ChatMute).where(
+            ChatMute.chat_id == chat_id,
+            ChatMute.user_id == user_id,
+        )
+    )
+    await session.commit()
+
+    # Исключённому — убрать чат из его списка; остальным — обновить состав.
+    await notify_user(
+        user_id,
+        {"type": "chat.removed", "chat_id": chat_id, "user_id": actor_id},
+    )
+    await notify_chat(
+        session,
+        chat_id=chat_id,
+        payload={
+            "type": "chat.updated",
+            "chat_id": chat_id,
+            "user_id": user_id,
+            "action": "removed",
+        },
+        exclude_user_id=user_id,
+    )
+
+
+async def set_group_member_role(
+    session: AsyncSession,
+    *,
+    chat_id: int,
+    actor_id: int,
+    user_id: int,
+    role: str,
+) -> None:
+    """Назначает/снимает админа группы (только создатель)."""
+    if user_id == actor_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Нельзя изменить собственную роль",
+        )
+
+    actor_role = await get_member_role(session, chat_id=chat_id, user_id=actor_id)
+    if actor_role != ROLE_CREATOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Назначать админов может только создатель группы",
+        )
+
+    target_role = await get_member_role(session, chat_id=chat_id, user_id=user_id)
+    if target_role is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не состоит в группе",
+        )
+    if role not in (ROLE_ADMIN, ROLE_MEMBER):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Недопустимая роль",
+        )
+
+    await session.execute(
+        user_chat_association_table.update()
+        .where(
+            user_chat_association_table.c.chat_id == chat_id,
+            user_chat_association_table.c.user_id == user_id,
+        )
+        .values(role=role)
+    )
+    await session.commit()
+
+    await notify_chat(
+        session,
+        chat_id=chat_id,
+        payload={
+            "type": "chat.updated",
+            "chat_id": chat_id,
+            "user_id": user_id,
+            "action": "role",
+            "role": role,
+        },
+    )
+
+
+async def update_group_info(
+    session: AsyncSession,
+    *,
+    chat_id: int,
+    actor_id: int,
+    name: str | None = None,
+    description: str | None = None,
+) -> Chat:
+    """Обновляет название/описание группы (создатель/админ)."""
+    actor_role = await get_member_role(session, chat_id=chat_id, user_id=actor_id)
+    if actor_role not in (ROLE_CREATOR, ROLE_ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Изменять группу могут только создатель и админы",
+        )
+
+    chat = await session.get(Chat, chat_id)
+    if chat is None or not chat.is_group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Группа не найдена",
+        )
+    if name is not None:
+        stripped = name.strip()
+        if not stripped:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Название группы не может быть пустым",
+            )
+        chat.name = stripped
+    if description is not None:
+        chat.description = description.strip() or None
+    await session.commit()
+
+    await notify_chat(
+        session,
+        chat_id=chat_id,
+        payload={
+            "type": "chat.updated",
+            "chat_id": chat_id,
+            "action": "info",
+        },
+        exclude_user_id=actor_id,
+    )
+    reloaded = await get_chat_with_users(session, chat_id)
+    if reloaded is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось обновить группу",
+        )
+    return reloaded
+
+
+async def is_group_chat(session: AsyncSession, chat_id: int) -> bool | None:
+    """Является ли чат групповым (None — чат не найден)."""
+    return await session.scalar(select(Chat.is_group).where(Chat.id == chat_id))
+
+
+async def mark_group_chat_read(
+    session: AsyncSession, *, chat_id: int, user_id: int
+) -> bool:
+    """Передвигает курсор прочтения участника на последнее сообщение группы.
+
+    Возвращает True, если курсор реально сдвинулся (появились прочитанные).
+    """
+    newest_id = await session.scalar(
+        select(func.max(Message.id)).where(Message.chat_id == chat_id)
+    )
+    if newest_id is None:
+        return False
+
+    current = await session.scalar(
+        select(user_chat_association_table.c.last_read_message_id).where(
+            user_chat_association_table.c.chat_id == chat_id,
+            user_chat_association_table.c.user_id == user_id,
+        )
+    )
+    if (current or 0) >= newest_id:
+        return False
+
+    await session.execute(
+        user_chat_association_table.update()
+        .where(
+            user_chat_association_table.c.chat_id == chat_id,
+            user_chat_association_table.c.user_id == user_id,
+        )
+        .values(last_read_message_id=newest_id)
+    )
+    await session.commit()
+    return True

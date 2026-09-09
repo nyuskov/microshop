@@ -41,6 +41,7 @@
         @open-appearance="openAppearance"
         @select-chat="selectChat"
         @chat-opened="onChatOpened"
+        @create-group="openCreateGroup"
       />
     </q-drawer>
 
@@ -145,6 +146,8 @@
             :selection-mode="msgSelectionMode"
             :selected-message-ids="selectedMessageIds"
             :pending="pendingUploads"
+            :is-group-chat="isGroupChat(selectedChat)"
+            :members="selectedChat.users"
             @background-click="closePopups"
             @reach-top="loadOlderMessages"
             @quote-click="quoteClick"
@@ -254,7 +257,7 @@
 
   <!-- Информация о чате -->
   <q-dialog v-model="showChatInfoModal">
-    <template v-if="selectedChat">
+    <template v-if="selectedChat && !isGroupChat(selectedChat)">
       <ChatInfo
         :chat="selectedChat"
         :current-user-id="currentUserId"
@@ -266,6 +269,30 @@
         @open-image="openChatInfoImage"
       />
     </template>
+  </q-dialog>
+
+  <!-- Информация о группе: состав, роли, настройки -->
+  <q-dialog v-model="showGroupInfoModal">
+    <template v-if="selectedChat && isGroupChat(selectedChat)">
+      <GroupChatInfo
+        :chat="selectedChat"
+        :current-user-id="currentUserId"
+        :contacts="contacts"
+        :online-user-ids="onlineUserIds"
+        @close="showGroupInfoModal = false"
+        @updated="onGroupInfoUpdated"
+        @left="onGroupLeft"
+      />
+    </template>
+  </q-dialog>
+
+  <!-- Создание группы -->
+  <q-dialog v-model="showCreateGroupModal">
+    <GroupCreateDialog
+      :contacts="contacts"
+      @close="showCreateGroupModal = false"
+      @created="onGroupCreated"
+    />
   </q-dialog>
 
   <!-- Удаление чата (для себя / для всех) -->
@@ -394,7 +421,7 @@ import {
   resetE2eeSession
 } from '@/services/e2ee'
 import type { Chat, ChatUser, Message } from '@/types'
-import { avatarUrlOf, displayName } from '@/utils/user'
+import { avatarUrlOf, displayName, isGroupChat } from '@/utils/user'
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import { isImageFile, messageSnippet, optimizeImageFile } from '@/utils/media'
@@ -418,6 +445,10 @@ const AppearanceSettings = defineAsyncComponent(() => import('./AppearanceSettin
 const CallOverlay = defineAsyncComponent(() => import('@/components/calls/CallOverlay.vue'))
 const ForwardDialog = defineAsyncComponent(() => import('@/components/messenger/ForwardDialog.vue'))
 const ChatInfo = defineAsyncComponent(() => import('@/components/messenger/ChatInfo.vue'))
+const GroupCreateDialog = defineAsyncComponent(
+  () => import('@/components/messenger/GroupCreateDialog.vue')
+)
+const GroupChatInfo = defineAsyncComponent(() => import('@/components/messenger/GroupChatInfo.vue'))
 const VideoRecorderModal = defineAsyncComponent(
   () => import('@/components/media/VideoRecorderModal.vue')
 )
@@ -442,6 +473,8 @@ const realtimeStore = useRealtimeStore()
 const showProfileModal = ref(false)
 const showAppearanceModal = ref(false)
 const showChatInfoModal = ref(false)
+const showGroupInfoModal = ref(false)
+const showCreateGroupModal = ref(false)
 const showLoginModal = ref(true)
 const voiceRecOpen = ref(false)
 const videoRecOpen = ref(false)
@@ -487,10 +520,18 @@ const pushMobileNav = () => {
 const onAppPopState = () => {
   if (isDesktop.value) return
   // Модалки поверх всего — закрываем.
-  if (showProfileModal.value || showAppearanceModal.value || showChatInfoModal.value) {
+  if (
+    showProfileModal.value ||
+    showAppearanceModal.value ||
+    showChatInfoModal.value ||
+    showGroupInfoModal.value ||
+    showCreateGroupModal.value
+  ) {
     showProfileModal.value = false
     showAppearanceModal.value = false
     showChatInfoModal.value = false
+    showGroupInfoModal.value = false
+    showCreateGroupModal.value = false
     return
   }
   // Вкладка «Контакты» -> «Чаты».
@@ -749,16 +790,27 @@ const lightboxStep = (delta: number) => {
   lightboxIndex.value = (lightboxIndex.value + delta + length) % length
 }
 
-// ---------- Информация о чате ----------
+// ---------- Информация о чате / группе ----------
 const openChatInfo = () => {
   pushMobileNav()
-  showChatInfoModal.value = true
+  const chat = selectedChat.value
+  if (chat && isGroupChat(chat)) {
+    showGroupInfoModal.value = true
+  } else {
+    showChatInfoModal.value = true
+  }
 }
 
 /** Открыть изображение из «Информации о чате» в лайтбоксе. */
 const openChatInfoImage = (messageId: number) => {
   const message = messages.value.find((m) => m.id === messageId)
   if (message) openImageFromMessage(message)
+}
+
+// ---------- Создание группы ----------
+const openCreateGroup = () => {
+  pushMobileNav()
+  showCreateGroupModal.value = true
 }
 
 /** Строки закреплённых сообщений для PinnedBar (имя + сниппет уже посчитаны). */
@@ -967,7 +1019,22 @@ const presenceText = (chat: Chat): string => {
 
 const chatSubtitle = (chat: Chat): string => {
   if (isPeerTyping(chat.id)) return 'печатает…'
+  if (isGroupChat(chat)) return groupSubtitle(chat)
   return presenceText(chat)
+}
+
+/** Подпись шапки группы: число участников и сколько из них сейчас в сети. */
+const groupSubtitle = (chat: Chat): string => {
+  const count = chat.users.length
+  const online = chat.users.filter((u) => onlineUserIds.value.includes(u.id)).length
+  const last = count % 10
+  const lastTwo = count % 100
+  let noun: string
+  if (lastTwo >= 11 && lastTwo <= 14) noun = 'участников'
+  else if (last === 1) noun = 'участник'
+  else if (last >= 2 && last <= 4) noun = 'участника'
+  else noun = 'участников'
+  return online > 0 ? `${count} ${noun} · ${online} в сети` : `${count} ${noun}`
 }
 
 // ---------- Цитаты (ответы) ----------
@@ -976,11 +1043,19 @@ const replyMessage = (message: Message): Message | undefined =>
     ? messages.value.find((item) => item.id === message.reply_to_id)
     : undefined
 
+/** Имя автора сообщения (для групп — участник по user_id). */
+const authorNameOfMessage = (message: Message): string => {
+  const chat = chats.value.find((item) => item.id === message.chat_id)
+  if (!chat) return 'Собеседник'
+  const author = chat.users.find((user) => user.id === message.user_id)
+  return author ? displayName(author) : 'Собеседник'
+}
+
 /** Имя в шапке цитаты при ответе в композере (семантика исходного Messenger). */
 const quoteName = (message: Message): string => {
   const target = replyMessage(message)
   if (!target) return 'Сообщение'
-  return isOwnMessage(target) ? 'Вы' : 'Собеседник'
+  return isOwnMessage(target) ? 'Вы' : authorNameOfMessage(target)
 }
 
 const replyBarName = computed<string>(() => (replyTarget.value ? quoteName(replyTarget.value) : ''))
@@ -990,9 +1065,10 @@ const quoteFor = (message: Message): { name: string; mine: boolean; text: string
   if (message.reply_to_id == null) return null
   const target = replyMessage(message)
   if (!target) return null
+  const mine = isOwnMessage(target)
   return {
-    name: isOwnMessage(target) ? 'Вы' : 'Собеседник',
-    mine: isOwnMessage(target),
+    name: mine ? 'Вы' : authorNameOfMessage(target),
+    mine,
     text: messageSnippet(target)
   }
 }
@@ -1017,12 +1093,7 @@ const quoteClick = (message: Message) => {
   })
 }
 
-const senderNameOfMessage = (message: Message): string => {
-  const chat = chats.value.find((item) => item.id === message.chat_id)
-  if (!chat) return 'Собеседник'
-  const other = otherUserOfChat(chat)
-  return other ? displayName(other) : 'Собеседник'
-}
+const senderNameOfMessage = (message: Message): string => authorNameOfMessage(message)
 
 const pinnedSnippet = (message: Message): string =>
   `${message.user_id === currentUserId.value ? 'Вы: ' : senderNameOfMessage(message) + ': '}${messageSnippet(message)}`
@@ -1201,7 +1272,11 @@ const openChatThread = async (chatId: number) => {
   clearReply()
   closeLightbox()
   showChatInfoModal.value = false
+  showGroupInfoModal.value = false
   await Promise.all([loadThreadLatest(chatId), loadPinned(chatId)])
+  // Мы читаем чат — непрочитанные обнуляем сразу (не дожидаясь синхронизации).
+  const opened = chats.value.find((item) => item.id === chatId)
+  if (opened) opened.unread_count = 0
   // Ждём отрисовки сообщений + два кадра, иначе scrollTop посчитается по ещё
   // не размеченной ленте и чат откроется не внизу (нужно докручивать).
   await nextTick()
@@ -1738,7 +1813,37 @@ const removeDeletedChat = (chat: Chat) => {
     highlightedMessageId.value = null
     closeLightbox()
     showChatInfoModal.value = false
+    showGroupInfoModal.value = false
   }
+}
+
+// ---------- Группы: создание/обновление/удаление ----------
+/** Группа создана — открываем её чат. */
+const onGroupCreated = async (chat: Chat) => {
+  showCreateGroupModal.value = false
+  upsertChat(chat)
+  view.value = 'chats'
+  await openChatThread(chat.id)
+}
+
+/** Название/аватар/состав группы изменились — обновляем список чатов. */
+const onGroupInfoUpdated = async () => {
+  await loadChats()
+}
+
+/** Пользователь покинул группу или удалил её (действие из карточки группы). */
+const onGroupLeft = () => {
+  const chat = selectedChat.value
+  showGroupInfoModal.value = false
+  if (chat) removeDeletedChat(chat)
+}
+
+/** Удалён из группы по realtime-событию (chat.removed). */
+const handleChatRemoved = (chatId: number) => {
+  const chat = chats.value.find((item) => item.id === chatId)
+  if (chat) removeDeletedChat(chat)
+  else chats.value = chats.value.filter((item) => item.id !== chatId)
+  showGroupInfoModal.value = false
 }
 
 /** Подтверждение из модалки: удалить «только у меня» или «для всех». */
@@ -2051,7 +2156,8 @@ const { start: startRealtime, stop: stopRealtime } = useRealtimeSync({
   onTyping: markPeerTyping,
   onTypingStop: clearPeerTyping,
   onChatsSync: refreshChatsQuiet,
-  onThreadSync: refreshOpenThreadQuiet
+  onThreadSync: refreshOpenThreadQuiet,
+  onChatRemoved: handleChatRemoved
 })
 
 // ---------- Отправка индикатора «печатает…» ----------
@@ -2198,6 +2304,9 @@ watch(
       pinnedMessages.value = []
       contacts.value = []
       selectedChatId.value = null
+      showChatInfoModal.value = false
+      showGroupInfoModal.value = false
+      showCreateGroupModal.value = false
       clearAll()
     }
   },

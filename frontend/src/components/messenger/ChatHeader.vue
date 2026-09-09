@@ -14,7 +14,7 @@
         :style="props.chat.is_self ? savedAvatarStyle : avatarStyle(title)"
       >
         <q-icon v-if="props.chat.is_self" name="bookmark" size="22px" aria-hidden="true" />
-        <img v-else-if="peerAvatarUrl" :src="peerAvatarUrl" class="avatar-img" alt="" />
+        <img v-else-if="avatarUrl" :src="avatarUrl" class="avatar-img" alt="" />
         <template v-else>{{ initials(title) }}</template>
       </span>
     </span>
@@ -76,7 +76,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Chat } from '@/types'
-import { avatarStyle, avatarUrlOf, chatPeer, chatPeerTitle, initials } from '@/utils/user'
+import {
+  avatarStyle,
+  avatarUrlOf,
+  chatPeer,
+  chatTitle,
+  groupAvatarUrl,
+  initials,
+  isGroupChat
+} from '@/utils/user'
 import { useCallButton } from '@/composables/useCallButton'
 
 const props = defineProps<{
@@ -108,12 +116,15 @@ const emit = defineEmits<{
 }>()
 
 const peer = computed(() => chatPeer(props.chat, props.currentUserId))
-const title = computed<string>(() => chatPeerTitle(props.chat, props.currentUserId))
+const title = computed<string>(() => chatTitle(props.chat, props.currentUserId))
 // Аватар-«книжечка» для «Сохранённых сообщений».
 const savedAvatarStyle: Record<string, string> = {
   background: 'linear-gradient(135deg, #3b82f6, #1e40af)'
 }
-const peerAvatarUrl = computed<string | undefined>(() => avatarUrlOf(peer.value))
+/** Аватар: у группы — своё фото, у личного чата — аватар собеседника. */
+const avatarUrl = computed<string | undefined>(() =>
+  isGroupChat(props.chat) ? groupAvatarUrl(props.chat) : avatarUrlOf(peer.value)
+)
 
 // Меню «⋯» в шапке: закрывается по клику вне панели.
 const rootEl = ref<HTMLElement | null>(null)

@@ -44,6 +44,39 @@ export interface Chat {
   e2ee_enabled?: boolean
   /** «Сохранённые сообщения» (личный чат с собой; удалить нельзя). */
   is_self?: boolean
+  /** Групповой чат (общий для многих участников). */
+  is_group?: boolean
+  /** Аватар группы (путь /media/...). */
+  avatar_url?: string | null
+  /** Описание группы. */
+  description?: string | null
+  /** Количество участников группы. */
+  member_count?: number
+  /** Роль текущего пользователя: creator / admin / member. */
+  my_role?: 'creator' | 'admin' | 'member' | string
+  /** Создатель группы. */
+  creator_id?: number | null
+}
+
+/** Участник чата с ролью (для карточки группы). */
+export interface ChatMember extends ChatUser {
+  role: 'creator' | 'admin' | 'member' | string
+}
+
+/** Карточка чата вместе с участниками и их ролями (GET /chats/{id}/). */
+export interface ChatDetail extends Chat {
+  members: ChatMember[]
+}
+
+export interface CreateGroupRequest {
+  name: string
+  user_ids: number[]
+  description?: string | null
+}
+
+export interface GroupInfoUpdate {
+  name?: string
+  description?: string | null
 }
 
 export interface Message {

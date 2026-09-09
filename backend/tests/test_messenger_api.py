@@ -78,7 +78,9 @@ class _ApiCtx:
         assert response.status_code == 200, response.text
         return response.json()
 
-    async def list_messages(self, token: str, chat_id: int, **params) -> list[dict]:
+    async def list_messages(
+        self, token: str, chat_id: int, **params
+    ) -> list[dict]:
         response = await self.client.get(
             f"/api/v1/messages/{chat_id}/",
             params=params,
@@ -131,7 +133,9 @@ async def api() -> _ApiCtx:
 
     app.dependency_overrides[db_helper.session_dependency] = _override_session
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as client:
         try:
             yield _ApiCtx(client, factory)
         finally:
@@ -173,9 +177,15 @@ async def test_private_chat_find_or_create_and_visible_to_both(
     assert again["id"] == chat["id"]
 
     # Оба участника видят чат в своём списке, посторонний — нет.
-    list1 = (await api.client.get("/api/v1/chats/", headers=api.auth(t1))).json()
-    list2 = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
-    list3 = (await api.client.get("/api/v1/chats/", headers=api.auth(t3))).json()
+    list1 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t1))
+    ).json()
+    list2 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t2))
+    ).json()
+    list3 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t3))
+    ).json()
     assert any(c["id"] == chat["id"] for c in list1)
     assert any(c["id"] == chat["id"] for c in list2)
     assert all(c["id"] != chat["id"] for c in list3)
@@ -239,7 +249,9 @@ async def test_messages_pagination(api: _ApiCtx) -> None:
     assert [m["id"] for m in last_two] == ids[-2:]
 
     # before_id=msg3 + limit=2 — две более старые (msg1, msg2).
-    older = await api.list_messages(t1, chat["id"], limit=2, before_id=sent[3]["id"])
+    older = await api.list_messages(
+        t1, chat["id"], limit=2, before_id=sent[3]["id"]
+    )
     assert [m["id"] for m in older] == ids[1:3]
 
     # Пагинация до начала истории не зацикливается.
@@ -473,8 +485,12 @@ async def test_delete_chat_for_me_keeps_history_for_peer(api: _ApiCtx) -> None:
     assert resp.status_code == 204
 
     # У u1 чат исчез, у u2 остался с историей.
-    list1 = (await api.client.get("/api/v1/chats/", headers=api.auth(t1))).json()
-    list2 = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
+    list1 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t1))
+    ).json()
+    list2 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t2))
+    ).json()
     assert all(c["id"] != chat["id"] for c in list1)
     assert any(c["id"] == chat["id"] for c in list2)
     assert await api.list_messages(t2, chat["id"])
@@ -496,8 +512,12 @@ async def test_delete_chat_for_all_removes_for_everyone(api: _ApiCtx) -> None:
     )
     assert resp.status_code == 204
 
-    list1 = (await api.client.get("/api/v1/chats/", headers=api.auth(t1))).json()
-    list2 = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
+    list1 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t1))
+    ).json()
+    list2 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t2))
+    ).json()
     assert all(c["id"] != chat["id"] for c in list1)
     assert all(c["id"] != chat["id"] for c in list2)
 
@@ -775,19 +795,25 @@ async def test_chats_last_message_and_unread_count(api: _ApiCtx) -> None:
     await api.send(t1, chat["id"], "привет собеседник")
 
     # Собеседник видит чат: last_message + 1 непрочитанное.
-    list2 = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
+    list2 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t2))
+    ).json()
     item2 = next(c for c in list2 if c["id"] == chat["id"])
     assert item2["last_message"]["text"] == "привет собеседник"
     assert item2["unread_count"] == 1
 
     # Автор своих сообщений непрочитанными не считает.
-    list1 = (await api.client.get("/api/v1/chats/", headers=api.auth(t1))).json()
+    list1 = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t1))
+    ).json()
     item1 = next(c for c in list1 if c["id"] == chat["id"])
     assert item1["unread_count"] == 0
 
     # Собеседник открыл чат (GET истории) — прочитано, счётчик обнулился.
     await api.list_messages(t2, chat["id"])
-    list2b = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
+    list2b = (
+        await api.client.get("/api/v1/chats/", headers=api.auth(t2))
+    ).json()
     item2b = next(c for c in list2b if c["id"] == chat["id"])
     assert item2b["unread_count"] == 0
     assert item2b["last_message"]["is_read"] is True
@@ -835,7 +861,9 @@ async def test_telegram_bind_link_and_status(api: _ApiCtx) -> None:
     assert status1["bound"] is True
 
     # Отвязка.
-    unbind = await api.client.post("/api/v1/auth/telegram/unbind/", headers=headers)
+    unbind = await api.client.post(
+        "/api/v1/auth/telegram/unbind/", headers=headers
+    )
     assert unbind.status_code == 200
     assert unbind.json()["bound"] is False
     status2 = (
@@ -955,7 +983,10 @@ async def test_push_public_key_state(api: _ApiCtx) -> None:
     r = await api.client.get("/api/v1/push/public-key/")
     assert r.status_code == 200, r.text
     body = r.json()
-    if settings.web_push_vapid_public_key and settings.web_push_vapid_private_key:
+    if (
+        settings.web_push_vapid_public_key
+        and settings.web_push_vapid_private_key
+    ):
         assert body["enabled"] is True
         assert len(body["public_key"]) > 0
     else:
@@ -998,18 +1029,24 @@ async def test_chat_mute_via_api(api: _ApiCtx) -> None:
 
     assert await muted_flag(t1) is False
 
-    r = await api.client.put(f"/api/v1/chats/{chat_id}/mute/", headers=api.auth(t1))
+    r = await api.client.put(
+        f"/api/v1/chats/{chat_id}/mute/", headers=api.auth(t1)
+    )
     assert r.status_code == 200 and r.json()["muted"] is True
     assert await muted_flag(t1) is True
     # У собеседника mute не «протекает».
     assert await muted_flag(t2) is False
 
-    r = await api.client.delete(f"/api/v1/chats/{chat_id}/mute/", headers=api.auth(t1))
+    r = await api.client.delete(
+        f"/api/v1/chats/{chat_id}/mute/", headers=api.auth(t1)
+    )
     assert r.status_code == 200 and r.json()["muted"] is False
     assert await muted_flag(t1) is False
 
     # Не участник не может замьютить чужой чат.
-    r = await api.client.put(f"/api/v1/chats/{chat_id}/mute/", headers=api.auth(t3))
+    r = await api.client.put(
+        f"/api/v1/chats/{chat_id}/mute/", headers=api.auth(t3)
+    )
     assert r.status_code == 404
 
 
@@ -1027,7 +1064,9 @@ async def test_muted_chat_skips_push_recipients(
 
     captured: list[tuple[list[int], int, dict]] = []
 
-    def fake_enqueue(recipients: list[int], chat_id: int, payload: dict) -> None:
+    def fake_enqueue(
+        recipients: list[int], chat_id: int, payload: dict
+    ) -> None:
         captured.append((list(recipients), chat_id, payload))
 
     monkeypatch.setattr(
@@ -1035,7 +1074,9 @@ async def test_muted_chat_skips_push_recipients(
     )
 
     # u2 замьютил чат → в получателях push его нет.
-    r = await api.client.put(f"/api/v1/chats/{chat_id}/mute/", headers=api.auth(t2))
+    r = await api.client.put(
+        f"/api/v1/chats/{chat_id}/mute/", headers=api.auth(t2)
+    )
     assert r.status_code == 200
     await api.send(t1, chat_id, "привет в замьюченный чат")
     assert captured, "ожидали планирование push-рассылки"
@@ -1043,8 +1084,246 @@ async def test_muted_chat_skips_push_recipients(
     assert u2.id not in recipients
 
     # После снятия mute — u2 снова в получателях push.
-    r = await api.client.delete(f"/api/v1/chats/{chat_id}/mute/", headers=api.auth(t2))
+    r = await api.client.delete(
+        f"/api/v1/chats/{chat_id}/mute/", headers=api.auth(t2)
+    )
     assert r.status_code == 200
     await api.send(t1, chat_id, "привет после анмута")
     recipients, _, _ = captured[-1]
     assert u2.id in recipients
+
+
+# --- Групповые чаты -------------------------------------------------------
+
+
+async def _create_group(
+    api: _ApiCtx, token: str, name: str, user_ids: list[int]
+) -> dict:
+    """Создаёт группу и возвращает её карточку."""
+    response = await api.client.post(
+        "/api/v1/chats/groups/",
+        json={"name": name, "user_ids": user_ids},
+        headers=api.auth(token),
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+async def _my_chats(api: _ApiCtx, token: str) -> list[dict]:
+    response = await api.client.get("/api/v1/chats/", headers=api.auth(token))
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+async def _chat_detail(api: _ApiCtx, token: str, chat_id: int) -> dict:
+    response = await api.client.get(
+        f"/api/v1/chats/{chat_id}/", headers=api.auth(token)
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+async def test_group_create_and_visible_to_members(
+    api: _ApiCtx,
+) -> None:
+    """Создание группы: создатель, состав, видимость у всех участников."""
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    u3 = await api.make_user()
+    t1 = await api.token_for(u1)
+    t2 = await api.token_for(u2)
+    t3 = await api.token_for(u3)
+
+    chat = await _create_group(api, t1, "Команда", [u2.id, u3.id])
+    assert chat["is_group"] is True
+    assert chat["my_role"] == "creator"
+    assert chat["member_count"] == 3
+    assert len(chat["users"]) == 3
+
+    # Участники видят группу в своём списке.
+    for token in (t2, t3):
+        mine = await _my_chats(api, token)
+        group = next((c for c in mine if c["id"] == chat["id"]), None)
+        assert group is not None
+        assert group["is_group"] is True
+        assert group["my_role"] == "member"
+        assert group["member_count"] == 3
+
+    # Посторонний не видит группу.
+    outsider = await api.make_user()
+    mine = await _my_chats(api, await api.token_for(outsider))
+    assert all(c["id"] != chat["id"] for c in mine)
+
+
+async def test_group_detail_roles_and_update_permissions(
+    api: _ApiCtx,
+) -> None:
+    """Карточка группы: роли; редактирование — только создатель/админ."""
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    u3 = await api.make_user()
+    t1 = await api.token_for(u1)
+    t3 = await api.token_for(u3)
+
+    chat = await _create_group(api, t1, "Чат", [u2.id, u3.id])
+    detail = await _chat_detail(api, t1, chat["id"])
+    assert len(detail["members"]) == 3
+    roles = {m["id"]: m["role"] for m in detail["members"]}
+    assert roles[u1.id] == "creator"
+    assert roles[u2.id] == "member"
+
+    # Обычный участник не может менять название.
+    r = await api.client.patch(
+        f"/api/v1/chats/{chat['id']}/",
+        json={"name": "Нельзя"},
+        headers=api.auth(t3),
+    )
+    assert r.status_code == 403
+
+    # Создатель меняет название и описание.
+    r = await api.client.patch(
+        f"/api/v1/chats/{chat['id']}/",
+        json={"name": "Новое имя", "description": "Описание группы"},
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["name"] == "Новое имя"
+    assert body["description"] == "Описание группы"
+
+
+async def test_group_add_remove_promote(api: _ApiCtx) -> None:
+    """Управление составом: добавление, исключение, назначение админа."""
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    u3 = await api.make_user()
+    u4 = await api.make_user()
+    t1 = await api.token_for(u1)
+    t2 = await api.token_for(u2)
+    t3 = await api.token_for(u3)
+
+    chat = await _create_group(api, t1, "Группа", [u2.id])
+
+    # Создатель добавляет u3.
+    r = await api.client.post(
+        f"/api/v1/chats/{chat['id']}/members/",
+        json={"user_ids": [u3.id]},
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["member_count"] == 3
+    # Добавленный участник (u3) видит группу в своём списке.
+    mine = await _my_chats(api, t3)
+    assert any(c["id"] == chat["id"] for c in mine)
+
+    # Обычный участник (u2) не может добавлять.
+    r = await api.client.post(
+        f"/api/v1/chats/{chat['id']}/members/",
+        json={"user_ids": [u4.id]},
+        headers=api.auth(t2),
+    )
+    assert r.status_code == 403
+
+    # Создатель назначает u2 админом.
+    r = await api.client.patch(
+        f"/api/v1/chats/{chat['id']}/members/{u2.id}/role/",
+        json={"role": "admin"},
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 204
+    detail = await _chat_detail(api, t1, chat["id"])
+    roles = {m["id"]: m["role"] for m in detail["members"]}
+    assert roles[u2.id] == "admin"
+
+    # Админ исключает обычного участника u3.
+    r = await api.client.delete(
+        f"/api/v1/chats/{chat['id']}/members/{u3.id}/",
+        headers=api.auth(t2),
+    )
+    assert r.status_code == 204
+    detail = await _chat_detail(api, t1, chat["id"])
+    member_ids = {m["id"] for m in detail["members"]}
+    assert u3.id not in member_ids
+    # Исключённый больше не видит группу в списке.
+    mine = await _my_chats(api, t3)
+    assert all(c["id"] != chat["id"] for c in mine)
+
+    # Админ не может исключить создателя.
+    r = await api.client.delete(
+        f"/api/v1/chats/{chat['id']}/members/{u1.id}/",
+        headers=api.auth(t2),
+    )
+    assert r.status_code == 400
+
+
+async def test_group_send_unread_and_read(api: _ApiCtx) -> None:
+    """Групповые сообщения и счётчик непрочитанных по курсору участника."""
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    t1 = await api.token_for(u1)
+    t2 = await api.token_for(u2)
+
+    chat = await _create_group(api, t1, "Рассылка", [u2.id])
+
+    await api.send(t1, chat["id"], "всем привет")
+    mine = await _my_chats(api, t2)
+    group = next(c for c in mine if c["id"] == chat["id"])
+    assert group["unread_count"] == 1
+
+    # Чтение истории участником сбрасывает его курсор.
+    msgs = await api.list_messages(t2, chat["id"])
+    assert len(msgs) == 1
+    mine = await _my_chats(api, t2)
+    group = next(c for c in mine if c["id"] == chat["id"])
+    assert group["unread_count"] == 0
+    # У автора никогда не было непрочитанных.
+    mine = await _my_chats(api, t1)
+    group = next(c for c in mine if c["id"] == chat["id"])
+    assert group["unread_count"] == 0
+
+
+async def test_group_leave_and_delete_rules(api: _ApiCtx) -> None:
+    """Выход из группы и удаление группы — только создатель удаляет целиком."""
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    u3 = await api.make_user()
+    t1 = await api.token_for(u1)
+    t2 = await api.token_for(u2)
+    t3 = await api.token_for(u3)
+
+    chat = await _create_group(api, t1, "Общая", [u2.id, u3.id])
+
+    # Создатель не может «выйти» при наличии участников.
+    r = await api.client.delete(
+        f"/api/v1/chats/{chat['id']}/", headers=api.auth(t1)
+    )
+    assert r.status_code == 400
+
+    # Участник выходит — состав обновляется, чат остаётся.
+    r = await api.client.delete(
+        f"/api/v1/chats/{chat['id']}/", headers=api.auth(t3)
+    )
+    assert r.status_code == 204
+    detail = await _chat_detail(api, t1, chat["id"])
+    member_ids = {m["id"] for m in detail["members"]}
+    assert u3.id not in member_ids and u2.id in member_ids
+
+    # Обычный участник не может удалить группу «для всех».
+    r = await api.client.delete(
+        f"/api/v1/chats/{chat['id']}/",
+        params={"for_all": "true"},
+        headers=api.auth(t2),
+    )
+    assert r.status_code == 403
+
+    # Создатель удаляет группу целиком → остальные получают 404.
+    r = await api.client.delete(
+        f"/api/v1/chats/{chat['id']}/",
+        params={"for_all": "true"},
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 204
+    r = await api.client.get(
+        f"/api/v1/chats/{chat['id']}/", headers=api.auth(t2)
+    )
+    assert r.status_code == 404

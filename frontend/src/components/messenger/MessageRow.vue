@@ -33,6 +33,8 @@
       @click.stop="onSelectClick"
     ></div>
     <div class="msg-bubble" :class="{ 'round-video-only': isRoundVideoOnly(message) }">
+      <!-- Имя автора в групповом чате (у входящих, в начале «серии» сообщений) -->
+      <span v-if="authorName && !isOwn" class="msg-author">{{ authorName }}</span>
       <!-- Плашка «Переслано от …» (клик — открыть автора) -->
       <div
         v-if="forwardLabel"
@@ -248,6 +250,8 @@ const props = defineProps<{
   selected: boolean
   /** Можно ли выбрать (обычные сообщения, не отметки о звонках). */
   selectable: boolean
+  /** Имя автора (для групповых чатов; пусто — не показывать). */
+  authorName?: string
 }>()
 
 /** Текст плашки «Переслано от …» (null, если сообщение не переслано). */
@@ -519,6 +523,17 @@ const onDelete = () => {
 .msg.in .msg-bubble {
   background: #ffffff;
   border-top-left-radius: 3px;
+}
+
+/* Имя автора в групповом чате (в начале «серии» сообщений собеседника) */
+.msg.in .msg-author {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--ms-accent, #2ea25e);
+  margin-bottom: 3px;
+  user-select: none;
 }
 
 /* Пузырь, где лежит только «кружок»-видеосообщение, — без фона и отступов */

@@ -25,6 +25,14 @@ export type RealtimeEvent =
       kind: string
     }
   | { type: 'chat.new'; chat_id: number; user_id: number }
+  | { type: 'chat.removed'; chat_id: number; user_id: number }
+  | {
+      type: 'chat.updated'
+      chat_id: number
+      user_id?: number
+      action?: string
+      role?: string
+    }
   | { type: 'chat.read'; chat_id: number; reader_id: number }
   | { type: 'presence'; user_id: number; online: boolean; last_seen: string | null }
   | { type: 'typing'; chat_id: number; user_id: number }

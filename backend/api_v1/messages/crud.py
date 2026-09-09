@@ -8,7 +8,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from api_v1.chats.crud import is_user_chat_member
+from api_v1.chats.crud import is_group_chat, is_user_chat_member, mark_group_chat_read
 from api_v1.events.service import notify_chat
 from core.models import (
     Chat,
@@ -318,18 +318,25 @@ async def list_chat_messages(
     """
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
 
-    # Помечаем сообщения собеседника прочитанными
-    update_result = await session.execute(
-        update(Message)
-        .where(
-            Message.chat_id == chat_id,
-            Message.user_id != user_id,
-            Message.is_read.is_(False),
+    # В группе нет общего флага прочтения — у каждого участника свой курсор
+    # (last_read_message_id). В личном чате помечаем сообщения собеседника
+    # прочитанными (галочки ✓✓ у отправителя).
+    if await is_group_chat(session, chat_id):
+        marked_read = await mark_group_chat_read(
+            session, chat_id=chat_id, user_id=user_id
         )
-        .values(is_read=True)
-    )
-    await session.commit()
-    marked_read = (update_result.rowcount or 0) > 0
+    else:
+        update_result = await session.execute(
+            update(Message)
+            .where(
+                Message.chat_id == chat_id,
+                Message.user_id != user_id,
+                Message.is_read.is_(False),
+            )
+            .values(is_read=True)
+        )
+        await session.commit()
+        marked_read = (update_result.rowcount or 0) > 0
 
     stmt = select(Message).where(Message.chat_id == chat_id)
     if before_id is not None:
@@ -344,7 +351,8 @@ async def list_chat_messages(
     rows = list(result.scalars().all())
     rows.reverse()
     items = [message_to_dict(message, user_id) for message in rows]
-    if marked_read:
+    # «chat.read» нужен только для личных чатов (обновление галочек у отправителя).
+    if marked_read and not await is_group_chat(session, chat_id):
         await notify_chat(
             session,
             chat_id=chat_id,
@@ -361,18 +369,24 @@ async def list_chat_messages(
 async def mark_chat_read(session: AsyncSession, *, chat_id: int, user_id: int) -> bool:
     """Помечает все входящие сообщения чата прочитанными (без выгрузки истории)."""
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
-    result = await session.execute(
-        update(Message)
-        .where(
-            Message.chat_id == chat_id,
-            Message.user_id != user_id,
-            Message.is_read.is_(False),
+    if await is_group_chat(session, chat_id):
+        marked_read = await mark_group_chat_read(
+            session, chat_id=chat_id, user_id=user_id
         )
-        .values(is_read=True)
-    )
-    await session.commit()
-    marked_read = (result.rowcount or 0) > 0
-    if marked_read:
+    else:
+        result = await session.execute(
+            update(Message)
+            .where(
+                Message.chat_id == chat_id,
+                Message.user_id != user_id,
+                Message.is_read.is_(False),
+            )
+            .values(is_read=True)
+        )
+        await session.commit()
+        marked_read = (result.rowcount or 0) > 0
+    # «chat.read» нужен только для личных чатов (обновление галочек у отправителя).
+    if marked_read and not await is_group_chat(session, chat_id):
         await notify_chat(
             session,
             chat_id=chat_id,

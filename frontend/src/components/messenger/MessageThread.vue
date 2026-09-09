@@ -25,6 +25,7 @@
           :selection-mode="selectionMode"
           :selected="selectedMessageIds.includes(row.message.id)"
           :selectable="row.message.kind !== 'call'"
+          :author-name="authorNameFor(row, index)"
           @quote-click="emit('quote-click', row.message)"
           @select-start="emit('select-start', row.message)"
           @toggle-select="emit('toggle-select', row.message)"
@@ -63,8 +64,9 @@
 
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
-import type { Message } from '@/types'
+import type { ChatUser, Message } from '@/types'
 import type { MessageRow as ThreadRow } from '@/utils/thread'
+import { displayName } from '@/utils/user'
 import MessageRow from '@/components/messenger/MessageRow.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 
@@ -95,6 +97,10 @@ const props = defineProps<{
   selectedMessageIds: number[]
   /** Вложения, которые сейчас отправляются (показываются внизу ленты). */
   pending?: PendingUpload[]
+  /** Групповой ли открытый чат (показываем имена авторов). */
+  isGroupChat?: boolean
+  /** Участники группы (для имён авторов сообщений). */
+  members?: ChatUser[]
 }>()
 
 const emit = defineEmits<{
@@ -117,6 +123,24 @@ const emit = defineEmits<{
 }>()
 
 const containerRef = ref<HTMLElement | null>(null)
+
+// ---------- Имена авторов в групповых чатах ----------
+// Показываем имя в начале «серии» сообщений собеседника: предыдущее сообщение
+// от другого автора, разделитель дня или пауза > 5 минут.
+const GROUP_BURST_MS = 5 * 60 * 1000
+
+const authorNameFor = (row: ThreadRow, index: number): string => {
+  if (!props.isGroupChat || row.kind !== 'message') return ''
+  const message = row.message
+  if (message.kind === 'call' || message.user_id === props.currentUserId) return ''
+  const prev = index > 0 ? props.rows[index - 1] : null
+  if (prev && prev.kind === 'message' && prev.message.user_id === message.user_id) {
+    const gap = new Date(message.timestamp).getTime() - new Date(prev.message.timestamp).getTime()
+    if (!Number.isNaN(gap) && gap < GROUP_BURST_MS) return ''
+  }
+  const member = props.members?.find((user) => user.id === message.user_id)
+  return member ? displayName(member) : ''
+}
 
 const onScroll = () => {
   const container = containerRef.value

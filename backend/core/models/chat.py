@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import func
+from sqlalchemy import ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .associations import user_chat_association_table
@@ -25,6 +25,18 @@ class Chat(IdIntPkMixin, Base):
     )
     # «Сохранённые сообщения» — личный чат с собой; нельзя удалить.
     is_self: Mapped[bool] = mapped_column(default=False, server_default=func.false())
+    # Групповой чат: True — общий чат многих участников (роли, добавление/
+    # исключение участников); False — личный (парный) чат или «Сохранённые».
+    is_group: Mapped[bool] = mapped_column(default=False, server_default=func.false())
+    # Аватар группового чата (путь /media/...); у личных чатов не заполняется.
+    avatar_url: Mapped[str | None] = mapped_column(nullable=True, server_default=None)
+    # Описание группы (видно в карточке чата).
+    description: Mapped[str | None] = mapped_column(nullable=True)
+    # Создатель группового чата (не null для групп). Удаляется (SET NULL), если
+    # аккаунт создателя удалили, — группа при этом продолжает жить.
+    creator_id: Mapped[int | None] = mapped_column(
+        ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+    )
 
     users: Mapped[list["User"]] = relationship(
         "User",
@@ -32,6 +44,13 @@ class Chat(IdIntPkMixin, Base):
         primaryjoin="Chat.id == chat_user_association.c.chat_id",
         secondaryjoin="User.id == chat_user_association.c.user_id",
         back_populates="chats",
+    )
+
+    creator: Mapped["User | None"] = relationship(
+        "User",
+        primaryjoin="Chat.creator_id == User.id",
+        foreign_keys="Chat.creator_id",
+        viewonly=True,
     )
 
     messages: Mapped[list["Message"]] = relationship(

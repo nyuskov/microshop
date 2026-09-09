@@ -1,7 +1,14 @@
 export { mediaUrl } from '@/config'
 
 import { api } from './api'
-import type { Chat, Message, CreateMessageRequest, OpenPrivateChatRequest } from '@/types'
+import type {
+  Chat,
+  ChatDetail,
+  Message,
+  CreateMessageRequest,
+  CreateGroupRequest,
+  OpenPrivateChatRequest
+} from '@/types'
 
 export interface SearchUserResult {
   id: number
@@ -22,6 +29,74 @@ export const fetchMyChats = async (): Promise<Chat[]> => {
 export const openPrivateChat = async (userId: number): Promise<Chat> => {
   const payload: OpenPrivateChatRequest = { user_id: userId }
   const response = await api.post<Chat>('/chats/private/', payload)
+  return response.data
+}
+
+/** Создаёт групповой чат. */
+export const createGroupChat = async (
+  name: string,
+  userIds: number[],
+  description?: string | null
+): Promise<Chat> => {
+  const payload: CreateGroupRequest = {
+    name,
+    user_ids: userIds,
+    ...(description != null ? { description } : {})
+  }
+  const response = await api.post<Chat>('/chats/groups/', payload)
+  return response.data
+}
+
+/** Возвращает карточку чата с участниками и их ролями. */
+export const fetchChatDetail = async (chatId: number): Promise<ChatDetail> => {
+  const response = await api.get<ChatDetail>(`/chats/${chatId}/`)
+  return response.data
+}
+
+/** Меняет название/описание группы. */
+export const updateGroupInfo = async (
+  chatId: number,
+  data: { name?: string; description?: string | null }
+): Promise<Chat> => {
+  const response = await api.patch<Chat>(`/chats/${chatId}/`, data)
+  return response.data
+}
+
+/** Добавляет участников в группу. */
+export const addGroupMembers = async (chatId: number, userIds: number[]): Promise<Chat> => {
+  const response = await api.post<Chat>(`/chats/${chatId}/members/`, {
+    user_ids: userIds
+  })
+  return response.data
+}
+
+/** Исключает участника из группы. */
+export const removeGroupMember = async (chatId: number, userId: number): Promise<void> => {
+  await api.delete(`/chats/${chatId}/members/${userId}/`)
+}
+
+/** Назначает/снимает админа группы (role: 'admin' | 'member'). */
+export const setGroupMemberRole = async (
+  chatId: number,
+  userId: number,
+  role: 'admin' | 'member'
+): Promise<void> => {
+  await api.patch(`/chats/${chatId}/members/${userId}/role/`, { role })
+}
+
+/** Загружает аватар группы (raw-байты, ext — расширение файла). */
+export const uploadGroupAvatar = async (chatId: number, file: File): Promise<Chat> => {
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'png'
+  const response = await api.post<Chat>(`/chats/${chatId}/avatar/`, file, {
+    params: { ext },
+    headers: { 'Content-Type': file.type || 'application/octet-stream' }
+  })
+  return response.data
+}
+
+/** Удаляет аватар группы. */
+export const removeGroupAvatar = async (chatId: number): Promise<Chat> => {
+  const response = await api.delete<Chat>(`/chats/${chatId}/avatar/`)
   return response.data
 }
 
