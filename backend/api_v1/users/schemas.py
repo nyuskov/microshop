@@ -89,9 +89,9 @@ class UserWithDetailsSchema(BaseModel):
     profile: ProfileSchema | None
     chats: list[ChatSchema] = Field(default_factory=list)
 
-    _empty_str_to_none = field_validator(
-        "first_name", "last_name", mode="before"
-    )(_empty_str_to_none)
+    _empty_str_to_none = field_validator("first_name", "last_name", mode="before")(
+        _empty_str_to_none
+    )
 
 
 class UserUpdateWithProfileSchema(BaseModel):
@@ -125,9 +125,9 @@ class CreateUser(BaseModel):
             raise ValueError("Неверный формат номера телефона")
         return value
 
-    _empty_str_to_none = field_validator(
-        "first_name", "last_name", mode="before"
-    )(_empty_str_to_none)
+    _empty_str_to_none = field_validator("first_name", "last_name", mode="before")(
+        _empty_str_to_none
+    )
 
 
 class UserCreatedResponseSchema(BaseModel):

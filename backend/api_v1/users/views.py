@@ -51,9 +51,7 @@ async def search_users(
         window_seconds=60,
         detail="Слишком много запросов. Попробуйте позже.",
     )
-    return await crud.search_users_by_query(
-        session, query, exclude_user_id=user.id
-    )
+    return await crud.search_users_by_query(session, query, exclude_user_id=user.id)
 
 
 @router.get("/contacts/", response_model=list[schemas.UserSearchResultSchema])
@@ -65,9 +63,7 @@ async def get_contacts(
     return await crud.get_contacts(session, exclude_user_id=user.id)
 
 
-@router.post(
-    "/match-by-phone/", response_model=list[schemas.UserSearchResultSchema]
-)
+@router.post("/match-by-phone/", response_model=list[schemas.UserSearchResultSchema])
 async def match_users_by_phone(
     payload: schemas.PhoneMatchRequest,
     user: User = Depends(get_current_user),
