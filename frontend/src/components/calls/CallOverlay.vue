@@ -171,12 +171,19 @@ const noticeVisible = ref(false)
 let noticeTimer: ReturnType<typeof setTimeout> | undefined
 let attachTimer: ReturnType<typeof setInterval> | undefined
 
-// «Громкая связь»: по умолчанию обычная громкость, кнопкой — на максимум.
+// «Громкая связь»: по умолчанию тихо (ближе к «к уху»), кнопкой — на максимум.
+// В видео-звонке звук собеседника играет сам <video>, поэтому громкость
+// применяем именно к нему (иначе отдельный <audio> дублировал бы звук).
+const EARP_VOLUME = 0.35
 const speakerOn = ref(false)
 
+const activeRemoteAudio = (): HTMLMediaElement | null =>
+  callStore.kind === 'video' ? remoteVideoEl.value : remoteAudioEl.value
+
 const applySpeaker = () => {
-  if (remoteAudioEl.value) {
-    remoteAudioEl.value.volume = speakerOn.value ? 1 : 0.55
+  const el = activeRemoteAudio()
+  if (el) {
+    el.volume = speakerOn.value ? 1 : EARP_VOLUME
   }
 }
 
@@ -218,12 +225,25 @@ let lastRemoteVideoTracks = 0
 
 const attachStreams = () => {
   const remote = callStore.getRemoteStream()
-  if (remoteAudioEl.value && remoteAudioEl.value.srcObject !== remote) {
-    remoteAudioEl.value.srcObject = remote
+  const isVideo = callStore.kind === 'video'
+
+  // Аудио собеседника играет РОВНО один элемент: в видео-звонке — сам <video>
+  // (в нём есть и звук), отдельный <audio> в этом случае не дублирует вывод
+  // (двойное воспроизведение давало эхо/«фон» и мешало регулировке громкости).
+  const audioEl = remoteAudioEl.value
+  if (audioEl) {
+    audioEl.muted = isVideo
+    if (isVideo) {
+      if (audioEl.srcObject) audioEl.srcObject = null
+    } else if (audioEl.srcObject !== remote) {
+      audioEl.srcObject = remote
+    }
+    ensurePlaying(audioEl)
   }
+
   const remoteVideo = remoteVideoEl.value
   const videoTracks = remote ? remote.getVideoTracks().length : 0
-  if (remoteVideo) {
+  if (isVideo && remoteVideo) {
     const needsBind =
       remoteVideo.srcObject !== remote ||
       // Видеотрек мог прийти позже аудио — пере-привязываем, чтобы «проснуться».
@@ -235,12 +255,12 @@ const attachStreams = () => {
     ensurePlaying(remoteVideo)
   }
   lastRemoteVideoTracks = videoTracks
+
   const local = callStore.getLocalStream()
   if (localVideoEl.value && localVideoEl.value.srcObject !== local) {
     localVideoEl.value.srcObject = local
   }
   ensurePlaying(localVideoEl.value)
-  ensurePlaying(remoteAudioEl.value)
   applySpeaker()
 }
 

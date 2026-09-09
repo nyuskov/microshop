@@ -679,10 +679,24 @@ export const useCallStore = defineStore('call', {
         }
       }
       connection.ontrack = (event) => {
-        if (event.streams && event.streams[0]) {
-          remoteMedia = event.streams[0]
-        } else {
-          remoteMedia = new MediaStream([event.track])
+        // Собираем удалённый поток надёжно: не затираем уже пришедшие треки
+        // последним событием (иначе на части браузеров остаётся только аудио
+        // или только видео — видео собеседника «не видно»).
+        const incoming = event.streams && event.streams[0]
+        let stream = remoteMedia
+        if (!stream) {
+          stream = new MediaStream()
+          remoteMedia = stream
+        }
+        if (incoming && incoming !== stream) {
+          incoming.getTracks().forEach((track) => {
+            if (!stream.getTracks().includes(track)) {
+              stream.addTrack(track)
+            }
+          })
+        }
+        if (!stream.getTracks().includes(event.track)) {
+          stream.addTrack(event.track)
         }
       }
     }
