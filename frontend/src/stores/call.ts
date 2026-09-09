@@ -71,59 +71,71 @@ function stopRingtone() {
   }
 }
 
-type RingStep = { f: number; d: number }
+type RingNote = { at: number; f: number; d: number; vol?: number }
 
-/** Мелодия входящего звонка — мягкий восходящий перезвон (не «пиканье»). */
-const INCOMING_RING: RingStep[] = [
-  { f: 659.25, d: 0.16 }, // E5
-  { f: 783.99, d: 0.16 }, // G5
-  { f: 987.77, d: 0.16 }, // B5
-  { f: 1318.51, d: 0.55 } // E6
+/**
+ * Входящий звонок — полифоничный «маримбовый» перезвон (оригинальная фраза):
+ * мелодия E5→G5→A5→B5→D6→E6 с низким басом и «эхом».
+ */
+const INCOMING_RING: RingNote[] = [
+  { at: 0.0, f: 659.25, d: 0.8, vol: 0.5 }, // E5
+  { at: 0.0, f: 164.81, d: 1.5, vol: 0.3 }, // E3 (бас)
+  { at: 0.16, f: 783.99, d: 0.8, vol: 0.42 }, // G5
+  { at: 0.32, f: 880.0, d: 0.8, vol: 0.42 }, // A5
+  { at: 0.48, f: 987.77, d: 0.9, vol: 0.44 }, // B5
+  { at: 0.64, f: 1174.66, d: 0.9, vol: 0.4 }, // D6
+  { at: 0.84, f: 1318.51, d: 1.0, vol: 0.42 }, // E6
+  { at: 1.16, f: 987.77, d: 0.7, vol: 0.28 }, // эхо B5
+  { at: 1.34, f: 880.0, d: 0.7, vol: 0.26 }, // эхо A5
+  { at: 1.52, f: 783.99, d: 0.8, vol: 0.26 }, // эхо G5
+  { at: 1.72, f: 659.25, d: 1.0, vol: 0.28 }, // эхо E5
+  { at: 1.72, f: 164.81, d: 1.7, vol: 0.24 } // E3 (бас)
 ]
-/** Гудки «вызова» для звонящего — мягкий спокойный тон. */
-const OUTGOING_RING: RingStep[] = [
-  { f: 523.25, d: 0.3 }, // C5
-  { f: 523.25, d: 0.3 }
+/** Гудки «вызова» для звонящего — мягкая пара маримбовых нот. */
+const OUTGOING_RING: RingNote[] = [
+  { at: 0.0, f: 523.25, d: 0.6, vol: 0.4 }, // C5
+  { at: 0.0, f: 130.81, d: 1.1, vol: 0.24 }, // C3 (низ)
+  { at: 0.62, f: 523.25, d: 0.6, vol: 0.4 } // C5
 ]
 
-/** Нота-«колокольчик»: тёплый треугольник + мягкая октавная гармоника. */
-function ringNote(freq: number, start: number, duration: number, volume: number) {
+/**
+ * Нота в стиле маримбы: сильная основная + «бьющая» партиала ~4× (даёт
+ * характерное дребезжание деревянного барового инструмента) + яркий верх.
+ */
+function marimbaNote(freq: number, when: number, dur: number, volume: number) {
   if (!audioContext) return
-  const play = (type: OscillatorType, f: number, vol: number, decay: number) => {
-    const ctx = audioContext as AudioContext
+  const ctx = audioContext as AudioContext
+  const part = (ratio: number, rel: number, decay: number, type: OscillatorType = 'sine') => {
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
     osc.type = type
-    osc.frequency.value = f
-    gain.gain.setValueAtTime(0.0001, start)
-    gain.gain.exponentialRampToValueAtTime(vol, start + 0.012)
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration * decay)
+    osc.frequency.value = freq * ratio
+    const peak = Math.max(0.0002, volume * rel)
+    gain.gain.setValueAtTime(0.0001, when)
+    gain.gain.exponentialRampToValueAtTime(peak, when + 0.005)
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + dur * decay)
     osc.connect(gain)
     gain.connect(ctx.destination)
-    osc.start(start)
-    osc.stop(start + duration + 0.05)
+    osc.start(when)
+    osc.stop(when + dur + 0.04)
   }
-  play('triangle', freq, volume, 1)
-  play('sine', freq * 2, volume * 0.22, 0.8)
+  part(1, 1, 1) // фундаментал
+  part(3.98, 0.45, 0.8) // «бьющая» партиала
+  part(9.2, 0.14, 0.6) // яркий верх
 }
 
-/** Проигрывает мелодию по кругу (между повторами — короткая пауза). */
-function playMelody(steps: RingStep[], volume: number) {
+/** Играет полифоничную фразу (ноты могут перекрываться) и повторяет её. */
+function scheduleRing(notes: RingNote[], loopMs: number) {
   if (ringTimer !== undefined) {
     window.clearTimeout(ringTimer)
   }
   ringTimer = window.setTimeout(function tick() {
     const ctx = audioContext
     if (!ctx) return
-    const start = ctx.currentTime + 0.06
-    let cursor = start
-    steps.forEach((s) => {
-      ringNote(s.f, cursor, s.d, volume)
-      cursor += s.d + 0.09
-    })
-    const periodMs = (cursor - start + 0.7) * 1000
-    ringTimer = window.setTimeout(tick, periodMs)
-  }, 120)
+    const base = ctx.currentTime + 0.08
+    notes.forEach((n) => marimbaNote(n.f, base + n.at, n.d, n.vol ?? 0.4))
+    ringTimer = window.setTimeout(tick, loopMs)
+  }, 150)
 }
 
 /** Лёгкая вибрация при входящем звонке (Android, когда страница видима). */
@@ -170,11 +182,11 @@ function startRingtone(kind: 'outgoing' | 'incoming') {
     audioContext = new Ctor()
     bindAudioUnlockOnce()
     resumeAudioIfSuspended()
-    // Входящий — приятный перезвон; исходящему — мягкие гудки.
+    // Входящий — полифоничный маримбовый перезвон; исходящему — мягкие гудки.
     if (kind === 'outgoing') {
-      playMelody(OUTGOING_RING, 0.1)
+      scheduleRing(OUTGOING_RING, 2200)
     } else {
-      playMelody(INCOMING_RING, 0.16)
+      scheduleRing(INCOMING_RING, 3600)
       vibrateRing()
     }
   } catch {

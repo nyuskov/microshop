@@ -16,7 +16,7 @@
  */
 
 const CACHE_PREFIX = 'microshop-v'
-const CACHE_VERSION = 6
+const CACHE_VERSION = 8
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 
 self.addEventListener('install', (event) => {
@@ -135,6 +135,10 @@ self.addEventListener('push', (event) => {
       { action: 'answer', title: 'Ответить' },
       { action: 'decline', title: 'Отклонить' }
     ]
+  } else if (data.type === 'message' && chatId) {
+    // Уведомление о сообщении: нейтральная кнопка «Пометить как прочитанное»
+    // (тап по телу уведомления открывает чат).
+    options.actions = [{ action: 'mark-read', title: 'Пометить как прочитанное' }]
   }
   event.waitUntil(self.registration.showNotification(title, options))
 })
@@ -162,23 +166,27 @@ self.addEventListener('notificationclick', (event) => {
           }
         }
         // Приложение было полностью закрыто — открываем прямо к экрану звонка
-        // (?call/<peer>); сам offer доставит WS после подключения (park_offer).
+        // (?call/<peer>&action=…); сам offer доставит WS после подключения
+        // (park_offer), а действие выполнит приложение.
         const callUrl =
           '/?call=' +
           encodeURIComponent(data.call_id || '') +
           '&peer=' +
-          encodeURIComponent(data.peer_id || '')
+          encodeURIComponent(data.peer_id || '') +
+          '&action=' +
+          encodeURIComponent(action)
         await self.clients.openWindow(callUrl)
         return
       }
 
-      // Уведомление о сообщении: фокусируем окно и открываем нужный чат.
+      // Уведомление о сообщении: «Пометить как прочитанное» либо открыть чат.
+      const markRead = action === 'mark-read'
       for (const client of windows) {
         if ('focus' in client) {
           client.focus()
           if (data.type === 'message' && data.chat_id) {
             client.postMessage({
-              type: 'open-chat',
+              type: markRead ? 'mark-chat-read' : 'open-chat',
               chat_id: data.chat_id,
               message_id: data.message_id || null
             })
@@ -186,13 +194,15 @@ self.addEventListener('notificationclick', (event) => {
           return
         }
       }
-      // Приложение закрыто — открываем и передаём id чата в URL (?chat=).
+      // Приложение закрыто — открываем и передаём id чата в URL.
       const url =
-        data.type === 'message' && data.chat_id ? '/?chat=' + encodeURIComponent(data.chat_id) : '/'
+        data.type === 'message' && data.chat_id
+          ? '/?chat=' + encodeURIComponent(data.chat_id) + (markRead ? '&markread=1' : '')
+          : '/'
       const win = await self.clients.openWindow(url)
       if (win && data.type === 'message' && data.chat_id) {
         win.postMessage({
-          type: 'open-chat',
+          type: markRead ? 'mark-chat-read' : 'open-chat',
           chat_id: data.chat_id,
           message_id: data.message_id || null
         })

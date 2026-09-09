@@ -1916,10 +1916,13 @@ const ready = computed(() => authStore.isAuthenticated && currentUserId.value !=
 // полноэкранный «Входящий звонок…», чтобы не «моргал» список чатов.
 // Если offer так и не пришёл (вызов сброшен/истёк) — «Вызов завершён».
 type CallLaunchScreen = 'none' | 'ring' | 'missed'
-const callLaunch = ref<{ callId: string; peerId: number } | null>(null)
+const callLaunch = ref<{ callId: string; peerId: number; action?: string } | null>(null)
 const callLaunchScreen = ref<CallLaunchScreen>('none')
 let callLaunchTimer: ReturnType<typeof setTimeout> | undefined
 const CALL_LAUNCH_WAIT_MS = 15_000
+// Действие из push-уведомления, ожидающее доставки offer (см. watcher'ы ниже).
+let autoAnswerPending = false
+let autoDeclinePending = false
 
 /** Имя собеседника для экрана «Входящий звонок…». */
 const callLaunchPeerName = computed<string>(() => {
@@ -1948,6 +1951,8 @@ const showCallLaunchRing = () => {
     if (callLaunchScreen.value !== 'ring') return
     callLaunchScreen.value = 'missed'
     callStore.stopRinging()
+    autoAnswerPending = false
+    autoDeclinePending = false
     callLaunchTimer = window.setTimeout(() => {
       callLaunchScreen.value = 'none'
       callLaunch.value = null
@@ -1960,6 +1965,8 @@ const showCallLaunchRing = () => {
 const dismissCallLaunch = () => {
   const launch = callLaunch.value
   if (launch) callStore.declineCallTo(launch.peerId, launch.callId)
+  autoAnswerPending = false
+  autoDeclinePending = false
   callLaunch.value = null
   stopCallLaunchScreen()
 }
@@ -1973,7 +1980,15 @@ watch(
       await Promise.all([loadChats(), loadContacts()])
       startRealtime()
       void callStore.connect()
-      if (callLaunch.value) showCallLaunchRing()
+      if (callLaunch.value) {
+        // Действие из push: «Отклонить» — без экрана; «Ответить»/тело — экран звонка.
+        if (callLaunch.value.action === 'decline') {
+          autoDeclinePending = true
+        } else {
+          autoAnswerPending = callLaunch.value.action === 'answer'
+          showCallLaunchRing()
+        }
+      }
     } else {
       stopRealtime()
       callStore.disconnect()
@@ -2022,14 +2037,26 @@ onMounted(async () => {
   const launchParams = new URLSearchParams(window.location.search)
   const callIdParam = launchParams.get('call')
   const peerIdParam = launchParams.get('peer')
+  const actionParam = launchParams.get('action')
+  const markReadParam = launchParams.get('markread')
   if (callIdParam && peerIdParam && /^\d+$/.test(peerIdParam)) {
-    // Приложение открыли по звонку (?call=<id>&peer=<uid>).
-    callLaunch.value = { callId: callIdParam, peerId: Number(peerIdParam) }
+    // Приложение открыли по звонку (?call=<id>&peer=<uid>&action=…).
+    const launchAction =
+      actionParam === 'answer' || actionParam === 'decline' ? actionParam : 'focus'
+    callLaunch.value = {
+      callId: callIdParam,
+      peerId: Number(peerIdParam),
+      action: launchAction
+    }
   } else {
-    // Открыли через /?chat=<id>.
+    // Открыли через /?chat=<id> (возможно, с пометкой прочитанным).
     const chatParam = launchParams.get('chat')
     if (chatParam && /^\d+$/.test(chatParam)) {
-      void openChatFromPush(Number(chatParam))
+      if (markReadParam === '1') {
+        void markChatReadQuietly(Number(chatParam))
+      } else {
+        void openChatFromPush(Number(chatParam))
+      }
     }
   }
 })
@@ -2048,10 +2075,30 @@ const openChatFromPush = async (chatId: number) => {
   if (!isDesktop.value) drawerOpen.value = false
 }
 
+/**
+ * Тихо помечает чат прочитанным (кнопка push «Пометить как прочитанное»),
+ * не открывая сам чат.
+ */
+const markChatReadQuietly = async (chatId: number) => {
+  if (!authStore.isAuthenticated) return
+  try {
+    // GET истории сам помечает входящие чата прочитанными на сервере.
+    await fetchMessages(chatId)
+  } catch {
+    return
+  }
+  const chat = chats.value.find((c) => c.id === chatId)
+  if (chat) chat.unread_count = 0
+}
+
 /** Слушаем сообщения от service worker (клик по уведомлению). */
 const handleWindowMessage = (event: MessageEvent) => {
   const data = event.data as { type?: string; chat_id?: number; action?: string } | null
   if (!data) return
+  if (data.type === 'mark-chat-read' && typeof data.chat_id === 'number') {
+    void markChatReadQuietly(data.chat_id)
+    return
+  }
   if (data.type === 'open-chat' && typeof data.chat_id === 'number') {
     void openChatFromPush(data.chat_id)
     return
@@ -2163,6 +2210,22 @@ watch(
         callLaunchTimer = undefined
       }
       callLaunch.value = null
+    }
+  }
+)
+
+// Кнопки push-уведомления о звонке: когда offer доставлен (звонок «входящий»),
+// выполняем действие — «Ответить» принимает, «Отклонить» отклоняет.
+watch(
+  () => callStore.status,
+  (status) => {
+    if (status !== 'incoming') return
+    if (autoDeclinePending) {
+      autoDeclinePending = false
+      callStore.declineCall()
+    } else if (autoAnswerPending) {
+      autoAnswerPending = false
+      void callStore.acceptCall()
     }
   }
 )
