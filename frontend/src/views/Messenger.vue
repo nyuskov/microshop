@@ -321,7 +321,9 @@ import { mediaFileName, type RecordedMedia } from '@/services/recorder'
 import {
   disablePushNotifications,
   enablePushNotifications,
-  getPushPermission
+  getPushPermission,
+  showIncomingCallRing,
+  closeCallRings
 } from '@/services/pwa'
 
 const authStore = useAuthStore()
@@ -1624,6 +1626,7 @@ onMounted(async () => {
   await authStore.initializeApp()
   window.addEventListener('beforeunload', handleBeforeUnload)
   window.addEventListener('message', handleWindowMessage)
+  window.addEventListener('visibilitychange', handleCallVisibility)
   scrollToBottom()
 
   // Холодный старт по уведомлению: открыли через /?chat=<id>.
@@ -1649,14 +1652,26 @@ const openChatFromPush = async (chatId: number) => {
 
 /** Слушаем сообщения от service worker (клик по уведомлению). */
 const handleWindowMessage = (event: MessageEvent) => {
-  const data = event.data as { type?: string; chat_id?: number } | null
-  if (!data || data.type !== 'open-chat' || typeof data.chat_id !== 'number') return
-  void openChatFromPush(data.chat_id)
+  const data = event.data as { type?: string; chat_id?: number; action?: string } | null
+  if (!data) return
+  if (data.type === 'open-chat' && typeof data.chat_id === 'number') {
+    void openChatFromPush(data.chat_id)
+    return
+  }
+  if (data.type === 'call-notification') {
+    if (data.action === 'answer') {
+      void callStore.acceptCall()
+    } else if (data.action === 'decline') {
+      callStore.declineCall()
+    }
+    // data.action === 'focus' — окно просто вернули в фокус, оверлей звонка виден.
+  }
 }
 
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload)
   window.removeEventListener('message', handleWindowMessage)
+  window.removeEventListener('visibilitychange', handleCallVisibility)
   stopRealtime()
   realtimeStore.setHandler(null)
   if (highlightTimer !== undefined) {
@@ -1677,6 +1692,37 @@ watch(
   { immediate: true }
 )
 
+// ---------- Входящий звонок при свёрнутом приложении (системное уведомление) ----------
+// Если звонок пришёл, а приложение свёрнуто/в фоне — показываем системный
+// «будильник» (кнопки Ответить/Отклонить). Тап открывает приложение к звонку.
+const ringIncomingCallWhenHidden = () => {
+  if (!document.hidden) return
+  if (callStore.status !== 'incoming' || callStore.peerId === null || !callStore.callId) return
+  const peerName =
+    callStore.peerName && !callStore.peerName.startsWith('@') ? callStore.peerName : ''
+  void showIncomingCallRing({
+    title: peerName || 'Входящий звонок',
+    body: callStore.kind === 'video' ? 'Видеозвонок' : 'Аудиозвонок',
+    callId: callStore.callId,
+    peerId: callStore.peerId
+  })
+}
+
+/** Приложение свернули во время входящего звонка — тоже будим. */
+const handleCallVisibility = () => {
+  if (document.hidden) ringIncomingCallWhenHidden()
+}
+
+// Звонок ушёл из состояния «входящий» (принят/отменён/завершён) — убираем уведомление.
+watch(
+  () => callStore.status,
+  (status, prevStatus) => {
+    if (prevStatus === 'incoming' && status !== 'incoming') {
+      void closeCallRings()
+    }
+  }
+)
+
 // Обогащаем карточку собеседника (имя/аватар) при звонке из списка чатов/контактов.
 watch(
   [() => callStore.status, () => callStore.peerId],
@@ -1689,6 +1735,8 @@ watch(
         avatarUrl: peer.avatar_url ?? null
       })
     }
+    // Если приложение свёрнуто — показываем системное уведомление о звонке.
+    ringIncomingCallWhenHidden()
   },
   { immediate: true }
 )

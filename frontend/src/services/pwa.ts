@@ -174,3 +174,51 @@ export async function isPushSubscribed(): Promise<boolean> {
     return false
   }
 }
+
+// ---------- Входящие звонки: системное «будильник»-уведомление ----------
+
+/**
+ * Показывает системное уведомление о входящем звонке (когда приложение
+ * свёрнуто/в фоне): тап открывает приложение к экрану звонка, кнопки
+ * «Ответить»/«Отклонить» управляют звонком через service worker.
+ */
+export async function showIncomingCallRing(opts: {
+  title: string
+  body: string
+  callId: string
+  peerId: number
+}): Promise<void> {
+  try {
+    if (getPushPermission() !== 'granted') return
+    if (!('serviceWorker' in navigator)) return
+    const reg = await navigator.serviceWorker.ready
+    const options = {
+      body: opts.body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      tag: 'call-' + opts.callId,
+      requireInteraction: true,
+      // actions/renotify нет в старых типах NotificationOptions — приводим.
+      actions: [
+        { action: 'answer', title: 'Ответить' },
+        { action: 'decline', title: 'Отклонить' }
+      ],
+      data: { type: 'call', call_id: opts.callId, peer_id: opts.peerId }
+    }
+    await reg.showNotification(opts.title, options as unknown as NotificationOptions)
+  } catch {
+    /* уведомление не показалось — внутри приложения всё равно есть оверлей */
+  }
+}
+
+/** Закрывает системные уведомления о звонках (звонок принят/завершён). */
+export async function closeCallRings(): Promise<void> {
+  try {
+    if (!('serviceWorker' in navigator)) return
+    const reg = await navigator.serviceWorker.ready
+    const list = await reg.getNotifications()
+    list.filter((n) => (n.tag || '').startsWith('call-')).forEach((n) => n.close())
+  } catch {
+    /* ignore */
+  }
+}

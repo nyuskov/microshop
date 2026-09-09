@@ -16,7 +16,7 @@
  */
 
 const CACHE_PREFIX = 'microshop-v'
-const CACHE_VERSION = 3
+const CACHE_VERSION = 4
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 
 self.addEventListener('install', (event) => {
@@ -128,10 +128,31 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const data = event.notification.data || {}
+  const action = event.action || 'focus'
   event.waitUntil(
     (async () => {
-      // Если окно приложения открыто — фокусируем и просим открыть нужный чат.
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+
+      // Входящий звонок: тап/«Ответить» открывает приложение к экрану звонка.
+      if (data.type === 'call') {
+        for (const client of windows) {
+          if ('focus' in client) {
+            client.focus()
+            client.postMessage({
+              type: 'call-notification',
+              action,
+              call_id: data.call_id || null,
+              peer_id: data.peer_id || null
+            })
+            return
+          }
+        }
+        // Приложение было полностью закрыто — просто открываем его.
+        await self.clients.openWindow('/')
+        return
+      }
+
+      // Уведомление о сообщении: фокусируем окно и открываем нужный чат.
       for (const client of windows) {
         if ('focus' in client) {
           client.focus()
