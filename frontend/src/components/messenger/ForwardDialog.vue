@@ -19,12 +19,12 @@
           </button>
         </header>
 
-        <!-- Превью пересылаемого сообщения -->
+        <!-- Превью пересылаемых сообщений -->
         <div class="fwd-preview">
-          <span class="fwd-preview-label">Сообщение</span>
+          <span class="fwd-preview-label">{{ previewLabel }}</span>
           <span class="fwd-preview-text">
-            <q-icon v-if="source.file" :name="fileIcon(source.file)" size="16px" />
-            {{ messageSnippet(source) }}
+            <q-icon v-if="previewIcon" :name="previewIcon" size="16px" />
+            {{ previewSnippet }}
           </span>
         </div>
 
@@ -103,8 +103,8 @@ import { avatarStyle, avatarUrlOf, chatPeer, chatPeerTitle, initials } from '@/u
 import { fileIcon, mediaTypeLabel, messageSnippet } from '@/utils/media'
 
 const props = defineProps<{
-  /** Пересылаемое сообщение (из текущего чата). */
-  source: Message
+  /** Пересылаемое сообщение (одно) либо список (мультивыбор). */
+  source: Message | Message[]
   /** Все чаты пользователя; текущий будет исключён из списка. */
   chats: Chat[]
   currentUserId: number | null
@@ -121,6 +121,30 @@ const emit = defineEmits<{
 
 const query = ref('')
 const selectedIds = ref<number[]>([])
+
+/** Один или несколько источников пересылки. */
+const sources = computed<Message[]>(() =>
+  Array.isArray(props.source) ? props.source : [props.source]
+)
+
+const previewLabel = computed<string>(() =>
+  sources.value.length > 1 ? `Сообщения: ${sources.value.length}` : 'Сообщение'
+)
+
+const previewIcon = computed<string | null>(() => {
+  const single = sources.value.length === 1 ? sources.value[0] : null
+  return single?.file ? fileIcon(single.file) : null
+})
+
+const previewSnippet = computed<string>(() => {
+  if (sources.value.length === 1 && sources.value[0]) return messageSnippet(sources.value[0])
+  const shown = sources.value
+    .slice(0, 3)
+    .map((m) => messageSnippet(m))
+    .filter(Boolean)
+  const tail = sources.value.length > 3 ? ` … +${sources.value.length - 3}` : ''
+  return `${shown.join(' · ')}${tail}`
+})
 
 /** Чаты, доступные для пересылки (все, кроме текущего). */
 const available = computed<Chat[]>(() =>

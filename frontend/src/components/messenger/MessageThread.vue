@@ -22,7 +22,12 @@
           :highlighted="highlightedMessageId === row.message.id"
           :emoji-picker-open="emojiPickerFor === row.message.id"
           :quote="quoteOf(row.message)"
+          :selection-mode="selectionMode"
+          :selected="selectedMessageIds.includes(row.message.id)"
+          :selectable="row.message.kind !== 'call'"
           @quote-click="emit('quote-click', row.message)"
+          @select-start="emit('select-start', row.message)"
+          @toggle-select="emit('toggle-select', row.message)"
           @toggle-emoji-picker="emit('toggle-emoji-picker', row.message)"
           @set-reply="emit('set-reply', row.message)"
           @toggle-reaction="emit('toggle-reaction', row.message, $event)"
@@ -83,6 +88,10 @@ const props = defineProps<{
   emojiPickerFor: number | null
   /** Резолвит данные ответа-цитаты для строки (null — цитата не загружена). */
   quoteOf: (message: Message) => MessageQuote | null
+  /** Режим мультивыделения сообщений (long-press). */
+  selectionMode: boolean
+  /** Id выбранных сообщений. */
+  selectedMessageIds: number[]
   /** Вложения, которые сейчас отправляются (показываются внизу ленты). */
   pending?: PendingUpload[]
 }>()
@@ -91,6 +100,8 @@ const emit = defineEmits<{
   (e: 'background-click'): void
   (e: 'reach-top'): void
   (e: 'quote-click', message: Message): void
+  (e: 'select-start', message: Message): void
+  (e: 'toggle-select', message: Message): void
   (e: 'toggle-emoji-picker', message: Message): void
   (e: 'set-reply', message: Message): void
   (e: 'toggle-reaction', message: Message, emoji: string): void

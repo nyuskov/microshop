@@ -108,9 +108,7 @@ async def _track_call_event(
     _active_calls.pop(call_id, None)
     if message_type == "call-end" and meta.get("started") is not None:
         started = meta["started"]
-        duration = max(
-            0, int((datetime.now(timezone.utc) - started).total_seconds())
-        )
+        duration = max(0, int((datetime.now(timezone.utc) - started).total_seconds()))
         await _persist_call_record(meta, "completed", duration)
     elif message_type == "call-decline":
         await _persist_call_record(meta, "declined", 0)
@@ -118,9 +116,7 @@ async def _track_call_event(
         await _persist_call_record(meta, "missed", 0)
 
 
-async def _persist_call_record(
-    meta: dict[str, Any], state: str, duration: int
-) -> None:
+async def _persist_call_record(meta: dict[str, Any], state: str, duration: int) -> None:
     """Пишет системное сообщение о звонке в личный чат участников."""
     caller = meta.get("caller")
     callee = meta.get("callee")
@@ -177,9 +173,7 @@ async def _relay_message(from_user_id: int, data: dict[str, Any]) -> None:
     if delivered:
         # Доставлено — парковка для этого вызова больше не нужна.
         if message_type in ("call-cancel", "call-decline", "call-end"):
-            await call_manager.discard_pending_offer(
-                to_user_id, data.get("call_id")
-            )
+            await call_manager.discard_pending_offer(to_user_id, data.get("call_id"))
         return
 
     # Абонент офлайн.
@@ -202,9 +196,7 @@ async def _relay_message(from_user_id: int, data: dict[str, Any]) -> None:
             )
     elif message_type in ("call-cancel", "call-decline", "call-end"):
         # Отменяем/снимаем «висящий» вызов у офлайн-абонента.
-        await call_manager.discard_pending_offer(
-            to_user_id, data.get("call_id")
-        )
+        await call_manager.discard_pending_offer(to_user_id, data.get("call_id"))
 
 
 async def _park_offer_and_push(

@@ -6,11 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api_v1.auth.utils import get_current_user, touch_last_seen
 from api_v1.chats import crud
 from api_v1.chats.schemas import Chat as ChatSchema
-from api_v1.chats.schemas import (
-    ChatE2eeUpdate,
-    ChatUserSchema,
-    PrivateChatCreate,
-)
+from api_v1.chats.schemas import ChatE2eeUpdate, ChatUserSchema, PrivateChatCreate
 from api_v1.messages.crud import message_basic_to_dict
 from core.models import Chat, Message, User, db_helper
 
@@ -32,9 +28,7 @@ def _serialize_chat(
         "id": chat.id,
         "name": chat.name,
         "users": [ChatUserSchema.model_validate(u) for u in chat.users],
-        "last_message": (
-            message_basic_to_dict(last) if last is not None else None
-        ),
+        "last_message": (message_basic_to_dict(last) if last is not None else None),
         "unread_count": unread_counts.get(chat.id, 0),
         "muted": chat.id in muted_ids,
         "e2ee_enabled": chat.e2ee_enabled,
@@ -64,9 +58,7 @@ async def get_my_chats(
     # Фронт поллит именно этот эндпоинт каждые ~3 c — здесь и обновляем присутствие.
     await touch_last_seen(user, session)
     chat_ids = [chat.id for chat in chats]
-    last_messages = await crud.get_last_messages(
-        session=session, chat_ids=chat_ids
-    )
+    last_messages = await crud.get_last_messages(session=session, chat_ids=chat_ids)
     unread_counts = await crud.get_unread_counts(
         session=session, chat_ids=chat_ids, user_id=user.id
     )
@@ -74,8 +66,7 @@ async def get_my_chats(
         session=session, user_id=user.id, chat_ids=chat_ids
     )
     items = [
-        _serialize_chat(chat, last_messages, unread_counts, muted_ids)
-        for chat in chats
+        _serialize_chat(chat, last_messages, unread_counts, muted_ids) for chat in chats
     ]
     items.sort(key=_chat_sort_key, reverse=True)
     return items
@@ -93,9 +84,7 @@ async def create_or_open_private_chat(
         first_user_id=user.id,
         second_user_id=payload.user_id,
     )
-    last_messages = await crud.get_last_messages(
-        session=session, chat_ids=[chat.id]
-    )
+    last_messages = await crud.get_last_messages(session=session, chat_ids=[chat.id])
     unread_counts = await crud.get_unread_counts(
         session=session, chat_ids=[chat.id], user_id=user.id
     )

@@ -52,8 +52,54 @@
         </template>
 
         <template v-else>
+          <!-- Режим выбора сообщений: панель вместо шапки (как в чатах) -->
+          <header v-if="msgSelectionMode" class="chat-select-header">
+            <button class="icon-btn" title="Выйти из выбора" @click="exitMessageSelection">
+              <q-icon name="close" size="21px" />
+            </button>
+            <div class="chat-select-info">
+              <span class="chat-select-title">Выбрано: {{ selectedMessageIds.length }}</span>
+            </div>
+            <div class="chat-select-actions">
+              <button
+                class="icon-btn"
+                :class="{ on: allVisibleMessagesSelected }"
+                title="Выбрать все"
+                aria-label="Выбрать все"
+                @click="toggleSelectAllMessages"
+              >
+                <q-icon name="done_all" size="20px" />
+              </button>
+              <button
+                class="icon-btn"
+                title="Переслать выбранные"
+                aria-label="Переслать выбранные"
+                @click="bulkForwardMessages"
+              >
+                <q-icon name="forward" size="20px" />
+              </button>
+              <button
+                class="icon-btn"
+                title="Сохранить в «Сохранённые сообщения»"
+                aria-label="Сохранить в «Сохранённые сообщения»"
+                @click="bulkSaveMessagesToSelf"
+              >
+                <q-icon name="bookmark" size="20px" />
+              </button>
+              <button
+                class="icon-btn danger"
+                title="Удалить выбранные"
+                aria-label="Удалить выбранные"
+                @click="bulkDeleteMessages"
+              >
+                <q-icon name="delete" size="20px" />
+              </button>
+            </div>
+          </header>
+
           <!-- Шапка чата -->
           <ChatHeader
+            v-else
             :chat="selectedChat"
             :current-user-id="currentUserId"
             :subtitle="chatSubtitle(selectedChat)"
@@ -96,10 +142,14 @@
             :highlighted-message-id="highlightedMessageId"
             :emoji-picker-for="emojiPickerFor"
             :quote-of="quoteFor"
+            :selection-mode="msgSelectionMode"
+            :selected-message-ids="selectedMessageIds"
             :pending="pendingUploads"
             @background-click="closePopups"
             @reach-top="loadOlderMessages"
             @quote-click="quoteClick"
+            @select-start="startMessageSelection"
+            @toggle-select="toggleMessageSelect"
             @toggle-emoji-picker="onToggleEmojiPicker"
             @set-reply="setReply"
             @toggle-reaction="toggleReaction"
@@ -1408,10 +1458,116 @@ const copyMessage = async (message: Message) => {
   }
 }
 
+// ---------- Мультивыделение сообщений (long-press; как в чатах) ----------
+/** Активен ли режим выбора сообщений в открытом чате. */
+const msgSelectionMode = ref(false)
+/** Id выбранных сообщений. */
+const selectedMessageIds = ref<number[]>([])
+
+const selectedMessagesOf = (): Message[] =>
+  messages.value.filter((m) => selectedMessageIds.value.includes(m.id))
+
+/** Выход из режима выбора сообщений. */
+const exitMessageSelection = () => {
+  msgSelectionMode.value = false
+  selectedMessageIds.value = []
+  emojiPickerFor.value = null
+}
+
+/** Вход: удержание на сообщении включает режим и выбирает его. */
+const startMessageSelection = (message: Message) => {
+  if (message.kind === 'call') return
+  msgSelectionMode.value = true
+  selectedMessageIds.value = [message.id]
+  closePopups()
+  clearReply()
+  if (editingMessage.value) cancelEditing()
+  if (forwardSource.value) cancelForward()
+}
+
+/** Клик по сообщению в режиме выбора — отметить/снять. */
+const toggleMessageSelect = (message: Message) => {
+  if (!msgSelectionMode.value || message.kind === 'call') return
+  const next = new Set(selectedMessageIds.value)
+  if (next.has(message.id)) {
+    next.delete(message.id)
+  } else {
+    next.add(message.id)
+  }
+  selectedMessageIds.value = Array.from(next)
+  if (selectedMessageIds.value.length === 0) exitMessageSelection()
+}
+
+/** Выбраны ли все загруженные сообщения (кроме отметок о звонках). */
+const allVisibleMessagesSelected = computed<boolean>(() => {
+  const selectable = messages.value.filter((m) => m.kind !== 'call')
+  return selectable.length > 0 && selectable.every((m) => selectedMessageIds.value.includes(m.id))
+})
+
+const toggleSelectAllMessages = () => {
+  if (allVisibleMessagesSelected.value) {
+    exitMessageSelection()
+    return
+  }
+  selectedMessageIds.value = messages.value.filter((m) => m.kind !== 'call').map((m) => m.id)
+}
+
+/** «Переслать» выбранные сообщения — открыть диалог выбора чатов. */
+const bulkForwardMessages = () => {
+  const sources = selectedMessagesOf().filter((m) => m.kind !== 'call')
+  if (sources.length === 0) return
+  exitMessageSelection()
+  cancelEditing()
+  closePopups()
+  forwardSource.value = sources
+}
+
+/** Сохранить все выбранные в «Сохранённые сообщения» (self-чат). */
+const bulkSaveMessagesToSelf = async () => {
+  const selfChat = chats.value.find((chat) => chat.is_self)
+  const current = selectedChat.value
+  if (!selfChat || (current !== null && current.is_self)) return
+  const targets = selectedMessagesOf().filter((m) => m.kind !== 'call')
+  exitMessageSelection()
+  if (targets.length === 0) return
+  try {
+    for (const message of targets) {
+      await forwardMessage(message.id, selfChat.id)
+    }
+    // Обновляем список: «Сохранённые» поднимутся наверх с новым превью.
+    await loadChats()
+  } catch (error) {
+    console.error('Не удалось сохранить сообщения:', getErrorMessage(error))
+  }
+}
+
+/** Удалить выбранные сообщения (только свои; чужие пропускаем). */
+const bulkDeleteMessages = async () => {
+  const own = selectedMessagesOf().filter((m) => m.user_id === currentUserId.value)
+  if (own.length === 0) {
+    exitMessageSelection()
+    return
+  }
+  if (!window.confirm(`Удалить выбранные сообщения (${own.length})?`)) return
+  exitMessageSelection()
+  for (const message of own) {
+    try {
+      await deleteMessage(message.id)
+      removeMessageFromThread(message.id)
+    } catch (error) {
+      console.error('Не удалось удалить сообщение:', getErrorMessage(error))
+    }
+  }
+  const chatId = selectedChatId.value
+  if (chatId !== null) {
+    await Promise.all([loadPinned(chatId), loadChats()])
+  }
+}
+
 // ---------- Редактирование / пересылка ----------
 const editingMessage = ref<Message | null>(null)
-/** Пересылаемое сообщение; пока не null — открыт диалог выбора чатов. */
-const forwardSource = ref<Message | null>(null)
+/** Пересылаемое сообщение (одно) или список; пока не null — открыт диалог. */
+const forwardSource = ref<Message | Message[] | null>(null)
 /** Идёт ли отправка пересылок (блокирует кнопки диалога). */
 const forwardBusy = ref(false)
 
@@ -1618,17 +1774,22 @@ const cancelForward = () => {
   forwardBusy.value = false
 }
 
-/** Пересылает сообщение в выбранные чаты (по одному запросу на чат). */
+/** Пересылает одно/несколько сообщений в выбранные чаты. */
 const sendForward = async (chatIds: number[]) => {
-  const source = forwardSource.value
-  if (!source || chatIds.length === 0) return
+  const value = forwardSource.value
+  const sources = value ? (Array.isArray(value) ? value : [value]) : []
+  if (sources.length === 0 || chatIds.length === 0) return
   forwardBusy.value = true
   try {
     for (const targetChatId of chatIds) {
-      const sent = await forwardMessage(source.id, targetChatId)
+      for (const source of sources) {
+        const sent = await forwardMessage(source.id, targetChatId)
+        if (selectedChatId.value === targetChatId) {
+          messages.value = appendMessage(messages.value, sent)
+        }
+      }
       sendTypingStop(targetChatId)
       if (selectedChatId.value === targetChatId) {
-        messages.value = appendMessage(messages.value, sent)
         await loadPinned(targetChatId)
       }
     }
@@ -1636,7 +1797,7 @@ const sendForward = async (chatIds: number[]) => {
     await loadChats()
     cancelForward()
   } catch (error) {
-    console.error('Не удалось переслать сообщение:', getErrorMessage(error))
+    console.error('Не удалось переслать сообщения:', getErrorMessage(error))
     cancelForward()
   } finally {
     forwardBusy.value = false
@@ -2271,6 +2432,7 @@ watch(
       sendTypingStop(oldId)
       saveDraftFor(oldId)
     }
+    exitMessageSelection()
     closePopups()
     clearReply()
     if (editingMessage.value) cancelEditing()
@@ -2418,6 +2580,48 @@ watch(
 }
 
 .chat-e2ee-note .q-icon {
+  color: var(--ms-accent, #2ea25e);
+}
+
+/* Панель выбора сообщений — вместо шапки чата (как в списке чатов) */
+.chat-select-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--ms-surface, #ffffff);
+  border-bottom: 1px solid var(--ms-border, #e2e6ea);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  z-index: 2;
+  flex: none;
+}
+
+.chat-select-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-select-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ms-text, #141d26);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-select-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.chat-select-actions .icon-btn.danger {
+  color: var(--ms-danger, #d64545);
+}
+
+.chat-select-actions .icon-btn.on {
   color: var(--ms-accent, #2ea25e);
 }
 

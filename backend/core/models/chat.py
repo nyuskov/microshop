@@ -24,9 +24,7 @@ class Chat(IdIntPkMixin, Base):
         default=False, server_default=func.false()
     )
     # «Сохранённые сообщения» — личный чат с собой; нельзя удалить.
-    is_self: Mapped[bool] = mapped_column(
-        default=False, server_default=func.false()
-    )
+    is_self: Mapped[bool] = mapped_column(default=False, server_default=func.false())
 
     users: Mapped[list["User"]] = relationship(
         "User",

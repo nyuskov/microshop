@@ -8,9 +8,30 @@
   <div
     v-else
     class="msg"
-    :class="[isOwn ? 'out' : 'in', { 'msg-highlight': highlighted }]"
+    :class="[
+      isOwn ? 'out' : 'in',
+      { 'msg-highlight': highlighted, selection: selectionMode, selected }
+    ]"
     :data-message-id="message.id"
+    @pointerdown="onPointerDown"
+    @pointerup="onPointerUp"
+    @pointercancel="onPointerCancel"
   >
+    <!-- Режим выделения: кружок-чек сбоку от пузыря -->
+    <span
+      v-if="selectionMode && selectable"
+      class="row-selector"
+      :class="{ on: selected }"
+      aria-hidden="true"
+    >
+      <q-icon v-if="selected" name="check" size="15px" />
+    </span>
+    <!-- Режим выделения: клик по сообщению — отметить/снять -->
+    <div
+      v-if="selectionMode && selectable"
+      class="msg-select-hit"
+      @click.stop="onSelectClick"
+    ></div>
     <div class="msg-bubble" :class="{ 'round-video-only': isRoundVideoOnly(message) }">
       <!-- Плашка «Переслано от …» -->
       <div v-if="forwardLabel" class="forward-banner">
@@ -92,7 +113,7 @@
     </div>
 
     <!-- Реакции -->
-    <div v-if="message.reactions.length" class="reactions" @click.stop>
+    <div v-if="message.reactions.length" class="reactions" @click.stop @pointerdown.stop>
       <button
         v-for="reaction in message.reactions"
         :key="reaction.emoji"
@@ -105,7 +126,7 @@
     </div>
 
     <!-- Действия при наведении (появляются ПОД сообщением) -->
-    <div ref="barRef" class="msg-actions" @click.stop>
+    <div ref="barRef" class="msg-actions" @click.stop @pointerdown.stop>
       <button
         class="round-btn"
         :class="{ active: emojiPickerOpen }"
@@ -206,6 +227,12 @@ const props = defineProps<{
   emojiPickerOpen: boolean
   /** Данные ответа-цитаты (null, если цитируемое сообщение не загружено). */
   quote: MessageQuote | null
+  /** Режим мультивыделения сообщений (как в чатах, вход по удержанию). */
+  selectionMode: boolean
+  /** Выбрано ли сообщение в режиме выделения. */
+  selected: boolean
+  /** Можно ли выбрать (обычные сообщения, не отметки о звонках). */
+  selectable: boolean
 }>()
 
 /** Текст плашки «Переслано от …» (null, если сообщение не переслано). */
@@ -221,6 +248,8 @@ const forwardLabel = computed<string | null>(() => {
 
 const emit = defineEmits<{
   (e: 'quote-click'): void
+  (e: 'select-start'): void
+  (e: 'toggle-select'): void
   (e: 'toggle-emoji-picker'): void
   (e: 'set-reply'): void
   (e: 'toggle-reaction', emoji: string): void
@@ -269,6 +298,47 @@ const callIcon = computed<string>(() => callMessageIcon(props.message))
 
 /** «Сохранить» доступно для обычных сообщений (не для отметок о звонках). */
 const canSave = computed<boolean>(() => props.message.kind !== 'call')
+
+// ---------- Режим выделения сообщений (long-press; как в чатах) ----------
+let holdTimer: number | null = null
+let suppressNextSelect = false
+
+const cancelHold = () => {
+  if (holdTimer !== null) {
+    window.clearTimeout(holdTimer)
+    holdTimer = null
+  }
+}
+
+const onPointerDown = (event: PointerEvent) => {
+  if (props.selectionMode || !props.selectable) return
+  if (event.button !== 0) return
+  cancelHold()
+  suppressNextSelect = false
+  holdTimer = window.setTimeout(() => {
+    holdTimer = null
+    suppressNextSelect = true
+    emit('select-start')
+  }, 480)
+}
+
+const onPointerUp = () => {
+  cancelHold()
+}
+
+const onPointerCancel = () => {
+  cancelHold()
+  suppressNextSelect = false
+}
+
+/** Клик в режиме выделения: отметить/снять. Клик после удержания глотаем. */
+const onSelectClick = () => {
+  if (suppressNextSelect) {
+    suppressNextSelect = false
+    return
+  }
+  emit('toggle-select')
+}
 
 /** Открыто ли меню «Ещё» (остальные действия). */
 const moreOpen = ref(false)
@@ -764,6 +834,64 @@ const onDelete = () => {
 
 .emoji-option.active {
   background: #e3f2e5;
+}
+
+/* Режим выделения сообщений (long-press) */
+.msg.selection {
+  cursor: pointer;
+}
+
+.msg.selection .msg-actions,
+.msg.selection .emoji-picker,
+.msg.selection .more-menu {
+  display: none;
+}
+
+.row-selector {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--ms-border, #9aa7b2);
+  background: var(--ms-surface, #ffffff);
+  color: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 6;
+  pointer-events: none;
+  flex: none;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.msg.out .row-selector {
+  left: -32px;
+}
+
+.msg.in .row-selector {
+  right: -32px;
+}
+
+.row-selector.on {
+  background: var(--ms-accent, #2ea25e);
+  border-color: var(--ms-accent, #2ea25e);
+  color: #ffffff;
+}
+
+.msg-select-hit {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  cursor: pointer;
+  border-radius: 14px;
+}
+
+.msg.selected .msg-bubble {
+  box-shadow: 0 0 0 2px var(--ms-accent, #2ea25e);
 }
 
 /* Подсветка сообщения при переходе из закреплённых/поиска */
