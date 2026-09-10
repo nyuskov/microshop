@@ -1197,7 +1197,7 @@ const onNotificationsToggle = async (val: boolean) => {
 
 <style scoped>
 .profile-sheet {
-  color: #1c2733;
+  color: var(--ms-text);
   font-family: var(--ms-font);
 }
 
@@ -1207,7 +1207,7 @@ const onNotificationsToggle = async (val: boolean) => {
   align-items: center;
   gap: 12px;
   padding: 40px 0;
-  color: #71808d;
+  color: var(--ms-muted);
 }
 
 /* Шапка */
@@ -1216,7 +1216,7 @@ const onNotificationsToggle = async (val: boolean) => {
   align-items: center;
   gap: 18px;
   padding: 4px 2px 22px;
-  border-bottom: 1px solid #eef1f3;
+  border-bottom: 1px solid var(--ms-border);
   margin-bottom: 18px;
 }
 
@@ -1287,8 +1287,8 @@ const onNotificationsToggle = async (val: boolean) => {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  border: 2px solid #fff;
-  background: #d64545;
+  border: 2px solid var(--ms-surface);
+  background: var(--ms-danger);
   color: #fff;
   display: inline-flex;
   align-items: center;
@@ -1303,7 +1303,7 @@ const onNotificationsToggle = async (val: boolean) => {
 
 .avatar-remove:hover:not(:disabled) {
   transform: scale(1.1);
-  background: #c0392b;
+  background: var(--ms-danger);
 }
 
 .avatar-remove:disabled {
@@ -1318,21 +1318,21 @@ const onNotificationsToggle = async (val: boolean) => {
 .avatar-status {
   margin: 4px 0 0;
   font-size: 12.5px;
-  color: #2ea25e;
+  color: var(--ms-accent);
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
 .avatar-status.error {
-  color: #c0392b;
+  color: var(--ms-danger);
 }
 
 .mini-spinner {
   width: 12px;
   height: 12px;
-  border: 2px solid rgba(46, 162, 94, 0.3);
-  border-top-color: #2ea25e;
+  border: 2px solid var(--ms-accent-border);
+  border-top-color: var(--ms-accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
@@ -1345,18 +1345,18 @@ const onNotificationsToggle = async (val: boolean) => {
   margin: 0 0 4px;
   font-size: 22px;
   font-weight: 700;
-  color: #141d26;
+  color: var(--ms-text-strong);
 }
 
 .hero-username {
   margin: 0 0 4px;
-  color: #71808d;
+  color: var(--ms-muted);
   font-size: 14px;
 }
 
 .hero-status {
   margin: 0 0 4px;
-  color: #2ea25e;
+  color: var(--ms-accent);
   font-size: 13.5px;
   font-weight: 500;
   word-break: break-word;
@@ -1365,7 +1365,7 @@ const onNotificationsToggle = async (val: boolean) => {
 .hero-phone {
   margin: 0;
   font-size: 13.5px;
-  color: #4c6b5b;
+  color: var(--ms-muted);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1383,8 +1383,8 @@ const onNotificationsToggle = async (val: boolean) => {
 }
 
 .card-section {
-  background: #f7f9fb;
-  border: 1px solid #e9edf0;
+  background: var(--ms-surface-2);
+  border: 1px solid var(--ms-border);
   border-radius: 16px;
   padding: 16px 18px;
 }
@@ -1395,7 +1395,7 @@ const onNotificationsToggle = async (val: boolean) => {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #8295a3;
+  color: var(--ms-muted-2);
 }
 
 .grid-2 {
@@ -1413,24 +1413,24 @@ const onNotificationsToggle = async (val: boolean) => {
 .field label {
   font-size: 12.5px;
   font-weight: 600;
-  color: #52626f;
+  color: var(--ms-icon);
 }
 
 .field-hint {
   margin: 0;
   font-size: 12px;
-  color: #8a98a3;
+  color: var(--ms-muted-2);
 }
 
 /* Телефон — только для чтения: номер является логином аккаунта. */
 .readonly-field {
-  background: #f2f5f7 !important;
-  color: #52626f !important;
+  background: var(--ms-surface-2) !important;
+  color: var(--ms-icon) !important;
   cursor: not-allowed;
 }
 
 .readonly-field:focus {
-  border-color: #dfe5ea;
+  border-color: var(--ms-border);
   box-shadow: none;
 }
 
@@ -1439,12 +1439,12 @@ const onNotificationsToggle = async (val: boolean) => {
 .field select {
   width: 100%;
   box-sizing: border-box;
-  border: 1.5px solid #dfe5ea;
+  border: 1.5px solid var(--ms-border);
   border-radius: 11px;
   padding: 10px 12px;
   font-size: 14.5px;
-  color: #141d26;
-  background: #fff;
+  color: var(--ms-text-strong);
+  background: var(--ms-surface);
   outline: none;
   transition:
     border-color 0.15s,
@@ -1455,8 +1455,8 @@ const onNotificationsToggle = async (val: boolean) => {
 .field input:focus,
 .field textarea:focus,
 .field select:focus {
-  border-color: var(--ms-accent, #2ea25e);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ms-accent, #2ea25e) 15%, transparent);
+  border-color: var(--ms-accent, var(--ms-accent));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 15%, transparent);
 }
 
 .field textarea {
@@ -1482,7 +1482,7 @@ const onNotificationsToggle = async (val: boolean) => {
 }
 
 .toggle-row + .toggle-row {
-  border-top: 1px solid #e9edf0;
+  border-top: 1px solid var(--ms-border);
 }
 
 .toggle-text {
@@ -1493,12 +1493,12 @@ const onNotificationsToggle = async (val: boolean) => {
 .toggle-name {
   font-size: 14.5px;
   font-weight: 600;
-  color: #1c2733;
+  color: var(--ms-text);
 }
 
 .toggle-desc {
   font-size: 12.5px;
-  color: #8295a3;
+  color: var(--ms-muted-2);
   margin-top: 2px;
 }
 
@@ -1517,17 +1517,17 @@ const onNotificationsToggle = async (val: boolean) => {
   display: flex;
   gap: 10px;
   padding: 12px 14px;
-  border: 1px solid #f2d9a8;
+  border: 1px solid var(--ms-warn-bg);
   border-radius: 12px;
-  background: #fffaf0;
-  color: #8a6116;
+  background: var(--ms-warn-bg);
+  color: var(--ms-warn);
   font-size: 13.5px;
 }
 
 .security-alert strong {
   display: block;
   margin-bottom: 4px;
-  color: #7a5310;
+  color: var(--ms-warn);
 }
 
 .security-alert ul {
@@ -1538,7 +1538,7 @@ const onNotificationsToggle = async (val: boolean) => {
 .security-hint {
   margin: 0;
   font-size: 13px;
-  color: #6b7b88;
+  color: var(--ms-muted);
 }
 
 .security-form {
@@ -1550,18 +1550,18 @@ const onNotificationsToggle = async (val: boolean) => {
 .security-form input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #e2e6ea;
+  border: 1px solid var(--ms-border);
   border-radius: 11px;
-  background: #fff;
+  background: var(--ms-surface);
   font: inherit;
   font-size: 14.5px;
-  color: #1c2733;
+  color: var(--ms-text);
 }
 
 .security-form input:focus {
   outline: none;
-  border-color: var(--ms-accent, #2ea25e);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ms-accent, #2ea25e) 15%, transparent);
+  border-color: var(--ms-accent, var(--ms-accent));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 15%, transparent);
 }
 
 .password-meter {
@@ -1570,7 +1570,7 @@ const onNotificationsToggle = async (val: boolean) => {
   gap: 8px;
   margin: 4px 0 2px;
   font-size: 12.5px;
-  color: #6b7b88;
+  color: var(--ms-muted);
 }
 
 .password-meter-bar {
@@ -1578,19 +1578,19 @@ const onNotificationsToggle = async (val: boolean) => {
   width: 90px;
   height: 5px;
   border-radius: 999px;
-  background: #e9edf0;
+  background: var(--ms-border);
   overflow: hidden;
 }
 
 .password-meter-bar > span {
   display: block;
   height: 100%;
-  background: #e0a800;
+  background: var(--ms-warn);
   transition: width 0.2s ease;
 }
 
 .password-meter[data-score='3'] .password-meter-bar > span {
-  background: #2ea25e;
+  background: var(--ms-accent);
 }
 
 .security-btn,
@@ -1611,16 +1611,16 @@ const onNotificationsToggle = async (val: boolean) => {
   align-self: flex-start;
   margin-top: 8px;
   border: none;
-  background: var(--ms-accent, #2ea25e);
+  background: var(--ms-accent, var(--ms-accent));
   color: #fff;
 }
 
 .revoke-btn {
   align-self: flex-start;
   margin-top: 4px;
-  border: 1px solid #e2e6ea;
-  background: #fff;
-  color: #1c2733;
+  border: 1px solid var(--ms-border);
+  background: var(--ms-surface);
+  color: var(--ms-text);
 }
 
 .security-btn:disabled,
@@ -1632,7 +1632,7 @@ const onNotificationsToggle = async (val: boolean) => {
 .security-note {
   margin: 6px 0 0;
   font-size: 12.5px;
-  color: #8295a3;
+  color: var(--ms-muted-2);
 }
 
 /* Хранилище: индикатор заполненности квоты на медиа. */
@@ -1652,18 +1652,18 @@ const onNotificationsToggle = async (val: boolean) => {
 .storage-used {
   font-size: 14px;
   font-weight: 600;
-  color: #1c2733;
+  color: var(--ms-text);
 }
 
 .storage-files {
   font-size: 12.5px;
-  color: #8295a3;
+  color: var(--ms-muted-2);
 }
 
 .storage-bar {
   height: 8px;
   border-radius: 999px;
-  background: #eef1f4;
+  background: var(--ms-surface-2);
   overflow: hidden;
 }
 
@@ -1671,12 +1671,12 @@ const onNotificationsToggle = async (val: boolean) => {
   display: block;
   height: 100%;
   border-radius: 999px;
-  background: var(--ms-accent, #2ea25e);
+  background: var(--ms-accent, var(--ms-accent));
   transition: width 0.3s ease;
 }
 
 .storage-bar-fill.warn {
-  background: #e0a02a;
+  background: var(--ms-warn);
 }
 
 .storage-hint {
@@ -1685,11 +1685,11 @@ const onNotificationsToggle = async (val: boolean) => {
   gap: 6px;
   margin: 0;
   font-size: 12.5px;
-  color: #8295a3;
+  color: var(--ms-muted-2);
 }
 
 .storage-hint.warn {
-  color: #a5741a;
+  color: var(--ms-warn);
 }
 
 .storage-refresh {
@@ -1699,7 +1699,7 @@ const onNotificationsToggle = async (val: boolean) => {
   gap: 6px;
   border: none;
   background: transparent;
-  color: var(--ms-accent, #2ea25e);
+  color: var(--ms-accent, var(--ms-accent));
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -1716,19 +1716,19 @@ const onNotificationsToggle = async (val: boolean) => {
 .security-log {
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid #eef1f4;
+  border-top: 1px solid var(--ms-surface-2);
 }
 
 .session-row.session-alert .session-icon {
-  background: rgba(224, 160, 42, 0.16);
-  color: #a5741a;
+  background: var(--ms-warn-bg);
+  color: var(--ms-warn);
 }
 
 /* Активные входы (устройства) — список с отзывом по одному. */
 .sessions-block {
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid #eef1f4;
+  border-top: 1px solid var(--ms-surface-2);
 }
 
 .sessions-head {
@@ -1741,7 +1741,7 @@ const onNotificationsToggle = async (val: boolean) => {
 .sessions-title {
   font-size: 14px;
   font-weight: 600;
-  color: #1c2733;
+  color: var(--ms-text);
 }
 
 .sessions-refresh {
@@ -1750,7 +1750,7 @@ const onNotificationsToggle = async (val: boolean) => {
   gap: 6px;
   border: none;
   background: transparent;
-  color: var(--ms-accent, #2ea25e);
+  color: var(--ms-accent, var(--ms-accent));
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -1767,7 +1767,7 @@ const onNotificationsToggle = async (val: boolean) => {
 .sessions-hint {
   margin: 8px 0 0;
   font-size: 13px;
-  color: #8295a3;
+  color: var(--ms-muted-2);
 }
 
 .sessions-list {
@@ -1784,9 +1784,9 @@ const onNotificationsToggle = async (val: boolean) => {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid #eef1f4;
+  border: 1px solid var(--ms-surface-2);
   border-radius: 12px;
-  background: #fafbfc;
+  background: var(--ms-surface-2);
 }
 
 .session-icon {
@@ -1796,8 +1796,8 @@ const onNotificationsToggle = async (val: boolean) => {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--ms-accent, #2ea25e) 12%, transparent);
-  color: var(--ms-accent, #2ea25e);
+  background: color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 12%, transparent);
+  color: var(--ms-accent, var(--ms-accent));
   flex-shrink: 0;
 }
 
@@ -1815,7 +1815,7 @@ const onNotificationsToggle = async (val: boolean) => {
   gap: 8px;
   font-size: 14px;
   font-weight: 600;
-  color: #1c2733;
+  color: var(--ms-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1824,8 +1824,8 @@ const onNotificationsToggle = async (val: boolean) => {
 .session-current {
   padding: 1px 7px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ms-accent, #2ea25e) 14%, transparent);
-  color: var(--ms-accent, #2ea25e);
+  background: color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 14%, transparent);
+  color: var(--ms-accent, var(--ms-accent));
   font-size: 11px;
   font-weight: 600;
   flex-shrink: 0;
@@ -1833,7 +1833,7 @@ const onNotificationsToggle = async (val: boolean) => {
 
 .session-meta {
   font-size: 12px;
-  color: #8295a3;
+  color: var(--ms-muted-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1841,9 +1841,9 @@ const onNotificationsToggle = async (val: boolean) => {
 
 .session-revoke {
   flex-shrink: 0;
-  border: 1px solid #e2e6ea;
-  background: #fff;
-  color: #b23b3b;
+  border: 1px solid var(--ms-border);
+  background: var(--ms-surface);
+  color: var(--ms-danger);
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -1853,8 +1853,8 @@ const onNotificationsToggle = async (val: boolean) => {
 }
 
 .session-revoke:hover {
-  border-color: #e6b7b7;
-  background: #fdf5f5;
+  border-color: var(--ms-danger);
+  background: var(--ms-danger-bg);
 }
 
 .session-revoke:disabled {
@@ -1871,11 +1871,11 @@ const onNotificationsToggle = async (val: boolean) => {
 }
 
 .sessions-note.success-text {
-  color: #1e9b51;
+  color: var(--ms-accent);
 }
 
 .sessions-note.error-text {
-  color: #c0392b;
+  color: var(--ms-danger);
 }
 
 /* Подтверждение e-mail в разделе «Безопасность». */
@@ -1884,9 +1884,9 @@ const onNotificationsToggle = async (val: boolean) => {
   flex-direction: column;
   gap: 8px;
   padding: 12px 14px;
-  border: 1px solid #e2e6ea;
+  border: 1px solid var(--ms-border);
   border-radius: 12px;
-  background: #f8fafb;
+  background: var(--ms-surface-2);
 }
 
 .email-verify-text {
@@ -1894,12 +1894,12 @@ const onNotificationsToggle = async (val: boolean) => {
   flex-direction: column;
   gap: 2px;
   font-size: 13.5px;
-  color: #1c2733;
+  color: var(--ms-text);
 }
 
 .email-verify-text span {
   font-size: 12.5px;
-  color: #6b7b88;
+  color: var(--ms-muted);
 }
 
 .email-verify-actions {
@@ -1920,36 +1920,36 @@ const onNotificationsToggle = async (val: boolean) => {
   flex: 1;
   min-width: 120px;
   padding: 9px 12px;
-  border: 1px solid #e2e6ea;
+  border: 1px solid var(--ms-border);
   border-radius: 11px;
-  background: #fff;
+  background: var(--ms-surface);
   font: inherit;
   font-size: 14.5px;
-  color: #1c2733;
+  color: var(--ms-text);
 }
 
 .email-code-row input:focus {
   outline: none;
-  border-color: var(--ms-accent, #2ea25e);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ms-accent, #2ea25e) 15%, transparent);
+  border-color: var(--ms-accent, var(--ms-accent));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 15%, transparent);
 }
 
 .email-note {
   margin: 0;
   font-size: 12.5px;
-  color: #2ea25e;
+  color: var(--ms-accent);
 }
 
 .email-error {
   margin: 0;
   font-size: 12.5px;
-  color: #d64545;
+  color: var(--ms-danger);
 }
 
 .field-hint {
   margin: 4px 0 0;
   font-size: 12px;
-  color: #8295a3;
+  color: var(--ms-muted-2);
 }
 
 /* Поле пароля с «глазком»: кнопка лежит поверх инпута справа. */
@@ -1975,13 +1975,13 @@ const onNotificationsToggle = async (val: boolean) => {
   border: none;
   border-radius: 9px;
   background: transparent;
-  color: #8295a3;
+  color: var(--ms-muted-2);
   cursor: pointer;
 }
 
 .password-eye:hover {
-  background: #f1f4f6;
-  color: #1c2733;
+  background: var(--ms-hover);
+  color: var(--ms-text);
 }
 
 /* Удаление аккаунта (требование RuStore/152-ФЗ): заметно, но не кричит. */
@@ -1992,7 +1992,7 @@ const onNotificationsToggle = async (val: boolean) => {
   gap: 4px;
   margin-top: 14px;
   padding-top: 14px;
-  border-top: 1px dashed #e2e6ea;
+  border-top: 1px dashed var(--ms-border);
 }
 
 /* Ссылки на документы: правила сообщества и политика (требования магазинов). */
@@ -2007,7 +2007,7 @@ const onNotificationsToggle = async (val: boolean) => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--ms-accent, #2ea25e);
+  color: var(--ms-accent, var(--ms-accent));
   font-size: 13px;
   font-weight: 600;
   text-decoration: none;
@@ -2022,17 +2022,17 @@ const onNotificationsToggle = async (val: boolean) => {
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  border: 1px solid #f0c2c2;
+  border: 1px solid var(--ms-danger-bg);
   border-radius: 11px;
-  background: #fff6f6;
-  color: #c93b3b;
+  background: var(--ms-danger-bg);
+  color: var(--ms-danger);
   font: inherit;
   font-size: 14px;
   cursor: pointer;
 }
 
 .delete-account-btn:hover:not(:disabled) {
-  background: #fdeaea;
+  background: var(--ms-danger-bg);
 }
 
 .delete-account-btn:disabled {
@@ -2043,15 +2043,15 @@ const onNotificationsToggle = async (val: boolean) => {
 .delete-account-hint {
   margin: 0;
   font-size: 12.5px;
-  color: #8a949e;
+  color: var(--ms-muted-2);
 }
 
 .logout-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: #fdecec;
-  color: #c0392b;
+  background: var(--ms-danger-bg);
+  color: var(--ms-danger);
   border: none;
   border-radius: 11px;
   padding: 10px 14px;
@@ -2062,7 +2062,7 @@ const onNotificationsToggle = async (val: boolean) => {
 }
 
 .logout-btn:hover:not(:disabled) {
-  background: #f8d7d7;
+  background: var(--ms-danger-bg);
 }
 
 .logout-btn:disabled {
@@ -2102,11 +2102,11 @@ const onNotificationsToggle = async (val: boolean) => {
 .btn.primary {
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--ms-accent, #2ea25e) 86%, #ffffff) 0%,
-    var(--ms-accent, #2ea25e) 100%
+    color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 86%, #ffffff) 0%,
+    var(--ms-accent, var(--ms-accent)) 100%
   );
   color: #fff;
-  box-shadow: 0 8px 18px color-mix(in srgb, var(--ms-accent, #2ea25e) 28%, transparent);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 28%, transparent);
 }
 
 .btn.primary:hover:not(:disabled) {
@@ -2114,13 +2114,13 @@ const onNotificationsToggle = async (val: boolean) => {
 }
 
 .btn.ghost {
-  background: #fff;
-  color: #52626f;
-  border: 1.5px solid #dfe5ea;
+  background: var(--ms-surface);
+  color: var(--ms-icon);
+  border: 1.5px solid var(--ms-border);
 }
 
 .btn.ghost:hover:not(:disabled) {
-  background: #f1f3f5;
+  background: var(--ms-surface-2);
 }
 
 .notice {
@@ -2134,20 +2134,20 @@ const onNotificationsToggle = async (val: boolean) => {
 }
 
 .notice.success {
-  background: #eaf7ee;
-  color: #1e7a43;
+  background: var(--ms-ok-bg);
+  color: var(--ms-accent-strong);
 }
 
 .notice.error {
-  background: #fdecec;
-  color: #c0392b;
+  background: var(--ms-danger-bg);
+  color: var(--ms-danger);
 }
 
 .spinner {
   width: 15px;
   height: 15px;
-  border: 2px solid rgba(0, 0, 0, 0.2);
-  border-top-color: #2ea25e;
+  border: 2px solid var(--ms-border);
+  border-top-color: var(--ms-accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }

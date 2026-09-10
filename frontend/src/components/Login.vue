@@ -956,11 +956,11 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
   text-align: center;
   font-size: 12px;
   line-height: 1.45;
-  color: #7d8894;
+  color: var(--ms-muted);
 }
 
 .privacy-note a {
-  color: var(--ms-accent, #2ea25e);
+  color: var(--ms-accent, var(--ms-accent));
   text-decoration: none;
 }
 
@@ -995,29 +995,29 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
   border-radius: 22px;
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--ms-accent, #2ea25e) 86%, #ffffff) 0%,
-    var(--ms-accent, #2ea25e) 100%
+    color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 86%, #ffffff) 0%,
+    var(--ms-accent, var(--ms-accent)) 100%
   );
   color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 1.7rem;
-  box-shadow: 0 10px 22px color-mix(in srgb, var(--ms-accent, #2ea25e) 34%, transparent);
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 34%, transparent);
 }
 
 .step-title {
   margin: 0 0 6px;
   font-size: 20px;
   font-weight: 700;
-  color: #1c2733;
+  color: var(--ms-text);
   text-align: center;
 }
 
 .step-subtitle {
   margin: 0 0 22px;
   font-size: 14px;
-  color: #71808d;
+  color: var(--ms-muted);
   text-align: center;
   max-width: 280px;
   line-height: 1.4;
@@ -1027,7 +1027,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
   align-self: flex-start;
   font-size: 12.5px;
   font-weight: 600;
-  color: #52626f;
+  color: var(--ms-icon);
   text-transform: uppercase;
   letter-spacing: 0.4px;
   margin-bottom: 7px;
@@ -1045,15 +1045,15 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
 .phone-input :deep(.q-field__control) {
   min-height: 52px;
   border-radius: 14px;
-  background: #f7f9fb;
+  background: var(--ms-surface-2);
 }
 
 .phone-input :deep(.q-field__control:before) {
-  border-color: #dfe5ea;
+  border-color: var(--ms-border);
 }
 
 .phone-input :deep(.q-field__control:after) {
-  border-color: var(--ms-accent, #2ea25e);
+  border-color: var(--ms-accent, var(--ms-accent));
 }
 
 .phone-input :deep(.q-field__native) {
@@ -1062,11 +1062,11 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
   font-size: 17px;
   font-weight: 600;
   letter-spacing: 0.4px;
-  color: #1c2733;
+  color: var(--ms-text);
 }
 
 .phone-input :deep(input::placeholder) {
-  color: #a9b5bf;
+  color: var(--ms-muted-3);
   font-weight: 500;
   font-size: 15px;
 }
@@ -1099,16 +1099,16 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
 .btn-primary {
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--ms-accent, #2ea25e) 86%, #ffffff) 0%,
-    var(--ms-accent, #2ea25e) 100%
+    color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 86%, #ffffff) 0%,
+    var(--ms-accent, var(--ms-accent)) 100%
   );
   color: #fff;
-  box-shadow: 0 8px 18px color-mix(in srgb, var(--ms-accent, #2ea25e) 30%, transparent);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 30%, transparent);
 }
 
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 12px 22px color-mix(in srgb, var(--ms-accent, #2ea25e) 36%, transparent);
+  box-shadow: 0 12px 22px color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 36%, transparent);
 }
 
 .spinner {
@@ -1125,11 +1125,11 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
 /* «Глазок» в полях пароля: иконка в append-слоте Quasar-инпута. */
 .password-eye {
   cursor: pointer;
-  color: #8295a3;
+  color: var(--ms-muted-2);
 }
 
 .password-eye:hover {
-  color: var(--ms-accent, #2ea25e);
+  color: var(--ms-accent, var(--ms-accent));
 }
 
 .password-meter {
@@ -1138,7 +1138,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
   gap: 8px;
   margin: 6px 0 2px;
   font-size: 12.5px;
-  color: #6b7b88;
+  color: var(--ms-muted);
 }
 
 .password-meter-bar {
@@ -1146,19 +1146,19 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
   width: 86px;
   height: 5px;
   border-radius: 999px;
-  background: #e9edf0;
+  background: var(--ms-border);
   overflow: hidden;
 }
 
 .password-meter-bar > span {
   display: block;
   height: 100%;
-  background: #e0a800;
+  background: var(--ms-warn);
   transition: width 0.2s ease;
 }
 
 .password-meter[data-score='3'] .password-meter-bar > span {
-  background: #2ea25e;
+  background: var(--ms-accent);
 }
 
 @keyframes spin {
@@ -1170,7 +1170,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
 .privacy-hint {
   margin: 14px 0 0;
   font-size: 12.5px;
-  color: #93a0ab;
+  color: var(--ms-muted-3);
   text-align: center;
 }
 
@@ -1191,9 +1191,9 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
   text-align: center;
   font-size: 20px;
   font-weight: 700;
-  color: #1c2733;
-  background: #f7f9fb;
-  border: 1.5px solid #dfe5ea;
+  color: var(--ms-text);
+  background: var(--ms-surface-2);
+  border: 1.5px solid var(--ms-border);
   border-radius: 12px;
   outline: none;
   transition:
@@ -1204,22 +1204,22 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
 }
 
 .otp-box.filled {
-  border-color: var(--ms-accent, #2ea25e);
-  background: color-mix(in srgb, var(--ms-accent, #2ea25e) 12%, #ffffff);
+  border-color: var(--ms-accent, var(--ms-accent));
+  background: color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 12%, #ffffff);
 }
 
 .otp-box:focus {
-  border-color: var(--ms-accent, #2ea25e);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ms-accent, #2ea25e) 16%, transparent);
+  border-color: var(--ms-accent, var(--ms-accent));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 16%, transparent);
   transform: scale(1.05);
-  background: #fff;
+  background: var(--ms-surface);
 }
 
 .link-btn {
   margin-top: 16px;
   background: none;
   border: none;
-  color: #52626f;
+  color: var(--ms-icon);
   font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
@@ -1231,8 +1231,8 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
 }
 
 .link-btn:hover:not(:disabled) {
-  background: #f1f3f5;
-  color: #1c2733;
+  background: var(--ms-surface-2);
+  color: var(--ms-text);
 }
 
 .link-btn:disabled {
@@ -1252,23 +1252,23 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
 }
 
 .login-message.msg-error {
-  background: #fdecec;
-  color: #c0392b;
+  background: var(--ms-danger-bg);
+  color: var(--ms-danger);
 }
 
 .login-message.msg-success {
-  background: #e8f8ee;
-  color: #1e7a43;
+  background: var(--ms-ok-bg);
+  color: var(--ms-accent-strong);
 }
 
 .login-message.msg-info {
-  background: #e8f2fb;
-  color: #2f6da0;
+  background: var(--ms-info-bg);
+  color: var(--ms-info);
 }
 
 .login-message.msg-warn {
-  background: #fdf3e3;
-  color: #9a6a14;
+  background: var(--ms-warn-bg);
+  color: var(--ms-warn);
 }
 
 .fade-enter-active,

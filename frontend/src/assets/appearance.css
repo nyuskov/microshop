@@ -37,6 +37,12 @@
     --ms-info: #3aa6e0;
     --ms-tick: #37aee2;
 
+    /* Предупреждение/успех/информационные подложки (логин, профиль, статусы) */
+    --ms-warn: #b8860b;
+    --ms-warn-bg: #fdf3e3;
+    --ms-ok-bg: #e8f8ee;
+    --ms-info-bg: #e8f2fb;
+
     /* Пузыри сообщений */
     --ms-bubble-out: #dcf8c6;
     --ms-bubble-text: #111111;
@@ -99,6 +105,11 @@ html[data-theme='dark'] {
     --ms-danger-bg: rgba(255, 138, 128, 0.12);
     --ms-info: #5db9ee;
     --ms-tick: #5db9ee;
+
+    --ms-warn: #e3b341;
+    --ms-warn-bg: rgba(224, 160, 42, 0.16);
+    --ms-ok-bg: rgba(46, 162, 94, 0.16);
+    --ms-info-bg: rgba(58, 166, 224, 0.16);
 
     --ms-bubble-out: color-mix(in srgb, var(--ms-accent) 30%, #111820);
     --ms-bubble-text: #e9eff4;
