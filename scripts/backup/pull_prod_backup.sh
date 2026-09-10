@@ -127,7 +127,14 @@ log "==> Архив media…"
 if [[ -n "$REMOTE_MEDIA_PATH" ]]; then
     MEDIA_CMD="remote \"tar czf - -C $REMOTE_MEDIA_PATH .\""
 else
-    MEDIA_CMD="compose \"exec -T web tar czf - -C /app/media .\""
+    # Бэкенд живёт в двух слотах (синий/зелёный) — берём тот, что сейчас в работе.
+    WEB_SLOT="$(remote "cd $PROD_DIR && sh scripts/lib/web_slot.sh" | tr -d '\r' || true)"
+    if [[ -z "$WEB_SLOT" ]]; then
+        log "    !!! Не удалось определить слот бэкенда — архив media пропущен"
+        MEDIA_CMD="false"
+    else
+        MEDIA_CMD="compose \"exec -T $WEB_SLOT tar czf - -C /app/media .\""
+    fi
 fi
 if eval "$MEDIA_CMD" > "$MEDIA_TARGET.part" 2>/dev/null; then
     if gzip -t "$MEDIA_TARGET.part" 2>/dev/null; then

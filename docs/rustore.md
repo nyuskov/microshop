@@ -40,7 +40,7 @@
    подаётся бесплатно): обработка данных других людей вне личных/семейных нужд
    обычно требует уведомления.
 3. **Домен с TLS**: `https://pismo.space` (Let's Encrypt уже настроен в
-   `frontend/nginx.prod.conf`). Проверьте, что доступны
+   `frontend/nginx-prod/default.conf`). Проверьте, что доступны
    `https://pismo.space/privacy.html` и
    `https://pismo.space/.well-known/assetlinks.json`.
 4. **Проект push в RuStore**: RuStore Консоль → **Push-уведомления → Проекты**.
@@ -60,7 +60,9 @@ Google-сервисов), PWA — обычный Web Push. Настраивае�
    RUSTORE_PUSH_SERVICE_TOKEN=<сервисный токен>
    ```
 
-   и перезапустите `web`/`worker` (`docker compose -f docker-compose.test.yaml up -d web worker`).
+   и перезапустите бэкенд и воркер: `docker compose -f docker-compose.test.yaml
+   up -d --no-deps $(sh scripts/lib/web_slot.sh) worker` (имя слота бэкенда:
+   `web-blue`/`web-green`, помогает `scripts/lib/web_slot.sh`).
    Эти же переменные уже проброшены в compose-файлах.
 3. Приложение собирайте с ID проекта:
 

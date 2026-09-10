@@ -2,8 +2,8 @@
 # Включает e-mail-канал (подтверждение адреса, вход по коду, сброс пароля) на проде.
 #
 # Скрипт запускается на ЛОКАЛЬНОЙ машине: спрашивает SMTP-данные, обновляет
-# ~/microshop/.env на сервере и перезапускает web/worker, чтобы переменные
-# подхватились. Пароль вводится скрытно (read -s) и НИКУДА не пишется, кроме
+# ~/microshop/.env на сервере и переносит бэкенд в свободный слот, чтобы
+# переменные подхватились без перерыва в работе. Пароль вводится скрытно (read -s) и НИКУДА не пишется, кроме
 # продового .env (права 600). В логах скрипта пароля нет.
 #
 # Использование:
@@ -119,8 +119,29 @@ remote_in "cat > $PROD_DIR/.env.new && chmod 600 $PROD_DIR/.env.new && mv $PROD_
     < "$NEW" || die "не удалось записать .env"
 
 echo "==> .env обновлён (бэкап: .env.bak.$STAMP)"
-echo "==> Перезапускаю web и worker…"
-compose "up -d --force-recreate web worker" || die "не удалось перезапустить контейнеры"
+
+# Бэкенд живёт в двух слотах (синий/зелёный, см. docs/production.md): поднимаем
+# свободный слот с новыми переменными, дожидаемся health и только потом гасим
+# прежний — API продолжает отвечать всё время.
+SLOT="$(remote "cd $PROD_DIR && sh scripts/lib/web_slot.sh" | tr -d '\r')" \
+    || die "не удалось определить активный слот бэкенда"
+[[ -n "$SLOT" ]] || die "не удалось определить активный слот бэкенда"
+if [[ "$SLOT" == "web-green" ]]; then FREE="web-blue"; else FREE="web-green"; fi
+
+echo "==> Переношу бэкенд в слот $FREE (активный: $SLOT) и перезапускаю worker…"
+compose "up -d $FREE worker" || die "не удалось запустить новый слот"
+
+STATUS=""
+for _ in $(seq 1 20); do
+    STATUS="$(remote "docker inspect -f '{{.State.Health.Status}}' '$PROD_PROJECT-$FREE-1' 2>/dev/null" 2>/dev/null || true)"
+    [[ "$STATUS" == "healthy" ]] && break
+    sleep 3
+done
+[[ "$STATUS" == "healthy" ]] \
+    || die "новый слот $FREE не поднялся (статус: $STATUS) — прод остался на $SLOT"
+
+compose "stop $SLOT" || die "не удалось остановить прежний слот $SLOT"
+echo "==> Бэкенд в слоте $FREE, прежний слот $SLOT остановлен"
 
 echo "==> Жду запуск и проверяю канал…"
 sleep 10

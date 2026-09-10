@@ -102,7 +102,7 @@ docker compose -f docker-compose.yaml exec -T db psql -U postgres -d backup_chec
 ```bash
 # 1) на сервере остановить web/worker, чтобы никто не писал в БД
 ssh user1@176.108.249.9 "cd ~/microshop && docker compose -p microshop-test \
-  -f docker-compose.test.yaml stop web worker beat"
+  -f docker-compose.test.yaml stop $(sh scripts/lib/web_slot.sh) worker beat"
 
 # 2) залить дамп в БД (перезапись): DROP SCHEMA + восстановление
 gunzip -c db/microshop_….sql.gz | ssh user1@176.108.249.9 \
@@ -112,7 +112,7 @@ gunzip -c db/microshop_….sql.gz | ssh user1@176.108.249.9 \
 # 3) media: распаковать в volume media_data
 gunzip -c media/media_….tar.gz | ssh user1@176.108.249.9 \
   "cd ~/microshop && docker compose -p microshop-test -f docker-compose.test.yaml \
-   exec -T web tar xzf - -C /app/media"
+   exec -T $(sh scripts/lib/web_slot.sh) tar xzf - -C /app/media"
 
 # 4) поднять сервисы обратно
 ssh user1@176.108.249.9 "cd ~/microshop && docker compose -p microshop-test \

@@ -12,11 +12,14 @@
 #   3. статика фронтенда: копирование в том frontend_html (nginx не пересоздаётся);
 #   4. инфраструктура — только если изменилась;
 #   5. миграции;
-#   6. бэкенд по одному сервису с ожиданием health;
-#   7. nginx: пересоздаём только если изменилась его конфигурация, иначе reload;
+#   6. бэкенд: свободный слот web (синий/зелёный) поднимается на новом образе и
+#      проходит health, и только потом гасится прежний слот — API не пропадает;
+#      worker и beat перезапускаются рядом (на трафик не влияют);
+#   7. nginx: конфиг проверяется и применяется reload'ом (контейнер не трогаем);
 #   8. проверка ревизии alembic и ответа приложения.
 #
-# Скрипт идемпотентен: повторный запуск без изменений ничего не пересоздаёт.
+# Скрипт безопасно запускать повторно: прод при этом не ломается (слоты просто
+# меняются местами), а уже применённые миграции повторно ничего не делают.
 
 set -eu
 
@@ -24,10 +27,19 @@ PROJECT="${PROJECT:-microshop-test}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.test.yaml}"
 COMPOSE="docker compose -p $PROJECT -f $COMPOSE_FILE"
 
+# Сколько секунд держать прежний слот живым после того, как новый уже готов:
+# столько времени текущие соединения (в т.ч. WebSocket) продолжают работать.
+DRAIN_SECONDS="${DRAIN_SECONDS:-20}"
+
+# Файл состояния деплоя (вне репозитория, чтобы git reset его не сносил).
+STATE_DIR="${STATE_DIR:-$HOME/.microshop-deploy}"
+STATE_FILE="$STATE_DIR/active-web-slot"
+
 say() { printf '\n==> %s\n' "$*"; }
 fail() { printf '\n!!! %s\n' "$*" >&2; exit 1; }
 
 # Ждём, пока контейнер станет healthy (для сервисов с healthcheck).
+# Возвращает 1, если не дождались: решает вызывающий (откат или падение).
 wait_healthy() {
   name="$1"
   i=0
@@ -35,12 +47,24 @@ wait_healthy() {
     status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$name" 2>/dev/null || echo missing)
     case "$status" in
       healthy|running) echo "$name: $status"; return 0 ;;
-      missing) fail "контейнер $name не найден" ;;
+      missing) echo "контейнер $name не найден" >&2; return 1 ;;
     esac
     i=$((i + 1))
     sleep 3
   done
-  fail "$name не стал healthy (последний статус: $status)"
+  echo "$name не стал healthy (последний статус: $status)" >&2
+  return 1
+}
+
+# Печатает запущенный слот web (web-blue или web-green), если он есть.
+detect_active_slot() {
+  for slot in web-blue web-green; do
+    if [ "$(docker inspect -f '{{.State.Running}}' "$PROJECT-$slot-1" 2>/dev/null || true)" = "true" ]; then
+      echo "$slot"
+      return 0
+    fi
+  done
+  return 1
 }
 
 say "1/8 Уборка контейнеров от прерванного деплоя"
@@ -63,36 +87,89 @@ $COMPOSE up -d --no-build db rabbitmq coturn certbot
 say "5/8 Миграции"
 $COMPOSE run --rm --no-deps migrate
 
-say "6/8 Бэкенд (web, worker, beat) — по одному, с ожиданием"
-for service in web worker beat; do
+say "6/8 Бэкенд: слот web (синий/зелёный), worker, beat"
+# worker и beat живут в одном экземпляре: их перезапуск не влияет на ответы API.
+for service in worker beat; do
   $COMPOSE up -d --no-build --no-deps "$service"
 done
-wait_healthy "$PROJECT-web-1"
-sleep 2   # даём воркеру/биту подхватить соединения
+
+# Какой слот сейчас обслуживает трафик: сначала верим файлу состояния (если слот
+# и правда запущен), потом — тому, что реально работает.
+mkdir -p "$STATE_DIR"
+active=""
+if [ -f "$STATE_FILE" ]; then
+  saved=$(cat "$STATE_FILE" 2>/dev/null || true)
+  case "$saved" in
+    web-blue|web-green)
+      if [ "$(docker inspect -f '{{.State.Running}}' "$PROJECT-$saved-1" 2>/dev/null || true)" = "true" ]; then
+        active="$saved"
+      fi
+      ;;
+  esac
+fi
+[ -n "$active" ] || active=$(detect_active_slot || true)
+# Первый запуск после перехода на слоты: начинаем с синего.
+[ -n "$active" ] || active="web-blue"
+if [ "$active" = "web-blue" ]; then target="web-green"; else target="web-blue"; fi
+
+echo "в работе: $active → поднимаю новый слот $target"
+# Убираем контейнер этого слота, если он остался от прошлого раза: так новый слот
+# гарантированно стартует на свежесобранном образе.
+$COMPOSE rm -sf "$target" >/dev/null 2>&1 || true
+$COMPOSE up -d --no-build --no-deps "$target"
+
+# Не поднялся — сносим неудачный слот и оставляем прод на прежнем: пользователи
+# ничего не заметят, а следующий деплой попробует снова.
+if ! wait_healthy "$PROJECT-$target-1"; then
+  $COMPOSE rm -sf "$target" >/dev/null 2>&1 || true
+  fail "новый слот $target не поднялся — прод продолжает работать на $active"
+fi
+printf '%s' "$target" > "$STATE_FILE"
+
+# Оба слота живы и nginx делит между ними трафик. Ждём: текущие запросы и
+# WebSocket'ы на прежнем слоте дорабатывают, новые клиенты идут уже на новый.
+echo "даю ${DRAIN_SECONDS} с на завершение соединений на $active"
+sleep "$DRAIN_SECONDS"
+$COMPOSE stop "$active" >/dev/null
+echo "слот $active остановлен, в работе $target"
+active="$target"
 
 say "7/8 nginx"
-# Контейнер пересоздаём только если изменился его образ (правка nginx.prod.conf
-# или Dockerfile.nginx). Обновление одной статики пересоздания не требует.
-running_image=$(docker inspect -f '{{.Image}}' "$PROJECT-frontend-1" 2>/dev/null || echo none)
-built_image=$(docker inspect -f '{{.Id}}' "$PROJECT-frontend:latest" 2>/dev/null || echo none)
-if [ "$running_image" != "$built_image" ]; then
-  # Пересоздавать не будем: compose сам пересоздаёт контейнер, когда меняется
-  # конфиг (nginx.prod.conf, тома, порты), а это и есть обычный случай. Здесь
-  # только предупреждаем, чтобы расхождение образов не потерялось.
-  echo "ВНИМАНИЕ: контейнер frontend работает на другом образе, чем собран"
-  echo "  в контейнере: $running_image"
-  echo "  собран:       $built_image"
-  echo "  пересоздайте вручную, если важно подтянуть базовый образ"
-  $COMPOSE up -d --no-build --no-deps frontend
-  wait_healthy "$PROJECT-frontend-1"
-else
-  echo "образ nginx не менялся — только reload config (без простоя)"
-  $COMPOSE exec -T frontend nginx -s reload || $COMPOSE up -d --no-build --no-deps frontend
+# Конфиг nginx монтируется из репозитория (./frontend/nginx-prod), поэтому его
+# правки применяются reload'ом — это без простоя: старые воркеры дорабатывают
+# запросы, новые стартуют с новым конфигом.
+# Сначала проверяем конфиг одноразовым контейнером: он видит тот же каталог и те
+# же сертификаты, что рабочий nginx, но ничего не трогает в проде.
+CONF_DIR="$PWD/frontend/nginx-prod"
+conf_test() {
+  docker run --rm \
+    -v "$CONF_DIR:/etc/nginx/conf.d:ro" \
+    -v "$PROJECT-certbot_etc:/etc/letsencrypt:ro" \
+    --entrypoint nginx "$PROJECT-frontend:latest" -t
+}
+if ! conf_test >/dev/null 2>&1; then
+  conf_test || true
+  fail "конфиг nginx невалиден — прод работает на прежнем"
+fi
+echo "конфиг nginx проверен"
+
+# Пересоздание тут делает compose и только если менялось описание сервиса
+# (тома, порты): тогда без него не обойтись. Правка одного конфига пересоздания
+# не требует.
+$COMPOSE up -d --no-build --no-deps frontend
+wait_healthy "$PROJECT-frontend-1" || fail "контейнер frontend не поднялся"
+$COMPOSE exec -T frontend nginx -s reload
+echo "конфиг применён без пересоздания контейнера"
+
+# Переходный момент: раньше API обслуживал единственный контейнер web, новый
+# конфиг его не знает — убираем, чтобы не занимал память и не путал.
+if ! $COMPOSE config --services 2>/dev/null | grep -qx web; then
+  docker ps -a --format '{{.Names}}' | grep -x "$PROJECT-web-1" | xargs -r docker rm -f >/dev/null 2>&1 || true
 fi
 
 say "8/8 Проверки"
-current=$($COMPOSE exec -T web poetry run alembic current 2>/dev/null | sed -n 's/^\([0-9a-fA-F]\{6,\}\).*/\1/p' | head -1)
-heads=$($COMPOSE exec -T web poetry run alembic heads 2>/dev/null | sed -n 's/^\([0-9a-fA-F]\{6,\}\).*/\1/p' | head -1)
+current=$($COMPOSE exec -T "$active" poetry run alembic current 2>/dev/null | sed -n 's/^\([0-9a-fA-F]\{6,\}\).*/\1/p' | head -1)
+heads=$($COMPOSE exec -T "$active" poetry run alembic heads 2>/dev/null | sed -n 's/^\([0-9a-fA-F]\{6,\}\).*/\1/p' | head -1)
 if [ -z "$current" ] || [ "$current" != "$heads" ]; then
   fail "ревизия БД '$current' не совпадает с ожидаемой '$heads'"
 fi

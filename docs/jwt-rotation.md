@@ -34,15 +34,19 @@ JWT_SECRET_KEY_PREVIOUS=<СТАРЫЙ секрет>
 
 ```bash
 ssh user1@176.108.249.9 "cd ~/microshop && docker compose -p microshop-test \
-  -f docker-compose.test.yaml up -d --no-deps web worker beat"
+  -f docker-compose.test.yaml up -d --no-deps $(sh scripts/lib/web_slot.sh) worker beat"
 ```
+
+Имя слота бэкенда (`web-blue` или `web-green`) печатает `scripts/lib/web_slot.sh`:
+в работе всегда один из двух слотов. Оба варианта подхватывают новый `.env`,
+потому что переменные передаются в оба слота.
 
 4. Проверить, что всё живо: `./scripts/ci/smoke_prod.sh` — вход и API отвечают;
    дополнительно можно войти в приложение на телефоне, не перелогиниваясь
    (refresh-токен пользователя подписан старым ключом и должен приниматься).
 
 5. **Через 30+ дней** удалить `JWT_SECRET_KEY_PREVIOUS` из `.env` и повторить
-   `up -d --no-deps web worker beat`. После этого токены, подписанные старым
+   перезапуск бэкенда. После этого токены, подписанные старым
    ключом, перестают приниматься: кто не открывал приложение больше 30 дней —
    просто войдёт заново по коду/паролю.
 

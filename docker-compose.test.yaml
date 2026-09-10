@@ -7,6 +7,77 @@ x-logging: &default-logging
     max-size: "5m"
     max-file: "2"
 
+# Общее описание слота бэкенда. Слотов два (web-blue / web-green), в работе
+# обычно один: деплой поднимает свободный слот на новом образе, дожидается у
+# него health и только потом гасит прежний — API не перестаёт отвечать.
+# nginx знает оба слота (frontend/nginx-prod/default.conf).
+x-web-slot: &web-slot
+  logging: *default-logging
+  mem_limit: 256m
+  cpus: 0.5
+  build:
+    context: .
+    dockerfile: ./backend/Dockerfile
+  # Один тег на оба слота: собирается один образ, слоты лишь контейнеры.
+  image: microshop-test-backend:latest
+  command: ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+  environment:
+    DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/microshop
+    JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+    RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672/
+    UVICORN_RELOAD: "0"
+    # Доставка OTP: SMS Aero (осн. канал); Telegram Gateway/бот — опционально.
+    SMS_AERO_EMAIL: ${SMS_AERO_EMAIL:-}
+    SMS_AERO_API_KEY: ${SMS_AERO_API_KEY:-}
+    SMS_AERO_SIGN: ${SMS_AERO_SIGN:-}
+    # Web Push (PWA): VAPID-ключи; пока пусто — push выключен.
+    # TURN (релей звонков): адреса и общий секрет для временных кредов.
+    TURN_URLS: ${TURN_URLS:-}
+    TURN_SECRET: ${TURN_SECRET:-}
+    TURN_REALM: ${TURN_REALM:-pismo.space}
+    TURN_TTL_SECONDS: ${TURN_TTL_SECONDS:-3600}
+    WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
+    WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
+    WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-mailto:nyuskov@gmail.com}
+    # RuStore Push (Android-приложение): ID проекта и сервисный токен.
+    RUSTORE_PUSH_PROJECT_ID: ${RUSTORE_PUSH_PROJECT_ID:-}
+    RUSTORE_PUSH_SERVICE_TOKEN: ${RUSTORE_PUSH_SERVICE_TOKEN:-}
+    TELEGRAM_GATEWAY_TOKEN: ${TELEGRAM_GATEWAY_TOKEN:-}
+    TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+    TELEGRAM_GATEWAY_BASE_URL: ${TELEGRAM_GATEWAY_BASE_URL:-https://gateway.telegram.org}
+    # Суточные лимиты отправки кодов (защита баланса SMS-шлюза).
+    AUTH_OTP_DAILY_LIMIT: ${AUTH_OTP_DAILY_LIMIT:-50}
+    AUTH_OTP_PER_IP_DAILY_LIMIT: ${AUTH_OTP_PER_IP_DAILY_LIMIT:-20}
+    # E-mail-канал (подтверждение адреса, вход по коду, сброс пароля).
+    SMTP_HOST: ${SMTP_HOST:-}
+    SMTP_PORT: ${SMTP_PORT:-587}
+    SMTP_USER: ${SMTP_USER:-}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    SMTP_FROM: ${SMTP_FROM:-}
+    SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Pismo}
+    SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+    SMTP_SSL: ${SMTP_SSL:-false}
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+    rabbitmq:
+      condition: service_healthy
+  volumes:
+    - media_data:/app/media
+  healthcheck:
+    test:
+      - CMD
+      - python
+      - -c
+      - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status==200 else 1)"
+    interval: 15s
+    timeout: 5s
+    retries: 3
+  restart: unless-stopped
+  networks:
+    - server_network
+
 services:
   db:
     logging: *default-logging
@@ -45,70 +116,11 @@ services:
     networks:
       - server_network
 
-  web:
-    logging: *default-logging
-    mem_limit: 256m
-    cpus: 0.5
-    build:
-      context: .
-      dockerfile: ./backend/Dockerfile
-    command: ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-    environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/microshop
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672/
-      UVICORN_RELOAD: "0"
-      # Доставка OTP: SMS Aero (осн. канал); Telegram Gateway/бот — опционально.
-      SMS_AERO_EMAIL: ${SMS_AERO_EMAIL:-}
-      SMS_AERO_API_KEY: ${SMS_AERO_API_KEY:-}
-      SMS_AERO_SIGN: ${SMS_AERO_SIGN:-}
-      # Web Push (PWA): VAPID-ключи; пока пусто — push выключен.
-      # TURN (релей звонков): адреса и общий секрет для временных кредов.
-      TURN_URLS: ${TURN_URLS:-}
-      TURN_SECRET: ${TURN_SECRET:-}
-      TURN_REALM: ${TURN_REALM:-pismo.space}
-      TURN_TTL_SECONDS: ${TURN_TTL_SECONDS:-3600}
-      WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
-      WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
-      WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-mailto:nyuskov@gmail.com}
-      # RuStore Push (Android-приложение): ID проекта и сервисный токен.
-      RUSTORE_PUSH_PROJECT_ID: ${RUSTORE_PUSH_PROJECT_ID:-}
-      RUSTORE_PUSH_SERVICE_TOKEN: ${RUSTORE_PUSH_SERVICE_TOKEN:-}
-      TELEGRAM_GATEWAY_TOKEN: ${TELEGRAM_GATEWAY_TOKEN:-}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
-      TELEGRAM_GATEWAY_BASE_URL: ${TELEGRAM_GATEWAY_BASE_URL:-https://gateway.telegram.org}
-      # Суточные лимиты отправки кодов (защита баланса SMS-шлюза).
-      AUTH_OTP_DAILY_LIMIT: ${AUTH_OTP_DAILY_LIMIT:-50}
-      AUTH_OTP_PER_IP_DAILY_LIMIT: ${AUTH_OTP_PER_IP_DAILY_LIMIT:-20}
-      # E-mail-канал (подтверждение адреса, вход по коду, сброс пароля).
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM: ${SMTP_FROM:-}
-      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Pismo}
-      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
-      SMTP_SSL: ${SMTP_SSL:-false}
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      rabbitmq:
-        condition: service_healthy
-    volumes:
-      - media_data:/app/media
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status==200 else 1)"
-      interval: 15s
-      timeout: 5s
-      retries: 3
-    restart: unless-stopped
-    networks:
-      - server_network
+  web-blue:
+    <<: *web-slot
+
+  web-green:
+    <<: *web-slot
 
   rabbitmq:
     logging: *default-logging
@@ -221,8 +233,11 @@ services:
       - certbot_etc:/etc/letsencrypt
       - certbot_var:/var/lib/letsencrypt
       - frontend_html:/usr/share/nginx/html
-    depends_on:
-      - web
+      # Конфиг монтируем из репозитория: правки применяются `nginx -s reload`
+      # (без пересоздания контейнера и без простоя). Монтируется именно каталог:
+      # при монтировании одного файла git заменяет его новым inode, и контейнер
+      # продолжал бы читать старую версию.
+      - ./frontend/nginx-prod:/etc/nginx/conf.d:ro
     restart: unless-stopped
     networks:
       - server_network

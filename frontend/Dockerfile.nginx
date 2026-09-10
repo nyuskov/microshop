@@ -2,10 +2,12 @@
 #
 # Статика лежит НЕ в образе, а в томе frontend_html (см. docker-compose.test.yaml):
 # деплой обновляет файлы в томе, поэтому контейнер не пересоздаётся и сайт не
-# пропадает. Образ меняется только при правке этого файла или nginx.prod.conf.
+# пропадает. Так же и конфиг: каталог frontend/nginx-prod монтируется в
+# /etc/nginx/conf.d, поэтому правки применяются `nginx -s reload`, без пересоздания.
+# В образе конфиг тоже есть — на случай запуска без монтирования.
 
 FROM nginx:1.27-alpine
-COPY nginx.prod.conf /etc/nginx/conf.d/default.conf
+COPY nginx-prod/default.conf /etc/nginx/conf.d/default.conf
 # Каталог статики: его закрывает том. Пустой на случай, если том ещё не заполнен —
 # тогда отдаём понятную заглушку вместо 403.
 RUN mkdir -p /usr/share/nginx/html && \
