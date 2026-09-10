@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref, watch, computed } from 'vue'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, type AuthSession as AuthSessionRow } from '@/stores/auth'
 import { getErrorMessage } from '@/services/errors'
 import { removeAvatar, uploadAvatar } from '@/services/api'
 import { mediaUrl } from '@/services/chatService'
@@ -320,6 +320,85 @@ const doRevokeAllSessions = async () => {
   } finally {
     passwordSaving.value = false
   }
+}
+
+// --- Активные входы (устройства): список + отзыв одного входа ---
+// Показываем устройство, IP и время входа: так владелец видит чужие сессии.
+// «Текущий» вход сервер определяет по отпечатку браузера/приложения (User-Agent).
+const sessions = ref<AuthSessionRow[]>([])
+const sessionsLoading = ref(false)
+const sessionsError = ref('')
+const sessionsNotice = ref('')
+
+const loadSessions = async () => {
+  sessionsLoading.value = true
+  sessionsError.value = ''
+  try {
+    sessions.value = await authStore.fetchSessions()
+  } catch (error) {
+    sessionsError.value = getErrorMessage(error, 'Не удалось загрузить устройства')
+  } finally {
+    sessionsLoading.value = false
+  }
+}
+
+void loadSessions()
+
+const revokeSessionRow = async (row: AuthSessionRow) => {
+  if (sessionsLoading.value) return
+  sessionsLoading.value = true
+  sessionsError.value = ''
+  sessionsNotice.value = ''
+  try {
+    await authStore.revokeSession(row.id)
+    if (row.current) {
+      // Отозвали собственный вход — дальше работать нечем, выходим локально.
+      await authStore.logout()
+      emit('close-modal')
+      return
+    }
+    sessions.value = sessions.value.filter((item) => item.id !== row.id)
+    sessionsNotice.value = 'Устройство вышло из аккаунта.'
+  } catch (error) {
+    sessionsError.value = getErrorMessage(error, 'Не удалось отозвать устройство')
+  } finally {
+    sessionsLoading.value = false
+  }
+}
+
+/** Короткая подпись устройства: браузер/ОС вместо полной строки User-Agent. */
+const deviceLabel = (agent: string): string => {
+  if (!agent) return 'Неизвестное устройство'
+  if (/pismo/i.test(agent) && /android/i.test(agent)) return 'Pismo для Android'
+  if (/edg\//i.test(agent)) return 'Microsoft Edge'
+  if (/opr\//i.test(agent)) return 'Opera'
+  if (/chrome\//i.test(agent) && !/chromium/i.test(agent)) return 'Chrome'
+  if (/firefox\//i.test(agent)) return 'Firefox'
+  if (/safari\//i.test(agent)) return 'Safari'
+  return agent.slice(0, 48)
+}
+
+/** Операционная система по строке User-Agent (для подписи под устройством). */
+const platformLabel = (agent: string): string => {
+  if (/android/i.test(agent)) return 'Android'
+  if (/(iphone|ipad|ipod)/i.test(agent)) return 'iOS'
+  if (/windows/i.test(agent)) return 'Windows'
+  if (/mac os x/i.test(agent)) return 'macOS'
+  if (/linux/i.test(agent)) return 'Linux'
+  return ''
+}
+
+/** Дата и время входа в читаемом виде. */
+const sessionTime = (iso: string): string => {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 const doLogout = async () => {
@@ -817,6 +896,75 @@ const onNotificationsToggle = async (val: boolean) => {
             <q-icon name="phonelink_erase" size="17px" />
             Выйти на всех устройствах
           </button>
+
+          <!-- Активные входы: видно, где ещё открыт аккаунт -->
+          <div class="sessions-block">
+            <div class="sessions-head">
+              <span class="sessions-title">Активные входы</span>
+              <button
+                type="button"
+                class="sessions-refresh"
+                :disabled="sessionsLoading"
+                @click="loadSessions"
+              >
+                <q-icon name="refresh" size="16px" />
+                Обновить
+              </button>
+            </div>
+
+            <p v-if="sessionsLoading && !sessions.length" class="sessions-hint">
+              Загружаем устройства…
+            </p>
+            <p v-else-if="!sessions.length && !sessionsError" class="sessions-hint">
+              Активных входов не найдено.
+            </p>
+
+            <ul class="sessions-list">
+              <li v-for="row in sessions" :key="row.id" class="session-row">
+                <span class="session-icon">
+                  <q-icon :name="row.current ? 'computer' : 'devices'" size="18px" />
+                </span>
+                <span class="session-info">
+                  <span class="session-device">
+                    {{ deviceLabel(row.device) }}
+                    <span v-if="row.current" class="session-current">это устройство</span>
+                  </span>
+                  <span class="session-meta">
+                    <template v-if="platformLabel(row.device)">
+                      {{ platformLabel(row.device) }} ·
+                    </template>
+                    {{ sessionTime(row.created_at) }}
+                    <template v-if="row.ip"> · IP {{ row.ip }}</template>
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  class="session-revoke"
+                  :disabled="sessionsLoading"
+                  :title="row.current ? 'Выйти на этом устройстве' : 'Завершить этот вход'"
+                  @click="revokeSessionRow(row)"
+                >
+                  {{ row.current ? 'Выйти' : 'Завершить' }}
+                </button>
+              </li>
+            </ul>
+
+            <transition name="fade">
+              <p v-if="sessionsNotice" class="sessions-note success-text">
+                <q-icon name="check_circle" size="16px" /> {{ sessionsNotice }}
+              </p>
+            </transition>
+            <transition name="fade">
+              <p v-if="sessionsError" class="sessions-note error-text">
+                <q-icon name="error" size="16px" /> {{ sessionsError }}
+              </p>
+            </transition>
+
+            <p class="security-note">
+              Вход с нового устройства требует код из письма, а о каждом таком входе мы сообщаем на
+              подтверждённый e-mail.
+            </p>
+          </div>
         </section>
 
         <!-- Сообщения -->
@@ -1315,6 +1463,160 @@ const onNotificationsToggle = async (val: boolean) => {
   margin: 6px 0 0;
   font-size: 12.5px;
   color: #8295a3;
+}
+
+/* Активные входы (устройства) — список с отзывом по одному. */
+.sessions-block {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #eef1f4;
+}
+
+.sessions-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sessions-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1c2733;
+}
+
+.sessions-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--ms-accent, #2ea25e);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+}
+
+.sessions-refresh:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.sessions-hint {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #8295a3;
+}
+
+.sessions-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #eef1f4;
+  border-radius: 12px;
+  background: #fafbfc;
+}
+
+.session-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ms-accent, #2ea25e) 12%, transparent);
+  color: var(--ms-accent, #2ea25e);
+  flex-shrink: 0;
+}
+
+.session-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.session-device {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1c2733;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-current {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ms-accent, #2ea25e) 14%, transparent);
+  color: var(--ms-accent, #2ea25e);
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.session-meta {
+  font-size: 12px;
+  color: #8295a3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-revoke {
+  flex-shrink: 0;
+  border: 1px solid #e2e6ea;
+  background: #fff;
+  color: #b23b3b;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.session-revoke:hover {
+  border-color: #e6b7b7;
+  background: #fdf5f5;
+}
+
+.session-revoke:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.sessions-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+
+.sessions-note.success-text {
+  color: #1e9b51;
+}
+
+.sessions-note.error-text {
+  color: #c0392b;
 }
 
 /* Подтверждение e-mail в разделе «Безопасность». */

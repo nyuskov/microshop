@@ -22,9 +22,19 @@ from ..users.crud import (
     create_user_by_phone_number,
     get_or_create_user_by_phone_number,
     get_user_by_email,
+    get_user_by_id,
     get_user_by_phone_number,
 )
 from . import email_codes, security_notifications
+from .device import device_info
+from .device_guard import (
+    DeviceChallengeError,
+    build_challenge,
+    can_verify_by_email,
+    decode_challenge,
+    has_any_device,
+    is_known_device,
+)
 from .jwt import get_jwt_strategy
 from .login_guard import lockout_seconds, register_failure, reset_failures
 from .otp_storage import (
@@ -35,9 +45,17 @@ from .otp_storage import (
     store_otp,
     verify_otp,
 )
-from .refresh_sessions import issue_refresh_token, revoke_all_sessions
+from .refresh_sessions import (
+    issue_refresh_token,
+    list_active_sessions,
+    revoke_all_sessions,
+    revoke_session,
+)
 from .schemas import (
     AuthChannelsResponse,
+    AuthSessionSchema,
+    AuthSessionsResponse,
+    DeviceVerifyRequest,
     EmailAddressRequest,
     EmailCodeConfirmRequest,
     EmailLoginConfirmRequest,
@@ -50,6 +68,7 @@ from .schemas import (
     PasswordStatusRequest,
     PasswordStatusResponse,
     RequestOTPRequest,
+    SessionRevokeResponse,
     TokenResponse,
     VerifyOTPRequest,
 )
@@ -169,6 +188,194 @@ def _email_code_body(code: str, purpose: str) -> str:
     )
 
 
+# --- 2FA: вход с нового устройства -----------------------------------------
+# Политика — всегда требовать код (см. device_guard.py). Проверка стоит ПОСЛЕ
+# проверки пароля/кода, но ДО выдачи токенов, поэтому «только пароль» больше не
+# даёт доступ с незнакомого устройства.
+
+_DEVICE_CHALLENGE_DETAIL = (
+    "Вход с нового устройства. Мы отправили код на вашу почту — введите его, "
+    "чтобы подтвердить этот вход."
+)
+
+
+async def _require_device_verification(
+    session: AsyncSession, request: Request, user: User
+) -> None:
+    """Пропускает вход с известного устройства, иначе требует код из письма.
+
+    Ничего не возвращает, если вход можно продолжать (устройство знакомо, это
+    первый вход аккаунта либо подтвердить кодом нечем). Если устройство новое и
+    подтверждение возможно — отправляет код и поднимает 428 с challenge-токеном.
+    """
+    if not await has_any_device(session, user_id=user.id):
+        # Первое устройство аккаунта (регистрация) — подтверждать нечего.
+        await security_notifications.remember_login_device(session, user, request)
+        return
+
+    if await is_known_device(session, user_id=user.id, device=device_info(request)):
+        return
+
+    if not can_verify_by_email(user):
+        # Подтвердить вход нечем (нет подтверждённого e-mail или выключен SMTP).
+        # Запирать человека вне собственного аккаунта нельзя, поэтому пропускаем,
+        # но запоминаем устройство и шлём письмо-предупреждение (если адрес есть).
+        logger.warning(
+            "Вход с нового устройства без 2FA (нет подтверждённого e-mail): "
+            "пользователь %s",
+            user.id,
+        )
+        await security_notifications.remember_login_device(session, user, request)
+        return
+
+    info = device_info(request)
+    address = str(user.email)
+    # Кулдаун защищает от спама письмами, но здесь он мешал бы: каждый новый вход
+    # = новый код. Если код отправляли только что, он ещё действует — показываем
+    # шаг ввода; иначе отправляем новый (лимиты канала пробрасываем как есть,
+    # ведь без письма подтвердить вход невозможно).
+    cooldown = settings.auth_email_resend_cooldown_seconds
+    if await email_codes.can_request_email_code(
+        session, email=address, cooldown_seconds=cooldown
+    ):
+        await _issue_email_code(
+            session,
+            request,
+            email=address,
+            purpose=(
+                "Подтверждение входа в Pismo с нового устройства.\n"
+                f"Устройство: {info.label}"
+            ),
+        )
+    else:
+        logger.info(
+            "Код для подтверждения устройства уже отправлен недавно (%s)", user.id
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+        detail={
+            "detail": _DEVICE_CHALLENGE_DETAIL,
+            "code_sent_to": mailer.mask_email(address),
+            "challenge_token": build_challenge(user_id=user.id, device=info),
+            "expires_in": settings.auth_device_challenge_expire_seconds,
+        },
+    )
+
+
+@router.post("/login/verify-device/", response_model=TokenResponse)
+async def verify_device_login(
+    request_data: DeviceVerifyRequest,
+    request: Request,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> TokenResponse:
+    """Второй шаг входа с нового устройства: код из письма → токены.
+
+    Challenge-токен подписан сервером и привязан к подписи устройства, поэтому
+    подтвердить вход можно только с того же браузера/приложения, с которого
+    пришла попытка входа.
+    """
+    await _enforce_ip_limit(
+        request,
+        scope="auth:device-verify",
+        limit=settings.auth_device_verify_limit_per_minute,
+    )
+    try:
+        user_id, signature = decode_challenge(request_data.challenge_token)
+    except DeviceChallengeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Подтверждение входа недействительно. Войдите заново.",
+        ) from exc
+
+    info = device_info(request)
+    if signature != info.signature:
+        # Заявка выдана другому устройству — это попытка подтвердить чужой вход.
+        logger.warning("Challenge устройства использован не с того устройства")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Подтверждение входа недействительно. Войдите заново.",
+        )
+
+    user = await get_user_by_id(session, user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Подтверждение входа недействительно. Войдите заново.",
+        )
+
+    address = str(user.email or "")
+    if not address:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Подтверждение входа недействительно. Войдите заново.",
+        )
+
+    await _consume_email_code(session, request, email=address, code=request_data.code)
+    # Код из письма — уже доказательство владения ящиком, отдельное письмо «вход с
+    # нового устройства» здесь было бы вторым письмом об одном действии.
+    await security_notifications.remember_login_device(
+        session, user, request, notify=False
+    )
+    logger.info("Пользователь %s подтвердил вход с нового устройства", user.id)
+
+    access_token = await get_jwt_strategy().write_token(user)
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=await issue_refresh_token(session, user_id=user.id, device=info),
+    )
+
+
+# --- Активные входы (устройства) -------------------------------------------
+
+
+@router.get("/sessions/", response_model=AuthSessionsResponse)
+async def list_sessions(
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> AuthSessionsResponse:
+    """Активные входы аккаунта: устройство, IP, когда выполнен вход.
+
+    «Текущий» вход определяется по подписи устройства (User-Agent): если в одном
+    браузере несколько входов, они выглядят одинаково.
+    """
+    current_signature = device_info(request).signature
+    rows = await list_active_sessions(session, user_id=user.id)
+    return AuthSessionsResponse(
+        sessions=[
+            AuthSessionSchema(
+                id=row.id,
+                device=row.device_user_agent or "неизвестное устройство",
+                ip=row.device_ip or "",
+                created_at=row.created_at,
+                current=bool(
+                    row.device_signature and row.device_signature == current_signature
+                ),
+            )
+            for row in rows
+        ]
+    )
+
+
+@router.delete("/sessions/{session_id}/", response_model=SessionRevokeResponse)
+async def revoke_one_session(
+    session_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> SessionRevokeResponse:
+    """Отзывает один вход (устройство). Свою же сессию тоже можно отозвать."""
+    revoked = await revoke_session(session, user_id=user.id, session_id=session_id)
+    if not revoked:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Вход не найден (возможно, уже завершён).",
+        )
+    logger.info("Пользователь %s отозвал сессию %s", user.id, session_id)
+    return SessionRevokeResponse(detail="Устройство вышло из аккаунта.")
+
+
 @router.post("/token/", response_model=Token)
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
@@ -193,14 +400,15 @@ async def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Вход с нового устройства требует код из письма (политика — всегда).
+    await _require_device_verification(session, request, user)
     access_token = await get_jwt_strategy().write_token(user)
-    refresh_token = await issue_refresh_token(session, user_id=user.id)
-    # Вход выполнен — если устройство новое, владелец получит письмо.
-    await security_notifications.remember_login_device(session, user, request)
     return Token(
         access_token=access_token,
         token_type="bearer",
-        refresh_token=refresh_token,
+        refresh_token=await issue_refresh_token(
+            session, user_id=user.id, device=device_info(request)
+        ),
     )
 
 
@@ -346,13 +554,15 @@ async def verify_otp_endpoint(
         )
 
     user = await get_or_create_user_by_phone_number(session, phone_number)
+    # Подтверждённый номер — первый фактор; новое устройство требует код с почты.
+    await _require_device_verification(session, request, user)
     access_token = await get_jwt_strategy().write_token(user)
-    refresh_token = await issue_refresh_token(session, user_id=user.id)
-    await security_notifications.remember_login_device(session, user, request)
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
-        refresh_token=refresh_token,
+        refresh_token=await issue_refresh_token(
+            session, user_id=user.id, device=device_info(request)
+        ),
     )
 
 
@@ -449,11 +659,16 @@ async def register_with_password(
         user.password_weak = False
         await session.commit()
 
+    # Если аккаунт уже существовал и с него входили с других устройств, установка
+    # пароля — тоже новый вход и требует код из письма.
+    await _require_device_verification(session, request, user)
     access_token = await get_jwt_strategy().write_token(user)
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
-        refresh_token=await issue_refresh_token(session, user_id=user.id),
+        refresh_token=await issue_refresh_token(
+            session, user_id=user.id, device=device_info(request)
+        ),
     )
 
 
@@ -516,13 +731,14 @@ async def password_login(
         user.password_weak = weak
         await session.commit()
 
+    await _require_device_verification(session, request, user)
     access_token = await get_jwt_strategy().write_token(user)
-    refresh_token = await issue_refresh_token(session, user_id=user.id)
-    await security_notifications.remember_login_device(session, user, request)
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
-        refresh_token=refresh_token,
+        refresh_token=await issue_refresh_token(
+            session, user_id=user.id, device=device_info(request)
+        ),
     )
 
 
@@ -583,7 +799,9 @@ async def set_password(
         detail="Пароль сохранён. Остальные устройства вышли из аккаунта.",
         access_token=access_token,
         token_type="bearer",
-        refresh_token=await issue_refresh_token(session, user_id=user.id),
+        refresh_token=await issue_refresh_token(
+            session, user_id=user.id, device=device_info(request)
+        ),
     )
 
 
@@ -829,13 +1047,18 @@ async def confirm_email_login(
     await _consume_email_code(session, request, email=address, code=request_data.code)
     await reset_failures(session, identifier=address)
 
+    # Вход подтверждён кодом из письма (доказано владение ящиком), поэтому 2FA
+    # на устройство не требуется: просто запоминаем устройство.
+    await security_notifications.remember_login_device(
+        session, user, request, notify=False
+    )
     access_token = await get_jwt_strategy().write_token(user)
-    refresh_token = await issue_refresh_token(session, user_id=user.id)
-    await security_notifications.remember_login_device(session, user, request)
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
-        refresh_token=refresh_token,
+        refresh_token=await issue_refresh_token(
+            session, user_id=user.id, device=device_info(request)
+        ),
     )
 
 
@@ -923,11 +1146,17 @@ async def confirm_password_reset(
     )
     logger.info("Пользователь %s восстановил пароль по e-mail", user.id)
 
+    # Код из письма подтверждает и владение ящиком, и это устройство.
+    await security_notifications.remember_login_device(
+        session, user, request, notify=False
+    )
     access_token = await get_jwt_strategy().write_token(user)
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
-        refresh_token=await issue_refresh_token(session, user_id=user.id),
+        refresh_token=await issue_refresh_token(
+            session, user_id=user.id, device=device_info(request)
+        ),
     )
 
 

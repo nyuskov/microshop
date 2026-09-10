@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '../stores/auth'
+import { useAuthStore, deviceChallengeOf, type DeviceChallenge } from '../stores/auth'
 import { getErrorMessage } from '../services/errors'
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { formatPhoneForBackend, isValidPhoneNumber, prettyPhone } from '@/utils/phone'
@@ -8,7 +8,8 @@ import { PASSWORD_MIN_LENGTH, passwordProblem, passwordStrength } from '@/utils/
 
 // Шаги входа: телефон → (пароль | код в Telegram | создание пароля), плюс
 // отдельная ветка работы с e-mail: вход по коду из письма и сброс пароля.
-type LoginState = 'phone' | 'password' | 'otp' | 'create' | 'email'
+// 'device' — подтверждение входа с нового устройства кодом из письма (2FA).
+type LoginState = 'phone' | 'password' | 'otp' | 'create' | 'email' | 'device'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -81,6 +82,14 @@ const resetPassword = ref('')
 const resetPasswordConfirm = ref('')
 const showEmailCode = ref(false)
 const showResetPassword = ref(false)
+
+// --- 2FA: подтверждение входа с нового устройства ---
+const deviceChallenge = ref<DeviceChallenge | null>(null)
+const deviceCode = ref('')
+const deviceFieldRef = ref<HTMLInputElement | null>(null)
+const showDeviceCode = ref(false)
+/** Куда вернуться кнопкой «назад» со шага подтверждения устройства. */
+const previousDeviceState = ref<LoginState>('password')
 
 const severity = ref<'success' | 'error' | 'info' | 'warn'>('success')
 const result = ref('')
@@ -181,12 +190,74 @@ async function onLoginSubmit() {
     result.value = ''
     emit('close-modal')
   } catch (error: unknown) {
+    if (startDeviceStep(error, 'password')) return
     console.error('Login failed:', error)
     result.value = getErrorMessage(error, 'Неверный номер или пароль.')
     severity.value = 'error'
   } finally {
     isLoading.value = false
   }
+}
+
+/**
+ * Вход с нового устройства: сервер не выдал токены, а прислал код на почту
+ * (ответ 428). Показываем шаг ввода кода; возвращает `true`, если шаг открыт.
+ */
+function startDeviceStep(error: unknown, from: LoginState): boolean {
+  const challenge = deviceChallengeOf(error)
+  if (!challenge?.challenge_token) {
+    return false
+  }
+  deviceChallenge.value = challenge
+  deviceCode.value = ''
+  showDeviceCode.value = false
+  previousDeviceState.value = from
+  state.value = 'device'
+  emit('state-changed', state.value)
+  result.value = challenge.detail
+  severity.value = 'info'
+  void nextTick(() => deviceFieldRef.value?.focus())
+  return true
+}
+
+/** Второй шаг входа с нового устройства: код из письма → токены. */
+async function onDeviceSubmit() {
+  if (isLoading.value) return
+  const challenge = deviceChallenge.value
+  if (!challenge?.challenge_token) {
+    goBackFromDevice()
+    return
+  }
+  const code = deviceCode.value.replace(/\D/g, '')
+  if (code.length < 4) {
+    result.value = 'Введите код из письма.'
+    severity.value = 'error'
+    return
+  }
+
+  isLoading.value = true
+  result.value = ''
+  try {
+    await authStore.verifyDeviceLogin(challenge.challenge_token, code, router)
+    deviceChallenge.value = null
+    deviceCode.value = ''
+    finishLogin()
+  } catch (error: unknown) {
+    console.error('Device verify failed:', error)
+    result.value = getErrorMessage(error, 'Неверный или истёкший код. Попробуйте войти заново.')
+    severity.value = 'error'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+/** Возврат с шага подтверждения (например, чтобы запросить код заново). */
+function goBackFromDevice() {
+  deviceChallenge.value = null
+  deviceCode.value = ''
+  result.value = ''
+  state.value = previousDeviceState.value
+  emit('state-changed', state.value)
 }
 
 /** Отправляет (или повторно отправляет) код подтверждения на текущий номер. */
@@ -247,6 +318,7 @@ async function onOtpSubmit() {
     emit('state-changed', state.value)
     void nextTick(focusPassword)
   } catch (error: unknown) {
+    if (startDeviceStep(error, 'otp')) return
     console.error('Verify OTP failed:', error)
     result.value = getErrorMessage(error, 'Неверный или истёкший код.')
     severity.value = 'error'
@@ -293,6 +365,7 @@ async function onCreateSubmit() {
     }
     finishLogin()
   } catch (error: unknown) {
+    if (startDeviceStep(error, 'create')) return
     console.error('Create password failed:', error)
     result.value = getErrorMessage(error, 'Не удалось создать пароль.')
     severity.value = 'error'
@@ -517,6 +590,66 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
         >
           <q-icon name="help_outline" size="17px" />
           Забыли пароль?
+        </button>
+      </div>
+
+      <!-- Шаг 2в: подтверждение входа с нового устройства (2FA кодом из письма) -->
+      <div v-else-if="state === 'device'" key="device" class="step">
+        <div class="brand">
+          <span class="brand-icon"><q-icon name="phonelink_lock" size="30px" /></span>
+        </div>
+        <h2 class="step-title">Новое устройство</h2>
+        <p class="step-subtitle">
+          Вход с этого устройства выполняется впервые. Введите код из письма
+          <template v-if="deviceChallenge?.code_sent_to">
+            (отправлен на <strong>{{ deviceChallenge.code_sent_to }}</strong
+            >)
+          </template>
+          — так мы убедимся, что это вы.
+        </p>
+
+        <form class="otp-form" @submit.prevent="onDeviceSubmit">
+          <label class="field-label" for="device-code-input">Код из письма</label>
+          <q-input
+            id="device-code-input"
+            ref="deviceFieldRef"
+            v-model="deviceCode"
+            :type="showDeviceCode ? 'text' : 'password'"
+            inputmode="numeric"
+            outlined
+            class="phone-input otp-input"
+            placeholder="_ _ _ _ _ _"
+            autocomplete="one-time-code"
+            aria-label="Код подтверждения из письма"
+            hide-bottom-space
+          >
+            <template #append>
+              <q-icon
+                :name="showDeviceCode ? 'visibility_off' : 'visibility'"
+                class="password-eye"
+                size="20px"
+                role="button"
+                :aria-label="showDeviceCode ? 'Скрыть код' : 'Показать код'"
+                @click="showDeviceCode = !showDeviceCode"
+              />
+            </template>
+          </q-input>
+
+          <button type="submit" class="btn btn-primary" :disabled="isLoading">
+            <span v-if="isLoading" class="spinner"></span>
+            <q-icon v-else name="check" size="17px" />
+            <span>{{ isLoading ? 'Проверка…' : 'Подтвердить вход' }}</span>
+          </button>
+        </form>
+
+        <p class="privacy-hint">
+          Код не пришёл? Проверьте папку «Спам». Отправить письмо ещё раз можно, войдя заново — если
+          прошла минута с прошлой отправки, придёт новый код, иначе действует предыдущий.
+        </p>
+
+        <button class="link-btn" type="button" :disabled="isLoading" @click="goBackFromDevice">
+          <q-icon name="arrow_back" size="17px" />
+          Вернуться
         </button>
       </div>
 

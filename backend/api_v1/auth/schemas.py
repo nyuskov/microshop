@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, EmailStr
 
 
@@ -118,3 +120,46 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     refresh_token: str | None = None
+
+
+class DeviceChallengeResponse(BaseModel):
+    """Ответ на вход с нового устройства: нужен код из письма (токенов нет).
+
+    Отдаётся с кодом 428 (``Precondition Required``), чтобы клиент не спутал этот
+    ответ с успешным входом. ``challenge_token`` — подписанная сервером заявка
+    «подтвердите вход с этого устройства»; её нужно вернуть вместе с кодом.
+    """
+
+    detail: str
+    code_sent_to: str | None = None
+    challenge_token: str | None = None
+    expires_in: int = 0
+
+
+class DeviceVerifyRequest(BaseModel):
+    """Подтверждение входа с нового устройства кодом из письма."""
+
+    challenge_token: str
+    code: str
+
+
+class AuthSessionSchema(BaseModel):
+    """Один активный вход (устройство) в списке профиля."""
+
+    id: int
+    device: str
+    ip: str
+    created_at: datetime
+    current: bool = False
+
+
+class AuthSessionsResponse(BaseModel):
+    """Список активных входов («Безопасность» → устройства)."""
+
+    sessions: list[AuthSessionSchema]
+
+
+class SessionRevokeResponse(BaseModel):
+    """Результат отзыва одной сессии."""
+
+    detail: str

@@ -29,7 +29,6 @@ HTTP-запрос не ждёт SMTP. Дополнительно огранич�
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from datetime import datetime, timezone
 
@@ -37,10 +36,12 @@ from fastapi import Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api_v1.rate_limit import client_ip, rate_limit_key, rate_limiter
+from api_v1.rate_limit import rate_limit_key, rate_limiter
 from core import mailer
 from core.celery_app import get_task
 from core.models import LoginDevice, User
+
+from .device import device_info
 
 logger = logging.getLogger(__name__)
 
@@ -65,23 +66,6 @@ _ADVICE = (
 )
 
 _MAX_NOTIFICATIONS_PER_DAY = 20
-
-
-def device_signature(request: Request | None) -> str:
-    """Отпечаток устройства: sha256(User-Agent).
-
-    Версию браузера не выбрасываем: обновление браузера даёт новый отпечаток и
-    лишнее письмо, но пропустить чужой вход хуже, чем прислать лишнее письмо.
-    """
-    agent = ""
-    if request is not None:
-        agent = request.headers.get("user-agent", "")[:255]
-    return hashlib.sha256(agent.encode("utf-8", "replace")).hexdigest()
-
-
-def _agent_label(user_agent: str) -> str:
-    """Человекочитаемое описание устройства для письма (или общая фраза)."""
-    return user_agent.strip() or "неизвестное устройство"
 
 
 def _now() -> str:
@@ -194,15 +178,19 @@ async def remember_login_device(
     session: AsyncSession,
     user: User,
     request: Request | None,
+    *,
+    notify: bool = True,
 ) -> bool:
-    """Запоминает устройство входа и уведомляет о новом. ``True`` — устройство новое.
+    """Запоминает устройство входа и (по желанию) уведомляет о новом.
+
+    ``True`` — устройство новое для аккаунта. ``notify=False`` нужен там, где
+    вход уже подтверждён кодом из письма: письмо «вход с нового устройства» было
+    бы вторым письмом об одном и том же действии.
 
     Первое устройство аккаунта запоминаем молча: это регистрация (или первый
     вход после удаления истории), владелец и так знает, что он только что вошёл.
     """
-    signature = device_signature(request)
-    agent = (request.headers.get("user-agent", "") if request is not None else "")[:255]
-    ip = client_ip(request) if request is not None else ""
+    info = device_info(request)
 
     existing_count = await session.scalar(
         select(func.count())
@@ -212,12 +200,12 @@ async def remember_login_device(
     known = await session.scalar(
         select(LoginDevice).where(
             LoginDevice.user_id == user.id,
-            LoginDevice.signature == signature,
+            LoginDevice.signature == info.signature,
         )
     )
     if known is not None:
-        known.last_ip = ip
-        known.user_agent = agent
+        known.last_ip = info.ip
+        known.user_agent = info.user_agent
         known.last_seen_at = datetime.now(timezone.utc)
         await session.commit()
         return False
@@ -225,9 +213,9 @@ async def remember_login_device(
     session.add(
         LoginDevice(
             user_id=user.id,
-            signature=signature,
-            user_agent=agent,
-            last_ip=ip,
+            signature=info.signature,
+            user_agent=info.user_agent,
+            last_ip=info.ip,
         )
     )
     await session.commit()
@@ -236,17 +224,18 @@ async def remember_login_device(
         logger.info("Первое устройство пользователя %s запомнено", user.id)
         return True
 
-    await notify_security_event(
-        session,
-        user,
-        event="new_device",
-        request=request,
-        details=(
-            f"Устройство: {_agent_label(agent)}\n"
-            f"IP-адрес: {ip or 'неизвестен'}\n"
-            "Вход выполнен успешно."
-        ),
-    )
+    if notify:
+        await notify_security_event(
+            session,
+            user,
+            event="new_device",
+            request=request,
+            details=(
+                f"Устройство: {info.label}\n"
+                f"IP-адрес: {info.ip or 'неизвестен'}\n"
+                "Вход выполнен успешно."
+            ),
+        )
     return True
 
 
@@ -258,7 +247,6 @@ def email_changed_message(old_email: str, new_email: str | None) -> str:
 
 __all__ = [
     "EVENT_SUBJECTS",
-    "device_signature",
     "email_changed_message",
     "enqueue_security_email",
     "notification_recipient",

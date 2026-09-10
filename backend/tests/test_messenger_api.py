@@ -2598,3 +2598,271 @@ async def test_notifications_have_daily_cap(
 
     assert len(security_mail) == 20, "не больше 20 писем в сутки на пользователя"
     assert all(mail[0] == address for mail in security_mail)
+
+
+# --- 2FA на новом устройстве + список активных входов ---------------------
+
+
+@pytest.fixture
+def email_sender(monkeypatch: pytest.MonkeyPatch):
+    """Считает SMTP настроенным и перехватывает письма с кодами (адрес, код)."""
+    sent: list[tuple[str, str]] = []
+
+    def _fake_enqueue(email: str, code: str, subject: str, body: str) -> None:
+        sent.append((email, code))
+
+    # SMTP «включён»: иначе сервер не может подтвердить вход кодом и обязан
+    # пропустить новое устройство (запирать человека вне аккаунта нельзя).
+    monkeypatch.setattr("core.mailer.is_configured", lambda: True)
+    monkeypatch.setattr("api_v1.auth.views.email_otp_available", lambda: True)
+    monkeypatch.setattr("api_v1.auth.views.enqueue_email_code", _fake_enqueue)
+    return sent
+
+
+def _login_request(phone: str, password: str, device: str) -> dict:
+    """Тело+заголовки запроса входа с конкретного «устройства»."""
+    return {
+        "json": {"phone_number": phone, "password": password},
+        "headers": {"User-Agent": device},
+    }
+
+
+async def test_new_device_login_requires_email_code(
+    api: _ApiCtx, email_sender: list[tuple[str, str]]
+) -> None:
+    """Вход с нового устройства не выдаёт токены, пока не введён код из письма."""
+    from core.security import get_password_hash
+
+    phone = _random_phone()
+    address = f"owner{uuid.uuid4().hex[:8]}@example.com"
+    user = await api.make_user(phone_number=phone)
+    async with api.factory() as session:
+        db_user = await session.get(User, user.id)
+        assert db_user is not None
+        db_user.hashed_password = get_password_hash(_STRONG_PASSWORD)
+        db_user.password_set = True
+        db_user.email = address
+        db_user.email_verified = True
+        await session.commit()
+
+    first = await api.client.post(
+        "/api/v1/auth/password/login/",
+        **_login_request(phone, _STRONG_PASSWORD, "PismoTest/1.0 Pervoe"),
+    )
+    assert first.status_code == 200, first.text
+    assert email_sender == [], "первое устройство аккаунта код не требует"
+
+    second = await api.client.post(
+        "/api/v1/auth/password/login/",
+        **_login_request(phone, _STRONG_PASSWORD, "PismoTest/2.0 Vtoroe"),
+    )
+    assert second.status_code == 428, second.text
+    detail = second.json()["detail"]
+    assert detail["challenge_token"], "сервер обязан вернуть challenge-токен"
+    assert "***@" in detail["code_sent_to"], "адрес маскируется"
+    assert email_sender and email_sender[-1][0] == address
+    assert "access_token" not in second.json()
+
+    code = email_sender[-1][1]
+    verified = await api.client.post(
+        "/api/v1/auth/login/verify-device/",
+        json={"challenge_token": detail["challenge_token"], "code": code},
+        headers={"User-Agent": "PismoTest/2.0 Vtoroe"},
+    )
+    assert verified.status_code == 200, verified.text
+    assert verified.json()["access_token"] and verified.json()["refresh_token"]
+
+    # Устройство запомнено — следующий вход с него проходит без кода.
+    third = await api.client.post(
+        "/api/v1/auth/password/login/",
+        **_login_request(phone, _STRONG_PASSWORD, "PismoTest/2.0 Vtoroe"),
+    )
+    assert third.status_code == 200, third.text
+    assert len(email_sender) == 1
+
+
+async def test_device_verify_rejects_wrong_code_and_foreign_device(
+    api: _ApiCtx, email_sender: list[tuple[str, str]]
+) -> None:
+    """Код проверяется, а challenge нельзя подтвердить с другого устройства."""
+    from core.security import get_password_hash
+
+    phone = _random_phone()
+    user = await api.make_user(phone_number=phone)
+    async with api.factory() as session:
+        db_user = await session.get(User, user.id)
+        assert db_user is not None
+        db_user.hashed_password = get_password_hash(_STRONG_PASSWORD)
+        db_user.password_set = True
+        db_user.email = f"owner{uuid.uuid4().hex[:8]}@example.com"
+        db_user.email_verified = True
+        await session.commit()
+
+    await api.client.post(
+        "/api/v1/auth/password/login/",
+        **_login_request(phone, _STRONG_PASSWORD, "PismoTest/1.0 Pervoe"),
+    )
+    challenge = (
+        await api.client.post(
+            "/api/v1/auth/password/login/",
+            **_login_request(phone, _STRONG_PASSWORD, "PismoTest/2.0 Vtoroe"),
+        )
+    ).json()["detail"]["challenge_token"]
+
+    wrong = await api.client.post(
+        "/api/v1/auth/login/verify-device/",
+        json={"challenge_token": challenge, "code": "000000"},
+        headers={"User-Agent": "PismoTest/2.0 Vtoroe"},
+    )
+    assert wrong.status_code == 401, wrong.text
+
+    foreign = await api.client.post(
+        "/api/v1/auth/login/verify-device/",
+        json={"challenge_token": challenge, "code": email_sender[-1][1]},
+        headers={"User-Agent": "PismoTest/3.0 Chuzhoe"},
+    )
+    assert foreign.status_code == 401, foreign.text
+    assert "Войдите заново" in foreign.json()["detail"]
+
+    broken = await api.client.post(
+        "/api/v1/auth/login/verify-device/",
+        json={"challenge_token": "не-jwt", "code": "123456"},
+        headers={"User-Agent": "PismoTest/2.0 Vtoroe"},
+    )
+    assert broken.status_code == 401, broken.text
+
+
+async def test_new_device_without_verified_email_is_allowed(
+    api: _ApiCtx, email_sender: list[tuple[str, str]]
+) -> None:
+    """Если подтвердить вход нечем, человека не запирают: вход проходит."""
+    from core.security import get_password_hash
+
+    phone = _random_phone()
+    user = await api.make_user(phone_number=phone)
+    async with api.factory() as session:
+        db_user = await session.get(User, user.id)
+        assert db_user is not None
+        db_user.hashed_password = get_password_hash(_STRONG_PASSWORD)
+        db_user.password_set = True
+        await session.commit()
+
+    await api.client.post(
+        "/api/v1/auth/password/login/",
+        **_login_request(phone, _STRONG_PASSWORD, "PismoTest/1.0 Pervoe"),
+    )
+    second = await api.client.post(
+        "/api/v1/auth/password/login/",
+        **_login_request(phone, _STRONG_PASSWORD, "PismoTest/2.0 Vtoroe"),
+    )
+
+    assert second.status_code == 200, second.text
+    assert email_sender == [], "и письма с кодом быть не может — адреса нет"
+
+
+async def test_sessions_list_and_single_revoke(api: _ApiCtx) -> None:
+    """Профиль видит активные входы и может отозвать любой по отдельности."""
+    from core.security import get_password_hash
+
+    phone = _random_phone()
+    user = await api.make_user(phone_number=phone)
+    async with api.factory() as session:
+        db_user = await session.get(User, user.id)
+        assert db_user is not None
+        db_user.hashed_password = get_password_hash(_STRONG_PASSWORD)
+        db_user.password_set = True
+        await session.commit()
+
+    device_a = "PismoTest/1.0 Pervoe"
+    device_b = "PismoTest/2.0 Vtoroe"
+    login_a = await api.client.post(
+        "/api/v1/auth/password/login/",
+        **_login_request(phone, _STRONG_PASSWORD, device_a),
+    )
+    assert login_a.status_code == 200, login_a.text
+    login_b = await api.client.post(
+        "/api/v1/auth/password/login/",
+        **_login_request(phone, _STRONG_PASSWORD, device_b),
+    )
+    assert login_b.status_code == 200, login_b.text
+
+    token_b = login_b.json()["access_token"]
+    listing = await api.client.get(
+        "/api/v1/auth/sessions/",
+        headers={**api.auth(token_b), "User-Agent": device_b},
+    )
+    assert listing.status_code == 200, listing.text
+    sessions = listing.json()["sessions"]
+    assert len(sessions) == 2, sessions
+    assert sum(1 for row in sessions if row["current"]) == 1
+    assert {row["device"] for row in sessions} == {device_a, device_b}
+
+    other = next(row for row in sessions if not row["current"])
+    revoked = await api.client.delete(
+        f"/api/v1/auth/sessions/{other['id']}/",
+        headers={**api.auth(token_b), "User-Agent": device_b},
+    )
+    assert revoked.status_code == 200, revoked.text
+
+    after = await api.client.get(
+        "/api/v1/auth/sessions/",
+        headers={**api.auth(token_b), "User-Agent": device_b},
+    )
+    assert [row["id"] for row in after.json()["sessions"]] == [
+        row["id"] for row in sessions if row["current"]
+    ]
+
+    # Отозванная сессия больше не может продлить вход.
+    refresh_a = await api.client.post(
+        "/api/v1/jwt/auth/refresh",
+        headers={"Authorization": f"Bearer {login_a.json()['refresh_token']}"},
+    )
+    assert refresh_a.status_code == 401, refresh_a.text
+
+    missing = await api.client.delete(
+        f"/api/v1/auth/sessions/{other['id']}/",
+        headers={**api.auth(token_b), "User-Agent": device_b},
+    )
+    assert missing.status_code == 404, missing.text
+
+
+async def test_sessions_list_hides_foreign_sessions(api: _ApiCtx) -> None:
+    """В списке только свои входы: чужая сессия не отзывается (404)."""
+    from core.security import get_password_hash
+
+    async def _with_password() -> tuple[User, str]:
+        phone = _random_phone()
+        user = await api.make_user(phone_number=phone)
+        async with api.factory() as session:
+            db_user = await session.get(User, user.id)
+            assert db_user is not None
+            db_user.hashed_password = get_password_hash(_STRONG_PASSWORD)
+            db_user.password_set = True
+            await session.commit()
+            await session.refresh(db_user)
+        return db_user, phone
+
+    _, phone_one = await _with_password()
+    _, phone_two = await _with_password()
+
+    one = await api.client.post(
+        "/api/v1/auth/password/login/",
+        **_login_request(phone_one, _STRONG_PASSWORD, "PismoTest/1.0 Pervoe"),
+    )
+    two = await api.client.post(
+        "/api/v1/auth/password/login/",
+        **_login_request(phone_two, _STRONG_PASSWORD, "PismoTest/1.0 Vtoroe"),
+    )
+
+    foreign_id = (
+        await api.client.get(
+            "/api/v1/auth/sessions/",
+            headers=api.auth(two.json()["access_token"]),
+        )
+    ).json()["sessions"][0]["id"]
+
+    attack = await api.client.delete(
+        f"/api/v1/auth/sessions/{foreign_id}/",
+        headers=api.auth(one.json()["access_token"]),
+    )
+    assert attack.status_code == 404, attack.text

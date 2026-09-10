@@ -37,6 +37,42 @@ export interface ApiUser {
   profile?: ApiUserProfile | null
 }
 
+/**
+ * Ответ сервера 428 на вход с нового устройства: токенов нет, нужен код из письма.
+ *
+ * Политика сервера — всегда требовать код при входе с незнакомого устройства
+ * (см. `api_v1/auth/device_guard.py`). Если подтвердить нечем (нет подтверждённого
+ * e-mail или выключен SMTP), сервер пропускает вход и присылает письмо.
+ */
+export interface DeviceChallenge {
+  detail: string
+  code_sent_to: string | null
+  challenge_token: string | null
+  expires_in: number
+}
+
+/** Один активный вход в списке «Безопасность» → устройства. */
+export interface AuthSession {
+  id: number
+  device: string
+  ip: string
+  created_at: string
+  current: boolean
+}
+
+/** Достаёт данные 2FA-челленджа из ответа 428 (или null, если это другая ошибка). */
+export function deviceChallengeOf(error: unknown): DeviceChallenge | null {
+  if (!axios.isAxiosError(error) || error.response?.status !== 428) {
+    return null
+  }
+  const data = error.response.data as { detail?: unknown } | undefined
+  const detail = data?.detail
+  if (!detail || typeof detail !== 'object') {
+    return null
+  }
+  return detail as DeviceChallenge
+}
+
 interface AuthState {
   user: ApiUser | null
   isAuthenticated: boolean
@@ -253,6 +289,30 @@ export const useAuthStore = defineStore('auth', {
     /** Выходит из аккаунта на всех устройствах (кроме текущего). */
     async revokeAllSessions(): Promise<void> {
       await api.post('/auth/sessions/revoke-all/', {})
+    },
+
+    /** Второй шаг входа с нового устройства: код из письма → токены. */
+    async verifyDeviceLogin(
+      challengeToken: string,
+      code: string,
+      router: Router | null = null
+    ): Promise<void> {
+      const response = await api.post('/auth/login/verify-device/', {
+        challenge_token: challengeToken,
+        code
+      })
+      await this.applyTokenResponse(response.data, router)
+    },
+
+    /** Активные входы аккаунта (устройства) — для раздела «Безопасность». */
+    async fetchSessions(): Promise<AuthSession[]> {
+      const response = await api.get('/auth/sessions/')
+      return (response.data?.sessions ?? []) as AuthSession[]
+    },
+
+    /** Отзывает один вход (устройство) по id сессии. */
+    async revokeSession(sessionId: number): Promise<void> {
+      await api.delete(`/auth/sessions/${sessionId}/`)
     },
 
     /** Вход по номеру телефона и паролю. */

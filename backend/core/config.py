@@ -98,6 +98,11 @@ class Settings(BaseSettings):
     auth_email_per_address_per_hour: int = 5
     auth_email_daily_limit: int = 100
     auth_email_verify_max_attempts: int = 5
+    # 2FA на новом устройстве: сколько живёт «challenge» (подтверждение входа).
+    # Больше — человек успеет сходить в почту, меньше — окно для перебора кода.
+    auth_device_challenge_expire_seconds: int = 600
+    # Лимит попыток подтверждения входа с нового устройства (по IP, в минуту).
+    auth_device_verify_limit_per_minute: int = 10
     # Суточные лимиты на отправку кодов — защита баланса шлюза: каждый код это
     # деньги, а эндпоинт публичный. Глобальный лимит закрывает весь сервис
     # (лучше потерять регистрации, чем остаток на счету), лимит на IP не даёт

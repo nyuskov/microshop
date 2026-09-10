@@ -16,9 +16,12 @@ import { ref, watch, computed } from 'vue'
 import Login from './Login.vue'
 import { useAuthStore } from '../stores/auth'
 
+/** Шаги входа (совпадают с LoginState в Login.vue) + 2FA нового устройства. */
+type LoginState = 'phone' | 'password' | 'otp' | 'create' | 'email' | 'device'
+
 const props = defineProps<{
   visible: boolean
-  initialState?: 'phone' | 'password' | 'otp' | 'create' | 'email'
+  initialState?: LoginState
 }>()
 
 const emit = defineEmits<{
@@ -52,7 +55,7 @@ const shouldShowModal = computed({
   }
 })
 
-const state = ref<'phone' | 'password' | 'otp' | 'create' | 'email'>(props.initialState || 'phone')
+const state = ref<LoginState>(props.initialState || 'phone')
 
 // Синхронизация состояния с пропсом
 watch(
@@ -87,7 +90,7 @@ const onDialogHide = () => {
 }
 
 // Обработка события от Login.vue, когда состояние меняется (phone -> password/otp/create)
-const handleStateChanged = (newState: 'phone' | 'password' | 'otp' | 'create' | 'email') => {
+const handleStateChanged = (newState: LoginState) => {
   state.value = newState
 }
 

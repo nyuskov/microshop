@@ -32,3 +32,9 @@ class RefreshSession(Base):
         DateTime(timezone=True), nullable=True
     )
     replaced_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # Сведения об устройстве (для списка активных входов в профиле и 2FA на
+    # новых устройствах). У старых записей по умолчанию пусто.
+    device_signature: Mapped[str] = mapped_column(String(64), default="")
+    device_user_agent: Mapped[str] = mapped_column(String(255), default="")
+    device_ip: Mapped[str] = mapped_column(String(64), default="")
