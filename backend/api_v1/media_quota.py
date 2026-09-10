@@ -28,7 +28,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
-from core.models import Message
+from core.models import Message, Story
 
 logger = logging.getLogger(__name__)
 
@@ -76,10 +76,18 @@ async def media_usage(session: AsyncSession, *, user_id: int) -> MediaUsage:
         Message.forwarded_from_id.is_(None),
     )
     total_bytes, files = (await session.execute(stmt)).one()
+
+    # Истории живут сутки, но файл на диске занимает место сразу — считаем их в
+    # квоте вместе с вложениями сообщений.
+    story_stmt = select(
+        func.coalesce(func.sum(Story.media_size), 0), func.count(Story.id)
+    ).where(Story.user_id == user_id)
+    story_bytes, story_files = (await session.execute(story_stmt)).one()
+
     return MediaUsage(
-        used_bytes=int(total_bytes or 0),
+        used_bytes=int(total_bytes or 0) + int(story_bytes or 0),
         quota_bytes=settings.media_quota_bytes,
-        files=int(files or 0),
+        files=int(files or 0) + int(story_files or 0),
     )
 
 

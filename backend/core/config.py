@@ -174,6 +174,9 @@ class Settings(BaseSettings):
 
     # Лимиты загрузок (в байтах), переопределяются через env.
     max_upload_size_bytes: int = 15 * 1024 * 1024
+
+    # Истории (статусы): сколько часов живёт публикация до исчезновения.
+    story_ttl_hours: int = 24
     max_avatar_size_bytes: int = 8 * 1024 * 1024
     # Как часто обновлять last_seen пользователя при активности (секунды).
     last_seen_update_seconds: int = 10

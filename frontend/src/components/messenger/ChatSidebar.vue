@@ -1,6 +1,22 @@
 <template>
   <aside ref="rootEl" class="side-panel">
     <!-- Диалоги -->
+    <!-- Истории (статусы) -->
+    <template v-if="view === 'stories'">
+      <div class="panel-header">
+        <div class="panel-header-left">
+          <button class="icon-btn" title="Назад к чатам" @click="emit('to-chats')">
+            <q-icon name="arrow_back" size="20px" />
+          </button>
+        </div>
+        <h2 class="panel-title">Истории</h2>
+        <div class="panel-header-right"></div>
+      </div>
+      <div class="chat-scroll">
+        <StoriesFeed @open-story="emit('open-story', $event)" />
+      </div>
+    </template>
+
     <template v-if="view === 'chats'">
       <!-- Режим выделения чатов (вход по удержанию) -->
       <div v-if="selectionMode" class="selection-bar">
@@ -208,6 +224,8 @@
 
       <!-- Недавние диалоги (скрыты, пока открыт глобальный поиск) -->
       <template v-else-if="!searchOpen">
+        <!-- Истории: свои и друзей (живут 24 часа) -->
+        <StoriesStrip @open-story="emit('open-story', $event)" />
         <div class="section-label">Недавние</div>
         <div v-if="!orderedChats.length" class="empty-hint">
           Найдите пользователя по логину или телефону и начните переписку
@@ -416,6 +434,38 @@
         </div>
       </template>
     </template>
+
+    <!-- Нижняя навигация: основные разделы приложения -->
+    <nav class="bottom-nav" aria-label="Разделы">
+      <button
+        class="bottom-nav-btn"
+        :class="{ active: view === 'chats' }"
+        type="button"
+        @click="emit('to-chats')"
+      >
+        <q-icon name="chat_bubble_outline" size="22px" />
+        <span>Чаты</span>
+      </button>
+      <button
+        class="bottom-nav-btn"
+        :class="{ active: view === 'stories' }"
+        type="button"
+        @click="emit('to-stories')"
+      >
+        <q-icon name="auto_stories" size="22px" />
+        <span>Истории</span>
+        <span v-if="storiesStore.hasUnseen" class="bottom-nav-dot"></span>
+      </button>
+      <button
+        class="bottom-nav-btn"
+        :class="{ active: view === 'contacts' }"
+        type="button"
+        @click="emit('to-contacts')"
+      >
+        <q-icon name="people_outline" size="22px" />
+        <span>Контакты</span>
+      </button>
+    </nav>
   </aside>
 
   <!-- Импорт контактов из телефонной книги -->
@@ -511,6 +561,9 @@
 </template>
 
 <script setup lang="ts">
+import { useStoriesStore } from '@/stores/stories'
+import StoriesFeed from '@/components/stories/StoriesFeed.vue'
+import StoriesStrip from '@/components/stories/StoriesStrip.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import {
@@ -536,7 +589,7 @@ import { ONLINE_WINDOW_SECONDS, formatChatTime, formatMsgTime } from '@/utils/fo
 import { mediaTypeLabel } from '@/utils/media'
 
 const props = defineProps<{
-  view: 'chats' | 'contacts'
+  view: 'chats' | 'contacts' | 'stories'
   currentUserId: number | null
   chats: Chat[]
   contacts: SearchUserResult[]
@@ -560,8 +613,12 @@ const props = defineProps<{
   isAdmin?: boolean
 }>()
 
+const storiesStore = useStoriesStore()
+
 const emit = defineEmits<{
   (e: 'to-contacts'): void
+  (e: 'to-stories'): void
+  (e: 'open-story', storyId: number): void
   (e: 'to-chats'): void
   (e: 'open-profile'): void
   (e: 'select-chat', chatId: number): void
@@ -1887,5 +1944,46 @@ onBeforeUnmount(() => {
 
 .phone-inline .phone-result-title {
   margin: 0;
+}
+/* ---------- Нижняя навигация (чаты / истории / контакты) ---------- */
+.bottom-nav {
+  display: flex;
+  align-items: stretch;
+  border-top: 1px solid var(--ms-border);
+  background: var(--ms-surface);
+}
+
+.bottom-nav-btn {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 0 9px;
+  border: none;
+  background: transparent;
+  color: var(--ms-muted);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.bottom-nav-btn.active {
+  color: var(--ms-accent);
+}
+
+.bottom-nav-btn:hover {
+  background: var(--ms-hover);
+}
+
+.bottom-nav-dot {
+  position: absolute;
+  top: 6px;
+  right: calc(50% - 16px);
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ms-accent);
 }
 </style>

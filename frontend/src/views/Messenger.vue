@@ -38,6 +38,8 @@
         @bulk-delete="openBulkDeleteChats"
         @delete-chat="openDeleteChatModal"
         @to-contacts="openContacts"
+        @to-stories="openStories"
+        @open-story="openStory"
         @to-chats="goToChats"
         @open-profile="goToProfile"
         @select-chat="selectChat"
@@ -254,6 +256,14 @@
       </q-card-section>
     </q-card>
   </q-dialog>
+
+  <!-- Истории: полноэкранный просмотр -->
+  <StoryViewer
+    v-if="openStoryId !== null"
+    :groups="storiesStore.groups"
+    :start-story-id="openStoryId"
+    @close="openStoryId = null"
+  />
 
   <!-- Информация о чате -->
   <q-dialog v-model="showChatInfoModal">
@@ -484,6 +494,7 @@ const ModerationReportsDialog = defineAsyncComponent(
 )
 import { useCallStore } from '@/stores/call'
 import { useRealtimeStore } from '@/stores/realtime'
+import { useStoriesStore } from '@/stores/stories'
 import { mediaFileName, type RecordedMedia } from '@/services/recorder'
 import {
   disablePushNotifications,
@@ -506,6 +517,10 @@ const realtimeStore = useRealtimeStore()
 
 // ---------- Модальные окна ----------
 const showProfileModal = ref(false)
+
+/** Открытая история (id) — пока не null, показываем полноэкранный просмотрщик. */
+const openStoryId = ref<number | null>(null)
+const storiesStore = useStoriesStore()
 
 /** Разделы профиля (см. UserProfile): нужно, чтобы "назад" выходил из раздела. */
 interface ProfileHandle {
@@ -614,6 +629,11 @@ const pushMobileNav = () => {
 
 const onAppPopState = () => {
   if (isDesktop.value) return
+  // Просмотр истории — «назад» закрывает просмотрщик.
+  if (openStoryId.value !== null) {
+    openStoryId.value = null
+    return
+  }
   // Раздел настроек профиля — «назад» возвращает к списку разделов.
   if (showProfileModal.value && profileRef.value?.isInSection()) {
     profileRef.value.backToSections()
@@ -659,7 +679,7 @@ const onAppPopState = () => {
 }
 
 // ---------- Данные ----------
-const view = ref<'chats' | 'contacts'>('chats')
+const view = ref<'chats' | 'contacts' | 'stories'>('chats')
 const chats = ref<Chat[]>([])
 const messages = ref<Message[]>([])
 
@@ -2326,6 +2346,19 @@ watch(newMessage, (value) => {
 })
 
 // ---------- Навигация ----------
+/** Открывает раздел историй (статусов). */
+const openStories = () => {
+  pushMobileNav()
+  view.value = 'stories'
+  void storiesStore.load()
+}
+
+/** Открывает полноэкранный просмотр истории. */
+const openStory = (storyId: number) => {
+  pushMobileNav()
+  openStoryId.value = storyId
+}
+
 const openContacts = () => {
   pushMobileNav()
   view.value = 'contacts'
@@ -2590,6 +2623,8 @@ const onBlockedUsersChanged = () => {
 
 onMounted(async () => {
   await authStore.initializeApp()
+  // Истории грузим сразу: точка «есть новое» должна быть видна без захода в раздел.
+  if (authStore.isAuthenticated) void storiesStore.load()
   window.addEventListener('beforeunload', handleBeforeUnload)
   window.addEventListener('message', handleWindowMessage)
   window.addEventListener('visibilitychange', handleCallVisibility)

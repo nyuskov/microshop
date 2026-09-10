@@ -1,4 +1,3 @@
-import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -8,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user
 from api_v1.media_quota import enforce_media_quota, media_usage
+from api_v1.media_store import store_media
 from api_v1.messages import crud
 from api_v1.messages.schemas import EditMessageRequest, ForwardMessageRequest
 from api_v1.messages.schemas import Message as MessageSchema
@@ -23,7 +23,6 @@ router = APIRouter(
     tags=["Messages"],
 )
 
-MEDIA_DIR = Path(__file__).resolve().parent.parent.parent / "media"
 # Лимит размера вложения настраивается через env (см. Settings.max_upload_size_bytes).
 MAX_UPLOAD_SIZE = settings.max_upload_size_bytes
 MAX_UPLOAD_MB = MAX_UPLOAD_SIZE // (1024 * 1024)
@@ -56,15 +55,6 @@ class GifMessageCreate(BaseModel):
 
 class MarkChatReadRequest(BaseModel):
     chat_id: int
-
-
-def _store_upload(content: bytes, filename: str) -> str:
-    """Сохраняет файл в media-каталог и возвращает относительный URL."""
-    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-    suffix = Path(filename).suffix.lower()
-    stored_name = f"{uuid.uuid4().hex}{suffix}"
-    (MEDIA_DIR / stored_name).write_bytes(content)
-    return f"/media/{stored_name}"
 
 
 @router.post("/", response_model=MessageSchema)
@@ -172,7 +162,7 @@ async def create_attachment_message(
     # Квота проверяется до записи на диск (см. api_v1/media_quota.py).
     await enforce_media_quota(session, user_id=user.id, incoming_bytes=len(content))
 
-    file_url = _store_upload(content, filename)
+    file_url = store_media(content, Path(filename).suffix)
     return await crud.send_attachment_message(
         session=session,
         chat_id=chat_id,

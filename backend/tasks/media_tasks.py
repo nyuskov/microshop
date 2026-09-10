@@ -21,9 +21,10 @@ from urllib.request import build_opener
 
 from sqlalchemy import select
 
+from api_v1.media_store import store_media
 from core.celery_app import celery_app
 from core.config import settings
-from core.models import Chat, Message, User, user_chat_association_table
+from core.models import Chat, Message, Story, User, user_chat_association_table
 from tasks.base import make_engine, make_session, run_async
 from tasks.notifications import publish_realtime_new_message
 
@@ -78,14 +79,6 @@ def _download_bytes(url: str, limit: int) -> bytes:
     ):
         raise ValueError("URL не ведёт на GIF-изображение")
     return content
-
-
-def _store_upload(content: bytes, suffix: str) -> str:
-    """Сохраняет файл в media-каталог и возвращает относительный URL."""
-    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-    stored_name = f"{uuid.uuid4().hex}{suffix}"
-    (MEDIA_DIR / stored_name).write_bytes(content)
-    return f"/media/{stored_name}"
 
 
 @celery_app.task(
@@ -167,7 +160,7 @@ async def _download_gif_message_async(
                 raise ValueError("Нельзя ответить на это сообщение")
 
         # Файл пишем на диск только после всех проверок (включая квоту).
-        file_url = await asyncio.to_thread(_store_upload, content, ".gif")
+        file_url = await asyncio.to_thread(store_media, content, ".gif")
 
         message = Message(
             text="",
@@ -233,6 +226,12 @@ async def _cleanup_async(*, delete: bool) -> dict[str, int]:
 
         result = await session.execute(
             select(User.avatar_url).where(User.avatar_url.is_not(None))
+        )
+        used |= _collect_names([row[0] for row in result.all()])
+
+        # Медиа историй: файл живёт, пока есть запись (история — максимум сутки).
+        result = await session.execute(
+            select(Story.media_url).where(Story.media_url.is_not(None))
         )
         used |= _collect_names([row[0] for row in result.all()])
     finally:
