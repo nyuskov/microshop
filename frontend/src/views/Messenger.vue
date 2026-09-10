@@ -235,7 +235,7 @@
   />
 
   <!-- Profile Modal (Quasar) -->
-  <q-dialog v-model="showProfileModal" @hide="showProfileModal = false">
+  <q-dialog v-model="showProfileModal" @hide="onProfileHidden">
     <q-card class="ms-modal ms-modal-profile">
       <q-card-section class="row no-wrap items-center ms-modal-head">
         <div class="text-subtitle1 text-weight-medium ellipsis">Настройки профиля</div>
@@ -246,7 +246,11 @@
       <q-card-section class="ms-modal-body">
         <Suspense>
           <template #default>
-            <UserProfile @close-modal="showProfileModal = false" />
+            <UserProfile
+              ref="profileRef"
+              @close-modal="showProfileModal = false"
+              @open-appearance="onOpenAppearanceFromProfile"
+            />
           </template>
           <template #fallback>
             <div class="q-pa-md">Загрузка профиля...</div>
@@ -523,6 +527,13 @@ const realtimeStore = useRealtimeStore()
 
 // ---------- Модальные окна ----------
 const showProfileModal = ref(false)
+
+/** Разделы профиля (см. UserProfile): нужно, чтобы "назад" выходил из раздела. */
+interface ProfileHandle {
+  section: string
+  backToSections: () => void
+}
+const profileRef = ref<ProfileHandle | null>(null)
 const showAppearanceModal = ref(false)
 const showChatInfoModal = ref(false)
 const showGroupInfoModal = ref(false)
@@ -614,6 +625,11 @@ const pushMobileNav = () => {
 
 const onAppPopState = () => {
   if (isDesktop.value) return
+  // Раздел настроек профиля — «назад» возвращает к списку разделов.
+  if (showProfileModal.value && profileRef.value && profileRef.value.section !== 'root') {
+    profileRef.value.backToSections()
+    return
+  }
   // Модалки поверх всего — закрываем.
   if (
     showProfileModal.value ||
@@ -2338,8 +2354,23 @@ const goToChats = () => {
 }
 
 const goToProfile = () => {
+  // Профиль всегда открывается списком разделов — если в прошлый раз был
+  // открыт конкретный раздел, возвращаемся к списку.
+  profileRef.value?.backToSections()
   pushMobileNav()
   showProfileModal.value = true
+}
+
+/** Закрытие профиля: сбрасываем раздел (следующее открытие — со списка). */
+const onProfileHidden = () => {
+  showProfileModal.value = false
+  profileRef.value?.backToSections()
+}
+
+/** Из профиля перешли в «Внешний вид» (это отдельный диалог). */
+const onOpenAppearanceFromProfile = () => {
+  showProfileModal.value = false
+  openAppearance()
 }
 
 const openAppearance = () => {

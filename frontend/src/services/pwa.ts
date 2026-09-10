@@ -60,6 +60,19 @@ export async function applyServiceWorkerUpdate(): Promise<void> {
   }
 }
 
+/**
+ * Проверяет обновление приложения и сразу его применяет (страница перезагрузится).
+ * Возвращает `false`, если обновлений нет — тогда показывать нечего.
+ */
+export async function checkForAppUpdate(): Promise<boolean> {
+  if (!registration) return false
+  await registration.update()
+  const worker = registration.waiting
+  if (!worker) return false
+  worker.postMessage({ type: 'SKIP_WAITING' })
+  return true
+}
+
 // ---------- Web Push (уведомления в PWA) ----------
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {

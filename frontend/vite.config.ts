@@ -22,6 +22,13 @@ const httpsConfig = hasCerts
   : undefined // Если файлов нет (в CI), отключаем HTTPS, чтобы тесты прошли
 
 export default defineConfig({
+  // Информация о сборке для раздела «О приложении» (в CI есть GITHUB_SHA).
+  define: {
+    __BUILD_INFO__: JSON.stringify({
+      commit: (process.env.GITHUB_SHA ?? '').slice(0, 7),
+      date: new Date().toISOString().slice(0, 10)
+    })
+  },
   plugins: [
     vue(),
     vueJsx(),

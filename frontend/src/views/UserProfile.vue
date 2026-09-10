@@ -6,7 +6,11 @@ import { removeAvatar, uploadAvatar } from '@/services/api'
 import { mediaUrl } from '@/services/chatService'
 import { formatPhoneForBackend, localPhoneDigits, maskPhoneLocal } from '@/utils/phone'
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
-import { disablePushNotifications, enablePushNotifications } from '@/services/pwa'
+import {
+  checkForAppUpdate,
+  disablePushNotifications,
+  enablePushNotifications
+} from '@/services/pwa'
 import { disableNativePush, enableNativePush, isNativeApp } from '@/services/nativePush'
 import { fetchStorageInfo, formatBytes, type StorageInfo } from '@/services/storage'
 import {
@@ -19,7 +23,7 @@ import {
 import { PASSWORD_MIN_LENGTH, passwordProblem, passwordStrength } from '@/utils/passwordPolicy'
 import DeleteAccountDialog from '@/components/messenger/DeleteAccountDialog.vue'
 
-const emit = defineEmits(['close-modal'])
+const emit = defineEmits(['close-modal', 'open-appearance'])
 
 const authStore = useAuthStore()
 
@@ -91,6 +95,98 @@ watch(
   },
   { immediate: true }
 )
+
+// ---------- Разделы настроек ----------
+// Профиль открывается списком разделов: на одном экране было слишком много всего
+// (личные данные, пароль, сессии, журнал входов, хранилище) — теперь у каждого
+// раздела своя страница, как в мессенджерах на телефоне.
+type SettingsSection =
+  'root' | 'account' | 'security' | 'privacy' | 'notifications' | 'storage' | 'about'
+
+interface SettingsRow {
+  key: Exclude<SettingsSection, 'root'>
+  icon: string
+  title: string
+  desc: string
+}
+
+const SETTINGS_ROWS: SettingsRow[] = [
+  { key: 'account', icon: 'person', title: 'Аккаунт', desc: 'Имя, логин, статус, контакты' },
+  {
+    key: 'security',
+    icon: 'shield',
+    title: 'Безопасность',
+    desc: 'Пароль, e-mail, устройства, журнал входов'
+  },
+  { key: 'privacy', icon: 'lock', title: 'Приватность', desc: 'Видимость профиля в поиске' },
+  { key: 'notifications', icon: 'notifications', title: 'Уведомления', desc: 'Push-уведомления' },
+  { key: 'storage', icon: 'cloud', title: 'Хранилище', desc: 'Сколько занимают вложения' },
+  { key: 'about', icon: 'info', title: 'О приложении', desc: 'Документы и версия' }
+]
+
+const section = ref<SettingsSection>('root')
+
+/** Информация о сборке (подставляется vite при сборке). */
+const buildInfo = __BUILD_INFO__
+
+/** Раздел «О приложении»: проверка обновлений PWA. */
+const updatingApp = ref(false)
+const aboutNotice = ref('')
+
+const checkForUpdates = async () => {
+  updatingApp.value = true
+  aboutNotice.value = ''
+  try {
+    const found = await checkForAppUpdate()
+    // Найденное обновление перезагружает страницу само, поэтому сообщение — про
+    // обратный случай.
+    if (!found) aboutNotice.value = 'Обновлений нет — версия свежая.'
+  } catch (error) {
+    aboutNotice.value = getErrorMessage(error, 'Не удалось проверить обновления')
+  } finally {
+    updatingApp.value = false
+  }
+}
+
+/** Приватный режим сохраняется сразу: в разделе нет отдельной кнопки «Сохранить». */
+const onPrivacyToggle = async () => {
+  await updateProfile()
+}
+const currentSectionTitle = computed(
+  () => SETTINGS_ROWS.find((row) => row.key === section.value)?.title ?? 'Профиль'
+)
+/** Ссылка на раздел «Внешний вид» — он живёт отдельным экраном (тема, обои). */
+const APPEARANCE_ROW = {
+  key: 'appearance' as const,
+  icon: 'palette',
+  title: 'Внешний вид',
+  desc: 'Тема, обои, размер текста'
+}
+
+/** Открыть раздел настроек; «Внешний вид» делегируем отдельному экрану. */
+const openSection = (key: SettingsRow['key'] | 'appearance') => {
+  if (key === 'appearance') {
+    emit('open-appearance')
+    return
+  }
+  section.value = key
+}
+
+/** Строки списка: «Внешний вид» стоит перед «О приложении». */
+const settingsRows = computed(() => [
+  ...SETTINGS_ROWS.slice(0, 5),
+  APPEARANCE_ROW,
+  ...SETTINGS_ROWS.slice(5)
+])
+
+/** Вернуться к списку разделов (кнопка в шапке или жест «назад»). */
+const backToSections = () => {
+  section.value = 'root'
+}
+
+// Родителю (Messenger) нужно знать, открыт ли раздел: тогда «назад» возвращает к
+// списку разделов, а не закрывает профиль целиком.
+defineExpose({ section, backToSections })
 
 // ---------- Отображение ----------
 const fullName = computed(() =>
@@ -561,8 +657,8 @@ const onNotificationsToggle = async (val: boolean) => {
     </div>
 
     <template v-else>
-      <!-- Шапка профиля -->
-      <div class="profile-hero">
+      <!-- Главный экран: карточка профиля -->
+      <div v-if="section === 'root'" class="profile-hero">
         <div class="avatar-box">
           <button
             type="button"
@@ -610,9 +706,35 @@ const onNotificationsToggle = async (val: boolean) => {
         </div>
       </div>
 
+      <!-- Список разделов настроек (главный экран профиля) -->
+      <nav v-if="section === 'root'" class="settings-list" aria-label="Разделы настроек">
+        <button
+          v-for="row in settingsRows"
+          :key="row.key"
+          type="button"
+          class="settings-link"
+          @click="openSection(row.key)"
+        >
+          <q-icon :name="row.icon" size="21px" class="settings-link-icon" />
+          <span class="settings-link-text">
+            <span class="settings-link-title">{{ row.title }}</span>
+            <span class="settings-link-desc">{{ row.desc }}</span>
+          </span>
+          <q-icon name="chevron_right" size="20px" class="settings-link-chevron" />
+        </button>
+      </nav>
+
+      <!-- Шапка раздела настроек -->
+      <div v-if="section !== 'root'" class="settings-head">
+        <button type="button" class="settings-back" title="К разделам" @click="backToSections">
+          <q-icon name="arrow_back" size="22px" />
+        </button>
+        <h2 class="settings-head-title">{{ currentSectionTitle }}</h2>
+      </div>
+
       <form class="profile-form" @submit.prevent="updateProfile">
         <!-- Статус -->
-        <section class="card-section">
+        <section v-if="section === 'account'" class="card-section">
           <h3 class="section-title">Статус</h3>
           <div class="field">
             <label for="pf-status">Ваш статус</label>
@@ -628,7 +750,7 @@ const onNotificationsToggle = async (val: boolean) => {
         </section>
 
         <!-- Основное -->
-        <section class="card-section">
+        <section v-if="section === 'account'" class="card-section">
           <h3 class="section-title">О себе</h3>
           <div class="field">
             <label for="pf-bio">Биография</label>
@@ -642,7 +764,7 @@ const onNotificationsToggle = async (val: boolean) => {
         </section>
 
         <!-- Имя -->
-        <section class="card-section">
+        <section v-if="section === 'account'" class="card-section">
           <h3 class="section-title">Имя и фамилия</h3>
           <div class="grid-2">
             <div class="field">
@@ -686,7 +808,7 @@ const onNotificationsToggle = async (val: boolean) => {
         </section>
 
         <!-- Контакты и локализация -->
-        <section class="card-section">
+        <section v-if="section === 'account'" class="card-section">
           <h3 class="section-title">Контакты и локализация</h3>
           <div class="grid-2">
             <div class="field">
@@ -731,9 +853,9 @@ const onNotificationsToggle = async (val: boolean) => {
           </div>
         </section>
 
-        <!-- Настройки -->
-        <section class="card-section">
-          <h3 class="section-title">Настройки</h3>
+        <!-- Уведомления -->
+        <section v-if="section === 'notifications'" class="card-section">
+          <h3 class="section-title">Уведомления</h3>
           <div class="toggle-row">
             <div class="toggle-text">
               <span class="toggle-name">Уведомления о сообщениях</span>
@@ -748,17 +870,28 @@ const onNotificationsToggle = async (val: boolean) => {
               @update:model-value="onNotificationsToggle"
             />
           </div>
+        </section>
+
+        <!-- Приватность -->
+        <section v-if="section === 'privacy'" class="card-section">
+          <h3 class="section-title">Приватность</h3>
           <div class="toggle-row">
             <div class="toggle-text">
               <span class="toggle-name">Приватный режим</span>
               <span class="toggle-desc">Скрывать профиль от посторонних в поиске</span>
             </div>
-            <q-toggle v-model="profileForm.privacy_mode" color="primary" keep-color />
+            <q-toggle
+              v-model="profileForm.privacy_mode"
+              color="primary"
+              keep-color
+              @update:model-value="onPrivacyToggle"
+            />
           </div>
+          <p class="field-hint">Изменение сохраняется сразу.</p>
         </section>
 
         <!-- Хранилище: сколько медиа занимает аккаунт -->
-        <section class="card-section">
+        <section v-if="section === 'storage'" class="card-section">
           <h3 class="section-title">Хранилище</h3>
           <div v-if="storageInfo" class="storage-block">
             <div class="storage-line">
@@ -801,7 +934,7 @@ const onNotificationsToggle = async (val: boolean) => {
         </section>
 
         <!-- Безопасность: пароль и сессии -->
-        <section class="section security-section">
+        <section v-if="section === 'security'" class="section security-section">
           <h3 class="section-title">Безопасность</h3>
 
           <div v-if="securityIssues.length" class="security-alert">
@@ -1157,23 +1290,45 @@ const onNotificationsToggle = async (val: boolean) => {
           </p>
         </div>
 
-        <!-- Документы: правила сообщества и политика (требования магазинов к UGC) -->
-        <div class="legal-row">
-          <a class="legal-link" href="/community.html" target="_blank" rel="noopener">
-            <q-icon name="gavel" size="16px" />
-            Правила сообщества
-          </a>
-          <a class="legal-link" href="/privacy.html" target="_blank" rel="noopener">
-            <q-icon name="privacy_tip" size="16px" />
-            Политика конфиденциальности
-          </a>
-          <a class="legal-link" href="/terms.html" target="_blank" rel="noopener">
-            <q-icon name="description" size="16px" />
-            Пользовательское соглашение
-          </a>
-        </div>
+        <!-- О приложении: документы, версия сборки, проверка обновлений -->
+        <section v-if="section === 'about'" class="card-section">
+          <h3 class="section-title">О приложении</h3>
 
-        <div class="form-actions">
+          <!-- Документы: правила сообщества и политика (требования магазинов к UGC) -->
+          <div class="legal-row">
+            <a class="legal-link" href="/community.html" target="_blank" rel="noopener">
+              <q-icon name="gavel" size="16px" />
+              Правила сообщества
+            </a>
+            <a class="legal-link" href="/privacy.html" target="_blank" rel="noopener">
+              <q-icon name="privacy_tip" size="16px" />
+              Политика конфиденциальности
+            </a>
+            <a class="legal-link" href="/terms.html" target="_blank" rel="noopener">
+              <q-icon name="description" size="16px" />
+              Пользовательское соглашение
+            </a>
+          </div>
+
+          <p class="about-build">
+            Pismo · сборка {{ buildInfo.commit || 'локальная' }} от {{ buildInfo.date }}
+          </p>
+
+          <button
+            type="button"
+            class="btn ghost about-update"
+            :disabled="updatingApp"
+            @click="checkForUpdates"
+          >
+            <q-icon name="refresh" size="17px" />
+            {{ updatingApp ? 'Проверяем…' : 'Проверить обновления' }}
+          </button>
+          <transition name="fade">
+            <p v-if="aboutNotice" class="field-hint">{{ aboutNotice }}</p>
+          </transition>
+        </section>
+
+        <div v-if="section === 'account'" class="form-actions">
           <button type="button" class="btn ghost" :disabled="saving" @click="closeModal">
             Отмена
           </button>
@@ -1211,6 +1366,103 @@ const onNotificationsToggle = async (val: boolean) => {
 }
 
 /* Шапка */
+/* ---------- Список разделов настроек ---------- */
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.settings-link {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 13px 12px;
+  border: none;
+  border-radius: var(--ms-radius, 12px);
+  background: transparent;
+  color: var(--ms-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-link:hover {
+  background: var(--ms-hover);
+}
+
+.settings-link-icon {
+  color: var(--ms-icon);
+}
+
+.settings-link-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-link-title {
+  font-weight: 600;
+}
+
+.settings-link-desc {
+  font-size: 12.5px;
+  color: var(--ms-muted);
+}
+
+.settings-link-chevron {
+  margin-left: auto;
+  color: var(--ms-muted-3);
+}
+
+/* Шапка раздела: назад + название */
+.settings-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 10px;
+}
+
+.settings-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ms-icon);
+  cursor: pointer;
+}
+
+.settings-back:hover {
+  background: var(--ms-hover);
+}
+
+.settings-head-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ms-text-strong);
+}
+
+.about-build {
+  margin: 10px 0 6px;
+  font-size: 12.5px;
+  color: var(--ms-muted);
+}
+
+.about-update {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .profile-hero {
   display: flex;
   align-items: center;

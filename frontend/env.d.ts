@@ -12,3 +12,9 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/**
+ * Информация о сборке (см. `define` в vite.config.ts): короткий commit и дата.
+ * Показывается в разделе «О приложении».
+ */
+declare const __BUILD_INFO__: { commit: string; date: string }
