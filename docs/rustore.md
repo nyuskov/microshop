@@ -137,8 +137,11 @@ alias/пароли) — можно указать файл `android/keystore/pis
 
 - [ ] Иконка: 512×512, PNG/JPG, ≤ 3 МБ, фон заполняет всю площадь (без
       прозрачных краёв). Готовый файл: `frontend/public/icons/icon-512.png`.
-- [ ] Скриншоты телефона: **минимум 3**, PNG/JPG, ≤ 3 МБ, 16:9, до 2160×3840.
-      Снимаются скриптом `scripts/rustore/screenshots.mjs` (см. файл) либо руками.
+- [x] Скриншоты телефона: **минимум 3**, PNG/JPG, ≤ 3 МБ, 16:9, до 2160×3840.
+      Готовые кадры (1080×1920, 5 шт.) — `docs/rustore-assets/screenshots/`
+      (`01-login`, `02-chats`, `03-chat`, `04-profile`, `05-appearance`).
+      Переснять: `scripts/rustore/screenshots.mjs` (см. комментарий в файле:
+      нужен Playwright; на хосте с обычным Chrome — `PISMO_BROWSER_CHANNEL=chrome`).
 - [ ] По желанию: скриншоты планшета, видео VK.
 
 **Правовое**
