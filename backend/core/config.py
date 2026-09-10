@@ -73,6 +73,13 @@ class Settings(BaseSettings):
 
     # Rate limiting публичных auth-эндпоинтов (лимит запросов в минуту с одного IP).
     auth_otp_request_limit_per_minute: int = 5
+    # Суточные лимиты на отправку кодов — защита баланса шлюза: каждый код это
+    # деньги, а эндпоинт публичный. Глобальный лимит закрывает весь сервис
+    # (лучше потерять регистрации, чем остаток на счету), лимит на IP не даёт
+    # одному источнику перебирать номера. Счётчики in-memory → на процесс web,
+    # при рестарте сбрасываются.
+    auth_otp_daily_limit: int = 50
+    auth_otp_per_ip_daily_limit: int = 20
     auth_otp_verify_limit_per_minute: int = 10
     auth_token_login_limit_per_minute: int = 20
 

@@ -5,11 +5,12 @@
 """
 
 import asyncio
+import ipaddress
 import logging
 import time
 from collections import defaultdict, deque
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, Request, status
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,10 @@ class SlidingWindowLimiter:
                 self._prune(now, window_seconds)
             return True
 
+    def reset(self) -> None:
+        """Сбрасывает все окна (тесты; после ручной правки лимитов в проде)."""
+        self._windows.clear()
+
     def _prune(self, now: float, window_seconds: int) -> None:
         expired = [
             key
@@ -53,6 +58,35 @@ rate_limiter = SlidingWindowLimiter()
 def rate_limit_key(scope: str, value: str) -> str:
     """Ключ лимита: область применения + значение (например, IP-адрес)."""
     return f"{scope}:{value}"
+
+
+def client_ip(request: Request) -> str:
+    """IP клиента для лимитов — с учётом прокси, но без возможности подмены.
+
+    Приложение стоит за собственным nginx (единственный хоп; он перезаписывает
+    ``X-Forwarded-For`` адресом клиента, см. ``frontend/nginx.prod.conf``), поэтому
+    при подключении от приватного адреса (docker-сеть) берём первый адрес из
+    ``X-Forwarded-For`` — это реальный клиент. Если же запрос пришёл напрямую
+    (публичный peer), заголовку не верим: иначе лимиты обходились бы подстановкой
+    произвольного адреса.
+    """
+    peer = request.client.host if request.client is not None else "unknown"
+    try:
+        from_private_network = ipaddress.ip_address(peer).is_private
+    except ValueError:
+        from_private_network = False
+    if not from_private_network:
+        return peer
+
+    forwarded = request.headers.get("x-forwarded-for", "")
+    candidate = forwarded.split(",")[0].strip()
+    if not candidate:
+        return peer
+    try:
+        ipaddress.ip_address(candidate)
+    except ValueError:
+        return peer
+    return candidate
 
 
 async def enforce_limit(

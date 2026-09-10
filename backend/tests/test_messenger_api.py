@@ -20,6 +20,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from core.config import settings
 from core.models import User, db_helper
 
 pytestmark = pytest.mark.skipif(
@@ -582,6 +583,61 @@ async def test_otp_wrong_code_rejected_then_correct(
         json={"phone_number": phone, "otp": code},
     )
     assert good.status_code == 200, good.text
+
+
+async def test_otp_daily_limit_blocks_sending(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Дневной лимит кодов защищает баланс шлюза: дальше 429 и без отправки.
+
+    Каждый код стоит денег, поэтому при исчерпании лимита запросы отклоняются
+    до постановки задачи в очередь (то есть до траты денег).
+    """
+    monkeypatch.setattr(settings, "auth_otp_resend_cooldown_seconds", 0)
+    monkeypatch.setattr(settings, "auth_otp_daily_limit", 1)
+    sent: list[str] = []
+    monkeypatch.setattr(
+        "api_v1.auth.views.enqueue_sms_otp",
+        lambda phone_number, otp_code: sent.append(phone_number),
+    )
+
+    first = await api.client.post(
+        "/api/v1/auth/request-otp/",
+        json={"phone_number": _random_phone()},
+    )
+    assert first.status_code == 200, first.text
+
+    second = await api.client.post(
+        "/api/v1/auth/request-otp/",
+        json={"phone_number": _random_phone()},
+    )
+    assert second.status_code == 429, second.text
+    assert "дневной лимит" in second.json()["detail"]
+    # Денег не потратили: вторая задача даже не поставлена.
+    assert len(sent) == 1
+
+
+async def test_otp_daily_limit_per_ip(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Лимит на IP не даёт одному источнику перебирать номера за счёт сервиса."""
+    monkeypatch.setattr(settings, "auth_otp_resend_cooldown_seconds", 0)
+    monkeypatch.setattr(settings, "auth_otp_daily_limit", 10)
+    monkeypatch.setattr(settings, "auth_otp_per_ip_daily_limit", 1)
+    monkeypatch.setattr("api_v1.auth.views.enqueue_sms_otp", lambda p, c: None)
+
+    first = await api.client.post(
+        "/api/v1/auth/request-otp/",
+        json={"phone_number": _random_phone()},
+    )
+    assert first.status_code == 200, first.text
+
+    second = await api.client.post(
+        "/api/v1/auth/request-otp/",
+        json={"phone_number": _random_phone()},
+    )
+    assert second.status_code == 429, second.text
+    assert "адреса" in second.json()["detail"]
 
 
 async def test_otp_bruteforce_burns_code_and_locks_phone(

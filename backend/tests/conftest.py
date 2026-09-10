@@ -12,6 +12,20 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from api_v1.rate_limit import rate_limiter
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    """Сбрасывает лимитер между тестами.
+
+    Он живёт в памяти процесса и общий для всех тестов: без сброса суточные
+    лимиты кодов и лимиты «N запросов в минуту» протекали бы между тестами.
+    """
+    rate_limiter.reset()
+    yield
+    rate_limiter.reset()
+
 
 @pytest_asyncio.fixture
 async def db_engine():

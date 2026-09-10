@@ -73,6 +73,9 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
       TELEGRAM_GATEWAY_BASE_URL: ${TELEGRAM_GATEWAY_BASE_URL:-https://gateway.telegram.org}
+      # Суточные лимиты отправки кодов (защита баланса SMS-шлюза).
+      AUTH_OTP_DAILY_LIMIT: ${AUTH_OTP_DAILY_LIMIT:-50}
+      AUTH_OTP_PER_IP_DAILY_LIMIT: ${AUTH_OTP_PER_IP_DAILY_LIMIT:-20}
     depends_on:
       migrate:
         condition: service_completed_successfully

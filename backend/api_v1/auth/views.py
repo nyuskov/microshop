@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api_v1.rate_limit import enforce_limit, rate_limit_key, rate_limiter
+from api_v1.rate_limit import client_ip, enforce_limit, rate_limit_key, rate_limiter
 from core.celery_app import get_task
 from core.config import settings
 from core.models import TelegramBindLink, User, db_helper
@@ -59,10 +59,9 @@ _AUTH_LIMIT_WINDOW_SECONDS = 60
 
 async def _enforce_ip_limit(request: Request, *, scope: str, limit: int) -> None:
     """Ограничивает число запросов с одного IP за окно времени."""
-    client_ip = request.client.host if request.client is not None else "unknown"
     await enforce_limit(
         scope=scope,
-        value=client_ip,
+        value=client_ip(request),
         limit=limit,
         window_seconds=_AUTH_LIMIT_WINDOW_SECONDS,
         detail="Слишком много запросов. Попробуйте позже.",
@@ -198,6 +197,39 @@ async def request_otp(
             detail=(
                 "Слишком много запросов кода на этот номер за последний час. "
                 "Попробуйте позже."
+            ),
+            headers={"Retry-After": "3600"},
+        )
+
+    # Суточные лимиты: защита баланса SMS-шлюза. Каждый отправленный код стоит
+    # денег, а эндпоинт публичный, поэтому сначала ограничиваем конкретный
+    # источник (IP), затем — весь сервис целиком.
+    client_host = client_ip(request)
+    await enforce_limit(
+        scope="auth:request-otp-daily-ip",
+        value=client_host,
+        limit=settings.auth_otp_per_ip_daily_limit,
+        window_seconds=86400,
+        detail=(
+            "Слишком много запросов кода с вашего адреса за сутки. "
+            "Попробуйте завтра или напишите на nyuskov@gmail.com."
+        ),
+    )
+    global_daily_limit = settings.auth_otp_daily_limit
+    if not await rate_limiter.allow(
+        rate_limit_key("auth:request-otp-daily", "total"),
+        limit=global_daily_limit,
+        window_seconds=86400,
+    ):
+        logger.warning(
+            "Дневной лимит отправки кодов исчерпан (%s) — коды не отправляются",
+            global_daily_limit,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                "На сегодня коды не отправляются: исчерпан дневной лимит сервиса. "
+                "Напишите на nyuskov@gmail.com."
             ),
             headers={"Retry-After": "3600"},
         )
