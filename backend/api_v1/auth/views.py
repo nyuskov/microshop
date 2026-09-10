@@ -82,12 +82,14 @@ def validate_phone_number_format(phone_number: str) -> bool:
 def otp_delivery_available(user: User | None) -> bool:
     """Можно ли доставить OTP-код на этот номер.
 
-    Каналы: SMS Aero и Telegram Gateway шлют код на сам номер — если настроен
-    любой из них, код дойдёт до любого пользователя. Обычный Telegram-бот умеет
-    писать только тем, кто уже привязал чат (``tg_chat_id``), поэтому для нового
-    номера он не считается доступным каналом.
+    Каналы завязаны на сам номер (Telegram-аккаунт на этом номере или телефон),
+    а не на e-mail: так чужой номер зарегистрировать не получится — код получит
+    только владелец. SMS Aero шлёт код сначала в Telegram (≈2,5 ₽) с автооткатом
+    на SMS (≈9 ₽), Telegram Gateway — верификационное сообщение. Обычный
+    Telegram-бот считается каналом только для аккаунтов с привязанным чатом
+    (``tg_chat_id``), поэтому новому номеру он недоступен.
     """
-    if settings.sms_aero_email or settings.sms_aero_api_key:
+    if settings.sms_aero_email and settings.sms_aero_api_key:
         return True
     if settings.telegram_gateway_token:
         return True
@@ -97,10 +99,11 @@ def otp_delivery_available(user: User | None) -> bool:
 def enqueue_sms_otp(phone_number: str, otp_code: str) -> None:
     """Кладёт доставку OTP-кода в очередь Celery (RabbitMQ).
 
-    Доставку выполняет воркер (см. tasks/otp_tasks.py): SMS Aero → Telegram
-    Gateway → обычный бот → dev-лог. Здесь код печатаем ТОЛЬКО если ни один
-    канал не настроен (чистый dev-запуск без ключей) — иначе код утёк бы в
-    web-лог. Если брокер недоступен — вход не роняем: код уже виден выше (dev).
+    Доставку выполняет воркер (см. tasks/otp_tasks.py): код в Telegram
+    (SMS Aero) → SMS Aero → Telegram Gateway → обычный бот → dev-лог. Здесь код
+    печатаем ТОЛЬКО если не настроен ни один канал (чистый dev-запуск без
+    ключей) — иначе код утёк бы в web-лог. Если брокер недоступен — вход не
+    роняем: код уже виден выше (dev).
     """
     if (
         not settings.sms_aero_email
