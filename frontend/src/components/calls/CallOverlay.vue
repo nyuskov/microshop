@@ -135,17 +135,10 @@
               muted
             ></video>
 
-            <!-- Элементы управления -->
+            <!-- Элементы управления: в панели — только частое (микрофон, камера,
+                 завершить). Остальное — в меню «ещё»: иначе на телефоне кнопки
+                 не помещаются в одну строку. -->
             <div class="call-controls active-controls">
-              <button
-                class="ctl-btn"
-                :class="{ 'speaker-on': speakerOn }"
-                :title="speakerOn ? 'Обычный режим' : 'Громкая связь'"
-                :aria-pressed="speakerOn"
-                @click="toggleSpeaker"
-              >
-                <q-icon :name="speakerOn ? 'volume_up' : 'volume_down'" size="26px" />
-              </button>
               <button
                 class="ctl-btn"
                 :class="{ off: !callStore.micOn }"
@@ -165,27 +158,50 @@
               </button>
               <button
                 class="ctl-btn"
-                :class="{ 'screen-on': callStore.screenSharing }"
-                :title="callStore.screenSharing ? 'Остановить показ экрана' : 'Показать экран'"
-                :aria-pressed="callStore.screenSharing"
-                @click="callStore.toggleScreenShare()"
+                :class="{ 'screen-on': callStore.screenSharing, 'speaker-on': moreOpen }"
+                :title="moreOpen ? 'Скрыть меню' : 'Ещё'"
+                :aria-expanded="moreOpen"
+                :aria-pressed="moreOpen"
+                @click="toggleMore"
               >
-                <q-icon
-                  :name="callStore.screenSharing ? 'stop_screen_share' : 'screen_share'"
-                  size="26px"
-                />
-              </button>
-              <button
-                class="ctl-btn"
-                :class="{ 'speaker-on': settingsOpen }"
-                title="Устройства звонка"
-                :aria-pressed="settingsOpen"
-                @click="settingsOpen = !settingsOpen"
-              >
-                <q-icon name="tune" size="26px" />
+                <q-icon :name="moreOpen ? 'close' : 'more_vert'" size="26px" />
               </button>
               <button class="ctl-btn danger big" title="Завершить" @click="callStore.endCall()">
                 <q-icon name="call_end" size="28px" />
+              </button>
+            </div>
+
+            <!-- Меню «ещё»: редкие во время звонка действия -->
+            <div v-if="moreOpen" class="call-more" role="menu">
+              <button class="more-row" role="menuitem" @click="onSpeakerRow">
+                <q-icon :name="speakerOn ? 'volume_up' : 'volume_down'" size="20px" />
+                <span>{{ speakerOn ? 'Обычный режим' : 'Громкая связь' }}</span>
+                <q-icon v-if="speakerOn" name="check" size="16px" class="more-mark" />
+              </button>
+              <button
+                class="more-row"
+                :class="{ on: callStore.screenSharing }"
+                role="menuitem"
+                @click="onScreenRow"
+              >
+                <q-icon
+                  :name="callStore.screenSharing ? 'stop_screen_share' : 'screen_share'"
+                  size="20px"
+                />
+                <span>{{
+                  callStore.screenSharing ? 'Остановить показ экрана' : 'Показать экран'
+                }}</span>
+                <q-icon v-if="callStore.screenSharing" name="check" size="16px" class="more-mark" />
+              </button>
+              <button
+                class="more-row"
+                :class="{ on: settingsOpen }"
+                role="menuitem"
+                @click="onDevicesRow"
+              >
+                <q-icon name="tune" size="20px" />
+                <span>Устройства звонка</span>
+                <q-icon v-if="settingsOpen" name="check" size="16px" class="more-mark" />
               </button>
             </div>
 
@@ -286,6 +302,31 @@ const speakerOn = ref(false)
 
 // Панель выбора устройств (камера/микрофон/динамик) во время звонка.
 const settingsOpen = ref(false)
+
+// Меню «ещё»: редкие во время звонка действия (громкая связь, показ экрана,
+// устройства). В панели они не помещаются на телефоне в одну строку.
+const moreOpen = ref(false)
+
+/** Открыть/закрыть меню «ещё»; панель устройств и меню разом не показываем. */
+const toggleMore = () => {
+  moreOpen.value = !moreOpen.value
+  if (moreOpen.value) settingsOpen.value = false
+}
+
+const onSpeakerRow = () => {
+  toggleSpeaker()
+  moreOpen.value = false
+}
+
+const onScreenRow = () => {
+  void callStore.toggleScreenShare()
+  moreOpen.value = false
+}
+
+const onDevicesRow = () => {
+  settingsOpen.value = !settingsOpen.value
+  moreOpen.value = false
+}
 
 /** Умеет ли браузер выводить звук на выбранное устройство (setSinkId). */
 const canSelectSpeaker = computed(
@@ -427,6 +468,7 @@ watch(
       attachTimer = undefined
       speakerOn.value = false
       settingsOpen.value = false
+      moreOpen.value = false
     }
   }
 )
@@ -437,6 +479,15 @@ watch(
   () => [callStore.kind, callStore.screenSharing, callStore.selectedSpeaker],
   () => {
     void nextTick(attachStreams)
+  }
+)
+
+// Показ экрана могли остановить из плашки браузера, а не из меню — прячем меню,
+// чтобы его подписи не расходились с состоянием звонка.
+watch(
+  () => callStore.screenSharing,
+  () => {
+    moreOpen.value = false
   }
 )
 
@@ -692,6 +743,49 @@ onBeforeUnmount(() => {
   background: #3aa6e0;
 }
 
+/* ---------- Меню «ещё» (редкие действия во время звонка) ---------- */
+.call-more {
+  position: absolute;
+  bottom: 108px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: min(300px, calc(100vw - 40px));
+  padding: 8px;
+  background: rgba(16, 22, 30, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+}
+
+.more-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.more-row:hover,
+.more-row.on {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.more-row .more-mark {
+  margin-left: auto;
+  opacity: 0.85;
+}
+
 /* ---------- Панель устройств звонка ---------- */
 .call-settings {
   position: absolute;
@@ -761,6 +855,10 @@ onBeforeUnmount(() => {
   }
 
   .call-settings {
+    bottom: 96px;
+  }
+
+  .call-more {
     bottom: 96px;
   }
 }

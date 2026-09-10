@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { ICE_SERVERS as CONFIG_ICE_SERVERS, WS_ORIGIN } from '@/config'
 import { fetchIceServers } from '@/services/iceServers'
+import { kindAfterScreenShare } from '@/utils/callMode'
 import {
   chooseDeviceId,
   groupDevices,
@@ -86,6 +87,10 @@ let pendingOffer: { callId: string; kind: CallKind; sdp: string } | null = null
 // камеру гасим (иначе горит индикатор и тратится батарея), а при остановке
 // показа включаем заново — уже с выбранным в настройках устройством.
 let screenTrack: MediaStreamTrack | null = null
+/** Видеолиния, в которой идёт показ экрана (нужна, чтобы вернуть её назад/убрать). */
+let screenSender: RTCRtpSender | null = null
+/** Каким был звонок до показа экрана: аудиозвонок после остановки возвращается в аудио. */
+let shareReturnKind: CallKind = 'video'
 
 // Счётчик «поколений» пересогласования: ответ на устаревший offer игнорируем,
 // иначе два одновременных пересогласования ломают SDP.
@@ -565,9 +570,16 @@ export const useCallStore = defineStore('call', {
         case 'call-screen': {
           if (this.callId !== callId) return
           this.peerScreenSharing = Boolean(message.sharing)
-          // Показ экрана включается как видео — переводим интерфейс в видео-режим,
-          // чтобы было видно картинку собеседника (своя сторона уже это сделала).
-          if (this.peerScreenSharing) this.kind = 'video'
+          if (this.peerScreenSharing) {
+            // Показ экрана включается как видео — переводим интерфейс в видео-режим,
+            // чтобы было видно картинку собеседника (своя сторона уже это сделала).
+            this.kind = 'video'
+          } else if (!this.screenSharing && message.kind === 'audio') {
+            // Собеседник показывал экран из аудиозвонка и закончил — возвращаемся
+            // в аудио (если я сам сейчас ничего не показываю). Проверяем именно
+            // 'audio': старый клиент поле не шлёт, и его режим менять нельзя.
+            this.kind = 'audio'
+          }
           break
         }
         case 'call-cancel': {
@@ -849,12 +861,16 @@ export const useCallStore = defineStore('call', {
         track.onended = () => this.stopScreenShare()
 
         const sender = peerConnection.getSenders().find((item) => item.track?.kind === 'video')
+        // Каким был звонок до показа: видеозвонок вернёт камеру, аудиозвонок — уберёт
+        // видеолинию и останется аудио (см. `kindAfterScreenShare`).
+        shareReturnKind = kindAfterScreenShare(this.kind)
         if (sender) {
           // Видеозвонок: подменяем дорожку без пересогласования.
           await sender.replaceTrack(track)
+          screenSender = sender
         } else {
           // Аудиозвонок: добавляем видео-линию — нужен новый SDP.
-          peerConnection.addTrack(track, stream)
+          screenSender = peerConnection.addTrack(track, stream)
           await this._renegotiate()
         }
         // Гасим камеру на время показа (вернём при остановке) и показываем экран в превью.
@@ -877,10 +893,15 @@ export const useCallStore = defineStore('call', {
       }
     },
 
-    /** Останавливает показ экрана и возвращает камеру (если звонок видео). */
+    /** Останавливает показ экрана и возвращает звонок к прежнему виду. */
     stopScreenShare() {
       const track = screenTrack
+      const sender =
+        screenSender ??
+        peerConnection?.getSenders().find((item) => item.track?.kind === 'video') ??
+        null
       screenTrack = null
+      screenSender = null
       if (track) {
         track.onended = null
         track.stop()
@@ -890,9 +911,31 @@ export const useCallStore = defineStore('call', {
       if (track && localMedia) {
         localMedia.removeTrack(track)
       }
-      const sender = peerConnection?.getSenders().find((item) => item.track?.kind === 'video')
-      void this._restoreCamera(sender ?? null)
+      if (shareReturnKind === 'audio') {
+        // Звонок был аудио — камеру НЕ включаем: убираем видео-линию и
+        // возвращаемся в аудио (интерфейс и у собеседника тоже).
+        this.kind = 'audio'
+        this.videoOn = false
+        void this._dropVideoLine(sender)
+        this._sendScreenStatus(false)
+        return
+      }
+      void this._restoreCamera(sender)
       this._sendScreenStatus(false)
+    },
+
+    /**
+     * Убирает видео-линию из соединения (после показа экрана в аудиозвонке).
+     * Пересогласование не нужно: `replaceTrack(null)` просто перестаёт отправлять
+     * видео, а m-line остаётся неиспользуемой до конца звонка.
+     */
+    async _dropVideoLine(sender: RTCRtpSender | null): Promise<void> {
+      if (!sender) return
+      try {
+        await sender.replaceTrack(null)
+      } catch {
+        /* соединение уже закрывается — не мешаем */
+      }
     },
 
     /** Возвращает камеру после показа экрана (или отключает видео-линию, если не удалось). */
@@ -922,7 +965,10 @@ export const useCallStore = defineStore('call', {
         type: 'call-screen',
         to_user_id: this.peerId ?? 0,
         call_id: this.callId ?? '',
-        sharing
+        sharing,
+        // В каком режиме продолжается звонок: собеседник вернёт аудио-интерфейс,
+        // если показ экрана закончился в аудиозвонке.
+        kind: sharing ? 'video' : this.kind
       })
     },
 
@@ -1102,6 +1148,8 @@ export const useCallStore = defineStore('call', {
         screenTrack.stop()
         screenTrack = null
       }
+      screenSender = null
+      shareReturnKind = 'video'
       renegotiateSeq += 1
       if (peerConnection) {
         peerConnection.onicecandidate = null
