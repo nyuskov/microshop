@@ -77,7 +77,7 @@ class CallConnectionManager:
             return False
 
     async def park_offer(
-        self, callee_id: int, offer: dict[str, Any], ttl_seconds: float = 40.0
+        self, callee_id: int, offer: dict[str, Any], ttl_seconds: float = 55.0
     ) -> None:
         """Паркует входящий вызов для офлайн-абонента (до его подключения)."""
         async with self._lock:

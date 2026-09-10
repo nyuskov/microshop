@@ -120,15 +120,35 @@
             GIF
           </button>
         </div>
-        <div v-if="extrasPanel === 'emoji'" class="extras-grid">
-          <button
-            v-for="emoji in INPUT_EMOJIS"
-            :key="emoji"
-            class="emoji-option"
-            @click="emit('append-emoji', emoji)"
-          >
-            {{ emoji }}
-          </button>
+        <div v-if="extrasPanel === 'emoji'" class="emoji-panel">
+          <!-- Категории: недавние + группы по смыслу -->
+          <div class="emoji-cats" role="tablist" aria-label="Категории эмодзи">
+            <button
+              v-for="tab in emojiTabs"
+              :key="tab.key"
+              type="button"
+              class="emoji-cat"
+              :class="{ active: emojiTab === tab.key }"
+              role="tab"
+              :aria-selected="emojiTab === tab.key"
+              @click="emojiTab = tab.key"
+            >
+              {{ tab.title }}
+            </button>
+          </div>
+          <p v-if="!emojiItems.length" class="emoji-hint">
+            Здесь появятся те, что вы выбирали последними.
+          </p>
+          <div v-else class="extras-grid">
+            <button
+              v-for="emoji in emojiItems"
+              :key="emoji"
+              class="emoji-option"
+              @click="pickEmoji(emoji)"
+            >
+              {{ emoji }}
+            </button>
+          </div>
         </div>
         <div v-else-if="extrasPanel === 'gif' && chatId !== null" class="extras-gif">
           <GifPicker
@@ -146,6 +166,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import type { Message } from '@/types'
 import { messageSnippet } from '@/utils/media'
+import { EMOJI_GROUPS, EMOJI_RECENT_KEY, readRecentEmoji, rememberEmoji } from '@/utils/emoji'
 import VoiceRecorderBar from '@/components/media/VoiceRecorderBar.vue'
 import GifPicker from '@/components/media/GifPicker.vue'
 import type { RecordedMedia } from '@/services/recorder'
@@ -172,6 +193,28 @@ const newMessage = defineModel<string>('newMessage', { required: true })
 /** Есть ли текст в поле (для скрытия кнопок файла/микрофона при наборе). */
 const hasText = computed(() => newMessage.value.trim().length > 0)
 
+// ---------- Эмодзи: недавние + категории ----------
+const emojiRecent = ref<string[]>(readRecentEmoji(globalThis.localStorage))
+const emojiTab = ref<string>(emojiRecent.value.length ? 'recent' : EMOJI_GROUPS[0].key)
+const emojiTabs = computed(() => [
+  { key: 'recent', title: 'Недавние', items: emojiRecent.value },
+  ...EMOJI_GROUPS
+])
+const emojiItems = computed(
+  () => emojiTabs.value.find((tab) => tab.key === emojiTab.value)?.items ?? []
+)
+
+/** Вставляет эмодзи и запоминает его для раздела «Недавние». */
+const pickEmoji = (emoji: string) => {
+  emojiRecent.value = rememberEmoji(emojiRecent.value, emoji)
+  try {
+    globalThis.localStorage?.setItem(EMOJI_RECENT_KEY, JSON.stringify(emojiRecent.value))
+  } catch {
+    // Приватный режим/переполнение — не мешаем отправке сообщения.
+  }
+  emit('append-emoji', emoji)
+}
+
 const emit = defineEmits<{
   (e: 'send-text'): void
   (e: 'file-selected', file: File): void
@@ -188,109 +231,6 @@ const emit = defineEmits<{
   (e: 'gif-sent'): void
   (e: 'append-emoji', emoji: string): void
 }>()
-
-const INPUT_EMOJIS = [
-  '😀',
-  '😁',
-  '😂',
-  '🤣',
-  '😊',
-  '😍',
-  '😘',
-  '😜',
-  '🤪',
-  '😎',
-  '🤩',
-  '🥳',
-  '😇',
-  '🙂',
-  '😉',
-  '😌',
-  '😔',
-  '😢',
-  '😭',
-  '😤',
-  '😡',
-  '🤯',
-  '😱',
-  '🥶',
-  '😴',
-  '🤒',
-  '🤢',
-  '🥺',
-  '🤗',
-  '🫡',
-  '😅',
-  '🙃',
-  '👍',
-  '👎',
-  '👏',
-  '🙌',
-  '🤝',
-  '💪',
-  '🙏',
-  '👌',
-  '✌️',
-  '🤞',
-  '🖐️',
-  '🤙',
-  '👋',
-  '💅',
-  '🤘',
-  '🫶',
-  '❤️',
-  '🧡',
-  '💛',
-  '💚',
-  '💙',
-  '💜',
-  '🖤',
-  '🤍',
-  '💖',
-  '💔',
-  '🔥',
-  '✨',
-  '⭐',
-  '🌟',
-  '🎉',
-  '🎂',
-  '🎁',
-  '🎊',
-  '🚀',
-  '🏆',
-  '⚽',
-  '🏀',
-  '🎮',
-  '🎧',
-  '🎵',
-  '🎸',
-  '☕',
-  '🍕',
-  '🍔',
-  '🍟',
-  '🍰',
-  '🌮',
-  '🍣',
-  '🍩',
-  '🍺',
-  '🥂',
-  '🌹',
-  '🌸',
-  '🌈',
-  '☀️',
-  '❄️',
-  '⚡',
-  '🍀',
-  '👀',
-  '💬',
-  '✅',
-  '❌',
-  '❓',
-  '❗',
-  '💯',
-  '😴',
-  '🤔'
-]
 
 const attachInput = ref<HTMLInputElement | null>(null)
 
@@ -573,6 +513,45 @@ watch(newMessage, () => {
 .extras-tab.active {
   background: #e3f2e5;
   color: #1e9b51;
+}
+
+/* Категории эмодзи: «Недавние» + группы по смыслу. */
+.emoji-cats {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: none;
+}
+
+.emoji-cats::-webkit-scrollbar {
+  display: none;
+}
+
+.emoji-cat {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border: none;
+  border-radius: 10px;
+  background: var(--ms-surface-2);
+  color: var(--ms-muted);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.emoji-cat.active {
+  background: var(--ms-accent-soft);
+  color: var(--ms-accent);
+  font-weight: 600;
+}
+
+.emoji-hint {
+  margin: 6px 2px;
+  font-size: 12px;
+  color: var(--ms-muted);
 }
 
 .extras-grid {

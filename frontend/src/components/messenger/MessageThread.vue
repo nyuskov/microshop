@@ -92,8 +92,8 @@
       :aria-label="hasNewBelow ? 'Перейти к новым сообщениям' : 'Прокрутить вниз'"
       @click="onJumpDown"
     >
-      <q-icon name="arrow_downward" size="20px" aria-hidden="true" />
-      <span v-if="hasNewBelow" class="jump-new" aria-hidden="true"></span>
+      <q-icon v-if="!newBelowCount" name="arrow_downward" size="20px" aria-hidden="true" />
+      <span v-else class="jump-count">{{ newBelowCount > 99 ? '99+' : newBelowCount }}</span>
     </button>
   </div>
 </template>
@@ -200,17 +200,23 @@ const unreadDividerId = computed<number | null>(() => {
 // ---------- Кнопка «вниз» и новые сообщения ниже ----------
 const showJumpDown = ref(false)
 const hasNewBelow = ref(false)
+/** Сколько новых сообщений пришло, пока лента прокручена вверх. */
+const newBelowCount = ref(0)
 
 const updateScrollState = () => {
   const container = containerRef.value
   if (!container) return
   const distance = container.scrollHeight - container.scrollTop - container.clientHeight
   showJumpDown.value = distance > 320 || hasNewBelow.value
-  if (distance < 60) hasNewBelow.value = false
+  if (distance < 60) {
+    hasNewBelow.value = false
+    newBelowCount.value = 0
+  }
 }
 
 const onJumpDown = () => {
   hasNewBelow.value = false
+  newBelowCount.value = 0
   const container = containerRef.value
   if (container) {
     // Плавно только по явному клику: программная прокрутка в остальных местах
@@ -239,7 +245,10 @@ const tailMessageId = computed<number | null>(() => {
 watch(tailMessageId, (id, prev) => {
   if (id === null || prev === null || id === prev) return
   // Догрузка старых сообщений хвост не меняет — считаем только появление новых.
-  if (!isNearBottom()) hasNewBelow.value = true
+  if (!isNearBottom()) {
+    hasNewBelow.value = true
+    newBelowCount.value += 1
+  }
 })
 
 // Новый чат — сбрасываем подсказки прокрутки.
@@ -247,6 +256,7 @@ watch(
   () => props.unreadCount,
   () => {
     hasNewBelow.value = false
+    newBelowCount.value = 0
     showJumpDown.value = false
   }
 )
@@ -517,10 +527,15 @@ onMounted(() => {
   border-color: var(--ms-accent, #2ea25e);
 }
 
+/* Дата «прилипает» к верху ленты, пока прокручиваешь её день. */
 .day-divider {
+  position: sticky;
+  top: 6px;
+  z-index: 2;
   display: flex;
   justify-content: center;
   margin: 10px 0;
+  pointer-events: none;
 }
 
 .day-divider span {

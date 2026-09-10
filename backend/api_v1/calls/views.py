@@ -239,6 +239,16 @@ async def _park_offer_and_push(
         return False
 
     await call_manager.park_offer(callee_id, offer)
+    # Собеседник не в сети: он получит push и сможет ответить, если откроет
+    # приложение. Зовущему говорим об этом, чтобы он понимал, что происходит.
+    await call_manager.send_to_user(
+        caller_id,
+        {
+            "type": "call-parked",
+            "call_id": offer.get("call_id"),
+            "to_user_id": callee_id,
+        },
+    )
     try:
         from core.celery_app import get_task
 

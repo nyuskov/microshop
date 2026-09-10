@@ -13,10 +13,16 @@
       { 'msg-highlight': highlighted, selection: selectionMode, selected }
     ]"
     :data-message-id="message.id"
+    :style="swipeStyle"
     @pointerdown="onPointerDown"
+    @pointermove="onPointerMove"
     @pointerup="onPointerUp"
     @pointercancel="onPointerCancel"
   >
+    <!-- Подсказка свайпа: тянем сообщение вправо — отвечаем на него -->
+    <span v-if="swipeX > 0" class="swipe-reply" :class="{ ready: swipeReady }">
+      <q-icon name="reply" size="18px" aria-hidden="true" />
+    </span>
     <!-- Режим выделения: кружок-чек сбоку от пузыря -->
     <span
       v-if="selectionMode && selectable"
@@ -128,7 +134,14 @@
         </a>
       </template>
 
-      <span v-if="message.text" class="msg-text">{{ message.text }}</span>
+      <!-- Очень длинные тексты показываем свёрнутыми: иначе одна «простыня»
+           растягивает ленту на несколько экранов. -->
+      <span v-if="message.text" class="msg-text" :class="{ clamped: isClamped }">{{
+        message.text
+      }}</span>
+      <button v-if="canCollapse" type="button" class="msg-more" @click.stop="expanded = !expanded">
+        {{ expanded ? 'Свернуть' : 'Показать полностью' }}
+      </button>
 
       <span class="msg-meta">
         <span v-if="message.edited_at" class="msg-edited" title="изменено">изменено</span>
@@ -246,6 +259,26 @@ export interface MessageQuote {
   mine: boolean
   text: string
 }
+
+/* ---------- Свайп вправо = ответ на сообщение ---------- */
+const SWIPE_REPLY_DISTANCE = 84
+const SWIPE_REPLY_THRESHOLD = 56
+
+const swipeX = ref(0)
+const swipeReady = computed(() => swipeX.value >= SWIPE_REPLY_THRESHOLD)
+const swipeStyle = computed<Record<string, string> | undefined>(() =>
+  swipeX.value ? { transform: `translateX(${swipeX.value}px)` } : undefined
+)
+let swipeStartX = 0
+let swipeStartY = 0
+let swipeAxis: 'none' | 'x' | 'y' = 'none'
+
+/** С какого размера текст сворачиваем (примерно 12 строк). */
+const LONG_TEXT_LIMIT = 600
+
+const expanded = ref(false)
+const canCollapse = computed(() => (props.message.text?.length ?? 0) > LONG_TEXT_LIMIT)
+const isClamped = computed(() => canCollapse.value && !expanded.value)
 
 const props = defineProps<{
   message: Message
@@ -367,6 +400,11 @@ const cancelHold = () => {
 const onPointerDown = (event: PointerEvent) => {
   if (props.selectionMode || !props.selectable) return
   if (event.button !== 0) return
+  // Готовим свайп-ответ: решение по оси принимаем на первом движении.
+  swipeStartX = event.clientX
+  swipeStartY = event.clientY
+  swipeAxis = 'none'
+  swipeX.value = 0
   cancelHold()
   suppressNextSelect = false
   holdTimer = window.setTimeout(() => {
@@ -376,12 +414,47 @@ const onPointerDown = (event: PointerEvent) => {
   }, 480)
 }
 
+const onPointerMove = (event: PointerEvent) => {
+  if (props.selectionMode || !props.selectable) return
+  if (swipeStartX === 0 && swipeStartY === 0) return
+  const dx = event.clientX - swipeStartX
+  const dy = event.clientY - swipeStartY
+  if (swipeAxis === 'none') {
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+    swipeAxis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y'
+    // Вертикаль — это прокрутка ленты, свайп не наш: жест не перехватываем.
+    if (swipeAxis === 'y') {
+      swipeStartX = 0
+      swipeStartY = 0
+      return
+    }
+    cancelHold()
+  }
+  if (swipeAxis !== 'x') return
+  swipeX.value = Math.max(0, Math.min(SWIPE_REPLY_DISTANCE, dx))
+}
+
+const resetSwipe = () => {
+  swipeStartX = 0
+  swipeStartY = 0
+  swipeAxis = 'none'
+  swipeX.value = 0
+}
+
 const onPointerUp = () => {
+  if (props.selectionMode || !props.selectable) {
+    resetSwipe()
+    return
+  }
   cancelHold()
+  // Дотянули до порога — отвечаем на сообщение (жест вместо меню действий).
+  if (swipeReady.value) emit('set-reply')
+  resetSwipe()
 }
 
 const onPointerCancel = () => {
   cancelHold()
+  resetSwipe()
   suppressNextSelect = false
 }
 
@@ -562,6 +635,59 @@ const onReport = () => {
   background: transparent;
   box-shadow: none;
   padding: 2px;
+}
+
+/* ---------- Свайп вправо = ответ ---------- */
+.msg {
+  /* Горизонталь обрабатываем сами (свайп-ответ), вертикаль оставляем ленте. */
+  touch-action: pan-y;
+  transition: transform 0.16s ease;
+}
+
+.swipe-reply {
+  position: absolute;
+  left: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--ms-surface-2);
+  color: var(--ms-muted);
+  pointer-events: none;
+}
+
+.swipe-reply.ready {
+  background: var(--ms-accent-soft);
+  color: var(--ms-accent);
+}
+
+/* Свёрнутый длинный текст: 12 строк и кнопка «Показать полностью». */
+.msg-text.clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 12;
+  overflow: hidden;
+}
+
+.msg-more {
+  display: block;
+  margin: 2px 0 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ms-accent);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.msg-more:hover {
+  text-decoration: underline;
 }
 
 .msg-text {

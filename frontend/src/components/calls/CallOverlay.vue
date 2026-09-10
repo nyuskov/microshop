@@ -179,6 +179,7 @@
                 <q-icon v-if="speakerOn" name="check" size="16px" class="more-mark" />
               </button>
               <button
+                v-if="canShareScreen || callStore.screenSharing"
                 class="more-row"
                 :class="{ on: callStore.screenSharing }"
                 role="menuitem"
@@ -281,7 +282,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { useCallStore } from '@/stores/call'
+import { screenShareSupport, useCallStore } from '@/stores/call'
 import { mediaUrl } from '@/services/chatService'
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
 
@@ -290,6 +291,9 @@ const callStore = useCallStore()
 const remoteVideoEl = ref<HTMLVideoElement | null>(null)
 const remoteAudioEl = ref<HTMLAudioElement | null>(null)
 const localVideoEl = ref<HTMLVideoElement | null>(null)
+/** Доступен ли в этом окружении захват экрана (иначе пункт меню скрыт). */
+const canShareScreen = screenShareSupport() === 'ok'
+
 const noticeVisible = ref(false)
 let noticeTimer: ReturnType<typeof setTimeout> | undefined
 let attachTimer: ReturnType<typeof setInterval> | undefined

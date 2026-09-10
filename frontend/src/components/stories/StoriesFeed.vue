@@ -1,6 +1,15 @@
 <template>
   <div class="stories-feed">
-    <p v-if="stories.loading && !stories.groups.length" class="stories-empty">Загружаем истории…</p>
+    <div v-if="stories.loading && !stories.groups.length" class="sk-list" aria-busy="true">
+      <span class="sr-only">Загружаем истории…</span>
+      <div v-for="n in 5" :key="n" class="sk-row">
+        <span class="sk-avatar"></span>
+        <span class="sk-lines">
+          <span class="sk-line" :style="{ width: 35 + ((n * 11) % 40) + '%' }"></span>
+          <span class="sk-line short"></span>
+        </span>
+      </div>
+    </div>
 
     <template v-else-if="stories.groups.length">
       <button

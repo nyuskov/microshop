@@ -30,6 +30,7 @@
         :self-name="selfName"
         :self-avatar-url="selfAvatarUrl"
         :is-admin="authStore.isAdmin"
+        :unread-count="totalUnread"
         @open-message="openGlobalMessage"
         @toggle-pin="toggleChatPinned"
         @toggle-mute="toggleChatMuted"
@@ -2413,7 +2414,9 @@ type CallLaunchScreen = 'none' | 'ring' | 'missed'
 const callLaunch = ref<{ callId: string; peerId: number; action?: string } | null>(null)
 const callLaunchScreen = ref<CallLaunchScreen>('none')
 let callLaunchTimer: ReturnType<typeof setTimeout> | undefined
-const CALL_LAUNCH_WAIT_MS = 15_000
+// Ждём припаркованный offer: собеседник мог открыть приложение из push,
+// для этого нужно время на загрузку и подключение WebSocket.
+const CALL_LAUNCH_WAIT_MS = 25_000
 // Действие из push-уведомления, ожидающее доставки offer (см. watcher'ы ниже).
 let autoAnswerPending = false
 let autoDeclinePending = false

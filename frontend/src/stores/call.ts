@@ -13,6 +13,39 @@ import {
 
 /** Тип вызова: только голос или голос + видео. */
 export type CallKind = 'audio' | 'video'
+/** Почему показ экрана недоступен (или 'ok', если всё в порядке). */
+export type ScreenShareSupport = 'ok' | 'insecure' | 'mobile' | 'unsupported'
+
+/**
+ * Проверяет, можно ли вообще включить показ экрана в этом окружении.
+ * `getDisplayMedia` требует защищённый контекст (HTTPS или localhost), а в
+ * мобильных браузерах и WebView захват экрана не поддерживается вовсе — там
+ * звонок идёт, а API отсутствует, поэтому кнопку лучше не показывать.
+ */
+export function screenShareSupport(): ScreenShareSupport {
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') {
+    return 'unsupported'
+  }
+  if (!window.isSecureContext || !navigator.mediaDevices) return 'insecure'
+  if (typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
+    const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+    return isMobile ? 'mobile' : 'unsupported'
+  }
+  return 'ok'
+}
+
+/** Текст для пользователя: почему показа экрана не будет. */
+export function screenShareNotice(support: ScreenShareSupport): string {
+  if (support === 'insecure') {
+    return 'Показ экрана работает только по защищённому соединению (HTTPS)'
+  }
+  if (support === 'mobile') {
+    return 'На телефоне показ экрана недоступен — включите его с компьютера'
+  }
+  if (support === 'unsupported') return 'Браузер не поддерживает демонстрацию экрана'
+  return ''
+}
+
 /** Состояние текущего звонка в интерфейсе. */
 export type CallStatus =
   | 'idle' // нет звонка
@@ -41,7 +74,12 @@ interface SignalingMessage {
 }
 
 const WS_PATH = '/api/v1/ws/calls'
-const RING_OUT_TIMEOUT_MS = 45_000
+/**
+ * Сколько ждём ответа. У собеседника приложение может быть закрыто: push,
+ * холодный старт и нажатие «Ответить» должны уложиться в это время, поэтому
+ * таймаут заметно больше обычных 30 секунд.
+ */
+const RING_OUT_TIMEOUT_MS = 60_000
 
 // «Лёгкое» видео: невысокое разрешение и частота — видеозвонок должен работать
 // и через TURN-релей на мобильной сети (высокий битрейт 720p «валит» медиа,
@@ -603,6 +641,12 @@ export const useCallStore = defineStore('call', {
           }
           break
         }
+        case 'call-parked': {
+          // Абонент не в сети, но уведомление ушло — он может ответить,
+          // открыв приложение (см. park_offer на бэкенде).
+          this.notice = 'Собеседник не в сети — отправили уведомление о звонке'
+          break
+        }
         case 'call-unavailable': {
           if (this.status === 'outgoing' && this.callId === callId) {
             this._cleanup()
@@ -848,8 +892,11 @@ export const useCallStore = defineStore('call', {
 
     async _startScreenShare() {
       if (!peerConnection || this.screenSharing) return
-      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getDisplayMedia) {
-        this.notice = 'Браузер не поддерживает демонстрацию экрана'
+      const support = screenShareSupport()
+      if (support !== 'ok') {
+        // Причина может быть в http, в мобильном браузере или в самом браузере —
+        // сообщаем конкретную, чтобы не гадать (см. screenShareSupport).
+        this.notice = screenShareNotice(support)
         return
       }
       try {

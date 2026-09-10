@@ -2,9 +2,14 @@
   <div
     v-if="current"
     class="story-viewer"
+    :style="viewerStyle"
     role="dialog"
     aria-modal="true"
     @click.self="emit('close')"
+    @pointerdown="onPointerDown"
+    @pointermove="onPointerMove"
+    @pointerup="onPointerUp"
+    @pointercancel="onPointerCancel"
   >
     <!-- Автор и управление -->
     <header class="viewer-head">
@@ -112,6 +117,18 @@ const stories = useStoriesStore()
 const videoEl = ref<HTMLVideoElement | null>(null)
 const currentId = ref(props.startStoryId)
 const progress = ref(0)
+/** Пауза по удержанию: как в мессенджерах — держишь палец, история стоит. */
+const paused = ref(false)
+/** Сдвиги при перетаскивании: вниз — закрыть, вбок — соседняя история. */
+const dragY = ref(0)
+const dragX = ref(0)
+let gestureStartX = 0
+let gestureStartY = 0
+let gestureAxis: 'none' | 'x' | 'y' = 'none'
+
+/** Порог срабатывания жестов. */
+const SWIPE_CLOSE_DISTANCE = 90
+const SWIPE_STEP_DISTANCE = 55
 let timer: ReturnType<typeof setTimeout> | undefined
 let raf: number | undefined
 let startedAt = 0
@@ -169,6 +186,12 @@ const startTimer = () => {
   }
   startedAt = Date.now()
   const tick = () => {
+    if (paused.value) {
+      // Держим точку отсчёта на месте, пока палец на экране.
+      startedAt += 16
+      raf = window.requestAnimationFrame(tick)
+      return
+    }
     const elapsed = Date.now() - startedAt
     progress.value = Math.min(1, elapsed / IMAGE_DURATION_MS)
     if (elapsed >= IMAGE_DURATION_MS) {
@@ -178,6 +201,89 @@ const startTimer = () => {
     raf = window.requestAnimationFrame(tick)
   }
   raf = window.requestAnimationFrame(tick)
+}
+
+/* ---------------- Жесты ---------------- */
+
+const viewerStyle = computed<Record<string, string> | undefined>(() => {
+  if (!dragY.value && !dragX.value) return undefined
+  const style: Record<string, string> = { transition: 'none' }
+  if (dragY.value) {
+    style.transform = `translateY(${dragY.value}px)`
+    style.opacity = String(Math.max(0.4, 1 - Math.abs(dragY.value) / 400))
+  }
+  if (dragX.value) style.transform = `translateX(${dragX.value / 3}px)`
+  return style
+})
+
+const pauseForHold = () => {
+  paused.value = true
+  const el = videoEl.value
+  if (el && !el.paused) el.pause()
+}
+
+const resumeAfterHold = () => {
+  paused.value = false
+  const el = videoEl.value
+  if (el && el.paused) void el.play().catch(() => undefined)
+}
+
+const onPointerDown = (event: PointerEvent) => {
+  gestureStartX = event.clientX
+  gestureStartY = event.clientY
+  gestureAxis = 'none'
+  dragY.value = 0
+  dragX.value = 0
+  pauseForHold()
+}
+
+const onPointerMove = (event: PointerEvent) => {
+  if (gestureStartX === 0 && gestureStartY === 0) return
+  const dx = event.clientX - gestureStartX
+  const dy = event.clientY - gestureStartY
+  if (gestureAxis === 'none') {
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return
+    gestureAxis = Math.abs(dy) > Math.abs(dx) ? 'y' : 'x'
+  }
+  if (gestureAxis === 'y') dragY.value = dy
+  else dragX.value = dx
+}
+
+const onPointerUp = () => {
+  const dy = dragY.value
+  const dx = dragX.value
+  gestureStartX = 0
+  gestureStartY = 0
+  gestureAxis = 'none'
+  dragY.value = 0
+  dragX.value = 0
+  resumeAfterHold()
+  if (dy > SWIPE_CLOSE_DISTANCE) {
+    emit('close')
+    return
+  }
+  if (dx < -SWIPE_STEP_DISTANCE) next()
+  else if (dx > SWIPE_STEP_DISTANCE) previous()
+}
+
+const onPointerCancel = () => {
+  gestureStartX = 0
+  gestureStartY = 0
+  gestureAxis = 'none'
+  dragY.value = 0
+  dragX.value = 0
+  resumeAfterHold()
+}
+
+/** Подгружает соседние кадры, чтобы перелистывание было без «мигания». */
+const preloadNeighbours = () => {
+  const entry = current.value
+  if (!entry) return
+  for (const neighbour of [nextStory(flat.value, entry), previousStory(flat.value, entry)]) {
+    if (!neighbour || isVideoStory(neighbour.story.mime_type)) continue
+    const image = new Image()
+    image.src = mediaUrl(neighbour.story.media_url)
+  }
 }
 
 const onVideoProgress = () => {
@@ -223,6 +329,8 @@ const removeCurrent = async () => {
 }
 
 /** Показ истории отмечаем просмотренным (у чужой — один раз). */
+watch(currentId, () => preloadNeighbours())
+
 const markSeen = () => {
   const entry = current.value
   if (entry) void stories.markViewed(entry.story.id)

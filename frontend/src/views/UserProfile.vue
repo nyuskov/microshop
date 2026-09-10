@@ -163,6 +163,17 @@ const currentSectionTitle = computed(
   () => SETTINGS_ROWS.find((row) => row.key === section.value)?.title ?? 'Настройки'
 )
 
+const settingsQuery = ref('')
+
+/** Разделы под поиском: ищем по названию и описанию. */
+const visibleSettingsRows = computed<SettingsRow[]>(() => {
+  const query = settingsQuery.value.trim().toLowerCase()
+  if (!query) return SETTINGS_ROWS
+  return SETTINGS_ROWS.filter(
+    (row) => row.title.toLowerCase().includes(query) || row.desc.toLowerCase().includes(query)
+  )
+})
+
 /** Открыть раздел настроек. */
 const openSection = (key: SettingsRow['key']) => {
   section.value = key
@@ -706,8 +717,31 @@ const onNotificationsToggle = async (val: boolean) => {
       </div>
 
       <nav v-if="section === 'root'" class="settings-list" aria-label="Разделы настроек">
+        <!-- Поиск по настройкам: разделов много, нужный искать долго -->
+        <div class="settings-search">
+          <q-icon name="search" size="17px" class="settings-search-icon" />
+          <input
+            v-model="settingsQuery"
+            class="settings-search-input"
+            type="text"
+            placeholder="Найти настройку"
+            aria-label="Поиск по настройкам"
+          />
+          <button
+            v-if="settingsQuery"
+            type="button"
+            class="settings-search-clear"
+            title="Очистить"
+            @click="settingsQuery = ''"
+          >
+            <q-icon name="close" size="16px" />
+          </button>
+        </div>
+        <p v-if="!visibleSettingsRows.length" class="settings-empty">
+          Ничего не нашлось — попробуйте другое слово.
+        </p>
         <button
-          v-for="row in SETTINGS_ROWS"
+          v-for="row in visibleSettingsRows"
           :key="row.key"
           type="button"
           class="settings-link"
@@ -1361,6 +1395,52 @@ const onNotificationsToggle = async (val: boolean) => {
 
 /* Шапка */
 /* ---------- Список разделов настроек ---------- */
+/* Поиск по настройкам. */
+.settings-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--ms-border);
+  border-radius: 12px;
+  background: var(--ms-surface-2);
+}
+
+.settings-search-icon {
+  color: var(--ms-muted-3);
+}
+
+.settings-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--ms-text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.settings-search-input:focus {
+  outline: none;
+}
+
+.settings-search-clear {
+  display: inline-flex;
+  padding: 2px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ms-muted);
+  cursor: pointer;
+}
+
+.settings-empty {
+  margin: 4px 0 10px;
+  font-size: 13px;
+  color: var(--ms-muted);
+}
+
 .settings-list {
   display: flex;
   flex-direction: column;

@@ -105,299 +105,384 @@
       </div>
     </div>
 
-    <!-- Диалоги -->
-    <template v-if="view === 'stories'">
-      <div class="chat-scroll">
-        <StoriesFeed @open-story="emit('open-story', $event)" />
-      </div>
-    </template>
+    <!-- Разделы меняются плавно: короткий сдвиг + затухание. -->
+    <Transition name="section" mode="out-in">
+      <div :key="view" class="section-body">
+        <!-- Диалоги -->
+        <template v-if="view === 'stories'">
+          <div class="chat-scroll">
+            <StoriesFeed @open-story="emit('open-story', $event)" />
+          </div>
+        </template>
 
-    <template v-if="view === 'chats'">
-      <!-- Глобальный поиск: открывается по значку и прячет верхний хидер,
+        <template v-else-if="view === 'chats'">
+          <!-- Глобальный поиск: открывается по значку и прячет верхний хидер,
            как панель действий при выделении чатов удержанием. -->
-      <div v-if="!selectionMode && searchOpen" class="panel-search search-head">
-        <button class="icon-btn search-back" title="Назад" aria-label="Назад" @click="closeSearch">
-          <q-icon name="arrow_back" size="20px" />
-        </button>
-        <input
-          ref="searchInputRef"
-          v-model="searchQuery"
-          class="panel-search-input"
-          type="text"
-          placeholder="Поиск людей и сообщений"
-          aria-label="Глобальный поиск"
-          @keydown.esc="closeSearch"
-        />
-        <button
-          v-if="searchQuery.trim()"
-          class="icon-btn search-clear"
-          title="Очистить"
-          aria-label="Очистить"
-          @click="searchQuery = ''"
-        >
-          <q-icon name="close" size="18px" />
-        </button>
-      </div>
-
-      <div v-if="searchError" class="inline-error">{{ searchError }}</div>
-
-      <!-- Результаты поиска: люди / сообщения -->
-      <div v-if="searchOpen && searchQuery.trim()" class="people-results">
-        <div class="search-mode-tabs" role="tablist" aria-label="Область поиска">
-          <button
-            class="search-mode-tab"
-            :class="{ active: searchMode === 'people' }"
-            role="tab"
-            :aria-selected="searchMode === 'people'"
-            @click="setSearchMode('people')"
-          >
-            Люди
-          </button>
-          <button
-            class="search-mode-tab"
-            :class="{ active: searchMode === 'messages' }"
-            role="tab"
-            :aria-selected="searchMode === 'messages'"
-            @click="setSearchMode('messages')"
-          >
-            Сообщения
-          </button>
-        </div>
-
-        <div v-if="searching" class="search-status">Поиск…</div>
-
-        <!-- Люди -->
-        <template v-else-if="searchMode === 'people' && userResults.length">
-          <div class="section-label">Найти людей</div>
-          <button
-            v-for="user in userResults"
-            :key="user.id"
-            class="row-item"
-            @click="openChatWithUser(user)"
-          >
-            <span class="avatar" :style="avatarStyle(displayName(user))">
-              <img v-if="avatarUrlOf(user)" :src="avatarUrlOf(user)" class="avatar-img" alt="" />
-              <template v-else>{{ initials(displayName(user)) }}</template>
-            </span>
-            <span class="row-text">
-              <span class="row-title">{{ displayName(user) }}</span>
-              <span class="row-sub"
-                >@{{ user.username
-                }}<template v-if="user.phone_number"> · {{ user.phone_number }}</template></span
-              >
-            </span>
-            <q-icon name="chevron_right" class="row-arrow" size="20px" />
-          </button>
-        </template>
-        <div v-else-if="searchMode === 'people'" class="search-status">Никого не найдено</div>
-
-        <!-- Сообщения (по всем диалогам) -->
-        <template v-else-if="searchMode === 'messages' && messageResults.length">
-          <div class="section-label">Найдено в чатах</div>
-          <button
-            v-for="msg in messageResults"
-            :key="msg.id"
-            class="row-item"
-            @click="openMessageResult(msg)"
-          >
-            <span class="avatar" :style="avatarStyle(messageChatTitle(msg))">
-              <img
-                v-if="messageChatAvatar(msg)"
-                :src="messageChatAvatar(msg)"
-                class="avatar-img"
-                alt=""
-              />
-              <template v-else>{{ initials(messageChatTitle(msg)) }}</template>
-            </span>
-            <span class="row-text">
-              <span class="row-line">
-                <span class="row-title msg-result-chat">{{ messageChatTitle(msg) }}</span>
-                <span class="row-time">{{ formatMsgTime(msg.timestamp) }}</span>
-              </span>
-              <span class="row-sub msg-result-snippet">
-                {{ messageSenderPrefix(msg) }}{{ messageSnippetText(msg) }}
-              </span>
-            </span>
-            <q-icon name="chevron_right" class="row-arrow" size="20px" />
-          </button>
-        </template>
-        <div v-else-if="searchMode === 'messages'" class="search-status">Ничего не найдено</div>
-      </div>
-
-      <div v-if="!searchOpen && loadingChats" class="search-status">Загрузка…</div>
-
-      <!-- Недавние диалоги (скрыты, пока открыт глобальный поиск) -->
-      <template v-else-if="!searchOpen">
-        <!-- Истории: свои и друзей (живут 24 часа) -->
-        <StoriesStrip @open-story="emit('open-story', $event)" />
-        <div class="section-label">Недавние</div>
-        <div v-if="!orderedChats.length" class="empty-hint">
-          Найдите пользователя по логину или телефону и начните переписку
-        </div>
-        <div class="chat-scroll">
-          <div v-for="chat in orderedChats" :key="chat.id" class="chat-row">
+          <div v-if="!selectionMode && searchOpen" class="panel-search search-head">
             <button
-              class="row-item"
-              :class="{
-                active: !selectionMode && selectedChatId === chat.id,
-                selected: isSelected(chat.id)
-              }"
-              @pointerdown="onRowPointerDown(chat.id)"
-              @pointerup="onRowPointerUp"
-              @pointercancel="onRowPointerCancel"
-              @pointerleave="onRowPointerUp"
-              @click="onRowClick(chat.id)"
+              class="icon-btn search-back"
+              title="Назад"
+              aria-label="Назад"
+              @click="closeSearch"
             >
-              <span v-if="selectionMode" class="row-selector" :class="{ on: isSelected(chat.id) }">
-                <q-icon v-if="isSelected(chat.id)" name="check" size="15px" />
-              </span>
-              <span class="avatar-wrap" :class="{ online: chatPeerOnline(chat) }">
-                <span
-                  class="avatar"
-                  :style="chat.is_self ? savedStyle : avatarStyle(chatTitleOf(chat))"
-                >
-                  <q-icon v-if="chat.is_self" name="bookmark" size="20px" aria-hidden="true" />
+              <q-icon name="arrow_back" size="20px" />
+            </button>
+            <input
+              ref="searchInputRef"
+              v-model="searchQuery"
+              class="panel-search-input"
+              type="text"
+              placeholder="Поиск людей и сообщений"
+              aria-label="Глобальный поиск"
+              @keydown.esc="closeSearch"
+            />
+            <button
+              v-if="searchQuery.trim()"
+              class="icon-btn search-clear"
+              title="Очистить"
+              aria-label="Очистить"
+              @click="searchQuery = ''"
+            >
+              <q-icon name="close" size="18px" />
+            </button>
+          </div>
+
+          <div v-if="searchError" class="inline-error">{{ searchError }}</div>
+
+          <!-- Результаты поиска: люди / сообщения -->
+          <div v-if="searchOpen && searchQuery.trim()" class="people-results">
+            <div class="search-mode-tabs" role="tablist" aria-label="Область поиска">
+              <button
+                class="search-mode-tab"
+                :class="{ active: searchMode === 'people' }"
+                role="tab"
+                :aria-selected="searchMode === 'people'"
+                @click="setSearchMode('people')"
+              >
+                Люди
+              </button>
+              <button
+                class="search-mode-tab"
+                :class="{ active: searchMode === 'messages' }"
+                role="tab"
+                :aria-selected="searchMode === 'messages'"
+                @click="setSearchMode('messages')"
+              >
+                Сообщения
+              </button>
+            </div>
+
+            <div v-if="searching" class="search-status">Поиск…</div>
+
+            <!-- Люди -->
+            <template v-else-if="searchMode === 'people' && userResults.length">
+              <div class="section-label">Найти людей</div>
+              <button
+                v-for="user in userResults"
+                :key="user.id"
+                class="row-item"
+                @click="openChatWithUser(user)"
+              >
+                <span class="avatar" :style="avatarStyle(displayName(user))">
                   <img
-                    v-else-if="chatAvatarOf(chat)"
-                    :src="chatAvatarOf(chat)"
+                    v-if="avatarUrlOf(user)"
+                    :src="avatarUrlOf(user)"
                     class="avatar-img"
                     alt=""
                   />
-                  <template v-else>{{ initials(chatTitleOf(chat)) }}</template>
+                  <template v-else>{{ initials(displayName(user)) }}</template>
                 </span>
-              </span>
-              <span class="row-text">
-                <span class="row-line">
-                  <span class="row-title">{{ chatTitleOf(chat) }}</span>
-                  <span class="row-time">
-                    <q-icon
-                      v-if="isMutedOf(chat.id)"
-                      name="notifications_off"
-                      size="14px"
-                      class="row-muted"
-                      aria-hidden="true"
-                    />
-                    {{ chat.last_message ? formatChatTime(chat.last_message.timestamp) : '' }}
-                  </span>
-                </span>
-                <span class="row-line">
-                  <span
-                    class="row-sub preview"
-                    :class="{ typing: isChatTyping(chat), draft: draftOf(chat) !== null }"
-                  >
-                    <template v-if="isChatTyping(chat)">печатает…</template>
-                    <template v-else-if="draftOf(chat)">Черновик: {{ draftOf(chat) }}</template>
-                    <template v-else>
-                      <q-icon v-if="lastMessageIsOut(chat)" name="done" class="tick" size="16px" />
-                      {{ previewText(chat) }}
+                <span class="row-text">
+                  <span class="row-title">
+                    <template v-for="(part, i) in parts(displayName(user))" :key="'n' + i">
+                      <mark v-if="part.hit" class="search-hit">{{ part.text }}</mark>
+                      <template v-else>{{ part.text }}</template>
                     </template>
                   </span>
-                  <span v-if="chat.unread_count > 0" class="unread-badge">
-                    {{ chat.unread_count }}
+                  <span class="row-sub">
+                    <template v-for="(part, i) in parts('@' + user.username)" :key="'u' + i">
+                      <mark v-if="part.hit" class="search-hit">{{ part.text }}</mark>
+                      <template v-else>{{ part.text }}</template>
+                    </template>
+                    <template v-if="user.phone_number"> · {{ user.phone_number }}</template>
                   </span>
                 </span>
-              </span>
-            </button>
+                <q-icon name="chevron_right" class="row-arrow" size="20px" />
+              </button>
+            </template>
+            <div v-else-if="searchMode === 'people'" class="search-status">Никого не найдено</div>
+
+            <!-- Сообщения (по всем диалогам) -->
+            <template v-else-if="searchMode === 'messages' && messageResults.length">
+              <div class="section-label">Найдено в чатах</div>
+              <button
+                v-for="msg in messageResults"
+                :key="msg.id"
+                class="row-item"
+                @click="openMessageResult(msg)"
+              >
+                <span class="avatar" :style="avatarStyle(messageChatTitle(msg))">
+                  <img
+                    v-if="messageChatAvatar(msg)"
+                    :src="messageChatAvatar(msg)"
+                    class="avatar-img"
+                    alt=""
+                  />
+                  <template v-else>{{ initials(messageChatTitle(msg)) }}</template>
+                </span>
+                <span class="row-text">
+                  <span class="row-line">
+                    <span class="row-title msg-result-chat">{{ messageChatTitle(msg) }}</span>
+                    <span class="row-time">{{ formatMsgTime(msg.timestamp) }}</span>
+                  </span>
+                  <span class="row-sub msg-result-snippet">
+                    {{ messageSenderPrefix(msg)
+                    }}<template v-for="(part, i) in parts(messageSnippetText(msg))" :key="'s' + i">
+                      <mark v-if="part.hit" class="search-hit">{{ part.text }}</mark>
+                      <template v-else>{{ part.text }}</template>
+                    </template>
+                  </span>
+                </span>
+                <q-icon name="chevron_right" class="row-arrow" size="20px" />
+              </button>
+            </template>
+            <div v-else-if="searchMode === 'messages'" class="search-status">Ничего не найдено</div>
           </div>
-        </div>
-      </template>
 
-      <!-- Пустой глобальный поиск: подсказка вместо списка -->
-      <template v-else-if="searchOpen && !searchQuery.trim()">
-        <div class="search-hint">
-          <q-icon name="search" class="search-hint-icon" size="30px" />
-          <p>Поиск по людям и сообщениям<br />во всех чатах</p>
-        </div>
-      </template>
-    </template>
+          <!-- Скелетоны: показываем структуру списка вместо текста «Загрузка…» -->
+          <div v-if="!searchOpen && loadingChats" class="sk-list" aria-busy="true">
+            <span class="sr-only">Загрузка диалогов…</span>
+            <div v-for="n in 6" :key="n" class="sk-row">
+              <span class="sk-avatar"></span>
+              <span class="sk-lines">
+                <span class="sk-line" :style="{ width: 40 + ((n * 13) % 35) + '%' }"></span>
+                <span class="sk-line short"></span>
+              </span>
+            </div>
+          </div>
 
-    <!-- Контакты -->
-    <template v-if="view === 'contacts'">
-      <div class="panel-search">
-        <q-icon name="search" class="search-icon" size="17px" />
-        <input
-          v-model="contactsQuery"
-          class="panel-search-input"
-          type="text"
-          placeholder="Поиск по логину или телефону"
-          aria-label="Поиск контактов"
-        />
-      </div>
-
-      <!-- Результаты импорта из телефонной книги (показываются прямо в списке) -->
-      <div v-if="phoneMatched !== null && !phoneImportOpen" class="phone-inline">
-        <div class="phone-inline-head">
-          <span class="phone-result-title"> Из телефонной книги: {{ phoneMatched.length }} </span>
-          <button
-            class="phone-inline-clear"
-            title="Закрыть результаты"
-            aria-label="Закрыть результаты"
-            @click="clearPhoneMatch"
-          >
-            <q-icon name="close" size="18px" />
-          </button>
-        </div>
-        <p v-if="phoneError" class="phone-error">{{ phoneError }}</p>
-        <div v-if="!phoneBusy && !phoneMatched.length" class="empty-hint">
-          Никого из вашей книги нет в мессенджере
-        </div>
-        <div v-else class="phone-inline-list">
-          <button
-            v-for="user in phoneMatched"
-            :key="user.id"
-            class="row-item"
-            @click="openPhoneMatch(user)"
-          >
-            <span class="avatar" :style="avatarStyle(displayName(user))">
-              <img v-if="avatarUrlOf(user)" :src="avatarUrlOf(user)" class="avatar-img" alt="" />
-              <template v-else>{{ initials(displayName(user)) }}</template>
-            </span>
-            <span class="row-text">
-              <span class="row-title">{{ displayName(user) }}</span>
-              <span class="row-sub"
-                >@{{ user.username
-                }}<template v-if="user.phone_number"> · {{ user.phone_number }}</template></span
+          <!-- Недавние диалоги (скрыты, пока открыт глобальный поиск) -->
+          <template v-else-if="!searchOpen">
+            <!-- Истории: свои и друзей (живут 24 часа) -->
+            <StoriesStrip @open-story="emit('open-story', $event)" />
+            <!-- Фильтры списка: быстро отсечь непрочитанное, личные или группы -->
+            <div
+              v-if="!selectionMode"
+              class="chat-filters"
+              role="tablist"
+              aria-label="Фильтр чатов"
+            >
+              <button
+                v-for="filter in CHAT_FILTERS"
+                :key="filter.key"
+                type="button"
+                class="chat-filter"
+                :class="{ active: chatFilter === filter.key }"
+                role="tab"
+                :aria-selected="chatFilter === filter.key"
+                @click="chatFilter = filter.key"
               >
-            </span>
-            <q-icon name="chat_bubble" class="row-arrow" size="18px" />
-          </button>
-        </div>
-      </div>
+                {{ filter.title }}
+                <span v-if="filter.key === 'unread' && unreadChatCount" class="chat-filter-count">
+                  {{ unreadChatCount > 99 ? '99+' : unreadChatCount }}
+                </span>
+              </button>
+            </div>
+            <div class="section-label">Недавние</div>
+            <div v-if="!orderedChats.length" class="empty-hint">
+              Найдите пользователя по логину или телефону и начните переписку
+            </div>
+            <div class="chat-scroll">
+              <div v-for="chat in orderedChats" :key="chat.id" class="chat-row">
+                <button
+                  class="row-item"
+                  :class="{
+                    active: !selectionMode && selectedChatId === chat.id,
+                    selected: isSelected(chat.id)
+                  }"
+                  @pointerdown="onRowPointerDown(chat.id)"
+                  @pointerup="onRowPointerUp"
+                  @pointercancel="onRowPointerCancel"
+                  @pointerleave="onRowPointerUp"
+                  @click="onRowClick(chat.id)"
+                >
+                  <span
+                    v-if="selectionMode"
+                    class="row-selector"
+                    :class="{ on: isSelected(chat.id) }"
+                  >
+                    <q-icon v-if="isSelected(chat.id)" name="check" size="15px" />
+                  </span>
+                  <span class="avatar-wrap" :class="{ online: chatPeerOnline(chat) }">
+                    <span
+                      class="avatar"
+                      :style="chat.is_self ? savedStyle : avatarStyle(chatTitleOf(chat))"
+                    >
+                      <q-icon v-if="chat.is_self" name="bookmark" size="20px" aria-hidden="true" />
+                      <img
+                        v-else-if="chatAvatarOf(chat)"
+                        :src="chatAvatarOf(chat)"
+                        class="avatar-img"
+                        alt=""
+                      />
+                      <template v-else>{{ initials(chatTitleOf(chat)) }}</template>
+                    </span>
+                  </span>
+                  <span class="row-text">
+                    <span class="row-line">
+                      <span class="row-title">{{ chatTitleOf(chat) }}</span>
+                      <span class="row-time">
+                        <q-icon
+                          v-if="isMutedOf(chat.id)"
+                          name="notifications_off"
+                          size="14px"
+                          class="row-muted"
+                          aria-hidden="true"
+                        />
+                        {{ chat.last_message ? formatChatTime(chat.last_message.timestamp) : '' }}
+                      </span>
+                    </span>
+                    <span class="row-line">
+                      <span
+                        class="row-sub preview"
+                        :class="{ typing: isChatTyping(chat), draft: draftOf(chat) !== null }"
+                      >
+                        <template v-if="isChatTyping(chat)">печатает…</template>
+                        <template v-else-if="draftOf(chat)">Черновик: {{ draftOf(chat) }}</template>
+                        <template v-else>
+                          <q-icon
+                            v-if="lastMessageIsOut(chat)"
+                            name="done"
+                            class="tick"
+                            size="16px"
+                          />
+                          {{ previewText(chat) }}
+                        </template>
+                      </span>
+                      <span v-if="chat.unread_count > 0" class="unread-badge">
+                        {{ chat.unread_count }}
+                      </span>
+                    </span>
+                  </span>
+                </button>
+              </div>
+            </div>
+          </template>
 
-      <!-- Обычный список контактов (скрыт, пока показаны результаты из книги) -->
-      <template v-if="phoneMatched === null || phoneImportOpen">
-        <div v-if="contactsLoading" class="search-status">Загрузка…</div>
-        <div v-else-if="!filteredContacts.length" class="empty-hint">Контакты не найдены</div>
-        <div v-else class="chat-scroll">
-          <button
-            v-for="contact in filteredContacts"
-            :key="contact.id"
-            class="row-item"
-            @click="openChatWithContact(contact)"
-          >
-            <span class="avatar" :style="avatarStyle(displayName(contact))">
-              <img
-                v-if="avatarUrlOf(contact)"
-                :src="avatarUrlOf(contact)"
-                class="avatar-img"
-                alt=""
-              />
-              <template v-else>{{ initials(displayName(contact)) }}</template>
-            </span>
-            <span class="row-text">
-              <span class="row-title">{{ displayName(contact) }}</span>
-              <span class="row-sub"
-                >@{{ contact.username
-                }}<template v-if="contact.phone_number">
-                  · {{ contact.phone_number }}</template
-                ></span
+          <!-- Пустой глобальный поиск: подсказка вместо списка -->
+          <template v-else-if="searchOpen && !searchQuery.trim()">
+            <div class="search-hint">
+              <q-icon name="search" class="search-hint-icon" size="30px" />
+              <p>Поиск по людям и сообщениям<br />во всех чатах</p>
+            </div>
+          </template>
+        </template>
+
+        <!-- Контакты -->
+        <template v-else>
+          <div class="panel-search">
+            <q-icon name="search" class="search-icon" size="17px" />
+            <input
+              v-model="contactsQuery"
+              class="panel-search-input"
+              type="text"
+              placeholder="Поиск по логину или телефону"
+              aria-label="Поиск контактов"
+            />
+          </div>
+
+          <!-- Результаты импорта из телефонной книги (показываются прямо в списке) -->
+          <div v-if="phoneMatched !== null && !phoneImportOpen" class="phone-inline">
+            <div class="phone-inline-head">
+              <span class="phone-result-title">
+                Из телефонной книги: {{ phoneMatched.length }}
+              </span>
+              <button
+                class="phone-inline-clear"
+                title="Закрыть результаты"
+                aria-label="Закрыть результаты"
+                @click="clearPhoneMatch"
               >
-            </span>
-            <q-icon name="chevron_right" class="row-arrow" size="20px" />
-          </button>
-        </div>
-      </template>
-    </template>
+                <q-icon name="close" size="18px" />
+              </button>
+            </div>
+            <p v-if="phoneError" class="phone-error">{{ phoneError }}</p>
+            <div v-if="!phoneBusy && !phoneMatched.length" class="empty-hint">
+              Никого из вашей книги нет в мессенджере
+            </div>
+            <div v-else class="phone-inline-list">
+              <button
+                v-for="user in phoneMatched"
+                :key="user.id"
+                class="row-item"
+                @click="openPhoneMatch(user)"
+              >
+                <span class="avatar" :style="avatarStyle(displayName(user))">
+                  <img
+                    v-if="avatarUrlOf(user)"
+                    :src="avatarUrlOf(user)"
+                    class="avatar-img"
+                    alt=""
+                  />
+                  <template v-else>{{ initials(displayName(user)) }}</template>
+                </span>
+                <span class="row-text">
+                  <span class="row-title">{{ displayName(user) }}</span>
+                  <span class="row-sub"
+                    >@{{ user.username
+                    }}<template v-if="user.phone_number"> · {{ user.phone_number }}</template></span
+                  >
+                </span>
+                <q-icon name="chat_bubble" class="row-arrow" size="18px" />
+              </button>
+            </div>
+          </div>
+
+          <!-- Обычный список контактов (скрыт, пока показаны результаты из книги) -->
+          <template v-if="phoneMatched === null || phoneImportOpen">
+            <div v-if="contactsLoading" class="sk-list" aria-busy="true">
+              <span class="sr-only">Загрузка контактов…</span>
+              <div v-for="n in 6" :key="n" class="sk-row">
+                <span class="sk-avatar"></span>
+                <span class="sk-lines">
+                  <span class="sk-line" :style="{ width: 35 + ((n * 17) % 40) + '%' }"></span>
+                  <span class="sk-line short"></span>
+                </span>
+              </div>
+            </div>
+            <div v-else-if="!filteredContacts.length" class="empty-hint">Контакты не найдены</div>
+            <div v-else class="chat-scroll">
+              <button
+                v-for="contact in filteredContacts"
+                :key="contact.id"
+                class="row-item"
+                @click="openChatWithContact(contact)"
+              >
+                <span class="avatar" :style="avatarStyle(displayName(contact))">
+                  <img
+                    v-if="avatarUrlOf(contact)"
+                    :src="avatarUrlOf(contact)"
+                    class="avatar-img"
+                    alt=""
+                  />
+                  <template v-else>{{ initials(displayName(contact)) }}</template>
+                </span>
+                <span class="row-text">
+                  <span class="row-title">{{ displayName(contact) }}</span>
+                  <span class="row-sub"
+                    >@{{ contact.username
+                    }}<template v-if="contact.phone_number">
+                      · {{ contact.phone_number }}</template
+                    ></span
+                  >
+                </span>
+                <q-icon name="chevron_right" class="row-arrow" size="20px" />
+              </button>
+            </div>
+          </template>
+        </template>
+      </div>
+    </Transition>
 
     <!-- Нижняя навигация: основные разделы приложения -->
     <nav class="bottom-nav" aria-label="Разделы">
@@ -409,6 +494,9 @@
       >
         <q-icon name="forum" size="22px" />
         <span>Чаты</span>
+        <span v-if="unreadCount" class="bottom-nav-badge">{{
+          unreadCount > 99 ? '99+' : unreadCount
+        }}</span>
       </button>
       <button
         class="bottom-nav-btn"
@@ -528,7 +616,7 @@
 import { useStoriesStore } from '@/stores/stories'
 import StoriesFeed from '@/components/stories/StoriesFeed.vue'
 import StoriesStrip from '@/components/stories/StoriesStrip.vue'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import {
   matchUsersByPhone,
@@ -549,6 +637,7 @@ import {
   initials,
   isGroupChat
 } from '@/utils/user'
+import { splitByQuery } from '@/utils/search'
 import { ONLINE_WINDOW_SECONDS, formatChatTime, formatMsgTime } from '@/utils/format'
 import { mediaTypeLabel } from '@/utils/media'
 
@@ -575,6 +664,8 @@ const props = defineProps<{
   selfAvatarUrl: string | undefined
   /** Администратор: показывает в «⋯» разбор жалоб. */
   isAdmin?: boolean
+  /** Всего непрочитанных сообщений (бейдж на вкладке «Чаты»). */
+  unreadCount?: number
 }>()
 
 const storiesStore = useStoriesStore()
@@ -653,6 +744,9 @@ const contactsQuery = ref('')
 
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
+/** Части текста с подсветкой совпадений по текущему запросу. */
+const parts = (text: string) => splitByQuery(text, searchQuery.value)
+
 const chatPeerOf = (chat: Chat) => chatPeer(chat, props.currentUserId)
 const chatTitleOf = (chat: Chat): string => chatTitle(chat, props.currentUserId)
 /** Аватар чата: у группы — своё фото, у личного — аватар собеседника. */
@@ -706,6 +800,41 @@ const exitSelection = () => {
 // (см. `onAppPopState` в Messenger.vue). Отдаём функции — так не важно, как Vue
 // разворачивает ref'ы при доступе к дочернему компоненту.
 const isSelecting = () => selectionMode.value
+/**
+ * Горячие клавиши на десктопе: ↑/↓ — соседний чат, Ctrl/⌘+F — поиск.
+ * В полях ввода клавиши не перехватываем.
+ */
+const isTypingTarget = (target: EventTarget | null): boolean => {
+  const el = target as HTMLElement | null
+  if (!el) return false
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable === true
+}
+
+const onHotkeys = (event: KeyboardEvent) => {
+  if (props.view !== 'chats' || selectionMode.value) return
+  const meta = event.ctrlKey || event.metaKey
+  if (meta && event.key.toLowerCase() === 'f') {
+    event.preventDefault()
+    openSearch()
+    return
+  }
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+  if (meta || event.altKey || event.shiftKey) return
+  if (isTypingTarget(event.target) || searchOpen.value) return
+  const list = orderedChats.value.filter((chat) => !chat.is_self)
+  if (!list.length) return
+  event.preventDefault()
+  const currentIndex = list.findIndex((chat) => chat.id === props.selectedChatId)
+  const step = event.key === 'ArrowDown' ? 1 : -1
+  const nextIndex =
+    currentIndex === -1 ? 0 : Math.min(list.length - 1, Math.max(0, currentIndex + step))
+  emit('select-chat', list[nextIndex].id)
+}
+
+onMounted(() => window.addEventListener('keydown', onHotkeys))
+onBeforeUnmount(() => window.removeEventListener('keydown', onHotkeys))
+
 defineExpose({ exitSelection, isSelecting })
 
 const toggleSelect = (chatId: number) => {
@@ -820,10 +949,34 @@ const draftOf = (chat: Chat): string | null => {
   return text && text.trim() ? text : null
 }
 
+/** Фильтры списка чатов: все / непрочитанные / личные / группы. */
+type ChatFilterKey = 'all' | 'unread' | 'private' | 'groups'
+
+const CHAT_FILTERS: { key: ChatFilterKey; title: string }[] = [
+  { key: 'all', title: 'Все' },
+  { key: 'unread', title: 'Непрочитанные' },
+  { key: 'private', title: 'Личные' },
+  { key: 'groups', title: 'Группы' }
+]
+
+const chatFilter = ref<ChatFilterKey>('all')
+
+/** Сколько чатов с непрочитанными — счётчик на фильтре. */
+const unreadChatCount = computed(
+  () => props.chats.filter((chat) => (chat.unread_count ?? 0) > 0).length
+)
+
+/** Чаты после фильтра и поиска по названию. */
 const filteredChats = computed<Chat[]>(() => {
+  const byFilter = props.chats.filter((chat) => {
+    if (chatFilter.value === 'unread') return (chat.unread_count ?? 0) > 0
+    if (chatFilter.value === 'groups') return isGroupChat(chat)
+    if (chatFilter.value === 'private') return !isGroupChat(chat)
+    return true
+  })
   const query = searchQuery.value.trim().toLowerCase()
-  if (!query) return props.chats
-  return props.chats.filter((chat) => {
+  if (!query) return byFilter
+  return byFilter.filter((chat) => {
     const title = chatTitleOf(chat)
     const peer = chatPeerOf(chat)
     const phone = peer?.phone_number ?? ''
@@ -1225,6 +1378,38 @@ onBeforeUnmount(() => {
   background: #ffffff;
 }
 
+/* Плавная смена разделов нижнего меню. */
+.section-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.section-enter-active,
+.section-leave-active {
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+.section-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.section-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .section-enter-active,
+  .section-leave-active {
+    transition: none;
+  }
+}
+
 .panel-title {
   font-size: 19px;
   font-weight: 600;
@@ -1303,6 +1488,14 @@ onBeforeUnmount(() => {
 
 .search-head .panel-search-input {
   min-width: 0;
+}
+
+.search-hit {
+  padding: 0 1px;
+  border-radius: 4px;
+  background: var(--ms-accent-soft);
+  color: var(--ms-accent);
+  font-weight: 600;
 }
 
 .search-hint {
@@ -1391,6 +1584,51 @@ onBeforeUnmount(() => {
   color: var(--ms-muted, #71808d);
   margin-right: 2px;
   vertical-align: -2px;
+}
+
+/* Фильтры списка чатов. */
+.chat-filters {
+  display: flex;
+  gap: 6px;
+  padding: 8px 14px 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chat-filters::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-filter {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 11px;
+  background: var(--ms-surface-2);
+  color: var(--ms-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chat-filter.active {
+  background: var(--ms-accent-soft);
+  color: var(--ms-accent);
+  font-weight: 600;
+}
+
+.chat-filter-count {
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--ms-accent);
+  color: var(--ms-on-accent);
+  font-size: 10.5px;
+  font-weight: 600;
 }
 
 .chat-scroll {
@@ -1963,6 +2201,23 @@ onBeforeUnmount(() => {
 }
 
 /* Точка «есть новое»: прижата к «пилюле» иконки, а не к краю кнопки. */
+.bottom-nav-badge {
+  position: absolute;
+  top: 3px;
+  right: calc(50% - 26px);
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: var(--ms-accent);
+  color: var(--ms-on-accent);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 19px;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--ms-surface-2);
+}
+
 .bottom-nav-dot {
   position: absolute;
   top: 5px;
