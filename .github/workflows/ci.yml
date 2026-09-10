@@ -5,6 +5,15 @@ on:
     branches: [main, master, dev]
   pull_request:
 
+# Не допускаем два одновременных прогона для одной ветки: два параллельных
+# `docker compose up` на сервере конфликтуют за имена контейнеров (compose
+# переименовывает старый контейнер в <id>_<name>, и второй запуск падает с
+# «container name is already in use»), а прод остаётся лежать без контейнеров.
+# cancel-in-progress: false — начатый деплой доводим до конца, новый ждёт.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   backend:
     name: Backend (lint + mypy + tests)
@@ -151,6 +160,10 @@ jobs:
             #  nginx.prod.conf — reset --hard исключает такие сбои.)
             git fetch origin
             git reset --hard origin/main
+            # Подчищаем контейнеры, оставшиеся от прерванного деплоя: compose
+            # переименовывает старый контейнер в <id>_<name>, и без уборки
+            # следующий запуск падает на конфликте имён (а прод лежит).
+            docker ps -a --format '{{.Names}}' | grep -E '^[0-9a-f]{12}_' | xargs -r docker rm -f || true
             # Используем официальную команду принудительного сброса кэша при сборке
             docker compose -f docker-compose.test.yaml -p microshop-test up -d --build --force-recreate --pull always
             # Явный прогон миграций: при `up -d` одноразовый migrate-сервис может
