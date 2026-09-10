@@ -94,8 +94,9 @@ microshop/
 ├── cron_dump_db.sh / install_cron_backup.sh # ежедневный бэкап (БД + media) по cron
 ├── backup_offsite.example.sh # пример выгрузки бэкапов в облако (rclone)
 ├── scripts/backup/           # бэкап прода → ~/Документы/pismo_backup (см. docs/local-backup.md)
+├── scripts/monitoring/       # проверка прода + оповещения по e-mail (см. docs/monitoring.md)
 ├── db_dump/                  # дампы БД + media: latest + archive/ + logs/ (в .gitignore)
-├── docs/                     # production.md, offsite-backup.md, local-backup.md, email-smtp.md, rustore.md, privacy-policy.md
+├── docs/                     # production.md, offsite-backup.md, local-backup.md, email-smtp.md, monitoring.md, rustore.md, privacy-policy.md
 ├── .github/workflows/ci.yml  # backend (lint+mypy+pytest c Postgres) + frontend
 └── queries.sql
 ```
@@ -182,6 +183,25 @@ crontab -l | grep -v '# pismo-prod-backup' | crontab -   # удалить зад
 (`users=5`, `alembic_version=e3f4a5b6c7d8`), скрипт работает и в окружении cron
 (`env -i PATH=/usr/bin:/bin`, без ssh-агента). Полная инструкция, разбор структуры
 папки и команды восстановления — `docs/local-backup.md`.
+
+#### Мониторинг прода (сайт, БД, брокер, диск, свежесть бэкапа)
+
+`scripts/monitoring/check_prod.sh` запускается **локально** по cron и проверяет
+`https://pismo.space/`, `/health`, `/health/ready` (это БД + RabbitMQ),
+`/api/v1/auth/channels/`, состояние контейнеров, свободное место на диске сервера и
+свежесть последнего дампа. Обнаружив проблему, скрипт **пишет письмо по SMTP**
+(настройки берутся в том числе из продового `.env`, поэтому настраивать ничего не
+нужно); SMS через SMS Aero — опция `ALERT_SMS=1`. Повторные письма об одной проблеме
+— не чаще раза в 3 часа, при восстановлении приходит «прод снова в норме».
+
+```bash
+./scripts/monitoring/install_local_cron.sh       # каждые 15 минут (локальный crontab)
+./scripts/monitoring/check_prod.sh --dry-run     # отчёт без отправки писем
+./scripts/monitoring/check_prod.sh --test-alert  # проверить, что письма доходят
+crontab -l | grep -v '# pismo-monitor' | crontab -   # удалить задачу
+```
+
+Лог: `~/Документы/pismo_backup/logs/monitor.log`. Подробности — `docs/monitoring.md`.
 
 - Дамп полный (`pg_dump --clean`), включает и схему, и данные, и таблицу `alembic_version`. Поэтому после restore миграции на старте `web` — no-op; если позже появятся новые миграции — применятся поверх восстановленных данных.
 - Если БД пустая (нет таблиц), `dump_db.sh` не затирает прежний дамп.
