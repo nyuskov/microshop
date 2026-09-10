@@ -10,7 +10,11 @@
         type="button"
         @click="emit('open-story', firstStoryId(group))"
       >
-        <span class="feed-avatar" :class="{ unseen: group.has_unseen && !group.is_mine }">
+        <span
+          class="feed-avatar"
+          :class="{ unseen: group.has_unseen && !group.is_mine }"
+          :style="avatarStyle(authorName(group))"
+        >
           <img v-if="authorAvatar(group)" :src="authorAvatar(group)" alt="" />
           <template v-else>{{ authorInitials(group) }}</template>
           <span v-if="group.has_unseen && !group.is_mine" class="feed-dot"></span>
@@ -44,7 +48,7 @@
 import { mediaUrl } from '@/config'
 import type { StoryGroup } from '@/services/stories'
 import { useStoriesStore } from '@/stores/stories'
-import { avatarUrlOf, displayName, initials } from '@/utils/user'
+import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import { formatStoryAge } from '@/utils/stories'
 
 const emit = defineEmits<{
@@ -77,21 +81,22 @@ const totalViews = (group: StoryGroup): number =>
 .stories-feed {
   display: flex;
   flex-direction: column;
-  padding: 6px 0;
+  padding: 8px 0 4px;
 }
 
 .feed-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 13px;
   width: 100%;
-  padding: 10px 14px;
+  padding: 11px 14px;
   border: none;
   background: transparent;
   color: var(--ms-text);
   text-align: left;
   cursor: pointer;
   font: inherit;
+  transition: background 0.15s ease;
 }
 
 .feed-row:hover {
@@ -103,8 +108,8 @@ const totalViews = (group: StoryGroup): number =>
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   overflow: hidden;
   font-weight: 600;
@@ -126,10 +131,10 @@ const totalViews = (group: StoryGroup): number =>
 
 .feed-dot {
   position: absolute;
-  right: 1px;
-  bottom: 1px;
-  width: 11px;
-  height: 11px;
+  right: 0;
+  bottom: 0;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   border: 2px solid var(--ms-surface);
   background: var(--ms-accent);
@@ -138,16 +143,19 @@ const totalViews = (group: StoryGroup): number =>
 .feed-text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
 }
 
 .feed-name {
+  font-size: 15px;
   font-weight: 600;
+  line-height: 1.25;
 }
 
 .feed-meta {
   font-size: 12.5px;
+  line-height: 1.3;
   color: var(--ms-muted);
 }
 
@@ -165,8 +173,8 @@ const totalViews = (group: StoryGroup): number =>
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 40px 22px;
+  gap: 8px;
+  padding: 44px 24px;
   text-align: center;
   color: var(--ms-muted);
 }

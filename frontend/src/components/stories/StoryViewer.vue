@@ -8,7 +8,7 @@
   >
     <!-- Автор и управление -->
     <header class="viewer-head">
-      <span class="viewer-avatar">
+      <span class="viewer-avatar" :style="avatarStyle(authorName)">
         <img v-if="authorAvatar" :src="authorAvatar" alt="" />
         <template v-else>{{ authorInitials }}</template>
       </span>
@@ -86,7 +86,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { mediaUrl } from '@/config'
 import type { StoryGroup } from '@/services/stories'
 import { useStoriesStore } from '@/stores/stories'
-import { avatarUrlOf, displayName, initials } from '@/utils/user'
+import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import {
   flattenStories,
   formatStoryAge,
@@ -272,16 +272,16 @@ watch(flat, (list) => {
 .viewer-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 14px 6px;
+  gap: 11px;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 8px;
 }
 
 .viewer-avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   overflow: hidden;
   background: var(--ms-accent);
@@ -302,12 +302,15 @@ watch(flat, (list) => {
 }
 
 .viewer-name {
+  font-size: 15px;
   font-weight: 600;
+  line-height: 1.25;
 }
 
 .viewer-age {
-  font-size: 12px;
-  opacity: 0.7;
+  font-size: 12.5px;
+  line-height: 1.25;
+  opacity: 0.72;
 }
 
 .viewer-icon {
@@ -315,8 +318,9 @@ watch(flat, (list) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
   border: none;
   border-radius: 50%;
   background: transparent;
@@ -334,14 +338,14 @@ watch(flat, (list) => {
 
 .viewer-bars {
   display: flex;
-  gap: 4px;
-  padding: 0 14px 8px;
+  gap: 5px;
+  padding: 2px 14px 10px;
 }
 
 .viewer-bar {
   flex: 1;
   height: 3px;
-  border-radius: 2px;
+  border-radius: 3px;
   background: rgba(255, 255, 255, 0.25);
   overflow: hidden;
 }
@@ -394,20 +398,22 @@ watch(flat, (list) => {
 }
 
 .viewer-foot {
-  padding: 10px 16px 18px;
+  padding: 12px 18px calc(20px + env(safe-area-inset-bottom, 0px));
   text-align: center;
 }
 
 .viewer-caption {
-  margin: 0;
-  font-size: 14px;
+  margin: 0 auto;
+  max-width: 34rem;
+  font-size: 14.5px;
+  line-height: 1.4;
 }
 
 .viewer-views {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   font-size: 12.5px;
   opacity: 0.75;
 }

@@ -1918,8 +1918,10 @@ onBeforeUnmount(() => {
 .bottom-nav {
   display: flex;
   align-items: stretch;
-  border-top: 1px solid var(--ms-border);
+  /* Без жёсткой линии: панель отделяется мягкой тенью (см. --ms-shadow-bar). */
+  box-shadow: var(--ms-shadow-bar);
   background: var(--ms-surface);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .bottom-nav-btn {
@@ -1928,31 +1930,68 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  padding: 8px 0 9px;
+  gap: 2px;
+  padding: 7px 0 8px;
   border: none;
   background: transparent;
   color: var(--ms-muted);
   font: inherit;
-  font-size: 11.5px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
   cursor: pointer;
+  transition: color 0.16s ease;
+}
+
+/* Активная вкладка: «пилюля» под иконкой + акцентная подпись (Material-стиль). */
+.bottom-nav-btn > .q-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 28px;
+  border-radius: 14px;
+  transition: background 0.16s ease;
 }
 
 .bottom-nav-btn.active {
   color: var(--ms-accent);
+  font-weight: 600;
 }
 
-.bottom-nav-btn:hover {
+.bottom-nav-btn.active > .q-icon {
+  background: var(--ms-accent-soft);
+}
+
+.bottom-nav-btn:hover > .q-icon {
   background: var(--ms-hover);
 }
 
+.bottom-nav-btn.active:hover > .q-icon {
+  background: var(--ms-accent-soft);
+}
+
+/* Точка «есть новое»: прижата к «пилюле» иконки, а не к краю кнопки. */
 .bottom-nav-dot {
   position: absolute;
-  top: 6px;
-  right: calc(50% - 16px);
+  top: 3px;
+  right: calc(50% - 22px);
   width: 9px;
   height: 9px;
   border-radius: 50%;
   background: var(--ms-accent);
+  box-shadow: 0 0 0 2px var(--ms-surface);
+}
+
+@media (max-width: 380px) {
+  .bottom-nav-btn {
+    font-size: 10.5px;
+    padding: 6px 0 7px;
+  }
+
+  .bottom-nav-btn > .q-icon {
+    width: 52px;
+    height: 26px;
+  }
 }
 </style>

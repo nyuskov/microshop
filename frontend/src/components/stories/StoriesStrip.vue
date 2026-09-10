@@ -3,7 +3,11 @@
     <!-- Моя история: без своей — сразу выбор файла, со своей — открыть/добавить -->
     <div class="story-cell">
       <button class="story-avatar-btn" type="button" title="Моя история" @click="onMineClick">
-        <span class="story-avatar" :class="{ empty: !mine }">
+        <span
+          class="story-avatar"
+          :class="{ empty: !mine }"
+          :style="mine ? avatarStyle(myName) : undefined"
+        >
           <img v-if="myAvatar" :src="myAvatar" alt="" />
           <template v-else>{{ myInitials }}</template>
         </span>
@@ -29,7 +33,11 @@
       type="button"
       @click="emit('open-story', firstUnseenId(group))"
     >
-      <span class="story-avatar" :class="{ unseen: group.has_unseen }">
+      <span
+        class="story-avatar"
+        :class="{ unseen: group.has_unseen }"
+        :style="avatarStyle(authorName(group))"
+      >
         <img v-if="authorAvatar(group)" :src="authorAvatar(group)" alt="" />
         <template v-else>{{ authorInitials(group) }}</template>
       </span>
@@ -89,7 +97,7 @@ import { mediaUrl } from '@/config'
 import { useAuthStore } from '@/stores/auth'
 import { useStoriesStore } from '@/stores/stories'
 import type { StoryGroup } from '@/services/stories'
-import { avatarUrlOf, displayName, initials } from '@/utils/user'
+import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 
 const emit = defineEmits<{
   (e: 'open-story', storyId: number): void
@@ -115,6 +123,12 @@ const myInitials = computed(() => {
   const user = authStore.current_user
   const name = user ? displayName(user) : ''
   return name ? initials(name) : 'Я'
+})
+
+/** Имя для фона аватара-заглушки (чтобы акцентное кольцо было видно). */
+const myName = computed(() => {
+  const user = authStore.current_user
+  return user ? displayName(user) : ''
 })
 
 const authorName = (group: StoryGroup) => displayName(group.user) || `@${group.user.username}`
@@ -178,23 +192,33 @@ const publish = async () => {
 .stories-strip {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 10px 12px 12px;
+  gap: 14px;
+  padding: 12px 14px 13px;
   overflow-x: auto;
-  border-bottom: 1px solid var(--ms-border);
+  border-bottom: 1px solid var(--ms-hairline);
+  scrollbar-width: none;
+}
+
+.stories-strip::-webkit-scrollbar {
+  display: none;
 }
 
 .story-cell {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
-  width: 66px;
+  gap: 6px;
+  width: 68px;
   border: none;
   background: transparent;
   padding: 0;
   cursor: pointer;
   flex: 0 0 auto;
+  transition: transform 0.15s ease;
+}
+
+.story-cell:active {
+  transform: scale(0.96);
 }
 
 .story-avatar,
@@ -227,6 +251,11 @@ const publish = async () => {
   box-shadow: 0 0 0 2.5px var(--ms-accent);
 }
 
+.story-avatar-btn:active .story-avatar,
+.story-cell:active .story-avatar {
+  box-shadow: 0 0 0 3px var(--ms-accent);
+}
+
 .story-avatar.empty {
   background: var(--ms-surface-2);
   color: var(--ms-muted);
@@ -241,17 +270,18 @@ const publish = async () => {
 
 .story-add {
   position: relative;
-  margin-top: -12px;
-  margin-left: 34px;
+  margin-top: -13px;
+  margin-left: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   border: 2px solid var(--ms-surface);
   background: var(--ms-accent);
   color: var(--ms-on-accent);
+  box-shadow: var(--ms-shadow-sm);
   cursor: pointer;
 }
 
@@ -260,8 +290,11 @@ const publish = async () => {
 }
 
 .story-name {
-  max-width: 66px;
-  font-size: 11.5px;
+  max-width: 68px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.1px;
   color: var(--ms-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -271,7 +304,9 @@ const publish = async () => {
 .story-hint {
   align-self: center;
   margin: 0;
-  font-size: 12px;
+  padding-left: 2px;
+  font-size: 12.5px;
+  line-height: 1.35;
   color: var(--ms-muted-3);
 }
 
