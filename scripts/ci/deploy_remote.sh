@@ -27,9 +27,13 @@ PROJECT="${PROJECT:-microshop-test}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.test.yaml}"
 COMPOSE="docker compose -p $PROJECT -f $COMPOSE_FILE"
 
-# Сколько секунд держать прежний слот живым после того, как новый уже готов:
-# столько времени текущие соединения (в т.ч. WebSocket) продолжают работать.
-DRAIN_SECONDS="${DRAIN_SECONDS:-20}"
+# Сколько секунд держать прежний слот живым после того, как новый уже готов.
+# По умолчанию 0: сигналинг звонков и presence живут В ПАМЯТИ ПРОЦЕССА
+# (api_v1/calls/manager.py), поэтому пока работают оба слота, часть
+# пользователей попадает на другой слот и их звонки/печатание друг друга не
+# видят. Ноль держит это окно минимальным; больше значение — только если нужно
+# дать текущим соединениям доработать дольше (ценой того же риска).
+DRAIN_SECONDS="${DRAIN_SECONDS:-0}"
 
 # Файл состояния деплоя (вне репозитория, чтобы git reset его не сносил).
 STATE_DIR="${STATE_DIR:-$HOME/.microshop-deploy}"
@@ -126,10 +130,13 @@ if ! wait_healthy "$PROJECT-$target-1"; then
 fi
 printf '%s' "$target" > "$STATE_FILE"
 
-# Оба слота живы и nginx делит между ними трафик. Ждём: текущие запросы и
-# WebSocket'ы на прежнем слоте дорабатывают, новые клиенты идут уже на новый.
-echo "даю ${DRAIN_SECONDS} с на завершение соединений на $active"
-sleep "$DRAIN_SECONDS"
+# Оба слота живы: nginx уже делит между ними трафик. Если задан DRAIN_SECONDS,
+# ждём — текущие соединения на прежнем слоте дорабатывают. По умолчанию окно
+# нулевое (см. пояснение к DRAIN_SECONDS выше).
+if [ "$DRAIN_SECONDS" -gt 0 ]; then
+  echo "даю ${DRAIN_SECONDS} с на завершение соединений на $active"
+  sleep "$DRAIN_SECONDS"
+fi
 $COMPOSE stop "$active" >/dev/null
 echo "слот $active остановлен, в работе $target"
 active="$target"
