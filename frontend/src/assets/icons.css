@@ -1,20 +1,455 @@
-/* Иконки: шрифт Material Symbols Rounded, урезанный до используемых иконок.
+/* Иконки интерфейса. ФАЙЛ СГЕНЕРИРОВАН: frontend/scripts/build-icons-css.py
  *
- * Полный набор Google весит ~5 МБ (4200 лигатур) — для мобильного это слишком
- * много, поэтому файл собирается скриптом
- * frontend/scripts/build-icons-font.py: остаются только нужные глифы и буквы
- * для их названий-лигатур (сейчас ~96 КБ вместо 5 МБ).
+ * Логические имена в коде (`close`, `reply`, ...) превращает в классы
+ * функция `icon()` из src/utils/icons.ts, а сами глифы берутся из Font
+ * Awesome Free (только используемые — см. урезанный шрифт ниже).
  *
- * Добавили новую иконку в код — прогоните скрипт, иначе она отрендерится
- * текстом (имени не будет в шрифте).
- *
- * Семейство называется так же, как в пакете @quasar/extras, поэтому алиас
- * `.material-icons` в quasar.css менять не нужно.
+ * Добавили иконку в код — допишите её в ICON_MAP и прогоните скрипт,
+ * иначе иконка отрендерится пустотой (имени не будет в CSS).
  */
+/* Резервный шрифт: внутренние элементы Quasar (стрелки, «очистить» у
+ * полей и т.п.) и любое имя, которого нет в ICON_MAP, рисуются им.
+ * Собирается скриптом build-icons-font.py (Material Symbols Rounded,
+ * урезанный до используемых имён). */
 @font-face {
   font-family: 'Material Symbols Rounded';
   font-style: normal;
   font-weight: 100 700;
   font-display: block;
   src: url('./fonts/material-symbols-rounded-subset.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Pismo Icons';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: block;
+  src: url('./fonts/fa-solid-subset.woff2') format('woff2');
+}
+
+/* База: класс `fa-solid` добавляет icon() (Quasar по префиксу fa-
+ * понимает, что это список классов, а не имя лигатуры). */
+.fa-solid {
+  font-family: 'Pismo Icons';
+  font-weight: 900;
+  font-style: normal;
+  font-variant: normal;
+  line-height: 1;
+  display: inline-block;
+  speak: never;
+}
+
+.fa-plus::before {
+  content: '\2B ';
+}
+
+.fa-face-smile-wink::before {
+  content: '\F4DA ';
+}
+
+.fa-arrow-left::before {
+  content: '\F060 ';
+}
+
+.fa-arrow-down::before {
+  content: '\F063 ';
+}
+
+.fa-caret-down::before {
+  content: '\F0D7 ';
+}
+
+.fa-caret-up::before {
+  content: '\F0D8 ';
+}
+
+.fa-arrow-right::before {
+  content: '\F061 ';
+}
+
+.fa-paperclip::before {
+  content: '\F0C6 ';
+}
+
+.fa-book-open::before {
+  content: '\F518 ';
+}
+
+.fa-ban::before {
+  content: '\F05E ';
+}
+
+.fa-bookmark::before {
+  content: '\F02E ';
+}
+
+.fa-phone::before {
+  content: '\F095 ';
+}
+
+.fa-phone-flip::before {
+  content: '\F879 ';
+}
+
+.fa-phone-slash::before {
+  content: '\F3DD ';
+}
+
+.fa-circle-xmark::before {
+  content: '\F057 ';
+}
+
+.fa-comment::before {
+  content: '\F075 ';
+}
+
+.fa-check::before {
+  content: '\F00C ';
+}
+
+.fa-circle-check::before {
+  content: '\F058 ';
+}
+
+.fa-chevron-left::before {
+  content: '\F053 ';
+}
+
+.fa-chevron-right::before {
+  content: '\F054 ';
+}
+
+.fa-xmark::before {
+  content: '\F00D ';
+}
+
+.fa-cloud::before {
+  content: '\F0C2 ';
+}
+
+.fa-cloud-arrow-up::before {
+  content: '\F0EE ';
+}
+
+.fa-desktop::before {
+  content: '\F390 ';
+}
+
+.fa-address-book::before {
+  content: '\F2B9 ';
+}
+
+.fa-copy::before {
+  content: '\F0C5 ';
+}
+
+.fa-moon::before {
+  content: '\F186 ';
+}
+
+.fa-calendar-days::before {
+  content: '\F073 ';
+}
+
+.fa-trash::before {
+  content: '\F1F8 ';
+}
+
+.fa-trash-can::before {
+  content: '\F2ED ';
+}
+
+.fa-file-lines::before {
+  content: '\F15C ';
+}
+
+.fa-laptop::before {
+  content: '\F109 ';
+}
+
+.fa-check-double::before {
+  content: '\F560 ';
+}
+
+.fa-download::before {
+  content: '\F019 ';
+}
+
+.fa-pen::before {
+  content: '\F304 ';
+}
+
+.fa-circle-exclamation::before {
+  content: '\F06A ';
+}
+
+.fa-chevron-up::before {
+  content: '\F077 ';
+}
+
+.fa-chevron-down::before {
+  content: '\F078 ';
+}
+
+.fa-circle::before {
+  content: '\F111 ';
+}
+
+.fa-angles-left::before {
+  content: '\F100 ';
+}
+
+.fa-flag::before {
+  content: '\F024 ';
+}
+
+.fa-comments::before {
+  content: '\F086 ';
+}
+
+.fa-share::before {
+  content: '\F064 ';
+}
+
+.fa-expand::before {
+  content: '\F065 ';
+}
+
+.fa-gavel::before {
+  content: '\F0E3 ';
+}
+
+.fa-users::before {
+  content: '\F0C0 ';
+}
+
+.fa-user-plus::before {
+  content: '\F234 ';
+}
+
+.fa-circle-question::before {
+  content: '\F059 ';
+}
+
+.fa-image::before {
+  content: '\F03E ';
+}
+
+.fa-circle-info::before {
+  content: '\F05A ';
+}
+
+.fa-file::before {
+  content: '\F15B ';
+}
+
+.fa-angles-right::before {
+  content: '\F101 ';
+}
+
+.fa-sun::before {
+  content: '\F185 ';
+}
+
+.fa-lock::before {
+  content: '\F023 ';
+}
+
+.fa-key::before {
+  content: '\F084 ';
+}
+
+.fa-arrow-right-from-bracket::before {
+  content: '\F08B ';
+}
+
+.fa-envelope::before {
+  content: '\F0E0 ';
+}
+
+.fa-bars::before {
+  content: '\F0C9 ';
+}
+
+.fa-microphone::before {
+  content: '\F130 ';
+}
+
+.fa-microphone-slash::before {
+  content: '\F131 ';
+}
+
+.fa-ellipsis::before {
+  content: '\F141 ';
+}
+
+.fa-ellipsis-vertical::before {
+  content: '\F142 ';
+}
+
+.fa-location-arrow::before {
+  content: '\F124 ';
+}
+
+.fa-bell::before {
+  content: '\F0F3 ';
+}
+
+.fa-bell-slash::before {
+  content: '\F1F6 ';
+}
+
+.fa-palette::before {
+  content: '\F53F ';
+}
+
+.fa-pause::before {
+  content: '\F04C ';
+}
+
+.fa-user::before {
+  content: '\F007 ';
+}
+
+.fa-user-minus::before {
+  content: '\F503 ';
+}
+
+.fa-mobile::before {
+  content: '\F3CE ';
+}
+
+.fa-mobile-button::before {
+  content: '\F10B ';
+}
+
+.fa-mobile-screen::before {
+  content: '\F3CF ';
+}
+
+.fa-camera::before {
+  content: '\F030 ';
+}
+
+.fa-file-pdf::before {
+  content: '\F1C1 ';
+}
+
+.fa-play::before {
+  content: '\F04B ';
+}
+
+.fa-user-shield::before {
+  content: '\F505 ';
+}
+
+.fa-thumbtack::before {
+  content: '\F08D ';
+}
+
+.fa-circle-dot::before {
+  content: '\F192 ';
+}
+
+.fa-rotate-right::before {
+  content: '\F2F9 ';
+}
+
+.fa-rotate-left::before {
+  content: '\F2EA ';
+}
+
+.fa-reply::before {
+  content: '\F3E5 ';
+}
+
+.fa-clock::before {
+  content: '\F017 ';
+}
+
+.fa-display::before {
+  content: '\E163 ';
+}
+
+.fa-magnifying-glass::before {
+  content: '\F002 ';
+}
+
+.fa-paper-plane::before {
+  content: '\F1D8 ';
+}
+
+.fa-face-smile::before {
+  content: '\F118 ';
+}
+
+.fa-shield::before {
+  content: '\F132 ';
+}
+
+.fa-forward-step::before {
+  content: '\F051 ';
+}
+
+.fa-backward-step::before {
+  content: '\F048 ';
+}
+
+.fa-comment-sms::before {
+  content: '\F7CD ';
+}
+
+.fa-star::before {
+  content: '\F005 ';
+}
+
+.fa-stop::before {
+  content: '\F04D ';
+}
+
+.fa-sliders::before {
+  content: '\F1DE ';
+}
+
+.fa-up-down::before {
+  content: '\F338 ';
+}
+
+.fa-certificate::before {
+  content: '\F0A3 ';
+}
+
+.fa-video::before {
+  content: '\F03D ';
+}
+
+.fa-eye::before {
+  content: '\F06E ';
+}
+
+.fa-eye-slash::before {
+  content: '\F070 ';
+}
+
+.fa-volume-low::before {
+  content: '\F027 ';
+}
+
+.fa-volume-xmark::before {
+  content: '\F6A9 ';
+}
+
+.fa-volume-high::before {
+  content: '\F028 ';
+}
+
+.fa-triangle-exclamation::before {
+  content: '\F071 ';
+}
+
+.fa-wifi::before {
+  content: '\F1EB ';
+}
+
+.fa-link-slash::before {
+  content: '\F127 ';
 }

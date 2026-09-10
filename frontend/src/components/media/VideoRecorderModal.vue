@@ -5,7 +5,7 @@
         <div class="vrm-head">
           <span>Видеосообщение (кружок)</span>
           <button class="vrm-close" title="Закрыть" @click="close">
-            <q-icon name="close" size="20px" />
+            <q-icon :name="icon('close')" size="20px" />
           </button>
         </div>
 
@@ -41,7 +41,7 @@
         <div class="vrm-actions">
           <template v-if="phase === 'live' || phase === 'recording'">
             <button class="vrm-btn danger-text" @click="close">
-              <q-icon name="close" size="18px" /> Отмена
+              <q-icon :name="icon('close')" size="18px" /> Отмена
             </button>
             <button
               v-if="phase === 'live' && !error"
@@ -49,22 +49,22 @@
               :disabled="!streamReady"
               @click="start"
             >
-              <q-icon name="fiber_manual_record" size="18px" /> Запись
+              <q-icon :name="icon('fiber_manual_record')" size="18px" /> Запись
             </button>
             <button v-else-if="phase === 'live'" class="vrm-btn" @click="retryCamera">
-              <q-icon name="refresh" size="18px" /> Повторить доступ
+              <q-icon :name="icon('refresh')" size="18px" /> Повторить доступ
             </button>
             <button v-else class="vrm-btn record stop" @click="stop">
-              <q-icon name="stop" size="18px" /> Стоп
+              <q-icon :name="icon('stop')" size="18px" /> Стоп
             </button>
           </template>
 
           <template v-else>
             <button class="vrm-btn" @click="retake">
-              <q-icon name="replay" size="18px" /> Перезаписать
+              <q-icon :name="icon('replay')" size="18px" /> Перезаписать
             </button>
             <button class="vrm-btn accent" :disabled="sending" @click="send">
-              <q-icon name="send" size="17px" /> Отправить
+              <q-icon :name="icon('send')" size="17px" /> Отправить
             </button>
           </template>
         </div>
@@ -74,6 +74,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { nextTick, onBeforeUnmount, ref } from 'vue'
 import {
   formatClock,

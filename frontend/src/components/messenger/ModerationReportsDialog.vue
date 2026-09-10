@@ -95,7 +95,7 @@
             <p class="mod-pair">
               <strong>{{ report.reporter_name || `ID ${report.reporter_id}` }}</strong>
               <span class="mod-muted">{{ report.reporter_phone || '' }}</span>
-              <q-icon name="arrow_forward" size="14px" class="mod-arrow" />
+              <q-icon :name="icon('arrow_forward')" size="14px" class="mod-arrow" />
               <strong>{{ report.reported_name || `ID ${report.reported_id}` }}</strong>
               <span class="mod-muted">{{ report.reported_phone || '' }}</span>
             </p>
@@ -145,6 +145,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { onMounted, ref, watch } from 'vue'
 
 import {

@@ -1,6 +1,6 @@
 <template>
   <div class="empty-state" :class="{ 'empty-state--compact': compact }">
-    <q-icon v-if="icon" :name="icon" class="empty-state__icon" aria-hidden="true" />
+    <q-icon v-if="icon" :name="faIcon(icon)" class="empty-state__icon" aria-hidden="true" />
     <p v-if="title" class="empty-state__title">{{ title }}</p>
     <p v-if="hint" class="empty-state__hint">{{ hint }}</p>
     <div v-if="$slots.action" class="empty-state__action">
@@ -10,6 +10,8 @@
 </template>
 
 <script setup lang="ts">
+import { icon as faIcon } from '@/utils/icons'
+
 /** Единое «пустое состояние» (нет чата/сообщений/результатов поиска…).
  *  Большой вариант — для пустых областей, `compact` — компактная строка
  *  с muted-текстом внутри списков/лент. Цвета на --ms-* токенах. */

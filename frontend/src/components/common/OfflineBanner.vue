@@ -7,7 +7,7 @@
       role="status"
       aria-live="polite"
     >
-      <q-icon :name="online ? 'wifi' : 'wifi_off'" size="17px" aria-hidden="true" />
+      <q-icon :name="icon(online ? 'wifi' : 'wifi_off')" size="17px" aria-hidden="true" />
       <span>{{ online ? 'Связь восстановлена' : 'Нет подключения к интернету' }}</span>
       <span v-if="!online" class="offline-hint">Сообщения отправятся, когда связь вернётся</span>
     </div>
@@ -15,6 +15,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { useOnlineStatus } from '@/composables/useOnlineStatus'
 
 const { online, justRestored } = useOnlineStatus()

@@ -39,12 +39,12 @@
             <template v-if="group.is_mine"> · просмотров: {{ totalViews(group) }}</template>
           </span>
         </span>
-        <q-icon name="chevron_right" size="20px" class="feed-chevron" />
+        <q-icon :name="icon('chevron_right')" size="20px" class="feed-chevron" />
       </button>
     </template>
 
     <div v-else class="stories-empty-block">
-      <q-icon name="auto_stories" size="34px" />
+      <q-icon :name="icon('auto_stories')" size="34px" />
       <p class="stories-empty-title">Историй пока нет</p>
       <p class="stories-empty-hint">
         История — это фото или видео на 24 часа. Друзья увидят её в этом разделе и в списке чатов.
@@ -54,6 +54,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { mediaUrl } from '@/config'
 import type { StoryGroup } from '@/services/stories'
 import { useStoriesStore } from '@/stores/stories'

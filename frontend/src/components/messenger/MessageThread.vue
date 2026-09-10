@@ -69,7 +69,7 @@
             <img v-if="p.previewUrl" :src="p.previewUrl" class="pending-preview" alt="" />
             <q-icon
               v-else-if="!isTextRow(p)"
-              name="attach_file"
+              :name="icon('attach_file')"
               class="pending-file-icon"
               size="16px"
             />
@@ -82,12 +82,12 @@
               </span>
               <!-- Текста не ушёл: ждём сеть и отправим сами -->
               <span v-else-if="p.status === 'queued'" class="pending-status">
-                <q-icon name="schedule" size="14px" aria-hidden="true" />
+                <q-icon :name="icon('schedule')" size="14px" aria-hidden="true" />
                 Ждёт сети — отправим, как появится
               </span>
               <!-- Сервер отказал: без ручного повтора сообщение не уйдёт -->
               <span v-else class="pending-status error">
-                <q-icon name="error" size="14px" aria-hidden="true" />
+                <q-icon :name="icon('error')" size="14px" aria-hidden="true" />
                 {{ p.error || 'Не отправлено' }}
               </span>
             </span>
@@ -98,7 +98,7 @@
               title="Повторить отправку"
               @click="emit('retry-pending', p.localId)"
             >
-              <q-icon name="refresh" size="17px" />
+              <q-icon :name="icon('refresh')" size="17px" />
             </button>
             <button
               v-if="p.status && p.status !== 'sending'"
@@ -107,7 +107,7 @@
               title="Убрать из очереди"
               @click="emit('drop-pending', p.localId)"
             >
-              <q-icon name="close" size="17px" />
+              <q-icon :name="icon('close')" size="17px" />
             </button>
           </div>
         </div>
@@ -127,13 +127,14 @@
       :aria-label="hasNewBelow ? 'Перейти к новым сообщениям' : 'Прокрутить вниз'"
       @click="onJumpDown"
     >
-      <q-icon v-if="!newBelowCount" name="arrow_downward" size="20px" aria-hidden="true" />
+      <q-icon v-if="!newBelowCount" :name="icon('arrow_downward')" size="20px" aria-hidden="true" />
       <span v-else class="jump-count">{{ newBelowCount > 99 ? '99+' : newBelowCount }}</span>
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { ChatUser, Message } from '@/types'
 import type { MessageRow as ThreadRow } from '@/utils/thread'

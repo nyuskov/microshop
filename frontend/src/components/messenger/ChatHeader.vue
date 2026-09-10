@@ -1,7 +1,7 @@
 <template>
   <div ref="rootEl" class="chat-header">
     <button v-if="showBack" class="icon-btn back-btn" title="К списку чатов" @click="emit('back')">
-      <q-icon name="arrow_back" size="21px" />
+      <q-icon :name="icon('arrow_back')" size="21px" />
     </button>
     <span
       class="avatar-wrap"
@@ -13,7 +13,7 @@
         class="avatar chat-avatar"
         :style="props.chat.is_self ? savedAvatarStyle : avatarStyle(title)"
       >
-        <q-icon v-if="props.chat.is_self" name="bookmark" size="22px" aria-hidden="true" />
+        <q-icon v-if="props.chat.is_self" :name="icon('bookmark')" size="22px" aria-hidden="true" />
         <img v-else-if="avatarUrl" :src="avatarUrl" class="avatar-img" alt="" />
         <template v-else>{{ initials(title) }}</template>
       </span>
@@ -26,7 +26,7 @@
           class="chat-e2ee-pill"
           title="Сквозное шифрование включено: сообщения читаете только вы и собеседник"
         >
-          <q-icon name="lock" size="13px" aria-hidden="true" />
+          <q-icon :name="icon('lock')" size="13px" aria-hidden="true" />
         </span>
         <span v-if="statusPill" class="chat-status-pill">{{ statusPill }}</span>
       </div>
@@ -47,7 +47,7 @@
           @pointercancel="onCallCancel"
           @contextmenu.prevent
         >
-          <q-icon :name="callKind === 'video' ? 'videocam' : 'call'" size="20px" />
+          <q-icon :name="icon(callKind === 'video' ? 'videocam' : 'call')" size="20px" />
         </button>
       </span>
 
@@ -60,11 +60,11 @@
           aria-label="Ещё"
           @click="toggleChatMenu"
         >
-          <q-icon name="more_vert" size="20px" />
+          <q-icon :name="icon('more_vert')" size="20px" />
         </button>
         <div v-if="chatMenuOpen" class="ms-dropdown">
           <button class="ms-dropdown-item" @click="runChatAction('search')">
-            <q-icon name="search" size="19px" />
+            <q-icon :name="icon('search')" size="19px" />
             <span>Поиск по сообщениям</span>
           </button>
           <!-- Жалоба и блокировка — требования RuStore для UGC-приложений.
@@ -72,11 +72,11 @@
                там жалуются на конкретное сообщение через его действия). -->
           <template v-if="canModeratePeer">
             <button class="ms-dropdown-item" @click="runChatAction('report')">
-              <q-icon name="flag" size="19px" />
+              <q-icon :name="icon('flag')" size="19px" />
               <span>Пожаловаться</span>
             </button>
             <button class="ms-dropdown-item danger" @click="runChatAction('block')">
-              <q-icon name="block" size="19px" />
+              <q-icon :name="icon('block')" size="19px" />
               <span>Заблокировать</span>
             </button>
           </template>
@@ -87,6 +87,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Chat } from '@/types'
 import {

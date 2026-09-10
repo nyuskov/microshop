@@ -2,7 +2,7 @@
   <div class="gif-picker" @mousedown.self="nothing">
     <div class="gif-picker-inner" @click.stop>
       <div class="gif-head">
-        <q-icon name="search" class="gif-search-icon" size="17px" />
+        <q-icon :name="icon('search')" class="gif-search-icon" size="17px" />
         <input
           v-model="query"
           class="gif-search-input"
@@ -11,7 +11,7 @@
           @keydown.enter.prevent="doSearch()"
         />
         <button class="gif-search-btn" :disabled="loading" title="Найти" @click="doSearch()">
-          <q-icon name="arrow_forward" size="18px" />
+          <q-icon :name="icon('arrow_forward')" size="18px" />
         </button>
       </div>
 
@@ -57,6 +57,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { onMounted, ref } from 'vue'
 import { sendGifMessage } from '@/services/chatService'
 import { fetchTrendingGifs, hasGiphyKey, searchGifs, type GiphyGif } from '@/services/giphy'

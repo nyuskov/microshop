@@ -33,7 +33,7 @@
         <span v-if="selected.size" class="grp-selected-count">выбрано: {{ selected.size }}</span>
       </div>
       <div class="grp-search">
-        <q-icon name="search" class="grp-search-icon" size="17px" aria-hidden="true" />
+        <q-icon :name="icon('search')" class="grp-search-icon" size="17px" aria-hidden="true" />
         <input
           v-model="query"
           class="grp-search-input"
@@ -75,7 +75,7 @@
             >
           </span>
           <span class="grp-check" :class="{ on: selected.has(contact.id) }" aria-hidden="true">
-            <q-icon v-if="selected.has(contact.id)" name="check" size="15px" />
+            <q-icon v-if="selected.has(contact.id)" :name="icon('check')" size="15px" />
           </span>
         </button>
       </div>
@@ -97,6 +97,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { computed, ref } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import { createGroupChat, type SearchUserResult } from '@/services/chatService'

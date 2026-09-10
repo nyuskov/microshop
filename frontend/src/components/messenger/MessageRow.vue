@@ -1,7 +1,7 @@
 <template>
   <div v-if="message.kind === 'call'" class="msg msg-call" :data-message-id="message.id">
     <div class="call-note">
-      <q-icon :name="callIcon" size="15px" aria-hidden="true" />
+      <q-icon :name="icon(callIcon)" size="15px" aria-hidden="true" />
       <span>{{ callText }}</span>
     </div>
   </div>
@@ -24,7 +24,7 @@
   >
     <!-- Подсказка свайпа: тянем сообщение вправо — отвечаем на него -->
     <span v-if="swipeX > 0" class="swipe-reply" :class="{ ready: swipeReady }">
-      <q-icon name="reply" size="18px" aria-hidden="true" />
+      <q-icon :name="icon('reply')" size="18px" aria-hidden="true" />
     </span>
     <!-- Режим выделения: кружок-чек сбоку от пузыря -->
     <span
@@ -33,7 +33,7 @@
       :class="{ on: selected }"
       aria-hidden="true"
     >
-      <q-icon v-if="selected" name="check" size="15px" />
+      <q-icon v-if="selected" :name="icon('check')" size="15px" />
     </span>
     <!-- Режим выделения: клик по сообщению — отметить/снять -->
     <div
@@ -45,7 +45,7 @@
       <!-- Скрыто до проверки модератором: такое сообщение видит только автор,
            поэтому пометка объясняет, куда пропал контент у собеседника -->
       <div v-if="message.hidden" class="moderation-note" role="status">
-        <q-icon name="gavel" size="15px" />
+        <q-icon :name="icon('gavel')" size="15px" />
         <span>
           Скрыто до проверки модератором
           <template v-if="message.hidden_reason"> · {{ message.hidden_reason }} </template>
@@ -128,7 +128,7 @@
           rel="noopener"
         >
           <span class="attachment-card">
-            <q-icon :name="fileIcon(message.file)" size="26px" />
+            <q-icon :name="icon(fileIcon(message.file))" size="26px" />
             <span class="attachment-info">
               <span class="attachment-name">{{ message.file.name }}</span>
               <span class="attachment-meta">{{ formatBytes(message.file.size) }}</span>
@@ -174,13 +174,13 @@
         title="Реакция"
         @click="onReaction"
       >
-        <q-icon name="sentiment_satisfied_alt" size="20px" />
+        <q-icon :name="icon('sentiment_satisfied_alt')" size="20px" />
       </button>
       <button class="round-btn" title="Ответить" @click="onReply">
-        <q-icon name="reply" size="20px" />
+        <q-icon :name="icon('reply')" size="20px" />
       </button>
       <button class="round-btn" title="Переслать" @click="onForward">
-        <q-icon name="forward" size="20px" />
+        <q-icon :name="icon('forward')" size="20px" />
       </button>
       <button
         class="round-btn"
@@ -190,34 +190,34 @@
         :aria-expanded="moreOpen"
         @click="toggleMore"
       >
-        <q-icon name="more_horiz" size="20px" />
+        <q-icon :name="icon('more_horiz')" size="20px" />
       </button>
 
       <!-- Остальные действия — в выпадающем меню -->
       <div v-if="moreOpen" class="more-menu" :class="{ up: popoverUp }" @click.stop>
         <button class="more-item" @click="onPin">
-          <q-icon name="push_pin" size="16px" />
+          <q-icon :name="icon('push_pin')" size="16px" />
           <span>{{ message.is_pinned ? 'Открепить' : 'Закрепить' }}</span>
         </button>
         <button class="more-item" @click="onCopy">
-          <q-icon name="content_copy" size="16px" />
+          <q-icon :name="icon('content_copy')" size="16px" />
           <span>Копировать</span>
         </button>
         <button v-if="isOwn && message.text" class="more-item" @click="onEdit">
-          <q-icon name="edit" size="16px" />
+          <q-icon :name="icon('edit')" size="16px" />
           <span>Редактировать</span>
         </button>
         <button v-if="canSave" class="more-item" @click="onSave">
-          <q-icon name="bookmark" size="16px" />
+          <q-icon :name="icon('bookmark')" size="16px" />
           <span>Сохранить в Сохранённые</span>
         </button>
         <!-- Жалоба на чужое сообщение — требование RuStore для UGC-приложений. -->
         <button v-if="!isOwn" class="more-item" @click="onReport">
-          <q-icon name="flag" size="16px" />
+          <q-icon :name="icon('flag')" size="16px" />
           <span>Пожаловаться</span>
         </button>
         <button v-if="isOwn" class="more-item danger" @click="onDelete">
-          <q-icon name="delete" size="16px" />
+          <q-icon :name="icon('delete')" size="16px" />
           <span>Удалить</span>
         </button>
       </div>
@@ -280,39 +280,39 @@
           </div>
 
           <button v-if="selectable" class="ctx-item" @click="ctxAction('reply')">
-            <q-icon name="reply" size="18px" />
+            <q-icon :name="icon('reply')" size="18px" />
             <span>Ответить</span>
           </button>
           <button class="ctx-item" @click="ctxAction('forward')">
-            <q-icon name="forward" size="18px" />
+            <q-icon :name="icon('forward')" size="18px" />
             <span>Переслать</span>
           </button>
           <button v-if="message.text" class="ctx-item" @click="ctxAction('copy')">
-            <q-icon name="content_copy" size="18px" />
+            <q-icon :name="icon('content_copy')" size="18px" />
             <span>Копировать</span>
           </button>
           <button class="ctx-item" @click="ctxAllEmoji = !ctxAllEmoji">
-            <q-icon :name="ctxAllEmoji ? 'expand_less' : 'add_reaction'" size="18px" />
+            <q-icon :name="icon(ctxAllEmoji ? 'expand_less' : 'add_reaction')" size="18px" />
             <span>{{ ctxAllEmoji ? 'Скрыть лишние' : 'Все реакции' }}</span>
           </button>
           <button class="ctx-item" @click="ctxAction('pin')">
-            <q-icon name="push_pin" size="18px" />
+            <q-icon :name="icon('push_pin')" size="18px" />
             <span>{{ message.is_pinned ? 'Открепить' : 'Закрепить' }}</span>
           </button>
           <button v-if="canSave" class="ctx-item" @click="ctxAction('save')">
-            <q-icon name="bookmark" size="18px" />
+            <q-icon :name="icon('bookmark')" size="18px" />
             <span>Сохранить в Сохранённые</span>
           </button>
           <button v-if="isOwn && message.text" class="ctx-item" @click="ctxAction('edit')">
-            <q-icon name="edit" size="18px" />
+            <q-icon :name="icon('edit')" size="18px" />
             <span>Редактировать</span>
           </button>
           <button v-if="!isOwn" class="ctx-item" @click="ctxAction('report')">
-            <q-icon name="flag" size="18px" />
+            <q-icon :name="icon('flag')" size="18px" />
             <span>Пожаловаться</span>
           </button>
           <button v-if="isOwn" class="ctx-item danger" @click="ctxAction('delete')">
-            <q-icon name="delete" size="18px" />
+            <q-icon :name="icon('delete')" size="18px" />
             <span>Удалить</span>
           </button>
         </div>
@@ -322,6 +322,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { Message } from '@/types'
 import { mediaUrl } from '@/config'

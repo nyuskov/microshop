@@ -70,7 +70,7 @@
           <!-- Режим выбора сообщений: панель вместо шапки (как в чатах) -->
           <header v-if="msgSelectionMode" class="chat-select-header">
             <button class="icon-btn" title="Выйти из выбора" @click="exitMessageSelection">
-              <q-icon name="close" size="21px" />
+              <q-icon :name="icon('close')" size="21px" />
             </button>
             <div class="chat-select-info">
               <span class="chat-select-title">Выбрано: {{ selectedMessageIds.length }}</span>
@@ -83,7 +83,7 @@
                 aria-label="Выбрать все"
                 @click="toggleSelectAllMessages"
               >
-                <q-icon name="done_all" size="20px" />
+                <q-icon :name="icon('done_all')" size="20px" />
               </button>
               <!-- Действия с сообщением (реакции, ответить, закрепить, удалить,
                    пожаловаться): удержание занято выделением, поэтому меню
@@ -96,7 +96,7 @@
                 aria-haspopup="menu"
                 @click="openMessageActions"
               >
-                <q-icon name="more_vert" size="20px" />
+                <q-icon :name="icon('more_vert')" size="20px" />
               </button>
               <button
                 class="icon-btn"
@@ -104,7 +104,7 @@
                 aria-label="Переслать выбранные"
                 @click="bulkForwardMessages"
               >
-                <q-icon name="forward" size="20px" />
+                <q-icon :name="icon('forward')" size="20px" />
               </button>
               <button
                 class="icon-btn"
@@ -112,7 +112,7 @@
                 aria-label="Сохранить в «Сохранённые сообщения»"
                 @click="bulkSaveMessagesToSelf"
               >
-                <q-icon name="bookmark" size="20px" />
+                <q-icon :name="icon('bookmark')" size="20px" />
               </button>
               <button
                 class="icon-btn danger"
@@ -120,7 +120,7 @@
                 aria-label="Удалить выбранные"
                 @click="bulkDeleteMessages"
               >
-                <q-icon name="delete" size="20px" />
+                <q-icon :name="icon('delete')" size="20px" />
               </button>
             </div>
           </header>
@@ -201,7 +201,7 @@
 
           <!-- Примечание E2EE (как в Telegram) над строкой ввода -->
           <div v-if="selectedChatE2ee" class="chat-e2ee-note">
-            <q-icon name="lock" size="13px" aria-hidden="true" />
+            <q-icon :name="icon('lock')" size="13px" aria-hidden="true" />
             <span>Сообщения защищены сквозным шифрованием</span>
           </div>
 
@@ -390,7 +390,7 @@
           aria-label="Отклонить звонок"
           @click="dismissCallLaunch"
         >
-          <q-icon name="call_end" size="26px" />
+          <q-icon :name="icon('call_end')" size="26px" />
         </button>
       </div>
     </div>
@@ -419,6 +419,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import {
   ref,
   reactive,

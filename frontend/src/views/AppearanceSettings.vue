@@ -11,7 +11,7 @@
           :class="{ active: themeStore.mode === opt.mode }"
           @click="themeStore.setThemeMode(opt.mode)"
         >
-          <q-icon :name="opt.icon" size="18px" />
+          <q-icon :name="icon(opt.icon)" size="18px" />
           <span>{{ opt.label }}</span>
         </button>
       </div>
@@ -46,7 +46,7 @@
           :title="bubble.label"
           @click="themeStore.setBubbleStyle(bubble.key)"
         >
-          <q-icon name="check" class="bubble-check" size="18px" />
+          <q-icon :name="icon('check')" class="bubble-check" size="18px" />
         </button>
       </div>
     </section>
@@ -107,14 +107,14 @@
           @change="onWallpaperFile"
         />
         <button class="action-btn" @click="wallpaperInput?.click()">
-          <q-icon name="image" size="18px" /> Загрузить фото
+          <q-icon :name="icon('image')" size="18px" /> Загрузить фото
         </button>
         <button
           v-if="themeStore.wallpaperKey === 'custom' || themeStore.wallpaperCustom"
           class="action-btn danger"
           @click="themeStore.clearCustomWallpaper()"
         >
-          <q-icon name="delete" size="18px" /> Убрать
+          <q-icon :name="icon('delete')" size="18px" /> Убрать
         </button>
       </div>
       <p v-if="wallpaperError" class="wallpaper-error">{{ wallpaperError }}</p>
@@ -123,13 +123,14 @@
     <!-- Сброс -->
     <section class="appearance-section reset-row">
       <button class="action-btn reset" @click="onReset">
-        <q-icon name="refresh" size="18px" /> Сбросить настройки
+        <q-icon :name="icon('refresh')" size="18px" /> Сбросить настройки
       </button>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { ref } from 'vue'
 import { useThemeStore, fileToCompressedDataUrl } from '@/stores/theme'
 import {

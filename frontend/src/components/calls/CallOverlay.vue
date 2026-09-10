@@ -26,10 +26,13 @@
             </p>
             <div class="call-controls incoming-controls">
               <button class="ctl-btn danger big" title="Отклонить" @click="callStore.declineCall()">
-                <q-icon name="call_end" size="28px" />
+                <q-icon :name="icon('call_end')" size="28px" />
               </button>
               <button class="ctl-btn accept big" title="Ответить" @click="callStore.acceptCall()">
-                <q-icon :name="callStore.kind === 'video' ? 'videocam' : 'call'" size="28px" />
+                <q-icon
+                  :name="icon(callStore.kind === 'video' ? 'videocam' : 'call')"
+                  size="28px"
+                />
               </button>
             </div>
           </div>
@@ -51,7 +54,7 @@
             <p class="call-subtitle">Звоним…</p>
             <div class="call-controls incoming-controls">
               <button class="ctl-btn danger big" title="Отменить" @click="callStore.cancelCall()">
-                <q-icon name="call_end" size="28px" />
+                <q-icon :name="icon('call_end')" size="28px" />
               </button>
             </div>
           </div>
@@ -87,11 +90,11 @@
                 Голосовой звонок · <span class="call-timer">{{ callStore.formattedTime }}</span>
               </p>
               <span v-if="callStore.peerScreenSharing" class="call-sharing">
-                <q-icon name="screen_share" size="13px" aria-hidden="true" />
+                <q-icon :name="icon('screen_share')" size="13px" aria-hidden="true" />
                 Собеседник показывает экран
               </span>
               <span class="call-e2ee" title="Медиа защищено сквозным шифрованием (DTLS-SRTP)">
-                <q-icon name="lock" size="11px" aria-hidden="true" />
+                <q-icon :name="icon('lock')" size="11px" aria-hidden="true" />
                 Сквозное шифрование
               </span>
             </template>
@@ -112,14 +115,14 @@
                 <div class="hud-name">{{ displayName }}</div>
                 <div class="hud-time">{{ callStore.formattedTime }}</div>
                 <span v-if="callStore.peerScreenSharing" class="call-sharing video">
-                  <q-icon name="screen_share" size="12px" aria-hidden="true" />
+                  <q-icon :name="icon('screen_share')" size="12px" aria-hidden="true" />
                   Собеседник показывает экран
                 </span>
                 <span
                   class="call-e2ee video"
                   title="Медиа защищено сквозным шифрованием (DTLS-SRTP)"
                 >
-                  <q-icon name="lock" size="10px" aria-hidden="true" />
+                  <q-icon :name="icon('lock')" size="10px" aria-hidden="true" />
                   Сквозное шифрование
                 </span>
               </div>
@@ -145,7 +148,7 @@
                 title="Микрофон"
                 @click="callStore.toggleMic()"
               >
-                <q-icon name="mic" size="26px" />
+                <q-icon :name="icon('mic')" size="26px" />
               </button>
               <button
                 v-if="callStore.kind === 'video' && !callStore.screenSharing"
@@ -154,7 +157,7 @@
                 title="Камера"
                 @click="callStore.toggleCamera()"
               >
-                <q-icon name="videocam" size="26px" />
+                <q-icon :name="icon('videocam')" size="26px" />
               </button>
               <button
                 class="ctl-btn"
@@ -164,19 +167,19 @@
                 :aria-pressed="moreOpen"
                 @click="toggleMore"
               >
-                <q-icon :name="moreOpen ? 'close' : 'more_vert'" size="26px" />
+                <q-icon :name="icon(moreOpen ? 'close' : 'more_vert')" size="26px" />
               </button>
               <button class="ctl-btn danger big" title="Завершить" @click="callStore.endCall()">
-                <q-icon name="call_end" size="28px" />
+                <q-icon :name="icon('call_end')" size="28px" />
               </button>
             </div>
 
             <!-- Меню «ещё»: редкие во время звонка действия -->
             <div v-if="moreOpen" class="call-more" role="menu">
               <button class="more-row" role="menuitem" @click="onSpeakerRow">
-                <q-icon :name="speakerOn ? 'volume_up' : 'volume_down'" size="20px" />
+                <q-icon :name="icon(speakerOn ? 'volume_up' : 'volume_down')" size="20px" />
                 <span>{{ speakerOn ? 'Обычный режим' : 'Громкая связь' }}</span>
-                <q-icon v-if="speakerOn" name="check" size="16px" class="more-mark" />
+                <q-icon v-if="speakerOn" :name="icon('check')" size="16px" class="more-mark" />
               </button>
               <button
                 v-if="canShareScreen || callStore.screenSharing"
@@ -186,13 +189,18 @@
                 @click="onScreenRow"
               >
                 <q-icon
-                  :name="callStore.screenSharing ? 'stop_screen_share' : 'screen_share'"
+                  :name="icon(callStore.screenSharing ? 'stop_screen_share' : 'screen_share')"
                   size="20px"
                 />
                 <span>{{
                   callStore.screenSharing ? 'Остановить показ экрана' : 'Показать экран'
                 }}</span>
-                <q-icon v-if="callStore.screenSharing" name="check" size="16px" class="more-mark" />
+                <q-icon
+                  v-if="callStore.screenSharing"
+                  :name="icon('check')"
+                  size="16px"
+                  class="more-mark"
+                />
               </button>
               <button
                 class="more-row"
@@ -200,9 +208,9 @@
                 role="menuitem"
                 @click="onDevicesRow"
               >
-                <q-icon name="tune" size="20px" />
+                <q-icon :name="icon('tune')" size="20px" />
                 <span>Устройства звонка</span>
-                <q-icon v-if="settingsOpen" name="check" size="16px" class="more-mark" />
+                <q-icon v-if="settingsOpen" :name="icon('check')" size="16px" class="more-mark" />
               </button>
             </div>
 
@@ -292,6 +300,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { screenShareSupport, useCallStore } from '@/stores/call'
 import { mediaUrl } from '@/services/chatService'

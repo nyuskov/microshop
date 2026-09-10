@@ -649,16 +649,39 @@ node node_modules/prettier/bin/prettier.cjs --write <files> # формат
 - `Login.vue` / `LoginModal.vue` — вход по номеру: шаги `phone → password | otp → create` (автофокус поля), исходя из `password/status`; `LoginModal` держит диалог открытым после подтверждения кода (`pendingPassword`), пока пользователь не задаст пароль.
 - Компоненты мессенджера вынесены в `components/messenger/` (`ChatSidebar`, `ChatHeader`, `MessageThread`, `MessageRow`, `MessageComposer`, `PinnedBar`, `InlineSearchBar`, `ChatPlaceholder`, `ChatInfo`, `ForwardDialog`); медиа — в `components/media/` (лайтбокс, голос/видео/кружки, GIF-пикер); звонки — `components/calls/`. Реактивное присутствие/печать — `composables/usePeerActivity`, realtime-оркестрация — `composables/useRealtimeSync`, запись — `useRecordButton`.
 
-### Иконки (Material Symbols Rounded)
+### Иконки (Font Awesome Free 7) и шрифты
 
-Иконки задаются через `<q-icon name="…">` (напр. `forum`, `auto_stories`, `group`, `call`, `videocam`, `mic`, `push_pin`, `check`, `send`, `download`…). Набор — **Material Symbols Rounded** (актуальный Google, скруглённый, с переменными осями `FILL/GRAD/opsz/wght`), но подключается не пакетный CSS, а **свой урезанный шрифт**: полный файл весит ~5 МБ (4200 лигатур), а в `src/assets/fonts/material-symbols-rounded-subset.woff2` лежит только используемое — ~96 КБ. Собирается скриптом `frontend/scripts/build-icons-font.py` (нужны `fonttools` + `brotli`): он вытаскивает имена иконок из `src` и режет официальный woff2 по таблице GSUB. **Добавили новую иконку — прогоните скрипт**, иначе она отрендерится текстом. Quasar рендерит `<q-icon>` с классом `.material-icons`, которому в `quasar.css` заданы `font-family: 'Material Symbols Rounded'` и `font-variation-settings` (`FILL 0 / wght 400 / GRAD 0 / opsz 24`).
+Иконки в разметке задаются **логическим именем** через `icon()`: `<q-icon :name="icon('close')" />`. Какое имя какому глифу соответствует — решает `src/utils/icons.ts` (`ICON_MAP`), а `icon()` превращает имя в классы Font Awesome (`fa-solid fa-xmark`).
 
-**Если имени нет в шрифте, Vue отрендерит текст буквами** («chat_bubble_outline» вместо иконки) — тихо и заметно. Проверка (в браузере, консоль на любой странице приложения):
+Почему так:
+- Quasar по префиксу `fa-` понимает, что получил **список классов**, а не имя лигатуры. Любое другое значение он рисует ТЕКСТОМ внутри `<i class="material-icons">` — это и была ошибка «иконка как текст».
+- Смена набора иконок — правка одного файла `ICON_MAP` (+ пересборка CSS), а не 250 мест в шаблонах.
+- Незнакомое имя `icon()` возвращает как есть: его отрисует резервный шрифт Material (Quasar подключён), то есть ошибка видна, а не превращается в пустоту.
+
+Сборка (нужны `fonttools` + `brotli`: `python3 -m venv /tmp/fonts-venv && /tmp/fonts-venv/bin/pip install fonttools brotli`):
+
+| Скрипт | Что делает |
+| --- | --- |
+| `scripts/build-icons-css.py` | читает `ICON_MAP`, берёт коды символов из официального CSS Font Awesome, режет `fa-solid-900.woff2` до используемых глифов (~8 КБ вместо 112 КБ) и пишет `src/assets/icons.css` |
+| `scripts/build-icons-font.py` | резервный шрифт Material Symbols Rounded (урезанный до имён из `src`) — им рисуются внутренние элементы Quasar и имена, которых нет в `ICON_MAP` |
+| `scripts/check_fa_map.py` | проверяет, что все имена из `ICON_MAP` есть в Font Awesome Free (и подсказывает похожие, если нет) |
+| `scripts/migrate-icons-names.py` | одноразовая миграция: `name="close"` → `:name="icon('close')"` |
+
+**Добавили иконку — допишите её в `ICON_MAP` и прогоните `build-icons-css.py`**, иначе она отрендерится пустотой. Страж в тестах (`src/__tests__/icons.spec.ts`) проверяет, что все имена из шаблонов есть в мэппинге и что для каждой иконки есть правило в CSS.
+
+Шрифты (локально, без внешних запросов; собирает `scripts/fetch_fonts.py`) — три роли:
+
+- `--ms-font` → **Roboto** — обычный текст;
+- `--ms-font-display` → **Golos Text** — заголовки, названия чатов, шапки диалогов;
+- `--ms-font-mono` → **Roboto Mono** — цифры (код из SMS, телефон, таймеры), `tabular-nums`.
+
+Наборы — кириллица + латиница с `unicode-range`, поэтому браузер грузит только нужное (русская страница — ~65 КБ на все три вместо внешней загрузки с Google Fonts).
+
+**Если имени нет в резервном шрифте, Vue отрендерит текст буквами** — тихо и заметно. Проверка (в браузере, консоль на любой странице приложения):
 
 ```js
 for (const n of ['forum', 'auto_stories', 'group']) {
   const s = document.createElement('span')
-  s.className = 'material-icons'
   s.style.fontSize = '24px'
   s.textContent = n
   document.body.appendChild(s)
@@ -667,7 +690,7 @@ for (const n of ['forum', 'auto_stories', 'group']) {
 }
 ```
 
-Список имён из `@quasar/extras/material-symbols-rounded/icons.json` для такой проверки **не годится**: в шрифте есть легаси-лигатуры (`push_pin`, `delete_outline`, `done`, `help_outline`…), которых в JSON нет. Галочки прочтения — текстовые `✓✓`. Не используйте классы PrimeIcons `pi pi-*` (шрифт не подключён).
+Список имён из `@quasar/extras/material-symbols-rounded/icons.json` для такой проверки **не годится**: в шрифте есть легаси-лигатуры (`push_pin`, `delete_outline`, `done`, `help_outline`…), которых в JSON нет, — поэтому резервный шрифт собирается по именам, найденным прямо в `src`. Галочки прочтения — текстовые `✓✓`. Не используйте классы PrimeIcons `pi pi-*` (шрифт не подключён).
 
 ## 7. Общие правила и «грабли» (важно помнить)
 

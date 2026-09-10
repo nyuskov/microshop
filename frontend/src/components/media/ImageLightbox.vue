@@ -20,10 +20,10 @@
           title="Скачать"
           aria-label="Скачать изображение"
         >
-          <q-icon name="download" size="22px" />
+          <q-icon :name="icon('download')" size="22px" />
         </a>
         <button class="lb-icon-btn lb-close" title="Закрыть (Esc)" @click="emit('close')">
-          <q-icon name="close" size="24px" />
+          <q-icon :name="icon('close')" size="24px" />
         </button>
       </div>
 
@@ -34,7 +34,7 @@
         aria-label="Предыдущее изображение"
         @click.stop="emit('prev')"
       >
-        <q-icon name="chevron_left" size="32px" />
+        <q-icon :name="icon('chevron_left')" size="32px" />
       </button>
 
       <img :key="current.id" :src="current.url" :alt="current.name" class="lb-image" @click.stop />
@@ -46,13 +46,14 @@
         aria-label="Следующее изображение"
         @click.stop="emit('next')"
       >
-        <q-icon name="chevron_right" size="32px" />
+        <q-icon :name="icon('chevron_right')" size="32px" />
       </button>
     </div>
   </Teleport>
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 
 export interface LightboxImage {

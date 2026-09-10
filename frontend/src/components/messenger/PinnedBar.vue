@@ -1,6 +1,6 @@
 <template>
   <div class="pinned-bar" @click="emit('close-popups')">
-    <q-icon name="push_pin" class="pinned-icon" size="17px" />
+    <q-icon :name="icon('push_pin')" class="pinned-icon" size="17px" />
     <div class="pinned-content">
       <div class="pinned-head">
         <span>Закреплённые сообщения</span>
@@ -24,12 +24,13 @@
       </div>
     </div>
     <button class="icon-btn" title="Развернуть" @click.stop="open = !open">
-      <q-icon name="expand_more" :class="{ rotated: open }" size="20px" />
+      <q-icon :name="icon('expand_more')" :class="{ rotated: open }" size="20px" />
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 interface PinnedRow {
   id: number
   sender: string

@@ -2,7 +2,7 @@
   <q-dialog :model-value="true" @update:model-value="emit('close')">
     <q-card class="mod-card">
       <q-card-section class="row no-wrap items-center q-py-sm">
-        <q-icon name="warning" size="20px" color="negative" class="q-mr-sm" />
+        <q-icon :name="icon('warning')" size="20px" color="negative" class="q-mr-sm" />
         <div class="text-subtitle1 text-weight-medium">Удаление аккаунта</div>
         <q-space />
         <q-btn flat round dense icon="close" aria-label="Закрыть" @click="emit('close')" />
@@ -34,7 +34,7 @@
             :aria-label="showPassword ? 'Скрыть пароль' : 'Показать пароль'"
             @click="showPassword = !showPassword"
           >
-            <q-icon :name="showPassword ? 'visibility_off' : 'visibility'" size="18px" />
+            <q-icon :name="icon(showPassword ? 'visibility_off' : 'visibility')" size="18px" />
           </button>
         </div>
 
@@ -71,6 +71,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { computed, ref } from 'vue'
 
 import { DELETE_ACCOUNT_CONFIRM, deleteAccount } from '@/services/moderation'

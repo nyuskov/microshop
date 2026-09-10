@@ -16,7 +16,7 @@
           <div class="ci-hero-name">{{ peerName }}</div>
           <div v-if="peer.username" class="ci-hero-sub">@{{ peer.username }}</div>
           <div v-if="peer.phone_number" class="ci-hero-sub ci-phone">
-            <q-icon name="call" size="13px" /> {{ peer.phone_number }}
+            <q-icon :name="icon('call')" size="13px" /> {{ peer.phone_number }}
           </div>
           <div v-if="peer.status" class="ci-status">{{ peer.status }}</div>
           <div class="ci-presence">{{ subtitle }}</div>
@@ -69,7 +69,7 @@
           target="_blank"
           rel="noopener"
         >
-          <q-icon :name="file.icon" size="22px" />
+          <q-icon :name="icon(file.icon)" size="22px" />
           <span class="ci-file-info">
             <span class="ci-file-name">{{ file.name }}</span>
             <span class="ci-file-meta">{{ file.meta }}</span>
@@ -86,6 +86,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { computed } from 'vue'
 import type { Chat, ChatUser, Message } from '@/types'
 import { mediaUrl } from '@/config'

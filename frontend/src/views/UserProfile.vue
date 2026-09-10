@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { reactive, ref, watch, computed } from 'vue'
 import { useAuthStore, type AuthSession as AuthSessionRow } from '@/stores/auth'
 import { getErrorMessage } from '@/services/errors'
@@ -672,7 +673,7 @@ const onNotificationsToggle = async (val: boolean) => {
           >
             <img v-if="avatarSrc" :src="avatarSrc" class="avatar-photo" alt="Аватар" />
             <template v-else>{{ heroInitials }}</template>
-            <span class="avatar-camera"><q-icon name="photo_camera" size="15px" /></span>
+            <span class="avatar-camera"><q-icon :name="icon('photo_camera')" size="15px" /></span>
           </button>
           <button
             v-if="hasAvatar"
@@ -682,7 +683,7 @@ const onNotificationsToggle = async (val: boolean) => {
             :disabled="avatarUploading"
             @click.stop="removeAvatarClick"
           >
-            <q-icon name="close" size="15px" />
+            <q-icon :name="icon('close')" size="15px" />
           </button>
           <input
             ref="avatarInput"
@@ -699,7 +700,7 @@ const onNotificationsToggle = async (val: boolean) => {
             {{ profileForm.status.trim() }}
           </p>
           <p v-if="profileForm.phone_number" class="hero-phone">
-            <q-icon name="call" size="14px" /> {{ profileForm.phone_number }}
+            <q-icon :name="icon('call')" size="14px" /> {{ profileForm.phone_number }}
           </p>
           <p v-if="avatarUploading" class="avatar-status">
             <span class="mini-spinner"></span> Загрузка фото…
@@ -711,7 +712,7 @@ const onNotificationsToggle = async (val: boolean) => {
       <!-- Главный экран настроек: сверху «Выйти», ниже — разделы -->
       <div v-if="section === 'root'" class="logout-row">
         <button type="button" class="logout-btn" :disabled="saving" @click="doLogout">
-          <q-icon name="logout" size="17px" />
+          <q-icon :name="icon('logout')" size="17px" />
           Выйти из аккаунта
         </button>
       </div>
@@ -719,7 +720,7 @@ const onNotificationsToggle = async (val: boolean) => {
       <nav v-if="section === 'root'" class="settings-list" aria-label="Разделы настроек">
         <!-- Поиск по настройкам: разделов много, нужный искать долго -->
         <div class="settings-search">
-          <q-icon name="search" size="17px" class="settings-search-icon" />
+          <q-icon :name="icon('search')" size="17px" class="settings-search-icon" />
           <input
             v-model="settingsQuery"
             class="settings-search-input"
@@ -734,7 +735,7 @@ const onNotificationsToggle = async (val: boolean) => {
             title="Очистить"
             @click="settingsQuery = ''"
           >
-            <q-icon name="close" size="16px" />
+            <q-icon :name="icon('close')" size="16px" />
           </button>
         </div>
         <p v-if="!visibleSettingsRows.length" class="settings-empty">
@@ -747,12 +748,12 @@ const onNotificationsToggle = async (val: boolean) => {
           class="settings-link"
           @click="openSection(row.key)"
         >
-          <q-icon :name="row.icon" size="21px" class="settings-link-icon" />
+          <q-icon :name="icon(row.icon)" size="21px" class="settings-link-icon" />
           <span class="settings-link-text">
             <span class="settings-link-title">{{ row.title }}</span>
             <span class="settings-link-desc">{{ row.desc }}</span>
           </span>
-          <q-icon name="chevron_right" size="20px" class="settings-link-chevron" />
+          <q-icon :name="icon('chevron_right')" size="20px" class="settings-link-chevron" />
         </button>
       </nav>
 
@@ -765,7 +766,7 @@ const onNotificationsToggle = async (val: boolean) => {
           :disabled="saving"
           @click="showDeleteAccount = true"
         >
-          <q-icon name="delete_forever" size="17px" />
+          <q-icon :name="icon('delete_forever')" size="17px" />
           Удалить аккаунт
         </button>
         <p class="delete-account-hint">Аккаунт, переписка и вложения будут удалены безвозвратно.</p>
@@ -774,7 +775,7 @@ const onNotificationsToggle = async (val: boolean) => {
       <!-- Шапка раздела настроек -->
       <div v-if="section !== 'root'" class="settings-head">
         <button type="button" class="settings-back" title="К разделам" @click="backToSections">
-          <q-icon name="arrow_back" size="22px" />
+          <q-icon :name="icon('arrow_back')" size="22px" />
         </button>
         <h2 class="settings-head-title">{{ currentSectionTitle }}</h2>
       </div>
@@ -786,12 +787,12 @@ const onNotificationsToggle = async (val: boolean) => {
 
       <transition name="fade">
         <div v-if="success" class="notice success">
-          <q-icon name="check_circle" size="18px" /> Профиль сохранён
+          <q-icon :name="icon('check_circle')" size="18px" /> Профиль сохранён
         </div>
       </transition>
       <transition name="fade">
         <div v-if="errorMessage" class="notice error">
-          <q-icon name="error" size="18px" /> {{ errorMessage }}
+          <q-icon :name="icon('error')" size="18px" /> {{ errorMessage }}
         </div>
       </transition>
 
@@ -857,8 +858,8 @@ const onNotificationsToggle = async (val: boolean) => {
               <input id="pf-email" v-model="profileForm.email" type="email" placeholder="Email" />
               <p class="field-hint">
                 <template v-if="authStore.current_user?.email_verified">
-                  <q-icon name="verified" size="14px" /> Подтверждён — можно входить по коду на
-                  e-mail.
+                  <q-icon :name="icon('verified')" size="14px" /> Подтверждён — можно входить по
+                  коду на e-mail.
                 </template>
                 <template v-else-if="emailChannelAvailable">
                   Не подтверждён: подтвердите адрес, иначе войти по нему и восстановить пароль не
@@ -973,7 +974,7 @@ const onNotificationsToggle = async (val: boolean) => {
             </div>
             <p class="storage-hint" :class="{ warn: storageWarn }">
               <template v-if="storageWarn">
-                <q-icon name="warning" size="16px" />
+                <q-icon :name="icon('warning')" size="16px" />
                 Место почти закончилось: новые файлы не загрузятся — удалите старые сообщения с
                 вложениями.
               </template>
@@ -988,7 +989,7 @@ const onNotificationsToggle = async (val: boolean) => {
               :disabled="storageLoading"
               @click="loadStorage"
             >
-              <q-icon name="refresh" size="15px" /> Обновить
+              <q-icon :name="icon('refresh')" size="15px" /> Обновить
             </button>
           </div>
           <p v-else class="storage-hint">
@@ -1001,7 +1002,7 @@ const onNotificationsToggle = async (val: boolean) => {
           <h3 class="section-title">Безопасность</h3>
 
           <div v-if="securityIssues.length" class="security-alert">
-            <q-icon name="shield" size="18px" />
+            <q-icon :name="icon('shield')" size="18px" />
             <div>
               <strong>Аккаунт стоит защитить</strong>
               <ul>
@@ -1042,7 +1043,7 @@ const onNotificationsToggle = async (val: boolean) => {
                   :disabled="emailBusy"
                   @click="sendEmailCode"
                 >
-                  <q-icon name="forward_to_inbox" size="17px" />
+                  <q-icon :name="icon('forward_to_inbox')" size="17px" />
                   {{ emailCodeSent ? 'Отправить код ещё раз' : 'Отправить код на e-mail' }}
                 </button>
 
@@ -1094,7 +1095,7 @@ const onNotificationsToggle = async (val: boolean) => {
                 @click="passwordVisible.current = !passwordVisible.current"
               >
                 <q-icon
-                  :name="passwordVisible.current ? 'visibility_off' : 'visibility'"
+                  :name="icon(passwordVisible.current ? 'visibility_off' : 'visibility')"
                   size="18px"
                 />
               </button>
@@ -1116,7 +1117,7 @@ const onNotificationsToggle = async (val: boolean) => {
                 @click="passwordVisible.next = !passwordVisible.next"
               >
                 <q-icon
-                  :name="passwordVisible.next ? 'visibility_off' : 'visibility'"
+                  :name="icon(passwordVisible.next ? 'visibility_off' : 'visibility')"
                   size="18px"
                 />
               </button>
@@ -1145,7 +1146,7 @@ const onNotificationsToggle = async (val: boolean) => {
                 @click="passwordVisible.confirm = !passwordVisible.confirm"
               >
                 <q-icon
-                  :name="passwordVisible.confirm ? 'visibility_off' : 'visibility'"
+                  :name="icon(passwordVisible.confirm ? 'visibility_off' : 'visibility')"
                   size="18px"
                 />
               </button>
@@ -1153,7 +1154,7 @@ const onNotificationsToggle = async (val: boolean) => {
 
             <button type="submit" class="security-btn" :disabled="passwordSaving">
               <q-icon
-                :name="authStore.current_user?.password_set ? 'lock_reset' : 'lock'"
+                :name="icon(authStore.current_user?.password_set ? 'lock_reset' : 'lock')"
                 size="17px"
               />
               {{
@@ -1172,12 +1173,12 @@ const onNotificationsToggle = async (val: boolean) => {
 
           <transition name="fade">
             <div v-if="passwordNotice" class="notice success">
-              <q-icon name="check_circle" size="18px" /> {{ passwordNotice }}
+              <q-icon :name="icon('check_circle')" size="18px" /> {{ passwordNotice }}
             </div>
           </transition>
           <transition name="fade">
             <div v-if="passwordError" class="notice error">
-              <q-icon name="error" size="18px" /> {{ passwordError }}
+              <q-icon :name="icon('error')" size="18px" /> {{ passwordError }}
             </div>
           </transition>
 
@@ -1187,7 +1188,7 @@ const onNotificationsToggle = async (val: boolean) => {
             :disabled="passwordSaving"
             @click="doRevokeAllSessions"
           >
-            <q-icon name="phonelink_erase" size="17px" />
+            <q-icon :name="icon('phonelink_erase')" size="17px" />
             Выйти на всех устройствах
           </button>
 
@@ -1201,7 +1202,7 @@ const onNotificationsToggle = async (val: boolean) => {
                 :disabled="sessionsLoading"
                 @click="loadSessions"
               >
-                <q-icon name="refresh" size="16px" />
+                <q-icon :name="icon('refresh')" size="16px" />
                 Обновить
               </button>
             </div>
@@ -1216,7 +1217,7 @@ const onNotificationsToggle = async (val: boolean) => {
             <ul class="sessions-list">
               <li v-for="row in sessions" :key="row.id" class="session-row">
                 <span class="session-icon">
-                  <q-icon :name="row.current ? 'computer' : 'devices'" size="18px" />
+                  <q-icon :name="icon(row.current ? 'computer' : 'devices')" size="18px" />
                 </span>
                 <span class="session-info">
                   <span class="session-device">
@@ -1245,12 +1246,12 @@ const onNotificationsToggle = async (val: boolean) => {
 
             <transition name="fade">
               <p v-if="sessionsNotice" class="sessions-note success-text">
-                <q-icon name="check_circle" size="16px" /> {{ sessionsNotice }}
+                <q-icon :name="icon('check_circle')" size="16px" /> {{ sessionsNotice }}
               </p>
             </transition>
             <transition name="fade">
               <p v-if="sessionsError" class="sessions-note error-text">
-                <q-icon name="error" size="16px" /> {{ sessionsError }}
+                <q-icon :name="icon('error')" size="16px" /> {{ sessionsError }}
               </p>
             </transition>
 
@@ -1270,7 +1271,7 @@ const onNotificationsToggle = async (val: boolean) => {
                 :disabled="securityLogLoading"
                 @click="loadSecurityLog"
               >
-                <q-icon name="refresh" size="16px" />
+                <q-icon :name="icon('refresh')" size="16px" />
                 Обновить
               </button>
             </div>
@@ -1290,7 +1291,7 @@ const onNotificationsToggle = async (val: boolean) => {
                 :class="{ 'session-alert': isAlertEvent(entry.event) }"
               >
                 <span class="session-icon">
-                  <q-icon :name="isAlertEvent(entry.event) ? 'shield' : 'info'" size="18px" />
+                  <q-icon :name="icon(isAlertEvent(entry.event) ? 'shield' : 'info')" size="18px" />
                 </span>
                 <span class="session-info">
                   <span class="session-device">{{ entry.title }}</span>
@@ -1307,7 +1308,7 @@ const onNotificationsToggle = async (val: boolean) => {
             </ul>
 
             <p v-if="securityLogError" class="sessions-note error-text">
-              <q-icon name="error" size="16px" /> {{ securityLogError }}
+              <q-icon :name="icon('error')" size="16px" /> {{ securityLogError }}
             </p>
 
             <p class="security-note">
@@ -1325,15 +1326,15 @@ const onNotificationsToggle = async (val: boolean) => {
           <!-- Документы: правила сообщества и политика (требования магазинов к UGC) -->
           <div class="legal-row">
             <a class="legal-link" href="/community.html" target="_blank" rel="noopener">
-              <q-icon name="gavel" size="16px" />
+              <q-icon :name="icon('gavel')" size="16px" />
               Правила сообщества
             </a>
             <a class="legal-link" href="/privacy.html" target="_blank" rel="noopener">
-              <q-icon name="privacy_tip" size="16px" />
+              <q-icon :name="icon('privacy_tip')" size="16px" />
               Политика конфиденциальности
             </a>
             <a class="legal-link" href="/terms.html" target="_blank" rel="noopener">
-              <q-icon name="description" size="16px" />
+              <q-icon :name="icon('description')" size="16px" />
               Пользовательское соглашение
             </a>
           </div>
@@ -1348,7 +1349,7 @@ const onNotificationsToggle = async (val: boolean) => {
             :disabled="updatingApp"
             @click="checkForUpdates"
           >
-            <q-icon name="refresh" size="17px" />
+            <q-icon :name="icon('refresh')" size="17px" />
             {{ updatingApp ? 'Проверяем…' : 'Проверить обновления' }}
           </button>
           <transition name="fade">
@@ -1362,7 +1363,7 @@ const onNotificationsToggle = async (val: boolean) => {
           </button>
           <button type="submit" class="btn primary" :disabled="saving">
             <span v-if="saving" class="spinner light"></span>
-            <q-icon v-else name="check" size="17px" />
+            <q-icon v-else :name="icon('check')" size="17px" />
             {{ saving ? 'Сохранение…' : 'Сохранить' }}
           </button>
         </div>

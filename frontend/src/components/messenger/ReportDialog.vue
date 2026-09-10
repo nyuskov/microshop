@@ -25,7 +25,9 @@
             @click="reason = option.value"
           >
             <q-icon
-              :name="reason === option.value ? 'radio_button_checked' : 'radio_button_unchecked'"
+              :name="
+                icon(reason === option.value ? 'radio_button_checked' : 'radio_button_unchecked')
+              "
               size="18px"
             />
             <span>{{ option.label }}</span>
@@ -67,6 +69,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { ref } from 'vue'
 
 import { REPORT_REASONS, reportUser, type ReportReason } from '@/services/moderation'

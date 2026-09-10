@@ -11,11 +11,11 @@
         <!-- Шапка -->
         <header class="fwd-head">
           <div class="fwd-title">
-            <q-icon name="forward" size="19px" />
+            <q-icon :name="icon('forward')" size="19px" />
             <span>Переслать</span>
           </div>
           <button class="fwd-icon-btn" title="Закрыть" @click="emit('close')">
-            <q-icon name="close" size="20px" />
+            <q-icon :name="icon('close')" size="20px" />
           </button>
         </header>
 
@@ -23,14 +23,14 @@
         <div class="fwd-preview">
           <span class="fwd-preview-label">{{ previewLabel }}</span>
           <span class="fwd-preview-text">
-            <q-icon v-if="previewIcon" :name="previewIcon" size="16px" />
+            <q-icon v-if="previewIcon" :name="icon(previewIcon)" size="16px" />
             {{ previewSnippet }}
           </span>
         </div>
 
         <!-- Поиск по чатам -->
         <div class="fwd-search">
-          <q-icon name="search" class="fwd-search-icon" size="17px" />
+          <q-icon :name="icon('search')" class="fwd-search-icon" size="17px" />
           <input
             v-model="query"
             class="fwd-search-input"
@@ -63,7 +63,7 @@
               <span class="fwd-item-sub">{{ itemSubtitle(chat) }}</span>
             </span>
             <span class="fwd-check">
-              <q-icon v-if="isSelected(chat.id)" name="check" size="16px" />
+              <q-icon v-if="isSelected(chat.id)" :name="icon('check')" size="16px" />
             </span>
           </button>
 
@@ -86,7 +86,7 @@
               :disabled="sending || selectedIds.length === 0"
               @click="confirmForward"
             >
-              <q-icon name="forward" size="17px" />
+              <q-icon :name="icon('forward')" size="17px" />
               <span>{{ sending ? 'Пересылаю…' : 'Переслать' }}</span>
             </button>
           </div>
@@ -97,6 +97,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { computed, ref } from 'vue'
 import type { Chat, Message } from '@/types'
 import { avatarStyle, avatarUrlOf, chatPeer, chatPeerTitle, initials } from '@/utils/user'

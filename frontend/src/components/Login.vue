@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { useRouter } from 'vue-router'
 import { useAuthStore, deviceChallengeOf, type DeviceChallenge } from '../stores/auth'
 import { getErrorMessage } from '../services/errors'
@@ -491,7 +492,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
       <!-- Шаг 1: номер телефона -->
       <div v-if="state === 'phone'" key="phone" class="step">
         <div class="brand">
-          <span class="brand-icon"><q-icon name="call" size="30px" /></span>
+          <span class="brand-icon"><q-icon :name="icon('call')" size="30px" /></span>
         </div>
         <h2 class="step-title">Вход</h2>
         <p class="step-subtitle">Введите номер телефона — войдёте по паролю.</p>
@@ -511,7 +512,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
 
         <button class="btn btn-primary" :disabled="isLoading" @click="continueWithPhone">
           <span v-if="isLoading" class="spinner"></span>
-          <q-icon v-else name="arrow_forward" size="17px" />
+          <q-icon v-else :name="icon('arrow_forward')" size="17px" />
           <span>{{ isLoading ? 'Проверка…' : 'Продолжить' }}</span>
         </button>
 
@@ -526,7 +527,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
           :disabled="isLoading"
           @click="openEmailStep('login')"
         >
-          <q-icon name="mail" size="17px" />
+          <q-icon :name="icon('mail')" size="17px" />
           Войти по коду на e-mail
         </button>
       </div>
@@ -534,7 +535,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
       <!-- Шаг 2а: ввод пароля (номер уже зарегистрирован) -->
       <div v-else-if="state === 'password'" key="password" class="step">
         <div class="brand">
-          <span class="brand-icon"><q-icon name="lock" size="30px" /></span>
+          <span class="brand-icon"><q-icon :name="icon('lock')" size="30px" /></span>
         </div>
         <h2 class="step-title">Введите пароль</h2>
         <p class="step-subtitle">
@@ -559,7 +560,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
           >
             <template #append>
               <q-icon
-                :name="showCurrent ? 'visibility_off' : 'visibility'"
+                :name="icon(showCurrent ? 'visibility_off' : 'visibility')"
                 class="password-eye"
                 size="20px"
                 role="button"
@@ -571,13 +572,13 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
 
           <button type="submit" class="btn btn-primary" :disabled="isLoading">
             <span v-if="isLoading" class="spinner"></span>
-            <q-icon v-else name="check" size="17px" />
+            <q-icon v-else :name="icon('check')" size="17px" />
             <span>{{ isLoading ? 'Вход…' : 'Войти' }}</span>
           </button>
         </form>
 
         <button class="link-btn" type="button" :disabled="isLoading" @click="goBackToPhoneInput">
-          <q-icon name="arrow_back" size="17px" />
+          <q-icon :name="icon('arrow_back')" size="17px" />
           Изменить номер
         </button>
 
@@ -588,7 +589,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
           :disabled="isLoading"
           @click="openEmailStep('reset')"
         >
-          <q-icon name="help_outline" size="17px" />
+          <q-icon :name="icon('help_outline')" size="17px" />
           Забыли пароль?
         </button>
       </div>
@@ -596,7 +597,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
       <!-- Шаг 2в: подтверждение входа с нового устройства (2FA кодом из письма) -->
       <div v-else-if="state === 'device'" key="device" class="step">
         <div class="brand">
-          <span class="brand-icon"><q-icon name="phonelink_lock" size="30px" /></span>
+          <span class="brand-icon"><q-icon :name="icon('phonelink_lock')" size="30px" /></span>
         </div>
         <h2 class="step-title">Новое устройство</h2>
         <p class="step-subtitle">
@@ -625,7 +626,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
           >
             <template #append>
               <q-icon
-                :name="showDeviceCode ? 'visibility_off' : 'visibility'"
+                :name="icon(showDeviceCode ? 'visibility_off' : 'visibility')"
                 class="password-eye"
                 size="20px"
                 role="button"
@@ -637,7 +638,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
 
           <button type="submit" class="btn btn-primary" :disabled="isLoading">
             <span v-if="isLoading" class="spinner"></span>
-            <q-icon v-else name="check" size="17px" />
+            <q-icon v-else :name="icon('check')" size="17px" />
             <span>{{ isLoading ? 'Проверка…' : 'Подтвердить вход' }}</span>
           </button>
         </form>
@@ -648,7 +649,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
         </p>
 
         <button class="link-btn" type="button" :disabled="isLoading" @click="goBackFromDevice">
-          <q-icon name="arrow_back" size="17px" />
+          <q-icon :name="icon('arrow_back')" size="17px" />
           Вернуться
         </button>
       </div>
@@ -656,7 +657,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
       <!-- Шаг e-mail: вход по коду из письма и восстановление пароля -->
       <div v-else-if="state === 'email'" key="email" class="step">
         <div class="brand">
-          <span class="brand-icon"><q-icon name="mail" size="30px" /></span>
+          <span class="brand-icon"><q-icon :name="icon('mail')" size="30px" /></span>
         </div>
         <h2 class="step-title">
           {{ emailMode === 'login' ? 'Вход по e-mail' : 'Восстановление пароля' }}
@@ -700,7 +701,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
             >
               <template #append>
                 <q-icon
-                  :name="showEmailCode ? 'visibility_off' : 'visibility'"
+                  :name="icon(showEmailCode ? 'visibility_off' : 'visibility')"
                   class="password-eye"
                   size="20px"
                   role="button"
@@ -725,7 +726,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
               >
                 <template #append>
                   <q-icon
-                    :name="showResetPassword ? 'visibility_off' : 'visibility'"
+                    :name="icon(showResetPassword ? 'visibility_off' : 'visibility')"
                     class="password-eye"
                     size="20px"
                     role="button"
@@ -761,7 +762,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
 
           <button type="submit" class="btn btn-primary" :disabled="isLoading">
             <span v-if="isLoading" class="spinner"></span>
-            <q-icon v-else :name="emailCodeSent ? 'check' : 'send'" size="17px" />
+            <q-icon v-else :name="icon(emailCodeSent ? 'check' : 'send')" size="17px" />
             <span>{{ emailCodeSent ? 'Подтвердить' : 'Отправить код' }}</span>
           </button>
         </form>
@@ -773,12 +774,12 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
           :disabled="isLoading"
           @click="sendEmailCode"
         >
-          <q-icon name="refresh" size="17px" />
+          <q-icon :name="icon('refresh')" size="17px" />
           Отправить код ещё раз
         </button>
 
         <button class="link-btn" type="button" :disabled="isLoading" @click="goBackToPhoneInput">
-          <q-icon name="arrow_back" size="17px" />
+          <q-icon :name="icon('arrow_back')" size="17px" />
           Вернуться к входу по номеру
         </button>
       </div>
@@ -786,7 +787,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
       <!-- Шаг 2б: подтверждение номера кодом (если пароля ещё нет) -->
       <div v-else-if="state === 'otp'" key="otp" class="step">
         <div class="brand">
-          <span class="brand-icon"><q-icon name="sms" size="30px" /></span>
+          <span class="brand-icon"><q-icon :name="icon('sms')" size="30px" /></span>
         </div>
         <h2 class="step-title">Введите код</h2>
         <p class="step-subtitle">
@@ -813,18 +814,18 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
 
           <button type="submit" class="btn btn-primary" :disabled="isLoading">
             <span v-if="isLoading" class="spinner"></span>
-            <q-icon v-else name="check" size="17px" />
+            <q-icon v-else :name="icon('check')" size="17px" />
             <span>{{ isLoading ? 'Проверка…' : 'Подтвердить' }}</span>
           </button>
         </form>
 
         <button class="link-btn" type="button" :disabled="isLoading" @click="sendOtp">
-          <q-icon name="refresh" size="17px" />
+          <q-icon :name="icon('refresh')" size="17px" />
           Отправить код ещё раз
         </button>
 
         <button class="link-btn" type="button" :disabled="isLoading" @click="goBackToPhoneInput">
-          <q-icon name="arrow_back" size="17px" />
+          <q-icon :name="icon('arrow_back')" size="17px" />
           Изменить номер
         </button>
 
@@ -837,7 +838,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
       <!-- Шаг 2в: создание пароля (новый номер или пароль ещё не задан) -->
       <div v-else key="create" class="step">
         <div class="brand">
-          <span class="brand-icon"><q-icon name="person_add" size="30px" /></span>
+          <span class="brand-icon"><q-icon :name="icon('person_add')" size="30px" /></span>
         </div>
         <h2 class="step-title">
           {{
@@ -871,7 +872,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
           >
             <template #append>
               <q-icon
-                :name="showNew ? 'visibility_off' : 'visibility'"
+                :name="icon(showNew ? 'visibility_off' : 'visibility')"
                 class="password-eye"
                 size="20px"
                 role="button"
@@ -903,7 +904,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
           >
             <template #append>
               <q-icon
-                :name="showConfirm ? 'visibility_off' : 'visibility'"
+                :name="icon(showConfirm ? 'visibility_off' : 'visibility')"
                 class="password-eye"
                 size="20px"
                 role="button"
@@ -915,7 +916,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
 
           <button type="submit" class="btn btn-primary" :disabled="isLoading">
             <span v-if="isLoading" class="spinner"></span>
-            <q-icon v-else name="check" size="17px" />
+            <q-icon v-else :name="icon('check')" size="17px" />
             <span>{{
               isLoading
                 ? 'Сохранение…'
@@ -927,7 +928,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
         </form>
 
         <button class="link-btn" type="button" :disabled="isLoading" @click="goBackToPhoneInput">
-          <q-icon name="arrow_back" size="17px" />
+          <q-icon :name="icon('arrow_back')" size="17px" />
           Изменить номер
         </button>
       </div>

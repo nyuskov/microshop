@@ -1,6 +1,6 @@
 <template>
   <div class="inline-search">
-    <q-icon name="search" class="search-icon" size="17px" />
+    <q-icon :name="icon('search')" class="search-icon" size="17px" />
     <input
       v-model="query"
       class="inline-search-input"
@@ -10,12 +10,13 @@
     />
     <span v-if="count > 0" class="inline-search-count">{{ count }} совп.</span>
     <button class="icon-btn" title="Закрыть поиск" @click="emit('close')">
-      <q-icon name="close" size="20px" />
+      <q-icon :name="icon('close')" size="20px" />
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 const query = defineModel<string>('query', { required: true })
 
 defineProps<{

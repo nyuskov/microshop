@@ -9,7 +9,7 @@
         <span class="reply-bar-text">{{ editingMessage.text }}</span>
       </div>
       <button class="icon-btn" title="Отмена" @click="emit('cancel-edit')">
-        <q-icon name="close" size="20px" />
+        <q-icon :name="icon('close')" size="20px" />
       </button>
     </div>
 
@@ -20,7 +20,7 @@
         <span class="reply-bar-text">{{ messageSnippet(replyTarget) }}</span>
       </div>
       <button class="icon-btn" title="Отменить ответ" @click="emit('clear-reply')">
-        <q-icon name="close" size="20px" />
+        <q-icon :name="icon('close')" size="20px" />
       </button>
     </div>
 
@@ -36,7 +36,7 @@
         title="Прикрепить файл"
         @click="attachInput?.click()"
       >
-        <q-icon name="attach_file" size="20px" />
+        <q-icon :name="icon('attach_file')" size="20px" />
       </button>
       <input
         ref="attachInput"
@@ -61,7 +61,7 @@
         title="Эмодзи и GIF"
         @click="emit('toggle-extras')"
       >
-        <q-icon name="sentiment_satisfied_alt" size="20px" />
+        <q-icon :name="icon('sentiment_satisfied_alt')" size="20px" />
       </button>
       <span v-if="!hasText" class="mic-wrap">
         <button
@@ -87,7 +87,7 @@
           @pointercancel="emit('mic-cancel')"
           @contextmenu.prevent
         >
-          <q-icon :name="recordMode === 'video' ? 'videocam' : 'mic'" size="20px" />
+          <q-icon :name="icon(recordMode === 'video' ? 'videocam' : 'mic')" size="20px" />
         </button>
         <span v-if="recordModeHint" class="record-mode-hint">{{ recordModeHint }}</span>
       </span>
@@ -98,7 +98,7 @@
         :disabled="sending"
         @click="emit('send-text')"
       >
-        <q-icon name="send" size="18px" />
+        <q-icon :name="icon('send')" size="18px" />
       </button>
 
       <div v-if="extrasPanel !== 'none'" class="extras-menu">
@@ -163,6 +163,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { computed, nextTick, ref, watch } from 'vue'
 import type { Message } from '@/types'
 import { messageSnippet } from '@/utils/media'

@@ -24,14 +24,14 @@
 
     <!-- Запись недоступна -->
     <div v-if="broken" class="rvm-error">
-      <q-icon name="warning" size="18px" />
+      <q-icon :name="icon('warning')" size="18px" />
       <span>Видео недоступно</span>
     </div>
 
     <!-- Центральная кнопка play (когда не играет) -->
     <div v-else-if="!isPlaying" class="rvm-center">
       <span class="rvm-play">
-        <q-icon name="play_arrow" size="30px" />
+        <q-icon :name="icon('play_arrow')" size="30px" />
       </span>
     </div>
 
@@ -42,7 +42,7 @@
       :title="muted ? 'Включить звук' : 'Выключить звук'"
       @click.stop="toggleMute"
     >
-      <q-icon :name="muted ? 'volume_off' : 'volume_up'" size="18px" />
+      <q-icon :name="icon(muted ? 'volume_off' : 'volume_up')" size="18px" />
     </button>
 
     <!-- Развернуть на весь экран -->
@@ -52,7 +52,7 @@
       :title="'Смотреть «' + name + '» на весь экран'"
       @click.stop="openPreview"
     >
-      <q-icon name="fullscreen" size="18px" />
+      <q-icon :name="icon('fullscreen')" size="18px" />
     </button>
   </div>
 
@@ -62,11 +62,11 @@
       <div class="rvm-modal-card">
         <div class="rvm-modal-head">
           <span class="rvm-modal-title">
-            <q-icon name="videocam" size="18px" />
+            <q-icon :name="icon('videocam')" size="18px" />
             {{ name }}
           </span>
           <button class="rvm-modal-close" title="Закрыть" @click="closePreview">
-            <q-icon name="close" size="20px" />
+            <q-icon :name="icon('close')" size="20px" />
           </button>
         </div>
         <video :src="src" class="rvm-modal-video" controls autoplay playsinline></video>
@@ -76,6 +76,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { ref } from 'vue'
 
 defineProps<{

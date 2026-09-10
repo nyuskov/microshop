@@ -19,7 +19,7 @@
         title="Добавить историю"
         @click="pickFile"
       >
-        <q-icon name="add" size="14px" />
+        <q-icon :name="icon('add')" size="14px" />
       </button>
       <span v-else class="story-add busy"><span class="mini-spinner"></span></span>
       <span class="story-name">Моя история</span>
@@ -90,6 +90,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { computed, ref } from 'vue'
 import { Notify } from 'quasar'
 

@@ -5,7 +5,7 @@
     <!-- Режим выделения чатов (вход по удержанию) -->
     <div v-if="selectionMode" class="selection-bar">
       <button class="icon-btn" title="Отмена" @click="exitSelection">
-        <q-icon name="close" size="20px" />
+        <q-icon :name="icon('close')" size="20px" />
       </button>
       <span class="selection-count">{{ selectedIds.length }}</span>
       <div class="selection-actions">
@@ -16,7 +16,10 @@
           aria-label="Мьют/анмьют выбранных"
           @click="onBulkMute"
         >
-          <q-icon :name="selectionAllMuted ? 'notifications' : 'notifications_off'" size="20px" />
+          <q-icon
+            :name="icon(selectionAllMuted ? 'notifications' : 'notifications_off')"
+            size="20px"
+          />
         </button>
         <button
           class="icon-btn"
@@ -25,7 +28,7 @@
           aria-label="Пин/анпин выбранных"
           @click="onBulkPin"
         >
-          <q-icon name="push_pin" size="20px" />
+          <q-icon :name="icon('push_pin')" size="20px" />
         </button>
         <button
           class="icon-btn danger"
@@ -33,7 +36,7 @@
           aria-label="Удалить выбранные"
           @click="onBulkDelete"
         >
-          <q-icon name="delete" size="20px" />
+          <q-icon :name="icon('delete')" size="20px" />
         </button>
         <button
           class="icon-btn"
@@ -42,7 +45,7 @@
           aria-label="Выбрать все"
           @click="toggleSelectAll"
         >
-          <q-icon name="done_all" size="20px" />
+          <q-icon :name="icon('done_all')" size="20px" />
         </button>
       </div>
     </div>
@@ -58,7 +61,7 @@
           aria-label="Поиск"
           @click="openSearch"
         >
-          <q-icon name="search" size="20px" />
+          <q-icon :name="icon('search')" size="20px" />
         </button>
         <button
           v-if="view === 'contacts'"
@@ -67,7 +70,7 @@
           aria-label="Добавить из контактов телефона"
           @click="onAddFromPhone"
         >
-          <q-icon name="contacts" size="20px" />
+          <q-icon :name="icon('contacts')" size="20px" />
         </button>
         <span class="ms-dropdown-wrap" @click.stop>
           <button
@@ -77,7 +80,7 @@
             aria-label="Ещё"
             @click="toggleSettingsMenu"
           >
-            <q-icon name="more_vert" size="20px" />
+            <q-icon :name="icon('more_vert')" size="20px" />
           </button>
           <div v-if="settingsMenuOpen" class="ms-dropdown">
             <button
@@ -86,7 +89,7 @@
               class="ms-dropdown-item"
               @click="runSettingsAction(action)"
             >
-              <q-icon :name="action.icon" size="19px" />
+              <q-icon :name="icon(action.icon)" size="19px" />
               <span>{{ action.label }}</span>
             </button>
           </div>
@@ -125,7 +128,7 @@
               aria-label="Назад"
               @click="closeSearch"
             >
-              <q-icon name="arrow_back" size="20px" />
+              <q-icon :name="icon('arrow_back')" size="20px" />
             </button>
             <input
               ref="searchInputRef"
@@ -143,7 +146,7 @@
               aria-label="Очистить"
               @click="searchQuery = ''"
             >
-              <q-icon name="close" size="18px" />
+              <q-icon :name="icon('close')" size="18px" />
             </button>
           </div>
 
@@ -207,7 +210,7 @@
                     <template v-if="user.phone_number"> · {{ user.phone_number }}</template>
                   </span>
                 </span>
-                <q-icon name="chevron_right" class="row-arrow" size="20px" />
+                <q-icon :name="icon('chevron_right')" class="row-arrow" size="20px" />
               </button>
             </template>
             <div v-else-if="searchMode === 'people'" class="search-status">Никого не найдено</div>
@@ -243,7 +246,7 @@
                     </template>
                   </span>
                 </span>
-                <q-icon name="chevron_right" class="row-arrow" size="20px" />
+                <q-icon :name="icon('chevron_right')" class="row-arrow" size="20px" />
               </button>
             </template>
             <div v-else-if="searchMode === 'messages'" class="search-status">Ничего не найдено</div>
@@ -311,14 +314,19 @@
                     class="row-selector"
                     :class="{ on: isSelected(chat.id) }"
                   >
-                    <q-icon v-if="isSelected(chat.id)" name="check" size="15px" />
+                    <q-icon v-if="isSelected(chat.id)" :name="icon('check')" size="15px" />
                   </span>
                   <span class="avatar-wrap" :class="{ online: chatPeerOnline(chat) }">
                     <span
                       class="avatar"
                       :style="chat.is_self ? savedStyle : avatarStyle(chatTitleOf(chat))"
                     >
-                      <q-icon v-if="chat.is_self" name="bookmark" size="20px" aria-hidden="true" />
+                      <q-icon
+                        v-if="chat.is_self"
+                        :name="icon('bookmark')"
+                        size="20px"
+                        aria-hidden="true"
+                      />
                       <img
                         v-else-if="chatAvatarOf(chat)"
                         :src="chatAvatarOf(chat)"
@@ -334,7 +342,7 @@
                       <span class="row-time">
                         <q-icon
                           v-if="isMutedOf(chat.id)"
-                          name="notifications_off"
+                          :name="icon('notifications_off')"
                           size="14px"
                           class="row-muted"
                           aria-hidden="true"
@@ -352,7 +360,7 @@
                         <template v-else>
                           <q-icon
                             v-if="lastMessageIsOut(chat)"
-                            name="done"
+                            :name="icon('done')"
                             class="tick"
                             size="16px"
                           />
@@ -372,7 +380,7 @@
           <!-- Пустой глобальный поиск: подсказка вместо списка -->
           <template v-else-if="searchOpen && !searchQuery.trim()">
             <div class="search-hint">
-              <q-icon name="search" class="search-hint-icon" size="30px" />
+              <q-icon :name="icon('search')" class="search-hint-icon" size="30px" />
               <p>Поиск по людям и сообщениям<br />во всех чатах</p>
             </div>
           </template>
@@ -381,7 +389,7 @@
         <!-- Контакты -->
         <template v-else>
           <div class="panel-search">
-            <q-icon name="search" class="search-icon" size="17px" />
+            <q-icon :name="icon('search')" class="search-icon" size="17px" />
             <input
               v-model="contactsQuery"
               class="panel-search-input"
@@ -403,7 +411,7 @@
                 aria-label="Закрыть результаты"
                 @click="clearPhoneMatch"
               >
-                <q-icon name="close" size="18px" />
+                <q-icon :name="icon('close')" size="18px" />
               </button>
             </div>
             <p v-if="phoneError" class="phone-error">{{ phoneError }}</p>
@@ -433,7 +441,7 @@
                     }}<template v-if="user.phone_number"> · {{ user.phone_number }}</template></span
                   >
                 </span>
-                <q-icon name="chat_bubble" class="row-arrow" size="18px" />
+                <q-icon :name="icon('chat_bubble')" class="row-arrow" size="18px" />
               </button>
             </div>
           </div>
@@ -476,7 +484,7 @@
                     ></span
                   >
                 </span>
-                <q-icon name="chevron_right" class="row-arrow" size="20px" />
+                <q-icon :name="icon('chevron_right')" class="row-arrow" size="20px" />
               </button>
             </div>
           </template>
@@ -492,7 +500,7 @@
         type="button"
         @click="emit('to-chats')"
       >
-        <q-icon name="forum" size="22px" />
+        <q-icon :name="icon('forum')" size="22px" />
         <span>Чаты</span>
         <span v-if="unreadCount" class="bottom-nav-badge">{{
           unreadCount > 99 ? '99+' : unreadCount
@@ -504,7 +512,7 @@
         type="button"
         @click="emit('to-stories')"
       >
-        <q-icon name="auto_stories" size="22px" />
+        <q-icon :name="icon('auto_stories')" size="22px" />
         <span>Истории</span>
         <span v-if="storiesStore.hasUnseen" class="bottom-nav-dot"></span>
       </button>
@@ -514,7 +522,7 @@
         type="button"
         @click="emit('to-contacts')"
       >
-        <q-icon name="group" size="22px" />
+        <q-icon :name="icon('group')" size="22px" />
         <span>Контакты</span>
       </button>
     </nav>
@@ -533,11 +541,11 @@
       <div class="phone-card">
         <header class="phone-head">
           <div class="phone-title">
-            <q-icon name="contacts" size="18px" />
+            <q-icon :name="icon('contacts')" size="18px" />
             <span>Из контактов телефона</span>
           </div>
           <button class="phone-xbtn" title="Закрыть" @click="closePhoneImport">
-            <q-icon name="close" size="20px" />
+            <q-icon :name="icon('close')" size="20px" />
           </button>
         </header>
 
@@ -548,7 +556,7 @@
             :disabled="phoneBusy"
             @click="pickDeviceContacts"
           >
-            <q-icon name="phone_android" size="20px" />
+            <q-icon :name="icon('phone_android')" size="20px" />
             <span>{{ phoneBusy ? 'Открываем…' : 'Выбрать из телефонной книги' }}</span>
           </button>
           <p v-else class="phone-hint">
@@ -602,7 +610,7 @@
                   <span class="phone-row-name">{{ displayName(user) }}</span>
                   <span class="phone-row-phone">@{{ user.username }}</span>
                 </span>
-                <q-icon name="chat_bubble" class="phone-row-icon" size="18px" />
+                <q-icon :name="icon('chat_bubble')" class="phone-row-icon" size="18px" />
               </button>
             </div>
           </template>
@@ -613,6 +621,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { useStoriesStore } from '@/stores/stories'
 import StoriesFeed from '@/components/stories/StoriesFeed.vue'
 import StoriesStrip from '@/components/stories/StoriesStrip.vue'

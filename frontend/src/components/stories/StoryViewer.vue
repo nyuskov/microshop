@@ -28,10 +28,10 @@
         title="Удалить историю"
         @click.stop="removeCurrent"
       >
-        <q-icon name="delete_outline" size="22px" />
+        <q-icon :name="icon('delete_outline')" size="22px" />
       </button>
       <button class="viewer-icon" type="button" title="Закрыть" @click.stop="emit('close')">
-        <q-icon name="close" size="24px" />
+        <q-icon :name="icon('close')" size="24px" />
       </button>
     </header>
 
@@ -69,23 +69,24 @@
 
       <!-- Зоны «назад/вперёд» -->
       <button class="viewer-zone left" type="button" title="Предыдущая" @click.stop="previous">
-        <q-icon name="chevron_left" size="30px" />
+        <q-icon :name="icon('chevron_left')" size="30px" />
       </button>
       <button class="viewer-zone right" type="button" title="Следующая" @click.stop="next">
-        <q-icon name="chevron_right" size="30px" />
+        <q-icon :name="icon('chevron_right')" size="30px" />
       </button>
     </div>
 
     <footer class="viewer-foot">
       <p v-if="current.story.caption" class="viewer-caption">{{ current.story.caption }}</p>
       <p v-if="current.isMine" class="viewer-views">
-        <q-icon name="visibility" size="14px" /> {{ current.story.views }}
+        <q-icon :name="icon('visibility')" size="14px" /> {{ current.story.views }}
       </p>
     </footer>
   </div>
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { mediaUrl } from '@/config'

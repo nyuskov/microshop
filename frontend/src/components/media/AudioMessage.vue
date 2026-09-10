@@ -20,7 +20,7 @@
         :title="isPlaying ? 'Пауза' : 'Слушать'"
         @click="toggle"
       >
-        <q-icon :name="isPlaying ? 'pause' : 'play_arrow'" size="24px" />
+        <q-icon :name="icon(isPlaying ? 'pause' : 'play_arrow')" size="24px" />
       </button>
       <div class="am-track" title="Перемотка" @click="seek">
         <div class="am-fill" :style="progressStyle()"></div>
@@ -33,7 +33,7 @@
     </div>
     <div v-else class="am-sub">
       <span class="am-name">
-        <q-icon name="volume_up" size="15px" />
+        <q-icon :name="icon('volume_up')" size="15px" />
         {{ name }}
       </span>
       <span v-if="!durationKnown && size" class="am-size">{{ formatBytes(size) }}</span>
@@ -42,6 +42,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { computed, ref } from 'vue'
 import { formatClock } from '@/services/recorder'
 

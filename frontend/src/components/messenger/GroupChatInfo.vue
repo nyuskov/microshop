@@ -28,7 +28,7 @@
                 @change="onAvatarPick"
               />
               <span v-if="canManage" class="gi-avatar-hint">
-                <q-icon name="photo_camera" size="18px" />
+                <q-icon :name="icon('photo_camera')" size="18px" />
               </span>
             </label>
             <button
@@ -39,7 +39,7 @@
               :disabled="busy"
               @click="onAvatarRemove"
             >
-              <q-icon name="delete" size="18px" />
+              <q-icon :name="icon('delete')" size="18px" />
             </button>
           </div>
 
@@ -87,7 +87,7 @@
               :disabled="busy"
               @click="addPanelOpen = !addPanelOpen"
             >
-              <q-icon name="person_add" size="16px" />
+              <q-icon :name="icon('person_add')" size="16px" />
               <span>Добавить</span>
             </button>
           </div>
@@ -121,7 +121,7 @@
                 </span>
                 <span class="gi-add-name">{{ displayName(contact) }}</span>
                 <span class="gi-check" :class="{ on: addSelected.has(contact.id) }">
-                  <q-icon v-if="addSelected.has(contact.id)" name="check" size="14px" />
+                  <q-icon v-if="addSelected.has(contact.id)" :name="icon('check')" size="14px" />
                 </span>
               </button>
               <div v-if="!addCandidates.length" class="gi-empty-line">
@@ -171,7 +171,7 @@
                   :title="action.title"
                   @click="runMemberAction(action, member)"
                 >
-                  <q-icon :name="action.icon" size="16px" />
+                  <q-icon :name="icon(action.icon)" size="16px" />
                 </button>
               </span>
             </div>
@@ -181,11 +181,11 @@
         <!-- Действия с группой -->
         <div class="gi-danger-zone">
           <button v-if="isCreator" class="gi-danger-btn" :disabled="busy" @click="deleteGroup">
-            <q-icon name="delete_forever" size="18px" />
+            <q-icon :name="icon('delete_forever')" size="18px" />
             <span>Удалить группу</span>
           </button>
           <button v-else class="gi-danger-btn" :disabled="busy" @click="leaveGroup">
-            <q-icon name="logout" size="18px" />
+            <q-icon :name="icon('logout')" size="18px" />
             <span>Покинуть группу</span>
           </button>
         </div>
@@ -195,6 +195,7 @@
 </template>
 
 <script setup lang="ts">
+import { icon } from '@/utils/icons'
 import { computed, onMounted, ref, watch } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import {
