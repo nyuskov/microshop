@@ -240,15 +240,7 @@ services:
       args:
         VITE_API_ORIGIN: ${VITE_API_ORIGIN:-http://localhost}
     image: microshop-test-frontend-dist:latest
-    entrypoint: ["/bin/sh", "-c"]
-    # Сначала всё, кроме index.html, потом сам index.html — иначе есть мгновение,
-    # когда новый index ссылается на ещё не скопированный ассет.
-    # `-mindepth 1` обязателен: без него find отдаёт и сам /src, и cp копирует
-    # каталог целиком внутрь /dst (появляется лишний /dst/src).
-    command:
-      - >
-        find /usr/share/nginx/html -mindepth 1 -maxdepth 1 ! -name index.html -exec cp -a {} /dst/ \;
-        cp -a /usr/share/nginx/html/index.html /dst/index.html &&        && test -s /dst/index.html        echo "статика обновлена: $(ls /dst/assets | wc -l) файлов в assets"
+    # Копированием занимается ENTRYPOINT образа (frontend/copy-static.sh).
     volumes:
       - frontend_html:/dst
     networks:

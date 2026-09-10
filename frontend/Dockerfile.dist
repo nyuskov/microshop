@@ -1,12 +1,13 @@
-# Сборка статики фронтенда: vite build -> /usr/share/nginx/html.
+# Сборка статики фронтенда и «поставщик» файлов для тома frontend_html.
 #
-# Этот образ НЕ раздаёт файлы. Он нужен как «поставщик» статики: во время деплоя
-# контейнер из него копирует содержимое в том frontend_html, из которого читает
-# рабочий nginx (сервис frontend). Так обновление интерфейса не требует
-# пересоздания контейнера — а значит деплой проходит без простоя.
+# Этот образ НЕ раздаёт файлы. Во время деплоя контейнер из него копирует
+# содержимое в том, из которого читает рабочий nginx (сервис frontend), поэтому
+# обновление интерфейса не требует пересоздания nginx — деплой идёт без простоя.
 #
-# Смотри: scripts/ci/deploy_remote.sh, docker-compose.test.yaml (frontend-dist).
+# Смотри: frontend/copy-static.sh, docker-compose.test.yaml (frontend-dist),
+# scripts/ci/deploy_remote.sh.
 
+# Этап 1 — сборка vite.
 FROM node:22-alpine AS build
 WORKDIR /app
 RUN corepack enable
@@ -26,7 +27,10 @@ ENV VITE_API_ORIGIN=${VITE_API_ORIGIN}
 # и панель GIF не увидела бы ключ на сервере.
 RUN pnpm run build-only
 
-# Приводим результат к пути, из которого его ждёт nginx-образ (/usr/share/nginx/html):
-# иначе «поставщик» и «раздатчик» статики говорят на разных путях и копирование
-# в том молча получается пустым.
-RUN mkdir -p /usr/share/nginx/html && cp -a /app/dist/. /usr/share/nginx/html/
+# Этап 2 — маленький образ только с файлами и скриптом копирования:
+# node и зависимости для деплоя не нужны, а путь /usr/share/nginx/html намеренно
+# совпадает с тем, из которого раздаёт nginx (иначе копирование шло бы «в никуда»).
+FROM alpine:3.20
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY copy-static.sh /copy-static.sh
+ENTRYPOINT ["/bin/sh", "/copy-static.sh"]
