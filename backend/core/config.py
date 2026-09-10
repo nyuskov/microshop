@@ -122,8 +122,9 @@ class Settings(BaseSettings):
     auth_device_verify_limit_per_minute: int = 10
 
     # --- TURN (ретрансляция медиа WebRTC) ---
-    # Адреса TURN берём из env: `turn:<ip>:3478?transport=udp,turn:<ip>:3478?transport=tcp`
-    # (можно добавить `turns:...:5349?transport=tcp`, когда откроется порт в фаерволе).
+    # Адреса TURN берём из env, например:
+    # `turn:<ip>:3478?transport=udp,turn:<ip>:3478?transport=tcp`
+    # (можно добавить `turns:...:5349?transport=tcp`, когда откроется порт).
     turn_urls: str = Field(default="", validation_alias="TURN_URLS")
     # Общий секрет TURN REST API: coturn (--use-auth-secret) и мы считаем по нему
     # HMAC-SHA1. В клиентский бандл он не попадает — статического пароля больше нет.
