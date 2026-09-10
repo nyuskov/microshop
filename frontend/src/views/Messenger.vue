@@ -492,6 +492,8 @@ const BlockedUsersDialog = defineAsyncComponent(
 const ModerationReportsDialog = defineAsyncComponent(
   () => import('@/components/messenger/ModerationReportsDialog.vue')
 )
+// Просмотрщик историй — открывается по клику на историю.
+const StoryViewer = defineAsyncComponent(() => import('@/components/stories/StoryViewer.vue'))
 import { useCallStore } from '@/stores/call'
 import { useRealtimeStore } from '@/stores/realtime'
 import { useStoriesStore } from '@/stores/stories'

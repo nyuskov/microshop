@@ -1,114 +1,118 @@
 <template>
   <aside ref="rootEl" class="side-panel">
-    <!-- Диалоги -->
-    <!-- Истории (статусы) -->
-    <template v-if="view === 'stories'">
-      <div class="panel-header">
-        <div class="panel-header-left">
-          <button class="icon-btn" title="Назад к чатам" @click="emit('to-chats')">
-            <q-icon name="arrow_back" size="20px" />
-          </button>
-        </div>
-        <h2 class="panel-title">Истории</h2>
-        <div class="panel-header-right"></div>
+    <!-- Разделы переключаются нижним меню, поэтому шапка одна на все вкладки:
+         сверху остаются только действия, которых в нижнем меню нет. -->
+    <!-- Режим выделения чатов (вход по удержанию) -->
+    <div v-if="selectionMode" class="selection-bar">
+      <button class="icon-btn" title="Отмена" @click="exitSelection">
+        <q-icon name="close" size="20px" />
+      </button>
+      <span class="selection-count">{{ selectedIds.length }}</span>
+      <div class="selection-actions">
+        <button
+          class="icon-btn"
+          :class="{ on: selectionAllMuted }"
+          :title="selectionAllMuted ? 'Включить уведомления' : 'Замьютить выбранные'"
+          aria-label="Мьют/анмьют выбранных"
+          @click="onBulkMute"
+        >
+          <q-icon :name="selectionAllMuted ? 'notifications' : 'notifications_off'" size="20px" />
+        </button>
+        <button
+          class="icon-btn"
+          :class="{ on: selectionAllPinned }"
+          :title="selectionAllPinned ? 'Открепить выбранные' : 'Закрепить выбранные'"
+          aria-label="Пин/анпин выбранных"
+          @click="onBulkPin"
+        >
+          <q-icon name="push_pin" size="20px" />
+        </button>
+        <button
+          class="icon-btn danger"
+          title="Удалить выбранные"
+          aria-label="Удалить выбранные"
+          @click="onBulkDelete"
+        >
+          <q-icon name="delete" size="20px" />
+        </button>
+        <button
+          class="icon-btn"
+          :class="{ on: allVisibleSelected }"
+          title="Выбрать все"
+          aria-label="Выбрать все"
+          @click="toggleSelectAll"
+        >
+          <q-icon name="done_all" size="20px" />
+        </button>
       </div>
+    </div>
+
+    <div v-else class="panel-header">
+      <div class="panel-header-left"></div>
+      <h2 class="panel-title">{{ panelTitle }}</h2>
+      <div class="panel-header-right">
+        <button
+          v-if="view === 'chats'"
+          class="icon-btn"
+          title="Поиск"
+          aria-label="Поиск"
+          @click="openSearch"
+        >
+          <q-icon name="search" size="20px" />
+        </button>
+        <button
+          v-if="view === 'contacts'"
+          class="icon-btn"
+          title="Добавить из контактов телефона"
+          aria-label="Добавить из контактов телефона"
+          @click="onAddFromPhone"
+        >
+          <q-icon name="contacts" size="20px" />
+        </button>
+        <span class="ms-dropdown-wrap" @click.stop>
+          <button
+            class="icon-btn"
+            :class="{ open: settingsMenuOpen }"
+            title="Ещё"
+            aria-label="Ещё"
+            @click="toggleSettingsMenu"
+          >
+            <q-icon name="more_vert" size="20px" />
+          </button>
+          <div v-if="settingsMenuOpen" class="ms-dropdown">
+            <button
+              v-for="action in SETTINGS_ACTIONS"
+              :key="action.key"
+              class="ms-dropdown-item"
+              @click="runSettingsAction(action)"
+            >
+              <q-icon :name="action.icon" size="19px" />
+              <span>{{ action.label }}</span>
+            </button>
+          </div>
+        </span>
+        <button
+          class="self-profile-btn"
+          title="Настройки профиля"
+          aria-label="Настройки профиля"
+          @click="emit('open-profile')"
+        >
+          <span class="avatar self-avatar" :style="avatarStyle(selfName)">
+            <img v-if="selfAvatarUrl" :src="selfAvatarUrl" class="avatar-img" alt="" />
+            <template v-else>{{ selfName ? initials(selfName) : 'U' }}</template>
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Диалоги -->
+    <template v-if="view === 'stories'">
       <div class="chat-scroll">
         <StoriesFeed @open-story="emit('open-story', $event)" />
       </div>
     </template>
 
     <template v-if="view === 'chats'">
-      <!-- Режим выделения чатов (вход по удержанию) -->
-      <div v-if="selectionMode" class="selection-bar">
-        <button class="icon-btn" title="Отмена" @click="exitSelection">
-          <q-icon name="close" size="20px" />
-        </button>
-        <span class="selection-count">{{ selectedIds.length }}</span>
-        <div class="selection-actions">
-          <button
-            class="icon-btn"
-            :class="{ on: selectionAllMuted }"
-            :title="selectionAllMuted ? 'Включить уведомления' : 'Замьютить выбранные'"
-            aria-label="Мьют/анмьют выбранных"
-            @click="onBulkMute"
-          >
-            <q-icon :name="selectionAllMuted ? 'notifications' : 'notifications_off'" size="20px" />
-          </button>
-          <button
-            class="icon-btn"
-            :class="{ on: selectionAllPinned }"
-            :title="selectionAllPinned ? 'Открепить выбранные' : 'Закрепить выбранные'"
-            aria-label="Пин/анпин выбранных"
-            @click="onBulkPin"
-          >
-            <q-icon name="push_pin" size="20px" />
-          </button>
-          <button
-            class="icon-btn danger"
-            title="Удалить выбранные"
-            aria-label="Удалить выбранные"
-            @click="onBulkDelete"
-          >
-            <q-icon name="delete" size="20px" />
-          </button>
-          <button
-            class="icon-btn"
-            :class="{ on: allVisibleSelected }"
-            title="Выбрать все"
-            aria-label="Выбрать все"
-            @click="toggleSelectAll"
-          >
-            <q-icon name="done_all" size="20px" />
-          </button>
-        </div>
-      </div>
-      <div v-else class="panel-header">
-        <div class="panel-header-left">
-          <button class="icon-btn" title="Контакты" @click="emit('to-contacts')">
-            <q-icon name="person_add" size="20px" />
-          </button>
-        </div>
-        <h2 class="panel-title">Чаты</h2>
-        <div class="panel-header-right">
-          <button class="icon-btn" title="Поиск" aria-label="Поиск" @click="openSearch">
-            <q-icon name="search" size="20px" />
-          </button>
-          <span class="ms-dropdown-wrap" @click.stop>
-            <button
-              class="icon-btn"
-              :class="{ open: settingsMenuOpen }"
-              title="Настройки"
-              @click="toggleSettingsMenu"
-            >
-              <q-icon name="more_vert" size="20px" />
-            </button>
-            <div v-if="settingsMenuOpen" class="ms-dropdown">
-              <button
-                v-for="action in SETTINGS_ACTIONS"
-                :key="action.key"
-                class="ms-dropdown-item"
-                @click="runSettingsAction(action)"
-              >
-                <q-icon :name="action.icon" size="19px" />
-                <span>{{ action.label }}</span>
-              </button>
-            </div>
-          </span>
-          <!-- Профиль (свой аватар) — в правом крае, чтобы не путался с «Контактами» -->
-          <button
-            class="self-profile-btn"
-            title="Профиль"
-            aria-label="Профиль"
-            @click="emit('open-profile')"
-          >
-            <span class="avatar self-avatar" :style="avatarStyle(selfName)">
-              <img v-if="selfAvatarUrl" :src="selfAvatarUrl" class="avatar-img" alt="" />
-              <template v-else>{{ selfName ? initials(selfName) : 'U' }}</template>
-            </span>
-          </button>
-        </div>
-      </div>
-
       <!-- Глобальный поиск: открывается по значку и прячет верхний хидер,
            как панель действий при выделении чатов удержанием. -->
       <div v-if="!selectionMode && searchOpen" class="panel-search search-head">
@@ -308,47 +312,7 @@
     </template>
 
     <!-- Контакты -->
-    <template v-else>
-      <div class="panel-header">
-        <div class="panel-header-left">
-          <button class="icon-btn" title="Назад к чатам" @click="emit('to-chats')">
-            <q-icon name="arrow_back" size="20px" />
-          </button>
-        </div>
-        <h2 class="panel-title">Контакты</h2>
-        <div class="panel-header-right">
-          <button
-            class="icon-btn"
-            title="Добавить из контактов телефона"
-            aria-label="Добавить из контактов телефона"
-            @click="onAddFromPhone"
-          >
-            <q-icon name="contacts" size="20px" />
-          </button>
-          <span class="ms-dropdown-wrap" @click.stop>
-            <button
-              class="icon-btn"
-              :class="{ open: settingsMenuOpen }"
-              title="Настройки"
-              @click="toggleSettingsMenu"
-            >
-              <q-icon name="more_vert" size="20px" />
-            </button>
-            <div v-if="settingsMenuOpen" class="ms-dropdown">
-              <button
-                v-for="action in SETTINGS_ACTIONS"
-                :key="action.key"
-                class="ms-dropdown-item"
-                @click="runSettingsAction(action)"
-              >
-                <q-icon :name="action.icon" size="19px" />
-                <span>{{ action.label }}</span>
-              </button>
-            </div>
-          </span>
-        </div>
-      </div>
-
+    <template v-if="view === 'contacts'">
       <div class="panel-search">
         <q-icon name="search" class="search-icon" size="17px" />
         <input
@@ -606,7 +570,7 @@ const props = defineProps<{
   mutedChatIds?: number[]
   /** Сохранённые черновики по id чата (показываются в превью). */
   drafts?: Record<number, string>
-  /** Имя и аватар текущего пользователя (кнопка «Профиль» слева). */
+  /** Имя и аватар текущего пользователя (кнопка «Настройки профиля»). */
   selfName: string
   selfAvatarUrl: string | undefined
   /** Администратор: показывает в «⋯» разбор жалоб. */
@@ -655,9 +619,14 @@ const SETTINGS_ACTIONS = computed<SettingsAction[]>(() => {
   return items
 })
 
+/** Заголовок панели: он же название текущего раздела нижнего меню. */
+const panelTitle = computed<string>(() => {
+  if (props.view === 'stories') return 'Истории'
+  if (props.view === 'contacts') return 'Контакты'
+  return 'Чаты'
+})
 const rootEl = ref<HTMLElement | null>(null)
 const settingsMenuOpen = ref(false)
-
 // Клик вне панели закрывает «⋯» (раньше это делал closePopups() в Messenger).
 let outsideHandler: ((event: PointerEvent) => void) | null = null
 watch(settingsMenuOpen, (open) => {
