@@ -1559,9 +1559,9 @@ onBeforeUnmount(() => {
   color: #5b6b79;
 }
 
-/* Нижний отступ под «плавающие» жесты (safe-area) на мобильных. */
+/* Нижний отступ до «плавающей» панели разделов (safe-area учтён в ней). */
 .chat-scroll {
-  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: 8px;
 }
 
 /* ---------- Режим выделения чатов (вход по удержанию) ---------- */
@@ -1915,13 +1915,16 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 /* ---------- Нижняя навигация (чаты / истории / контакты) ---------- */
+/* «Плавающая» панель разделов: отступ от краёв экрана, радиус и тонкая
+   рамка — отделяется от полотна без тени и без жёсткой линии. */
 .bottom-nav {
   display: flex;
   align-items: stretch;
-  /* Без жёсткой линии: панель отделяется мягкой тенью (см. --ms-shadow-bar). */
-  box-shadow: var(--ms-shadow-bar);
-  background: var(--ms-surface);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  margin: 0 8px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-radius: 18px;
+  border: 1px solid var(--ms-hairline);
+  background: var(--ms-surface-2);
+  overflow: hidden;
 }
 
 .bottom-nav-btn {
