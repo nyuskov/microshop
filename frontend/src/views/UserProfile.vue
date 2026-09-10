@@ -8,6 +8,7 @@ import { formatPhoneForBackend, localPhoneDigits, maskPhoneLocal } from '@/utils
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
 import { disablePushNotifications, enablePushNotifications } from '@/services/pwa'
 import { disableNativePush, enableNativePush, isNativeApp } from '@/services/nativePush'
+import { fetchStorageInfo, formatBytes, type StorageInfo } from '@/services/storage'
 import { PASSWORD_MIN_LENGTH, passwordProblem, passwordStrength } from '@/utils/passwordPolicy'
 import DeleteAccountDialog from '@/components/messenger/DeleteAccountDialog.vue'
 
@@ -155,6 +156,30 @@ const removeAvatarClick = async () => {
 }
 
 const closeModal = () => emit('close-modal')
+
+// ---------- Хранилище: сколько медиа занимает аккаунт ----------
+// Квота считается по файлам, которые пользователь загрузил сам (см.
+// api_v1/media_quota.py): профиль показывает заполненность заранее, чтобы 413
+// «хранилище заполнено» не стал неожиданностью.
+const storageInfo = ref<StorageInfo | null>(null)
+const storageLoading = ref(false)
+/** Место почти закончилось — предупреждаем заранее (порог из настроек сервера). */
+const STORAGE_WARN_PERCENT = 90
+const storageWarn = computed(() => (storageInfo.value?.percent ?? 0) >= STORAGE_WARN_PERCENT)
+
+const loadStorage = async () => {
+  storageLoading.value = true
+  try {
+    storageInfo.value = await fetchStorageInfo()
+  } catch (error) {
+    console.error('Storage info failed:', error)
+    storageInfo.value = null
+  } finally {
+    storageLoading.value = false
+  }
+}
+
+void loadStorage()
 
 // ---------- Безопасность: пароль, e-mail, выход со всех устройств ----------
 // Уведомление показываем, если вход не защищён: пароля нет, пароль слабый
@@ -700,6 +725,49 @@ const onNotificationsToggle = async (val: boolean) => {
             </div>
             <q-toggle v-model="profileForm.privacy_mode" color="primary" keep-color />
           </div>
+        </section>
+
+        <!-- Хранилище: сколько медиа занимает аккаунт -->
+        <section class="card-section">
+          <h3 class="section-title">Хранилище</h3>
+          <div v-if="storageInfo" class="storage-block">
+            <div class="storage-line">
+              <span class="storage-used">
+                {{ formatBytes(storageInfo.used_bytes) }} из
+                {{ formatBytes(storageInfo.quota_bytes) }}
+              </span>
+              <span class="storage-files">{{ storageInfo.files }} файл(ов)</span>
+            </div>
+            <div class="storage-bar" role="progressbar" :aria-valuenow="storageInfo.percent">
+              <span
+                class="storage-bar-fill"
+                :class="{ warn: storageWarn }"
+                :style="{ width: `${storageInfo.percent}%` }"
+              ></span>
+            </div>
+            <p class="storage-hint" :class="{ warn: storageWarn }">
+              <template v-if="storageWarn">
+                <q-icon name="warning" size="16px" />
+                Место почти закончилось: новые файлы не загрузятся — удалите старые сообщения с
+                вложениями.
+              </template>
+              <template v-else>
+                Пересланные файлы не тратят место второй раз. Освобождается сразу после удаления
+                сообщения.
+              </template>
+            </p>
+            <button
+              type="button"
+              class="storage-refresh"
+              :disabled="storageLoading"
+              @click="loadStorage"
+            >
+              <q-icon name="refresh" size="15px" /> Обновить
+            </button>
+          </div>
+          <p v-else class="storage-hint">
+            {{ storageLoading ? 'Загружаем…' : 'Не удалось получить данные хранилища.' }}
+          </p>
         </section>
 
         <!-- Безопасность: пароль и сессии -->
@@ -1463,6 +1531,83 @@ const onNotificationsToggle = async (val: boolean) => {
   margin: 6px 0 0;
   font-size: 12.5px;
   color: #8295a3;
+}
+
+/* Хранилище: индикатор заполненности квоты на медиа. */
+.storage-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.storage-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.storage-used {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1c2733;
+}
+
+.storage-files {
+  font-size: 12.5px;
+  color: #8295a3;
+}
+
+.storage-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: #eef1f4;
+  overflow: hidden;
+}
+
+.storage-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--ms-accent, #2ea25e);
+  transition: width 0.3s ease;
+}
+
+.storage-bar-fill.warn {
+  background: #e0a02a;
+}
+
+.storage-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12.5px;
+  color: #8295a3;
+}
+
+.storage-hint.warn {
+  color: #a5741a;
+}
+
+.storage-refresh {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--ms-accent, #2ea25e);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.storage-refresh:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 /* Активные входы (устройства) — список с отзывом по одному. */

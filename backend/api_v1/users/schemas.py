@@ -43,6 +43,15 @@ class UserAvatarResponse(BaseModel):
     avatar_url: str | None = None
 
 
+class UserStorageResponse(BaseModel):
+    """Заполненность хранилища медиа пользователя (для профиля)."""
+
+    used_bytes: int = 0
+    quota_bytes: int = 0
+    files: int = 0
+    percent: int = 0
+
+
 # Строка-подтверждение для удаления аккаунта (защита от случайного нажатия).
 DELETE_ACCOUNT_CONFIRM = "УДАЛИТЬ"
 

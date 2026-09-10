@@ -2866,3 +2866,120 @@ async def test_sessions_list_hides_foreign_sessions(api: _ApiCtx) -> None:
         headers=api.auth(one.json()["access_token"]),
     )
     assert attack.status_code == 404, attack.text
+
+
+# --- Квоты на медиа -------------------------------------------------------
+
+
+async def test_media_quota_blocks_upload_and_frees_on_delete(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Квота ограничивает накопление, а удаление сообщения освобождает место."""
+    from core import config
+
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    chat = await api.private_chat(await api.token_for(u1), u2.id)
+    token = await api.token_for(u1)
+
+    # Небольшая квота, чтобы не заливать мегабайты в тесте: 10 «единиц».
+    monkeypatch.setattr(config.settings, "media_quota_bytes", 10)
+
+    empty = await api.client.get("/api/v1/users/me/storage/", headers=api.auth(token))
+    assert empty.status_code == 200, empty.text
+    assert empty.json() == {
+        "used_bytes": 0,
+        "quota_bytes": 10,
+        "files": 0,
+        "percent": 0,
+    }
+
+    first = await api.client.post(
+        "/api/v1/messages/attachment/",
+        params={"chat_id": chat["id"], "filename": "doc1.txt"},
+        content=b"0123456",
+        headers={**api.auth(token), "Content-Type": "application/octet-stream"},
+    )
+    assert first.status_code == 200, first.text
+
+    usage = await api.client.get("/api/v1/users/me/storage/", headers=api.auth(token))
+    assert usage.json()["used_bytes"] == 7
+    assert usage.json()["files"] == 1
+    assert usage.json()["percent"] == 70
+
+    # Второй файл в квоту не влезает: 413 и понятное объяснение.
+    second = await api.client.post(
+        "/api/v1/messages/attachment/",
+        params={"chat_id": chat["id"], "filename": "doc2.txt"},
+        content=b"0123456",
+        headers={**api.auth(token), "Content-Type": "application/octet-stream"},
+    )
+    assert second.status_code == 413, second.text
+    assert "Хранилище заполнено" in second.json()["detail"]
+
+    # Место освобождается сразу после удаления сообщения.
+    removed = await api.client.delete(
+        f"/api/v1/messages/{first.json()['id']}/", headers=api.auth(token)
+    )
+    assert removed.status_code == 204, removed.text
+    after = await api.client.get("/api/v1/users/me/storage/", headers=api.auth(token))
+    assert after.json()["used_bytes"] == 0
+    assert after.json()["files"] == 0
+
+
+async def test_media_quota_ignores_forwarded_copies(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Пересылка переиспользует файл — второй раз в квоту он не считается."""
+    from core import config
+
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    token = await api.token_for(u1)
+    source_chat = await api.private_chat(token, u2.id)
+    other_chat = await api.private_chat(token, u2.id)
+
+    monkeypatch.setattr(config.settings, "media_quota_bytes", 100)
+    uploaded = await api.client.post(
+        "/api/v1/messages/attachment/",
+        params={"chat_id": source_chat["id"], "filename": "doc.txt"},
+        content=b"0123456789",
+        headers={**api.auth(token), "Content-Type": "application/octet-stream"},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+
+    forwarded = await api.client.post(
+        "/api/v1/messages/forward/",
+        json={"message_id": uploaded.json()["id"], "chat_id": other_chat["id"]},
+        headers=api.auth(token),
+    )
+    assert forwarded.status_code == 200, forwarded.text
+
+    usage = await api.client.get("/api/v1/users/me/storage/", headers=api.auth(token))
+    assert usage.json()["used_bytes"] == 10, "пересланная копия не должна дублироваться"
+    assert usage.json()["files"] == 1
+
+
+async def test_media_quota_can_be_disabled(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Квота 0 (или меньше) выключает ограничение — на случай аварии."""
+    from core import config
+
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    token = await api.token_for(u1)
+    chat = await api.private_chat(token, u2.id)
+
+    monkeypatch.setattr(config.settings, "media_quota_bytes", 0)
+    uploaded = await api.client.post(
+        "/api/v1/messages/attachment/",
+        params={"chat_id": chat["id"], "filename": "big.txt"},
+        content=b"0" * 1024,
+        headers={**api.auth(token), "Content-Type": "application/octet-stream"},
+    )
+
+    assert uploaded.status_code == 200, uploaded.text
+    usage = await api.client.get("/api/v1/users/me/storage/", headers=api.auth(token))
+    assert usage.json()["quota_bytes"] == 0
+    assert usage.json()["percent"] == 0

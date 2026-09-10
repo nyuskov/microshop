@@ -137,12 +137,16 @@ async def _download_gif_message_async(
         raise ValueError("Недопустимый адрес GIF")
 
     content = await asyncio.to_thread(_download_bytes, url, MAX_UPLOAD_SIZE)
-    # Сохраняем на диск до открытия сессии (запись тоже вне цикла событий).
-    file_url = await asyncio.to_thread(_store_upload, content, ".gif")
 
     engine = make_engine()
     session = make_session(engine)
     try:
+        # Квота: GIF качается воркером асинхронно, поэтому проверяем и здесь —
+        # иначе накопить файлы можно было бы в обход ограничения (см. media_quota).
+        from api_v1.media_quota import enforce_media_quota
+
+        await enforce_media_quota(session, user_id=user_id, incoming_bytes=len(content))
+
         # Проверяем, что чат существует и пользователь в нём состоит.
         chat = await session.get(Chat, chat_id)
         if chat is None:
@@ -161,6 +165,9 @@ async def _download_gif_message_async(
             reply_target = await session.get(Message, reply_to_id)
             if reply_target is None or reply_target.chat_id != chat_id:
                 raise ValueError("Нельзя ответить на это сообщение")
+
+        # Файл пишем на диск только после всех проверок (включая квоту).
+        file_url = await asyncio.to_thread(_store_upload, content, ".gif")
 
         message = Message(
             text="",

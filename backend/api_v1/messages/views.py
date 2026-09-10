@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user
+from api_v1.media_quota import enforce_media_quota, media_usage
 from api_v1.messages import crud
 from api_v1.messages.schemas import EditMessageRequest, ForwardMessageRequest
 from api_v1.messages.schemas import Message as MessageSchema
@@ -168,6 +169,8 @@ async def create_attachment_message(
         )
 
     validate_attachment_upload(filename, content)
+    # Квота проверяется до записи на диск (см. api_v1/media_quota.py).
+    await enforce_media_quota(session, user_id=user.id, incoming_bytes=len(content))
 
     file_url = _store_upload(content, filename)
     return await crud.send_attachment_message(
@@ -214,6 +217,7 @@ class GifQueueAccepted(BaseModel):
 async def send_gif_message(
     payload: GifMessageCreate,
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> GifQueueAccepted:
     """Ставит в очередь Celery скачивание GIF и создание сообщения.
 
@@ -242,6 +246,13 @@ async def send_gif_message(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Недопустимый адрес GIF",
         )
+
+    # Размер GIF узнаем только после скачивания (в воркере), поэтому здесь
+    # отсекаем случай, когда места уже нет совсем — человек получает понятную
+    # ошибку сразу, а не «загрузка ничего не сделала».
+    usage = await media_usage(session, user_id=user.id)
+    if usage.free_bytes <= 0:
+        await enforce_media_quota(session, user_id=user.id, incoming_bytes=1)
 
     try:
         get_task("tasks.media_tasks.download_gif_message").delay(

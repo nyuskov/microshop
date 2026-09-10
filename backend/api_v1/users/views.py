@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user
+from api_v1.media_quota import media_usage
 from api_v1.rate_limit import enforce_limit
 from api_v1.upload_guard import validate_image_upload
 from api_v1.users import crud, deletion, schemas
@@ -15,6 +16,27 @@ from core.models import User, db_helper
 from core.security import get_password_hash, verify_password
 
 router = APIRouter(prefix="/users", tags=["Users"])
+
+
+@router.get("/me/storage/", response_model=schemas.UserStorageResponse)
+async def get_my_storage(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> dict[str, int]:
+    """Сколько медиа пользователь держит на сервере и сколько ему разрешено.
+
+    Нужно, чтобы профиль показывал заполненность хранилища ДО того, как загрузка
+    начнёт падать с 413 («хранилище заполнено»). Удаление сообщений освобождает
+    место сразу — счётчики берутся из БД.
+    """
+    usage = await media_usage(session, user_id=user.id)
+    return {
+        "used_bytes": usage.used_bytes,
+        "quota_bytes": usage.quota_bytes,
+        "files": usage.files,
+        "percent": usage.percent,
+    }
+
 
 AVATAR_DIR = Path(__file__).resolve().parent.parent.parent / "media" / "avatars"
 # Лимит размера аватара настраивается через env (Settings.max_avatar_size_bytes).
