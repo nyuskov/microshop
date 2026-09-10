@@ -261,7 +261,7 @@ crontab -l | grep -v '# pismo-monitor' | crontab -   # удалить задач
 | `send_sms_otp` | `tasks/otp_tasks.py` | доставка OTP-кода (код в Telegram → SMS Aero → Gateway → лог) | эндпоинт `POST /auth/request-otp/` |
 | `download_gif_message` | `tasks/media_tasks.py` | скачивание GIF (Giphy/Tenor) + создание сообщения | `POST /messages/gif/` (отвечает 202) |
 | `cleanup_orphan_media` | `tasks/media_tasks.py` | очистка файлов media без ссылок в БД | **celery beat** ежедневно в 04:00 UTC |
-| `send_email` | `tasks/notifications.py` | каркас e-mail/уведомлений (заглушка) | — (структура для будущих) |
+| `send_email` | `tasks/notifications.py` | служебные письма (уведомления о безопасности), SMTP → dev-лог | `POST /auth/password/set/`, `/auth/sessions/revoke-all/`, `/auth/password/reset/confirm/`, вход с нового устройства, смена e-mail |
 
 **Каналы доставки кода входа** завязаны на номер (Telegram-аккаунт на этом номере или сам телефон), поэтому чужой номер зарегистрировать нельзя; e-mail для подтверждения не используется намеренно — адрес не доказывает владение номером. Сначала идёт «код в Telegram» (≈2,5 ₽, доставляет инфраструктура SMS Aero — свой egress к Telegram не нужен), SMS — только если Telegram не доставил.
 ⚠️ **Защита баланса шлюза**: `request-otp` ограничен суточными лимитами `AUTH_OTP_DAILY_LIMIT=50` (весь сервис) и `AUTH_OTP_PER_IP_DAILY_LIMIT=20` (один IP) — при исчерпании 429 и в лог `web` пишется предупреждение. Счётчики in-memory (на процесс `web`, сбрасываются при рестарте).
@@ -342,7 +342,24 @@ crontab -l | grep -v '# pismo-monitor' | crontab -   # удалить задач
 - Коды писем хранятся в `email_codes` (хеш, попытки, срок), письма отправляет воркер
   (задача `tasks.otp_tasks.send_email_code`), при незаданном SMTP код пишется в лог.
 - `GET /auth/channels/` сообщает клиенту, включён ли e-mail-канал, чтобы экран входа
-  не показывал недоступные кнопки.- Все «личные» эндпоинты требуют заголовок `Authorization: Bearer <access_token>`.
+  не показывал недоступные кнопки.
+
+**Уведомления о критичных действиях (`api_v1/auth/security_notifications.py`):**
+письмо уходит на **подтверждённый** e-mail аккаунта при смене пароля, сбросе пароля,
+выходе на всех устройствах, смене адреса (письмо идёт на **прежний** адрес — так
+владелец узнаёт о подмене) и при **входе с нового устройства**.
+
+- Канал — только e-mail: Telegram недоступен из РФ-сетей, SMS Aero без договора
+  отклоняет SMS, а у владельца нет других рабочих каналов.
+- Если подтверждённого адреса нет, письмо не отправляется (чужой/ошибочный ящик не
+  должен получать сведения об аккаунте) — в лог идёт запись; поэтому в профиле
+  («Безопасность») и есть просьба подтвердить адрес.
+- «Вход с нового устройства»: отпечаток браузера/приложения (`login_devices`,
+  sha256 от User-Agent) + последний IP и время; **первый** вход аккаунта молчит
+  (это регистрация), повторный вход с того же устройства — тоже.
+- Суточный лимит: не более 20 писем на пользователя (защита от рассылки-спама).
+- Задача `tasks.notifications.send_email`; при незаданном SMTP текст пишется в лог
+  воркера (dev).- Все «личные» эндпоинты требуют заголовок `Authorization: Bearer <access_token>`.
 - `/jwt/*` — fastapi-users: `POST /jwt/auth/login|logout`, `GET/PATCH /jwt/users/me/`.
 - Custom-эндпоинты (`chats`, `messages`, `users/…`) используют `get_current_user` (`api_v1/auth/utils.py`), который принимает **те же** JWT от fastapi-users (в `decode_jwt` отключена проверка `aud`, субъект сверяется с БД). Защищённые от собственных токенов.
 
@@ -375,8 +392,8 @@ crontab -l | grep -v '# pismo-monitor' | crontab -   # удалить задач
 | POST | `/auth/password/register/` | создать аккаунт/пароль → токен (без подтверждения номера) | — |
 | POST | `/auth/password/login/` | вход по номеру+паролю → токен | — |
 | POST | `/auth/password/set/` | задать/сменить пароль → `{detail, access_token, refresh_token}` (смена требует `current_password`, отзывает прочие сессии) | токен |
-| POST | `/auth/sessions/revoke-all/` | выйти на всех устройствах (отзыв всех refresh-сессий) | токен |
-| GET | `/auth/channels/` | какие каналы доставки кодов включены (для экрана входа) | — |
+| POST | `/auth/sessions/revoke-all/` | выйти на всех устройствах (отзыв всех refresh-сессий, письмо владельцу) | токен |
+| GET | `/auth/channels/` | какие каналы входа доступны (`otp_available`, `email_otp_available`) | — |
 | POST | `/auth/email/request-verification/` | письмо с кодом на адрес (привязать к аккаунту) | токен |
 | POST | `/auth/email/confirm-verification/` | подтвердить адрес кодом (`email_verified`) | токен |
 | POST | `/auth/email/login/request/` | вход без пароля: код на подтверждённый e-mail | — |

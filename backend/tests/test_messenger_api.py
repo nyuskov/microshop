@@ -2388,3 +2388,213 @@ async def test_email_endpoints_require_channel(
 
     assert response.status_code == 400, response.text
     assert "настроен" in response.json()["detail"]
+
+
+# --- Уведомления о критичных действиях аккаунта ---------------------------
+# Письма уходят только на ПОДТВЕРЖДЁННЫЙ e-mail, поэтому «свой» адрес в тестах
+# задаём прямо в БД (подтверждение адреса проверяется отдельно, выше).
+
+
+@pytest.fixture
+def security_mail(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, str]]:
+    """Перехватывает письма-уведомления: список (адрес, тема, текст)."""
+    sent: list[tuple[str, str, str]] = []
+
+    def _fake(to: str, subject: str, body: str) -> None:
+        sent.append((to, subject, body))
+
+    monkeypatch.setattr(
+        "api_v1.auth.security_notifications.enqueue_security_email", _fake
+    )
+    return sent
+
+
+async def _verified_email_user(api: _ApiCtx, password: str = _STRONG_PASSWORD) -> tuple:
+    """Создаёт пользователя с паролем и подтверждённым e-mail."""
+    from core.security import get_password_hash
+
+    address = f"owner{uuid.uuid4().hex[:8]}@example.com"
+    user = await api.make_user(phone_number=_random_phone())
+    async with api.factory() as session:
+        db_user = await session.get(User, user.id)
+        assert db_user is not None
+        db_user.hashed_password = get_password_hash(password)
+        db_user.password_set = True
+        db_user.email = address
+        db_user.email_verified = True
+        await session.commit()
+        await session.refresh(db_user)
+    return db_user, address
+
+
+async def test_password_change_notifies_owner(
+    api: _ApiCtx, security_mail: list[tuple[str, str, str]]
+) -> None:
+    """Смена пароля: владелец получает письмо (иначе вылет устройств выглядит сбоем)."""
+    user, address = await _verified_email_user(api)
+    token = await api.token_for(user)
+
+    response = await api.client.post(
+        "/api/v1/auth/password/set/",
+        json={"password": "novyj-parol-777", "current_password": _STRONG_PASSWORD},
+        headers=api.auth(token),
+    )
+
+    assert response.status_code == 200, response.text
+    assert len(security_mail) == 1
+    sent_to, subject, body = security_mail[0]
+    assert sent_to == address
+    assert "пароль" in subject.lower()
+    assert "устройства" in body.lower()
+
+
+async def test_revoke_all_sessions_notifies_owner(
+    api: _ApiCtx, security_mail: list[tuple[str, str, str]]
+) -> None:
+    """«Выйти на всех устройствах» — владелец должен узнать об этом."""
+    user, address = await _verified_email_user(api)
+    token = await api.token_for(user)
+
+    response = await api.client.post(
+        "/api/v1/auth/sessions/revoke-all/", headers=api.auth(token)
+    )
+
+    assert response.status_code == 200, response.text
+    assert [mail[0] for mail in security_mail] == [address]
+    assert "устройствах" in security_mail[0][1]
+
+
+async def test_password_reset_notifies_owner(
+    api: _ApiCtx,
+    security_mail: list[tuple[str, str, str]],
+    email_channel: list[tuple[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Сброс пароля по коду из письма тоже уведомляет владельца."""
+    _, address = await _verified_email_user(api)
+    monkeypatch.setattr("api_v1.auth.views.email_otp_available", lambda: True)
+
+    await api.client.post(
+        "/api/v1/auth/password/reset/request/", json={"email": address}
+    )
+    code = email_channel[-1][1]
+    response = await api.client.post(
+        "/api/v1/auth/password/reset/confirm/",
+        json={"email": address, "code": code, "password": "novyj-parol-888"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert [mail[0] for mail in security_mail] == [address]
+    assert "восстановлен" in security_mail[0][1].lower()
+
+
+async def test_notifications_skipped_without_verified_email(
+    api: _ApiCtx, security_mail: list[tuple[str, str, str]]
+) -> None:
+    """Нет подтверждённого адреса — письма нет (чужому ящику писать нельзя)."""
+    from core.security import get_password_hash
+
+    user = await api.make_user(phone_number=_random_phone())
+    async with api.factory() as session:
+        db_user = await session.get(User, user.id)
+        assert db_user is not None
+        db_user.hashed_password = get_password_hash(_STRONG_PASSWORD)
+        db_user.password_set = True
+        db_user.email = f"unverified{uuid.uuid4().hex[:8]}@example.com"
+        db_user.email_verified = False
+        await session.commit()
+        await session.refresh(db_user)
+
+    token = await api.token_for(db_user)
+    response = await api.client.post(
+        "/api/v1/auth/sessions/revoke-all/", headers=api.auth(token)
+    )
+
+    assert response.status_code == 200, response.text
+    assert security_mail == []
+
+
+async def test_email_change_notifies_old_address(
+    api: _ApiCtx, security_mail: list[tuple[str, str, str]]
+) -> None:
+    """Смена адреса: письмо идёт на ПРЕЖНИЙ адрес — так владелец узнаёт о подмене."""
+    user, old_address = await _verified_email_user(api)
+    token = await api.token_for(user)
+    new_address = f"new{uuid.uuid4().hex[:8]}@example.com"
+
+    response = await api.client.patch(
+        "/api/v1/jwt/users/me/",
+        json={"email": new_address},
+        headers=api.auth(token),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["email_verified"] is False
+    assert [mail[0] for mail in security_mail] == [old_address]
+    assert "адрес" in security_mail[0][1].lower()
+    assert new_address in security_mail[0][2]
+
+
+async def test_new_device_login_notifies_once(
+    api: _ApiCtx, security_mail: list[tuple[str, str, str]]
+) -> None:
+    """Первый вход молчит, вход с нового устройства — письмо, повтор — без письма."""
+    from core.security import get_password_hash
+
+    phone = _random_phone()
+    address = f"owner{uuid.uuid4().hex[:8]}@example.com"
+    user = await api.make_user(phone_number=phone)
+    async with api.factory() as session:
+        db_user = await session.get(User, user.id)
+        assert db_user is not None
+        db_user.hashed_password = get_password_hash(_STRONG_PASSWORD)
+        db_user.password_set = True
+        db_user.email = address
+        db_user.email_verified = True
+        await session.commit()
+
+    login = {"phone_number": phone, "password": _STRONG_PASSWORD}
+    first = await api.client.post(
+        "/api/v1/auth/password/login/",
+        json=login,
+        headers={"User-Agent": "PismoTest/1.0"},
+    )
+    assert first.status_code == 200, first.text
+    assert security_mail == [], "первый вход (регистрация) письма не требует"
+
+    second = await api.client.post(
+        "/api/v1/auth/password/login/",
+        json=login,
+        headers={"User-Agent": "PismoTest/2.0 Novoe-ustrojstvo"},
+    )
+    assert second.status_code == 200, second.text
+    assert [mail[0] for mail in security_mail] == [address]
+    assert "нового устройства" in security_mail[0][1].lower()
+    assert "Novoe-ustrojstvo" in security_mail[0][2]
+
+    again = await api.client.post(
+        "/api/v1/auth/password/login/",
+        json=login,
+        headers={"User-Agent": "PismoTest/2.0 Novoe-ustrojstvo"},
+    )
+    assert again.status_code == 200, again.text
+    assert len(security_mail) == 1, "повторный вход с того же устройства — без письма"
+
+
+async def test_notifications_have_daily_cap(
+    api: _ApiCtx, security_mail: list[tuple[str, str, str]]
+) -> None:
+    """Суточный лимит писем: аккаунт не превращается в рассылку."""
+    from api_v1.auth import security_notifications
+
+    user, address = await _verified_email_user(api)
+    async with api.factory() as session:
+        db_user = await session.get(User, user.id)
+        assert db_user is not None
+        for _ in range(25):
+            await security_notifications.notify_security_event(
+                session, db_user, event="sessions_revoked"
+            )
+
+    assert len(security_mail) == 20, "не больше 20 писем в сутки на пользователя"
+    assert all(mail[0] == address for mail in security_mail)

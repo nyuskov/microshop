@@ -24,7 +24,7 @@ from ..users.crud import (
     get_user_by_email,
     get_user_by_phone_number,
 )
-from . import email_codes
+from . import email_codes, security_notifications
 from .jwt import get_jwt_strategy
 from .login_guard import lockout_seconds, register_failure, reset_failures
 from .otp_storage import (
@@ -194,10 +194,13 @@ async def login_for_access_token(
         )
 
     access_token = await get_jwt_strategy().write_token(user)
+    refresh_token = await issue_refresh_token(session, user_id=user.id)
+    # Вход выполнен — если устройство новое, владелец получит письмо.
+    await security_notifications.remember_login_device(session, user, request)
     return Token(
         access_token=access_token,
         token_type="bearer",
-        refresh_token=await issue_refresh_token(session, user_id=user.id),
+        refresh_token=refresh_token,
     )
 
 
@@ -344,10 +347,12 @@ async def verify_otp_endpoint(
 
     user = await get_or_create_user_by_phone_number(session, phone_number)
     access_token = await get_jwt_strategy().write_token(user)
+    refresh_token = await issue_refresh_token(session, user_id=user.id)
+    await security_notifications.remember_login_device(session, user, request)
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
-        refresh_token=await issue_refresh_token(session, user_id=user.id),
+        refresh_token=refresh_token,
     )
 
 
@@ -512,10 +517,12 @@ async def password_login(
         await session.commit()
 
     access_token = await get_jwt_strategy().write_token(user)
+    refresh_token = await issue_refresh_token(session, user_id=user.id)
+    await security_notifications.remember_login_device(session, user, request)
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
-        refresh_token=await issue_refresh_token(session, user_id=user.id),
+        refresh_token=refresh_token,
     )
 
 
@@ -560,6 +567,16 @@ async def set_password(
 
     # Все прочие устройства разлогиниваем, текущему выдаём новые токены.
     await revoke_all_sessions(session, user_id=user.id)
+    await security_notifications.notify_security_event(
+        session,
+        user,
+        event="password_changed",
+        request=request,
+        details=(
+            "Пароль аккаунта изменён, вход на всех остальных устройствах "
+            f"прекращён.\nIP-адрес: {client_ip(request) or 'неизвестен'}"
+        ),
+    )
     access_token = await get_jwt_strategy().write_token(user)
     logger.info("Пароль задан пользователем %s, остальные сессии отозваны", user.id)
     return PasswordSetResponse(
@@ -584,6 +601,13 @@ async def revoke_sessions(
     """
     await _enforce_ip_limit(request, scope="auth:revoke-all", limit=10)
     await revoke_all_sessions(session, user_id=user.id)
+    await security_notifications.notify_security_event(
+        session,
+        user,
+        event="sessions_revoked",
+        request=request,
+        details=f"IP-адрес запроса: {client_ip(request) or 'неизвестен'}",
+    )
     logger.info("Пользователь %s отозвал все сессии", user.id)
     return PasswordSetResponse(detail="Вы вышли на всех устройствах.")
 
@@ -806,10 +830,12 @@ async def confirm_email_login(
     await reset_failures(session, identifier=address)
 
     access_token = await get_jwt_strategy().write_token(user)
+    refresh_token = await issue_refresh_token(session, user_id=user.id)
+    await security_notifications.remember_login_device(session, user, request)
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
-        refresh_token=await issue_refresh_token(session, user_id=user.id),
+        refresh_token=refresh_token,
     )
 
 
@@ -885,6 +911,16 @@ async def confirm_password_reset(
 
     await revoke_all_sessions(session, user_id=user.id)
     await reset_failures(session, identifier=address)
+    await security_notifications.notify_security_event(
+        session,
+        user,
+        event="password_reset",
+        request=request,
+        details=(
+            "Пароль восстановлен по коду из письма, прежние сессии отозваны.\n"
+            f"IP-адрес: {client_ip(request) or 'неизвестен'}"
+        ),
+    )
     logger.info("Пользователь %s восстановил пароль по e-mail", user.id)
 
     access_token = await get_jwt_strategy().write_token(user)

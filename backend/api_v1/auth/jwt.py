@@ -27,6 +27,7 @@ from core.models import Profile, User, db_helper
 
 from .db import get_user_db
 from .managers import UserManager
+from .security_notifications import email_changed_message, notify_security_event
 
 
 class UserRead(BaseUser):
@@ -93,6 +94,7 @@ async def get_me(
 @router.patch("/users/me/", response_model=UserWithDetailsSchema)
 async def update_me(
     user_update: UserUpdateWithProfileSchema,
+    request: Request,
     current_user: User = Depends(fastapi_users.current_user()),
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> User:
@@ -114,6 +116,8 @@ async def update_me(
     # Смена e-mail сбрасывает подтверждение: адрес мог быть указан ошибочно (или
     # чужим), а подтверждённый e-mail — это канал входа и восстановления пароля.
     email_changed = "email" in user_data and user_data["email"] != user.email
+    old_email = str(user.email) if user.email else ""
+    old_email_verified = bool(user.email_verified)
     for field, value in user_data.items():
         setattr(user, field, value)
     if email_changed:
@@ -128,6 +132,22 @@ async def update_me(
             setattr(user.profile, field, value)
 
     await session.commit()
+
+    if email_changed and old_email and old_email_verified:
+        # Письмо уходит на ПРЕЖНИЙ адрес: если адрес меняет не владелец аккаунта,
+        # именно так настоящий владелец об этом узнаёт. Текущий адрес
+        # уведомление не получит — он пока не подтверждён (это сделал бы
+        # посторонний, кто получил доступ к аккаунту).
+        await notify_security_event(
+            session,
+            user,
+            event="email_changed",
+            request=request,
+            recipient=old_email,
+            details=email_changed_message(
+                old_email, str(user.email) if user.email else None
+            ),
+        )
 
     stmt = (
         select(User)

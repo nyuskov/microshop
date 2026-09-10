@@ -1,9 +1,10 @@
-"""Фоновые задачи: уведомления (e-mail и каркас web-push).
+"""Фоновые задачи: уведомления (e-mail, push) и публикация событий.
 
-Здесь пока только структурная основа: задача ``send_email`` — заглушка-хелпер
-(в проде заменяется на вызов почтового/пуш-провайдера), а также хелпер
-``enqueue_generic_notification`` — точка, из которой в будущем будут
-отправляться уведомления пользователям (пуш, e-mail о непрочитанных и т.п.).
+``send_email`` — транспорт служебных писем (уведомления о смене пароля,
+входе с нового устройства и т.п.; текст формирует api_v1/security_notifications).
+``send_message_push`` — push о новых сообщениях (Web Push + RuStore).
+``enqueue_generic_notification`` — точка для уведомлений о непрочитанных и
+подобных сценариев.
 
 ``publish_realtime_new_message`` — вспомогательная обязанность воркера: после
 записи нового сообщения (например, GIF) опубликовать в мост, чтобы web раздал
@@ -17,7 +18,7 @@ import logging
 from pywebpush import WebPushException, webpush
 from sqlalchemy import delete, select
 
-from core import rustore_push
+from core import mailer, rustore_push
 from core.amqp import publish_realtime_event
 from core.celery_app import celery_app
 from core.config import settings
@@ -93,14 +94,32 @@ async def _send_rustore_push(
 
 
 @celery_app.task(name="tasks.notifications.send_email", max_retries=3)
-def send_email(subject: str, recipient: str, html_body: str) -> None:
-    """Отправляет e-mail уведомление (заглушка).
+def send_email(subject: str, recipient: str, body: str) -> None:
+    """Отправляет служебное письмо пользователю (уведомления о безопасности).
 
-    TODO(prod): заменить на реального почтового провайдера (SMTP/SES/...).
-    Сейчас только логирует, чтобы подтвердить прохождение задачи через воркер.
+    Текст письма формирует вызывающая сторона (см.
+    ``api_v1.auth.security_notifications``) — здесь только транспорт: SMTP, а
+    если он не настроен (локальная разработка), текст уходит в лог воркера,
+    как и остальные dev-заглушки доставки.
     """
-    logger.info("Email-заглушка: to=%s subject=%r", recipient, subject)
-    # Здесь будет реальная отправка; вложенный HTML уже сформирован вызывающим кодом.
+    if mailer.is_configured():
+        try:
+            mailer.send_email(recipient, subject, body)
+            logger.info("Письмо отправлено на %s", mailer.mask_email(recipient))
+            return
+        except mailer.MailerError as exc:
+            logger.warning(
+                "SMTP недоступен (%s) — письмо для %s не отправлено",
+                exc,
+                mailer.mask_email(recipient),
+            )
+
+    logger.info(
+        "Почтовая заглушка (dev): уведомление для %s, тема %r\n%s",
+        mailer.mask_email(recipient),
+        subject,
+        body,
+    )
 
 
 async def publish_realtime_new_message(
