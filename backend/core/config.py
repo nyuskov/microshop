@@ -13,9 +13,7 @@ BASE_DIR = Path(__file__).parent.parent
 # без окружения. Никогда не используйте его на реальном сервере. При docker-запуске
 # секрет обязательно приходит из корневого .env (переменная JWT_SECRET_KEY); если он
 # не задан — в лог пишется предупреждение (см. конец файла).
-_DEV_JWT_SECRET_KEY = (
-    "0b7a392c19cb1a102061ec65bb016b50cd506c2257739c6348df9e8d373bc405"
-)
+_DEV_JWT_SECRET_KEY = "0b7a392c19cb1a102061ec65bb016b50cd506c2257739c6348df9e8d373bc405"
 
 
 class AuthJWT(BaseSettings):
@@ -141,16 +139,12 @@ class Settings(BaseSettings):
         default="https://gateway.smsaero.ru",
         validation_alias="SMS_AERO_BASE_URL",
     )
-    sms_aero_email: str | None = Field(
-        default=None, validation_alias="SMS_AERO_EMAIL"
-    )
+    sms_aero_email: str | None = Field(default=None, validation_alias="SMS_AERO_EMAIL")
     sms_aero_api_key: str | None = Field(
         default=None, validation_alias="SMS_AERO_API_KEY"
     )
     # Подпись отправителя, зарегистрированная в SMS Aero (если нужна).
-    sms_aero_sign: str | None = Field(
-        default=None, validation_alias="SMS_AERO_SIGN"
-    )
+    sms_aero_sign: str | None = Field(default=None, validation_alias="SMS_AERO_SIGN")
 
     # --- Web Push уведомления (PWA, когда приложение закрыто) ---
     # VAPID-ключи генерируются один раз (см. README). Пока они не заданы —
