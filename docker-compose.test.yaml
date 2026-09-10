@@ -208,20 +208,50 @@ services:
     logging: *default-logging
     mem_limit: 64m
     cpus: 0.2
+    # Образ nginx без статики: файлы приходят из тома frontend_html, который
+    # обновляет сервис frontend-dist. Так деплой интерфейса не пересоздаёт
+    # контейнер и сайт не пропадает (см. scripts/ci/deploy_remote.sh).
     build:
       context: ./frontend
-      dockerfile: Dockerfile.prod
-      args:
-        VITE_API_ORIGIN: ${VITE_API_ORIGIN:-http://localhost}
+      dockerfile: Dockerfile.nginx
     ports:
       - "80:80"
       - "443:443" # Открываем порт для входящего HTTPS трафика
     volumes:
       - certbot_etc:/etc/letsencrypt
       - certbot_var:/var/lib/letsencrypt
+      - frontend_html:/usr/share/nginx/html
     depends_on:
       - web
     restart: unless-stopped
+    networks:
+      - server_network
+
+  # Одноразовый сервис: собирает статику и копирует её в том frontend_html.
+  # Запускается во время деплоя явно (--profile dist), в обычном `up` не поднимается:
+  #   docker compose -p microshop-test -f docker-compose.test.yaml --profile dist \
+  #     run --rm --no-deps frontend-dist
+  frontend-dist:
+    profiles: ["dist"]
+    logging: *default-logging
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dist
+      args:
+        VITE_API_ORIGIN: ${VITE_API_ORIGIN:-http://localhost}
+    image: microshop-test-frontend-dist:latest
+    entrypoint: ["/bin/sh", "-c"]
+    # Сначала всё, кроме index.html, потом сам index.html — иначе есть мгновение,
+    # когда новый index ссылается на ещё не скопированный ассет.
+    # `-mindepth 1` обязателен: без него find отдаёт и сам /src, и cp копирует
+    # каталог целиком внутрь /dst (появляется лишний /dst/src).
+    command:
+      - >
+        find /usr/share/nginx/html -mindepth 1 -maxdepth 1 ! -name index.html -exec cp -a {} /dst/ \;
+        cp -a /usr/share/nginx/html/index.html /dst/index.html &&
+        echo "статика обновлена: $(ls /dst/assets | wc -l) файлов в assets"
+    volumes:
+      - frontend_html:/dst
     networks:
       - server_network
 
@@ -273,6 +303,8 @@ networks:
 
 volumes:
   postgres_data:
+  # Статика фронтенда: её обновляет frontend-dist, раздаёт frontend.
+  frontend_html:
   media_data:
   rabbitmq_data:
   certbot_etc: # Новые тома для постоянного хранения SSL ключей

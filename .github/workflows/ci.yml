@@ -156,31 +156,14 @@ jobs:
             set -e
             cd ~/microshop
             # Детерминированный деплой: сервер всегда становится точной копией origin/main.
-            # (git pull падал на локальных правках docker-compose.test.yaml / Dockerfile.prod /
+            # (git pull падал на локальных правках docker-compose.test.yaml / Dockerfile /
             #  nginx.prod.conf — reset --hard исключает такие сбои.)
             git fetch origin
             git reset --hard origin/main
-            # Подчищаем контейнеры, оставшиеся от прерванного деплоя: compose
-            # переименовывает старый контейнер в <id>_<name>, и без уборки
-            # следующий запуск падает на конфликте имён (а прод лежит).
-            docker ps -a --format '{{.Names}}' | grep -E '^[0-9a-f]{12}_' | xargs -r docker rm -f || true
-            # Используем официальную команду принудительного сброса кэша при сборке
-            docker compose -f docker-compose.test.yaml -p microshop-test up -d --build --force-recreate --pull always
-            # Явный прогон миграций: при `up -d` одноразовый migrate-сервис может
-            # не отработать/не пересоздаться — запускаем его вручную (идемпотентно).
-            docker compose -f docker-compose.test.yaml -p microshop-test run --rm migrate
-            # Проверка схемы: БД обязана стоять на той же ревизии, что и код в
-            # образе (сравниваем `alembic current` с `alembic heads`). Проверка не
-            # привязана к конкретной миграции, поэтому не устареет.
-            CURRENT_REV=$(docker compose -f docker-compose.test.yaml -p microshop-test exec -T web \
-              poetry run alembic current 2>/dev/null | sed -n 's/^\([0-9a-fA-F]\{6,\}\).*/\1/p' | head -1)
-            HEAD_REV=$(docker compose -f docker-compose.test.yaml -p microshop-test exec -T web \
-              poetry run alembic heads 2>/dev/null | sed -n 's/^\([0-9a-fA-F]\{6,\}\).*/\1/p' | head -1)
-            if [ -z "$CURRENT_REV" ] || [ "$CURRENT_REV" != "$HEAD_REV" ]; then
-              echo "::error::MIGRATION CHECK FAILED: в БД ревизия '$CURRENT_REV', в коде ожидается '$HEAD_REV'"
-              exit 1
-            fi
-            echo "::notice::Deploy OK: миграции применены (ревизия $CURRENT_REV)"
+            # Сам деплой живёт в скрипте репозитория: он обновляет только
+            # изменившиеся сервисы, следит за health и не пересоздаёт nginx при
+            # обновлении одной статики — то есть проходит без простоя.
+            sh scripts/ci/deploy_remote.sh
             docker system prune -f
 
   # Смоук-тест прод-API: `up -d` завершается успешно и когда внутри всё падает
