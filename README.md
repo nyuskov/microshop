@@ -95,7 +95,7 @@ microshop/
 ├── backup_offsite.example.sh # пример выгрузки бэкапов в облако (rclone)
 ├── scripts/backup/           # бэкап прода → ~/Документы/pismo_backup (см. docs/local-backup.md)
 ├── db_dump/                  # дампы БД + media: latest + archive/ + logs/ (в .gitignore)
-├── docs/                     # production.md, offsite-backup.md, local-backup.md, rustore.md, privacy-policy.md
+├── docs/                     # production.md, offsite-backup.md, local-backup.md, email-smtp.md, rustore.md, privacy-policy.md
 ├── .github/workflows/ci.yml  # backend (lint+mypy+pytest c Postgres) + frontend
 └── queries.sql
 ```
@@ -285,6 +285,10 @@ crontab -l | grep -v '# pismo-prod-backup' | crontab -   # удалить зад
   `password_weak` ставится при входе (только там пароль виден в открытом виде),
   поэтому профиль показывает предложение сменить старый слабый пароль.
 **E-mail-канал (второй после номера):** включён, когда заданы `SMTP_*` (см. `.env.example`).
+Пока SMTP не задан — канал выключен: профиль пишет «отправка писем на сервере выключена»,
+а на экране входа нет входа по e-mail. Как включить (пароль приложения у Gmail/Яндекса
+и разовая настройка продового `.env` скриптом) — `docs/email-smtp.md`;
+быстрая проверка состояния: `curl -s https://pismo.space/api/v1/auth/channels/`.
 
 - Адрес подтверждается кодом из письма (`POST /auth/email/request-verification/` →
   `.../confirm-verification/`) — только после этого он годится для входа без пароля и
