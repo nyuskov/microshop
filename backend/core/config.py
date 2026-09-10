@@ -157,7 +157,7 @@ class Settings(BaseSettings):
     )
     # Контакт для push-сервиса (mailto:).
     web_push_vapid_subject: str = Field(
-        default="mailto:admin@pismo.space",
+        default="mailto:nyuskov@gmail.com",
         validation_alias="WEB_PUSH_VAPID_SUBJECT",
     )
 
