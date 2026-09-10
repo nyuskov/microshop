@@ -52,6 +52,25 @@ def _get_json(url: str, credentials: str) -> dict[str, Any]:
         raise SmsAeroError(str(exc)) from exc
 
 
+def _warn_if_moderated(result: dict[str, Any]) -> None:
+    """Предупреждает, если шлюз принял сообщение только в модерацию.
+
+    Ответ API может быть ``success: true``, а сообщение при этом уйдёт
+    модератору (``status=8``, ``extendStatus=moderation``) и позже может быть
+    отклонено (``status=6``, например «Необходимо заключить договор»). Без
+    договора с SMS Aero так отклоняется вообще всё, поэтому такая запись в логе
+    — первый признак, что канал не работает, хотя ошибки API нет.
+    """
+    status_code = result.get("status")
+    extend_status = str(result.get("extendStatus") or "")
+    if status_code == 8 or extend_status == "moderation":
+        logger.warning(
+            "SMS Aero принял сообщение id=%s в модерацию — доставка не гарантирована "
+            "(при отсутствии договора/согласий сообщение отклоняется)",
+            result.get("id"),
+        )
+
+
 def send_sms(phone_number: str, text: str) -> str:
     """Отправляет SMS-сообщение через SMS Aero.
 
@@ -79,6 +98,7 @@ def send_sms(phone_number: str, text: str) -> str:
     if not data.get("success"):
         raise SmsAeroError(f"SMS Aero: {data}")
     result = data.get("data") or {}
+    _warn_if_moderated(result)
     return str(result.get("id") or "")
 
 
@@ -118,4 +138,5 @@ def send_telegram_code(phone_number: str, code: str, sms_text: str) -> str:
     if not data.get("success"):
         raise SmsAeroError(f"SMS Aero: {data}")
     result = data.get("data") or {}
+    _warn_if_moderated(result)
     return str(result.get("id") or "")

@@ -142,3 +142,29 @@ def test_send_sms_reports_api_failure(
 
     with pytest.raises(smsaero.SmsAeroError):
         smsaero.send_sms("+79109744376", "text")
+
+
+def test_send_sms_warns_when_message_goes_to_moderation(
+    monkeypatch: pytest.MonkeyPatch,
+    sms_settings: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Модерация шлюза (status=8) без ошибки API — предупреждение в лог.
+
+    Так выглядит рабочая отправка без договора с SMS Aero: ответ success=true,
+    сообщение уходит модератору и затем отклоняется, поэтому код не дойдёт.
+    """
+    monkeypatch.setattr(
+        smsaero,
+        "_get_json",
+        lambda url, credentials: {
+            "success": True,
+            "data": {"id": 7, "status": 8, "extendStatus": "moderation"},
+        },
+    )
+
+    with caplog.at_level("WARNING", logger="core.smsaero"):
+        message_id = smsaero.send_sms("+79109744376", "text")
+
+    assert message_id == "7"
+    assert "модерацию" in caplog.text
