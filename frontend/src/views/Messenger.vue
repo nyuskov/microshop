@@ -1,5 +1,7 @@
 <template>
   <q-layout class="messenger-shell" view="hhh lpr fff">
+    <!-- Озвучивание входящих сообщений скринридером (визуально скрыто) -->
+    <p class="sr-only" role="status" aria-live="polite">{{ liveAnnouncement }}</p>
     <!-- ======= QDrawer: Чаты / Контакты (десктоп — постоянная панель,
          мобильный — выдвижной drawer поверх чата) ======= -->
     <q-drawer
@@ -476,12 +478,13 @@ import {
   resetE2eeSession
 } from '@/services/e2ee'
 import type { Chat, ChatUser, Message } from '@/types'
-import { avatarUrlOf, chatPeer, displayName, isGroupChat } from '@/utils/user'
+import { avatarUrlOf, chatPeer, chatTitle, displayName, isGroupChat } from '@/utils/user'
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import { isImageFile, messageSnippet, optimizeImageFile } from '@/utils/media'
 import { mediaUrl } from '@/config'
 import { chatIdFromUrl, chatUrlWith, readStoredChatId, storeChatId } from '@/utils/chatUrl'
+import { haptic } from '@/utils/haptics'
 import { usePeerActivity } from '@/composables/usePeerActivity'
 import { useRealtimeSync } from '@/composables/useRealtimeSync'
 import { useRecordButton } from '@/composables/useRecordButton'
@@ -1564,6 +1567,9 @@ const sendText = async () => {
     await refreshThread()
     messages.value = appendMessage(messages.value, message)
     await loadPinned(chatId)
+    // Короткий отклик при отправке: понятно, что сообщение ушло, не сверяясь
+    // с галочками (на телефоне ощущается как «нажалось»).
+    haptic()
     scrollToBottom()
   } catch (error) {
     // Связь пропала — не теряем набранное: ставим в очередь и отправим сами,
@@ -2534,6 +2540,30 @@ watch(
 // свёрнуто/закрыто — приходит системный push. В замьюченные чаты push не
 // отправляется (см. сервер, таблица chat_mutes).
 
+/**
+ * Озвучивание входящих сообщений для скринридеров.
+ *
+ * Всплывающих уведомлений внутри приложения нет (только системный push), и «ровный»
+ * интерфейс для незрячего пользователя молчит: он не узнаёт, что пришло сообщение.
+ * Пишем это в скрытую область с `aria-live`.
+ */
+const liveAnnouncement = ref('')
+let announcementTimer: ReturnType<typeof setTimeout> | undefined
+
+const announceIncomingMessage = (chatId: number) => {
+  // В открытом чате сообщение и так видно — не мешаем лишней речью.
+  if (chatId === selectedChatId.value && !document.hidden) return
+  const chat = chats.value.find((item) => item.id === chatId)
+  const who = chat ? chatTitle(chat, currentUserId.value) : ''
+  liveAnnouncement.value = who ? `Новое сообщение: ${who}` : 'Новое сообщение'
+  if (announcementTimer !== undefined) window.clearTimeout(announcementTimer)
+  // Сбрасываем текст, иначе следующее такое же сообщение не произнесётся.
+  announcementTimer = window.setTimeout(() => {
+    liveAnnouncement.value = ''
+    announcementTimer = undefined
+  }, 4000)
+}
+
 const { start: startRealtime, stop: stopRealtime } = useRealtimeSync({
   isAuthenticated: () => authStore.isAuthenticated,
   isMe: (userId) => userId === currentUserId.value,
@@ -2543,6 +2573,7 @@ const { start: startRealtime, stop: stopRealtime } = useRealtimeSync({
   onTypingStop: clearPeerTyping,
   onChatsSync: refreshChatsQuiet,
   onThreadSync: refreshOpenThreadQuiet,
+  onMessageNew: announceIncomingMessage,
   onChatRemoved: handleChatRemoved
 })
 
@@ -3174,14 +3205,18 @@ watch(
 <style scoped>
 /* ---------- Каркас (Quasar QLayout) ---------- */
 .messenger-shell {
-  /* Жёстко занимаем видимую область (в т.ч. при показе адресной строки и
+  /* Жёстко занимаем видимую область (в т. ч. при показе адресной строки и
      клавиатуры): position:fixed -> низ (поле ввода) всегда прижат к экрану,
-     внешнего скролла документа нет. */
+     внешнего скролла документа нет.
+
+     Высоту и смещение берём из композабла useVisualViewport: при открытой
+     экранной клавиатуре визуальная область меньше окна, и без этого поле ввода
+     уезжает под клавиатуру. */
   position: fixed;
-  top: 0;
+  top: var(--ms-vv-top, 0);
   left: 0;
   right: 0;
-  bottom: 0;
+  height: var(--ms-vv-h, 100%);
   overflow: hidden;
   background: #6d7c8c;
   font-family: var(--ms-font);

@@ -17,3 +17,18 @@
         box-shadow: 0 0 0 3px var(--ms-accent, #3aa6e0) !important;
     }
 }
+
+/* Текст только для скринридеров: не видно, но читается (см. озвучивание
+   входящих сообщений в Messenger.vue). */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}

@@ -360,6 +360,8 @@ const swipeStyle = computed<Record<string, string> | undefined>(() =>
 let swipeStartX = 0
 let swipeStartY = 0
 let swipeAxis: 'none' | 'x' | 'y' = 'none'
+/** Отклик на достижение порога ответа — один раз за жест. */
+let swipeFeedback = false
 
 /** С какого размера текст сворачиваем (примерно 12 строк). */
 const LONG_TEXT_LIMIT = 600
@@ -530,12 +532,19 @@ const onPointerMove = (event: PointerEvent) => {
   }
   if (swipeAxis !== 'x') return
   swipeX.value = Math.max(0, Math.min(SWIPE_REPLY_DISTANCE, dx))
+  // Дошли до порога ответа — короткий отклик, чтобы это чувствовалось без взгляда
+  // на экран (дальше в этом жесте больше не повторяем).
+  if (swipeReady.value && !swipeFeedback) {
+    swipeFeedback = true
+    haptic()
+  }
 }
 
 const resetSwipe = () => {
   swipeStartX = 0
   swipeStartY = 0
   swipeAxis = 'none'
+  swipeFeedback = false
   swipeX.value = 0
 }
 
@@ -631,6 +640,8 @@ const onForward = () => {
 
 const onPickEmoji = (emoji: string) => {
   moreOpen.value = false
+  rememberQuickReaction(emoji)
+  haptic()
   emit('toggle-reaction', emoji)
 }
 

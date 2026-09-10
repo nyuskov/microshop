@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { applyServiceWorkerUpdate, registerServiceWorker } from '@/services/pwa'
+import { useVisualViewport } from '@/composables/useVisualViewport'
 import OfflineBanner from '@/components/common/OfflineBanner.vue'
+
+// Высота с учётом экранной клавиатуры — нужна всему приложению (и логину тоже).
+useVisualViewport()
 
 const updateAvailable = ref(false)
 let reloading = false
