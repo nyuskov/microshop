@@ -645,7 +645,7 @@ node node_modules/prettier/bin/prettier.cjs --write <files> # формат
 
 ### Иконки (Material Symbols Rounded)
 
-Иконки задаются через `<q-icon name="…">` (напр. `forum`, `auto_stories`, `group`, `call`, `videocam`, `mic`, `push_pin`, `check`, `send`, `download`…). В `main.ts` подключён актуальный набор Google — **Material Symbols Rounded** (`material-symbols-rounded.css`): он скруглённый и с переменными осями, поэтому выглядит свежее старого Material Icons. Quasar рендерит `<q-icon>` с классом `.material-icons`, которому в `quasar.css` заданы `font-family: 'Material Symbols Rounded'` и `font-variation-settings` (`FILL 0 / wght 400 / GRAD 0 / opsz 24`).
+Иконки задаются через `<q-icon name="…">` (напр. `forum`, `auto_stories`, `group`, `call`, `videocam`, `mic`, `push_pin`, `check`, `send`, `download`…). Набор — **Material Symbols Rounded** (актуальный Google, скруглённый, с переменными осями `FILL/GRAD/opsz/wght`), но подключается не пакетный CSS, а **свой урезанный шрифт**: полный файл весит ~5 МБ (4200 лигатур), а в `src/assets/fonts/material-symbols-rounded-subset.woff2` лежит только используемое — ~96 КБ. Собирается скриптом `frontend/scripts/build-icons-font.py` (нужны `fonttools` + `brotli`): он вытаскивает имена иконок из `src` и режет официальный woff2 по таблице GSUB. **Добавили новую иконку — прогоните скрипт**, иначе она отрендерится текстом. Quasar рендерит `<q-icon>` с классом `.material-icons`, которому в `quasar.css` заданы `font-family: 'Material Symbols Rounded'` и `font-variation-settings` (`FILL 0 / wght 400 / GRAD 0 / opsz 24`).
 
 **Если имени нет в шрифте, Vue отрендерит текст буквами** («chat_bubble_outline» вместо иконки) — тихо и заметно. Проверка (в браузере, консоль на любой странице приложения):
 

@@ -1915,15 +1915,17 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 /* ---------- Нижняя навигация (чаты / истории / контакты) ---------- */
-/* «Плавающая» панель разделов: отступ от краёв экрана, радиус и тонкая
-   рамка — отделяется от полотна без тени и без жёсткой линии. */
+/* «Плавающая» панель разделов: отступ от краёв экрана, радиус, рамка и мягкая
+   тень. Тон панели отличается от полотна, рамка полноцветная (не полупрозрачная),
+   тень даёт «подъём» — иначе панель выглядит бледной и непонятно, где границы. */
 .bottom-nav {
   display: flex;
   align-items: stretch;
   margin: 0 8px calc(8px + env(safe-area-inset-bottom, 0px));
   border-radius: 18px;
-  border: 1px solid var(--ms-hairline);
+  border: 1px solid var(--ms-border);
   background: var(--ms-surface-2);
+  box-shadow: var(--ms-shadow-float);
   overflow: hidden;
 }
 

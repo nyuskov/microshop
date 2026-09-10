@@ -9,8 +9,11 @@ import { useAuthStore } from './stores/auth' // Import the auth store
 // стилей, чтобы переопределения из style.css/appearance.css имели приоритет.
 import { Quasar, Dialog, Notify } from 'quasar'
 import quasarRuLang from 'quasar/lang/ru'
-import '@quasar/extras/material-symbols-rounded/material-symbols-rounded.css'
 import 'quasar/dist/quasar.css'
+
+// Иконки: свой @font-face на урезанный Material Symbols Rounded
+// (полный набор 5 МБ — см. frontend/scripts/build-icons-font.py).
+import './assets/icons.css'
 
 // Import global styles
 import './assets/style.css'

@@ -79,6 +79,8 @@
     --ms-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.16);
     /* Тонкая линия-разделитель там, где 1px сплошного цвета слишком грубо. */
     --ms-hairline: color-mix(in srgb, var(--ms-border) 55%, transparent);
+    /* Тень «плавающих» панелей (нижнее меню): мягкая, без чёрного края. */
+    --ms-shadow-float: 0 6px 20px -8px rgba(15, 23, 42, 0.3);
 }
 
 /* ---------- Токены: тёмная тема ---------- */
@@ -130,6 +132,7 @@ html[data-theme='dark'] {
     --ms-accent-soft: color-mix(in srgb, var(--ms-accent) 22%, #171e26);
     --ms-accent-border: color-mix(in srgb, var(--ms-accent) 60%, #171e26);
     --ms-hairline: color-mix(in srgb, var(--ms-border) 70%, transparent);
+    --ms-shadow-float: 0 6px 20px -8px rgba(0, 0, 0, 0.75);
 }
 
 /* ---------- Цвет исходящих сообщений (светлая тема) ---------- */
