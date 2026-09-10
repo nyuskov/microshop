@@ -4,12 +4,14 @@ from typing import Optional
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi_users import FastAPIUsers
+from fastapi_users import BaseUserManager, FastAPIUsers
+from fastapi_users import exceptions as fastapi_users_exceptions
 from fastapi_users.authentication import (
     AuthenticationBackend,
     BearerTransport,
     JWTStrategy,
 )
+from fastapi_users.jwt import decode_jwt as fastapi_users_decode_jwt
 from fastapi_users.schemas import BaseUser, BaseUserUpdate
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from pydantic import Field, field_validator
@@ -53,9 +55,50 @@ async def get_user_manager(
     return UserManager(user_db)
 
 
+class RotatingJWTStrategy(JWTStrategy):
+    """JWT-стратегия с поддержкой предыдущего секрета (плановая ротация ключа).
+
+    Подписывает токены ТОЛЬКО текущим секретом, а проверяет текущим и предыдущим
+    (``JWT_SECRET_KEY_PREVIOUS``). Иначе смена ключа мгновенно разлогинила бы всех
+    пользователей: refresh-токены живут 30 дней, и они подписаны старым ключом.
+    Процедура ротации — docs/jwt-rotation.md.
+    """
+
+    def __init__(self, *, secrets: list[str], lifetime_seconds: int) -> None:
+        super().__init__(secret=secrets[0], lifetime_seconds=lifetime_seconds)
+        self._decode_secrets = secrets
+
+    async def read_token(
+        self, token: str | None, user_manager: BaseUserManager
+    ) -> User | None:
+        """Читает токен, пробуя по очереди текущий и предыдущий секреты."""
+        if token is None:
+            return None
+
+        for secret in self._decode_secrets:
+            try:
+                data = fastapi_users_decode_jwt(
+                    token, secret, self.token_audience, algorithms=[self.algorithm]
+                )
+            except jwt.PyJWTError:
+                continue
+            user_id = data.get("sub")
+            if user_id is None:
+                return None
+            try:
+                parsed_id = user_manager.parse_id(user_id)
+                return await user_manager.get(parsed_id)
+            except (
+                fastapi_users_exceptions.UserNotExists,
+                fastapi_users_exceptions.InvalidID,
+            ):
+                return None
+        return None
+
+
 def get_jwt_strategy() -> JWTStrategy:
-    return JWTStrategy(
-        secret=settings.auth_jwt.secret_key,
+    return RotatingJWTStrategy(
+        secrets=settings.auth_jwt.accepted_secrets(),
         lifetime_seconds=settings.auth_jwt.access_token_expire_minutes * 60,
     )
 

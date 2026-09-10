@@ -3344,3 +3344,101 @@ async def test_security_log_covers_sessions_and_email_change(api: _ApiCtx) -> No
     codes = [entry["event"] for entry in log.json()["items"]]
     assert "sessions_revoked" in codes
     assert "email_changed" in codes
+
+
+# --- Ротация JWT-секрета --------------------------------------------------
+
+
+def _sign_with(secret: str, user_id: int) -> str:
+    """Токен fastapi-users, подписанный заданным секретом (как будто старым)."""
+    import jwt
+
+    from core.config import settings
+
+    return jwt.encode(
+        {"sub": str(user_id), "aud": "fastapi-users:auth"},
+        secret,
+        algorithm=settings.auth_jwt.algorithm,
+    )
+
+
+async def test_previous_secret_still_accepted_after_rotation(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """После смены ключа старые токены работают, пока задан предыдущий секрет.
+
+    Иначе ротация ключа мгновенно разлогинила бы всех: refresh-токены живут 30 дней
+    и подписаны старым секретом.
+    """
+    from core.config import settings
+
+    old_secret = "старый-секрет-ротации-0001"
+    new_secret = settings.auth_jwt.secret_key
+
+    user = await api.make_user()
+    # На сервере «сменили» ключ: текущий — новый, предыдущий — старый.
+    monkeypatch.setattr(settings.auth_jwt, "secret_key", new_secret)
+    monkeypatch.setattr(settings.auth_jwt, "secret_key_previous", old_secret)
+
+    old_token = _sign_with(old_secret, int(user.id))
+    new_token = _sign_with(new_secret, int(user.id))
+
+    for label, token in (("старый", old_token), ("новый", new_token)):
+        # fastapi-users (/jwt/users/me/) — своя стратегия проверки.
+        jwt_me = await api.client.get("/api/v1/jwt/users/me/", headers=api.auth(token))
+        assert jwt_me.status_code == 200, f"{label} токен: {jwt_me.text}"
+        # Наш get_current_user (кастомные эндпоинты).
+        custom = await api.client.get("/api/v1/auth/sessions/", headers=api.auth(token))
+        assert custom.status_code == 200, f"{label} токен: {custom.text}"
+
+    # Токен, подписанный посторонним ключом, по-прежнему не принимается.
+    stranger = _sign_with("совсем-чужой-ключ-9999", int(user.id))
+    denied = await api.client.get("/api/v1/auth/sessions/", headers=api.auth(stranger))
+    assert denied.status_code == 401, denied.text
+
+
+async def test_new_tokens_signed_with_current_secret_only(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Новые токены подписываются текущим (новым) секретом, а не предыдущим."""
+    import jwt
+
+    from core.config import settings
+
+    old_secret = "старый-секрет-ротации-0002"
+    monkeypatch.setattr(settings.auth_jwt, "secret_key_previous", old_secret)
+
+    phone = _random_phone()
+    user = await api.make_user(phone_number=phone)
+    token = await api.token_for(user)
+
+    decoded_new = jwt.decode(
+        token,
+        settings.auth_jwt.secret_key,
+        algorithms=[settings.auth_jwt.algorithm],
+        options={"verify_aud": False},
+    )
+    assert decoded_new["sub"] == str(user.id)
+
+    with pytest.raises(jwt.InvalidTokenError):
+        jwt.decode(
+            token,
+            old_secret,
+            algorithms=[settings.auth_jwt.algorithm],
+            options={"verify_aud": False},
+        )
+
+
+async def test_accepted_secrets_deduplicates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Если предыдущий секрет совпадает с текущим, он не дублируется."""
+    from core.config import settings
+
+    monkeypatch.setattr(
+        settings.auth_jwt, "secret_key_previous", settings.auth_jwt.secret_key
+    )
+    assert settings.auth_jwt.accepted_secrets() == [settings.auth_jwt.secret_key]
+
+    monkeypatch.setattr(settings.auth_jwt, "secret_key_previous", "  ")
+    assert settings.auth_jwt.accepted_secrets() == [settings.auth_jwt.secret_key]

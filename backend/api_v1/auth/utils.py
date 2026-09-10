@@ -48,13 +48,23 @@ def decode_jwt(token: str | bytes) -> dict:
     Проверка audience отключена, чтобы принимать и токены fastapi-users
     (содержат claim ``aud``). Подлинность токена гарантируется подписью HS256,
     а субъект дополнительно сверяется с базой данных.
+
+    Подпись проверяется и по ПРЕДЫДУЩЕМУ секрету (``JWT_SECRET_KEY_PREVIOUS``):
+    это позволяет менять ключ без мгновенного разлогина всех (refresh-токены
+    живут 30 дней). См. docs/jwt-rotation.md.
     """
-    return jwt.decode(
-        token,
-        settings.auth_jwt.secret_key,
-        algorithms=[settings.auth_jwt.algorithm],
-        options={"verify_aud": False},
-    )
+    last_error: jwt.InvalidTokenError | None = None
+    for secret in settings.auth_jwt.accepted_secrets():
+        try:
+            return jwt.decode(
+                token,
+                secret,
+                algorithms=[settings.auth_jwt.algorithm],
+                options={"verify_aud": False},
+            )
+        except jwt.InvalidTokenError as exc:
+            last_error = exc
+    raise last_error if last_error is not None else jwt.InvalidTokenError("no secret")
 
 
 def build_refresh_token(user_id: int, jti: str | None = None) -> str:

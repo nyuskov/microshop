@@ -54,6 +54,7 @@ class DeviceChallengeError(Exception):
 
 
 def _secret() -> str:
+    """Текущий секрет: им ПОДПИСЫВАЕМ заявку (проверяем и предыдущим)."""
     return settings.auth_jwt.secret_key
 
 
@@ -73,16 +74,26 @@ def build_challenge(*, user_id: int, device: DeviceInfo) -> str:
 
 
 def decode_challenge(token: str) -> tuple[int, str]:
-    """Проверяет challenge и возвращает ``(user_id, подпись устройства)``."""
-    try:
-        payload = jwt.decode(
-            token,
-            _secret(),
-            algorithms=[settings.auth_jwt.algorithm],
-            audience=CHALLENGE_AUDIENCE,
-        )
-    except jwt.InvalidTokenError as exc:
-        raise DeviceChallengeError(str(exc)) from exc
+    """Проверяет challenge и возвращает ``(user_id, подпись устройства)``.
+
+    Секреты перебираются (текущий, затем предыдущий): при плановой ротации ключа
+    уже выданные заявки должны доживать свой срок. См. docs/jwt-rotation.md.
+    """
+    payload: dict | None = None
+    last_error: jwt.InvalidTokenError | None = None
+    for secret in settings.auth_jwt.accepted_secrets():
+        try:
+            payload = jwt.decode(
+                token,
+                secret,
+                algorithms=[settings.auth_jwt.algorithm],
+                audience=CHALLENGE_AUDIENCE,
+            )
+            break
+        except jwt.InvalidTokenError as exc:
+            last_error = exc
+    if payload is None:
+        raise DeviceChallengeError(str(last_error or "недействительный токен"))
 
     if payload.get("type") != CHALLENGE_TYPE:
         raise DeviceChallengeError("не тот тип токена")

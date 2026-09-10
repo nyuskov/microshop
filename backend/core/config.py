@@ -20,15 +20,32 @@ class AuthJWT(BaseSettings):
     """Настройки JWT-аутентификации.
 
     ``secret_key`` читается из переменной окружения ``JWT_SECRET_KEY``.
+
+    ``secret_key_previous`` (``JWT_SECRET_KEY_PREVIOUS``) — поддержка ротации:
+    токены подписываются ТОЛЬКО текущим ключом, а проверяются текущим и предыдущим.
+    Без этого смена ключа мгновенно разлогинила бы всех (refresh-токены живут
+    30 дней). Процедура — docs/jwt-rotation.md.
     """
 
     secret_key: str = Field(
         default=_DEV_JWT_SECRET_KEY,
         validation_alias="JWT_SECRET_KEY",
     )
+    secret_key_previous: str | None = Field(
+        default=None,
+        validation_alias="JWT_SECRET_KEY_PREVIOUS",
+    )
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 30
+
+    def accepted_secrets(self) -> list[str]:
+        """Секреты, которыми можно ПРОВЕРЯТЬ токены (текущий, затем предыдущий)."""
+        secrets = [self.secret_key]
+        previous = (self.secret_key_previous or "").strip()
+        if previous and previous != self.secret_key:
+            secrets.append(previous)
+        return secrets
 
 
 class Settings(BaseSettings):

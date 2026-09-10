@@ -98,7 +98,7 @@ microshop/
 ├── scripts/monitoring/       # проверка прода + оповещения по e-mail (см. docs/monitoring.md)
 ├── scripts/ci/               # смоук-тест прода после деплоя (smoke_prod.sh)
 ├── db_dump/                  # дампы БД + media: latest + archive/ + logs/ (в .gitignore)
-├── docs/                     # production.md, offsite-backup.md, local-backup.md, email-smtp.md, monitoring.md, rustore.md, privacy-policy.md, community-guidelines.md
+├── docs/                     # production.md, offsite-backup.md, local-backup.md, email-smtp.md, monitoring.md, jwt-rotation.md, rustore.md, privacy-policy.md, community-guidelines.md
 ├── .github/workflows/ci.yml  # backend (lint+mypy+pytest c Postgres) + frontend + deploy + smoke
 └── queries.sql
 ```
@@ -267,6 +267,7 @@ crontab -l | grep -v '# pismo-monitor' | crontab -   # удалить задач
 |---|---|---|
 | `DATABASE_URL` | `postgresql+asyncpg://postgres:Xx123456@localhost:5432/microshop` | URL БД |
 | `JWT_SECRET_KEY` | (значение в коде) | секрет HS256 |
+| `JWT_SECRET_KEY_PREVIOUS` | — | предыдущий секрет для плановой ротации ключа (`docs/jwt-rotation.md`): токены подписываются текущим, проверяются текущим и предыдущим |
 | `RABBITMQ_URL` | `amqp://guest:guest@localhost:5672/` | URL RabbitMQ (брокер Celery + мост realtime) |
 | `RABBITMQ_USER` / `RABBITMQ_PASSWORD` | — | учётка RabbitMQ (для контейнера `rabbitmq` и URL) |
 | `CORS_ORIGINS` | `https://localhost:5173`, `http(s)://localhost:5173` | CORS |
