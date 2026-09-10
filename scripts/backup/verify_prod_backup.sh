@@ -93,9 +93,26 @@ fi
 # --- 3) Временная БД + восстановление ---------------------------------------
 RESTORE_OK=1
 if [[ ${#PROBLEMS[@]} -eq 0 ]]; then
-    echo "Создаю временную БД $VERIFY_DB на сервере…"
-    if ! remote "cd $PROD_DIR && docker compose -p $PROD_PROJECT -f $PROD_COMPOSE_FILE exec -T db psql -U postgres -c 'DROP DATABASE IF EXISTS $VERIFY_DB' >/dev/null && docker compose -p $PROD_PROJECT -f $PROD_COMPOSE_FILE exec -T db psql -U postgres -c 'CREATE DATABASE $VERIFY_DB' >/dev/null"; then
-        add_problem "не удалось создать временную БД $VERIFY_DB на сервере"
+    # Прод может быть прямо сейчас в процессе деплоя (контейнеры пересоздаются) —
+    # это не повод тревожить владельца, поэтому пробуем несколько раз.
+    CREATE_CMD="cd $PROD_DIR && docker compose -p $PROD_PROJECT -f $PROD_COMPOSE_FILE exec -T db psql -U postgres -c 'DROP DATABASE IF EXISTS $VERIFY_DB' >/dev/null && docker compose -p $PROD_PROJECT -f $PROD_COMPOSE_FILE exec -T db psql -U postgres -c 'CREATE DATABASE $VERIFY_DB' >/dev/null"
+    CREATE_ATTEMPTS=3
+    CREATE_PAUSE=20
+    CREATED=0
+    for attempt in $(seq 1 "$CREATE_ATTEMPTS"); do
+        echo "Создаю временную БД $VERIFY_DB на сервере (попытка $attempt)…"
+        if remote "$CREATE_CMD"; then
+            CREATED=1
+            break
+        fi
+        if (( attempt < CREATE_ATTEMPTS )); then
+            echo "сервер недоступен (возможно, идёт деплой) — повтор через ${CREATE_PAUSE} с"
+            sleep "$CREATE_PAUSE"
+        fi
+    done
+
+    if [[ "$CREATED" != "1" ]]; then
+        add_problem "не удалось создать временную БД $VERIFY_DB (сервер недоступен или идёт деплой)"
         RESTORE_OK=0
     else
         CREATED_DB=1
