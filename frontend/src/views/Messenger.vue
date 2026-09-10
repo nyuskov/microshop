@@ -2929,17 +2929,16 @@ watch(
   width: min(560px, calc(100vw - 32px));
 }
 
-/* Профиль — всегда «светлый лист» (как форма входа): внутри только светлые
-   карточки/поля (UserProfile), поэтому и сама карточка принудительно светлая,
-   чтобы в тёмной теме диалог был цельным, а в светлой — без изменений. */
+/* Профиль — часть темы: внутри UserProfile цвета берутся из токенов
+   (`--ms-surface`, `--ms-text`), поэтому и карточка диалога следует теме. */
 .ms-modal-profile {
-  background: #ffffff !important;
-  color: #1c2733 !important;
-  border-color: #e2e6ea !important;
+  background: var(--ms-surface) !important;
+  color: var(--ms-text) !important;
+  border-color: var(--ms-border) !important;
 }
 
 .ms-modal-profile :deep(.q-separator) {
-  background: #eef1f3;
+  background: var(--ms-border);
 }
 
 .ms-modal-head {
