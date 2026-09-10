@@ -112,6 +112,10 @@ class UserWithDetailsSchema(BaseModel):
     # Признак администратора: фронт показывает таким пользователям разбор жалоб
     # (сам эндпоинт разбора всё равно проверяет is_superuser на сервере).
     is_superuser: bool = False
+    # Состояние безопасности аккаунта: фронт по этим флагам предлагает задать
+    # пароль, добавить e-mail или сменить слабый пароль (см. профиль).
+    password_set: bool = False
+    password_weak: bool = False
     profile: ProfileSchema | None
     chats: list[ChatSchema] = Field(default_factory=list)
 

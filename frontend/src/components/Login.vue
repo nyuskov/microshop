@@ -4,6 +4,7 @@ import { useAuthStore } from '../stores/auth'
 import { getErrorMessage } from '../services/errors'
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { formatPhoneForBackend, isValidPhoneNumber, prettyPhone } from '@/utils/phone'
+import { PASSWORD_MIN_LENGTH, passwordProblem, passwordStrength } from '@/utils/passwordPolicy'
 
 type LoginState = 'phone' | 'password' | 'otp' | 'create'
 
@@ -112,6 +113,9 @@ async function continueWithPhone() {
 const focusPassword = () => {
   passwordFieldRef.value?.focus()
 }
+
+/** Оценка силы пароля для подсказки на шаге создания (проверки — на сервере). */
+const createPasswordScore = computed(() => passwordStrength(password.value))
 
 function resetPasswordFields() {
   password.value = ''
@@ -223,8 +227,14 @@ async function onCreateSubmit() {
     return
   }
 
-  if (password.value.length < 6) {
-    result.value = 'Пароль должен быть не короче 6 символов.'
+  // Та же политика, что на сервере (см. utils/passwordPolicy.ts): длина,
+  // чёрный список частых паролей, запрет данных аккаунта.
+  const problem = passwordProblem(password.value, {
+    phoneNumber: formatPhoneForBackend(phoneOrUsername.value),
+    username: phoneOrUsername.value
+  })
+  if (problem) {
+    result.value = problem
     severity.value = 'error'
     return
   }
@@ -422,12 +432,19 @@ function goBackToPhoneInput() {
             type="password"
             outlined
             class="phone-input"
-            placeholder="Не короче 6 символов"
+            :placeholder="`Не короче ${PASSWORD_MIN_LENGTH} символов`"
             autocomplete="new-password"
             aria-label="Новый пароль"
             hide-bottom-space
             @keyup.enter="onCreateSubmit"
           />
+
+          <p v-if="password" class="password-meter" :data-score="createPasswordScore.score">
+            <span class="password-meter-bar"
+              ><span :style="{ width: `${createPasswordScore.score * 33}%` }"
+            /></span>
+            {{ createPasswordScore.label }}
+          </p>
 
           <label class="field-label gap-top" for="confirm-password-input">Повторите пароль</label>
           <q-input
@@ -647,6 +664,36 @@ function goBackToPhoneInput() {
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
   flex-shrink: 0;
+}
+
+/* Индикатор силы пароля (подсказка; решает всё серверная политика). */
+.password-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 2px;
+  font-size: 12.5px;
+  color: #6b7b88;
+}
+
+.password-meter-bar {
+  display: inline-block;
+  width: 86px;
+  height: 5px;
+  border-radius: 999px;
+  background: #e9edf0;
+  overflow: hidden;
+}
+
+.password-meter-bar > span {
+  display: block;
+  height: 100%;
+  background: #e0a800;
+  transition: width 0.2s ease;
+}
+
+.password-meter[data-score='3'] .password-meter-bar > span {
+  background: #2ea25e;
 }
 
 @keyframes spin {

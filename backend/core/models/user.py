@@ -32,6 +32,16 @@ class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
         server_default=text("false"),
         nullable=False,
     )
+    # Пароль не проходит текущую политику (короткий/из чёрного списка/содержит
+    # данные аккаунта). Ставится при входе: только там есть открытый пароль, а
+    # значит можно проверить уже существующие «старые» пароли. Фронт по этому
+    # флагу показывает предложение сменить пароль.
+    password_weak: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=text("false"),
+        nullable=False,
+    )
     # email может отсутствовать при входе по телефону, поэтому nullable
     email: Mapped[str | None] = mapped_column(  # type: ignore[assignment]
         String(length=320), nullable=True

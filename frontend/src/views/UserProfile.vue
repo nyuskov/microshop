@@ -8,6 +8,7 @@ import { formatPhoneForBackend, localPhoneDigits, maskPhoneLocal } from '@/utils
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
 import { disablePushNotifications, enablePushNotifications } from '@/services/pwa'
 import { disableNativePush, enableNativePush, isNativeApp } from '@/services/nativePush'
+import { PASSWORD_MIN_LENGTH, passwordProblem, passwordStrength } from '@/utils/passwordPolicy'
 import DeleteAccountDialog from '@/components/messenger/DeleteAccountDialog.vue'
 
 const emit = defineEmits(['close-modal'])
@@ -154,6 +155,102 @@ const removeAvatarClick = async () => {
 }
 
 const closeModal = () => emit('close-modal')
+
+// ---------- Безопасность: пароль, e-mail, выход со всех устройств ----------
+// Уведомление показываем, если вход не защищён: пароля нет, пароль слабый
+// (задан до появления политики) или не указан e-mail для восстановления.
+const securityIssues = computed<string[]>(() => {
+  const user = authStore.current_user
+  if (!user) return []
+  const issues: string[] = []
+  if (!user.password_set) {
+    issues.push('Задайте пароль — сейчас вход возможен только по коду в Telegram.')
+  } else if (user.password_weak) {
+    issues.push('Пароль слабый — замените его на длинную фразу.')
+  }
+  if (!user.email) {
+    issues.push('Добавьте e-mail — он понадобится для восстановления доступа.')
+  }
+  return issues
+})
+
+const passwordForm = reactive({
+  current: '',
+  next: '',
+  confirm: ''
+})
+const passwordSaving = ref(false)
+const passwordNotice = ref('')
+const passwordError = ref('')
+
+const passwordHint = computed(() => {
+  if (!passwordForm.next) return ''
+  return passwordProblem(passwordForm.next, {
+    phoneNumber: authStore.current_user?.phone_number,
+    email: profileForm.email || authStore.current_user?.email,
+    username: authStore.current_user?.username
+  })
+})
+
+const passwordScore = computed(() => passwordStrength(passwordForm.next))
+
+const resetPasswordForm = () => {
+  passwordForm.current = ''
+  passwordForm.next = ''
+  passwordForm.confirm = ''
+}
+
+const changePassword = async () => {
+  if (passwordSaving.value) return
+
+  const problem = passwordProblem(passwordForm.next, {
+    phoneNumber: authStore.current_user?.phone_number,
+    email: profileForm.email || authStore.current_user?.email,
+    username: authStore.current_user?.username
+  })
+  if (problem) {
+    passwordError.value = problem
+    passwordNotice.value = ''
+    return
+  }
+  if (passwordForm.next !== passwordForm.confirm) {
+    passwordError.value = 'Пароли не совпадают.'
+    passwordNotice.value = ''
+    return
+  }
+
+  passwordSaving.value = true
+  passwordError.value = ''
+  passwordNotice.value = ''
+  try {
+    const needsCurrent = authStore.current_user?.password_set === true
+    await authStore.setPassword(passwordForm.next, needsCurrent ? passwordForm.current : undefined)
+    await authStore.fetchUser()
+    resetPasswordForm()
+    passwordNotice.value = 'Пароль обновлён. Остальные устройства вышли из аккаунта.'
+  } catch (error) {
+    passwordError.value = getErrorMessage(error, 'Не удалось изменить пароль')
+  } finally {
+    passwordSaving.value = false
+  }
+}
+
+const doRevokeAllSessions = async () => {
+  if (passwordSaving.value) return
+
+  passwordSaving.value = true
+  passwordError.value = ''
+  passwordNotice.value = ''
+  try {
+    await authStore.revokeAllSessions()
+    await authStore.logout()
+    emit('close-modal')
+  } catch (error) {
+    passwordError.value = getErrorMessage(error, 'Не удалось выйти на всех устройствах')
+  } finally {
+    passwordSaving.value = false
+  }
+}
 
 const doLogout = async () => {
   try {
@@ -443,6 +540,104 @@ const onNotificationsToggle = async (val: boolean) => {
             </div>
             <q-toggle v-model="profileForm.privacy_mode" color="primary" keep-color />
           </div>
+        </section>
+
+        <!-- Безопасность: пароль и сессии -->
+        <section class="section security-section">
+          <h3 class="section-title">Безопасность</h3>
+
+          <div v-if="securityIssues.length" class="security-alert">
+            <q-icon name="shield" size="18px" />
+            <div>
+              <strong>Аккаунт стоит защитить</strong>
+              <ul>
+                <li v-for="issue in securityIssues" :key="issue">{{ issue }}</li>
+              </ul>
+            </div>
+          </div>
+
+          <p class="security-hint">
+            Вход — по номеру телефона. Пароль нужен, чтобы входить без кода в Telegram; минимум
+            {{ PASSWORD_MIN_LENGTH }} символов, лучше — длинная фраза.
+          </p>
+
+          <form class="security-form" @submit.prevent="changePassword">
+            <label v-if="authStore.current_user?.password_set" class="field-label" for="pf-current">
+              Текущий пароль
+            </label>
+            <input
+              v-if="authStore.current_user?.password_set"
+              id="pf-current"
+              v-model="passwordForm.current"
+              type="password"
+              autocomplete="current-password"
+              placeholder="Текущий пароль"
+            />
+
+            <label class="field-label" for="pf-new">Новый пароль</label>
+            <input
+              id="pf-new"
+              v-model="passwordForm.next"
+              type="password"
+              autocomplete="new-password"
+              placeholder="Новый пароль"
+            />
+            <p v-if="passwordForm.next" class="password-meter" :data-score="passwordScore.score">
+              <span class="password-meter-bar"
+                ><span :style="{ width: `${passwordScore.score * 33}%` }"
+              /></span>
+              {{ passwordScore.label
+              }}<template v-if="passwordHint"> — {{ passwordHint }}</template>
+            </p>
+
+            <label class="field-label" for="pf-confirm">Повторите пароль</label>
+            <input
+              id="pf-confirm"
+              v-model="passwordForm.confirm"
+              type="password"
+              autocomplete="new-password"
+              placeholder="Повторите пароль"
+            />
+
+            <button type="submit" class="security-btn" :disabled="passwordSaving">
+              <q-icon
+                :name="authStore.current_user?.password_set ? 'lock_reset' : 'lock'"
+                size="17px"
+              />
+              {{
+                passwordSaving
+                  ? 'Сохранение…'
+                  : authStore.current_user?.password_set
+                    ? 'Сменить пароль'
+                    : 'Задать пароль'
+              }}
+            </button>
+
+            <p class="security-note">
+              После смены пароля все другие устройства выйдут из аккаунта.
+            </p>
+          </form>
+
+          <transition name="fade">
+            <div v-if="passwordNotice" class="notice success">
+              <q-icon name="check_circle" size="18px" /> {{ passwordNotice }}
+            </div>
+          </transition>
+          <transition name="fade">
+            <div v-if="passwordError" class="notice error">
+              <q-icon name="error" size="18px" /> {{ passwordError }}
+            </div>
+          </transition>
+
+          <button
+            type="button"
+            class="revoke-btn"
+            :disabled="passwordSaving"
+            @click="doRevokeAllSessions"
+          >
+            <q-icon name="phonelink_erase" size="17px" />
+            Выйти на всех устройствах
+          </button>
         </section>
 
         <!-- Сообщения -->
@@ -814,6 +1009,133 @@ const onNotificationsToggle = async (val: boolean) => {
 .logout-row {
   display: flex;
   justify-content: flex-start;
+}
+
+/* Безопасность: пароль и сессии */
+.security-section {
+  gap: 10px;
+}
+
+.security-alert {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #f2d9a8;
+  border-radius: 12px;
+  background: #fffaf0;
+  color: #8a6116;
+  font-size: 13.5px;
+}
+
+.security-alert strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #7a5310;
+}
+
+.security-alert ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.security-hint {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7b88;
+}
+
+.security-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.security-form input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e2e6ea;
+  border-radius: 11px;
+  background: #fff;
+  font: inherit;
+  font-size: 14.5px;
+  color: #1c2733;
+}
+
+.security-form input:focus {
+  outline: none;
+  border-color: var(--ms-accent, #2ea25e);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ms-accent, #2ea25e) 15%, transparent);
+}
+
+.password-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 2px;
+  font-size: 12.5px;
+  color: #6b7b88;
+}
+
+.password-meter-bar {
+  display: inline-block;
+  width: 90px;
+  height: 5px;
+  border-radius: 999px;
+  background: #e9edf0;
+  overflow: hidden;
+}
+
+.password-meter-bar > span {
+  display: block;
+  height: 100%;
+  background: #e0a800;
+  transition: width 0.2s ease;
+}
+
+.password-meter[data-score='3'] .password-meter-bar > span {
+  background: #2ea25e;
+}
+
+.security-btn,
+.revoke-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 11px;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.security-btn {
+  align-self: flex-start;
+  margin-top: 8px;
+  border: none;
+  background: var(--ms-accent, #2ea25e);
+  color: #fff;
+}
+
+.revoke-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+  border: 1px solid #e2e6ea;
+  background: #fff;
+  color: #1c2733;
+}
+
+.security-btn:disabled,
+.revoke-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.security-note {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: #8295a3;
 }
 
 /* Удаление аккаунта (требование RuStore/152-ФЗ): заметно, но не кричит. */

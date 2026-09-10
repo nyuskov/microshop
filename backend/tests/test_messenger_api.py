@@ -1959,3 +1959,218 @@ async def test_profile_phone_cannot_be_changed(api: _ApiCtx) -> None:
         stored = await session.get(User, user.id)
         assert stored is not None
         assert stored.phone_number == phone
+
+
+# --- Безопасность входа: политика пароля, блокировка, отзыв сессий ---------
+
+_STRONG_PASSWORD = "vesna-listopad-42"
+
+
+async def _account_with_password(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch, password: str = _STRONG_PASSWORD
+) -> tuple[str, str]:
+    """Заводит аккаунт по коду и задаёт ему пароль; возвращает (номер, access)."""
+    phone = _random_phone()
+    await _request_otp(api, monkeypatch, phone)
+    response = await api.client.post(
+        "/api/v1/auth/password/register/",
+        json={"phone_number": phone, "password": password},
+    )
+    assert response.status_code == 200, response.text
+    return phone, response.json()["access_token"]
+
+
+@pytest.mark.parametrize(
+    "password",
+    ["korova", "1234567890", "qwertyuiop", "korova1111moloko"],
+)
+async def test_weak_password_rejected_on_register(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch, password: str
+) -> None:
+    """Слабый пароль не принимаем и объясняем причину (400 с текстом политики)."""
+    monkeypatch.setattr("api_v1.auth.views.enqueue_sms_otp", lambda p, c: None)
+    phone = _random_phone()
+
+    response = await api.client.post(
+        "/api/v1/auth/password/register/",
+        json={"phone_number": phone, "password": password},
+    )
+
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"]
+
+
+async def test_password_login_locks_account_after_failures(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Перебор пароля блокирует аккаунт (лимит по IP обходится сменой адреса)."""
+    phone, _ = await _account_with_password(api, monkeypatch)
+    limit = settings.auth_login_max_failures
+
+    for _ in range(limit):
+        wrong = await api.client.post(
+            "/api/v1/auth/password/login/",
+            json={"phone_number": phone, "password": "vesna-listopad-99"},
+        )
+        assert wrong.status_code == 401, wrong.text
+
+    # Следующая попытка — уже с блокировкой, даже с верным паролем.
+    locked = await api.client.post(
+        "/api/v1/auth/password/login/",
+        json={"phone_number": phone, "password": _STRONG_PASSWORD},
+    )
+    assert locked.status_code == 429, locked.text
+    assert int(locked.headers["Retry-After"]) > 0
+
+
+async def test_password_login_success_resets_failures(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Успешный вход обнуляет счётчик неудач — аккаунт не «накапливает» блокировку."""
+    phone, _ = await _account_with_password(api, monkeypatch)
+
+    for _ in range(settings.auth_login_max_failures - 2):
+        wrong = await api.client.post(
+            "/api/v1/auth/password/login/",
+            json={"phone_number": phone, "password": "vesna-listopad-99"},
+        )
+        assert wrong.status_code == 401
+
+    good = await api.client.post(
+        "/api/v1/auth/password/login/",
+        json={"phone_number": phone, "password": _STRONG_PASSWORD},
+    )
+    assert good.status_code == 200, good.text
+
+    # После сброса счётчика те же неудачи снова не блокируют вход.
+    for _ in range(settings.auth_login_max_failures - 2):
+        wrong = await api.client.post(
+            "/api/v1/auth/password/login/",
+            json={"phone_number": phone, "password": "vesna-listopad-99"},
+        )
+        assert wrong.status_code == 401, wrong.text
+
+
+async def test_password_login_marks_weak_legacy_password(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Слабый пароль (заданный до политики) помечается флагом при входе.
+
+    Иначе сломали бы вход тем, у кого пароль уже есть: политика применяется
+    только к новым паролям, а старый — помечается и фронт предлагает сменить.
+    """
+    phone = _random_phone()
+    user = await api.make_user(phone_number=phone)
+    from core.security import get_password_hash
+
+    async with api.factory() as session:
+        stored = await session.get(User, user.id)
+        assert stored is not None
+        stored.hashed_password = get_password_hash("kisa123")
+        stored.password_set = True
+        await session.commit()
+
+    login = await api.client.post(
+        "/api/v1/auth/password/login/",
+        json={"phone_number": phone, "password": "kisa123"},
+    )
+    assert login.status_code == 200, login.text
+
+    me = await api.client.get(
+        "/api/v1/jwt/users/me/", headers=api.auth(login.json()["access_token"])
+    )
+    assert me.status_code == 200, me.text
+    body = me.json()
+    assert body["password_set"] is True
+    assert body["password_weak"] is True
+
+
+async def test_password_change_returns_tokens_and_adds_new_session(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Смена пароля требует текущий пароль, выдаёт новые токены и ставит флаг снятым."""
+    phone, access = await _account_with_password(api, monkeypatch)
+
+    wrong_current = await api.client.post(
+        "/api/v1/auth/password/set/",
+        json={"password": "moloko-korova-77", "current_password": "no-such-pass"},
+        headers=api.auth(access),
+    )
+    assert wrong_current.status_code == 400, wrong_current.text
+
+    changed = await api.client.post(
+        "/api/v1/auth/password/set/",
+        json={"password": "moloko-korova-77", "current_password": _STRONG_PASSWORD},
+        headers=api.auth(access),
+    )
+    assert changed.status_code == 200, changed.text
+    body = changed.json()
+    # Пароль сменили из-за подозрения на взлом — старые сессии отозваны,
+    # текущему устройству выдан новый комплект.
+    assert body["access_token"] and body["refresh_token"]
+
+    me = await api.client.get(
+        "/api/v1/jwt/users/me/", headers=api.auth(body["access_token"])
+    )
+    assert me.json()["password_weak"] is False
+
+
+async def test_password_change_revokes_other_refresh_sessions(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Смена пароля убивает refresh-сессии других устройств."""
+    phone, access = await _account_with_password(api, monkeypatch)
+
+    # «Другое устройство»: вход по паролю → своя refresh-сессия.
+    other = await api.client.post(
+        "/api/v1/auth/password/login/",
+        json={"phone_number": phone, "password": _STRONG_PASSWORD},
+    )
+    assert other.status_code == 200, other.text
+    other_refresh = other.json()["refresh_token"]
+
+    changed = await api.client.post(
+        "/api/v1/auth/password/set/",
+        json={"password": "moloko-korova-77", "current_password": _STRONG_PASSWORD},
+        headers=api.auth(access),
+    )
+    assert changed.status_code == 200, changed.text
+
+    # Порядок важен: сначала проверяем свежий refresh, потому что попытка
+    # использовать отозванный токен включает «семейный отзыв» (защита от кражи)
+    # и убивает вообще все сессии, включая только что выданную.
+    fresh = await api.client.post(
+        "/api/v1/jwt/auth/refresh",
+        headers={"Authorization": f"Bearer {changed.json()['refresh_token']}"},
+    )
+    assert fresh.status_code == 200, fresh.text
+
+    revoked = await api.client.post(
+        "/api/v1/jwt/auth/refresh",
+        headers={"Authorization": f"Bearer {other_refresh}"},
+    )
+    assert revoked.status_code == 401, revoked.text
+
+
+async def test_revoke_all_sessions_endpoint(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """«Выйти на всех устройствах» отзывает все refresh-сессии пользователя."""
+    phone, access = await _account_with_password(api, monkeypatch)
+    other = await api.client.post(
+        "/api/v1/auth/password/login/",
+        json={"phone_number": phone, "password": _STRONG_PASSWORD},
+    )
+    other_refresh = other.json()["refresh_token"]
+
+    revoked = await api.client.post(
+        "/api/v1/auth/sessions/revoke-all/", headers=api.auth(access)
+    )
+    assert revoked.status_code == 200, revoked.text
+    assert "всех устройствах" in revoked.json()["detail"]
+
+    after = await api.client.post(
+        "/api/v1/jwt/auth/refresh",
+        headers={"Authorization": f"Bearer {other_refresh}"},
+    )
+    assert after.status_code == 401, after.text

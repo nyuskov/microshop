@@ -11,6 +11,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.rate_limit import client_ip, enforce_limit, rate_limit_key, rate_limiter
+from core import passwords
 from core.celery_app import get_task
 from core.config import settings
 from core.models import TelegramBindLink, User, db_helper
@@ -23,6 +24,7 @@ from ..users.crud import (
     get_user_by_phone_number,
 )
 from .jwt import get_jwt_strategy
+from .login_guard import lockout_seconds, register_failure, reset_failures
 from .otp_storage import (
     OtpVerifyResult,
     can_request_new_code,
@@ -31,7 +33,7 @@ from .otp_storage import (
     store_otp,
     verify_otp,
 )
-from .refresh_sessions import issue_refresh_token
+from .refresh_sessions import issue_refresh_token, revoke_all_sessions
 from .schemas import (
     OTPResponse,
     PasswordRequest,
@@ -303,24 +305,29 @@ async def verify_otp_endpoint(
     )
 
 
-# --- Вход по паролю (временная замена OTP/SMS) ---------------------------
-# Пока SMS/Telegram-доставка недоступна (нет платного шлюза), вход — по номеру
-# телефона и паролю. Если у номера ещё нет заданного пароля (password_set=False),
-# предлагаем его создать. OTP-эндпоинты ниже остаются в коде для будущего.
-
-_PASSWORD_MIN_LENGTH = 6
-_PASSWORD_MAX_LENGTH = 128
+# --- Вход по паролю ------------------------------------------------------
+# Основной способ входа после подтверждения номера кодом. Правила пароля — в
+# ``core/passwords.py`` (длина, чёрный список, запрет данных аккаунта).
 
 
-def _validate_new_password(password: str) -> str:
-    """Проверяет длину нового пароля и возвращает его (или HTTP 400)."""
-    if not (_PASSWORD_MIN_LENGTH <= len(password) <= _PASSWORD_MAX_LENGTH):
+def _validate_new_password(
+    password: str,
+    *,
+    phone_number: str | None = None,
+    email: str | None = None,
+    username: str | None = None,
+) -> str:
+    """Проверяет новый пароль политикой и возвращает его (или HTTP 400)."""
+    problem = passwords.password_problem(
+        password,
+        phone_number=phone_number,
+        email=email,
+        username=username,
+    )
+    if problem:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"Пароль должен быть длиной от {_PASSWORD_MIN_LENGTH} "
-                f"до {_PASSWORD_MAX_LENGTH} символов."
-            ),
+            detail=problem,
         )
     return password
 
@@ -367,7 +374,7 @@ async def register_with_password(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Неверный формат номера телефона.",
         )
-    password = _validate_new_password(request_data.password)
+    password = _validate_new_password(request_data.password, phone_number=phone_number)
 
     user = await get_user_by_phone_number(session, phone_number)
     if user is not None and user.password_set:
@@ -383,6 +390,7 @@ async def register_with_password(
         # Аккаунт создан ранее через OTP: задаём «настоящий» пароль.
         user.hashed_password = hashed
         user.password_set = True
+        user.password_weak = False
         await session.commit()
 
     access_token = await get_jwt_strategy().write_token(user)
@@ -412,13 +420,45 @@ async def password_login(
             detail="Неверный формат номера телефона.",
         )
 
+    # Блокировка аккаунта после серии неудач: лимит по IP обходится сменой
+    # адреса, поэтому считаем неудачи на сам номер (см. login_guard.py).
+    locked_for = await lockout_seconds(session, identifier=phone_number)
+    if locked_for > 0:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                "Слишком много неверных попыток входа. "
+                f"Повторите через {locked_for} сек."
+            ),
+            headers={"Retry-After": str(locked_for)},
+        )
+
     user = await authenticate_user(phone_number, request_data.password, session)
     if user is None or not user.password_set:
+        await register_failure(session, identifier=phone_number)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный номер или пароль.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    await reset_failures(session, identifier=phone_number)
+
+    # Пароль пришёл в открытом виде — единственный момент, когда можно проверить
+    # его по текущей политике (у нас хранится только хеш). Если он слабый (пароль
+    # задан до появления политики) — ставим флаг: фронт предложит его сменить.
+    weak = (
+        passwords.password_problem(
+            request_data.password,
+            phone_number=user.phone_number,
+            email=user.email,
+            username=user.username,
+        )
+        is not None
+    )
+    if weak != user.password_weak:
+        user.password_weak = weak
+        await session.commit()
 
     access_token = await get_jwt_strategy().write_token(user)
     return TokenResponse(
@@ -440,9 +480,18 @@ async def set_password(
     Основной сценарий — первый вход: пользователь подтвердил номер по OTP и
     теперь задаёт пароль, чтобы дальше входить без кода (дешевле и быстрее).
     Если пароль уже есть, требуется ``current_password``.
+
+    ВАЖНО: смена пароля отзывает ВСЕ refresh-сессии (если пароль сменили из-за
+    подозрения на взлом, остальные устройства должны вылететь), поэтому в ответе
+    приходит новая пара токенов — текущее устройство остаётся в системе.
     """
     await _enforce_ip_limit(request, scope="auth:password-set", limit=10)
-    password = _validate_new_password(request_data.password)
+    password = _validate_new_password(
+        request_data.password,
+        phone_number=user.phone_number,
+        email=user.email,
+        username=user.username,
+    )
 
     if user.password_set:
         current = request_data.current_password or ""
@@ -455,9 +504,37 @@ async def set_password(
 
     user.hashed_password = get_password_hash(password)
     user.password_set = True
+    user.password_weak = False
     await session.commit()
-    logger.info("Пароль задан пользователем %s", user.id)
-    return PasswordSetResponse(detail="Пароль сохранён.")
+
+    # Все прочие устройства разлогиниваем, текущему выдаём новые токены.
+    await revoke_all_sessions(session, user_id=user.id)
+    access_token = await get_jwt_strategy().write_token(user)
+    logger.info("Пароль задан пользователем %s, остальные сессии отозваны", user.id)
+    return PasswordSetResponse(
+        detail="Пароль сохранён. Остальные устройства вышли из аккаунта.",
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=await issue_refresh_token(session, user_id=user.id),
+    )
+
+
+@router.post("/sessions/revoke-all/", response_model=PasswordSetResponse)
+async def revoke_sessions(
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> PasswordSetResponse:
+    """Выходит из аккаунта на всех устройствах (кроме текущего запроса).
+
+    Текущий access-токен продолжает работать до истечения (30 мин), но его
+    refresh-сессия тоже отозвана, так что продлить вход не получится — фронт
+    после этого чистит токены и уводит на экран входа.
+    """
+    await _enforce_ip_limit(request, scope="auth:revoke-all", limit=10)
+    await revoke_all_sessions(session, user_id=user.id)
+    logger.info("Пользователь %s отозвал все сессии", user.id)
+    return PasswordSetResponse(detail="Вы вышли на всех устройствах.")
 
 
 # --- Привязка Telegram (резервный канал доставки OTP) ---------------------

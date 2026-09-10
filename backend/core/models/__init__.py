@@ -8,6 +8,7 @@ __all__ = [
     "Message",
     "MessageReaction",
     "OtpCode",
+    "PasswordLoginAttempt",
     "Profile",
     "PushSubscription",
     "RefreshSession",
@@ -27,6 +28,7 @@ from .device_key import DeviceKey  # noqa: F401
 from .message import Message  # noqa: F401
 from .message_reaction import MessageReaction  # noqa: F401
 from .otp_code import OtpCode  # noqa: F401
+from .password_login_attempt import PasswordLoginAttempt  # noqa: F401
 from .profile import Profile  # noqa: F401
 from .push_subscription import PushSubscription  # noqa: F401
 from .refresh_session import RefreshSession  # noqa: F401

@@ -55,7 +55,16 @@ class PasswordSetRequest(BaseModel):
 
 
 class PasswordSetResponse(BaseModel):
+    """Результат смены пароля/выхода со всех устройств.
+
+    При смене пароля все refresh-сессии отзываются, поэтому в ответе идут
+    новые токены — текущее устройство остаётся в системе, остальные выходят.
+    """
+
     detail: str
+    access_token: str | None = None
+    token_type: str = "bearer"
+    refresh_token: str | None = None
 
 
 class TokenResponse(BaseModel):

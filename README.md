@@ -244,6 +244,25 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
    (`UserUpdateWithProfileSchema._reject_phone_number_change`), в профиле поле
    только для чтения.
 5. Также работает OAuth2 form `username`/`password` (`POST /auth/token/`).
+
+**Политика паролей и защита входа:**
+
+- Правила пароля — `core/passwords.py` (зеркало на фронте — `utils/passwordPolicy.ts`):
+  минимум **10** символов, чёрный список частых паролей, запрет пароля из данных
+  аккаунта (номер, e-mail, логин), 4+ одинаковых символа подряд и простых
+  последовательностей. Композиционные требования («заглавная+цифра») сознательно
+  не используются — NIST SP 800-63B их не рекомендует.
+- **Перебор пароля** ограничен на уровне аккаунта: `password_login_attempts`
+  (`auth/login_guard.py`) считает неудачи по номеру/логину; после
+  `auth_login_max_failures=5` вход блокируется на 1 мин, затем задержка удваивается
+  до `auth_login_lockout_max_seconds=1800`. Лимиты «по IP» обходятся сменой адреса.
+- **Смена пароля отзывает все refresh-сессии** и возвращает новую пару токенов
+  (текущее устройство остаётся, остальные вылетают); есть отдельный
+  `POST /auth/sessions/revoke-all/`. Повторное использование уже отозванного
+  refresh-токена тоже отзывает все сессии — семейный отзыв (защита от кражи).
+- Флаги `password_set` и `password_weak` отдаются в `GET /jwt/users/me/`.
+  `password_weak` ставится при входе (только там пароль виден в открытом виде),
+  поэтому профиль показывает предложение сменить старый слабый пароль.
 - Все «личные» эндпоинты требуют заголовок `Authorization: Bearer <access_token>`.
 - `/jwt/*` — fastapi-users: `POST /jwt/auth/login|logout`, `GET/PATCH /jwt/users/me/`.
 - Custom-эндпоинты (`chats`, `messages`, `users/…`) используют `get_current_user` (`api_v1/auth/utils.py`), который принимает **те же** JWT от fastapi-users (в `decode_jwt` отключена проверка `aud`, субъект сверяется с БД). Защищённые от собственных токенов.
@@ -274,7 +293,8 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 | POST | `/auth/password/status/` | есть ли аккаунт/пароль у номера и доступна ли доставка кода | — |
 | POST | `/auth/password/register/` | создать аккаунт/пароль → токен (без подтверждения номера) | — |
 | POST | `/auth/password/login/` | вход по номеру+паролю → токен | — |
-| POST | `/auth/password/set/` | задать/сменить пароль → `{detail}` (смена требует `current_password`) | токен |
+| POST | `/auth/password/set/` | задать/сменить пароль → `{detail, access_token, refresh_token}` (смена требует `current_password`, отзывает прочие сессии) | токен |
+| POST | `/auth/sessions/revoke-all/` | выйти на всех устройствах (отзыв всех refresh-сессий) | токен |
 | POST | `/auth/token/` | вход по логину+паролю (OAuth2 form) | — |
 | POST | `/auth/request-otp/` | запросить код на номер (SMS/Telegram) | — |
 | POST | `/auth/verify-otp/` | проверить код → токен (пароль ещё не задан) | — |

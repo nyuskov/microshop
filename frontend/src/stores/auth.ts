@@ -26,6 +26,9 @@ export interface ApiUser {
   last_name: string | null
   email: string | null
   is_superuser?: boolean
+  // Состояние безопасности: задан ли пароль и не устарел/ослаб ли он.
+  password_set?: boolean
+  password_weak?: boolean
   avatar_url?: string | null
   status?: string | null
   last_seen?: string | null
@@ -167,12 +170,25 @@ export const useAuthStore = defineStore('auth', {
      *
      * Первый сценарий — после входа по коду: текущего пароля ещё нет.
      * Если пароль уже задан, сервер требует ``currentPassword``.
+     *
+     * Сервер при смене пароля отзывает все прочие сессии и возвращает новую
+     * пару токенов — её нужно сохранить, иначе текущее устройство вылетит.
      */
     async setPassword(password: string, currentPassword?: string): Promise<void> {
-      await api.post('/auth/password/set/', {
+      const response = await api.post('/auth/password/set/', {
         password,
         current_password: currentPassword ?? null
       })
+      if (response.data?.access_token) {
+        this.accessToken = response.data.access_token
+        this.refreshToken = response.data.refresh_token ?? this.refreshToken
+        this.saveState()
+      }
+    },
+
+    /** Выходит из аккаунта на всех устройствах (кроме текущего). */
+    async revokeAllSessions(): Promise<void> {
+      await api.post('/auth/sessions/revoke-all/', {})
     },
 
     /** Вход по номеру телефона и паролю. */
