@@ -81,6 +81,16 @@ const WS_PATH = '/api/v1/ws/calls'
  */
 const RING_OUT_TIMEOUT_MS = 60_000
 
+/** Сколько ждём восстановления связи, прежде чем завершить звонок. */
+const LINK_RECOVERY_WINDOW_MS = 12_000
+/** Как часто пробуем переподключить сигналинг во время звонка. */
+const LINK_RETRY_MS = 1500
+/** Пауза после «disconnected»: соединение часто восстанавливается само. */
+const ICE_DISCONNECTED_GRACE_MS = 3500
+/** Пауза между попытками перезапуска ICE. */
+const ICE_RETRY_DELAY_MS = 5000
+const ICE_RESTART_MAX_ATTEMPTS = 3
+
 // «Лёгкое» видео: невысокое разрешение и частота — видеозвонок должен работать
 // и через TURN-релей на мобильной сети (высокий битрейт 720p «валит» медиа,
 // тогда как аудио-звонок проходит). Битрейт дополнительно режется кодом ниже.
@@ -135,6 +145,13 @@ let shareReturnKind: CallKind = 'video'
 let renegotiateSeq = 0
 
 let ringTimer: ReturnType<typeof setTimeout> | undefined
+/* Восстановление связи при смене сети (Wi-Fi → LTE и обратно). */
+let iceRecoveryTimer: ReturnType<typeof setTimeout> | undefined
+let iceRestartAttempts = 0
+let socketRetryTimer: ReturnType<typeof setTimeout> | undefined
+let socketRetryDeadline = 0
+/** Инициатор звонка: он перезапускает ICE первым, отвечающий — с задержкой. */
+let isCaller = false
 let audioContext: AudioContext | null = null
 let unlockBound = false
 
@@ -400,6 +417,8 @@ interface CallState {
   videoOn: boolean
   /** Показываю свой экран собеседнику. */
   screenSharing: boolean
+  /** Теряли связь и восстанавливаем (смена сети): показываем «Переподключаемся…». */
+  reconnecting: boolean
   /** Собеседник показывает экран. */
   peerScreenSharing: boolean
   /** Свои устройства (по мнению браузера) и выбранные среди них. */
@@ -427,6 +446,8 @@ const DEFAULT_STATE: CallState = {
   videoOn: true,
   screenSharing: false,
   peerScreenSharing: false,
+  /** Теряли связь и восстанавливаем: в оверлее показываем «Переподключаемся…». */
+  reconnecting: false,
   cameras: [],
   microphones: [],
   speakers: [],
@@ -486,6 +507,18 @@ export const useCallStore = defineStore('call', {
       socket = new WebSocket(socketUrl(token))
       socket.onopen = () => {
         this.connected = true
+        if (this.status === 'active' || this.status === 'outgoing') {
+          // Сигналинг вернулся: сообщаем об этом и перезапускаем ICE — медиа
+          // шло по адресам прежней сети.
+          this.reconnecting = false
+          if (socketRetryTimer !== undefined) {
+            window.clearTimeout(socketRetryTimer)
+            socketRetryTimer = undefined
+          }
+          socketRetryDeadline = 0
+          iceRestartAttempts = 0
+          if (peerConnection) this._scheduleIceRestart(ICE_RETRY_DELAY_MS)
+        }
       }
       socket.onmessage = (event) => {
         try {
@@ -499,12 +532,110 @@ export const useCallStore = defineStore('call', {
         this.connected = false
         socket = null
         if (this.status === 'active' || this.status === 'outgoing') {
-          this._forceEnd('Соединение с сервером прервано')
+          // Смена сети (Wi-Fi → LTE) рвёт WebSocket, но звонок при этом жив:
+          // даём время переподключиться и перезапустить ICE, и только если
+          // связь не вернулась — завершаем.
+          this.reconnecting = true
+          this._scheduleSocketRetry()
         } else if (this.status === 'idle') {
           this._scheduleReconnect()
         }
       }
       return this._waitForSocketOpen()
+    },
+
+    /**
+     * Пробует вернуть сигналинг, пока не истекло окно восстановления.
+     * Вызывается, когда сокет закрылся во время звонка.
+     */
+    _scheduleSocketRetry() {
+      if (socketRetryDeadline === 0) {
+        socketRetryDeadline = Date.now() + LINK_RECOVERY_WINDOW_MS
+      }
+      if (socketRetryTimer !== undefined) window.clearTimeout(socketRetryTimer)
+      socketRetryTimer = window.setTimeout(() => {
+        socketRetryTimer = undefined
+        if (this.status !== 'active' && this.status !== 'outgoing') return
+        if (useAuthStore().isAuthenticated && (socket === null || socket.readyState > 1)) {
+          void this.connect()
+        }
+        if (Date.now() >= socketRetryDeadline) {
+          this.reconnecting = false
+          socketRetryDeadline = 0
+          if (peerConnection && peerConnection.iceConnectionState === 'connected') {
+            return
+          }
+          this._forceEnd('Связь потеряна — звонок завершён')
+          return
+        }
+        this._scheduleSocketRetry()
+      }, LINK_RETRY_MS)
+    },
+
+    /** Состояние ICE: перезапуск при смене сети и завершение, если не вышло. */
+    _handleIceState(connection: RTCPeerConnection) {
+      const state = connection.iceConnectionState
+      if (state === 'connected' || state === 'completed') {
+        this._resetIceRecovery()
+        return
+      }
+      if (state === 'disconnected') {
+        // Отвечающая сторона ждёт дольше: если перезапуск сделает зовущий,
+        // попытка собеседника не понадобится (состояние станет connected).
+        this._scheduleIceRestart(
+          isCaller ? ICE_DISCONNECTED_GRACE_MS : ICE_DISCONNECTED_GRACE_MS * 1.7
+        )
+        return
+      }
+      if (state === 'failed') void this._restartIce(connection)
+    },
+
+    _resetIceRecovery() {
+      if (iceRecoveryTimer !== undefined) {
+        window.clearTimeout(iceRecoveryTimer)
+        iceRecoveryTimer = undefined
+      }
+      iceRestartAttempts = 0
+      if (this.reconnecting && this.connected) this.reconnecting = false
+    },
+
+    _scheduleIceRestart(delay: number) {
+      if (iceRecoveryTimer !== undefined) window.clearTimeout(iceRecoveryTimer)
+      iceRecoveryTimer = window.setTimeout(() => {
+        iceRecoveryTimer = undefined
+        const pc = peerConnection
+        if (!pc) return
+        const state = pc.iceConnectionState
+        if (state === 'connected' || state === 'completed') return
+        void this._restartIce(pc)
+      }, delay)
+    },
+
+    /** Перезапуск ICE: собираем адреса на новых интерфейсах и пересогласуем SDP. */
+    async _restartIce(connection: RTCPeerConnection) {
+      if (this.status !== 'active' || connection !== peerConnection) return
+      if (iceRestartAttempts >= ICE_RESTART_MAX_ATTEMPTS) {
+        this._forceEnd('Связь потеряна — звонок завершён')
+        return
+      }
+      iceRestartAttempts += 1
+      this.reconnecting = true
+      try {
+        const pc = connection as RTCPeerConnection & { restartIce?: () => void }
+        pc.restartIce?.()
+        const offer = await pc.createOffer({ iceRestart: true })
+        await pc.setLocalDescription(offer)
+        if (connection !== peerConnection || this.status !== 'active') return
+        sendMessage({
+          type: 'call-renegotiate',
+          to_user_id: this.peerId ?? 0,
+          call_id: this.callId ?? '',
+          sdp: offer.sdp ?? ''
+        })
+      } catch {
+        /* не получилось — попробуем ещё раз по таймеру */
+      }
+      this._scheduleIceRestart(ICE_RETRY_DELAY_MS)
     },
 
     /** Ожидает, пока сигнальный сокет откроется (до 9 секунд). */
@@ -696,6 +827,7 @@ export const useCallStore = defineStore('call', {
         this._wirePeerConnection(peerConnection)
         stream.getTracks().forEach((track) => peerConnection?.addTrack(track, stream))
 
+        isCaller = true
         const offer = await peerConnection.createOffer()
         await peerConnection.setLocalDescription(offer)
         sendMessage({
@@ -736,6 +868,7 @@ export const useCallStore = defineStore('call', {
         await peerConnection.setRemoteDescription({ type: 'offer', sdp: pendingOffer.sdp })
         const answer = await peerConnection.createAnswer()
         await peerConnection.setLocalDescription(answer)
+        isCaller = false
         this.kind = kind
         sendMessage({
           type: 'call-answer',
@@ -1210,10 +1343,23 @@ export const useCallStore = defineStore('call', {
       localMedia = null
       remoteMedia = null
       pendingOffer = null
+      if (iceRecoveryTimer !== undefined) {
+        window.clearTimeout(iceRecoveryTimer)
+        iceRecoveryTimer = undefined
+      }
+      if (socketRetryTimer !== undefined) {
+        window.clearTimeout(socketRetryTimer)
+        socketRetryTimer = undefined
+      }
+      iceRestartAttempts = 0
+      socketRetryDeadline = 0
+      isCaller = false
       this.$patch({ ...DEFAULT_STATE, connected: this.connected })
     },
 
     _wirePeerConnection(connection: RTCPeerConnection) {
+      // Смена сети: следим за состоянием ICE и при необходимости перезапускаем.
+      connection.oniceconnectionstatechange = () => this._handleIceState(connection)
       connection.onicecandidate = (event) => {
         if (event.candidate) {
           sendMessage({

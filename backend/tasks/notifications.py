@@ -27,6 +27,14 @@ from tasks.base import make_engine, make_session, run_async
 
 logger = logging.getLogger(__name__)
 
+# RFC 8030: Urgency high будит устройство сразу; без него Android в Doze
+# придерживает push до следующего окна — уведомление о звонке приходит поздно.
+PUSH_HEADERS_CALL = {"Urgency": "high", "Topic": "pismo-call"}
+PUSH_HEADERS_MESSAGE = {"Urgency": "high"}
+# Звонок живёт меньше минуты смысла; сообщение — сутки.
+PUSH_TTL_CALL = 60
+PUSH_TTL_MESSAGE = 86_400
+
 # ID каналов уведомлений Android-приложения (совпадают с PushChannels.java в android/).
 PUSH_CHANNEL_MESSAGES = "pismo_messages"
 PUSH_CHANNEL_CALLS = "pismo_calls"
@@ -248,6 +256,8 @@ async def _send_message_push_async(
                     data=payload,
                     vapid_private_key=settings.web_push_vapid_private_key,
                     vapid_claims={"sub": settings.web_push_vapid_subject},
+                    ttl=PUSH_TTL_MESSAGE,
+                    headers=PUSH_HEADERS_MESSAGE,
                     timeout=10,
                 )
             except WebPushException as exc:
@@ -375,6 +385,8 @@ async def _send_call_push_async(
                     data=payload,
                     vapid_private_key=settings.web_push_vapid_private_key,
                     vapid_claims={"sub": settings.web_push_vapid_subject},
+                    ttl=PUSH_TTL_CALL,
+                    headers=PUSH_HEADERS_CALL,
                     timeout=10,
                 )
             except WebPushException as exc:

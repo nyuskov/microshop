@@ -273,6 +273,12 @@
 
     <!-- Тост-уведомление о завершении/ошибке -->
     <transition name="call-fade">
+      <!-- Смена сети: показываем, что звонок восстанавливается, а не «завис» -->
+      <div v-if="callStore.reconnecting" class="call-reconnect">
+        <span class="call-reconnect-spinner" aria-hidden="true"></span>
+        Переподключаемся…
+      </div>
+
       <div v-if="noticeVisible" class="call-notice" @click="hideNotice">
         {{ callStore.notice }}
       </div>
@@ -952,6 +958,37 @@ onBeforeUnmount(() => {
 }
 
 /* ---------- Тост ---------- */
+.call-reconnect {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #f2f5f8;
+  font-size: 13px;
+  z-index: 5;
+}
+
+.call-reconnect-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: call-reconnect-spin 0.8s linear infinite;
+}
+
+@keyframes call-reconnect-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .call-notice {
   position: fixed;
   bottom: 28px;
