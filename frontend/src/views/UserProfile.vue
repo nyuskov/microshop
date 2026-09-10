@@ -22,8 +22,9 @@ import {
 } from '@/services/securityLog'
 import { PASSWORD_MIN_LENGTH, passwordProblem, passwordStrength } from '@/utils/passwordPolicy'
 import DeleteAccountDialog from '@/components/messenger/DeleteAccountDialog.vue'
+import AppearanceSettings from '@/views/AppearanceSettings.vue'
 
-const emit = defineEmits(['close-modal', 'open-appearance'])
+const emit = defineEmits(['close-modal'])
 
 const authStore = useAuthStore()
 
@@ -101,7 +102,7 @@ watch(
 // (личные данные, пароль, сессии, журнал входов, хранилище) — теперь у каждого
 // раздела своя страница, как в мессенджерах на телефоне.
 type SettingsSection =
-  'root' | 'account' | 'security' | 'privacy' | 'notifications' | 'storage' | 'about'
+  'root' | 'account' | 'security' | 'privacy' | 'notifications' | 'storage' | 'appearance' | 'about'
 
 interface SettingsRow {
   key: Exclude<SettingsSection, 'root'>
@@ -121,6 +122,12 @@ const SETTINGS_ROWS: SettingsRow[] = [
   { key: 'privacy', icon: 'lock', title: 'Приватность', desc: 'Видимость профиля в поиске' },
   { key: 'notifications', icon: 'notifications', title: 'Уведомления', desc: 'Push-уведомления' },
   { key: 'storage', icon: 'cloud', title: 'Хранилище', desc: 'Сколько занимают вложения' },
+  {
+    key: 'appearance',
+    icon: 'palette',
+    title: 'Внешний вид',
+    desc: 'Тема, обои, размер текста'
+  },
   { key: 'about', icon: 'info', title: 'О приложении', desc: 'Документы и версия' }
 ]
 
@@ -153,31 +160,13 @@ const onPrivacyToggle = async () => {
   await updateProfile()
 }
 const currentSectionTitle = computed(
-  () => SETTINGS_ROWS.find((row) => row.key === section.value)?.title ?? 'Профиль'
+  () => SETTINGS_ROWS.find((row) => row.key === section.value)?.title ?? 'Настройки'
 )
-/** Ссылка на раздел «Внешний вид» — он живёт отдельным экраном (тема, обои). */
-const APPEARANCE_ROW = {
-  key: 'appearance' as const,
-  icon: 'palette',
-  title: 'Внешний вид',
-  desc: 'Тема, обои, размер текста'
-}
 
-/** Открыть раздел настроек; «Внешний вид» делегируем отдельному экрану. */
-const openSection = (key: SettingsRow['key'] | 'appearance') => {
-  if (key === 'appearance') {
-    emit('open-appearance')
-    return
-  }
+/** Открыть раздел настроек. */
+const openSection = (key: SettingsRow['key']) => {
   section.value = key
 }
-
-/** Строки списка: «Внешний вид» стоит перед «О приложении». */
-const settingsRows = computed(() => [
-  ...SETTINGS_ROWS.slice(0, 5),
-  APPEARANCE_ROW,
-  ...SETTINGS_ROWS.slice(5)
-])
 
 /** Вернуться к списку разделов (кнопка в шапке или жест «назад»). */
 const backToSections = () => {
@@ -708,10 +697,17 @@ const onNotificationsToggle = async (val: boolean) => {
         </div>
       </div>
 
-      <!-- Список разделов настроек (главный экран профиля) -->
+      <!-- Главный экран настроек: сверху «Выйти», ниже — разделы -->
+      <div v-if="section === 'root'" class="logout-row">
+        <button type="button" class="logout-btn" :disabled="saving" @click="doLogout">
+          <q-icon name="logout" size="17px" />
+          Выйти из аккаунта
+        </button>
+      </div>
+
       <nav v-if="section === 'root'" class="settings-list" aria-label="Разделы настроек">
         <button
-          v-for="row in settingsRows"
+          v-for="row in SETTINGS_ROWS"
           :key="row.key"
           type="button"
           class="settings-link"
@@ -726,6 +722,21 @@ const onNotificationsToggle = async (val: boolean) => {
         </button>
       </nav>
 
+      <!-- Удаление аккаунта — в самом низу главного экрана настроек
+           (требование RuStore и 152-ФЗ), на разделах не показываем -->
+      <div v-if="section === 'root'" class="delete-account-row">
+        <button
+          type="button"
+          class="delete-account-btn"
+          :disabled="saving"
+          @click="showDeleteAccount = true"
+        >
+          <q-icon name="delete_forever" size="17px" />
+          Удалить аккаунт
+        </button>
+        <p class="delete-account-hint">Аккаунт, переписка и вложения будут удалены безвозвратно.</p>
+      </div>
+
       <!-- Шапка раздела настроек -->
       <div v-if="section !== 'root'" class="settings-head">
         <button type="button" class="settings-back" title="К разделам" @click="backToSections">
@@ -733,6 +744,22 @@ const onNotificationsToggle = async (val: boolean) => {
         </button>
         <h2 class="settings-head-title">{{ currentSectionTitle }}</h2>
       </div>
+
+      <!-- Внешний вид: тема, акцент, пузыри, размер текста и обои -->
+      <div v-if="section === 'appearance'" class="settings-embed">
+        <AppearanceSettings />
+      </div>
+
+      <transition name="fade">
+        <div v-if="success" class="notice success">
+          <q-icon name="check_circle" size="18px" /> Профиль сохранён
+        </div>
+      </transition>
+      <transition name="fade">
+        <div v-if="errorMessage" class="notice error">
+          <q-icon name="error" size="18px" /> {{ errorMessage }}
+        </div>
+      </transition>
 
       <form class="profile-form" @submit.prevent="updateProfile">
         <!-- Статус -->
@@ -1257,41 +1284,6 @@ const onNotificationsToggle = async (val: boolean) => {
         </section>
 
         <!-- Сообщения -->
-        <transition name="fade">
-          <div v-if="success" class="notice success">
-            <q-icon name="check_circle" size="18px" /> Профиль сохранён
-          </div>
-        </transition>
-        <transition name="fade">
-          <div v-if="errorMessage" class="notice error">
-            <q-icon name="error" size="18px" /> {{ errorMessage }}
-          </div>
-        </transition>
-
-        <!-- Действия -->
-        <div class="logout-row">
-          <button type="button" class="logout-btn" :disabled="saving" @click="doLogout">
-            <q-icon name="logout" size="17px" />
-            Выйти из аккаунта
-          </button>
-        </div>
-
-        <!-- Удаление аккаунта — требование RuStore и 152-ФЗ. -->
-        <div class="delete-account-row">
-          <button
-            type="button"
-            class="delete-account-btn"
-            :disabled="saving"
-            @click="showDeleteAccount = true"
-          >
-            <q-icon name="delete_forever" size="17px" />
-            Удалить аккаунт
-          </button>
-          <p class="delete-account-hint">
-            Аккаунт, переписка и вложения будут удалены безвозвратно.
-          </p>
-        </div>
-
         <!-- О приложении: документы, версия сборки, проверка обновлений -->
         <section v-if="section === 'about'" class="card-section">
           <h3 class="section-title">О приложении</h3>
@@ -1456,6 +1448,11 @@ const onNotificationsToggle = async (val: boolean) => {
   margin: 10px 0 6px;
   font-size: 12.5px;
   color: var(--ms-muted);
+}
+
+/* Встроенный раздел (оформление): минимум лишних отступов */
+.settings-embed {
+  padding: 2px 4px 8px;
 }
 
 .about-update {

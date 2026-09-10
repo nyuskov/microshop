@@ -564,7 +564,6 @@ const emit = defineEmits<{
   (e: 'to-contacts'): void
   (e: 'to-chats'): void
   (e: 'open-profile'): void
-  (e: 'open-appearance'): void
   (e: 'select-chat', chatId: number): void
   (e: 'chat-opened', chat: Chat): void
   (e: 'open-message', chatId: number, messageId: number): void
@@ -584,7 +583,7 @@ const emit = defineEmits<{
 
 /** Пункт меню «⋯»: иконка Material + подпись. */
 interface SettingsAction {
-  key: 'group' | 'blocked' | 'reports' | 'appearance'
+  key: 'group' | 'blocked' | 'reports'
   label: string
   icon: string
 }
@@ -596,7 +595,6 @@ const SETTINGS_ACTIONS = computed<SettingsAction[]>(() => {
     { key: 'blocked', label: 'Заблокированные', icon: 'block' }
   ]
   if (props.isAdmin) items.push({ key: 'reports', label: 'Жалобы', icon: 'flag' })
-  items.push({ key: 'appearance', label: 'Оформление и тема', icon: 'palette' })
   return items
 })
 
@@ -865,7 +863,6 @@ const runSettingsAction = (action: SettingsAction) => {
   if (action.key === 'group') emit('create-group')
   if (action.key === 'blocked') emit('open-blocked')
   if (action.key === 'reports') emit('open-reports')
-  if (action.key === 'appearance') emit('open-appearance')
 }
 
 const searchOpen = ref(false)

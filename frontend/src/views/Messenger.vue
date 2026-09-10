@@ -40,7 +40,6 @@
         @to-contacts="openContacts"
         @to-chats="goToChats"
         @open-profile="goToProfile"
-        @open-appearance="openAppearance"
         @select-chat="selectChat"
         @chat-opened="onChatOpened"
         @create-group="openCreateGroup"
@@ -238,7 +237,7 @@
   <q-dialog v-model="showProfileModal" @hide="onProfileHidden">
     <q-card class="ms-modal ms-modal-profile">
       <q-card-section class="row no-wrap items-center ms-modal-head">
-        <div class="text-subtitle1 text-weight-medium ellipsis">Настройки профиля</div>
+        <div class="text-subtitle1 text-weight-medium ellipsis">Настройки</div>
         <q-space />
         <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
       </q-card-section>
@@ -246,31 +245,12 @@
       <q-card-section class="ms-modal-body">
         <Suspense>
           <template #default>
-            <UserProfile
-              ref="profileRef"
-              @close-modal="showProfileModal = false"
-              @open-appearance="onOpenAppearanceFromProfile"
-            />
+            <UserProfile ref="profileRef" @close-modal="showProfileModal = false" />
           </template>
           <template #fallback>
             <div class="q-pa-md">Загрузка профиля...</div>
           </template>
         </Suspense>
-      </q-card-section>
-    </q-card>
-  </q-dialog>
-
-  <!-- Appearance Modal (Quasar) -->
-  <q-dialog v-model="showAppearanceModal" @hide="showAppearanceModal = false">
-    <q-card class="ms-modal ms-modal-appearance">
-      <q-card-section class="row no-wrap items-center ms-modal-head">
-        <div class="text-subtitle1 text-weight-medium ellipsis">Оформление</div>
-        <q-space />
-        <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
-      </q-card-section>
-      <q-separator />
-      <q-card-section class="ms-modal-body">
-        <AppearanceSettings />
       </q-card-section>
     </q-card>
   </q-dialog>
@@ -482,7 +462,6 @@ import MessageComposer from '@/components/messenger/MessageComposer.vue'
 // действия пользователя (профиль/оформление/инфо о чате, звонок, лайтбокс,
 // видеозапись), это уменьшает стартовый чанк приложения.
 const UserProfile = defineAsyncComponent(() => import('./UserProfile.vue'))
-const AppearanceSettings = defineAsyncComponent(() => import('./AppearanceSettings.vue'))
 const CallOverlay = defineAsyncComponent(() => import('@/components/calls/CallOverlay.vue'))
 const ForwardDialog = defineAsyncComponent(() => import('@/components/messenger/ForwardDialog.vue'))
 const ChatInfo = defineAsyncComponent(() => import('@/components/messenger/ChatInfo.vue'))
@@ -534,7 +513,6 @@ interface ProfileHandle {
   backToSections: () => void
 }
 const profileRef = ref<ProfileHandle | null>(null)
-const showAppearanceModal = ref(false)
 const showChatInfoModal = ref(false)
 const showGroupInfoModal = ref(false)
 const showCreateGroupModal = ref(false)
@@ -633,13 +611,11 @@ const onAppPopState = () => {
   // Модалки поверх всего — закрываем.
   if (
     showProfileModal.value ||
-    showAppearanceModal.value ||
     showChatInfoModal.value ||
     showGroupInfoModal.value ||
     showCreateGroupModal.value
   ) {
     showProfileModal.value = false
-    showAppearanceModal.value = false
     showChatInfoModal.value = false
     showGroupInfoModal.value = false
     showCreateGroupModal.value = false
@@ -2368,16 +2344,6 @@ const onProfileHidden = () => {
 }
 
 /** Из профиля перешли в «Внешний вид» (это отдельный диалог). */
-const onOpenAppearanceFromProfile = () => {
-  showProfileModal.value = false
-  openAppearance()
-}
-
-const openAppearance = () => {
-  pushMobileNav()
-  showAppearanceModal.value = true
-}
-
 const onLoginModalClose = () => {
   console.log('Login modal close event received. Closing modal.')
   showLoginModal.value = false
@@ -2954,10 +2920,6 @@ watch(
   border-radius: var(--ms-radius-lg, 18px);
   border: 1px solid var(--ms-border, #e2e6ea);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
-}
-
-.ms-modal-appearance {
-  width: min(560px, calc(100vw - 32px));
 }
 
 /* Профиль — часть темы: внутри UserProfile цвета берутся из токенов
