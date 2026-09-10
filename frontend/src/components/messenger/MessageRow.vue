@@ -7,6 +7,7 @@
   </div>
   <div
     v-else
+    ref="rowRoot"
     class="msg"
     :class="[
       isOwn ? 'out' : 'in',
@@ -306,10 +307,6 @@
             <q-icon name="edit" size="18px" />
             <span>Редактировать</span>
           </button>
-          <button v-if="selectable" class="ctx-item" @click="ctxAction('select')">
-            <q-icon name="checklist" size="18px" />
-            <span>Выбрать</span>
-          </button>
           <button v-if="!isOwn" class="ctx-item" @click="ctxAction('report')">
             <q-icon name="flag" size="18px" />
             <span>Пожаловаться</span>
@@ -367,6 +364,8 @@ let swipeAxis: 'none' | 'x' | 'y' = 'none'
 const LONG_TEXT_LIMIT = 600
 
 const expanded = ref(false)
+/** Корень строки сообщения — нужен для замеров (свайп, лист действий). */
+const rowRoot = ref<HTMLElement | null>(null)
 const canCollapse = computed(() => (props.message.text?.length ?? 0) > LONG_TEXT_LIMIT)
 const isClamped = computed(() => canCollapse.value && !expanded.value)
 
@@ -479,9 +478,6 @@ const canSave = computed<boolean>(() => props.message.kind !== 'call')
 // ---------- Режим выделения сообщений (долгое нажатие; как в чатах) ----------
 let holdTimer: number | null = null
 let suppressNextSelect = false
-/** Точка удержания — в ней открывается лист действий. */
-let holdX = 0
-let holdY = 0
 
 const cancelHold = () => {
   if (holdTimer !== null) {
@@ -491,7 +487,7 @@ const cancelHold = () => {
 }
 
 const onPointerDown = (event: PointerEvent) => {
-  if (props.selectionMode || !props.selectable) return
+  if (!props.selectable) return
   if (event.button !== 0) return
   // Готовим свайп-ответ: решение по оси принимаем на первом движении.
   swipeStartX = event.clientX
@@ -500,13 +496,18 @@ const onPointerDown = (event: PointerEvent) => {
   swipeX.value = 0
   cancelHold()
   suppressNextSelect = false
-  holdX = event.clientX
-  holdY = event.clientY
   holdTimer = window.setTimeout(() => {
     holdTimer = null
     suppressNextSelect = true
-    // Удержание открывает лист действий (в нём же пункт «Выбрать»).
-    void openContext(holdX, holdY)
+    // Удержание сразу выделяет сообщение (без промежуточного меню). Если режим
+    // выделения уже включён — удержание ДОБАВЛЯЕТ сообщение к выбору: так удобно
+    // набрать несколько, не попадая в мелкий кружок выбора.
+    if (props.selectionMode) {
+      if (!props.selected) emit('toggle-select')
+      return
+    }
+    haptic(HAPTIC_HOLD)
+    emit('select-start')
   }, 480)
 }
 
@@ -538,11 +539,13 @@ const resetSwipe = () => {
 }
 
 const onPointerUp = () => {
+  // Таймер удержания снимаем всегда: в режиме выделения он тоже ставится
+  // (удержание добавляет сообщение к выбору).
+  cancelHold()
   if (props.selectionMode || !props.selectable) {
     resetSwipe()
     return
   }
-  cancelHold()
   // Дотянули до порога — отвечаем на сообщение (жест вместо меню действий).
   if (swipeReady.value) emit('set-reply')
   resetSwipe()
@@ -717,9 +720,19 @@ const placeContext = async (): Promise<void> => {
   ctxReady.value = true
 }
 
+/**
+ * Закрывалка уже открытого листа действий.
+ *
+ * Состояние модульное (общее для всех строк): лист на ленту должен быть один,
+ * иначе после перерисовки соседних сообщений на экране остаются два меню.
+ */
+let currentCtxCloser: (() => void) | null = null
+
 /** Открыть лист действий в точке нажатия. */
 const openContext = async (x: number, y: number): Promise<void> => {
   if (!props.selectable) return
+  currentCtxCloser?.()
+  currentCtxCloser = closeContext
   haptic(HAPTIC_HOLD)
   closeFloating()
   ctxAllEmoji.value = false
@@ -731,6 +744,7 @@ const openContext = async (x: number, y: number): Promise<void> => {
 }
 
 const closeContext = (): void => {
+  if (currentCtxCloser === closeContext) currentCtxCloser = null
   ctxOpen.value = false
 }
 
@@ -749,7 +763,7 @@ const pickCtxEmoji = (emoji: string): void => {
 
 /** Действие из листа: закрываем лист и повторяем обычный emit. */
 const ctxAction = (
-  action: 'reply' | 'forward' | 'copy' | 'pin' | 'save' | 'edit' | 'select' | 'report' | 'delete'
+  action: 'reply' | 'forward' | 'copy' | 'pin' | 'save' | 'edit' | 'report' | 'delete'
 ): void => {
   closeContext()
   if (action === 'reply') emit('set-reply')
@@ -758,10 +772,29 @@ const ctxAction = (
   else if (action === 'pin') emit('toggle-pin')
   else if (action === 'save') emit('save')
   else if (action === 'edit') emit('edit')
-  else if (action === 'select') emit('select-start')
   else if (action === 'report') emit('report')
   else emit('delete')
 }
+
+/**
+ * Открыть лист действий у самого сообщения.
+ *
+ * Нужен там, где удержание занято выделением: кнопка «⋯» в панели выделения
+ * открывает те же действия (реакции, ответить, удалить и т.д.).
+ */
+const openActions = (): void => {
+  if (ctxOpen.value) {
+    closeContext()
+    return
+  }
+  const bubble = rowRoot.value?.querySelector<HTMLElement>('.msg-bubble')
+  const rect = bubble?.getBoundingClientRect()
+  const x = rect ? rect.left + Math.min(rect.width / 2, 120) : 40
+  const y = rect ? rect.top + rect.height / 2 : 120
+  void openContext(x, y)
+}
+
+defineExpose({ openActions })
 
 /**
  * Двойной тап на телефоне — быстрая реакция (последняя использованная).

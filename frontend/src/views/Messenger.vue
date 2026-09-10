@@ -85,6 +85,19 @@
               >
                 <q-icon name="done_all" size="20px" />
               </button>
+              <!-- Действия с сообщением (реакции, ответить, закрепить, удалить,
+                   пожаловаться): удержание занято выделением, поэтому меню
+                   живёт здесь. Показываем только для одного сообщения. -->
+              <button
+                v-if="selectedMessageIds.length === 1"
+                class="icon-btn"
+                title="Действия с сообщением"
+                aria-label="Действия с сообщением"
+                aria-haspopup="menu"
+                @click="openMessageActions"
+              >
+                <q-icon name="more_vert" size="20px" />
+              </button>
               <button
                 class="icon-btn"
                 title="Переслать выбранные"
@@ -1765,6 +1778,19 @@ const toggleSelectAllMessages = () => {
     return
   }
   selectedMessageIds.value = messages.value.filter((m) => m.kind !== 'call').map((m) => m.id)
+}
+
+/**
+ * Действия с выбранным сообщением (кнопка «⋯» в панели выделения).
+ *
+ * Удержание на телефоне сразу выделяет сообщение (без промежуточного меню),
+ * поэтому список действий — реакции, ответить, закрепить, сохранить,
+ * редактировать, пожаловаться, удалить — живёт здесь.
+ */
+const openMessageActions = () => {
+  const ids = selectedMessageIds.value
+  if (ids.length !== 1) return
+  threadRef.value?.openActions(ids[0])
 }
 
 /** «Переслать» выбранные сообщения — открыть диалог выбора чатов. */

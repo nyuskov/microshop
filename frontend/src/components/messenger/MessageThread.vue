@@ -35,6 +35,7 @@
               <span>Непрочитанные сообщения</span>
             </div>
             <MessageRow
+              :ref="(el: unknown) => setRowRef(row.message.id, el)"
               :message="row.message"
               :is-own="row.message.user_id === currentUserId"
               :viewer-id="currentUserId"
@@ -326,8 +327,24 @@ const reveal = (messageId: number): boolean => {
   return true
 }
 
+/**
+ * Ссылки на строки сообщений: нужны, чтобы открыть лист действий сообщения
+ * снаружи (кнопка «⋯» в панели выделения — удержание занято выделением).
+ */
+const rowRefs = new Map<number, InstanceType<typeof MessageRow>>()
+
+const setRowRef = (id: number, el: unknown): void => {
+  if (el) rowRefs.set(id, el as InstanceType<typeof MessageRow>)
+  else rowRefs.delete(id)
+}
+
+/** Открыть лист действий конкретного сообщения. */
+const openActions = (messageId: number): void => {
+  rowRefs.get(messageId)?.openActions()
+}
+
 // Родитель управляет прокруткой (отправка/догрузка/переход к закреплённому).
-defineExpose({ scrollToBottom, isNearBottom, capture, restoreScroll, reveal })
+defineExpose({ scrollToBottom, isNearBottom, capture, restoreScroll, reveal, openActions })
 
 // ---------- Первичная прокрутка в самый низ ----------
 // При первом открытии чата (лента была пустой → появились сообщения) после
