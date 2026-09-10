@@ -28,6 +28,7 @@ from core.models import Message, User, db_helper
 
 from ..auth.utils import get_current_user, resolve_user_from_websocket
 from .manager import call_manager
+from .turn import ice_servers, turn_configured
 
 logger = logging.getLogger(__name__)
 
@@ -258,6 +259,31 @@ async def _handle_message(from_user_id: int, data: Any) -> None:
     if data.get("type") not in RELAY_MESSAGE_TYPES:
         return
     await _relay_message(from_user_id, data)
+
+
+class IceServersResponse(BaseModel):
+    """ICE-серверы для звонка (STUN всегда, TURN — с временными кредами)."""
+
+    ice_servers: list[dict[str, Any]]
+    #: Срок жизни выданных TURN-кредов в секундах (0 — TURN не настроен).
+    ttl: int
+
+
+@router.get("/ice-servers/", response_model=IceServersResponse)
+async def get_ice_servers(
+    user: User = Depends(get_current_user),
+) -> IceServersResponse:
+    """Отдаёт клиенту список ICE-серверов со свежими TURN-кредами.
+
+    Креды считаются на лету по общему секрету (см. ``turn.py``), поэтому в
+    клиентском бандле нет ни пароля, ни возможности вытащить его и пользоваться
+    релеем от нашего имени.
+    """
+    servers = ice_servers(user.id)
+    return IceServersResponse(
+        ice_servers=servers,
+        ttl=int(settings.turn_ttl_seconds) if turn_configured() else 0,
+    )
 
 
 @router.websocket("/calls")

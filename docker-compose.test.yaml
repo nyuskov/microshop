@@ -63,6 +63,11 @@ services:
       SMS_AERO_API_KEY: ${SMS_AERO_API_KEY:-}
       SMS_AERO_SIGN: ${SMS_AERO_SIGN:-}
       # Web Push (PWA): VAPID-ключи; пока пусто — push выключен.
+      # TURN (релей звонков): адреса и общий секрет для временных кредов.
+      TURN_URLS: ${TURN_URLS:-}
+      TURN_SECRET: ${TURN_SECRET:-}
+      TURN_REALM: ${TURN_REALM:-pismo.space}
+      TURN_TTL_SECONDS: ${TURN_TTL_SECONDS:-3600}
       WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
       WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
       WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-mailto:nyuskov@gmail.com}
@@ -152,6 +157,11 @@ services:
       SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
       SMTP_SSL: ${SMTP_SSL:-false}
       # Web Push (PWA) — отправка в воркере; VAPID-ключи.
+      # TURN (релей звонков): адреса и общий секрет для временных кредов.
+      TURN_URLS: ${TURN_URLS:-}
+      TURN_SECRET: ${TURN_SECRET:-}
+      TURN_REALM: ${TURN_REALM:-pismo.space}
+      TURN_TTL_SECONDS: ${TURN_TTL_SECONDS:-3600}
       WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
       WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
       WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-mailto:nyuskov@gmail.com}
@@ -225,8 +235,9 @@ services:
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done'"
 
   # TURN-сервер для WebRTC-звонков за «симметричным» NAT (мобильные операторы).
-  # Creds в .env (TURN_USERNAME/TURN_PASSWORD). Внешние порты: 3478/udp+tcp,
-  # релей 49160-49200/udp — открыть в security group.
+  # Creds — временные (TURN REST API): общий секрет TURN_SECRET в .env, статического
+  # логина/пароля больше нет (TURN_USERNAME/TURN_PASSWORD устарели, их можно убрать).
+  # Внешние порты: 3478/udp+tcp, релей 49160-49200/udp; для TURNS — 5349/tcp.
   coturn:
     image: coturn/coturn:4.6
     restart: unless-stopped
@@ -237,13 +248,24 @@ services:
       - --min-port=49160
       - --max-port=49200
       - --realm=${TURN_REALM:-pismo.space}
-      - --user=${TURN_USERNAME}:${TURN_PASSWORD}
+      # Временные креды (TURN REST API): coturn сам проверяет HMAC-SHA1 от
+      # общего секрета и срок из username. Статического пароля нет — значит его
+      # нельзя вытащить из клиентского бандла и гонять через релей чужой трафик.
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET:?TURN_SECRET is required}
       - --fingerprint
       - --lt-cred-mech
       - --no-cli
+      # TLS для TURN включается, когда в файрволе открыт 5349:
+      # - --tls-listening-port=5349
+      # - --cert=/etc/letsencrypt/live/pismo.space/fullchain.pem
+      # - --pkey=/etc/letsencrypt/live/pismo.space/privkey.pem
       - --no-tls
       - --no-dtls
       - --external-ip=176.108.249.9
+    volumes:
+      # Сертификаты Let's Encrypt — понадобятся, когда включим TURNS (5349).
+      - certbot_etc:/etc/letsencrypt:ro
 
 networks:
   server_network:

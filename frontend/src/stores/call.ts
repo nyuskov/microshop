@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 
 import { useAuthStore } from '@/stores/auth'
 import { ICE_SERVERS as CONFIG_ICE_SERVERS, WS_ORIGIN } from '@/config'
+import { fetchIceServers } from '@/services/iceServers'
 import {
   chooseDeviceId,
   groupDevices,
@@ -61,9 +62,17 @@ const SCREEN_CONSTRAINTS: MediaTrackConstraints = {
   frameRate: { ideal: 15, max: 30 }
 }
 
-// ICE-серверы централизованы в config.ts (переопределяются через VITE_ICE_SERVERS);
-// для звонков за «симметричным» NAT нужен TURN-сервер (см. docs/turn.md).
-const ICE_SERVERS: RTCConfiguration = { iceServers: CONFIG_ICE_SERVERS }
+// ICE-серверы: TURN-креды приходят с бэкенда временными (см. services/iceServers.ts),
+// если сервер не ответил — работаем по STUN из config (звонок важнее свежих кредов).
+// Точка обновления — перед каждым звонком (`_iceConfiguration()`).
+let iceConfiguration: RTCConfiguration = { iceServers: CONFIG_ICE_SERVERS }
+
+/** Готовит конфигурацию ICE: тянет свежие TURN-креды под текущего пользователя. */
+async function loadIceConfiguration(): Promise<RTCConfiguration> {
+  const servers = await fetchIceServers()
+  iceConfiguration = { iceServers: servers }
+  return iceConfiguration
+}
 
 /* ===================== Модульные (не реактивные) ресурсы звонка ===================== */
 
@@ -621,12 +630,13 @@ export const useCallStore = defineStore('call', {
       }
 
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true },
-          video: kind === 'video' ? VIDEO_CONSTRAINTS : false
-        })
+        this._restoreSavedDevices()
+        const ice = await loadIceConfiguration()
+        const stream = await navigator.mediaDevices.getUserMedia(
+          mediaConstraints(kind, this.selectedCamera, this.selectedMic)
+        )
         localMedia = stream
-        peerConnection = new RTCPeerConnection(ICE_SERVERS)
+        peerConnection = new RTCPeerConnection(ice)
         this._wirePeerConnection(peerConnection)
         stream.getTracks().forEach((track) => peerConnection?.addTrack(track, stream))
 
@@ -659,11 +669,12 @@ export const useCallStore = defineStore('call', {
       const kind = pendingOffer.kind
       try {
         this._restoreSavedDevices()
+        const ice = await loadIceConfiguration()
         const stream = await navigator.mediaDevices.getUserMedia(
           mediaConstraints(kind, this.selectedCamera, this.selectedMic)
         )
         localMedia = stream
-        peerConnection = new RTCPeerConnection(ICE_SERVERS)
+        peerConnection = new RTCPeerConnection(ice)
         this._wirePeerConnection(peerConnection)
         stream.getTracks().forEach((track) => peerConnection?.addTrack(track, stream))
         await peerConnection.setRemoteDescription({ type: 'offer', sdp: pendingOffer.sdp })

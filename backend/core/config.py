@@ -121,6 +121,19 @@ class Settings(BaseSettings):
     # Лимит попыток подтверждения входа с нового устройства (по IP, в минуту).
     auth_device_verify_limit_per_minute: int = 10
 
+    # --- TURN (ретрансляция медиа WebRTC) ---
+    # Адреса TURN берём из env: `turn:<ip>:3478?transport=udp,turn:<ip>:3478?transport=tcp`
+    # (можно добавить `turns:...:5349?transport=tcp`, когда откроется порт в фаерволе).
+    turn_urls: str = Field(default="", validation_alias="TURN_URLS")
+    # Общий секрет TURN REST API: coturn (--use-auth-secret) и мы считаем по нему
+    # HMAC-SHA1. В клиентский бандл он не попадает — статического пароля больше нет.
+    turn_secret: str | None = Field(default=None, validation_alias="TURN_SECRET")
+    turn_realm: str = Field(default="pismo.space", validation_alias="TURN_REALM")
+    # Срок жизни выданных кредов. Час — с запасом на долгий звонок; после
+    # истечения coturn перестанет пускать новые allocation, но идущий звонок
+    # уже отпущен (allocation переиспользуется до завершения).
+    turn_ttl_seconds: int = Field(default=3600, validation_alias="TURN_TTL_SECONDS")
+
     # --- Модерация UGC ---
     # Сколько жалоб от РАЗНЫХ пользователей скрывает сообщение автоматически до
     # разбора модератором (0 — авто-скрытие выключено, решает только человек).
