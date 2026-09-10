@@ -19,14 +19,24 @@
         </p>
 
         <label class="mod-label" for="delete-account-password">Пароль аккаунта</label>
-        <input
-          id="delete-account-password"
-          v-model="password"
-          class="mod-input"
-          type="password"
-          autocomplete="current-password"
-          placeholder="Введите пароль"
-        />
+        <div class="mod-password-wrap">
+          <input
+            id="delete-account-password"
+            v-model="password"
+            class="mod-input"
+            :type="showPassword ? 'text' : 'password'"
+            autocomplete="current-password"
+            placeholder="Введите пароль"
+          />
+          <button
+            type="button"
+            class="mod-password-eye"
+            :aria-label="showPassword ? 'Скрыть пароль' : 'Показать пароль'"
+            @click="showPassword = !showPassword"
+          >
+            <q-icon :name="showPassword ? 'visibility_off' : 'visibility'" size="18px" />
+          </button>
+        </div>
 
         <label class="mod-label gap-top" for="delete-account-confirm">
           Введите <code>{{ DELETE_ACCOUNT_CONFIRM }}</code> для подтверждения
@@ -76,6 +86,8 @@ const password = ref('')
 const confirm = ref('')
 const deleting = ref(false)
 const error = ref('')
+// Показ пароля («глазок») — чтобы можно было проверить, что ввёл верно.
+const showPassword = ref(false)
 
 const canDelete = computed(
   () => password.value.length > 0 && confirm.value.trim() === DELETE_ACCOUNT_CONFIRM
@@ -148,6 +160,38 @@ const submit = async () => {
   color: inherit;
   font-family: inherit;
   font-size: 14px;
+}
+
+/* Поле пароля с «глазком»: кнопка лежит поверх инпута справа. */
+.mod-password-wrap {
+  position: relative;
+  display: flex;
+}
+
+.mod-password-wrap .mod-input {
+  padding-right: 42px;
+}
+
+.mod-password-eye {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ms-text-muted, #8295a3);
+  cursor: pointer;
+}
+
+.mod-password-eye:hover {
+  background: color-mix(in srgb, var(--ms-accent, #2ea25e) 12%, transparent);
+  color: var(--ms-accent, #2ea25e);
 }
 
 .mod-error {

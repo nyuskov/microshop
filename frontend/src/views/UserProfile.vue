@@ -179,6 +179,8 @@ const passwordForm = reactive({
   next: '',
   confirm: ''
 })
+// Показ пароля («глазок») — отдельно по каждому полю.
+const passwordVisible = reactive({ current: false, next: false, confirm: false })
 const passwordSaving = ref(false)
 const passwordNotice = ref('')
 const passwordError = ref('')
@@ -198,6 +200,9 @@ const resetPasswordForm = () => {
   passwordForm.current = ''
   passwordForm.next = ''
   passwordForm.confirm = ''
+  passwordVisible.current = false
+  passwordVisible.next = false
+  passwordVisible.confirm = false
 }
 
 const changePassword = async () => {
@@ -565,23 +570,48 @@ const onNotificationsToggle = async (val: boolean) => {
             <label v-if="authStore.current_user?.password_set" class="field-label" for="pf-current">
               Текущий пароль
             </label>
-            <input
-              v-if="authStore.current_user?.password_set"
-              id="pf-current"
-              v-model="passwordForm.current"
-              type="password"
-              autocomplete="current-password"
-              placeholder="Текущий пароль"
-            />
+            <div v-if="authStore.current_user?.password_set" class="password-wrap">
+              <input
+                id="pf-current"
+                v-model="passwordForm.current"
+                :type="passwordVisible.current ? 'text' : 'password'"
+                autocomplete="current-password"
+                placeholder="Текущий пароль"
+              />
+              <button
+                type="button"
+                class="password-eye"
+                :aria-label="passwordVisible.current ? 'Скрыть пароль' : 'Показать пароль'"
+                @click="passwordVisible.current = !passwordVisible.current"
+              >
+                <q-icon
+                  :name="passwordVisible.current ? 'visibility_off' : 'visibility'"
+                  size="18px"
+                />
+              </button>
+            </div>
 
             <label class="field-label" for="pf-new">Новый пароль</label>
-            <input
-              id="pf-new"
-              v-model="passwordForm.next"
-              type="password"
-              autocomplete="new-password"
-              placeholder="Новый пароль"
-            />
+            <div class="password-wrap">
+              <input
+                id="pf-new"
+                v-model="passwordForm.next"
+                :type="passwordVisible.next ? 'text' : 'password'"
+                autocomplete="new-password"
+                placeholder="Новый пароль"
+              />
+              <button
+                type="button"
+                class="password-eye"
+                :aria-label="passwordVisible.next ? 'Скрыть пароль' : 'Показать пароль'"
+                @click="passwordVisible.next = !passwordVisible.next"
+              >
+                <q-icon
+                  :name="passwordVisible.next ? 'visibility_off' : 'visibility'"
+                  size="18px"
+                />
+              </button>
+            </div>
             <p v-if="passwordForm.next" class="password-meter" :data-score="passwordScore.score">
               <span class="password-meter-bar"
                 ><span :style="{ width: `${passwordScore.score * 33}%` }"
@@ -591,13 +621,26 @@ const onNotificationsToggle = async (val: boolean) => {
             </p>
 
             <label class="field-label" for="pf-confirm">Повторите пароль</label>
-            <input
-              id="pf-confirm"
-              v-model="passwordForm.confirm"
-              type="password"
-              autocomplete="new-password"
-              placeholder="Повторите пароль"
-            />
+            <div class="password-wrap">
+              <input
+                id="pf-confirm"
+                v-model="passwordForm.confirm"
+                :type="passwordVisible.confirm ? 'text' : 'password'"
+                autocomplete="new-password"
+                placeholder="Повторите пароль"
+              />
+              <button
+                type="button"
+                class="password-eye"
+                :aria-label="passwordVisible.confirm ? 'Скрыть пароль' : 'Показать пароль'"
+                @click="passwordVisible.confirm = !passwordVisible.confirm"
+              >
+                <q-icon
+                  :name="passwordVisible.confirm ? 'visibility_off' : 'visibility'"
+                  size="18px"
+                />
+              </button>
+            </div>
 
             <button type="submit" class="security-btn" :disabled="passwordSaving">
               <q-icon
@@ -1136,6 +1179,38 @@ const onNotificationsToggle = async (val: boolean) => {
   margin: 6px 0 0;
   font-size: 12.5px;
   color: #8295a3;
+}
+
+/* Поле пароля с «глазком»: кнопка лежит поверх инпута справа. */
+.password-wrap {
+  position: relative;
+  display: flex;
+}
+
+.password-wrap input {
+  padding-right: 42px;
+}
+
+.password-eye {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #8295a3;
+  cursor: pointer;
+}
+
+.password-eye:hover {
+  background: #f1f4f6;
+  color: #1c2733;
 }
 
 /* Удаление аккаунта (требование RuStore/152-ФЗ): заметно, но не кричит. */

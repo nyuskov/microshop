@@ -40,6 +40,11 @@ const phoneOrUsername = ref('')
 const password = ref('')
 const passwordConfirm = ref('')
 const passwordFieldRef = ref<HTMLInputElement | null>(null)
+// Показ пароля («глазок») — отдельно по каждому полю, чтобы можно было
+// подсмотреть только то, что нужно.
+const showCurrent = ref(false)
+const showNew = ref(false)
+const showConfirm = ref(false)
 /** Есть ли у номера уже заданный пароль (иначе — предлагаем создать). */
 const hasPassword = ref(false)
 /** Аккаунта ещё не существует (новый номер). */
@@ -120,6 +125,9 @@ const createPasswordScore = computed(() => passwordStrength(password.value))
 function resetPasswordFields() {
   password.value = ''
   passwordConfirm.value = ''
+  showCurrent.value = false
+  showNew.value = false
+  showConfirm.value = false
 }
 
 async function onLoginSubmit() {
@@ -330,14 +338,25 @@ function goBackToPhoneInput() {
             id="password-input"
             ref="passwordFieldRef"
             v-model="password"
-            type="password"
+            :type="showCurrent ? 'text' : 'password'"
             outlined
             class="phone-input"
             placeholder="Введите пароль"
             autocomplete="current-password"
             aria-label="Пароль"
             hide-bottom-space
-          />
+          >
+            <template #append>
+              <q-icon
+                :name="showCurrent ? 'visibility_off' : 'visibility'"
+                class="password-eye"
+                size="20px"
+                role="button"
+                :aria-label="showCurrent ? 'Скрыть пароль' : 'Показать пароль'"
+                @click="showCurrent = !showCurrent"
+              />
+            </template>
+          </q-input>
 
           <button type="submit" class="btn btn-primary" :disabled="isLoading">
             <span v-if="isLoading" class="spinner"></span>
@@ -429,7 +448,7 @@ function goBackToPhoneInput() {
             id="new-password-input"
             ref="passwordFieldRef"
             v-model="password"
-            type="password"
+            :type="showNew ? 'text' : 'password'"
             outlined
             class="phone-input"
             :placeholder="`Не короче ${PASSWORD_MIN_LENGTH} символов`"
@@ -437,7 +456,18 @@ function goBackToPhoneInput() {
             aria-label="Новый пароль"
             hide-bottom-space
             @keyup.enter="onCreateSubmit"
-          />
+          >
+            <template #append>
+              <q-icon
+                :name="showNew ? 'visibility_off' : 'visibility'"
+                class="password-eye"
+                size="20px"
+                role="button"
+                :aria-label="showNew ? 'Скрыть пароль' : 'Показать пароль'"
+                @click="showNew = !showNew"
+              />
+            </template>
+          </q-input>
 
           <p v-if="password" class="password-meter" :data-score="createPasswordScore.score">
             <span class="password-meter-bar"
@@ -450,7 +480,7 @@ function goBackToPhoneInput() {
           <q-input
             id="confirm-password-input"
             v-model="passwordConfirm"
-            type="password"
+            :type="showConfirm ? 'text' : 'password'"
             outlined
             class="phone-input"
             placeholder="Повторите пароль"
@@ -458,7 +488,18 @@ function goBackToPhoneInput() {
             aria-label="Повтор пароля"
             hide-bottom-space
             @keyup.enter="onCreateSubmit"
-          />
+          >
+            <template #append>
+              <q-icon
+                :name="showConfirm ? 'visibility_off' : 'visibility'"
+                class="password-eye"
+                size="20px"
+                role="button"
+                :aria-label="showConfirm ? 'Скрыть пароль' : 'Показать пароль'"
+                @click="showConfirm = !showConfirm"
+              />
+            </template>
+          </q-input>
 
           <button type="submit" class="btn btn-primary" :disabled="isLoading">
             <span v-if="isLoading" class="spinner"></span>
@@ -667,6 +708,16 @@ function goBackToPhoneInput() {
 }
 
 /* Индикатор силы пароля (подсказка; решает всё серверная политика). */
+/* «Глазок» в полях пароля: иконка в append-слоте Quasar-инпута. */
+.password-eye {
+  cursor: pointer;
+  color: #8295a3;
+}
+
+.password-eye:hover {
+  color: var(--ms-accent, #2ea25e);
+}
+
 .password-meter {
   display: flex;
   align-items: center;
