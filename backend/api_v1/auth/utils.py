@@ -134,6 +134,22 @@ async def get_current_user(
     return user
 
 
+async def get_current_superuser(
+    user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """Как get_current_user, но только для администраторов (модераторов).
+
+    Используется служебными эндпоинтами (разбор жалоб): обычный пользователь
+    получает 403, чтобы не мог читать чужие жалобы.
+    """
+    if not user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Недостаточно прав",
+        )
+    return user
+
+
 async def resolve_user_from_websocket(websocket: WebSocket) -> User | None:
     """Проверяет JWT из query-параметра ``token`` и возвращает пользователя.
 

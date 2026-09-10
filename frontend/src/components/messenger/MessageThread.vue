@@ -39,6 +39,7 @@
           @forward="emit('forward', row.message)"
           @save="emit('save', row.message)"
           @delete="emit('delete', row.message)"
+          @report="emit('report', row.message)"
           @open-image="emit('open-image', row.message)"
         />
       </template>
@@ -119,6 +120,7 @@ const emit = defineEmits<{
   (e: 'forward', message: Message): void
   (e: 'save', message: Message): void
   (e: 'delete', message: Message): void
+  (e: 'report', message: Message): void
   (e: 'open-image', message: Message): void
 }>()
 

@@ -14,6 +14,8 @@ __all__ = [
     "RuStorePushToken",
     "TelegramBindLink",
     "User",
+    "UserBlock",
+    "UserReport",
     "user_chat_association_table",
 ]
 
@@ -31,3 +33,5 @@ from .refresh_session import RefreshSession  # noqa: F401
 from .rustore_push_token import RuStorePushToken  # noqa: F401
 from .telegram_bind_link import TelegramBindLink  # noqa: F401
 from .user import User  # noqa: F401
+from .user_block import UserBlock  # noqa: F401
+from .user_report import UserReport  # noqa: F401

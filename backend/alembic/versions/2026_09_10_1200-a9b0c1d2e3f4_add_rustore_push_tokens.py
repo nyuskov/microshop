@@ -54,7 +54,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_rustore_push_tokens_user_id", table_name="rustore_push_tokens"
-    )
+    op.drop_index("ix_rustore_push_tokens_user_id", table_name="rustore_push_tokens")
     op.drop_table("rustore_push_tokens")

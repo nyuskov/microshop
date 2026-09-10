@@ -186,6 +186,11 @@
           <q-icon name="bookmark" size="16px" />
           <span>Сохранить в Сохранённые</span>
         </button>
+        <!-- Жалоба на чужое сообщение — требование RuStore для UGC-приложений. -->
+        <button v-if="!isOwn" class="more-item" @click="onReport">
+          <q-icon name="flag" size="16px" />
+          <span>Пожаловаться</span>
+        </button>
         <button v-if="isOwn" class="more-item danger" @click="onDelete">
           <q-icon name="delete" size="16px" />
           <span>Удалить</span>
@@ -279,6 +284,8 @@ const emit = defineEmits<{
   (e: 'forward'): void
   (e: 'save'): void
   (e: 'delete'): void
+  /** Жалоба на сообщение (модерация UGC, требование RuStore). */
+  (e: 'report'): void
   (e: 'open-image'): void
 }>()
 
@@ -468,6 +475,11 @@ const onSave = () => {
 const onDelete = () => {
   moreOpen.value = false
   emit('delete')
+}
+
+const onReport = () => {
+  moreOpen.value = false
+  emit('report')
 }
 </script>
 

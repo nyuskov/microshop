@@ -36,6 +36,22 @@ class UserAvatarResponse(BaseModel):
     avatar_url: str | None = None
 
 
+# Строка-подтверждение для удаления аккаунта (защита от случайного нажатия).
+DELETE_ACCOUNT_CONFIRM = "УДАЛИТЬ"
+
+
+class DeleteAccountRequest(BaseModel):
+    """Подтверждение удаления аккаунта (требование RuStore и 152-ФЗ).
+
+    Нужны и пароль, и подтверждающая строка ``УДАЛИТЬ``: пароль подтверждает,
+    что действие выполняет владелец аккаунта (для аккаунтов без собственного
+    пароля проверяется только строка).
+    """
+
+    password: str | None = Field(default=None, max_length=128)
+    confirm: str = Field(max_length=32)
+
+
 class ChatSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -86,6 +102,9 @@ class UserWithDetailsSchema(BaseModel):
     avatar_url: str | None = None
     status: str | None = None
     last_seen: datetime | None = None
+    # Признак администратора: фронт показывает таким пользователям разбор жалоб
+    # (сам эндпоинт разбора всё равно проверяет is_superuser на сервере).
+    is_superuser: bool = False
     profile: ProfileSchema | None
     chats: list[ChatSchema] = Field(default_factory=list)
 

@@ -28,6 +28,7 @@
         :drafts="draftsByChatId"
         :self-name="selfName"
         :self-avatar-url="selfAvatarUrl"
+        :is-admin="authStore.isAdmin"
         @open-message="openGlobalMessage"
         @toggle-pin="toggleChatPinned"
         @toggle-mute="toggleChatMuted"
@@ -42,6 +43,8 @@
         @select-chat="selectChat"
         @chat-opened="onChatOpened"
         @create-group="openCreateGroup"
+        @open-blocked="showBlockedUsers = true"
+        @open-reports="showReports = true"
       />
     </q-drawer>
 
@@ -115,6 +118,8 @@
             @open-info="openChatInfo"
             @start-call="startCall"
             @toggle-pin="toggleCurrentChatPin"
+            @report-chat="openReportForPeer"
+            @block-chat="blockSelectedPeer"
           />
 
           <!-- Поиск по сообщениям -->
@@ -163,6 +168,7 @@
             @forward="openForward"
             @save="saveMessageToSelf"
             @delete="deleteMessageOf"
+            @report="openReportForMessage"
             @open-image="openImageFromMessage"
           />
 
@@ -332,6 +338,25 @@
   <!-- Login Modal -->
   <LoginModal :visible="showLoginModal" @close-modal="onLoginModalClose" />
 
+  <!-- Модерация: жалоба на контент и список заблокированных (требования RuStore) -->
+  <ReportDialog
+    v-if="reportTarget"
+    :user-id="reportTarget.userId"
+    :user-name="reportTarget.userName"
+    :chat-id="reportTarget.chatId"
+    :message-id="reportTarget.messageId"
+    :message-preview="reportTarget.messagePreview"
+    @close="reportTarget = null"
+    @sent="onReportSent"
+  />
+  <BlockedUsersDialog
+    v-if="showBlockedUsers"
+    @close="showBlockedUsers = false"
+    @unblocked="onBlockedUsersChanged"
+  />
+  <!-- Разбор жалоб — только у администраторов (пункт «⋯» появляется им одним) -->
+  <ModerationReportsDialog v-if="showReports && authStore.isAdmin" @close="showReports = false" />
+
   <!-- Промежуточный экран при запуске из уведомления о звонке -->
   <Teleport to="body">
     <div v-if="callLaunchScreen === 'ring' && callStore.status === 'idle'" class="call-launch-wait">
@@ -384,11 +409,12 @@ import {
   computed,
   defineAsyncComponent
 } from 'vue'
-import { useQuasar } from 'quasar'
+import { Notify, useQuasar } from 'quasar'
 import LoginModal from '@/components/LoginModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { getErrorMessage } from '@/services/errors'
+import { blockUser } from '@/services/moderation'
 import {
   fetchContacts,
   fetchMessages,
@@ -421,7 +447,7 @@ import {
   resetE2eeSession
 } from '@/services/e2ee'
 import type { Chat, ChatUser, Message } from '@/types'
-import { avatarUrlOf, displayName, isGroupChat } from '@/utils/user'
+import { avatarUrlOf, chatPeer, displayName, isGroupChat } from '@/utils/user'
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import { isImageFile, messageSnippet, optimizeImageFile } from '@/utils/media'
@@ -453,6 +479,15 @@ const VideoRecorderModal = defineAsyncComponent(
   () => import('@/components/media/VideoRecorderModal.vue')
 )
 const ImageLightbox = defineAsyncComponent(() => import('@/components/media/ImageLightbox.vue'))
+// Диалоги модерации (требования RuStore): жалоба на контент и список блокировок.
+const ReportDialog = defineAsyncComponent(() => import('@/components/messenger/ReportDialog.vue'))
+const BlockedUsersDialog = defineAsyncComponent(
+  () => import('@/components/messenger/BlockedUsersDialog.vue')
+)
+// Разбор жалоб — служебный экран только для администраторов.
+const ModerationReportsDialog = defineAsyncComponent(
+  () => import('@/components/messenger/ModerationReportsDialog.vue')
+)
 import { useCallStore } from '@/stores/call'
 import { useRealtimeStore } from '@/stores/realtime'
 import { mediaFileName, type RecordedMedia } from '@/services/recorder'
@@ -482,6 +517,16 @@ const showChatInfoModal = ref(false)
 const showGroupInfoModal = ref(false)
 const showCreateGroupModal = ref(false)
 const showLoginModal = ref(true)
+// Модерация: жалоба на пользователя/сообщение и список заблокированных.
+const reportTarget = ref<{
+  userId: number
+  userName: string
+  chatId?: number
+  messageId?: number
+  messagePreview?: string
+} | null>(null)
+const showBlockedUsers = ref(false)
+const showReports = ref(false)
 const voiceRecOpen = ref(false)
 const videoRecOpen = ref(false)
 
@@ -2369,6 +2414,79 @@ disposeNativePush = initNativePush({
     void refreshOpenThreadQuiet()
   }
 })
+
+// ---------- Модерация: жалобы и блокировка (требования RuStore) ----------
+
+/** Жалоба на собеседника из меню «⋯» в шапке личного чата. */
+const openReportForPeer = () => {
+  const chat = selectedChat.value
+  if (!chat) return
+  const peer = chatPeer(chat, currentUserId.value)
+  if (!peer) return
+  reportTarget.value = { userId: peer.id, userName: displayName(peer), chatId: chat.id }
+}
+
+/** Жалоба на конкретное сообщение (из действий сообщения, работает и в группах). */
+const openReportForMessage = (message: Message) => {
+  const chat = selectedChat.value
+  if (!chat || message.user_id === currentUserId.value) return
+  const author = chat.users.find((item) => item.id === message.user_id)
+  reportTarget.value = {
+    userId: message.user_id,
+    userName: author ? displayName(author) : 'Пользователь',
+    chatId: chat.id,
+    messageId: message.id,
+    messagePreview: (message.text ?? '').trim().slice(0, 80)
+  }
+}
+
+/** Блокировка пользователя: диалог скрывается, переписка не доставляется. */
+const blockPeer = async (userId: number) => {
+  if (userId === currentUserId.value) return
+  try {
+    await blockUser(userId)
+    const chat = selectedChat.value
+    if (chat) {
+      chats.value = chats.value.filter((item) => item.id !== chat.id)
+      selectedChatId.value = null
+      messages.value = []
+    }
+    await refreshChatsQuiet()
+    Notify.create({
+      message: 'Пользователь заблокирован',
+      caption: 'Снять блокировку: «⋯» в списке чатов → «Заблокированные»',
+      timeout: 4000
+    })
+  } catch (error) {
+    Notify.create({
+      message: getErrorMessage(error, 'Не удалось заблокировать пользователя'),
+      color: 'negative',
+      timeout: 4000
+    })
+  }
+}
+
+/** Блокировка собеседника открытого чата (событие из шапки). */
+const blockSelectedPeer = async () => {
+  const chat = selectedChat.value
+  const peer = chat ? chatPeer(chat, currentUserId.value) : null
+  if (!peer) return
+  await blockPeer(peer.id)
+}
+
+/** Жалоба отправлена — жалобы разбирают модераторы. */
+const onReportSent = () => {
+  Notify.create({
+    message: 'Жалоба отправлена',
+    caption: 'Мы проверим её и примем меры',
+    timeout: 3000
+  })
+}
+
+/** Блокировка снята — диалог снова становится видимым. */
+const onBlockedUsersChanged = () => {
+  void refreshChatsQuiet()
+}
 
 onMounted(async () => {
   await authStore.initializeApp()

@@ -3,16 +3,16 @@
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user
 from api_v1.rate_limit import enforce_limit
 from api_v1.upload_guard import validate_image_upload
-from api_v1.users import crud, schemas
+from api_v1.users import crud, deletion, schemas
 from core.config import settings
 from core.models import User, db_helper
-from core.security import get_password_hash
+from core.security import get_password_hash, verify_password
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -160,3 +160,38 @@ async def create_user(
     # Пароль задан явно — разрешаем вход по телефону+паролю.
     user.password_set = True
     return await crud.create_user(session, user)
+
+
+@router.delete("/me/", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(
+    payload: schemas.DeleteAccountRequest,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> Response:
+    """Безвозвратно удаляет аккаунт и все данные пользователя.
+
+    Нужно для RuStore/152-ФЗ (удаление аккаунта из приложения). Пароль
+    проверяем, только если он был задан самим пользователем (аккаунты из OTP
+    могли иметь случайный пароль — им достаточно подтверждающей строки).
+    """
+    db_user = await session.get(User, user.id)
+    if db_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не найден",
+        )
+    if payload.confirm != schemas.DELETE_ACCOUNT_CONFIRM:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Для подтверждения введите {schemas.DELETE_ACCOUNT_CONFIRM}",
+        )
+    if db_user.password_set:
+        if not payload.password or not verify_password(
+            payload.password, db_user.hashed_password
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Неверный пароль",
+            )
+    await deletion.delete_user_account(session, db_user)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

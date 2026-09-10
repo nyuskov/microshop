@@ -1,0 +1,141 @@
+/**
+ * Модерация пользовательского контента: жалобы, блокировки, удаление аккаунта.
+ *
+ * Требования RuStore к приложениям с пользовательским контентом (UGC):
+ * сообщить о неприемлемом контенте, заблокировать нарушителя и удалить аккаунт.
+ */
+
+import { api } from './api'
+import type { SearchUserResult } from './chatService'
+
+export type ReportReason = 'spam' | 'abuse' | 'fraud' | 'violence' | 'other'
+
+/** Причины жалобы (значения должны совпадать с REPORT_REASONS на сервере). */
+export const REPORT_REASONS: ReadonlyArray<{ value: ReportReason; label: string }> = [
+  { value: 'spam', label: 'Спам или реклама' },
+  { value: 'abuse', label: 'Оскорбления и травля' },
+  { value: 'fraud', label: 'Мошенничество' },
+  { value: 'violence', label: 'Угрозы и насилие' },
+  { value: 'other', label: 'Другое' }
+]
+
+/** Строка-подтверждение удаления аккаунта (та же проверка на сервере). */
+export const DELETE_ACCOUNT_CONFIRM = 'УДАЛИТЬ'
+
+export interface ReportPayload {
+  /** На кого жалуемся. */
+  userId: number
+  reason: ReportReason
+  comment?: string
+  /** Диалог, в котором произошло нарушение (контекст для модератора). */
+  chatId?: number
+  /** Конкретное сообщение (если жалоба на него). */
+  messageId?: number
+}
+
+/** Отправляет жалобу на пользователя/сообщение. */
+export async function reportUser(payload: ReportPayload): Promise<void> {
+  await api.post('/moderation/reports/', {
+    user_id: payload.userId,
+    reason: payload.reason,
+    comment: payload.comment?.trim() || null,
+    chat_id: payload.messageId ? null : (payload.chatId ?? null),
+    message_id: payload.messageId ?? null
+  })
+}
+
+/** Блокирует пользователя: он не сможет писать, диалог скрывается. */
+export async function blockUser(userId: number): Promise<void> {
+  await api.put(`/moderation/blocks/${userId}/`)
+}
+
+/** Снимает блокировку. */
+export async function unblockUser(userId: number): Promise<void> {
+  await api.delete(`/moderation/blocks/${userId}/`)
+}
+
+/** Список заблокированных пользователей. */
+export async function fetchBlockedUsers(): Promise<SearchUserResult[]> {
+  const { data } = await api.get<SearchUserResult[]>('/moderation/blocks/')
+  return data
+}
+
+/**
+ * Безвозвратно удаляет аккаунт текущего пользователя.
+ *
+ * Нужен и пароль аккаунта, и подтверждающая строка — сервер проверяет оба.
+ */
+export async function deleteAccount(password: string): Promise<void> {
+  await api.request({
+    method: 'DELETE',
+    url: '/users/me/',
+    data: { password, confirm: DELETE_ACCOUNT_CONFIRM }
+  })
+}
+
+// ---------- Разбор жалоб (только администраторы) ----------
+
+/** Статус разбора жалобы (значения совпадают с REPORT_STATUSES на сервере). */
+export type ReportStatus = 'new' | 'in_review' | 'resolved' | 'rejected'
+
+export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
+  new: 'Новая',
+  in_review: 'В работе',
+  resolved: 'Решена',
+  rejected: 'Отклонена'
+}
+
+/** Жалоба в том виде, в каком её видит модератор. */
+export interface ModerationReport {
+  id: number
+  reporter_id: number
+  reporter_name: string | null
+  reporter_phone: string | null
+  reported_id: number
+  reported_name: string | null
+  reported_phone: string | null
+  reason: ReportReason
+  comment: string | null
+  chat_id: number | null
+  message_id: number | null
+  /** Текст сообщения, на которое пожаловались (обрезан сервером до 300 симв.). */
+  message_text: string | null
+  status: ReportStatus
+  note: string | null
+  created_at: string
+  reviewed_at: string | null
+}
+
+export interface ReportListResponse {
+  total: number
+  items: ModerationReport[]
+}
+
+/** Подпись причины жалобы (для карточки модератора). */
+export function reportReasonLabel(reason: ReportReason): string {
+  return REPORT_REASONS.find((item) => item.value === reason)?.label ?? reason
+}
+
+/** Список жалоб для разбора (админ). Без фильтра — все, свежие первыми. */
+export async function fetchReports(params?: {
+  status?: ReportStatus
+  reason?: ReportReason
+  limit?: number
+  offset?: number
+}): Promise<ReportListResponse> {
+  const { data } = await api.get<ReportListResponse>('/moderation/reports/', { params })
+  return data
+}
+
+/** Меняет статус разбора жалобы (и, при желании, оставляет заметку). */
+export async function updateReportStatus(
+  reportId: number,
+  status: ReportStatus,
+  note?: string
+): Promise<ModerationReport> {
+  const { data } = await api.patch<ModerationReport>(`/moderation/reports/${reportId}/`, {
+    status,
+    note: note ?? null
+  })
+  return data
+}

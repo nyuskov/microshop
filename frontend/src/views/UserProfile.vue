@@ -14,6 +14,7 @@ import {
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
 import { disablePushNotifications, enablePushNotifications } from '@/services/pwa'
 import { disableNativePush, enableNativePush, isNativeApp } from '@/services/nativePush'
+import DeleteAccountDialog from '@/components/messenger/DeleteAccountDialog.vue'
 
 const emit = defineEmits(['close-modal'])
 
@@ -161,6 +162,19 @@ const removeAvatarClick = async () => {
 const closeModal = () => emit('close-modal')
 
 const doLogout = async () => {
+  try {
+    await authStore.logout()
+  } finally {
+    emit('close-modal')
+  }
+}
+
+// ---------- Удаление аккаунта (требование RuStore/152-ФЗ) ----------
+const showDeleteAccount = ref(false)
+
+/** Аккаунт удалён на сервере: чистим локальную сессию и закрываем профиль. */
+const onAccountDeleted = async () => {
+  showDeleteAccount.value = false
   try {
     await authStore.logout()
   } finally {
@@ -501,6 +515,22 @@ const onNotificationsToggle = async (val: boolean) => {
           </button>
         </div>
 
+        <!-- Удаление аккаунта — требование RuStore и 152-ФЗ. -->
+        <div class="delete-account-row">
+          <button
+            type="button"
+            class="delete-account-btn"
+            :disabled="saving"
+            @click="showDeleteAccount = true"
+          >
+            <q-icon name="delete_forever" size="17px" />
+            Удалить аккаунт
+          </button>
+          <p class="delete-account-hint">
+            Аккаунт, переписка и вложения будут удалены безвозвратно.
+          </p>
+        </div>
+
         <div class="form-actions">
           <button type="button" class="btn ghost" :disabled="saving" @click="closeModal">
             Отмена
@@ -513,6 +543,13 @@ const onNotificationsToggle = async (val: boolean) => {
         </div>
       </form>
     </template>
+
+    <!-- Диалог удаления аккаунта (требование RuStore/152-ФЗ) -->
+    <DeleteAccountDialog
+      v-if="showDeleteAccount"
+      @close="showDeleteAccount = false"
+      @deleted="onAccountDeleted"
+    />
   </div>
 </template>
 
@@ -815,6 +852,46 @@ const onNotificationsToggle = async (val: boolean) => {
 .logout-row {
   display: flex;
   justify-content: flex-start;
+}
+
+/* Удаление аккаунта (требование RuStore/152-ФЗ): заметно, но не кричит. */
+.delete-account-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed #e2e6ea;
+}
+
+.delete-account-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid #f0c2c2;
+  border-radius: 11px;
+  background: #fff6f6;
+  color: #c93b3b;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.delete-account-btn:hover:not(:disabled) {
+  background: #fdeaea;
+}
+
+.delete-account-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.delete-account-hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: #8a949e;
 }
 
 .logout-btn {

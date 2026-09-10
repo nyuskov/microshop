@@ -1345,3 +1345,444 @@ async def test_group_leave_and_delete_rules(api: _ApiCtx) -> None:
     assert r.status_code == 204
     r = await api.client.get(f"/api/v1/chats/{chat['id']}/", headers=api.auth(t2))
     assert r.status_code == 404
+
+
+# --- Модерация: блокировка и жалобы (требования RuStore для UGC) -----------
+
+
+async def test_block_user_blocks_messages_and_hides_chat(api: _ApiCtx) -> None:
+    """Блокировка: чат скрыт у блокирующего, сообщения запрещены в обе стороны."""
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    t1 = await api.token_for(u1)
+    t2 = await api.token_for(u2)
+    chat = await api.private_chat(t1, u2.id)
+
+    # До блокировки сообщение проходит.
+    r = await api.client.post(
+        "/api/v1/messages/",
+        json={"chat_id": chat["id"], "text": "до блокировки"},
+        headers=api.auth(t2),
+    )
+    assert r.status_code == 200, r.text
+
+    # u1 блокирует u2.
+    r = await api.client.put(
+        f"/api/v1/moderation/blocks/{u2.id}/", headers=api.auth(t1)
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["blocked"] is True
+
+    # Чат скрыт у блокирующего, но остаётся у собеседника.
+    chats1 = (await api.client.get("/api/v1/chats/", headers=api.auth(t1))).json()
+    chats2 = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
+    assert all(c["id"] != chat["id"] for c in chats1)
+    assert any(c["id"] == chat["id"] for c in chats2)
+
+    # Сообщения не проходят в обе стороны.
+    for token in (t1, t2):
+        r = await api.client.post(
+            "/api/v1/messages/",
+            json={"chat_id": chat["id"], "text": "после блокировки"},
+            headers=api.auth(token),
+        )
+        assert r.status_code == 403, r.text
+
+    # Список заблокированных → снятие блокировки возвращает чат и переписку.
+    blocked = (
+        await api.client.get("/api/v1/moderation/blocks/", headers=api.auth(t1))
+    ).json()
+    assert [item["id"] for item in blocked] == [u2.id]
+
+    r = await api.client.delete(
+        f"/api/v1/moderation/blocks/{u2.id}/", headers=api.auth(t1)
+    )
+    assert r.status_code == 200
+    assert r.json()["blocked"] is False
+    chats1 = (await api.client.get("/api/v1/chats/", headers=api.auth(t1))).json()
+    assert any(c["id"] == chat["id"] for c in chats1)
+    r = await api.client.post(
+        "/api/v1/messages/",
+        json={"chat_id": chat["id"], "text": "после разблокировки"},
+        headers=api.auth(t2),
+    )
+    assert r.status_code == 200, r.text
+
+
+async def test_block_validation(api: _ApiCtx) -> None:
+    """Нельзя заблокировать себя; чужой аккаунт — 404; без токена — 401."""
+    u1 = await api.make_user()
+    t1 = await api.token_for(u1)
+
+    r = await api.client.put(
+        f"/api/v1/moderation/blocks/{u1.id}/", headers=api.auth(t1)
+    )
+    assert r.status_code == 400
+    r = await api.client.put(
+        "/api/v1/moderation/blocks/99999999/", headers=api.auth(t1)
+    )
+    assert r.status_code == 404
+    r = await api.client.put("/api/v1/moderation/blocks/1/")
+    assert r.status_code == 401
+
+
+async def test_report_user(api: _ApiCtx) -> None:
+    """Жалоба: причина обязательна, на себя нельзя, чужое сообщение — 403."""
+    from sqlalchemy import select
+
+    from core.models import UserReport
+
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    u3 = await api.make_user()
+    t1 = await api.token_for(u1)
+    t2 = await api.token_for(u2)
+    t3 = await api.token_for(u3)
+    chat = await api.private_chat(t2, u1.id)
+    sent = await api.client.post(
+        "/api/v1/messages/",
+        json={"chat_id": chat["id"], "text": "спам-сообщение"},
+        headers=api.auth(t2),
+    )
+    message_id = sent.json()["id"]
+
+    # Причина обязательна (валидация схемы).
+    r = await api.client.post(
+        "/api/v1/moderation/reports/",
+        json={"user_id": u2.id},
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 422
+
+    # На себя — 400, несуществующий — 404.
+    r = await api.client.post(
+        "/api/v1/moderation/reports/",
+        json={"user_id": u1.id, "reason": "spam"},
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 400
+    r = await api.client.post(
+        "/api/v1/moderation/reports/",
+        json={"user_id": 99999999, "reason": "spam"},
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 404
+
+    # Жалоба на сообщение в своём чате.
+    r = await api.client.post(
+        "/api/v1/moderation/reports/",
+        json={
+            "user_id": u2.id,
+            "reason": "spam",
+            "comment": "реклама",
+            "message_id": message_id,
+        },
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["status"] == "new"
+
+    # Жалоба «на пользователя» из открытого диалога: контекст чата сохраняется.
+    r = await api.client.post(
+        "/api/v1/moderation/reports/",
+        json={"user_id": u2.id, "reason": "fraud", "chat_id": chat["id"]},
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 201, r.text
+    async with api.factory() as session:
+        reports = (
+            (
+                await session.execute(
+                    select(UserReport)
+                    .where(UserReport.reporter_id == u1.id)
+                    .order_by(UserReport.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert [rep.chat_id for rep in reports] == [chat["id"], chat["id"]]
+        assert [rep.message_id for rep in reports] == [message_id, None]
+
+    # Чужой чат (u1 и u3 не общаются) — контекст не подтверждается: 403.
+    other = await api.private_chat(t2, u3.id)
+    r = await api.client.post(
+        "/api/v1/moderation/reports/",
+        json={"user_id": u2.id, "reason": "spam", "chat_id": other["id"]},
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 403
+
+    # Посторонний на чужое сообщение пожаловаться не может.
+    r = await api.client.post(
+        "/api/v1/moderation/reports/",
+        json={"user_id": u2.id, "reason": "spam", "message_id": message_id},
+        headers=api.auth(t3),
+    )
+    assert r.status_code == 403
+
+    # Без авторизации — 401.
+    r = await api.client.post(
+        "/api/v1/moderation/reports/", json={"user_id": u2.id, "reason": "spam"}
+    )
+    assert r.status_code == 401
+
+
+async def test_delete_account(api: _ApiCtx) -> None:
+    """Удаление аккаунта: подтверждение + пароль, данные и доступ исчезают."""
+    from sqlalchemy import select
+
+    from core.models import Message
+    from core.security import get_password_hash
+
+    user = await api.make_user()
+    async with api.factory() as session:
+        row = await session.get(User, user.id)
+        assert row is not None
+        row.hashed_password = get_password_hash("secret")
+        row.password_set = True
+        await session.commit()
+
+    token = await api.token_for(user)
+    peer = await api.make_user()
+    peer_token = await api.token_for(peer)
+    chat = await api.private_chat(peer_token, user.id)
+    await api.client.post(
+        "/api/v1/messages/",
+        json={"chat_id": chat["id"], "text": "моё сообщение"},
+        headers=api.auth(token),
+    )
+
+    # Подтверждение обязательно, пароль проверяется.
+    r = await api.client.request(
+        "DELETE",
+        "/api/v1/users/me/",
+        json={"confirm": "нет", "password": "secret"},
+        headers=api.auth(token),
+    )
+    assert r.status_code == 400
+    r = await api.client.request(
+        "DELETE",
+        "/api/v1/users/me/",
+        json={"confirm": "УДАЛИТЬ", "password": "неверный"},
+        headers=api.auth(token),
+    )
+    assert r.status_code == 403
+
+    # Успешное удаление.
+    r = await api.client.request(
+        "DELETE",
+        "/api/v1/users/me/",
+        json={"confirm": "УДАЛИТЬ", "password": "secret"},
+        headers=api.auth(token),
+    )
+    assert r.status_code == 204, r.text
+
+    async with api.factory() as session:
+        assert await session.get(User, user.id) is None
+        rest = (
+            (
+                await session.execute(
+                    select(Message).where(Message.chat_id == chat["id"])
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert all(message.user_id != user.id for message in rest)
+
+    # Токен удалённого аккаунта больше не работает.
+    r = await api.client.get("/api/v1/jwt/users/me/", headers=api.auth(token))
+    assert r.status_code == 401
+
+
+# --- Разбор жалоб модератором (только is_superuser) -----------------------
+
+
+async def _make_admin(api: _ApiCtx) -> tuple[User, str]:
+    """Создаёт суперпользователя и возвращает его вместе с токеном."""
+    admin = await api.make_user()
+    async with api.factory() as session:
+        row = await session.get(User, admin.id)
+        assert row is not None
+        row.is_superuser = True
+        await session.commit()
+    return admin, await api.token_for(admin)
+
+
+async def test_reports_admin_list_and_update(api: _ApiCtx) -> None:
+    """Админ видит жалобы с контекстом и меняет статус разбора."""
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    admin, tadmin = await _make_admin(api)
+    t1 = await api.token_for(u1)
+
+    chat = await api.private_chat(t1, u2.id)
+    created = await api.client.post(
+        "/api/v1/moderation/reports/",
+        json={
+            "user_id": u2.id,
+            "reason": "abuse",
+            "comment": "ругань в переписке",
+            "chat_id": chat["id"],
+        },
+        headers=api.auth(t1),
+    )
+    assert created.status_code == 201, created.text
+    report_id = created.json()["id"]
+
+    response = await api.client.get(
+        "/api/v1/moderation/reports/?status=new", headers=api.auth(tadmin)
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["total"] == 1
+    item = data["items"][0]
+    assert item["id"] == report_id
+    assert (item["reporter_id"], item["reported_id"]) == (u1.id, u2.id)
+    assert item["reason"] == "abuse"
+    assert item["comment"] == "ругань в переписке"
+    assert item["chat_id"] == chat["id"]
+    assert item["message_id"] is None
+    # Имена/телефоны для модератора + жалоба ещё не разобрана.
+    assert item["reporter_name"] == u1.username
+    assert item["reported_phone"] == u2.phone_number
+    assert item["status"] == "new"
+    assert item["reviewed_at"] is None
+    assert item["created_at"]
+
+    # Фильтры по статусу и причине.
+    assert (
+        await api.client.get(
+            "/api/v1/moderation/reports/?status=resolved",
+            headers=api.auth(tadmin),
+        )
+    ).json()["total"] == 0
+    assert (
+        await api.client.get(
+            "/api/v1/moderation/reports/?reason=spam", headers=api.auth(tadmin)
+        )
+    ).json()["total"] == 0
+
+    # Разбор: статус + заметка, reviewed_at проставляется.
+    updated = await api.client.patch(
+        f"/api/v1/moderation/reports/{report_id}/",
+        json={"status": "resolved", "note": "предупредили пользователя"},
+        headers=api.auth(tadmin),
+    )
+    assert updated.status_code == 200, updated.text
+    body = updated.json()
+    assert body["status"] == "resolved"
+    assert body["note"] == "предупредили пользователя"
+    assert body["reviewed_at"]
+
+    # Жалоба ушла из «новых» в «решённые».
+    assert (
+        await api.client.get(
+            "/api/v1/moderation/reports/?status=new", headers=api.auth(tadmin)
+        )
+    ).json()["total"] == 0
+    assert (
+        await api.client.get(
+            "/api/v1/moderation/reports/?status=resolved",
+            headers=api.auth(tadmin),
+        )
+    ).json()["total"] == 1
+
+    # Возврат в «new» сбрасывает метку разбора, заметка сохраняется.
+    back = await api.client.patch(
+        f"/api/v1/moderation/reports/{report_id}/",
+        json={"status": "new"},
+        headers=api.auth(tadmin),
+    )
+    assert back.json()["reviewed_at"] is None
+    assert back.json()["note"] == "предупредили пользователя"
+
+    # Невалидный статус — 422, несуществующая жалоба — 404.
+    assert (
+        await api.client.patch(
+            f"/api/v1/moderation/reports/{report_id}/",
+            json={"status": "нет"},
+            headers=api.auth(tadmin),
+        )
+    ).status_code == 422
+    assert (
+        await api.client.patch(
+            "/api/v1/moderation/reports/99999999/",
+            json={"status": "rejected"},
+            headers=api.auth(tadmin),
+        )
+    ).status_code == 404
+
+
+async def test_reports_admin_only(api: _ApiCtx) -> None:
+    """Список/разбор жалоб закрыт: обычный пользователь — 403, гость — 401."""
+    u1 = await api.make_user()
+    t1 = await api.token_for(u1)
+
+    assert (
+        await api.client.get("/api/v1/moderation/reports/", headers=api.auth(t1))
+    ).status_code == 403
+    assert (
+        await api.client.patch(
+            "/api/v1/moderation/reports/1/",
+            json={"status": "resolved"},
+            headers=api.auth(t1),
+        )
+    ).status_code == 403
+    assert (await api.client.get("/api/v1/moderation/reports/")).status_code == 401
+
+
+async def test_reports_pagination(api: _ApiCtx) -> None:
+    """Пагинация: limit/offset с общим количеством в total."""
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    _admin, tadmin = await _make_admin(api)
+    t1, t2 = await api.token_for(u1), await api.token_for(u2)
+
+    for _ in range(3):
+        r = await api.client.post(
+            "/api/v1/moderation/reports/",
+            json={"user_id": u2.id, "reason": "spam"},
+            headers=api.auth(t1),
+        )
+        assert r.status_code == 201, r.text
+    r = await api.client.post(
+        "/api/v1/moderation/reports/",
+        json={"user_id": u1.id, "reason": "other"},
+        headers=api.auth(t2),
+    )
+    assert r.status_code == 201, r.text
+
+    page = (
+        await api.client.get(
+            "/api/v1/moderation/reports/?limit=2&offset=0",
+            headers=api.auth(tadmin),
+        )
+    ).json()
+    assert page["total"] == 4
+    assert len(page["items"]) == 2
+    # Свежие первыми.
+    assert page["items"][0]["reason"] == "other"
+
+    second = (
+        await api.client.get(
+            "/api/v1/moderation/reports/?limit=2&offset=2",
+            headers=api.auth(tadmin),
+        )
+    ).json()
+    assert second["total"] == 4
+    assert len(second["items"]) == 2
+    assert not {i["id"] for i in page["items"]} & {i["id"] for i in second["items"]}
+
+    # Лимит за пределами допустимого/отрицательный offset — 422.
+    assert (
+        await api.client.get(
+            "/api/v1/moderation/reports/?limit=0", headers=api.auth(tadmin)
+        )
+    ).status_code == 422
+    assert (
+        await api.client.get(
+            "/api/v1/moderation/reports/?offset=-1", headers=api.auth(tadmin)
+        )
+    ).status_code == 422

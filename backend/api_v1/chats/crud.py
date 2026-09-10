@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api_v1.events.service import notify_chat, notify_user
+from api_v1.moderation import crud as moderation_crud
 from core.models import Chat, ChatMute, Message, User, user_chat_association_table
 from core.models.associations import ROLE_ADMIN, ROLE_CREATOR, ROLE_MEMBER
 
@@ -123,7 +124,12 @@ async def get_or_create_private_chat(
 
 
 async def get_user_chats(session: AsyncSession, user_id: int) -> list[Chat]:
-    """Возвращает чаты, в которых состоит пользователь, вместе с участниками."""
+    """Возвращает чаты пользователя (без личных чатов с заблокированными).
+
+    Блокировка — требование RuStore для приложений с пользовательским контентом:
+    диалог с заблокированным скрывается у того, кто заблокировал (снять
+    блокировку можно в разделе «Заблокированные»). Группы не затрагиваются.
+    """
     subq = select(user_chat_association_table.c.chat_id).where(
         user_chat_association_table.c.user_id == user_id
     )
@@ -134,7 +140,20 @@ async def get_user_chats(session: AsyncSession, user_id: int) -> list[Chat]:
         .order_by(Chat.id)
     )
     result = await session.execute(stmt)
-    return list(result.scalars().all())
+    chats = list(result.scalars().all())
+
+    blocked_ids = await moderation_crud.get_blocked_ids(session, blocker_id=user_id)
+    if not blocked_ids:
+        return chats
+    return [chat for chat in chats if _chat_visible(chat, user_id, blocked_ids)]
+
+
+def _chat_visible(chat: Chat, user_id: int, blocked_ids: set[int]) -> bool:
+    """Виден ли чат пользователю (личный чат с заблокированным — нет)."""
+    if chat.is_group:
+        return True
+    others = [member.id for member in chat.users if member.id != user_id]
+    return not any(member_id in blocked_ids for member_id in others)
 
 
 async def get_or_create_self_chat(session: AsyncSession, user: User) -> Chat:

@@ -27,10 +27,11 @@
 - **Профиль и настройки** (`UserProfile`): имя/логин/email/**телефон** (маска +7)/био/**текст-статус**/дата рождения/язык/страна, уведомления, приватный режим, **аватар** (загрузка/удаление), выход.
 - **Вход по номеру + пароль** (если у номера нет пароля — предлагаем создать; OTP/SMS временно не используется в UI, эндпоинты сохранены).
 - Backend-качество: refresh-токены с ротацией/отзывом, rate-limit, pg_trgm-поиск, X-Request-ID и лог медленных запросов, Celery+RabbitMQ (SMS/GIF/очистка медиа по расписанию), health-эндпоинты, pytest, CI (black/isort/flake8/mypy/vue-tsc/eslint/vitest).
+- **Модерация пользовательского контента** (требование RuStore к UGC): «Пожаловаться» на собеседника и на конкретное сообщение (причины + комментарий), «Заблокировать» (диалог скрывается, сообщения в обе стороны блокируются, список «Заблокированные»), «Удалить аккаунт» в профиле (пароль + подтверждение). Разбор жалоб — служебный экран «Жалобы» для `is_superuser` (статусы `new/in_review/resolved/rejected`, заметка модератора), эндпоинты `GET/PATCH /moderation/reports/`; инструкция — `docs/rustore.md`, §9.1.
 - **Мобильное приложение для RuStore** (`android/`): WebView-оболочка над тем же веб-клиентом (pismo.space) + RuStore Push SDK вместо Web Push; сборка AAB/APK без установки Android SDK на хост (`scripts/rustore/build_android.sh`, образ `android/Dockerfile.build`), ключ подписи, App Links, политика конфиденциальности, скриншоты — см. `docs/rustore.md`.
 - Legacy-модули `products`/`posts`/`telegram` — с мессенджером не связаны (кандидаты на удаление).
 
-Ограничения (сознательные/текущие): только личные чаты (групповых нет — фича убрана); WebRTC-звонки без TURN (работают в локальных сетях); Web Push/PWA-уведомления не реализованы; секреты должны задаваться через `.env` (см. раздел 9). Вход в UI сейчас — **по номеру и паролю** (при первом входе предлагается создать пароль); SMS/OTP временно отключён до подключения платного шлюза (SMS Aero/Telegram — см. `.env.example`).
+Ограничения (сознательные/текущие): групповые чаты есть, но звонки/E2EE — только для личных 1-1; E2EE — без forward secrecy (один ключ на устройство, старая история не читается с нового устройства, медиа не шифруются); push идут через Web Push (PWA/браузер) и RuStore Push (Android-приложение), секреты должны задаваться через `.env` (см. раздел 9). Вход в UI сейчас — **по номеру и паролю** (при первом входе предлагается создать пароль); SMS/OTP временно отключён до подключения платного шлюза (SMS Aero/Telegram — см. `.env.example`).
 
 ## 2. Стек
 
@@ -290,6 +291,13 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 | POST | `/users/` | создать пользователя (для тестов/отладки) | — |
 | PUT | `/users/me/avatar/` | загрузить аватар (raw bytes) | токен |
 | DELETE | `/users/me/avatar/` | удалить аватар | токен |
+| DELETE | `/users/me/` | удалить аккаунт `{password?, confirm:"УДАЛИТЬ"}` → 204 (204/400/403) | токен |
+| POST | `/moderation/reports/` | жалоба на пользователя/сообщение `{user_id, reason, comment?, chat_id?, message_id?}` (причины: `spam/abuse/fraud/violence/other`) | токен |
+| GET | `/moderation/blocks/` | список заблокированных мной | токен |
+| PUT | `/moderation/blocks/{user_id}/` | заблокировать (диалог скрыт, сообщения в обе стороны — 403) | токен |
+| DELETE | `/moderation/blocks/{user_id}/` | снять блокировку | токен |
+| GET | `/moderation/reports/?status=&reason=&limit=&offset=` | **админ**: список жалоб (`total` + `items`) | токен, `is_superuser` |
+| PATCH | `/moderation/reports/{report_id}/` | **админ**: статус разбора `{status: new/in_review/resolved/rejected, note?}` | токен, `is_superuser` |
 
 Проверка доступа к чату/сообщениям: только участник чата (иначе `403`); чат с самим собой — `400`; чужие сообщения удалять — `403`.
 
@@ -300,6 +308,15 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 > На «дорогие»/«писательские» эндпоинты действует **per-user rate limit**
 > (в минуту, ключ — `user.id`): отправка/пересылка/загрузка/GIF и поиск по
 > сообщениям и людям; лимиты задаются в `core/config.py` (`*_limit_per_minute`).
+>
+> **Модерация (требование RuStore к UGC):** жалоба, блокировка и удаление
+> аккаунта есть в интерфейсе приложения («Пожаловаться»/«Заблокировать» —
+> в шапке чата и в меню сообщения, «Заблокированные» — в «⋯» списка чатов,
+> «Удалить аккаунт» — в профиле). Разбор жалоб — служебный экран «Жалобы»
+> в меню «⋯», видимый только пользователю с `user.is_superuser = true`
+> (назначение и инструкция для модератора — `docs/rustore.md`, §9.1).
+> Жалобы лежат в `user_reports` (статусы `new → in_review → resolved/rejected`),
+> автоблокировки по жалобе нет — решение принимает модератор вручную.
 
 ### Модель данных (основное)
 
@@ -309,6 +326,8 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 - `messages` — `id`, `text`, `timestamp` (default now()), `user_id`, `chat_id`, `reply_to_id` (self FK), `is_read`, `is_pinned`, `edited_at`, `file_name/file_url/mime_type/file_size`, поля пересылки `forwarded_from_id`/`forwarded_sender_id`/`forwarded_sender_name`/`forwarded_chat_id` (снимок «от кого»). Индекс `(chat_id, timestamp)`.
 - `message_reactions` — PK `(message_id, user_id)`, `emoji` (по одной реакции на пользователя).
 - `otp_codes` — OTP-коды телефонов (хеш кода, попытки, срок); `refresh_sessions` — refresh-токены с отзывом/ротацией.
+- `device_keys` — публичный ключ E2EE на устройство; `push_subscriptions` — Web Push-подписки; `rustore_push_tokens` — токены RuStore Push; `chat_mutes` — «без уведомлений» (PK `user_id+chat_id`); `telegram_bind_links` — коды привязки Telegram.
+- `user_blocks` — блокировки 1-1 (уникальная пара `blocker_id+blocked_id`); `user_reports` — жалобы (`reporter_id`, `reported_id`, `reason`, `comment`, контекст `chat_id`/`message_id`, `status`, `note`, `created_at`, `reviewed_at`).
 - Legacy-таблицы `post`/`product`/`order`/`group` — **удалены** (миграция `f6a7b8c9d0e1`); моделей нет.
 
 ### Миграции (Alembic, история)
@@ -335,7 +354,20 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 18. `2026_09_07_1600-b2c3d4e5f6a7` — индекс `messages (chat_id, timestamp)`
 19. `2026_09_07_1620-e5f6a7b8c9d0` — `messages.edited_at`
 20. `2026_09_07_1650-f6a7b8c9d0e1` — DROP legacy-таблиц (`product`/`post`/`order`/`group`)
-21. `2026_09_07_1800-f0e1d2c3b4a5` — пересылка: forward-поля в `messages` — **голова**
+21. `2026_09_07_1800-f0e1d2c3b4a5` — пересылка: forward-поля в `messages`
+22. `2026_09_08_1000-a7b8c9d0e1f2` — Telegram-привязка (`user.tg_chat_id` + `telegram_bind_links`)
+23. `2026_09_08_1800-b4c5d6e7f8a9` — `user.password_set`
+24. `2026_09_08_2000-b5c6d7e8f9a0` — `push_subscriptions` (Web Push)
+25. `2026_09_09_1000-c6d7e8f9a0b1` — `chat_mutes`
+26. `2026_09_09_1100-e2ee01c0de5a` — E2EE (`device_keys`, `messages.encrypted`)
+27. `2026_09_09_1200-c8d9e0f1a2b3` — `chats.e2ee_enabled` (обычные/зашифрованные чаты)
+28. `2026_09_09_1400-d0e1f2a3b4c5` — записи о звонках в `messages` (тип/исход)
+29. `2026_09_09_1500-e1f2a3b4c5d6` — `chats.is_self` (чат «Сохранённые сообщения»)
+30. `2026_09_09_1600-f2a3b4c5d6e7` — аватар автора в снимке пересылки
+31. `2026_09_10_1000-f3a4b5c6d7e8` — групповые чаты (роли, аватар, курсор чтения)
+32. `2026_09_10_1200-a9b0c1d2e3f4` — `rustore_push_tokens`
+33. `2026_09_10_1400-b0c1d2e3f4a5` — модерация: `user_blocks`, `user_reports`
+34. `2026_09_10_1600-c1d2e3f4a5b6` — разбор жалоб: `user_reports.note`/`reviewed_at` + индекс — **голова**
 
 Применение: `cd backend && poetry run alembic upgrade head`. В docker-стеке миграции выполняются автоматически при старте контейнера `web`.
 
@@ -449,7 +481,9 @@ docker exec -it microshop-db-1 psql -U postgres -d microshop
 
 ## 9. Известные ограничения / TODO
 
-- Групповые чаты не реализованы (модель личных чатов).
+- Групповые чаты есть, но без звонков и E2EE (они только для личных 1-1).
+- E2EE — без forward secrecy: один ключ на устройство, старая история с нового устройства не читается, медиа не шифруются.
+- Разбор жалоб — вручную модератором (экран «Жалобы» / `GET /moderation/reports/`); автоматической блокировки по жалобе нет.
 - Realtime — WebSocket-канал + «страховочный» polling 20 с (поллинг 3 с убран).
 - SMS-провайдер (SMS Aero) не подключён — код логируется в dev; в проде задайте `SMS_AERO_EMAIL`/`SMS_AERO_API_KEY` (см. `.env.example`). ВНИМАНИЕ: хостинг в РФ может не иметь доступа к `api.telegram.org`, поэтому Telegram-каналы (Gateway/бот) там не заработают.
 - Профиль и вход — намеренно «светлые листы» (карточка целиком светлая в обеих темах, читаема в тёмной); остальной интерфейс токенизирован под свет/тьму.

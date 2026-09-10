@@ -556,6 +556,8 @@ const props = defineProps<{
   /** Имя и аватар текущего пользователя (кнопка «Профиль» слева). */
   selfName: string
   selfAvatarUrl: string | undefined
+  /** Администратор: показывает в «⋯» разбор жалоб. */
+  isAdmin?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -574,13 +576,29 @@ const emit = defineEmits<{
   (e: 'bulk-delete', chatIds: number[]): void
   /** Открыть диалог «Новая группа». */
   (e: 'create-group'): void
+  /** Открыть список заблокированных пользователей. */
+  (e: 'open-blocked'): void
+  /** Открыть разбор жалоб (только администраторы). */
+  (e: 'open-reports'): void
 }>()
 
-// Пункты верхнего меню «⋯» (сюда будут добавляться новые настройки).
-const SETTINGS_ACTIONS = [
-  { key: 'group', label: 'Новая группа', icon: 'group_add' },
-  { key: 'appearance', label: 'Оформление и тема', icon: 'palette' }
-] as const
+/** Пункт меню «⋯»: иконка Material + подпись. */
+interface SettingsAction {
+  key: 'group' | 'blocked' | 'reports' | 'appearance'
+  label: string
+  icon: string
+}
+
+// Пункты верхнего меню «⋯»; «Жалобы» видят только администраторы.
+const SETTINGS_ACTIONS = computed<SettingsAction[]>(() => {
+  const items: SettingsAction[] = [
+    { key: 'group', label: 'Новая группа', icon: 'group_add' },
+    { key: 'blocked', label: 'Заблокированные', icon: 'block' }
+  ]
+  if (props.isAdmin) items.push({ key: 'reports', label: 'Жалобы', icon: 'flag' })
+  items.push({ key: 'appearance', label: 'Оформление и тема', icon: 'palette' })
+  return items
+})
 
 const rootEl = ref<HTMLElement | null>(null)
 const settingsMenuOpen = ref(false)
@@ -833,9 +851,11 @@ const toggleSettingsMenu = () => {
   settingsMenuOpen.value = !settingsMenuOpen.value
 }
 
-const runSettingsAction = (action: (typeof SETTINGS_ACTIONS)[number]) => {
+const runSettingsAction = (action: SettingsAction) => {
   settingsMenuOpen.value = false
   if (action.key === 'group') emit('create-group')
+  if (action.key === 'blocked') emit('open-blocked')
+  if (action.key === 'reports') emit('open-reports')
   if (action.key === 'appearance') emit('open-appearance')
 }
 

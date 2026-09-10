@@ -63,10 +63,23 @@
           <q-icon name="more_vert" size="20px" />
         </button>
         <div v-if="chatMenuOpen" class="ms-dropdown">
-          <button class="ms-dropdown-item" @click="runChatAction">
+          <button class="ms-dropdown-item" @click="runChatAction('search')">
             <q-icon name="search" size="19px" />
             <span>Поиск по сообщениям</span>
           </button>
+          <!-- Жалоба и блокировка — требования RuStore для UGC-приложений.
+               Доступны только в личных диалогах (в группе нет одного собеседника,
+               там жалуются на конкретное сообщение через его действия). -->
+          <template v-if="canModeratePeer">
+            <button class="ms-dropdown-item" @click="runChatAction('report')">
+              <q-icon name="flag" size="19px" />
+              <span>Пожаловаться</span>
+            </button>
+            <button class="ms-dropdown-item danger" @click="runChatAction('block')">
+              <q-icon name="block" size="19px" />
+              <span>Заблокировать</span>
+            </button>
+          </template>
         </div>
       </span>
     </div>
@@ -113,7 +126,16 @@ const emit = defineEmits<{
   (e: 'open-info'): void
   (e: 'start-call', kind: 'audio' | 'video'): void
   (e: 'toggle-pin'): void
+  /** Жалоба на собеседника (модерация UGC, требование RuStore). */
+  (e: 'report-chat'): void
+  /** Блокировка собеседника. */
+  (e: 'block-chat'): void
 }>()
+
+/** Личный диалог с собеседником (не группа и не «Сохранённые сообщения»). */
+const canModeratePeer = computed<boolean>(
+  () => props.showCallButton && !props.chat.is_self && !!chatPeer(props.chat, props.currentUserId)
+)
 
 const peer = computed(() => chatPeer(props.chat, props.currentUserId))
 const title = computed<string>(() => chatTitle(props.chat, props.currentUserId))
@@ -154,9 +176,11 @@ const toggleChatMenu = () => {
   chatMenuOpen.value = !chatMenuOpen.value
 }
 
-const runChatAction = () => {
+const runChatAction = (action: 'search' | 'report' | 'block') => {
   chatMenuOpen.value = false
-  emit('toggle-search')
+  if (action === 'search') emit('toggle-search')
+  if (action === 'report') emit('report-chat')
+  if (action === 'block') emit('block-chat')
 }
 
 // Кнопка звонка: клик = звонок выбранного типа, удержание 0,5 c = смена типа.

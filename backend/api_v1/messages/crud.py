@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from api_v1.chats.crud import is_group_chat, is_user_chat_member, mark_group_chat_read
 from api_v1.events.service import notify_chat
+from api_v1.moderation import crud as moderation_crud
 from core.models import (
     Chat,
     Message,
@@ -19,6 +20,7 @@ from core.models import (
 )
 
 _NOT_MEMBER_DETAIL = "Вы не являетесь участником этого чата"
+_BLOCKED_DETAIL = "Нельзя отправить сообщение: пользователь недоступен"
 
 # Размер «страницы» истории по умолчанию. Раньше запрос без параметров отдавал
 # ВСЮ историю чата — с ростом переписки это становилось опасным (память/сеть).
@@ -184,6 +186,41 @@ async def _ensure_chat_member_or_404(
     return chat
 
 
+async def _ensure_not_blocked(
+    session: AsyncSession, *, chat_id: int, user_id: int
+) -> None:
+    """Запрещает писать в личный чат при блокировке (в любую сторону).
+
+    Блокировка — требование RuStore к приложениям с пользовательским контентом:
+    заблокированный не должен иметь возможности доставлять сообщения, а
+    блокирующий — получать их. Групповые чаты и «Сохранённые сообщения» не
+    затрагиваются (там блокировка 1-1 неприменима).
+    """
+    members = (
+        (
+            await session.execute(
+                select(user_chat_association_table.c.user_id).where(
+                    user_chat_association_table.c.chat_id == chat_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if len(members) != 2:
+        return
+    peer_id = next((member for member in members if member != user_id), None)
+    if peer_id is None:
+        return
+    if await moderation_crud.is_blocked_between(
+        session, user_id=user_id, other_id=peer_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=_BLOCKED_DETAIL,
+        )
+
+
 async def _get_member_message(
     session: AsyncSession, message_id: int, user_id: int
 ) -> Message:
@@ -209,6 +246,7 @@ async def send_text_message(
 ) -> dict:
     """Отправляет текстовое сообщение (опционально — E2EE-шифротекст)."""
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
+    await _ensure_not_blocked(session, chat_id=chat_id, user_id=user_id)
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
 
@@ -259,6 +297,7 @@ async def send_attachment_message(
 ) -> dict:
     """Отправляет сообщение с файлом-вложением."""
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
+    await _ensure_not_blocked(session, chat_id=chat_id, user_id=user_id)
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
 
@@ -589,6 +628,7 @@ async def forward_message(
     # Отправитель должен состоять и в исходном, и в целевом чате.
     await _ensure_chat_member_or_404(session, chat_id=source.chat_id, user_id=user_id)
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
+    await _ensure_not_blocked(session, chat_id=chat_id, user_id=user_id)
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
     if source.encrypted:
