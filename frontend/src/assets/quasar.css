@@ -195,10 +195,16 @@ html[data-theme='dark'] .q-dialog__backdrop {
 }
 
 /* --- Иконки: Quasar рендерит <q-icon> с классом .material-icons ---
-   Направляем этот класс на подключённый в main.ts шрифт Material Icons
-   (outlined): тот же набор имён, более современное начертание. */
+   Направляем этот класс на подключённый в main.ts шрифт Material Symbols
+   Rounded — актуальный набор Google: скруглённые штрихи, оптический размер
+   (opsz) подстраивается под кегль иконки. Имена лигатур те же, что и раньше. */
 .material-icons {
-    font-family: 'Material Icons Outlined';
+    font-family: 'Material Symbols Rounded';
+    font-variation-settings:
+        'FILL' 0,
+        'wght' 400,
+        'GRAD' 0,
+        'opsz' 24;
     font-weight: normal;
     font-style: normal;
     display: inline-block;

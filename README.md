@@ -622,7 +622,7 @@ node node_modules/prettier/bin/prettier.cjs --write <files> # формат
 
 ### Ключевые точки
 
-- `main.ts` — Quasar 2 (Dialog/Notify, lang ru, **Material-иконки outlined** — `@quasar/extras/material-icons-outlined`; Quasar рендерит `<q-icon>` с классом `.material-icons`, на него в `quasar.css` повешен алиас шрифта), тема/оформление через `stores/theme.ts` (`data-theme`, токены `--ms-*`; тема ставится ДО первого кадра inline-скриптом в `index.html`, чтобы не мигала), инициализация auth.
+- `main.ts` — Quasar 2 (Dialog/Notify, lang ru, **Material Symbols Rounded** — `@quasar/extras/material-symbols-rounded`; Quasar рендерит `<q-icon>` с классом `.material-icons`, на него в `quasar.css` повешен алиас шрифта), тема/оформление через `stores/theme.ts` (`data-theme`, токены `--ms-*`; тема ставится ДО первого кадра inline-скриптом в `index.html`, чтобы не мигала), инициализация auth.
 - Оформление: токены тем `--ms-*` + `color-scheme` и глобальные оверрайды над scoped-стилями — в `assets/appearance.css`; `assets/quasar.css` приводит Material-компоненты к токенам; базовая геометрия кнопок (`.icon-btn`/`.round-btn`) — общая в `appearance.css`; «пустые состояния» — общий компонент `components/common/EmptyState.vue`.
 - PWA/иконки: `public/favicon.svg` (градиентная «письмо-пузырь»), PNG-набор `public/icons/` (`icon-192`, `icon-512`, `icon-maskable-512`, `apple-touch-icon-180`, `badge-96`) + `manifest.webmanifest` (name/short_name Pismo, `theme_color #5a50e0`). Иконки генерируются скриптом `scripts/gen_pismo_icons.py` (stdlib, без зависимостей).
 - localStorage/кеши: ключи приложения — `pismo_*` (`pismo_drafts`, `pismo_pinned_chats`, `pismo_call_kind`, `pismo_e2ee_v1_<uid>`); ключи прежнего названия (`microshop_*`) переносятся один раз миграцией в `utils/storage.ts` (вызов в `main.ts` до инициализации настроек). Кэши service worker — `pismo-v*` / `pismo-auth` (старые `microshop-*` чистятся в `activate`).
@@ -643,9 +643,25 @@ node node_modules/prettier/bin/prettier.cjs --write <files> # формат
 - `Login.vue` / `LoginModal.vue` — вход по номеру: шаги `phone → password | otp → create` (автофокус поля), исходя из `password/status`; `LoginModal` держит диалог открытым после подтверждения кода (`pendingPassword`), пока пользователь не задаст пароль.
 - Компоненты мессенджера вынесены в `components/messenger/` (`ChatSidebar`, `ChatHeader`, `MessageThread`, `MessageRow`, `MessageComposer`, `PinnedBar`, `InlineSearchBar`, `ChatPlaceholder`, `ChatInfo`, `ForwardDialog`); медиа — в `components/media/` (лайтбокс, голос/видео/кружки, GIF-пикер); звонки — `components/calls/`. Реактивное присутствие/печать — `composables/usePeerActivity`, realtime-оркестрация — `composables/useRealtimeSync`, запись — `useRecordButton`.
 
-### Иконки (Material, outlined)
+### Иконки (Material Symbols Rounded)
 
-После миграции на Quasar используются Material-иконки через `<q-icon name="…">` (напр. `call`, `videocam`, `mic`, `push_pin`, `sentiment_satisfied_alt`, `check`, `send`, `download`…). Подключён вариант **outlined** (`material-icons-outlined.css`): Quasar рендерит `<q-icon>` с классом `.material-icons`, которому в `quasar.css` задан `font-family: 'Material Icons Outlined'` — тот же набор имён, более современное начертание. Галочки прочтения — текстовые `✓✓`. Не используйте классы PrimeIcons `pi pi-*` (шрифт не подключён).
+Иконки задаются через `<q-icon name="…">` (напр. `forum`, `auto_stories`, `group`, `call`, `videocam`, `mic`, `push_pin`, `check`, `send`, `download`…). В `main.ts` подключён актуальный набор Google — **Material Symbols Rounded** (`material-symbols-rounded.css`): он скруглённый и с переменными осями, поэтому выглядит свежее старого Material Icons. Quasar рендерит `<q-icon>` с классом `.material-icons`, которому в `quasar.css` заданы `font-family: 'Material Symbols Rounded'` и `font-variation-settings` (`FILL 0 / wght 400 / GRAD 0 / opsz 24`).
+
+**Если имени нет в шрифте, Vue отрендерит текст буквами** («chat_bubble_outline» вместо иконки) — тихо и заметно. Проверка (в браузере, консоль на любой странице приложения):
+
+```js
+for (const n of ['forum', 'auto_stories', 'group']) {
+  const s = document.createElement('span')
+  s.className = 'material-icons'
+  s.style.fontSize = '24px'
+  s.textContent = n
+  document.body.appendChild(s)
+  console.log(n, s.getBoundingClientRect().width) // иконка ≈ 24px, текст сильно шире
+  s.remove()
+}
+```
+
+Список имён из `@quasar/extras/material-symbols-rounded/icons.json` для такой проверки **не годится**: в шрифте есть легаси-лигатуры (`push_pin`, `delete_outline`, `done`, `help_outline`…), которых в JSON нет. Галочки прочтения — текстовые `✓✓`. Не используйте классы PrimeIcons `pi pi-*` (шрифт не подключён).
 
 ## 7. Общие правила и «грабли» (важно помнить)
 

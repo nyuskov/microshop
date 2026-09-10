@@ -5,11 +5,11 @@ import App from './App.vue'
 import router from './router'
 import { useAuthStore } from './stores/auth' // Import the auth store
 
-// Quasar (UI framework) + Material icons (outlined) — импортируем до наших
+// Quasar (UI framework) + Material Symbols Rounded — импортируем до наших
 // стилей, чтобы переопределения из style.css/appearance.css имели приоритет.
 import { Quasar, Dialog, Notify } from 'quasar'
 import quasarRuLang from 'quasar/lang/ru'
-import '@quasar/extras/material-icons-outlined/material-icons-outlined.css'
+import '@quasar/extras/material-symbols-rounded/material-symbols-rounded.css'
 import 'quasar/dist/quasar.css'
 
 // Import global styles

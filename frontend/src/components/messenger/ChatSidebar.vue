@@ -407,7 +407,7 @@
         type="button"
         @click="emit('to-chats')"
       >
-        <q-icon name="chat_bubble_outline" size="22px" />
+        <q-icon name="forum" size="22px" />
         <span>Чаты</span>
       </button>
       <button
@@ -426,7 +426,7 @@
         type="button"
         @click="emit('to-contacts')"
       >
-        <q-icon name="people_outline" size="22px" />
+        <q-icon name="group" size="22px" />
         <span>Контакты</span>
       </button>
     </nav>
