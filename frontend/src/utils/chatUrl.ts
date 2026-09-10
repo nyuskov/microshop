@@ -16,6 +16,48 @@ export const CHAT_PARAM = 'chat'
  */
 const EPHEMERAL_PARAMS = ['markread']
 
+/**
+ * Ключ, под которым помним открытый чат между запусками приложения.
+ *
+ * Зачем, если есть `?chat=` в адресе: установленное приложение (PWA) при запуске
+ * с домашнего экрана открывается по `start_url` — то есть просто «/», без
+ * параметров. Без этой памяти каждый такой запуск начинался бы со списка чатов,
+ * хотя человек просто вернулся в приложение.
+ */
+export const OPEN_CHAT_STORAGE_KEY = 'pismo_open_chat'
+
+function safeStorage(): Storage | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage
+  } catch {
+    /* приватный режим или запрет доступа */
+    return null
+  }
+}
+
+/** id открытого чата из памяти приложения (`null` — ничего не помним). */
+export function readStoredChatId(storage: Storage | null = safeStorage()): number | null {
+  try {
+    const raw = storage?.getItem(OPEN_CHAT_STORAGE_KEY)
+    return raw && /^\d+$/.test(raw) ? Number(raw) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Запомнить открытый чат: `null` — чат закрыт (показывается список), помнить
+ * нечего.
+ */
+export function storeChatId(chatId: number | null, storage: Storage | null = safeStorage()): void {
+  try {
+    if (chatId === null) storage?.removeItem(OPEN_CHAT_STORAGE_KEY)
+    else storage?.setItem(OPEN_CHAT_STORAGE_KEY, String(chatId))
+  } catch {
+    /* не смогли сохранить — не страшно, адрес всё равно содержит чат */
+  }
+}
+
 /** id чата из строки параметров адреса; `null` — если параметра нет или он битый. */
 export function chatIdFromUrl(search: string): number | null {
   const raw = new URLSearchParams(search).get(CHAT_PARAM)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chatIdFromUrl, chatUrlWith } from '@/utils/chatUrl'
+import { chatIdFromUrl, chatUrlWith, readStoredChatId, storeChatId } from '@/utils/chatUrl'
 
 describe('chatIdFromUrl', () => {
   it('читает id чата из параметров', () => {
@@ -54,5 +54,46 @@ describe('chatUrlWith', () => {
   it('результат читается обратно', () => {
     const url = chatUrlWith('/?chat=15', 42)
     expect(chatIdFromUrl(url.slice(url.indexOf('?')))).toBe(42)
+  })
+})
+
+describe('память об открытом чате (запуск PWA с домашнего экрана)', () => {
+  /** Простая заглушка localStorage. */
+  const makeStorage = (): Storage => {
+    const map = new Map<string, string>()
+    return {
+      get length() {
+        return map.size
+      },
+      clear: () => map.clear(),
+      getItem: (key: string) => map.get(key) ?? null,
+      key: (index: number) => Array.from(map.keys())[index] ?? null,
+      removeItem: (key: string) => void map.delete(key),
+      setItem: (key: string, value: string) => void map.set(key, value)
+    } as Storage
+  }
+
+  it('запоминает и читает id чата', () => {
+    const storage = makeStorage()
+    storeChatId(42, storage)
+    expect(readStoredChatId(storage)).toBe(42)
+  })
+
+  it('забывает чат, когда он закрыт', () => {
+    const storage = makeStorage()
+    storeChatId(42, storage)
+    storeChatId(null, storage)
+    expect(readStoredChatId(storage)).toBeNull()
+  })
+
+  it('не падает на мусоре в хранилище', () => {
+    const storage = makeStorage()
+    storage.setItem('pismo_open_chat', 'не число')
+    expect(readStoredChatId(storage)).toBeNull()
+  })
+
+  it('переживает недоступное хранилище', () => {
+    expect(readStoredChatId(null)).toBeNull()
+    expect(() => storeChatId(1, null)).not.toThrow()
   })
 })

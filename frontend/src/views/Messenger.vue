@@ -446,7 +446,7 @@ import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import { isImageFile, messageSnippet, optimizeImageFile } from '@/utils/media'
 import { mediaUrl } from '@/config'
-import { chatIdFromUrl, chatUrlWith } from '@/utils/chatUrl'
+import { chatIdFromUrl, chatUrlWith, readStoredChatId, storeChatId } from '@/utils/chatUrl'
 import { usePeerActivity } from '@/composables/usePeerActivity'
 import { useRealtimeSync } from '@/composables/useRealtimeSync'
 import { useRecordButton } from '@/composables/useRecordButton'
@@ -541,9 +541,19 @@ const isDesktop = computed(() => $q.screen.gt.sm)
  * (см. `syncChatUrl`). Исключение — запуск из push-кнопки «пометить прочитанным»
  * (`markread=1`): там чат открывать не нужно.
  */
+/**
+ * Открытый чат живёт в адресе (`?chat=`) и в памяти приложения.
+ *
+ * Адрес нужен для обычной перезагрузки, память — для запуска установленного
+ * приложения с домашнего экрана: там адрес всегда `start_url` (`/`), поэтому без
+ * памяти человек каждый раз попадал бы в список чатов вместо своего чата.
+ */
 const initialSearch = typeof window === 'undefined' ? '' : window.location.search
+const initialChatFromUrl = chatIdFromUrl(initialSearch)
 const initialChatId =
-  new URLSearchParams(initialSearch).get('markread') === '1' ? null : chatIdFromUrl(initialSearch)
+  new URLSearchParams(initialSearch).get('markread') === '1'
+    ? null
+    : (initialChatFromUrl ?? readStoredChatId())
 
 /** На мобильном список и нить — один экран: если в адресе чат, показываем нить. */
 const initialDrawerOpen = initialChatId === null || isDesktop.value
@@ -560,8 +570,9 @@ const drawerWidth = computed(() => (isDesktop.value ? 380 : Math.min($q.screen.w
  * здесь не нужна (мобильная «назад» ведёт себя по своим маркерам), а параметры
  * запуска звонка сохраняются — по ним приложение возвращается в звонок.
  */
-const syncChatUrl = (chatId: number | null) => {
+const syncChatUrl = (chatId: number | null, options: { keepStored?: boolean } = {}) => {
   try {
+    if (!(options.keepStored && chatId === null)) storeChatId(chatId)
     const next = chatUrlWith(window.location.href, chatId)
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`
     if (next === current) return
@@ -2605,46 +2616,74 @@ onMounted(async () => {
     const chatDuringCall = chatIdFromUrl(window.location.search)
     if (chatDuringCall !== null) void openChatFromPush(chatDuringCall, { pushNav: false })
   } else {
-    // Открыли через /?chat=<id> — в том числе обычная перезагрузка страницы,
-    // когда чат был открыт (возможно, с пометкой прочитанным).
+    // Два случая: обычная перезагрузка страницы, когда чат был открыт
+    // (`?chat=<id>`, возможно с пометкой «прочитано»), и запуск установленного
+    // приложения с домашнего экрана — там адрес всегда `start_url` («/»), поэтому
+    // чат берём из памяти приложения.
     const chatParam = chatIdFromUrl(window.location.search)
-    if (chatParam !== null) {
-      if (markReadParam === '1') {
-        void markChatReadQuietly(chatParam)
-      } else {
-        void openChatFromPush(chatParam, { pushNav: false })
-      }
+    if (chatParam !== null && markReadParam === '1') {
+      void markChatReadQuietly(chatParam)
+    } else if (initialChatId !== null) {
+      void openChatFromPush(initialChatId, { pushNav: false })
     }
+  }
+
+  // Страховка: если чат открыть не удалось (нет сети, чат удалён), не держим
+  // вечное «Открываю чат…» — через время показываем список чатов.
+  if (initialChatId !== null) {
+    window.setTimeout(() => {
+      const stillLoading =
+        selectedChatId.value === initialChatId &&
+        !chats.value.some((chat) => chat.id === initialChatId)
+      if (stillLoading) abortChatRestore(initialChatId, { keepStored: true })
+    }, 12_000)
   }
 })
 
-/** Выход из восстановления чата: показываем список чатов и чистим адрес. */
-const abortChatRestore = (chatId: number) => {
+/**
+ * Выход из восстановления чата: показываем список чатов и чистим адрес.
+ *
+ * `keepStored` — когда не получилось из-за сети: адрес чистим, а чат помним,
+ * чтобы следующий запуск приложения попробовал снова (иначе одну сетевую
+ * ошибку на старте человек видел бы как «приложение забыло мой чат» навсегда).
+ */
+const abortChatRestore = (chatId: number, options: { keepStored?: boolean } = {}) => {
   if (selectedChatId.value === chatId) {
     selectedChatId.value = null
     messages.value = []
     drawerOpen.value = true
   }
-  syncChatUrl(null)
+  syncChatUrl(null, { keepStored: options.keepStored === true })
+}
+
+/** Загружает список чатов для восстановления: одна повторная попытка при сбое. */
+const loadChatsForRestore = async (): Promise<boolean> => {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      chats.value = await fetchMyChats()
+      return true
+    } catch {
+      // Сеть на старте могла ещё не подняться — короткая пауза и ещё раз.
+      await new Promise((resolve) => setTimeout(resolve, 1200))
+    }
+  }
+  return false
 }
 
 /** Открывает чат по push-уведомлению (данные приходят из service worker). */
 const openChatFromPush = async (chatId: number, options: { pushNav?: boolean } = {}) => {
   if (!authStore.isAuthenticated) {
-    // Пользователя откроет окно входа; пустой чат за ним показывать не нужно.
-    abortChatRestore(chatId)
+    // Пользователя откроет окно входа; пустой чат за ним показывать не нужно,
+    // но чат помним: после входа он откроется сам.
+    abortChatRestore(chatId, { keepStored: true })
     return
   }
-  if (!chats.value.some((c) => c.id === chatId)) {
-    try {
-      chats.value = await fetchMyChats()
-    } catch {
-      abortChatRestore(chatId)
-      return
-    }
+  if (!chats.value.some((c) => c.id === chatId) && !(await loadChatsForRestore())) {
+    abortChatRestore(chatId, { keepStored: true })
+    return
   }
   // Чат мог быть удалён (или в адресе чужой id) — тогда просто остаёмся в
-  // списке, а не открываем пустую нить с ошибкой.
+  // списке, а не открываем пустую нить с ошибкой. Адрес и память чистим.
   if (!chats.value.some((c) => c.id === chatId)) {
     abortChatRestore(chatId)
     return
