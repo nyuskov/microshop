@@ -53,7 +53,8 @@
         placeholder="Сообщение"
         aria-label="Сообщение"
         @keydown="onTextKeydown"
-        @input="autoGrow"
+        @input="onTextInput"
+        @click="updateMentions"
       ></textarea>
       <button
         class="round-btn"
@@ -100,6 +101,34 @@
       >
         <q-icon :name="icon('send')" size="18px" />
       </button>
+
+      <!-- Подсказка упоминаний: набрали @ — выбираем участника группы -->
+      <div v-if="mentionOpen && mentionMatches.length" class="mention-panel" role="listbox">
+        <button
+          v-for="(member, index) in mentionMatches"
+          :key="member.id"
+          type="button"
+          role="option"
+          :aria-selected="index === mentionIndex"
+          class="mention-item"
+          :class="{ active: index === mentionIndex }"
+          @mousedown.prevent="pickMention(member)"
+        >
+          <span class="mention-avatar" :style="avatarStyle(displayName(member))">
+            <img
+              v-if="avatarUrlOf(member)"
+              :src="avatarUrlOf(member)"
+              class="mention-avatar-img"
+              alt=""
+            />
+            <template v-else>{{ initials(displayName(member)) }}</template>
+          </span>
+          <span class="mention-text">
+            <span class="mention-name">{{ displayName(member) }}</span>
+            <span class="mention-username">@{{ member.username }}</span>
+          </span>
+        </button>
+      </div>
 
       <div v-if="extrasPanel !== 'none'" class="extras-menu">
         <div class="extras-tabs">
@@ -165,14 +194,16 @@
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
 import { computed, nextTick, ref, watch } from 'vue'
-import type { Message } from '@/types'
+import type { ChatUser, Message } from '@/types'
 import { messageSnippet } from '@/utils/media'
+import { applyMention, mentionBeforeCaret } from '@/utils/mentions'
+import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import { EMOJI_GROUPS, EMOJI_RECENT_KEY, readRecentEmoji, rememberEmoji } from '@/utils/emoji'
 import VoiceRecorderBar from '@/components/media/VoiceRecorderBar.vue'
 import GifPicker from '@/components/media/GifPicker.vue'
 import type { RecordedMedia } from '@/services/recorder'
 
-defineProps<{
+const props = defineProps<{
   chatId: number | null
   sending: boolean
   sendError: string
@@ -186,6 +217,11 @@ defineProps<{
   recordMode: 'audio' | 'video'
   micHolding: boolean
   recordModeHint: string
+  /**
+   * Участники группового чата для подсказки упоминаний (пусто — подсказки нет:
+   * в личном чате упоминать некого).
+   */
+  mentionMembers?: ChatUser[]
 }>()
 
 // Текст в поле ввода (v-model) изменяется в композере.
@@ -252,6 +288,26 @@ const isTouchPrimary = () =>
   window.matchMedia('(pointer: coarse)').matches
 
 const onTextKeydown = (event: KeyboardEvent) => {
+  // Подсказка упоминаний перехватывает навигацию и выбор участника.
+  if (mentionOpen.value && mentionMatches.value.length) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const delta = event.key === 'ArrowDown' ? 1 : -1
+      const count = mentionMatches.value.length
+      mentionIndex.value = (mentionIndex.value + delta + count) % count
+      return
+    }
+    if (event.key === 'Enter' || event.key === 'Tab') {
+      event.preventDefault()
+      pickMention(mentionMatches.value[mentionIndex.value])
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      mentionOpen.value = false
+      return
+    }
+  }
   if (event.key !== 'Enter') return
   // Shift+Enter — перенос строки (браузер делает сам), не перехватываем.
   if (event.shiftKey) return
@@ -260,6 +316,77 @@ const onTextKeydown = (event: KeyboardEvent) => {
   event.preventDefault()
   emit('send-text')
 }
+
+// ---------- Упоминания участников (@логин) ----------
+/** Сколько подсказок показываем разом. */
+const MENTION_LIMIT = 6
+
+const mentionOpen = ref(false)
+const mentionQuery = ref('')
+const mentionStart = ref(0)
+const mentionIndex = ref(0)
+
+/** Подходящие участники: ищем по логину и имени, себя не предлагаем. */
+const mentionMatches = computed<ChatUser[]>(() => {
+  const members = props.mentionMembers ?? []
+  if (members.length === 0) return []
+  const query = mentionQuery.value.toLowerCase()
+  const matches = members.filter((member) => {
+    if (!member.username) return false
+    if (!query) return true
+    return (
+      member.username.toLowerCase().includes(query) ||
+      displayName(member).toLowerCase().includes(query)
+    )
+  })
+  return matches.slice(0, MENTION_LIMIT)
+})
+
+/** Пересчитать подсказку по текущему тексту и позиции курсора. */
+const updateMentions = () => {
+  if ((props.mentionMembers ?? []).length === 0) {
+    mentionOpen.value = false
+    return
+  }
+  const input = textInputRef.value
+  if (!input) return
+  const found = mentionBeforeCaret(newMessage.value, input.selectionStart ?? 0)
+  if (!found) {
+    mentionOpen.value = false
+    return
+  }
+  mentionQuery.value = found.query
+  mentionStart.value = found.start
+  mentionIndex.value = 0
+  mentionOpen.value = true
+}
+
+/** Вставить выбранный логин вместо набранного `@...` и вернуть курсор в конец. */
+const pickMention = (member: ChatUser) => {
+  const input = textInputRef.value
+  const caret = input?.selectionStart ?? newMessage.value.length
+  const next = applyMention(newMessage.value, mentionStart.value, caret, member.username)
+  newMessage.value = next.text
+  mentionOpen.value = false
+  void nextTick(() => {
+    input?.focus()
+    input?.setSelectionRange(next.caret, next.caret)
+    autoGrow()
+  })
+}
+
+const onTextInput = () => {
+  autoGrow()
+  updateMentions()
+}
+
+// Закрываем подсказку при выходе из режима ввода/смене чата.
+watch(
+  () => [props.chatId, props.editingMessage?.id] as const,
+  () => {
+    mentionOpen.value = false
+  }
+)
 
 // ---------- Авто-рост многострочного поля ----------
 const textInputRef = ref<HTMLTextAreaElement | null>(null)
@@ -475,6 +602,82 @@ watch(newMessage, () => {
 }
 
 /* Единое меню «Эмодзи / GIF» (над строкой ввода) */
+/* Подсказка упоминаний: список участников над полем ввода */
+.mention-panel {
+  position: absolute;
+  bottom: 58px;
+  left: 10px;
+  right: 10px;
+  max-width: min(420px, calc(100vw - 28px));
+  max-height: 46vh;
+  overflow-y: auto;
+  z-index: 30;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--ms-surface, #fff);
+  border: 1px solid var(--ms-border, #e2e6ea);
+  box-shadow: var(--ms-shadow-float, 0 6px 20px -8px rgba(15, 23, 42, 0.3));
+}
+
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ms-text, #1c2733);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mention-item.active,
+.mention-item:hover {
+  background: var(--ms-surface-2, #eef1f4);
+}
+
+.mention-avatar {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mention-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mention-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mention-name {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mention-username {
+  font-size: 12px;
+  color: var(--ms-muted, #71808d);
+}
+
 .extras-menu {
   position: absolute;
   bottom: 58px;

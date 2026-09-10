@@ -219,6 +219,7 @@
             :editing-message="editingMessage"
             :extras-panel="extrasPanel"
             :voice-rec-open="voiceRecOpen"
+            :mention-members="selectedChat && isGroupChat(selectedChat) ? selectedChat.users : []"
             :record-mode="recordMode"
             :mic-holding="micHolding"
             :record-mode-hint="recordModeHint"

@@ -139,9 +139,13 @@
 
       <!-- Очень длинные тексты показываем свёрнутыми: иначе одна «простыня»
            растягивает ленту на несколько экранов. -->
-      <span v-if="message.text" class="msg-text" :class="{ clamped: isClamped }">{{
-        message.text
-      }}</span>
+      <!-- Упоминания @логин подсвечиваем: видно, к кому обращаются -->
+      <span v-if="message.text" class="msg-text" :class="{ clamped: isClamped }">
+        <template v-for="(part, index) in textParts" :key="index"
+          ><span v-if="part.type === 'mention'" class="msg-mention">{{ part.value }}</span
+          ><template v-else>{{ part.value }}</template></template
+        >
+      </span>
       <button v-if="canCollapse" type="button" class="msg-more" @click.stop="expanded = !expanded">
         {{ expanded ? 'Свернуть' : 'Показать полностью' }}
       </button>
@@ -334,6 +338,7 @@ import { mediaUrl } from '@/config'
 import { haptic, HAPTIC_HOLD } from '@/utils/haptics'
 import { avatarStyle, initials } from '@/utils/user'
 import { formatBytes, formatMsgTime } from '@/utils/format'
+import { splitMentions } from '@/utils/mentions'
 import {
   callMessageIcon,
   callMessageText,
@@ -370,6 +375,8 @@ let swipeFeedback = false
 
 /** С какого размера текст сворачиваем (примерно 12 строк). */
 const LONG_TEXT_LIMIT = 600
+
+const textParts = computed(() => splitMentions(props.message.text ?? ''))
 
 const expanded = ref(false)
 /** Корень строки сообщения — нужен для замеров (свайп, лист действий). */
@@ -988,6 +995,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
+}
+
+/* Упоминание в тексте: акцентный цвет и полужирное начертание */
+.msg-mention {
+  color: var(--ms-accent, #2ea25e);
+  font-weight: 600;
 }
 
 .msg-more:hover {
