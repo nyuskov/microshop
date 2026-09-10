@@ -58,7 +58,24 @@ crontab -l | grep -v '# pismo-prod-backup' | crontab -
 ## Проверить, что бэкап рабочий (важно!)
 
 Дамп регулярно стоит проверять **восстановлением в отдельную БД** — иначе можно
-годами хранить нерабочие копии:
+годами хранить нерабочие копии. Автоматически это делает
+`scripts/backup/verify_prod_backup.sh` (локальный cron по воскресеньям,
+`install_verify_cron.sh`): льёт последний дамп по ssh прямо в `psql` на
+прод-сервере в базу `microshop_verify`, проверяет целостность архива, отсутствие
+ошибок восстановления, ревизию alembic, наличие аккаунтов и таблиц, затем удаляет
+временную БД (в том числе при ошибке). Провал → письмо по SMTP и запись в
+`logs/verify.log`.
+
+```bash
+./scripts/backup/verify_prod_backup.sh              # проверить сейчас
+./scripts/backup/verify_prod_backup.sh --dry-run    # план без работы
+./scripts/backup/verify_prod_backup.sh --no-alert   # без письма при провале
+```
+
+Проверено 10.09.2026: `rev=e3f4a5b6c7d8 user=5 chats=13 messages=9 tables=18`,
+обнаружение повреждённого архива (выход 1) — тоже проверено.
+
+Проверка вручную (то же самое, но на локальном dev-стеке):
 
 ```bash
 docker compose -f docker-compose.yaml exec -T db \
@@ -68,13 +85,14 @@ docker compose -f docker-compose.yaml exec -T db \
 gunzip -c ~/Документы/pismo_backup/db/latest.sql.gz | \
   docker compose -f docker-compose.yaml exec -T db psql -U postgres -d backup_check -q
 
-# сверить с продом (число пользователей, ревизия миграций):
+# посмотреть, что внутри (число пользователей, ревизия миграций):
 docker compose -f docker-compose.yaml exec -T db psql -U postgres -d backup_check \
   -c 'select count(*) from "user";' -c 'select version_num from alembic_version;'
 ```
 
-Так проверялся бэкап от 10.09.2026: дамп восстановился без ошибок, `users=5`,
-`alembic_version=e3f4a5b6c7d8` — ровно как на проде.
+Критерий проверки — «копия восстановилась и не пустая», а не «равна текущему
+проду»: прод продолжает жить (новые сообщения и миграции), поэтому сравнение с
+текущими данными давало бы ложные тревоги.
 
 ## Восстановление на прод (если понадобится)
 
