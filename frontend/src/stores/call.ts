@@ -577,6 +577,9 @@ export const useCallStore = defineStore('call', {
       const state = connection.iceConnectionState
       if (state === 'connected' || state === 'completed') {
         this._resetIceRecovery()
+        // Ответ собеседника мог потеряться (обрыв сигналинга): если медиа уже
+        // идёт, звонок состоялся — переводим интерфейс в разговор.
+        if (this.status === 'outgoing') this._becomeActive()
         return
       }
       if (state === 'disconnected') {
@@ -687,8 +690,13 @@ export const useCallStore = defineStore('call', {
       const callId = message.call_id ?? ''
       switch (message.type) {
         case 'call-offer': {
+          // Повторная доставка того же вызова (переподключение сокета, повторный
+          // push из уведомления) — не начинаем звонок заново.
+          if (callId && this.callId === callId && this.status !== 'idle') {
+            break
+          }
           if (this.status !== 'idle') {
-            // Уже занят — автоматически отклоняем.
+            // Уже занят другим вызовом — автоматически отклоняем.
             sendMessage({ type: 'call-decline', to_user_id: from, call_id: callId, reason: 'busy' })
             return
           }
@@ -1360,6 +1368,13 @@ export const useCallStore = defineStore('call', {
     _wirePeerConnection(connection: RTCPeerConnection) {
       // Смена сети: следим за состоянием ICE и при необходимости перезапускаем.
       connection.oniceconnectionstatechange = () => this._handleIceState(connection)
+      connection.onconnectionstatechange = () => {
+        if (connection.connectionState === 'connected' && this.status === 'outgoing') {
+          // Собеседник принял звонок: подтверждение могло не дойти — доводим
+          // состояние по факту соединения.
+          this._becomeActive()
+        }
+      }
       connection.onicecandidate = (event) => {
         if (event.candidate) {
           sendMessage({
