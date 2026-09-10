@@ -9,6 +9,13 @@ import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/util
 import { disablePushNotifications, enablePushNotifications } from '@/services/pwa'
 import { disableNativePush, enableNativePush, isNativeApp } from '@/services/nativePush'
 import { fetchStorageInfo, formatBytes, type StorageInfo } from '@/services/storage'
+import {
+  deviceLabelOf,
+  fetchSecurityLog,
+  formatEventTime,
+  isAlertEvent,
+  type SecurityLogEntry
+} from '@/services/securityLog'
 import { PASSWORD_MIN_LENGTH, passwordProblem, passwordStrength } from '@/utils/passwordPolicy'
 import DeleteAccountDialog from '@/components/messenger/DeleteAccountDialog.vue'
 
@@ -180,6 +187,29 @@ const loadStorage = async () => {
 }
 
 void loadStorage()
+
+// ---------- Журнал безопасности: что происходило с аккаунтом ----------
+// Входы (в т.ч. неудачные), запросы кодов, подтверждение нового устройства,
+// смена пароля/e-mail, отзыв сессий. Помогает разобрать инцидент: «кто-то заходил
+// в мой аккаунт?», «когда сменили пароль?».
+const securityLog = ref<SecurityLogEntry[]>([])
+const securityLogLoading = ref(false)
+const securityLogError = ref('')
+
+const loadSecurityLog = async () => {
+  securityLogLoading.value = true
+  securityLogError.value = ''
+  try {
+    securityLog.value = await fetchSecurityLog(20)
+  } catch (error) {
+    console.error('Security log failed:', error)
+    securityLogError.value = 'Не удалось загрузить историю действий.'
+  } finally {
+    securityLogLoading.value = false
+  }
+}
+
+void loadSecurityLog()
 
 // ---------- Безопасность: пароль, e-mail, выход со всех устройств ----------
 // Уведомление показываем, если вход не защищён: пароля нет, пароль слабый
@@ -1033,6 +1063,62 @@ const onNotificationsToggle = async (val: boolean) => {
               подтверждённый e-mail.
             </p>
           </div>
+
+          <!-- История событий аккаунта: ответ на «что происходило с аккаунтом» -->
+          <div class="security-log">
+            <div class="sessions-head">
+              <span class="sessions-title">Последние действия</span>
+              <button
+                type="button"
+                class="sessions-refresh"
+                :disabled="securityLogLoading"
+                @click="loadSecurityLog"
+              >
+                <q-icon name="refresh" size="16px" />
+                Обновить
+              </button>
+            </div>
+
+            <p v-if="securityLogLoading && !securityLog.length" class="sessions-hint">
+              Загружаем историю…
+            </p>
+            <p v-else-if="!securityLog.length && !securityLogError" class="sessions-hint">
+              Событий пока нет.
+            </p>
+
+            <ul class="sessions-list">
+              <li
+                v-for="entry in securityLog"
+                :key="entry.id"
+                class="session-row"
+                :class="{ 'session-alert': isAlertEvent(entry.event) }"
+              >
+                <span class="session-icon">
+                  <q-icon :name="isAlertEvent(entry.event) ? 'shield' : 'info'" size="18px" />
+                </span>
+                <span class="session-info">
+                  <span class="session-device">{{ entry.title }}</span>
+                  <span class="session-meta">
+                    {{ formatEventTime(entry.created_at) }}
+                    <template v-if="deviceLabelOf(entry.device)">
+                      · {{ deviceLabelOf(entry.device) }}
+                    </template>
+                    <template v-if="entry.ip"> · IP {{ entry.ip }}</template>
+                    <template v-if="entry.detail"> · {{ entry.detail }}</template>
+                  </span>
+                </span>
+              </li>
+            </ul>
+
+            <p v-if="securityLogError" class="sessions-note error-text">
+              <q-icon name="error" size="16px" /> {{ securityLogError }}
+            </p>
+
+            <p class="security-note">
+              История хранится 180 дней и видна только вам. Если увидели незнакомый вход — смените
+              пароль и нажмите «Выйти на всех устройствах».
+            </p>
+          </div>
         </section>
 
         <!-- Сообщения -->
@@ -1620,6 +1706,18 @@ const onNotificationsToggle = async (val: boolean) => {
 .storage-refresh:disabled {
   opacity: 0.55;
   cursor: default;
+}
+
+/* История событий аккаунта: строки с иконкой щита у «важных» событий. */
+.security-log {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #eef1f4;
+}
+
+.session-row.session-alert .session-icon {
+  background: rgba(224, 160, 42, 0.16);
+  color: #a5741a;
 }
 
 /* Активные входы (устройства) — список с отзывом по одному. */

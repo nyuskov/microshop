@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api_v1.auth import audit
 from api_v1.auth.utils import get_current_user
 from api_v1.media_quota import media_usage
 from api_v1.rate_limit import enforce_limit
@@ -187,6 +188,7 @@ async def create_user(
 @router.delete("/me/", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_me(
     payload: schemas.DeleteAccountRequest,
+    request: Request,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> Response:
@@ -215,5 +217,14 @@ async def delete_me(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Неверный пароль",
             )
+    # Пишем событие до удаления: строка журнала переживёт аккаунт
+    # (FK ON DELETE SET NULL), и в истории останется сам факт удаления.
+    await audit.log_security_event(
+        session,
+        event="account_deleted",
+        user_id=db_user.id,
+        request=request,
+        detail="аккаунт удалён пользователем",
+    )
     await deletion.delete_user_account(session, db_user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

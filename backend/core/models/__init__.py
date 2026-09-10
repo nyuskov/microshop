@@ -16,6 +16,7 @@ __all__ = [
     "PushSubscription",
     "RefreshSession",
     "RuStorePushToken",
+    "SecurityEvent",
     "TelegramBindLink",
     "User",
     "UserBlock",
@@ -39,6 +40,7 @@ from .profile import Profile  # noqa: F401
 from .push_subscription import PushSubscription  # noqa: F401
 from .refresh_session import RefreshSession  # noqa: F401
 from .rustore_push_token import RuStorePushToken  # noqa: F401
+from .security_event import SecurityEvent  # noqa: F401
 from .telegram_bind_link import TelegramBindLink  # noqa: F401
 from .user import User  # noqa: F401
 from .user_block import UserBlock  # noqa: F401

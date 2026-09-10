@@ -25,6 +25,7 @@ from api_v1.users.schemas import UserUpdateWithProfileSchema, UserWithDetailsSch
 from core.config import settings
 from core.models import Profile, User, db_helper
 
+from . import audit
 from .db import get_user_db
 from .managers import UserManager
 from .security_notifications import email_changed_message, notify_security_event
@@ -118,6 +119,7 @@ async def update_me(
     email_changed = "email" in user_data and user_data["email"] != user.email
     old_email = str(user.email) if user.email else ""
     old_email_verified = bool(user.email_verified)
+    new_email = str(user_data["email"]) if email_changed and user_data["email"] else ""
     for field, value in user_data.items():
         setattr(user, field, value)
     if email_changed:
@@ -132,6 +134,15 @@ async def update_me(
             setattr(user.profile, field, value)
 
     await session.commit()
+
+    if email_changed:
+        await audit.log_security_event(
+            session,
+            event="email_changed",
+            user_id=user.id,
+            request=request,
+            detail=f"адрес изменён на {new_email or 'удалён'}",
+        )
 
     if email_changed and old_email and old_email_verified:
         # Письмо уходит на ПРЕЖНИЙ адрес: если адрес меняет не владелец аккаунта,

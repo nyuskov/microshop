@@ -34,6 +34,7 @@ celery_app = Celery(
         "tasks.otp_tasks",
         "tasks.media_tasks",
         "tasks.notifications",
+        "tasks.security_tasks",
         "tasks.telegram",
     ],
 )
@@ -90,6 +91,12 @@ celery_app.conf.beat_schedule = {
     "telegram-poll-updates": {
         "task": "tasks.telegram.telegram_poll_updates",
         "schedule": timedelta(seconds=settings.telegram_poll_interval_seconds),
+        "options": {"queue": "microshop"},
+    },
+    # Еженедельная чистка журнала безопасности (записи старше 180 дней).
+    "prune-security-events-weekly": {
+        "task": "tasks.security_tasks.prune_security_events",
+        "schedule": crontab(day_of_week="sun", hour=4, minute=30),
         "options": {"queue": "microshop"},
     },
 }

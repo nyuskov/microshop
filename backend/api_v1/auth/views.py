@@ -6,7 +6,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +25,7 @@ from ..users.crud import (
     get_user_by_id,
     get_user_by_phone_number,
 )
-from . import email_codes, security_notifications
+from . import audit, email_codes, security_notifications
 from .device import device_info
 from .device_guard import (
     DeviceChallengeError,
@@ -68,6 +68,8 @@ from .schemas import (
     PasswordStatusRequest,
     PasswordStatusResponse,
     RequestOTPRequest,
+    SecurityLogEntry,
+    SecurityLogResponse,
     SessionRevokeResponse,
     TokenResponse,
     VerifyOTPRequest,
@@ -225,6 +227,13 @@ async def _require_device_verification(
             "пользователь %s",
             user.id,
         )
+        await audit.log_security_event(
+            session,
+            event="device_unverified",
+            user_id=user.id,
+            request=request,
+            detail="новое устройство без 2FA: подтверждённого e-mail нет",
+        )
         await security_notifications.remember_login_device(session, user, request)
         return
 
@@ -246,12 +255,20 @@ async def _require_device_verification(
                 "Подтверждение входа в Pismo с нового устройства.\n"
                 f"Устройство: {info.label}"
             ),
+            user_id=user.id,
         )
     else:
         logger.info(
             "Код для подтверждения устройства уже отправлен недавно (%s)", user.id
         )
 
+    await audit.log_security_event(
+        session,
+        event="device_challenge",
+        user_id=user.id,
+        request=request,
+        detail=f"новое устройство, код отправлен на {mailer.mask_email(address)}",
+    )
     raise HTTPException(
         status_code=status.HTTP_428_PRECONDITION_REQUIRED,
         detail={
@@ -317,6 +334,13 @@ async def verify_device_login(
     await security_notifications.remember_login_device(
         session, user, request, notify=False
     )
+    await audit.log_security_event(
+        session,
+        event="device_verified",
+        user_id=user.id,
+        request=request,
+        detail="вход с нового устройства подтверждён кодом из письма",
+    )
     logger.info("Пользователь %s подтвердил вход с нового устройства", user.id)
 
     access_token = await get_jwt_strategy().write_token(user)
@@ -373,7 +397,41 @@ async def revoke_one_session(
             detail="Вход не найден (возможно, уже завершён).",
         )
     logger.info("Пользователь %s отозвал сессию %s", user.id, session_id)
+    await audit.log_security_event(
+        session,
+        event="session_revoked",
+        user_id=user.id,
+        detail=f"завершён вход с устройства (сессия #{session_id})",
+    )
     return SessionRevokeResponse(detail="Устройство вышло из аккаунта.")
+
+
+@router.get("/security-log/", response_model=SecurityLogResponse)
+async def get_security_log(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> SecurityLogResponse:
+    """Журнал безопасности аккаунта: что происходило (входы, смены, отзывы).
+
+    Нужен владельцу для разбора: «кто-то заходил?», «когда сменили пароль?».
+    Хранится ``audit.RETENTION_DAYS`` дней, отдаётся только самому пользователю.
+    """
+    rows = await audit.list_security_events(session, user_id=user.id, limit=limit)
+    return SecurityLogResponse(
+        items=[
+            SecurityLogEntry(
+                id=row.id,
+                event=row.event,
+                title=audit.EVENT_TITLES.get(row.event, row.event),
+                detail=row.detail,
+                ip=row.ip,
+                device=row.device_user_agent or "",
+                created_at=row.created_at,
+            )
+            for row in rows
+        ]
+    )
 
 
 @router.post("/token/", response_model=Token)
@@ -394,6 +452,13 @@ async def login_for_access_token(
         session,
     )
     if user is None:
+        await audit.log_security_event(
+            session,
+            event="login_failed",
+            user_id=None,
+            request=request,
+            detail=f"неверные учётные данные (логин/номер: {form_data.username[:40]})",
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверное имя пользователя или пароль",
@@ -402,6 +467,9 @@ async def login_for_access_token(
 
     # Вход с нового устройства требует код из письма (политика — всегда).
     await _require_device_verification(session, request, user)
+    await audit.log_security_event(
+        session, event="login_success", user_id=user.id, request=request
+    )
     access_token = await get_jwt_strategy().write_token(user)
     return Token(
         access_token=access_token,
@@ -501,6 +569,14 @@ async def request_otp(
         ttl_seconds=settings.auth_otp_expire_seconds,
     )
     enqueue_sms_otp(phone_number, otp_code)
+    otp_owner = await get_user_by_phone_number(session, phone_number)
+    await audit.log_security_event(
+        session,
+        event="otp_requested",
+        user_id=otp_owner.id if otp_owner is not None else None,
+        request=request,
+        detail="код подтверждения запрошен на номер аккаунта",
+    )
 
     return OTPResponse(detail="Код OTP отправлен.")
 
@@ -556,6 +632,13 @@ async def verify_otp_endpoint(
     user = await get_or_create_user_by_phone_number(session, phone_number)
     # Подтверждённый номер — первый фактор; новое устройство требует код с почты.
     await _require_device_verification(session, request, user)
+    await audit.log_security_event(
+        session,
+        event="login_success",
+        user_id=user.id,
+        request=request,
+        detail="вход по коду на телефон",
+    )
     access_token = await get_jwt_strategy().write_token(user)
     return TokenResponse(
         access_token=access_token,
@@ -695,6 +778,13 @@ async def password_login(
     # адреса, поэтому считаем неудачи на сам номер (см. login_guard.py).
     locked_for = await lockout_seconds(session, identifier=phone_number)
     if locked_for > 0:
+        await audit.log_security_event(
+            session,
+            event="login_locked",
+            user_id=None,
+            request=request,
+            detail=f"блокировка перебора активна ещё {locked_for} с",
+        )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=(
@@ -707,6 +797,16 @@ async def password_login(
     user = await authenticate_user(phone_number, request_data.password, session)
     if user is None or not user.password_set:
         await register_failure(session, identifier=phone_number)
+        # Событие привязываем к аккаунту, если номер зарегистрирован: владелец
+        # должен видеть попытки подбора пароля к своему аккаунту.
+        failed_owner = await get_user_by_phone_number(session, phone_number)
+        await audit.log_security_event(
+            session,
+            event="login_failed",
+            user_id=failed_owner.id if failed_owner is not None else None,
+            request=request,
+            detail="вход по паролю: неверный номер или пароль",
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный номер или пароль.",
@@ -732,6 +832,13 @@ async def password_login(
         await session.commit()
 
     await _require_device_verification(session, request, user)
+    await audit.log_security_event(
+        session,
+        event="login_success",
+        user_id=user.id,
+        request=request,
+        detail="вход по паролю",
+    )
     access_token = await get_jwt_strategy().write_token(user)
     return TokenResponse(
         access_token=access_token,
@@ -795,6 +902,13 @@ async def set_password(
     )
     access_token = await get_jwt_strategy().write_token(user)
     logger.info("Пароль задан пользователем %s, остальные сессии отозваны", user.id)
+    await audit.log_security_event(
+        session,
+        event="password_changed",
+        user_id=user.id,
+        request=request,
+        detail="пароль изменён, остальные сессии отозваны",
+    )
     return PasswordSetResponse(
         detail="Пароль сохранён. Остальные устройства вышли из аккаунта.",
         access_token=access_token,
@@ -827,6 +941,13 @@ async def revoke_sessions(
         details=f"IP-адрес запроса: {client_ip(request) or 'неизвестен'}",
     )
     logger.info("Пользователь %s отозвал все сессии", user.id)
+    await audit.log_security_event(
+        session,
+        event="sessions_revoked",
+        user_id=user.id,
+        request=request,
+        detail="выход на всех устройствах",
+    )
     return PasswordSetResponse(detail="Вы вышли на всех устройствах.")
 
 
@@ -843,12 +964,20 @@ _EMAIL_REQUEST_DETAIL = "Если адрес привязан к аккаунт�
 
 
 async def _issue_email_code(
-    session: AsyncSession, request: Request, *, email: str, purpose: str
+    session: AsyncSession,
+    request: Request,
+    *,
+    email: str,
+    purpose: str,
+    user_id: int | None = None,
 ) -> None:
     """Проверяет лимиты, генерирует код и ставит отправку письма в очередь.
 
     Лимиты: часовой на адрес, суточный общий (письма — публичный ресурс) и
     cooldown повторной отправки. Превышение → 429 с ``Retry-After``.
+
+    ``user_id`` — владелец адреса (если известен): событие попадает в журнал
+    безопасности его аккаунта, чтобы человек видел, когда для него запрашивали код.
     """
     address = email_codes.normalize_email(email)
     cooldown = settings.auth_email_resend_cooldown_seconds
@@ -886,6 +1015,13 @@ async def _issue_email_code(
         email=address,
         code=code,
         ttl_seconds=settings.auth_otp_expire_seconds,
+    )
+    await audit.log_security_event(
+        session,
+        event="email_code_requested",
+        user_id=user_id,
+        request=request,
+        detail=f"код на {mailer.mask_email(address)}: {purpose.splitlines()[0][:120]}",
     )
     enqueue_email_code(
         address,
@@ -957,6 +1093,7 @@ async def request_email_verification(
         request,
         email=address,
         purpose="Подтверждение адреса e-mail в Pismo.",
+        user_id=user.id,
     )
     return OTPResponse(detail=f"Код отправлен на {mailer.mask_email(address)}.")
 
@@ -985,6 +1122,13 @@ async def confirm_email_verification(
     user.email_verified = True
     await session.commit()
     logger.info("Пользователь %s подтвердил e-mail", user.id)
+    await audit.log_security_event(
+        session,
+        event="email_verified",
+        user_id=user.id,
+        request=request,
+        detail="адрес e-mail подтверждён кодом из письма",
+    )
     return OTPResponse(detail="Адрес подтверждён.")
 
 
@@ -1022,6 +1166,7 @@ async def request_email_login(
             request,
             email=address,
             purpose="Вход в Pismo по коду из письма.",
+            user_id=user.id,
         )
     else:
         logger.info("Запрошен вход по e-mail, но адрес не подтверждён: %s", address)
@@ -1046,6 +1191,14 @@ async def confirm_email_login(
 
     await _consume_email_code(session, request, email=address, code=request_data.code)
     await reset_failures(session, identifier=address)
+
+    await audit.log_security_event(
+        session,
+        event="login_success",
+        user_id=user.id,
+        request=request,
+        detail="вход по коду из письма",
+    )
 
     # Вход подтверждён кодом из письма (доказано владение ящиком), поэтому 2FA
     # на устройство не требуется: просто запоминаем устройство.
@@ -1094,6 +1247,7 @@ async def request_password_reset(
             request,
             email=address,
             purpose="Сброс пароля Pismo.",
+            user_id=user.id,
         )
 
     return OTPResponse(detail=_EMAIL_REQUEST_DETAIL)
@@ -1145,6 +1299,13 @@ async def confirm_password_reset(
         ),
     )
     logger.info("Пользователь %s восстановил пароль по e-mail", user.id)
+    await audit.log_security_event(
+        session,
+        event="password_reset",
+        user_id=user.id,
+        request=request,
+        detail="пароль восстановлен по коду из письма, старые сессии отозваны",
+    )
 
     # Код из письма подтверждает и владение ящиком, и это устройство.
     await security_notifications.remember_login_device(

@@ -163,3 +163,21 @@ class SessionRevokeResponse(BaseModel):
     """Результат отзыва одной сессии."""
 
     detail: str
+
+
+class SecurityLogEntry(BaseModel):
+    """Одно событие безопасности аккаунта (для профиля)."""
+
+    id: int
+    event: str
+    title: str
+    detail: str = ""
+    ip: str = ""
+    device: str = ""
+    created_at: datetime
+
+
+class SecurityLogResponse(BaseModel):
+    """История событий аккаунта (свежие сверху)."""
+
+    items: list[SecurityLogEntry]

@@ -3217,3 +3217,130 @@ async def test_moderation_journal_records_actions(
         "/api/v1/moderation/journal/", headers=api.auth(await api.token_for(outsider))
     )
     assert denied.status_code == 403, denied.text
+
+
+# --- Журнал безопасности аккаунта ----------------------------------------
+
+
+async def test_security_log_records_login_and_password_change(
+    api: _ApiCtx, email_sender: list[tuple[str, str]]
+) -> None:
+    """Владелец видит историю: вход, смену пароля, запрос кода."""
+    from core.security import get_password_hash
+
+    phone = _random_phone()
+    address = f"owner{uuid.uuid4().hex[:8]}@example.com"
+    user = await api.make_user(phone_number=phone)
+    async with api.factory() as session:
+        db_user = await session.get(User, user.id)
+        assert db_user is not None
+        db_user.hashed_password = get_password_hash(_STRONG_PASSWORD)
+        db_user.password_set = True
+        db_user.email = address
+        db_user.email_verified = True
+        await session.commit()
+
+    failed = await api.client.post(
+        "/api/v1/auth/password/login/",
+        **_login_request(phone, "sovsem-drugoy-parol", "PismoTest/1.0"),
+    )
+    assert failed.status_code == 401, failed.text
+
+    logged_in = await api.client.post(
+        "/api/v1/auth/password/login/",
+        **_login_request(phone, _STRONG_PASSWORD, "PismoTest/1.0"),
+    )
+    assert logged_in.status_code == 200, logged_in.text
+    token = logged_in.json()["access_token"]
+
+    changed = await api.client.post(
+        "/api/v1/auth/password/set/",
+        json={"password": "novyj-parol-999", "current_password": _STRONG_PASSWORD},
+        headers=api.auth(token),
+    )
+    assert changed.status_code == 200, changed.text
+
+    log = await api.client.get("/api/v1/auth/security-log/", headers=api.auth(token))
+    assert log.status_code == 200, log.text
+    events = log.json()["items"]
+    codes = [entry["event"] for entry in events]
+    assert "login_success" in codes
+    assert "login_failed" in codes
+    assert "password_changed" in codes
+    # Заголовки человекочитаемые, IP и устройство заполнены.
+    success = next(entry for entry in events if entry["event"] == "login_success")
+    assert success["title"] == "Вход в аккаунт"
+    assert success["device"] == "PismoTest/1.0"
+
+
+async def test_security_log_is_private_to_owner(
+    api: _ApiCtx, email_sender: list[tuple[str, str]]
+) -> None:
+    """Чужой журнал недоступен: список отдаётся по аккаунту из токена."""
+    from core.security import get_password_hash
+
+    async def _login(phone: str) -> str:
+        user = await api.make_user(phone_number=phone)
+        async with api.factory() as session:
+            db_user = await session.get(User, user.id)
+            assert db_user is not None
+            db_user.hashed_password = get_password_hash(_STRONG_PASSWORD)
+            db_user.password_set = True
+            await session.commit()
+        response = await api.client.post(
+            "/api/v1/auth/password/login/",
+            **_login_request(phone, _STRONG_PASSWORD, "PismoTest/1.0"),
+        )
+        assert response.status_code == 200, response.text
+        return str(response.json()["access_token"])
+
+    token_one = await _login(_random_phone())
+    token_two = await _login(_random_phone())
+
+    first = await api.client.get(
+        "/api/v1/auth/security-log/", headers=api.auth(token_one)
+    )
+    second = await api.client.get(
+        "/api/v1/auth/security-log/", headers=api.auth(token_two)
+    )
+
+    assert first.status_code == 200 and second.status_code == 200
+    assert len(first.json()["items"]) == 1, "в журнале ровно один свой вход"
+    assert len(second.json()["items"]) == 1
+    assert first.json()["items"][0]["id"] != second.json()["items"][0]["id"]
+
+    anonymous = await api.client.get("/api/v1/auth/security-log/")
+    assert anonymous.status_code == 401, anonymous.text
+
+
+async def test_security_log_covers_sessions_and_email_change(api: _ApiCtx) -> None:
+    """Отзыв сессий и смена адреса тоже попадают в историю."""
+    from core.security import get_password_hash
+
+    phone = _random_phone()
+    user = await api.make_user(phone_number=phone)
+    async with api.factory() as session:
+        db_user = await session.get(User, user.id)
+        assert db_user is not None
+        db_user.hashed_password = get_password_hash(_STRONG_PASSWORD)
+        db_user.password_set = True
+        db_user.email = f"old{uuid.uuid4().hex[:8]}@example.com"
+        db_user.email_verified = True
+        await session.commit()
+
+    login = await api.client.post(
+        "/api/v1/auth/password/login/", **_login_request(phone, _STRONG_PASSWORD, "D1")
+    )
+    token = login.json()["access_token"]
+
+    await api.client.post("/api/v1/auth/sessions/revoke-all/", headers=api.auth(token))
+    await api.client.patch(
+        "/api/v1/jwt/users/me/",
+        json={"email": f"new{uuid.uuid4().hex[:8]}@example.com"},
+        headers=api.auth(token),
+    )
+
+    log = await api.client.get("/api/v1/auth/security-log/", headers=api.auth(token))
+    codes = [entry["event"] for entry in log.json()["items"]]
+    assert "sessions_revoked" in codes
+    assert "email_changed" in codes
