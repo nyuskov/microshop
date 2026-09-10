@@ -269,7 +269,7 @@ class IceServersResponse(BaseModel):
     ttl: int
 
 
-@router.get("/ice-servers/", response_model=IceServersResponse)
+@router_rest.get("/ice-servers/", response_model=IceServersResponse)
 async def get_ice_servers(
     user: User = Depends(get_current_user),
 ) -> IceServersResponse:
