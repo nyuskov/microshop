@@ -56,7 +56,8 @@ check_once() {
         DETAIL="HTTP $CODE, ожидался $expect"
         return 1
     fi
-    if [[ -n "$needle" ]] && ! grep -qF "$needle" "$BODY_FILE"; then
+    # Регистр не важен: DOCTYPE после форматирования может стать `<!doctype html>`.
+    if [[ -n "$needle" ]] && ! grep -qiF "$needle" "$BODY_FILE"; then
         DETAIL="в ответе нет '$needle'"
         return 1
     fi

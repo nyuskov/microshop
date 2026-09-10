@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import { chatIdFromUrl, chatUrlWith, readStoredChatId, storeChatId } from '@/utils/chatUrl'
+import { beforeEach, describe, expect, it } from 'vitest'
+import {
+  chatIdFromUrl,
+  chatUrlWith,
+  readStoredChatId,
+  readStoredSection,
+  storeChatId,
+  storeSection
+} from '@/utils/chatUrl'
 
 describe('chatIdFromUrl', () => {
   it('читает id чата из параметров', () => {
@@ -95,5 +102,25 @@ describe('память об открытом чате (запуск PWA с до�
   it('переживает недоступное хранилище', () => {
     expect(readStoredChatId(null)).toBeNull()
     expect(() => storeChatId(1, null)).not.toThrow()
+  })
+})
+
+describe('раздел приложения между запусками', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('по умолчанию — чаты', () => {
+    expect(readStoredSection()).toBe('chats')
+  })
+
+  it('помнит раздел: после обновления приложения возвращаемся в него же', () => {
+    storeSection('stories')
+    expect(readStoredSection()).toBe('stories')
+    storeSection('contacts')
+    expect(readStoredSection()).toBe('contacts')
+  })
+
+  it('мусор в хранилище не ломает запуск', () => {
+    localStorage.setItem('pismo_view', 'что-то не то')
+    expect(readStoredSection()).toBe('chats')
   })
 })

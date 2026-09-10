@@ -484,7 +484,14 @@ import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import { isImageFile, messageSnippet, optimizeImageFile } from '@/utils/media'
 import { mediaUrl } from '@/config'
-import { chatIdFromUrl, chatUrlWith, readStoredChatId, storeChatId } from '@/utils/chatUrl'
+import {
+  chatIdFromUrl,
+  chatUrlWith,
+  readStoredChatId,
+  readStoredSection,
+  storeChatId,
+  storeSection
+} from '@/utils/chatUrl'
 import { haptic } from '@/utils/haptics'
 import { usePeerActivity } from '@/composables/usePeerActivity'
 import { useRealtimeSync } from '@/composables/useRealtimeSync'
@@ -723,7 +730,10 @@ const onAppPopState = (event: PopStateEvent) => {
 /** Раздел нижнего меню: Чаты / Истории / Контакты. */
 type Section = 'chats' | 'contacts' | 'stories'
 
-const view = ref<Section>('chats')
+// Раздел помним между запусками: обновление PWA (баннер «Обновить») и запуск с
+// домашнего экрана перезагружают приложение — без этого человек всегда попадал
+// на «Чаты», даже если читал истории или листал контакты.
+const view = ref<Section>(readStoredSection())
 const chats = ref<Chat[]>([])
 const messages = ref<Message[]>([])
 
@@ -2662,6 +2672,9 @@ const switchSection = (section: Section) => {
   if (section === 'stories') void storiesStore.load()
 }
 
+// Любая смена раздела (в т. ч. прямой вызов view.value) сразу запоминается.
+watch(view, (section) => storeSection(section))
+
 const goToChats = () => switchSection('chats')
 
 const goToProfile = () => {
@@ -2967,7 +2980,7 @@ onMounted(async () => {
         selectedChatId.value === initialChatId &&
         !chats.value.some((chat) => chat.id === initialChatId)
       if (stillLoading) abortChatRestore(initialChatId, { keepStored: true })
-    }, 12_000)
+    }, 20_000)
   }
 })
 
@@ -2987,9 +3000,15 @@ const abortChatRestore = (chatId: number, options: { keepStored?: boolean } = {}
   syncChatUrl(null, { keepStored: options.keepStored === true })
 }
 
-/** Загружает список чатов для восстановления: одна повторная попытка при сбое. */
+/**
+ * Загружает список чатов для восстановления: до трёх попыток при сбое.
+ *
+ * Три, а не две: сразу после обновления приложения (баннер «Обновить», запуск с
+ * домашнего экрана) сеть и API могут быть ещё не готовы, и чат «терялся» —
+ * человек оказывался на списке чатов вместо своего диалога.
+ */
 const loadChatsForRestore = async (): Promise<boolean> => {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       chats.value = await fetchMyChats()
       return true

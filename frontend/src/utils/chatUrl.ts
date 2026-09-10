@@ -79,3 +79,40 @@ export function chatUrlWith(currentUrl: string, chatId: number | null): string {
   for (const param of EPHEMERAL_PARAMS) url.searchParams.delete(param)
   return `${url.pathname}${url.search}${url.hash}`
 }
+
+/**
+ * Раздел приложения, в котором был пользователь (`chats` / `stories` /
+ * `contacts`).
+ *
+ * Зачем помнить: PWA после обновления (кнопка «Обновить» в баннере) и при запуске
+ * с домашнего экрана перезагружается — без этой памяти человек всегда оказывался
+ * на «Чатах», даже если читал истории или листал контакты.
+ */
+export const SECTION_STORAGE_KEY = 'pismo_view'
+
+/** Допустимые разделы: всё прочее (мусор в хранилище) игнорируем. */
+const SECTIONS = ['chats', 'stories', 'contacts'] as const
+
+export type StoredSection = (typeof SECTIONS)[number]
+
+/** Раздел из памяти приложения (по умолчанию — чаты). */
+export function readStoredSection(storage: Storage | null = safeStorage()): StoredSection {
+  try {
+    const raw = storage?.getItem(SECTION_STORAGE_KEY)
+    return SECTIONS.includes(raw as StoredSection) ? (raw as StoredSection) : 'chats'
+  } catch {
+    return 'chats'
+  }
+}
+
+/** Запомнить раздел, чтобы перезагрузка вернула в него же. */
+export function storeSection(
+  section: StoredSection,
+  storage: Storage | null = safeStorage()
+): void {
+  try {
+    storage?.setItem(SECTION_STORAGE_KEY, section)
+  } catch {
+    /* приватный режим — просто не помним раздел */
+  }
+}
