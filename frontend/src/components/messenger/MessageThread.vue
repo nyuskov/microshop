@@ -76,10 +76,21 @@
             />
             <span class="pending-meta">
               <span class="pending-label">{{ p.label }}</span>
-              <!-- Вложение грузится -->
+              <!-- Полоса прогресса загрузки: заполняется по мере отправки -->
+              <span
+                v-if="(p.status ?? 'sending') === 'sending' && typeof p.progress === 'number'"
+                class="pending-bar"
+                role="progressbar"
+                :aria-valuenow="p.progress"
+                aria-valuemin="0"
+                aria-valuemax="100"
+              >
+                <span class="pending-bar-fill" :style="{ width: `${p.progress}%` }"></span>
+              </span>
+              <!-- Вложение грузится: виден процент, чтобы не казалось, что встало -->
               <span v-if="(p.status ?? 'sending') === 'sending'" class="pending-status">
                 <span class="pending-spinner" aria-hidden="true"></span>
-                Отправка…
+                {{ uploadStatusText(p.progress) }}
               </span>
               <!-- Текста не ушёл: ждём сеть и отправим сами -->
               <span v-else-if="p.status === 'queued'" class="pending-status">
@@ -136,6 +147,7 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
+import { uploadStatusText } from '@/utils/upload'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { ChatUser, Message } from '@/types'
 import type { MessageRow as ThreadRow } from '@/utils/thread'
@@ -160,6 +172,8 @@ export interface PendingRow {
   label: string
   previewUrl?: string | null
   status?: 'sending' | 'queued' | 'failed'
+  /** Сколько процентов вложения уже ушло на сервер (null — неизвестно). */
+  progress?: number | null
   /** Текст ошибки для состояния `failed`. */
   error?: string | null
 }
@@ -685,6 +699,26 @@ onMounted(() => {
   gap: 6px;
   font-size: 11.5px;
   color: var(--ms-muted, #7b8a96);
+}
+
+/* Тонкая полоса прогресса загрузки вложения */
+.pending-bar {
+  display: block;
+  width: 100%;
+  min-width: 96px;
+  height: 3px;
+  margin-top: 1px;
+  border-radius: 2px;
+  background: rgba(46, 162, 94, 0.18);
+  overflow: hidden;
+}
+
+.pending-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--ms-accent, #2ea25e);
+  transition: width 0.2s linear;
 }
 
 .pending-spinner {

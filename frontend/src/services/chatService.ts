@@ -1,6 +1,7 @@
 export { mediaUrl } from '@/config'
 
 import { api } from './api'
+import { uploadPercent } from '@/utils/upload'
 import type {
   Chat,
   ChatDetail,
@@ -18,6 +19,9 @@ export interface SearchUserResult {
   phone_number: string | null
   avatar_url?: string | null
 }
+
+/** Сколько ждём загрузку вложения (обычные запросы живут 15 с). */
+export const ATTACHMENT_UPLOAD_TIMEOUT_MS = 120_000
 
 /** Возвращает чаты текущего пользователя с последними сообщениями. */
 export const fetchMyChats = async (): Promise<Chat[]> => {
@@ -183,7 +187,8 @@ export const sendAttachmentMessage = async (
   chatId: number,
   file: File,
   caption = '',
-  replyToId?: number | null
+  replyToId?: number | null,
+  onProgress?: (percent: number) => void
 ): Promise<Message> => {
   const params: Record<string, string | number> = {
     chat_id: chatId,
@@ -196,7 +201,17 @@ export const sendAttachmentMessage = async (
   }
   const response = await api.post<Message>('/messages/attachment/', file, {
     params,
-    headers: { 'Content-Type': file.type || 'application/octet-stream' }
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    // Общий таймаут клиента (15 с) рассчитан на обычные запросы; вложение
+    // столько не грузится, поэтому даём свой запас. Пользователь видит прогресс,
+    // так что долгое ожидание не выглядит зависанием.
+    timeout: ATTACHMENT_UPLOAD_TIMEOUT_MS,
+    onUploadProgress: onProgress
+      ? (event) => {
+          const percent = uploadPercent(event.loaded, event.total ?? 0)
+          if (percent !== null) onProgress(percent)
+        }
+      : undefined
   })
   return response.data
 }

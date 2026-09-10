@@ -743,9 +743,34 @@ interface PendingUpload {
   localId: number
   label: string
   previewUrl?: string | null
+  /** Процент загрузки на сервер (undefined — ещё не началась). */
+  progress?: number
 }
 const pendingUploads = ref<PendingUpload[]>([])
 let pendingSeq = 0
+
+/**
+ * Отметить прогресс загрузки вложения. Массив пересобираем: строка в ленте
+ * должна обновиться, а лишние перерисовки гасим сравнением процента.
+ */
+const setPendingProgress = (localId: number, percent: number) => {
+  if (!pendingUploads.value.some((p) => p.localId === localId && p.progress !== percent)) return
+  pendingUploads.value = pendingUploads.value.map((p) =>
+    p.localId === localId ? { ...p, progress: percent } : p
+  )
+}
+
+/** Создать временный пузырь «Отправка…» и вернуть его localId. */
+const addPendingUpload = (label: string, previewUrl: string | null = null): number => {
+  const localId = --pendingSeq
+  pendingUploads.value = [...pendingUploads.value, { localId, label, previewUrl }]
+  return localId
+}
+
+/** Убрать временный пузырь (успех, ошибка или смена чата). */
+const removePendingUpload = (localId: number) => {
+  pendingUploads.value = pendingUploads.value.filter((p) => p.localId !== localId)
+}
 
 const clearPendingUploads = () => {
   for (const p of pendingUploads.value) {
@@ -1614,12 +1639,7 @@ const onFileSelected = async (file: File) => {
   // что отправка идёт; затем заменяем его настоящим сообщением.
   const isImage = file.type.startsWith('image/')
   const previewUrl = isImage ? URL.createObjectURL(file) : null
-  const pending: PendingUpload = {
-    localId: --pendingSeq,
-    label: file.name || 'Вложение',
-    previewUrl
-  }
-  pendingUploads.value = [...pendingUploads.value, pending]
+  const localId = addPendingUpload(file.name || 'Вложение', previewUrl)
   void nextTick(scrollToBottom)
 
   sendingFile.value = true
@@ -1630,9 +1650,15 @@ const onFileSelected = async (file: File) => {
       chatId,
       uploadFile,
       newMessage.value.trim(),
-      replyTarget.value?.id
+      replyTarget.value?.id,
+      (percent) => {
+        // Сжатие могло занять время — прогресс показываем только актуального пузыря.
+        if (pendingUploads.value.some((p) => p.localId === localId)) {
+          setPendingProgress(localId, percent)
+        }
+      }
     )
-    pendingUploads.value = pendingUploads.value.filter((p) => p.localId !== pending.localId)
+    removePendingUpload(localId)
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     newMessage.value = ''
     clearDraftFor(chatId)
@@ -1642,7 +1668,7 @@ const onFileSelected = async (file: File) => {
     await Promise.all([loadPinned(chatId), loadChats()])
     scrollToBottom()
   } catch (error) {
-    pendingUploads.value = pendingUploads.value.filter((p) => p.localId !== pending.localId)
+    removePendingUpload(localId)
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     sendError.value = getErrorMessage(error, 'Не удалось отправить файл')
   } finally {
@@ -1686,17 +1712,34 @@ const uploadRecordedMedia = async (payload: RecordedMedia, kind: 'voice' | 'vide
   if (chatId === null) return
   sendingFile.value = true
   sendError.value = ''
+  // Голосовое/видео тоже показываем временным пузырём с прогрессом:
+  // длинная запись грузится не мгновенно.
+  const label = kind === 'voice' ? 'Голосовое сообщение' : 'Видеосообщение'
+  const localId = addPendingUpload(label)
+  void nextTick(scrollToBottom)
   try {
     const file = new File([payload.blob], mediaFileName(kind, payload.mime), {
       type: payload.mime
     })
-    const message = await sendAttachmentMessage(chatId, file, '', replyTarget.value?.id)
+    const message = await sendAttachmentMessage(
+      chatId,
+      file,
+      '',
+      replyTarget.value?.id,
+      (percent) => {
+        if (pendingUploads.value.some((p) => p.localId === localId)) {
+          setPendingProgress(localId, percent)
+        }
+      }
+    )
+    removePendingUpload(localId)
     clearReply()
     sendTypingStop(chatId)
     messages.value = appendMessage(messages.value, message)
     await Promise.all([loadPinned(chatId), loadChats()])
     scrollToBottom()
   } catch (error) {
+    removePendingUpload(localId)
     sendError.value = getErrorMessage(error, 'Не удалось отправить медиасообщение')
   } finally {
     sendingFile.value = false
