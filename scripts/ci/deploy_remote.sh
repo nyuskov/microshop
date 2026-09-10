@@ -141,10 +141,16 @@ say "7/8 nginx"
 # Сначала проверяем конфиг одноразовым контейнером: он видит тот же каталог и те
 # же сертификаты, что рабочий nginx, но ничего не трогает в проде.
 CONF_DIR="$PWD/frontend/nginx-prod"
+# Том с сертификатами: compose называет тома через подчёркивание
+# (`<проект>_certbot_etc`), а контейнеры — через дефис (`<проект>-web-blue-1`).
+# Берём имя у работающего контейнера, чтобы не угадывать.
+CERT_VOLUME=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/letsencrypt"}}{{.Name}}{{end}}{{end}}' \
+  "$PROJECT-frontend-1" 2>/dev/null || true)
+[ -n "$CERT_VOLUME" ] || CERT_VOLUME="${PROJECT}_certbot_etc"
 conf_test() {
   docker run --rm \
     -v "$CONF_DIR:/etc/nginx/conf.d:ro" \
-    -v "$PROJECT-certbot_etc:/etc/letsencrypt:ro" \
+    -v "$CERT_VOLUME:/etc/letsencrypt:ro" \
     --entrypoint nginx "$PROJECT-frontend:latest" -t
 }
 if ! conf_test >/dev/null 2>&1; then
