@@ -3,7 +3,14 @@
 import re
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 PHONE_PATTERN = re.compile(r"^\+?[\d\s\-()]+$")
 
@@ -114,6 +121,13 @@ class UserWithDetailsSchema(BaseModel):
 
 
 class UserUpdateWithProfileSchema(BaseModel):
+    """Обновление своего профиля.
+
+    Номер телефона изменить нельзя: это логин аккаунта и ключ, по которому
+    выдаются OTP-коды. Поле осталось в схеме только для того, чтобы на попытку
+    смены номера клиент получил понятную ошибку 422 (а не молчаливое игнорирование).
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
     username: str | None = None
@@ -127,6 +141,13 @@ class UserUpdateWithProfileSchema(BaseModel):
     _empty_str_to_none = field_validator(
         "first_name", "last_name", "status", mode="before"
     )(_empty_str_to_none)
+
+    @model_validator(mode="after")
+    def _reject_phone_number_change(self) -> "UserUpdateWithProfileSchema":
+        """Отклоняет любую попытку передать номер телефона."""
+        if "phone_number" in self.model_fields_set:
+            raise ValueError("Номер телефона изменить нельзя")
+        return self
 
 
 class CreateUser(BaseModel):

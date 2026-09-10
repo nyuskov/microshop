@@ -855,7 +855,8 @@ async def test_password_register_login_and_status(api: _ApiCtx) -> None:
         "/api/v1/auth/password/status/", json={"phone_number": phone}
     )
     assert st0.status_code == 200, st0.text
-    assert st0.json() == {"registered": False, "has_password": False}
+    assert st0.json()["registered"] is False
+    assert st0.json()["has_password"] is False
 
     # Короткий пароль отклоняется.
     short = await api.client.post(
@@ -876,7 +877,8 @@ async def test_password_register_login_and_status(api: _ApiCtx) -> None:
     st1 = await api.client.post(
         "/api/v1/auth/password/status/", json={"phone_number": phone}
     )
-    assert st1.json() == {"registered": True, "has_password": True}
+    assert st1.json()["registered"] is True
+    assert st1.json()["has_password"] is True
 
     # Повторная регистрация с паролем — нельзя.
     again = await api.client.post(
@@ -929,7 +931,8 @@ async def test_password_register_sets_password_for_otp_created_user(
     st = await api.client.post(
         "/api/v1/auth/password/status/", json={"phone_number": phone}
     )
-    assert st.json() == {"registered": True, "has_password": False}
+    assert st.json()["registered"] is True
+    assert st.json()["has_password"] is False
 
     reg = await api.client.post(
         "/api/v1/auth/password/register/",
@@ -1786,3 +1789,117 @@ async def test_reports_pagination(api: _ApiCtx) -> None:
             "/api/v1/moderation/reports/?offset=-1", headers=api.auth(tadmin)
         )
     ).status_code == 422
+
+
+# --- Пароль задаётся после OTP, номер телефона неизменяем ------------------
+
+
+async def test_set_password_after_otp_login(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OTP-вход → задаём пароль → дальше вход по паролю (код больше не нужен)."""
+    phone = _random_phone()
+    code = await _request_otp(api, monkeypatch, phone)
+    verify = await api.client.post(
+        "/api/v1/auth/verify-otp/",
+        json={"phone_number": phone, "otp": code},
+    )
+    assert verify.status_code == 200, verify.text
+    token = verify.json()["access_token"]
+
+    # Сразу после OTP пароля нет — статус это подтверждает (и сообщает, есть ли
+    # вообще канал доставки кодов).
+    status = (
+        await api.client.post(
+            "/api/v1/auth/password/status/", json={"phone_number": phone}
+        )
+    ).json()
+    assert status["registered"] is True
+    assert status["has_password"] is False
+    assert "otp_available" in status
+
+    # Задаём пароль без current_password: его ещё нет.
+    first = await api.client.post(
+        "/api/v1/auth/password/set/",
+        json={"password": "newpass123"},
+        headers=api.auth(token),
+    )
+    assert first.status_code == 200, first.text
+
+    login = await api.client.post(
+        "/api/v1/auth/password/login/",
+        json={"phone_number": phone, "password": "newpass123"},
+    )
+    assert login.status_code == 200, login.text
+
+    # Смена пароля: неверный текущий → 400, верный → 200 и старый не работает.
+    bad = await api.client.post(
+        "/api/v1/auth/password/set/",
+        json={"password": "another123", "current_password": "wrong-one"},
+        headers=api.auth(token),
+    )
+    assert bad.status_code == 400
+    good = await api.client.post(
+        "/api/v1/auth/password/set/",
+        json={"password": "another123", "current_password": "newpass123"},
+        headers=api.auth(token),
+    )
+    assert good.status_code == 200, good.text
+    assert (
+        await api.client.post(
+            "/api/v1/auth/password/login/",
+            json={"phone_number": phone, "password": "another123"},
+        )
+    ).status_code == 200
+    assert (
+        await api.client.post(
+            "/api/v1/auth/password/login/",
+            json={"phone_number": phone, "password": "newpass123"},
+        )
+    ).status_code == 401
+
+    # Короткий пароль — 400, без авторизации — 401.
+    assert (
+        await api.client.post(
+            "/api/v1/auth/password/set/",
+            json={"password": "123"},
+            headers=api.auth(token),
+        )
+    ).status_code == 400
+    assert (
+        await api.client.post(
+            "/api/v1/auth/password/set/", json={"password": "whatever123"}
+        )
+    ).status_code == 401
+
+
+async def test_profile_phone_cannot_be_changed(api: _ApiCtx) -> None:
+    """Номер телефона — логин аккаунта: через профиль его передать нельзя."""
+    phone = _random_phone()
+    user = await api.make_user(phone_number=phone)
+    token = await api.token_for(user)
+
+    # Любая попытка передать номер → 422 (даже с тем же значением).
+    rejected = await api.client.patch(
+        "/api/v1/jwt/users/me/",
+        json={"phone_number": "+79001112233"},
+        headers=api.auth(token),
+    )
+    assert rejected.status_code == 422, rejected.text
+
+    # Остальные поля меняются, номер остаётся прежним.
+    updated = await api.client.patch(
+        "/api/v1/jwt/users/me/",
+        json={"first_name": "Никита", "status": "тест профиля"},
+        headers=api.auth(token),
+    )
+    assert updated.status_code == 200, updated.text
+    body = updated.json()
+    assert body["first_name"] == "Никита"
+    assert body["status"] == "тест профиля"
+    assert body["phone_number"] == phone
+
+    async with api.factory() as session:
+        stored = await session.get(User, user.id)
+        assert stored is not None
+        assert stored.phone_number == phone

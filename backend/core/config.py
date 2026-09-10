@@ -134,17 +134,20 @@ class Settings(BaseSettings):
 
     # --- Доставка OTP через SMS-шлюз SMS Aero (основной канал) ---
     # Аккаунт https://smsaero.ru: логин (email) и API-ключ. Если не заданы —
-    # код пишется в лог (dev-режим). API v2: gateway.smsaero.ru/v2/sms/send.
+    # код пишется в лог (dev-режим). API v2: gate.smsaero.ru/v2/sms/send
+    # (старый хост gateway.smsaero.ru больше не существует).
     sms_aero_base_url: str = Field(
-        default="https://gateway.smsaero.ru",
+        default="https://gate.smsaero.ru",
         validation_alias="SMS_AERO_BASE_URL",
     )
     sms_aero_email: str | None = Field(default=None, validation_alias="SMS_AERO_EMAIL")
     sms_aero_api_key: str | None = Field(
         default=None, validation_alias="SMS_AERO_API_KEY"
     )
-    # Подпись отправителя, зарегистрированная в SMS Aero (если нужна).
-    sms_aero_sign: str | None = Field(default=None, validation_alias="SMS_AERO_SIGN")
+    # Подпись отправителя — обязательный параметр запроса. Бесплатная подпись
+    # «SMS Aero» работает без регистрации, но тариф на неё дороже (у некоторых
+    # операторов в разы); свою подпись регистрируют в кабинете SMS Aero.
+    sms_aero_sign: str = Field(default="SMS Aero", validation_alias="SMS_AERO_SIGN")
 
     # --- Web Push уведомления (PWA, когда приложение закрыто) ---
     # VAPID-ключи генерируются один раз (см. README). Пока они не заданы —

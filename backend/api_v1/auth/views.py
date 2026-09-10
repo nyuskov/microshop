@@ -14,7 +14,7 @@ from api_v1.rate_limit import enforce_limit, rate_limit_key, rate_limiter
 from core.celery_app import get_task
 from core.config import settings
 from core.models import TelegramBindLink, User, db_helper
-from core.security import get_password_hash
+from core.security import get_password_hash, verify_password
 
 from ..tokens.schemas import Token
 from ..users.crud import (
@@ -35,6 +35,8 @@ from .refresh_sessions import issue_refresh_token
 from .schemas import (
     OTPResponse,
     PasswordRequest,
+    PasswordSetRequest,
+    PasswordSetResponse,
     PasswordStatusRequest,
     PasswordStatusResponse,
     RequestOTPRequest,
@@ -75,6 +77,21 @@ def generate_otp_code() -> str:
 def validate_phone_number_format(phone_number: str) -> bool:
     """Проверяет формат номера телефона."""
     return bool(PHONE_PATTERN.match(phone_number))
+
+
+def otp_delivery_available(user: User | None) -> bool:
+    """Можно ли доставить OTP-код на этот номер.
+
+    Каналы: SMS Aero и Telegram Gateway шлют код на сам номер — если настроен
+    любой из них, код дойдёт до любого пользователя. Обычный Telegram-бот умеет
+    писать только тем, кто уже привязал чат (``tg_chat_id``), поэтому для нового
+    номера он не считается доступным каналом.
+    """
+    if settings.sms_aero_email or settings.sms_aero_api_key:
+        return True
+    if settings.telegram_gateway_token:
+        return True
+    return bool(settings.telegram_bot_token and user and user.tg_chat_id)
 
 
 def enqueue_sms_otp(phone_number: str, otp_code: str) -> None:
@@ -289,8 +306,16 @@ async def password_status(
         )
     user = await get_user_by_phone_number(session, phone_number)
     if user is None:
-        return PasswordStatusResponse(registered=False, has_password=False)
-    return PasswordStatusResponse(registered=True, has_password=user.password_set)
+        return PasswordStatusResponse(
+            registered=False,
+            has_password=False,
+            otp_available=otp_delivery_available(None),
+        )
+    return PasswordStatusResponse(
+        registered=True,
+        has_password=user.password_set,
+        otp_available=otp_delivery_available(user),
+    )
 
 
 @router.post("/password/register/", response_model=TokenResponse)
@@ -366,6 +391,38 @@ async def password_login(
         token_type="bearer",
         refresh_token=await issue_refresh_token(session, user_id=user.id),
     )
+
+
+@router.post("/password/set/", response_model=PasswordSetResponse)
+async def set_password(
+    request_data: PasswordSetRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> PasswordSetResponse:
+    """Задаёт (или меняет) пароль текущего пользователя.
+
+    Основной сценарий — первый вход: пользователь подтвердил номер по OTP и
+    теперь задаёт пароль, чтобы дальше входить без кода (дешевле и быстрее).
+    Если пароль уже есть, требуется ``current_password``.
+    """
+    await _enforce_ip_limit(request, scope="auth:password-set", limit=10)
+    password = _validate_new_password(request_data.password)
+
+    if user.password_set:
+        current = request_data.current_password or ""
+        if not verify_password(current, user.hashed_password):
+            # 400, а не 401: 401 на фронте запускает авто-обновление токена.
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Текущий пароль указан неверно.",
+            )
+
+    user.hashed_password = get_password_hash(password)
+    user.password_set = True
+    await session.commit()
+    logger.info("Пароль задан пользователем %s", user.id)
+    return PasswordSetResponse(detail="Пароль сохранён.")
 
 
 # --- Привязка Telegram (резервный канал доставки OTP) ---------------------

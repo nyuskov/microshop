@@ -5,7 +5,7 @@ import { getErrorMessage } from '../services/errors'
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { formatPhoneForBackend, isValidPhoneNumber, prettyPhone } from '@/utils/phone'
 
-type LoginState = 'phone' | 'password' | 'create'
+type LoginState = 'phone' | 'password' | 'otp' | 'create'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -17,6 +17,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   'state-changed': [LoginState]
   'close-modal': []
+  /** Номер подтверждён кодом — модалку нельзя закрывать до задания пароля. */
+  'otp-verified': []
 }>()
 
 const state = ref<LoginState>('phone')
@@ -41,6 +43,12 @@ const passwordFieldRef = ref<HTMLInputElement | null>(null)
 const hasPassword = ref(false)
 /** Аккаунта ещё не существует (новый номер). */
 const isNewNumber = ref(false)
+/** Можно ли доставить код подтверждения на этот номер. */
+const otpAvailable = ref(false)
+/** Пароль задаётся сразу после подтверждения номера кодом. */
+const afterOtp = ref(false)
+const otpCode = ref('')
+const otpFieldRef = ref<HTMLInputElement | null>(null)
 
 const severity = ref<'success' | 'error' | 'info' | 'warn'>('success')
 const result = ref('')
@@ -68,9 +76,28 @@ async function continueWithPhone() {
     const status = await authStore.passwordStatus(phone)
     isNewNumber.value = !status.registered
     hasPassword.value = status.has_password
-    password.value = ''
-    passwordConfirm.value = ''
-    state.value = status.has_password ? 'password' : 'create'
+    otpAvailable.value = status.otp_available
+    resetPasswordFields()
+    otpCode.value = ''
+    afterOtp.value = false
+
+    if (status.has_password) {
+      state.value = 'password'
+      emit('state-changed', state.value)
+      void nextTick(focusPassword)
+      return
+    }
+
+    if (status.otp_available) {
+      // Сначала подтверждаем номер кодом, а пароль задаём после него: дальше
+      // вход будет по паролю и без SMS — так дешевле.
+      state.value = 'otp'
+      emit('state-changed', state.value)
+      await sendOtp()
+      return
+    }
+
+    state.value = 'create'
     emit('state-changed', state.value)
     void nextTick(focusPassword)
   } catch (error: unknown) {
@@ -124,6 +151,72 @@ async function onLoginSubmit() {
   }
 }
 
+/** Отправляет (или повторно отправляет) код подтверждения на текущий номер. */
+async function sendOtp() {
+  if (isLoading.value) return
+  isLoading.value = true
+  result.value = ''
+  try {
+    await authStore.requestOtp(formatPhoneForBackend(phoneOrUsername.value))
+    result.value = `Код отправлен на ${prettyPhone(phoneOrUsername.value)}`
+    severity.value = 'info'
+    void nextTick(() => otpFieldRef.value?.focus())
+  } catch (error: unknown) {
+    console.error('Request OTP failed:', error)
+    result.value = getErrorMessage(error, 'Не удалось отправить код.')
+    severity.value = 'error'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+/** Завершает вход: чистит форму и просит родителя закрыть модалку. */
+function finishLogin() {
+  resetPasswordFields()
+  otpCode.value = ''
+  phoneOrUsername.value = ''
+  result.value = ''
+  emit('close-modal')
+}
+
+/**
+ * Подтверждает номер кодом. После успеха пользователь уже авторизован, но если
+ * пароля у него нет — переходим к шагу «придумайте пароль» (и не закрываем окно).
+ */
+async function onOtpSubmit() {
+  if (isLoading.value) return
+  const code = otpCode.value.replace(/\D/g, '')
+  if (code.length < 4) {
+    result.value = 'Введите код из сообщения.'
+    severity.value = 'error'
+    return
+  }
+
+  isLoading.value = true
+  result.value = ''
+  try {
+    await authStore.loginWithOtp(formatPhoneForBackend(phoneOrUsername.value), code, null)
+    emit('otp-verified')
+    otpCode.value = ''
+    if (hasPassword.value) {
+      finishLogin()
+      return
+    }
+    afterOtp.value = true
+    password.value = ''
+    passwordConfirm.value = ''
+    state.value = 'create'
+    emit('state-changed', state.value)
+    void nextTick(focusPassword)
+  } catch (error: unknown) {
+    console.error('Verify OTP failed:', error)
+    result.value = getErrorMessage(error, 'Неверный или истёкший код.')
+    severity.value = 'error'
+  } finally {
+    isLoading.value = false
+  }
+}
+
 async function onCreateSubmit() {
   if (authStore.isAuthenticated) {
     emit('close-modal')
@@ -144,15 +237,17 @@ async function onCreateSubmit() {
   isLoading.value = true
   result.value = ''
   try {
-    await authStore.registerWithPassword(
-      formatPhoneForBackend(phoneOrUsername.value),
-      password.value,
-      router
-    )
-    resetPasswordFields()
-    phoneOrUsername.value = ''
-    result.value = ''
-    emit('close-modal')
+    if (afterOtp.value) {
+      // Номер уже подтверждён кодом — сессия есть, просто задаём пароль.
+      await authStore.setPassword(password.value)
+    } else {
+      await authStore.registerWithPassword(
+        formatPhoneForBackend(phoneOrUsername.value),
+        password.value,
+        router
+      )
+    }
+    finishLogin()
   } catch (error: unknown) {
     console.error('Create password failed:', error)
     result.value = getErrorMessage(error, 'Не удалось создать пароль.')
@@ -166,6 +261,8 @@ function goBackToPhoneInput() {
   state.value = 'phone'
   emit('state-changed', state.value)
   resetPasswordFields()
+  otpCode.value = ''
+  afterOtp.value = false
   result.value = ''
 }
 </script>
@@ -200,7 +297,9 @@ function goBackToPhoneInput() {
           <span>{{ isLoading ? 'Проверка…' : 'Продолжить' }}</span>
         </button>
 
-        <p class="privacy-hint">Если пароля ещё нет — предложим его создать.</p>
+        <p class="privacy-hint">
+          Если пароля ещё нет — подтвердим номер кодом и предложим его создать.
+        </p>
       </div>
 
       <!-- Шаг 2а: ввод пароля (номер уже зарегистрирован) -->
@@ -243,17 +342,69 @@ function goBackToPhoneInput() {
         </button>
       </div>
 
-      <!-- Шаг 2б: создание пароля (новый номер или пароль ещё не задан) -->
+      <!-- Шаг 2б: подтверждение номера кодом (если пароля ещё нет) -->
+      <div v-else-if="state === 'otp'" key="otp" class="step">
+        <div class="brand">
+          <span class="brand-icon"><q-icon name="sms" size="30px" /></span>
+        </div>
+        <h2 class="step-title">Введите код</h2>
+        <p class="step-subtitle">
+          Код подтверждения отправлен на номер
+          <strong>{{ prettyPhone(phoneOrUsername) }}</strong
+          >.
+        </p>
+
+        <form class="otp-form" @submit.prevent="onOtpSubmit">
+          <label class="field-label" for="otp-input">Код из сообщения</label>
+          <q-input
+            id="otp-input"
+            ref="otpFieldRef"
+            v-model="otpCode"
+            inputmode="numeric"
+            maxlength="6"
+            outlined
+            class="phone-input"
+            placeholder="6 цифр"
+            autocomplete="one-time-code"
+            aria-label="Код подтверждения"
+            hide-bottom-space
+          />
+
+          <button type="submit" class="btn btn-primary" :disabled="isLoading">
+            <span v-if="isLoading" class="spinner"></span>
+            <q-icon v-else name="check" size="17px" />
+            <span>{{ isLoading ? 'Проверка…' : 'Подтвердить' }}</span>
+          </button>
+        </form>
+
+        <button class="link-btn" type="button" :disabled="isLoading" @click="sendOtp">
+          <q-icon name="refresh" size="17px" />
+          Отправить код ещё раз
+        </button>
+
+        <button class="link-btn" type="button" :disabled="isLoading" @click="goBackToPhoneInput">
+          <q-icon name="arrow_back" size="17px" />
+          Изменить номер
+        </button>
+      </div>
+
+      <!-- Шаг 2в: создание пароля (новый номер или пароль ещё не задан) -->
       <div v-else key="create" class="step">
         <div class="brand">
           <span class="brand-icon"><q-icon name="person_add" size="30px" /></span>
         </div>
-        <h2 class="step-title">{{ isNewNumber ? 'Создание аккаунта' : 'Придумайте пароль' }}</h2>
+        <h2 class="step-title">
+          {{
+            afterOtp ? 'Придумайте пароль' : isNewNumber ? 'Создание аккаунта' : 'Придумайте пароль'
+          }}
+        </h2>
         <p class="step-subtitle">
           {{
-            isNewNumber
-              ? `Номер ${prettyPhone(phoneOrUsername)} ещё не зарегистрирован — придумайте пароль.`
-              : `Для номера ${prettyPhone(phoneOrUsername)} ещё нет пароля — задайте его.`
+            afterOtp
+              ? `Номер ${prettyPhone(phoneOrUsername)} подтверждён — задайте пароль, чтобы дальше входить без кода.`
+              : isNewNumber
+                ? `Номер ${prettyPhone(phoneOrUsername)} ещё не зарегистрирован — придумайте пароль.`
+                : `Для номера ${prettyPhone(phoneOrUsername)} ещё нет пароля — задайте его.`
           }}
         </p>
 
@@ -290,7 +441,13 @@ function goBackToPhoneInput() {
           <button type="submit" class="btn btn-primary" :disabled="isLoading">
             <span v-if="isLoading" class="spinner"></span>
             <q-icon v-else name="check" size="17px" />
-            <span>{{ isLoading ? 'Создание…' : 'Создать пароль и войти' }}</span>
+            <span>{{
+              isLoading
+                ? 'Сохранение…'
+                : afterOtp
+                  ? 'Сохранить пароль и войти'
+                  : 'Создать пароль и войти'
+            }}</span>
           </button>
         </form>
 

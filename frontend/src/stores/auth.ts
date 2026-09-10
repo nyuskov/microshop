@@ -142,14 +142,37 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    /** Статус пароля для номера: зарегистрирован ли и задан ли пароль. */
-    async passwordStatus(
-      phoneNumber: string
-    ): Promise<{ registered: boolean; has_password: boolean }> {
+    /**
+     * Статус номера до входа: есть ли аккаунт, задан ли пароль и можно ли
+     * доставить код подтверждения (``otp_available``). Если канала нет —
+     * фронт сразу предлагает создать пароль, а не зовёт ждать SMS.
+     */
+    async passwordStatus(phoneNumber: string): Promise<{
+      registered: boolean
+      has_password: boolean
+      otp_available: boolean
+    }> {
       const response = await api.post('/auth/password/status/', {
         phone_number: phoneNumber
       })
-      return response.data as { registered: boolean; has_password: boolean }
+      return response.data as {
+        registered: boolean
+        has_password: boolean
+        otp_available: boolean
+      }
+    },
+
+    /**
+     * Задаёт (или меняет) пароль текущего пользователя.
+     *
+     * Первый сценарий — после входа по коду: текущего пароля ещё нет.
+     * Если пароль уже задан, сервер требует ``currentPassword``.
+     */
+    async setPassword(password: string, currentPassword?: string): Promise<void> {
+      await api.post('/auth/password/set/', {
+        password,
+        current_password: currentPassword ?? null
+      })
     },
 
     /** Вход по номеру телефона и паролю. */

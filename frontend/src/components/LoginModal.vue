@@ -5,6 +5,7 @@
         @close-modal="handleLoginClose"
         :initial-state="state"
         @state-changed="handleStateChanged"
+        @otp-verified="onOtpVerified"
       />
     </q-card>
   </q-dialog>
@@ -17,7 +18,7 @@ import { useAuthStore } from '../stores/auth'
 
 const props = defineProps<{
   visible: boolean
-  initialState?: 'phone' | 'password' | 'create'
+  initialState?: 'phone' | 'password' | 'otp' | 'create'
 }>()
 
 const emit = defineEmits<{
@@ -26,11 +27,19 @@ const emit = defineEmits<{
 
 const authStore = useAuthStore()
 
+/**
+ * Код подтверждён, но пароль ещё не задан. В этот момент пользователь уже
+ * аутентифицирован, но модалку закрывать рано — иначе он не увидит шаг
+ * «придумайте пароль» и останется без пароля.
+ */
+const pendingPassword = ref(false)
+
 // Вычисляемое свойство, которое учитывает статус аутентификации
 const shouldShowModal = computed({
   get: () => {
     // Не показываем модалку, если пользователь уже аутентифицирован
-    if (authStore.isAuthenticated) {
+    // (кроме случая, когда он в середине сценария "код → пароль")
+    if (authStore.isAuthenticated && !pendingPassword.value) {
       return false
     }
     return props.visible
@@ -43,7 +52,7 @@ const shouldShowModal = computed({
   }
 })
 
-const state = ref<'phone' | 'password' | 'create'>(props.initialState || 'phone')
+const state = ref<'phone' | 'password' | 'otp' | 'create'>(props.initialState || 'phone')
 
 // Синхронизация состояния с пропсом
 watch(
@@ -66,6 +75,7 @@ watch(
 // Обработка закрытия диалога
 const handleLoginClose = () => {
   console.log("Login component emitted 'close-modal' inside LoginModal. Emitting to parent.")
+  pendingPassword.value = false
   emit('close-modal')
 }
 
@@ -76,9 +86,14 @@ const onDialogHide = () => {
   }
 }
 
-// Обработка события от Login.vue, когда состояние меняется (phone -> password/create)
-const handleStateChanged = (newState: 'phone' | 'password' | 'create') => {
+// Обработка события от Login.vue, когда состояние меняется (phone -> password/otp/create)
+const handleStateChanged = (newState: 'phone' | 'password' | 'otp' | 'create') => {
   state.value = newState
+}
+
+/** Код подтверждён: держим модалку, пока пользователь не задаст пароль. */
+const onOtpVerified = () => {
+  pendingPassword.value = true
 }
 </script>
 
