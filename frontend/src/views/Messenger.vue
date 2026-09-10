@@ -619,17 +619,19 @@ const goBackToList = () => {
 // Каждый «прямой» переход (открытие чата/контактов/модалки) кладёт маркер в
 // историю; на popstate откатываем экран на шаг. На «корне» (список чатов)
 // системная «назад» выходит из приложения.
-const pushMobileNav = () => {
+const pushMobileNav = (section?: Section) => {
   if (!isDesktop.value) {
     try {
-      window.history.pushState({ pismoNav: true }, '')
+      // В записи истории храним раздел, который будет показан на этом шаге:
+      // по «назад» возвращаемся именно в него, а не всегда в «Чаты».
+      window.history.pushState({ pismoNav: true, pismoView: section ?? view.value }, '')
     } catch {
       /* история недоступна — игнорируем */
     }
   }
 }
 
-const onAppPopState = () => {
+const onAppPopState = (event: PopStateEvent) => {
   if (isDesktop.value) return
   // Просмотр истории — «назад» закрывает просмотрщик.
   if (openStoryId.value !== null) {
@@ -664,8 +666,15 @@ const onAppPopState = () => {
     sidebarRef.value.exitSelection()
     return
   }
-  // Вкладка «Контакты» -> «Чаты».
-  if (view.value === 'contacts') {
+  // Возврат в предыдущий раздел: «назад» идёт по истории переходов
+  // (Чаты → Истории → Контакты и обратно), а не всегда в «Чаты».
+  const previousView = (event.state as { pismoView?: Section } | null)?.pismoView
+  if (previousView && previousView !== view.value) {
+    view.value = previousView
+    return
+  }
+  // Ничей раздел (например корень истории) — считаем, что вернулись в «Чаты».
+  if (view.value !== 'chats') {
     view.value = 'chats'
     return
   }
@@ -681,7 +690,10 @@ const onAppPopState = () => {
 }
 
 // ---------- Данные ----------
-const view = ref<'chats' | 'contacts' | 'stories'>('chats')
+/** Раздел нижнего меню: Чаты / Истории / Контакты. */
+type Section = 'chats' | 'contacts' | 'stories'
+
+const view = ref<Section>('chats')
 const chats = ref<Chat[]>([])
 const messages = ref<Message[]>([])
 
@@ -2349,11 +2361,7 @@ watch(newMessage, (value) => {
 
 // ---------- Навигация ----------
 /** Открывает раздел историй (статусов). */
-const openStories = () => {
-  pushMobileNav()
-  view.value = 'stories'
-  void storiesStore.load()
-}
+const openStories = () => switchSection('stories')
 
 /** Открывает полноэкранный просмотр истории. */
 const openStory = (storyId: number) => {
@@ -2361,19 +2369,17 @@ const openStory = (storyId: number) => {
   openStoryId.value = storyId
 }
 
-const openContacts = () => {
-  pushMobileNav()
-  view.value = 'contacts'
+const openContacts = () => switchSection('contacts')
+
+/** Переключение раздела по нижнему меню — всегда прямой переход. */
+const switchSection = (section: Section) => {
+  if (view.value === section) return
+  pushMobileNav(section)
+  view.value = section
+  if (section === 'stories') void storiesStore.load()
 }
 
-const goToChats = () => {
-  // Если в «Контакты» пришли через историю — возвращаемся по ней.
-  if (!isDesktop.value && window.history.state && window.history.state.pismoNav) {
-    window.history.back()
-    return
-  }
-  view.value = 'chats'
-}
+const goToChats = () => switchSection('chats')
 
 const goToProfile = () => {
   // Профиль всегда открывается списком разделов — если в прошлый раз был
