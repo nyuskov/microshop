@@ -212,6 +212,17 @@
                 <span>Устройства звонка</span>
                 <q-icon v-if="settingsOpen" :name="icon('check')" size="16px" class="more-mark" />
               </button>
+              <!-- Картинка в картинке: разговор можно свернуть в плавающее окно
+                   и заниматься другим (видеозвонок или показ экрана). -->
+              <button
+                v-if="canPictureInPicture"
+                class="more-row"
+                role="menuitem"
+                @click="onPictureInPictureRow"
+              >
+                <q-icon :name="icon('picture_in_picture')" size="20px" />
+                <span>Окно поверх других</span>
+              </button>
             </div>
 
             <!-- Настройки устройств звонка -->
@@ -350,6 +361,28 @@ const onScreenRow = () => {
 const onDevicesRow = () => {
   settingsOpen.value = !settingsOpen.value
   moreOpen.value = false
+}
+
+/** Есть ли смысл в «окне поверх других»: нужен видеоряд и поддержка PiP. */
+const canPictureInPicture = computed(
+  () =>
+    typeof document !== 'undefined' &&
+    document.pictureInPictureEnabled === true &&
+    callStore.status === 'active' &&
+    !callStore.screenSharing &&
+    (callStore.kind === 'video' || callStore.peerScreenSharing)
+)
+
+/** Свернуть разговор в плавающее окно (картинка в картинке). */
+const onPictureInPictureRow = async () => {
+  moreOpen.value = false
+  const video = remoteVideoEl.value
+  if (!video || typeof video.requestPictureInPicture !== 'function') return
+  try {
+    await video.requestPictureInPicture()
+  } catch (error) {
+    console.error('Не удалось открыть окно поверх других:', error)
+  }
 }
 
 /** Умеет ли браузер выводить звук на выбранное устройство (setSinkId). */

@@ -49,6 +49,8 @@ export const ICON_MAP: Record<string, string> = {
   more_horiz: 'ellipsis',
   more_vert: 'ellipsis-vertical',
   search: 'search',
+  share: 'share',
+  picture_in_picture: 'picture-in-picture-2',
   block: 'ban',
   fullscreen: 'maximize',
   navigation: 'navigation',

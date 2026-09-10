@@ -305,6 +305,10 @@
   content: '\E138 ';
 }
 
+.icon-picture-in-picture-2::before {
+  content: '\E3AF ';
+}
+
 .icon-pin::before {
   content: '\E259 ';
 }
@@ -339,6 +343,10 @@
 
 .icon-send::before {
   content: '\E152 ';
+}
+
+.icon-share::before {
+  content: '\E155 ';
 }
 
 .icon-shield::before {

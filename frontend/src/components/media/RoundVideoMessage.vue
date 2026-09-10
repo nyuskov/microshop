@@ -54,6 +54,16 @@
     >
       <q-icon :name="icon('fullscreen')" size="18px" />
     </button>
+
+    <!-- Плавающее окно: видео продолжает играть поверх других приложений -->
+    <button
+      v-if="canPictureInPicture"
+      class="rvm-chip rvm-pip"
+      title="Смотреть в плавающем окне"
+      @click.stop="openPictureInPicture"
+    >
+      <q-icon :name="icon('picture_in_picture')" size="18px" />
+    </button>
   </div>
 
   <!-- Просмотр крупно (полноценный плеер с контролами) -->
@@ -77,7 +87,7 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 defineProps<{
   src: string
@@ -134,6 +144,23 @@ const openPreview = () => {
   // Останавливаем воспроизведение в кружке, чтобы не играло одновременно.
   const video = videoRef.value
   if (video && !video.paused) video.pause()
+}
+
+/** Доступно ли «окно поверх других» (PiP) для видео. */
+const canPictureInPicture = computed(
+  () => typeof document !== 'undefined' && document.pictureInPictureEnabled === true
+)
+
+/** Открыть видео в плавающем окне — можно листать чат и уходить из приложения. */
+const openPictureInPicture = async () => {
+  const video = videoRef.value
+  if (!video || typeof video.requestPictureInPicture !== 'function') return
+  try {
+    if (video.paused) await video.play().catch(() => undefined)
+    await video.requestPictureInPicture()
+  } catch (error) {
+    console.error('Не удалось открыть плавающее окно:', error)
+  }
 }
 
 const closePreview = () => {

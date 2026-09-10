@@ -195,6 +195,7 @@
             @copy="copyMessage"
             @edit="startEditMessage"
             @forward="openForward"
+            @share="shareMessage"
             @save="saveMessageToSelf"
             @delete="deleteMessageOf"
             @report="openReportForMessage"
@@ -1738,6 +1739,49 @@ const copyMessage = async (message: Message) => {
     await navigator.clipboard.writeText(message.text || '')
   } catch (error) {
     console.error('Не удалось скопировать:', getErrorMessage(error))
+  }
+}
+
+/**
+ * «Поделиться» сообщением во внешнее приложение (Web Share API).
+ *
+ * На телефоне открывается системное окно «Поделиться»: так сообщение (или файл
+ * из него) уходит в другое приложение, а не только в другой чат Pismo. Если
+ * система этого не умеет (десктоп), ведём себя как «Копировать» — иначе пункт
+ * меню просто ничего не делал бы.
+ */
+const shareMessage = async (message: Message) => {
+  const share = navigator.share
+  if (typeof share !== 'function') {
+    void copyMessage(message)
+    return
+  }
+  const text = message.text || ''
+  try {
+    // Вложение: пробуем отдать сам файл, иначе — ссылку на него.
+    if (message.file) {
+      const url = mediaUrl(message.file.url)
+      try {
+        const response = await fetch(url)
+        const blob = await response.blob()
+        const file = new File([blob], message.file.name, {
+          type: message.file.mime || blob.type
+        })
+        if (navigator.canShare?.({ files: [file] })) {
+          await share.call(navigator, { files: [file], text })
+          return
+        }
+      } catch {
+        /* файл не отдался — поделимся ссылкой */
+      }
+      await share.call(navigator, { text, url: new URL(url, location.origin).toString() })
+      return
+    }
+    if (text) await share.call(navigator, { text })
+  } catch (error) {
+    // Пользователь закрыл окно «Поделиться» — это не ошибка.
+    if ((error as DOMException)?.name === 'AbortError') return
+    console.error('Не удалось поделиться:', getErrorMessage(error))
   }
 }
 
