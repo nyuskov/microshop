@@ -139,3 +139,49 @@ export async function updateReportStatus(
   })
   return data
 }
+
+/** Одна запись журнала модерации (кто/что/когда). */
+export interface ModerationJournalEntry {
+  id: number
+  action: string
+  /** null — действие автоматики (авто-скрытие по жалобам). */
+  moderator_id: number | null
+  target_user_id: number | null
+  report_id: number | null
+  message_id: number | null
+  note: string
+  created_at: string
+}
+
+export interface ModerationJournalResponse {
+  total: number
+  /** Сколько сообщений скрыто прямо сейчас. */
+  hidden_messages: number
+  items: ModerationJournalEntry[]
+}
+
+/** Подписи действий журнала (значения — из core/models/moderation_action.py). */
+export const JOURNAL_ACTION_LABELS: Record<string, string> = {
+  report_created: 'Жалоба отправлена',
+  message_auto_hidden: 'Авто-скрытие по жалобам',
+  report_status_changed: 'Решение по жалобе',
+  message_hidden: 'Сообщение скрыто модератором',
+  message_restored: 'Сообщение восстановлено'
+}
+
+/** Журнал модерации (админ): доказательство разбора UGC и разбор споров. */
+export async function fetchJournal(params?: {
+  limit?: number
+  offset?: number
+}): Promise<ModerationJournalResponse> {
+  const { data } = await api.get<ModerationJournalResponse>('/moderation/journal/', {
+    params
+  })
+  return data
+}
+
+/** Снимает скрытие со всех сообщений автора (жалобы оказались ложными). */
+export async function unhideUserMessages(userId: number): Promise<number> {
+  const { data } = await api.post<{ restored: number }>(`/moderation/users/${userId}/unhide/`)
+  return data.restored ?? 0
+}

@@ -33,6 +33,15 @@
       @click.stop="onSelectClick"
     ></div>
     <div class="msg-bubble" :class="{ 'round-video-only': isRoundVideoOnly(message) }">
+      <!-- Скрыто до проверки модератором: такое сообщение видит только автор,
+           поэтому пометка объясняет, куда пропал контент у собеседника -->
+      <div v-if="message.hidden" class="moderation-note" role="status">
+        <q-icon name="gavel" size="15px" />
+        <span>
+          Скрыто до проверки модератором
+          <template v-if="message.hidden_reason"> · {{ message.hidden_reason }} </template>
+        </span>
+      </div>
       <!-- Имя автора в групповом чате (у входящих, в начале «серии» сообщений) -->
       <span v-if="authorName && !isOwn" class="msg-author">{{ authorName }}</span>
       <!-- Плашка «Переслано от …» (клик — открыть автора) -->
@@ -593,6 +602,21 @@ const onReport = () => {
   font-style: italic;
   opacity: 0.75;
   margin-right: 6px;
+}
+
+/* Пометка «скрыто до проверки модератором» (видит только автор) */
+.moderation-note {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: -1px 0 4px;
+  padding: 3px 7px;
+  border-radius: 7px;
+  background: rgba(224, 160, 42, 0.14);
+  color: #a5741a;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 /* Плашка «Переслано от …» (как в Telegram: мелко, над содержимым) */

@@ -834,6 +834,9 @@ const lastMessageIsOut = (chat: Chat): boolean => {
 const previewText = (chat: Chat): string => {
   const last = chat.last_message
   if (!last) return 'Нет сообщений'
+  // Скрытое модерацией: сервер не отдаёт ни текст, ни файл — показываем пометку,
+  // а не пустую строку (иначе выглядит как сбой).
+  if (last.hidden) return 'Скрыто до проверки модератором'
   if (last.encrypted && isEncryptedPayload(last.text)) return '🔒 Сообщение'
   const me = props.currentUserId
   const mine = me !== null && last.user_id === me
@@ -922,6 +925,7 @@ const messageSenderPrefix = (message: Message): string =>
 
 /** Текст сниппета сообщения (текст или тип вложения). */
 const messageSnippetText = (message: Message): string => {
+  if (message.hidden) return 'Скрыто до проверки модератором'
   if (message.encrypted && isEncryptedPayload(message.text)) return '🔒 Сообщение'
   if (message.text) return message.text
   return message.file ? mediaTypeLabel(message.file) : ''

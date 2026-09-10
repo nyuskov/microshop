@@ -72,6 +72,14 @@ class Message(IdIntPkMixin, Base):
     edited_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Скрыто модерацией (авто после N жалоб или ручным решением). Правило
+    # показа: видят все, КРОМЕ автора — он получает пометку «скрыто до проверки»
+    # (см. messages/crud и api_v1/moderation).
+    hidden_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Почему скрыто: причина жалоб/решение модератора — показывается автору.
+    hidden_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Вложение (файл/изображение)
     file_name: Mapped[str | None] = mapped_column(String(255))

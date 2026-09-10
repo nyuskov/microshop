@@ -69,6 +69,19 @@ def _user_display_name(user: User) -> str:
     return user.username
 
 
+def _hide_filter(viewer_id: int):
+    """Условие выборки: скрытое модерацией видно только автору.
+
+    Скрытие ставит автоматика (3 жалобы от разных людей) или модератор. Автор
+    должен видеть своё сообщение с пометкой «скрыто до проверки» — иначе он не
+    поймёт, куда оно пропало, и не сможет его исправить.
+    """
+    return or_(
+        Message.hidden_at.is_(None),
+        Message.user_id == viewer_id,
+    )
+
+
 def _forwarded_payload(message: Message) -> dict | None:
     """Снимок пересылки («переслано от …») либо None для обычных сообщений."""
     if message.forwarded_from_id is None:
@@ -84,6 +97,10 @@ def _forwarded_payload(message: Message) -> dict | None:
 
 def message_to_dict(message: Message, user_id: int) -> dict:
     """Преобразует сообщение (с загруженными реакциями) в словарь для API."""
+    # Скрытое модерацией сообщение автор видит с пометкой «скрыто до проверки»
+    # (текст отдаём, чтобы он понял, что именно скрыто), остальные не получают
+    # его вовсе — фильтр на уровне выборки (см. _hide_filter).
+    hidden = message.hidden_at is not None
     return {
         "id": message.id,
         "chat_id": message.chat_id,
@@ -100,6 +117,8 @@ def message_to_dict(message: Message, user_id: int) -> dict:
         "call_state": message.call_state,
         "call_duration": message.call_duration,
         "call_caller_id": message.call_caller_id,
+        "hidden": hidden,
+        "hidden_reason": message.hidden_reason if hidden else None,
         "file": _file_payload(message),
         "reactions": _reactions_payload(message.reactions, user_id),
         "forwarded_from": _forwarded_payload(message),
@@ -107,12 +126,19 @@ def message_to_dict(message: Message, user_id: int) -> dict:
 
 
 def message_basic_to_dict(message: Message) -> dict:
-    """Компактное представление сообщения (без реакций) для списка чатов."""
+    """Компактное представление сообщения (без реакций) для списка чатов.
+
+    Скрытое модерацией сообщение не отдаёт содержимое: в превью чата вместо
+    текста и файла уходит пометка (``hidden=true``), иначе скрытие обходилось бы
+    в списке чатов. ``text`` остаётся строкой (схема API), поэтому здесь пустая
+    строка, а не None.
+    """
+    hidden = message.hidden_at is not None
     return {
         "id": message.id,
         "chat_id": message.chat_id,
         "user_id": message.user_id,
-        "text": message.text,
+        "text": "" if hidden else message.text,
         "timestamp": message.timestamp,
         "reply_to_id": message.reply_to_id,
         "is_read": message.is_read,
@@ -124,9 +150,11 @@ def message_basic_to_dict(message: Message) -> dict:
         "call_state": message.call_state,
         "call_duration": message.call_duration,
         "call_caller_id": message.call_caller_id,
-        "file": _file_payload(message),
+        "hidden": hidden,
+        "hidden_reason": message.hidden_reason if hidden else None,
+        "file": None if hidden else _file_payload(message),
         "reactions": [],
-        "forwarded_from": _forwarded_payload(message),
+        "forwarded_from": None if hidden else _forwarded_payload(message),
     }
 
 
@@ -380,6 +408,9 @@ async def list_chat_messages(
     stmt = select(Message).where(Message.chat_id == chat_id)
     if before_id is not None:
         stmt = stmt.where(Message.id < before_id)
+    # Скрытое модерацией не отдаём никому, кроме автора: он видит пометку
+    # «скрыто до проверки» и может поправить сообщение (см. moderation/service).
+    stmt = stmt.where(_hide_filter(user_id))
 
     # Всегда работаем «страницами»: от новых к старым, затем разворачиваем.
     page_size = limit if limit is not None else DEFAULT_MESSAGE_PAGE_SIZE
@@ -446,7 +477,11 @@ async def list_pinned_messages(
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
     stmt = (
         select(Message)
-        .where(Message.chat_id == chat_id, Message.is_pinned.is_(True))
+        .where(
+            Message.chat_id == chat_id,
+            Message.is_pinned.is_(True),
+            _hide_filter(user_id),
+        )
         .options(selectinload(Message.reactions))
         .order_by(Message.timestamp, Message.id)
     )
@@ -631,6 +666,13 @@ async def forward_message(
     await _ensure_not_blocked(session, chat_id=chat_id, user_id=user_id)
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
+    # Скрытое модерацией в пересылку не попадает: иначе скрытие обходилось бы
+    # одной пересылкой (копия уже никому не подчиняется).
+    if source.hidden_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Сообщение скрыто до проверки модератором — пересылка недоступна",
+        )
     if source.encrypted:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -711,6 +753,8 @@ async def search_messages(
         await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
         stmt = stmt.where(Message.chat_id == chat_id)
 
+    # Скрытое модерацией не ищем: иначе поиск находил бы скрытый контент.
+    stmt = stmt.where(_hide_filter(user_id))
     stmt = stmt.order_by(Message.timestamp.desc(), Message.id.desc()).limit(limit)
     result = await session.execute(stmt)
     rows = list(result.scalars().all())

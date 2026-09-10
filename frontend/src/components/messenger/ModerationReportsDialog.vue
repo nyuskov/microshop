@@ -19,9 +19,60 @@
         >
           {{ tab.label }}
         </button>
+        <button class="mod-tab" :class="{ active: showJournal }" @click="toggleJournal">
+          Журнал
+        </button>
       </div>
 
-      <q-card-section class="mod-body">
+      <q-card-section v-if="showJournal" class="mod-body">
+        <p class="mod-hint">
+          Журнал модерации: что и когда произошло с контентом — отправили жалобу, автомат скрыл
+          сообщение после нескольких жалоб, модератор подтвердил нарушение или восстановил контент.
+          Записи не меняются, поэтому на них можно ссылаться при разборе спорных случаев.
+        </p>
+        <p v-if="journalHidden !== null" class="mod-count">
+          Скрыто сейчас: {{ journalHidden }} · записей в журнале: {{ journalTotal }}
+        </p>
+        <div v-if="journalLoading" class="mod-empty">Загрузка…</div>
+        <div v-else-if="journal.length === 0" class="mod-empty">Журнал пуст.</div>
+        <template v-else>
+          <article v-for="entry in journal" :key="entry.id" class="mod-item">
+            <header class="mod-item-head">
+              <span class="mod-reason">{{ journalActionLabel(entry.action) }}</span>
+              <span
+                class="mod-status"
+                :class="entry.moderator_id === null ? 's-new' : 's-in_review'"
+              >
+                {{
+                  entry.moderator_id === null ? 'автоматика' : `модератор #${entry.moderator_id}`
+                }}
+              </span>
+              <q-space />
+              <span class="mod-date">{{ formatReportDate(entry.created_at) }}</span>
+            </header>
+            <p class="mod-muted">
+              {{ entry.note }}
+              <template v-if="entry.message_id"> · сообщение #{{ entry.message_id }}</template>
+              <template v-if="entry.report_id"> · жалоба #{{ entry.report_id }}</template>
+              <template v-if="entry.target_user_id"> · автор #{{ entry.target_user_id }} </template>
+            </p>
+            <div v-if="entry.target_user_id" class="mod-actions">
+              <q-btn
+                flat
+                no-caps
+                dense
+                color="primary"
+                label="Восстановить все сообщения автора"
+                :loading="busyUnhide === entry.target_user_id"
+                @click="restoreAuthorMessages(entry.target_user_id)"
+              />
+            </div>
+          </article>
+        </template>
+        <p v-if="journalError" class="mod-error" role="alert">{{ journalError }}</p>
+      </q-card-section>
+
+      <q-card-section v-if="!showJournal" class="mod-body">
         <p class="mod-hint">
           Жалобы приходят из приложения: «Пожаловаться» в шапке диалога или в меню сообщения. Разбор
           нигде, кроме этой таблицы, не отображается — статус нужен, чтобы не разбирать одно дважды.
@@ -97,10 +148,14 @@
 import { onMounted, ref, watch } from 'vue'
 
 import {
+  JOURNAL_ACTION_LABELS,
   REPORT_STATUS_LABELS,
+  fetchJournal,
   fetchReports,
   reportReasonLabel,
+  unhideUserMessages,
   updateReportStatus,
+  type ModerationJournalEntry,
   type ModerationReport,
   type ReportStatus
 } from '@/services/moderation'
@@ -195,6 +250,56 @@ const contextLabel = (report: ModerationReport): string => {
 
 watch(activeStatus, load)
 onMounted(load)
+
+// --- Журнал модерации (третья вкладка) ---
+// Отдельный вид в том же окне: модератору нужно видеть и очередь жалоб, и след
+// принятых решений (требование магазинов к разбору UGC).
+const showJournal = ref(false)
+const journal = ref<ModerationJournalEntry[]>([])
+const journalTotal = ref(0)
+const journalHidden = ref<number | null>(null)
+const journalLoading = ref(false)
+const journalError = ref('')
+const busyUnhide = ref<number | null>(null)
+
+const journalActionLabel = (action: string): string => JOURNAL_ACTION_LABELS[action] ?? action
+
+const loadJournal = async () => {
+  journalLoading.value = true
+  journalError.value = ''
+  try {
+    const data = await fetchJournal({ limit: 100 })
+    journal.value = data.items
+    journalTotal.value = data.total
+    journalHidden.value = data.hidden_messages
+  } catch (err) {
+    journalError.value = getErrorMessage(err, 'Не удалось загрузить журнал')
+  } finally {
+    journalLoading.value = false
+  }
+}
+
+const toggleJournal = async () => {
+  showJournal.value = !showJournal.value
+  if (showJournal.value && journal.value.length === 0) {
+    await loadJournal()
+  }
+}
+
+/** Возврат контента автора после ложных жалоб (действие попадает в журнал). */
+const restoreAuthorMessages = async (userId: number) => {
+  if (busyUnhide.value !== null) return
+  busyUnhide.value = userId
+  journalError.value = ''
+  try {
+    await unhideUserMessages(userId)
+    await loadJournal()
+  } catch (err) {
+    journalError.value = getErrorMessage(err, 'Не удалось восстановить сообщения')
+  } finally {
+    busyUnhide.value = null
+  }
+}
 </script>
 
 <style scoped>

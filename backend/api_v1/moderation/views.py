@@ -17,8 +17,9 @@ from api_v1.rate_limit import enforce_limit
 from api_v1.users.schemas import UserSearchResultSchema
 from core.config import settings
 from core.models import Message, User, UserReport, db_helper
+from core.models.moderation_action import ACTION_MESSAGE_RESTORED, ACTION_REPORT_CREATED
 
-from . import crud, schemas
+from . import crud, schemas, service
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,20 @@ async def create_report(
         user.id,
         payload.user_id,
         payload.reason,
+    )
+    await service.log_action(
+        session,
+        action=ACTION_REPORT_CREATED,
+        target_user_id=payload.user_id,
+        report_id=report.id,
+        message_id=payload.message_id,
+        note=f"жалоба от пользователя {user.id}: "
+        f"{service.REASON_TITLES.get(payload.reason, payload.reason)}",
+    )
+    # Автоматика: достаточно жалоб от разных людей — скрываем до разбора и
+    # рассказываем автору письмом (см. moderation/service.py).
+    await service.maybe_auto_hide(
+        session, message_id=payload.message_id, reported_id=payload.user_id
     )
     return schemas.ReportResponse(id=report.id, status=report.status)
 
@@ -201,14 +216,76 @@ async def update_report(
     updated = await crud.update_report_status(
         session, report, status=payload.status, note=payload.note
     )
+    # Решение влияет на контент: подтверждение скрывает сообщение, отклонение
+    # возвращает ранее скрытое. Заявителю уходит письмо, действие — в журнал.
+    changed = await service.apply_report_status(
+        session,
+        updated,
+        moderator_id=admin.id,
+        status=payload.status,
+        note=payload.note,
+    )
     logger.info(
-        "Жалоба #%s разобрана: статус %s (модератор %s)",
+        "Жалоба #%s разобрана: статус %s (модератор %s), скрыто=%s, восстановлено=%s",
         updated.id,
         updated.status,
         admin.id,
+        changed["hidden"],
+        changed["restored"],
     )
     items = await _serialize_reports(session, [updated])
     return items[0]
+
+
+@router.get("/journal/", response_model=schemas.JournalResponse)
+async def get_journal(
+    admin: Annotated[User, Depends(get_current_superuser)],
+    session: AsyncSession = Depends(db_helper.session_dependency),
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> schemas.JournalResponse:
+    """Журнал модерации: кто, когда и что сделал (включая действия автомата).
+
+    Нужен для разбора споров («почему сообщение скрыто») и как доказательство
+    разбора UGC — требование магазинов приложений.
+    """
+    rows, total = await service.list_journal(session, limit=limit, offset=offset)
+    hidden = await service.hidden_messages_count(session)
+    return schemas.JournalResponse(
+        total=total,
+        hidden_messages=hidden,
+        items=[
+            schemas.JournalItemSchema(
+                id=row.id,
+                action=row.action,
+                moderator_id=row.moderator_id,
+                target_user_id=row.target_user_id,
+                report_id=row.report_id,
+                message_id=row.message_id,
+                note=row.note,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ],
+    )
+
+
+@router.post("/users/{user_id}/unhide/", response_model=schemas.UnhideResponse)
+async def unhide_user_messages(
+    user_id: int,
+    admin: Annotated[User, Depends(get_current_superuser)],
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> schemas.UnhideResponse:
+    """Снимает скрытие со всех сообщений автора (жалобы оказались ложными)."""
+    restored = await service.unhide_all_for_user(session, user_id=user_id)
+    await service.log_action(
+        session,
+        action=ACTION_MESSAGE_RESTORED,
+        moderator_id=admin.id,
+        target_user_id=user_id,
+        note=f"снято скрытие с {restored} сообщений (модератор {admin.id})",
+    )
+    return schemas.UnhideResponse(restored=restored)
 
 
 @router.get("/blocks/", response_model=list[UserSearchResultSchema])

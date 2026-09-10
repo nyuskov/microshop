@@ -99,6 +99,13 @@ export interface Message {
   file: MessageFile | null
   reactions: ReactionSummary[]
   forwarded_from: ForwardedFrom | null
+  /**
+   * Скрыто модерацией до разбора (авто после 3 жалоб или решением модератора).
+   * Такое сообщение видит только автор — с пометкой «скрыто до проверки»;
+   * остальным оно не приходит вовсе (см. api_v1/moderation/service.py).
+   */
+  hidden?: boolean
+  hidden_reason?: string | null
 }
 
 export interface CreateMessageRequest {

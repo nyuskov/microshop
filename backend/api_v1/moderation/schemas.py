@@ -69,3 +69,31 @@ class ReportUpdateRequest(BaseModel):
 
     status: ReportStatus
     note: str | None = Field(default=None, max_length=1000)
+
+
+class JournalItemSchema(BaseModel):
+    """Одна запись журнала модерации."""
+
+    id: int
+    action: str
+    # NULL = действие автоматики (авто-скрытие по жалобам).
+    moderator_id: int | None = None
+    target_user_id: int | None = None
+    report_id: int | None = None
+    message_id: int | None = None
+    note: str = ""
+    created_at: datetime
+
+
+class JournalResponse(BaseModel):
+    """Журнал модерации + сколько сообщений скрыто сейчас."""
+
+    total: int
+    hidden_messages: int = 0
+    items: list[JournalItemSchema]
+
+
+class UnhideResponse(BaseModel):
+    """Сколько сообщений вернули в чаты."""
+
+    restored: int = 0

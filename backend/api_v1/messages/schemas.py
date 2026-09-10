@@ -62,6 +62,10 @@ class Message(BaseModel):
     is_pinned: bool = False
     encrypted: bool = False
     edited_at: datetime | None = None
+    # Скрыто модерацией: сообщение видит только автор (с пометкой), остальным
+    # оно не отдаётся (см. api_v1/moderation/service.py).
+    hidden: bool = False
+    hidden_reason: str | None = None
     # Системная отметка о звонке.
     kind: str = "text"
     call_kind: str | None = None

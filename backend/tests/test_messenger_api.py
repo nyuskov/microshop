@@ -2983,3 +2983,237 @@ async def test_media_quota_can_be_disabled(
     usage = await api.client.get("/api/v1/users/me/storage/", headers=api.auth(token))
     assert usage.json()["quota_bytes"] == 0
     assert usage.json()["percent"] == 0
+
+
+# --- Модерация: авто-скрытие по жалобам и журнал --------------------------
+
+
+@pytest.fixture
+def reported_user_email(api: _ApiCtx, monkeypatch: pytest.MonkeyPatch):
+    """Перехватывает письма модерации (без реальной отправки)."""
+    sent: list[tuple[str, str, str]] = []
+
+    def _fake(to: str, subject: str, body: str) -> None:
+        sent.append((to, subject, body))
+
+    monkeypatch.setattr(
+        "api_v1.auth.security_notifications.enqueue_security_email", _fake
+    )
+    return sent
+
+
+async def _author_message_with_reports(
+    api: _ApiCtx, count: int
+) -> tuple[dict, list[tuple[User, str]], User, str]:
+    """Готовит группу, сообщение автора и ``count`` жалоб от разных участников.
+
+    Именно группа, а не личный чат: жалобу можно подать только на сообщение из
+    своего чата, а «3 разные жалобы» в личном чате физически невозможны.
+    """
+    author = await api.make_user()
+    tauthor = await api.token_for(author)
+
+    reporters: list[tuple[User, str]] = []
+    for _ in range(count):
+        reporter = await api.make_user()
+        reporters.append((reporter, await api.token_for(reporter)))
+
+    group = await _create_group(
+        api, tauthor, "Группа жалоб", [reporter.id for reporter, _ in reporters]
+    )
+    message = await api.send(tauthor, group["id"], "маркер-жалобы")
+
+    # Письма модерации уходят на e-mail аккаунта, поэтому адреса нужны и автору
+    # (ему пишем о скрытии), и заявителям (им — решение по жалобе).
+    async with api.factory() as session:
+        for user in [author, *[reporter for reporter, _ in reporters]]:
+            row = await session.get(User, user.id)
+            assert row is not None
+            row.email = f"mod{uuid.uuid4().hex[:8]}@example.com"
+        await session.commit()
+
+    for reporter, token in reporters:
+        response = await api.client.post(
+            "/api/v1/moderation/reports/",
+            json={
+                "user_id": author.id,
+                "reason": "spam",
+                "message_id": message["id"],
+                "comment": "спам",
+            },
+            headers=api.auth(token),
+        )
+        assert response.status_code == 201, response.text
+    return message, reporters, author, tauthor
+
+
+async def _messages_in_chat(api: _ApiCtx, token: str, chat_id: int) -> list[dict]:
+    response = await api.client.get(
+        f"/api/v1/messages/{chat_id}/", headers=api.auth(token)
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+async def test_two_reports_do_not_hide_message(
+    api: _ApiCtx, reported_user_email: list[tuple[str, str, str]]
+) -> None:
+    """Порог авто-скрытия — 3 жалобы от разных людей, две ничего не скрывают."""
+    message, _reporters, _author, tauthor = await _author_message_with_reports(api, 2)
+
+    rows = await _messages_in_chat(api, tauthor, message["chat_id"])
+    assert rows[-1]["hidden"] is False
+
+
+async def test_third_report_hides_message_for_everyone_but_author(
+    api: _ApiCtx, reported_user_email: list[tuple[str, str, str]]
+) -> None:
+    """3 жалобы → сообщение скрыто: другие его не видят, автор видит с пометкой."""
+    message, reporters, _author, tauthor = await _author_message_with_reports(api, 3)
+
+    # Автор видит сообщение и пометку, что оно скрыто до проверки.
+    rows = await _messages_in_chat(api, tauthor, message["chat_id"])
+    hidden_row = next(row for row in rows if row["id"] == message["id"])
+    assert hidden_row["hidden"] is True
+    assert "жалоб" in (hidden_row["hidden_reason"] or "")
+
+    # Другой участник группы не видит скрытое вообще.
+    _reporter, treporter = reporters[0]
+    reporter_rows = await _messages_in_chat(api, treporter, message["chat_id"])
+    assert message["id"] not in [row["id"] for row in reporter_rows]
+
+    # Поиск тоже не находит скрытое.
+    found = await api.client.get(
+        "/api/v1/messages/search/",
+        params={"q": "маркер-жалобы"},
+        headers=api.auth(treporter),
+    )
+    assert found.status_code == 200, found.text
+    assert found.json() == []
+
+    # Пересылать скрытое нельзя.
+    forwarded = await api.client.post(
+        "/api/v1/messages/forward/",
+        json={"message_id": message["id"], "chat_id": message["chat_id"]},
+        headers=api.auth(tauthor),
+    )
+    assert forwarded.status_code == 400, forwarded.text
+
+    # Превью чата в списке не раскрывает содержимое скрытого.
+    chats = await api.client.get("/api/v1/chats/", headers=api.auth(treporter))
+    group_preview = next(
+        item["last_message"]
+        for item in chats.json()
+        if item["id"] == message["chat_id"]
+    )
+    assert group_preview["text"] == ""
+    assert group_preview["hidden"] is True
+
+    # Автору ушло письмо о скрытии.
+    assert any(
+        "скрыто" in subject.lower() for _to, subject, _body in reported_user_email
+    )
+
+
+async def test_same_reporter_twice_does_not_hide(
+    api: _ApiCtx, reported_user_email: list[tuple[str, str, str]]
+) -> None:
+    """Считаем РАЗНЫХ заявителей: один человек не скроет контент четырьмя жалобами."""
+    message, reporters, _author, tauthor = await _author_message_with_reports(api, 1)
+    _reporter, treporter = reporters[0]
+
+    for _ in range(3):
+        created = await api.client.post(
+            "/api/v1/moderation/reports/",
+            json={
+                "user_id": message["user_id"],
+                "reason": "spam",
+                "message_id": message["id"],
+            },
+            headers=api.auth(treporter),
+        )
+        assert created.status_code == 201, created.text
+
+    rows = await _messages_in_chat(api, tauthor, message["chat_id"])
+    assert next(row for row in rows if row["id"] == message["id"])["hidden"] is False
+
+
+async def test_moderator_decision_hides_and_restores(
+    api: _ApiCtx, reported_user_email: list[tuple[str, str, str]]
+) -> None:
+    """Модератор подтверждает нарушение (скрывает) или отклоняет жалобу (возвращает)."""
+    message, _reporters, author, tauthor = await _author_message_with_reports(api, 3)
+    _admin, tadmin = await _make_admin(api)
+
+    reports = await api.client.get(
+        "/api/v1/moderation/reports/?status=new", headers=api.auth(tadmin)
+    )
+    report_id = reports.json()["items"][0]["id"]
+
+    # Отклоняем — авто-скрытие снимается, сообщение снова можно пересылать.
+    rejected = await api.client.patch(
+        f"/api/v1/moderation/reports/{report_id}/",
+        json={"status": "rejected", "note": "нарушения нет"},
+        headers=api.auth(tadmin),
+    )
+    assert rejected.status_code == 200, rejected.text
+
+    forwarded = await api.client.post(
+        "/api/v1/messages/forward/",
+        json={"message_id": message["id"], "chat_id": message["chat_id"]},
+        headers=api.auth(tauthor),
+    )
+    assert forwarded.status_code == 200, forwarded.text
+    assert any(
+        "рассмотрена" in subject.lower() for _to, subject, _body in reported_user_email
+    )
+
+    # Подтверждаем нарушение — сообщение скрыто до восстановления вручную.
+    resolved = await api.client.patch(
+        f"/api/v1/moderation/reports/{report_id}/",
+        json={"status": "resolved", "note": "спам подтверждён"},
+        headers=api.auth(tadmin),
+    )
+    assert resolved.status_code == 200, resolved.text
+    rows = await _messages_in_chat(api, tauthor, message["chat_id"])
+    row = next(item for item in rows if item["id"] == message["id"])
+    assert row["hidden"] is True
+    assert row["hidden_reason"] == "спам подтверждён"
+
+    # Админ может вернуть контент одним действием — и это попадает в журнал.
+    restored = await api.client.post(
+        f"/api/v1/moderation/users/{author.id}/unhide/", headers=api.auth(tadmin)
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["restored"] == 1
+
+
+async def test_moderation_journal_records_actions(
+    api: _ApiCtx, reported_user_email: list[tuple[str, str, str]]
+) -> None:
+    """Журнал показывает и действия автомата, и решения модератора."""
+    message, _reporters, author, _tauthor = await _author_message_with_reports(api, 3)
+    _admin, tadmin = await _make_admin(api)
+
+    journal = await api.client.get(
+        "/api/v1/moderation/journal/", headers=api.auth(tadmin)
+    )
+    assert journal.status_code == 200, journal.text
+    payload = journal.json()
+    actions = [item["action"] for item in payload["items"]]
+    assert "report_created" in actions
+    assert "message_auto_hidden" in actions
+    assert payload["hidden_messages"] == 1
+    auto = next(
+        item for item in payload["items"] if item["action"] == "message_auto_hidden"
+    )
+    assert auto["moderator_id"] is None, "авто-скрытие пишется без модератора"
+    assert auto["message_id"] == message["id"]
+    assert auto["target_user_id"] == author.id
+
+    # Журнал — только для администраторов.
+    outsider = await api.make_user()
+    denied = await api.client.get(
+        "/api/v1/moderation/journal/", headers=api.auth(await api.token_for(outsider))
+    )
+    assert denied.status_code == 403, denied.text
