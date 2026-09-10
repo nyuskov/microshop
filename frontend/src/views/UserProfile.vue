@@ -14,6 +14,7 @@ import {
 } from '@/services/pwa'
 import { disableNativePush, enableNativePush, isNativeApp } from '@/services/nativePush'
 import { fetchStorageInfo, formatBytes, type StorageInfo } from '@/services/storage'
+import { clearAppCache, readDeviceCache, type DeviceCacheInfo } from '@/utils/deviceCache'
 import {
   deviceLabelOf,
   fetchSecurityLog,
@@ -283,9 +284,34 @@ const loadStorage = async () => {
   } finally {
     storageLoading.value = false
   }
+  await loadDeviceCache()
 }
 
 void loadStorage()
+
+// ---------- Кэш приложения на устройстве (оболочка: страницы, шрифты, иконки) ----------
+const deviceCache = ref<DeviceCacheInfo | null>(null)
+const cacheClearing = ref(false)
+const cacheNotice = ref('')
+
+const loadDeviceCache = async () => {
+  deviceCache.value = await readDeviceCache()
+}
+
+/** Очистить кэш оболочки: файлы скачаются заново при следующем открытии. */
+const onClearAppCache = async () => {
+  cacheClearing.value = true
+  cacheNotice.value = ''
+  try {
+    const removed = await clearAppCache()
+    await loadDeviceCache()
+    cacheNotice.value = removed
+      ? `Готово: удалено файлов — ${removed}. Переписка не затронута.`
+      : 'Кэш уже пуст.'
+  } finally {
+    cacheClearing.value = false
+  }
+}
 
 // ---------- Журнал безопасности: что происходило с аккаунтом ----------
 // Входы (в т.ч. неудачные), запросы кодов, подтверждение нового устройства,
@@ -995,6 +1021,29 @@ const onNotificationsToggle = async (val: boolean) => {
           <p v-else class="storage-hint">
             {{ storageLoading ? 'Загружаем…' : 'Не удалось получить данные хранилища.' }}
           </p>
+
+          <!-- Кэш на устройстве: оболочка приложения (сам бандл, шрифты, иконки).
+               Вложения кэширует браузер, поэтому их здесь нет. -->
+          <div v-if="deviceCache?.supported" class="device-cache">
+            <div class="storage-line">
+              <span class="storage-used">Кэш приложения на устройстве</span>
+              <span class="storage-files">{{ formatBytes(deviceCache.usage) }}</span>
+            </div>
+            <p class="storage-hint">
+              {{ deviceCache.entries }} файл(ов) оболочки (страницы, шрифты, иконки). Переписка,
+              черновики и настройки лежат отдельно и очисткой не затрагиваются.
+            </p>
+            <button
+              type="button"
+              class="storage-refresh"
+              :disabled="cacheClearing"
+              @click="onClearAppCache"
+            >
+              <q-icon :name="icon('delete_outline')" size="15px" />
+              {{ cacheClearing ? 'Очищаем…' : 'Очистить кэш приложения' }}
+            </button>
+            <p v-if="cacheNotice" class="storage-hint">{{ cacheNotice }}</p>
+          </div>
         </section>
 
         <!-- Безопасность: пароль и сессии -->
@@ -2022,6 +2071,16 @@ const onNotificationsToggle = async (val: boolean) => {
 
 .storage-hint.warn {
   color: var(--ms-warn);
+}
+
+/* Кэш приложения на устройстве: отдельный блок под лимитом аккаунта */
+.device-cache {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ms-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .storage-refresh {
