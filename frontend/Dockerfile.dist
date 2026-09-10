@@ -25,3 +25,8 @@ ENV VITE_API_ORIGIN=${VITE_API_ORIGIN}
 # перекрыло бы .env (Vite не перезаписывает существующие переменные окружения),
 # и панель GIF не увидела бы ключ на сервере.
 RUN pnpm run build-only
+
+# Приводим результат к пути, из которого его ждёт nginx-образ (/usr/share/nginx/html):
+# иначе «поставщик» и «раздатчик» статики говорят на разных путях и копирование
+# в том молча получается пустым.
+RUN mkdir -p /usr/share/nginx/html && cp -a /app/dist/. /usr/share/nginx/html/

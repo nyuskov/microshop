@@ -248,8 +248,7 @@ services:
     command:
       - >
         find /usr/share/nginx/html -mindepth 1 -maxdepth 1 ! -name index.html -exec cp -a {} /dst/ \;
-        cp -a /usr/share/nginx/html/index.html /dst/index.html &&
-        echo "статика обновлена: $(ls /dst/assets | wc -l) файлов в assets"
+        cp -a /usr/share/nginx/html/index.html /dst/index.html &&        && test -s /dst/index.html        echo "статика обновлена: $(ls /dst/assets | wc -l) файлов в assets"
     volumes:
       - frontend_html:/dst
     networks:
