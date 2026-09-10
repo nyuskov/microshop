@@ -76,10 +76,14 @@ say "7/8 nginx"
 running_image=$(docker inspect -f '{{.Image}}' "$PROJECT-frontend-1" 2>/dev/null || echo none)
 built_image=$(docker inspect -f '{{.Id}}' "$PROJECT-frontend:latest" 2>/dev/null || echo none)
 if [ "$running_image" != "$built_image" ]; then
-  # Единичный случай: поменялся nginx.prod.conf или Dockerfile.nginx. Compose сам
-  # может не заметить смену образа, поэтому пересоздаём явно (короткий разрыв).
-  echo "образ nginx изменился — пересоздаём контейнер (единичный случай)"
-  $COMPOSE up -d --no-build --no-deps --force-recreate frontend
+  # Пересоздавать не будем: compose сам пересоздаёт контейнер, когда меняется
+  # конфиг (nginx.prod.conf, тома, порты), а это и есть обычный случай. Здесь
+  # только предупреждаем, чтобы расхождение образов не потерялось.
+  echo "ВНИМАНИЕ: контейнер frontend работает на другом образе, чем собран"
+  echo "  в контейнере: $running_image"
+  echo "  собран:       $built_image"
+  echo "  пересоздайте вручную, если важно подтянуть базовый образ"
+  $COMPOSE up -d --no-build --no-deps frontend
   wait_healthy "$PROJECT-frontend-1"
 else
   echo "образ nginx не менялся — только reload config (без простоя)"
