@@ -12,19 +12,19 @@ function vueFiles(dir: string): string[] {
   })
 }
 
-describe('icon(): логическое имя → классы Font Awesome', () => {
+describe('icon(): логическое имя → классы иконки', () => {
   it('превращает имя в классы, которые понимает Quasar', () => {
-    // Префикс fa- обязателен: иначе Quasar примет значение за имя лигатуры и
-    // нарисует его ТЕКСТОМ внутри <i class="material-icons">.
-    expect(icon('close')).toBe('fa-solid fa-xmark')
-    expect(icon('reply')).toBe('fa-solid fa-reply')
+    // Префикс `icon-` обязателен: по нему Quasar понимает, что получил список
+    // классов, а не имя лигатуры (иначе нарисует значение ТЕКСТОМ).
+    expect(icon('close')).toBe('icon-lucide icon-x')
+    expect(icon('reply')).toBe('icon-lucide icon-reply')
     expect(icon('user')).toBe('user')
   })
 
   it('пустое значение и готовые классы пропускает как есть', () => {
     expect(icon(undefined)).toBeUndefined()
     expect(icon('')).toBeUndefined()
-    expect(icon('fa-solid fa-user')).toBe('fa-solid fa-user')
+    expect(icon('icon-lucide icon-user')).toBe('icon-lucide icon-user')
   })
 })
 
@@ -47,14 +47,16 @@ describe('мэппинг иконок', () => {
     // Иначе иконка отрендерится пустотой: имени не будет в CSS.
     const css = readFileSync('src/assets/icons.css', 'utf8')
     const missing = [...new Set(Object.values(ICON_MAP))].filter(
-      (fa) => !css.includes(`.fa-${fa}::before`)
+      (name) => !css.includes(`.icon-${name}::before`)
     )
     expect(missing).toEqual([])
   })
 
-  it('в CSS подключены оба шрифта: свой (Font Awesome) и резервный (Material)', () => {
+  it('в CSS подключены оба шрифта: свой (Lucide) и резервный (Material)', () => {
     const css = readFileSync('src/assets/icons.css', 'utf8')
     expect(css).toContain("font-family: 'Pismo Icons'")
     expect(css).toContain("font-family: 'Material Symbols Rounded'")
+    // База рисует иконки своим шрифтом, а не лигатурами Material.
+    expect(css).toContain('.icon-lucide {')
   })
 })

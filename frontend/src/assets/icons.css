@@ -1,16 +1,17 @@
 /* Иконки интерфейса. ФАЙЛ СГЕНЕРИРОВАН: frontend/scripts/build-icons-css.py
  *
- * Логические имена в коде (`close`, `reply`, ...) превращает в классы
- * функция `icon()` из src/utils/icons.ts, а сами глифы берутся из Font
- * Awesome Free (только используемые — см. урезанный шрифт ниже).
+ * Набор — Lucide (тонкий штрих, скруглённые концы). Логические имена в
+ * коде (`close`, `reply`, ...) превращает в классы функция `icon()` из
+ * src/utils/icons.ts, а глифы берутся из урезанного шрифта ниже.
+ *
+ * Класс начинается с `icon-` намеренно: по этому префиксу Quasar понимает,
+ * что получил список классов, а не имя лигатуры (иначе рисует текстом).
  *
  * Добавили иконку в код — допишите её в ICON_MAP и прогоните скрипт,
  * иначе иконка отрендерится пустотой (имени не будет в CSS).
  */
-/* Резервный шрифт: внутренние элементы Quasar (стрелки, «очистить» у
- * полей и т.п.) и любое имя, которого нет в ICON_MAP, рисуются им.
- * Собирается скриптом build-icons-font.py (Material Symbols Rounded,
- * урезанный до используемых имён). */
+/* Резервный шрифт: внутренние элементы Quasar и имена, которых нет в
+ * ICON_MAP, рисуются им (см. scripts/build-icons-font.py). */
 @font-face {
   font-family: 'Material Symbols Rounded';
   font-style: normal;
@@ -21,16 +22,14 @@
 @font-face {
   font-family: 'Pismo Icons';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 400;
   font-display: block;
-  src: url('./fonts/fa-solid-subset.woff2') format('woff2');
+  src: url('./fonts/lucide-subset.woff2') format('woff2');
 }
 
-/* База: класс `fa-solid` добавляет icon() (Quasar по префиксу fa-
- * понимает, что это список классов, а не имя лигатуры). */
-.fa-solid {
+/* База: класс добавляет icon() */
+.icon-lucide {
   font-family: 'Pismo Icons';
-  font-weight: 900;
   font-style: normal;
   font-variant: normal;
   line-height: 1;
@@ -38,418 +37,410 @@
   speak: never;
 }
 
-.fa-plus::before {
-  content: '\2B ';
+.icon-arrow-down::before {
+  content: '\E042 ';
 }
 
-.fa-face-smile-wink::before {
-  content: '\F4DA ';
+.icon-arrow-left::before {
+  content: '\E048 ';
 }
 
-.fa-arrow-left::before {
-  content: '\F060 ';
+.icon-arrow-right::before {
+  content: '\E049 ';
 }
 
-.fa-arrow-down::before {
-  content: '\F063 ';
+.icon-badge-check::before {
+  content: '\E241 ';
 }
 
-.fa-caret-down::before {
-  content: '\F0D7 ';
+.icon-ban::before {
+  content: '\E051 ';
 }
 
-.fa-caret-up::before {
-  content: '\F0D8 ';
+.icon-bell::before {
+  content: '\E059 ';
 }
 
-.fa-arrow-right::before {
-  content: '\F061 ';
+.icon-bell-off::before {
+  content: '\E05A ';
 }
 
-.fa-paperclip::before {
-  content: '\F0C6 ';
+.icon-book-open::before {
+  content: '\E05F ';
 }
 
-.fa-book-open::before {
-  content: '\F518 ';
+.icon-book-user::before {
+  content: '\E54D ';
 }
 
-.fa-ban::before {
-  content: '\F05E ';
+.icon-bookmark::before {
+  content: '\E060 ';
 }
 
-.fa-bookmark::before {
-  content: '\F02E ';
+.icon-calendar-days::before {
+  content: '\E2B9 ';
 }
 
-.fa-phone::before {
-  content: '\F095 ';
+.icon-camera::before {
+  content: '\E064 ';
 }
 
-.fa-phone-flip::before {
-  content: '\F879 ';
+.icon-check::before {
+  content: '\E06C ';
 }
 
-.fa-phone-slash::before {
-  content: '\F3DD ';
+.icon-check-check::before {
+  content: '\E38E ';
 }
 
-.fa-circle-xmark::before {
-  content: '\F057 ';
+.icon-chevron-down::before {
+  content: '\E06D ';
 }
 
-.fa-comment::before {
-  content: '\F075 ';
+.icon-chevron-left::before {
+  content: '\E06E ';
 }
 
-.fa-check::before {
-  content: '\F00C ';
+.icon-chevron-right::before {
+  content: '\E06F ';
 }
 
-.fa-circle-check::before {
-  content: '\F058 ';
+.icon-chevron-up::before {
+  content: '\E070 ';
 }
 
-.fa-chevron-left::before {
-  content: '\F053 ';
+.icon-chevrons-left::before {
+  content: '\E072 ';
 }
 
-.fa-chevron-right::before {
-  content: '\F054 ';
+.icon-chevrons-right::before {
+  content: '\E073 ';
 }
 
-.fa-xmark::before {
-  content: '\F00D ';
+.icon-chevrons-up-down::before {
+  content: '\E211 ';
 }
 
-.fa-cloud::before {
-  content: '\F0C2 ';
+.icon-circle::before {
+  content: '\E076 ';
 }
 
-.fa-cloud-arrow-up::before {
-  content: '\F0EE ';
+.icon-circle-alert::before {
+  content: '\E077 ';
 }
 
-.fa-desktop::before {
-  content: '\F390 ';
+.icon-circle-check::before {
+  content: '\E226 ';
 }
 
-.fa-address-book::before {
-  content: '\F2B9 ';
+.icon-circle-dot::before {
+  content: '\E345 ';
 }
 
-.fa-copy::before {
-  content: '\F0C5 ';
+.icon-circle-help::before {
+  content: '\E082 ';
 }
 
-.fa-moon::before {
-  content: '\F186 ';
+.icon-circle-x::before {
+  content: '\E084 ';
 }
 
-.fa-calendar-days::before {
-  content: '\F073 ';
+.icon-clock::before {
+  content: '\E087 ';
 }
 
-.fa-trash::before {
-  content: '\F1F8 ';
+.icon-cloud::before {
+  content: '\E088 ';
 }
 
-.fa-trash-can::before {
-  content: '\F2ED ';
+.icon-cloud-upload::before {
+  content: '\E091 ';
 }
 
-.fa-file-lines::before {
-  content: '\F15C ';
+.icon-copy::before {
+  content: '\E09E ';
 }
 
-.fa-laptop::before {
-  content: '\F109 ';
+.icon-download::before {
+  content: '\E0B2 ';
 }
 
-.fa-check-double::before {
-  content: '\F560 ';
+.icon-ellipsis::before {
+  content: '\E0B6 ';
 }
 
-.fa-download::before {
-  content: '\F019 ';
+.icon-ellipsis-vertical::before {
+  content: '\E0B7 ';
 }
 
-.fa-pen::before {
-  content: '\F304 ';
+.icon-eraser::before {
+  content: '\E28F ';
 }
 
-.fa-circle-exclamation::before {
-  content: '\F06A ';
+.icon-eye::before {
+  content: '\E0BA ';
 }
 
-.fa-chevron-up::before {
-  content: '\F077 ';
+.icon-eye-off::before {
+  content: '\E0BB ';
 }
 
-.fa-chevron-down::before {
-  content: '\F078 ';
+.icon-file::before {
+  content: '\E0C0 ';
 }
 
-.fa-circle::before {
-  content: '\F111 ';
+.icon-file-text::before {
+  content: '\E0CC ';
 }
 
-.fa-angles-left::before {
-  content: '\F100 ';
+.icon-flag::before {
+  content: '\E0D1 ';
 }
 
-.fa-flag::before {
-  content: '\F024 ';
+.icon-forward::before {
+  content: '\E229 ';
 }
 
-.fa-comments::before {
-  content: '\F086 ';
+.icon-gavel::before {
+  content: '\E0E0 ';
 }
 
-.fa-share::before {
-  content: '\F064 ';
+.icon-image::before {
+  content: '\E0F6 ';
 }
 
-.fa-expand::before {
-  content: '\F065 ';
+.icon-info::before {
+  content: '\E0F9 ';
 }
 
-.fa-gavel::before {
-  content: '\F0E3 ';
+.icon-key::before {
+  content: '\E0FD ';
 }
 
-.fa-users::before {
-  content: '\F0C0 ';
+.icon-laptop::before {
+  content: '\E1CD ';
 }
 
-.fa-user-plus::before {
-  content: '\F234 ';
+.icon-lock::before {
+  content: '\E10B ';
 }
 
-.fa-circle-question::before {
-  content: '\F059 ';
+.icon-log-out::before {
+  content: '\E10E ';
 }
 
-.fa-image::before {
-  content: '\F03E ';
+.icon-mail::before {
+  content: '\E10F ';
 }
 
-.fa-circle-info::before {
-  content: '\F05A ';
+.icon-mail-open::before {
+  content: '\E363 ';
 }
 
-.fa-file::before {
-  content: '\F15B ';
+.icon-maximize::before {
+  content: '\E112 ';
 }
 
-.fa-angles-right::before {
-  content: '\F101 ';
+.icon-menu::before {
+  content: '\E115 ';
 }
 
-.fa-sun::before {
-  content: '\F185 ';
+.icon-message-circle::before {
+  content: '\E116 ';
 }
 
-.fa-lock::before {
-  content: '\F023 ';
+.icon-message-square-text::before {
+  content: '\E575 ';
 }
 
-.fa-key::before {
-  content: '\F084 ';
+.icon-messages-square::before {
+  content: '\E40D ';
 }
 
-.fa-arrow-right-from-bracket::before {
-  content: '\F08B ';
+.icon-mic::before {
+  content: '\E118 ';
 }
 
-.fa-envelope::before {
-  content: '\F0E0 ';
+.icon-mic-off::before {
+  content: '\E119 ';
 }
 
-.fa-bars::before {
-  content: '\F0C9 ';
+.icon-monitor::before {
+  content: '\E11D ';
 }
 
-.fa-microphone::before {
-  content: '\F130 ';
+.icon-moon::before {
+  content: '\E11E ';
 }
 
-.fa-microphone-slash::before {
-  content: '\F131 ';
+.icon-navigation::before {
+  content: '\E123 ';
 }
 
-.fa-ellipsis::before {
-  content: '\F141 ';
+.icon-palette::before {
+  content: '\E1DD ';
 }
 
-.fa-ellipsis-vertical::before {
-  content: '\F142 ';
+.icon-paperclip::before {
+  content: '\E12D ';
 }
 
-.fa-location-arrow::before {
-  content: '\F124 ';
+.icon-pause::before {
+  content: '\E12E ';
 }
 
-.fa-bell::before {
-  content: '\F0F3 ';
+.icon-pencil::before {
+  content: '\E1F9 ';
 }
 
-.fa-bell-slash::before {
-  content: '\F1F6 ';
+.icon-phone::before {
+  content: '\E133 ';
 }
 
-.fa-palette::before {
-  content: '\F53F ';
+.icon-phone-missed::before {
+  content: '\E137 ';
 }
 
-.fa-pause::before {
-  content: '\F04C ';
+.icon-phone-off::before {
+  content: '\E138 ';
 }
 
-.fa-user::before {
-  content: '\F007 ';
+.icon-pin::before {
+  content: '\E259 ';
 }
 
-.fa-user-minus::before {
-  content: '\F503 ';
+.icon-play::before {
+  content: '\E13C ';
 }
 
-.fa-mobile::before {
-  content: '\F3CE ';
+.icon-plus::before {
+  content: '\E13D ';
 }
 
-.fa-mobile-button::before {
-  content: '\F10B ';
+.icon-refresh-cw::before {
+  content: '\E145 ';
 }
 
-.fa-mobile-screen::before {
-  content: '\F3CF ';
+.icon-reply::before {
+  content: '\E22A ';
 }
 
-.fa-camera::before {
-  content: '\F030 ';
+.icon-rotate-ccw::before {
+  content: '\E148 ';
 }
 
-.fa-file-pdf::before {
-  content: '\F1C1 ';
+.icon-screen-share::before {
+  content: '\E14F ';
 }
 
-.fa-play::before {
-  content: '\F04B ';
+.icon-search::before {
+  content: '\E151 ';
 }
 
-.fa-user-shield::before {
-  content: '\F505 ';
+.icon-send::before {
+  content: '\E152 ';
 }
 
-.fa-thumbtack::before {
-  content: '\F08D ';
+.icon-shield::before {
+  content: '\E158 ';
 }
 
-.fa-circle-dot::before {
-  content: '\F192 ';
+.icon-shield-check::before {
+  content: '\E1FF ';
 }
 
-.fa-rotate-right::before {
-  content: '\F2F9 ';
+.icon-skip-back::before {
+  content: '\E15F ';
 }
 
-.fa-rotate-left::before {
-  content: '\F2EA ';
+.icon-skip-forward::before {
+  content: '\E160 ';
 }
 
-.fa-reply::before {
-  content: '\F3E5 ';
+.icon-sliders-horizontal::before {
+  content: '\E29A ';
 }
 
-.fa-clock::before {
-  content: '\F017 ';
-}
-
-.fa-display::before {
+.icon-smartphone::before {
   content: '\E163 ';
 }
 
-.fa-magnifying-glass::before {
-  content: '\F002 ';
+.icon-smile::before {
+  content: '\E164 ';
 }
 
-.fa-paper-plane::before {
-  content: '\F1D8 ';
+.icon-smile-plus::before {
+  content: '\E301 ';
 }
 
-.fa-face-smile::before {
-  content: '\F118 ';
+.icon-square::before {
+  content: '\E167 ';
 }
 
-.fa-shield::before {
-  content: '\F132 ';
+.icon-star::before {
+  content: '\E176 ';
 }
 
-.fa-forward-step::before {
-  content: '\F051 ';
+.icon-sun::before {
+  content: '\E178 ';
 }
 
-.fa-backward-step::before {
-  content: '\F048 ';
+.icon-trash::before {
+  content: '\E18D ';
 }
 
-.fa-comment-sms::before {
-  content: '\F7CD ';
+.icon-trash-2::before {
+  content: '\E18E ';
 }
 
-.fa-star::before {
-  content: '\F005 ';
+.icon-triangle-alert::before {
+  content: '\E193 ';
 }
 
-.fa-stop::before {
-  content: '\F04D ';
+.icon-undo-2::before {
+  content: '\E2A1 ';
 }
 
-.fa-sliders::before {
-  content: '\F1DE ';
+.icon-user::before {
+  content: '\E19F ';
 }
 
-.fa-up-down::before {
-  content: '\F338 ';
+.icon-user-minus::before {
+  content: '\E1A1 ';
 }
 
-.fa-certificate::before {
-  content: '\F0A3 ';
+.icon-user-plus::before {
+  content: '\E1A2 ';
 }
 
-.fa-video::before {
-  content: '\F03D ';
+.icon-users::before {
+  content: '\E1A4 ';
 }
 
-.fa-eye::before {
-  content: '\F06E ';
+.icon-video::before {
+  content: '\E1A5 ';
 }
 
-.fa-eye-slash::before {
-  content: '\F070 ';
+.icon-volume-1::before {
+  content: '\E1AA ';
 }
 
-.fa-volume-low::before {
-  content: '\F027 ';
+.icon-volume-2::before {
+  content: '\E1AB ';
 }
 
-.fa-volume-xmark::before {
-  content: '\F6A9 ';
+.icon-volume-x::before {
+  content: '\E1AC ';
 }
 
-.fa-volume-high::before {
-  content: '\F028 ';
+.icon-wifi::before {
+  content: '\E1AE ';
 }
 
-.fa-triangle-exclamation::before {
-  content: '\F071 ';
+.icon-wifi-off::before {
+  content: '\E1AF ';
 }
 
-.fa-wifi::before {
-  content: '\F1EB ';
-}
-
-.fa-link-slash::before {
-  content: '\F127 ';
+.icon-x::before {
+  content: '\E1B2 ';
 }

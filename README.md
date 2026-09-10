@@ -649,12 +649,12 @@ node node_modules/prettier/bin/prettier.cjs --write <files> # формат
 - `Login.vue` / `LoginModal.vue` — вход по номеру: шаги `phone → password | otp → create` (автофокус поля), исходя из `password/status`; `LoginModal` держит диалог открытым после подтверждения кода (`pendingPassword`), пока пользователь не задаст пароль.
 - Компоненты мессенджера вынесены в `components/messenger/` (`ChatSidebar`, `ChatHeader`, `MessageThread`, `MessageRow`, `MessageComposer`, `PinnedBar`, `InlineSearchBar`, `ChatPlaceholder`, `ChatInfo`, `ForwardDialog`); медиа — в `components/media/` (лайтбокс, голос/видео/кружки, GIF-пикер); звонки — `components/calls/`. Реактивное присутствие/печать — `composables/usePeerActivity`, realtime-оркестрация — `composables/useRealtimeSync`, запись — `useRecordButton`.
 
-### Иконки (Font Awesome Free 7) и шрифты
+### Иконки (Lucide) и шрифты
 
-Иконки в разметке задаются **логическим именем** через `icon()`: `<q-icon :name="icon('close')" />`. Какое имя какому глифу соответствует — решает `src/utils/icons.ts` (`ICON_MAP`), а `icon()` превращает имя в классы Font Awesome (`fa-solid fa-xmark`).
+Иконки в разметке задаются **логическим именем** через `icon()`: `<q-icon :name="icon('close')" />`. Какое имя какому глифу соответствует — решает `src/utils/icons.ts` (`ICON_MAP`), а `icon()` превращает имя в классы иконки (`icon-lucide icon-x`) — набор **Lucide** (тонкий штрих 2px, скруглённые концы; самый ходовой современный стиль).
 
 Почему так:
-- Quasar по префиксу `fa-` понимает, что получил **список классов**, а не имя лигатуры. Любое другое значение он рисует ТЕКСТОМ внутри `<i class="material-icons">` — это и была ошибка «иконка как текст».
+- Quasar по префиксу `icon-` понимает, что получил **список классов**, а не имя лигатуры. Любое другое значение он рисует ТЕКСТОМ внутри `<i class="material-icons">` — это и была ошибка «иконка как текст».
 - Смена набора иконок — правка одного файла `ICON_MAP` (+ пересборка CSS), а не 250 мест в шаблонах.
 - Незнакомое имя `icon()` возвращает как есть: его отрисует резервный шрифт Material (Quasar подключён), то есть ошибка видна, а не превращается в пустоту.
 
@@ -662,12 +662,12 @@ node node_modules/prettier/bin/prettier.cjs --write <files> # формат
 
 | Скрипт | Что делает |
 | --- | --- |
-| `scripts/build-icons-css.py` | читает `ICON_MAP`, берёт коды символов из официального CSS Font Awesome, режет `fa-solid-900.woff2` до используемых глифов (~8 КБ вместо 112 КБ) и пишет `src/assets/icons.css` |
+| `scripts/fetch_icons.py` | скачивает сборку Lucide (шрифт + карта имён) в `node_modules/.cache/pismo-icons` — в git не хранится |
+| `scripts/build_icons.py` | читает `ICON_MAP`, сверяет имена с набором Lucide, режет шрифт до нужных глифов (~16 КБ вместо 281 КБ) и пишет `src/assets/icons.css` |
 | `scripts/build-icons-font.py` | резервный шрифт Material Symbols Rounded (урезанный до имён из `src`) — им рисуются внутренние элементы Quasar и имена, которых нет в `ICON_MAP` |
-| `scripts/check_fa_map.py` | проверяет, что все имена из `ICON_MAP` есть в Font Awesome Free (и подсказывает похожие, если нет) |
 | `scripts/migrate-icons-names.py` | одноразовая миграция: `name="close"` → `:name="icon('close')"` |
 
-**Добавили иконку — допишите её в `ICON_MAP` и прогоните `build-icons-css.py`**, иначе она отрендерится пустотой. Страж в тестах (`src/__tests__/icons.spec.ts`) проверяет, что все имена из шаблонов есть в мэппинге и что для каждой иконки есть правило в CSS.
+**Добавили иконку — допишите её в `ICON_MAP` и прогоните `build_icons.py`** (при первом запуске — ещё `fetch_icons.py`), иначе она отрендерится пустотой. Страж в тестах (`src/__tests__/icons.spec.ts`) проверяет, что все имена из шаблонов есть в мэппинге и что для каждой иконки есть правило в CSS.
 
 Шрифты (локально, без внешних запросов; собирает `scripts/fetch_fonts.py`) — три роли:
 

@@ -1,5 +1,5 @@
 /**
- * Соответствие «логическое имя иконки → иконка Font Awesome Free».
+ * Соответствие «логическое имя иконки → иконка Lucide».
  *
  * В разметке и хелперах имена остаются прежними (`close`, `reply`, `videocam`):
  * так код не зависит от конкретного набора иконок, а замена набора — это правка
@@ -7,16 +7,16 @@
  * урезанный шрифт собираются скриптом `frontend/scripts/build-icons-css.py`
  * (он читает именно этот файл).
  *
- * Правило: имя справа — «короткое» имя Font Awesome (класс `fa-<имя>`), набор —
- * Free Solid. Если имени нет в Font Awesome Free, скрипт сборки это подсветит.
+ * Правило: имя справа — имя иконки Lucide (класс `icon-<имя>`). Если имени нет
+ * в наборе, скрипт сборки это подсветит (см. scripts/build-icons-css.py).
  */
 export const ICON_MAP: Record<string, string> = {
   // Управление и навигация
   add: 'plus',
   arrow_back: 'arrow-left',
   arrow_downward: 'arrow-down',
-  arrow_drop_down: 'caret-down',
-  arrow_drop_up: 'caret-up',
+  arrow_drop_down: 'chevron-down',
+  arrow_drop_up: 'chevron-up',
   arrow_forward: 'arrow-right',
   chevron_left: 'chevron-left',
   chevron_right: 'chevron-right',
@@ -26,79 +26,79 @@ export const ICON_MAP: Record<string, string> = {
   keyboard_arrow_left: 'chevron-left',
   keyboard_arrow_right: 'chevron-right',
   keyboard_arrow_up: 'chevron-up',
-  first_page: 'angles-left',
-  last_page: 'angles-right',
-  unfold_more: 'up-down',
-  close: 'xmark',
-  clear: 'xmark',
-  cancel: 'circle-xmark',
+  first_page: 'chevrons-left',
+  last_page: 'chevrons-right',
+  unfold_more: 'chevrons-up-down',
+  close: 'x',
+  clear: 'x',
+  cancel: 'circle-x',
   check: 'check',
   done: 'check',
-  done_all: 'check-double',
+  done_all: 'check-check',
   check_circle: 'circle-check',
-  verified: 'certificate',
-  info: 'circle-info',
-  help_outline: 'circle-question',
-  warning: 'triangle-exclamation',
-  error: 'circle-exclamation',
-  refresh: 'rotate-right',
-  replay: 'rotate-left',
-  undo: 'rotate-left',
-  menu: 'bars',
-  menu_open: 'bars',
+  verified: 'badge-check',
+  info: 'info',
+  help_outline: 'circle-help',
+  warning: 'triangle-alert',
+  error: 'circle-alert',
+  refresh: 'refresh-cw',
+  replay: 'rotate-ccw',
+  undo: 'undo-2',
+  menu: 'menu',
+  menu_open: 'menu',
   more_horiz: 'ellipsis',
   more_vert: 'ellipsis-vertical',
-  search: 'magnifying-glass',
+  search: 'search',
   block: 'ban',
-  fullscreen: 'expand',
-  navigation: 'location-arrow',
+  fullscreen: 'maximize',
+  navigation: 'navigation',
   schedule: 'clock',
   download: 'download',
-  logout: 'arrow-right-from-bracket',
-  tune: 'sliders',
+  logout: 'log-out',
+  tune: 'sliders-horizontal',
   visibility: 'eye',
-  visibility_off: 'eye-slash',
+  visibility_off: 'eye-off',
   lock: 'lock',
   lock_reset: 'key',
   shield: 'shield',
-  privacy_tip: 'user-shield',
+  privacy_tip: 'shield-check',
   gavel: 'gavel',
   flag: 'flag',
   star: 'star',
   bookmark: 'bookmark',
-  push_pin: 'thumbtack',
-  edit: 'pen',
+  push_pin: 'pin',
+  edit: 'pencil',
   content_copy: 'copy',
-  delete: 'trash',
-  delete_outline: 'trash-can',
-  delete_forever: 'trash-can',
+  delete: 'trash-2',
+  delete_outline: 'trash',
+  delete_forever: 'trash-2',
   radio_button_checked: 'circle-dot',
   radio_button_unchecked: 'circle',
   fiber_manual_record: 'circle',
 
   // Сообщения и чаты
-  send: 'paper-plane',
+  send: 'send',
   attach_file: 'paperclip',
-  sentiment_satisfied_alt: 'face-smile',
-  add_reaction: 'face-smile-wink',
+  sentiment_satisfied_alt: 'smile',
+  add_reaction: 'smile-plus',
   reply: 'reply',
-  forward: 'share',
-  forward_to_inbox: 'share',
-  chat_bubble: 'comment',
-  sms: 'comment-sms',
-  forum: 'comments',
-  mark_chat_unread: 'envelope',
-  mail: 'envelope',
+  forward: 'forward',
+  forward_to_inbox: 'forward',
+  chat_bubble: 'message-circle',
+  sms: 'message-square-text',
+  forum: 'messages-square',
+  mark_chat_unread: 'mail-open',
+  mail: 'mail',
   image: 'image',
   photo_camera: 'camera',
-  description: 'file-lines',
+  description: 'file-text',
   insert_drive_file: 'file',
-  picture_as_pdf: 'file-pdf',
+  picture_as_pdf: 'file-text',
   play_arrow: 'play',
   pause: 'pause',
-  stop: 'stop',
-  skip_next: 'forward-step',
-  skip_previous: 'backward-step',
+  stop: 'square',
+  skip_next: 'skip-forward',
+  skip_previous: 'skip-back',
 
   // Люди и группы
   person: 'user',
@@ -106,26 +106,26 @@ export const ICON_MAP: Record<string, string> = {
   person_remove: 'user-minus',
   group: 'users',
   group_add: 'user-plus',
-  contacts: 'address-book',
+  contacts: 'book-user',
   verified_user: 'shield',
 
   // Звонки и медиа
   call: 'phone',
-  call_end: 'phone-flip',
-  call_missed: 'phone-slash',
+  call_end: 'phone-off',
+  call_missed: 'phone-missed',
   videocam: 'video',
-  mic: 'microphone',
-  mic_off: 'microphone-slash',
-  volume_up: 'volume-high',
-  volume_down: 'volume-low',
-  volume_off: 'volume-xmark',
-  screen_share: 'display',
-  stop_screen_share: 'display',
+  mic: 'mic',
+  mic_off: 'mic-off',
+  volume_up: 'volume-2',
+  volume_down: 'volume-1',
+  volume_off: 'volume-x',
+  screen_share: 'screen-share',
+  stop_screen_share: 'screen-share',
   devices: 'laptop',
-  computer: 'desktop',
-  phone_android: 'mobile',
-  phonelink_erase: 'mobile-button',
-  phonelink_lock: 'mobile-screen',
+  computer: 'monitor',
+  phone_android: 'smartphone',
+  phonelink_erase: 'eraser',
+  phonelink_lock: 'smartphone',
 
   // Прочее
   auto_stories: 'book-open',
@@ -133,23 +133,23 @@ export const ICON_MAP: Record<string, string> = {
   dark_mode: 'moon',
   light_mode: 'sun',
   wifi: 'wifi',
-  wifi_off: 'link-slash',
+  wifi_off: 'wifi-off',
   notifications: 'bell',
-  notifications_off: 'bell-slash',
+  notifications_off: 'bell-off',
   cloud: 'cloud',
-  cloud_upload: 'cloud-arrow-up',
+  cloud_upload: 'cloud-upload',
   date_range: 'calendar-days'
 }
 
 /** Иконка по умолчанию: если имени нет в мэппинге. */
-const FALLBACK_ICON = 'circle-question'
+const FALLBACK_ICON = 'circle-help'
 
 /**
- * Превращает логическое имя в классы иконки Font Awesome (`fa-solid fa-user`).
+ * Превращает логическое имя в классы иконки (`icon-lucide icon-user`).
  *
- * Важно: имя ОБЯЗАНО начинаться с `fa-` — Quasar по этому префиксу понимает,
- * что получил не имя лигатуры, а список классов. Всё остальное он рисует как
- * текст внутри `<i class="material-icons">`.
+ * Важно: имя ОБЯЗАНО начинаться с распознанного Quasar префикса (`icon-`) — по
+ * нему он понимает, что получил не имя лигатуры, а список классов. Всё
+ * остальное он рисует как текст внутри `<i class="material-icons">`.
  *
  * Если строка уже содержит пробел (готовые классы) — возвращаем как есть.
  * Неизвестное имя возвращаем без изменений: его отрисует прежний шрифт Material
@@ -158,12 +158,12 @@ const FALLBACK_ICON = 'circle-question'
 export function icon(name?: string | null): string | undefined {
   if (!name) return undefined
   if (name.includes(' ')) return name
-  const fa = ICON_MAP[name]
-  if (!fa) return name
-  return `fa-solid fa-${fa}`
+  const lucide = ICON_MAP[name]
+  if (!lucide) return name
+  return `icon-lucide icon-${lucide}`
 }
 
-/** Имя Font Awesome для логического имени (для сборки CSS и проверок). */
-export function faNameOf(name: string): string {
+/** Имя Lucide для логического имени (для сборки CSS и проверок). */
+export function iconNameOf(name: string): string {
   return ICON_MAP[name] ?? FALLBACK_ICON
 }
