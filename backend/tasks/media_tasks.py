@@ -59,7 +59,7 @@ class _NoRedirectHandler(HTTPRedirectHandler):
 
 def _download_bytes(url: str, limit: int) -> bytes:
     """Скачивает содержимое по URL без редиректов (синхронно, в воркере)."""
-    req = UrlRequest(url, headers={"User-Agent": "microshop/1.0"})
+    req = UrlRequest(url, headers={"User-Agent": "pismo/1.0"})
     opener = build_opener(_NoRedirectHandler)
     try:
         with opener.open(req, timeout=20) as response:

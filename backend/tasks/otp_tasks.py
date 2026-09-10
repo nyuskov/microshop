@@ -60,7 +60,7 @@ def send_sms_otp(self, phone_number: str, otp_code: str) -> None:
     # 1) SMS Aero — основной канал: обычное SMS на телефон.
     if settings.sms_aero_email and settings.sms_aero_api_key:
         try:
-            text = f"Microshop: код входа {otp_code}. Никому не сообщайте код."
+            text = f"Pismo: код входа {otp_code}. Никому не сообщайте код."
             msg_id = smsaero.send_sms(phone_number, text)
             logger.info(
                 "OTP для %s отправлен по SMS (SMS Aero, id=%s)",
@@ -94,7 +94,7 @@ def send_sms_otp(self, phone_number: str, otp_code: str) -> None:
         if chat_id is not None:
             try:
                 text = (
-                    f"🔐 Код подтверждения Microshop: {otp_code}\n"
+                    f"🔐 Код подтверждения Pismo: {otp_code}\n"
                     "Никому не сообщайте код."
                 )
                 telegram.bot_send_message(chat_id, text)

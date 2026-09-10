@@ -102,7 +102,9 @@ export const WALLPAPER_PRESETS: WallpaperPreset[] = [
 
 const STORAGE_KEY = 'appearance'
 const LEGACY_THEME_KEY = 'app-theme'
-const LEGACY_BG_KEY = 'microshop_chat_bg'
+// Древний ключ обоев чата из старой версии (тогда приложение звалось microshop,
+// ключ переносится в pismo_chat_bg миграцией в utils/storage.ts).
+const LEGACY_BG_KEY = 'pismo_chat_bg'
 const DEFAULT_MODE: ThemeMode = 'dark'
 
 interface AppearanceState {

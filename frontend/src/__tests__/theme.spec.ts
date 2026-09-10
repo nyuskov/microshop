@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 import { useThemeStore } from '@/stores/theme'
+import { migrateLegacyStorage } from '@/utils/storage'
 
 /** Очищает окружение перед каждым тестом: localStorage + атрибуты документа. */
 function resetDom() {
@@ -124,9 +125,11 @@ describe('theme store: акцент и оформление', () => {
 describe('theme store: миграция legacy-настроек', () => {
   beforeEach(resetDom)
 
-  it('переносит старую app-theme=light и microshop_chat_bg=sky', () => {
+  it('переносит старую app-theme=light и обои из microshop_chat_bg=sky', () => {
     localStorage.setItem('app-theme', 'light')
     localStorage.setItem('microshop_chat_bg', 'sky')
+    // Так же, как при старте приложения (main.ts): сначала переносим ключи.
+    migrateLegacyStorage()
     setActivePinia(createPinia())
 
     const store = useThemeStore()

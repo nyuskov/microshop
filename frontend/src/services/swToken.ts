@@ -7,7 +7,7 @@
  * отдельный кэш под фиксированным ключом; SW читает его при клике по кнопке.
  */
 
-const AUTH_CACHE = 'microshop-auth'
+const AUTH_CACHE = 'pismo-auth'
 const TOKEN_URL = '/__auth_token'
 
 /** Сохраняет (или удаляет) токен для service worker. */

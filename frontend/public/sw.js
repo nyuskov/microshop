@@ -1,4 +1,4 @@
-/* Service Worker Microshop.
+/* Service Worker Pismo.
  *
  * Зачем: у установленного PWA всегда должна появляться свежая версия после
  * деплоя. Здесь нет предкэша «намертво»: главная стратегия — network-first для
@@ -15,9 +15,11 @@
  * controllerchange перезагружает страницу.
  */
 
-const CACHE_PREFIX = 'microshop-v'
+const CACHE_PREFIX = 'pismo-v'
 const CACHE_VERSION = 10
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
+// Кэши прежнего названия приложения (microshop → Pismo): чистим один раз при активации.
+const LEGACY_CACHE_PREFIXES = ['microshop-v', 'microshop-auth']
 
 self.addEventListener('install', (event) => {
   self.skipWaiting()
@@ -36,7 +38,11 @@ self.addEventListener('activate', (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+            .filter(
+              (key) =>
+                (key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME) ||
+                LEGACY_CACHE_PREFIXES.some((prefix) => key.startsWith(prefix))
+            )
             .map((key) => caches.delete(key))
         )
       )
@@ -116,7 +122,7 @@ self.addEventListener('push', (event) => {
   const data = payload.data || {}
   const chatId = data.chat_id
   const callId = data.type === 'call' ? data.call_id : null
-  const title = payload.title || 'Microshop'
+  const title = payload.title || 'Pismo'
   const options = {
     body: payload.body || '',
     icon: payload.icon || '/icons/icon-192.png',
@@ -148,7 +154,7 @@ self.addEventListener('push', (event) => {
 /** Читает access-токен из кэша, куда его дублирует страница (см. swToken.ts). */
 async function swReadToken() {
   try {
-    const cache = await caches.open('microshop-auth')
+    const cache = await caches.open('pismo-auth')
     const res = await cache.match('/__auth_token')
     return res ? await res.text() : null
   } catch {

@@ -5,7 +5,7 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-logger = logging.getLogger("microshop.config")
+logger = logging.getLogger("pismo.config")
 
 BASE_DIR = Path(__file__).parent.parent
 

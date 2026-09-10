@@ -1,13 +1,13 @@
 {
-  "name": "Microshop — мессенджер",
-  "short_name": "Microshop",
-  "description": "Мессенджер Microshop: чаты, звонки, обмен файлами и медиа",
+  "name": "Pismo — мессенджер",
+  "short_name": "Pismo",
+  "description": "Мессенджер Pismo: чаты, звонки, обмен файлами и медиа",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#10151c",
-  "theme_color": "#2ea25e",
+  "theme_color": "#5a50e0",
   "lang": "ru",
   "icons": [
     {

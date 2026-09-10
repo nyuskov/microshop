@@ -19,6 +19,7 @@ import './assets/quasar.css'
 import './assets/a11y.css'
 // Import the new theme store
 import { useThemeStore } from './stores/theme'
+import { migrateLegacyStorage } from './utils/storage'
 
 const app = createApp(App)
 
@@ -64,6 +65,10 @@ for (const [, mod] of Object.entries(QuasarExports)) {
     app.directive(compName, value as never)
   }
 }
+
+// Переносим данные прежнего названия приложения (microshop_* → pismo_*)
+// ДО обращения к настройкам/черновикам/ключам E2EE — иначе пользователь потерял бы их.
+migrateLegacyStorage()
 
 // Initialize the theme and sidebar state after app creation
 const themeStore = useThemeStore()

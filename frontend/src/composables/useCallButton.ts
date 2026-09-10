@@ -18,7 +18,7 @@ const CALL_OPTIONS: ReadonlyArray<{ kind: CallKind; label: string }> = [
 ]
 
 // Текущий выбранный тип звонка запоминается между сессиями.
-const CALL_KIND_KEY = 'microshop_call_kind'
+const CALL_KIND_KEY = 'pismo_call_kind'
 const CALL_HOLD_MS = 500
 
 export function useCallButton(options: CallButtonOptions) {

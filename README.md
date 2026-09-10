@@ -1,4 +1,4 @@
-# Microshop — мессенджер
+# Pismo — мессенджер
 
 > Полное описание проекта: стек, структура, запуск, API, модель данных, проверки и подводные камни. Обновляется вместе с кодом — используйте его как единую точку входа вместо перечитывания кода.
 
@@ -377,7 +377,9 @@ node node_modules/prettier/bin/prettier.cjs --write <files> # формат
 ### Ключевые точки
 
 - `main.ts` — Quasar 2 (Dialog/Notify, lang ru, **Material-иконки outlined** — `@quasar/extras/material-icons-outlined`; Quasar рендерит `<q-icon>` с классом `.material-icons`, на него в `quasar.css` повешен алиас шрифта), тема/оформление через `stores/theme.ts` (`data-theme`, токены `--ms-*`; тема ставится ДО первого кадра inline-скриптом в `index.html`, чтобы не мигала), инициализация auth.
-- Оформление: токены тем `--ms-*` + `color-scheme` и глобальные оверрайды над scoped-стилями — в `assets/appearance.css`; `assets/quasar.css` приводит Material-компоненты к токенам; базовая геометрия кнопок (`.icon-btn`/`.round-btn`) — общая в `appearance.css`; «пустые состояния» — общий компонент `components/common/EmptyState.vue`; иконка приложения — `public/favicon.svg` (+ `manifest.webmanifest`).
+- Оформление: токены тем `--ms-*` + `color-scheme` и глобальные оверрайды над scoped-стилями — в `assets/appearance.css`; `assets/quasar.css` приводит Material-компоненты к токенам; базовая геометрия кнопок (`.icon-btn`/`.round-btn`) — общая в `appearance.css`; «пустые состояния» — общий компонент `components/common/EmptyState.vue`.
+- PWA/иконки: `public/favicon.svg` (градиентная «письмо-пузырь»), PNG-набор `public/icons/` (`icon-192`, `icon-512`, `icon-maskable-512`, `apple-touch-icon-180`, `badge-96`) + `manifest.webmanifest` (name/short_name Pismo, `theme_color #5a50e0`). Иконки генерируются скриптом `scripts/gen_pismo_icons.py` (stdlib, без зависимостей).
+- localStorage/кеши: ключи приложения — `pismo_*` (`pismo_drafts`, `pismo_pinned_chats`, `pismo_call_kind`, `pismo_e2ee_v1_<uid>`); ключи прежнего названия (`microshop_*`) переносятся один раз миграцией в `utils/storage.ts` (вызов в `main.ts` до инициализации настроек). Кэши service worker — `pismo-v*` / `pismo-auth` (старые `microshop-*` чистятся в `activate`).
 - `router/index.ts` — `/` → `Messenger.vue`, `/auth/login/` → `Login`; guard на auth.
 - `stores/auth.ts`:
   - состояние: `user`, `current_user`, `isAuthenticated`, `accessToken`, `refreshToken` (в localStorage);

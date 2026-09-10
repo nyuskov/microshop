@@ -16,7 +16,7 @@
 
 import { api } from './api'
 
-const STORE_PREFIX = 'microshop_e2ee_v1_'
+const STORE_PREFIX = 'pismo_e2ee_v1_'
 const PREFIX = 'e2ee1:'
 const HKDF_INFO_PREFIX = 'chat:'
 
@@ -180,6 +180,8 @@ export async function chatAesKey(
   try {
     const shared = await crypto.subtle.deriveBits({ name: 'ECDH', public: peerPub }, myPriv, 256)
     const hkdfKey = await crypto.subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey'])
+    // ВНИМАНИЕ: соль — часть криптопротокола, а НЕ название приложения.
+    // Её изменение сделало бы нечитаемыми все ранее зашифрованные сообщения.
     const salt = te.encode('microshop-e2ee-v1')
     const info = te.encode(HKDF_INFO_PREFIX + String(chatId))
     const aes = await crypto.subtle.deriveKey(

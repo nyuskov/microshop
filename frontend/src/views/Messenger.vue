@@ -493,7 +493,7 @@ const goBackToList = () => {
   if (!isDesktop.value) {
     // Если открытие чата записано в историю — идём «назад» по ней (popstate
     // откроет список), иначе просто показываем список.
-    if (window.history.state && window.history.state.microshopNav) {
+    if (window.history.state && window.history.state.pismoNav) {
       window.history.back()
       return
     }
@@ -510,7 +510,7 @@ const goBackToList = () => {
 const pushMobileNav = () => {
   if (!isDesktop.value) {
     try {
-      window.history.pushState({ microshopNav: true }, '')
+      window.history.pushState({ pismoNav: true }, '')
     } catch {
       /* история недоступна — игнорируем */
     }
@@ -613,7 +613,7 @@ const selectedChat = computed<Chat | null>(() => {
 const messageRows = computed<ThreadRow[]>(() => buildMessageRows(messages.value, inlineQuery.value))
 
 // ---------- Закреплённые чаты (пин вверху списка диалогов) ----------
-const PINNED_CHATS_KEY = 'microshop_pinned_chats'
+const PINNED_CHATS_KEY = 'pismo_pinned_chats'
 
 const readPinnedChats = (): number[] => {
   const uid = currentUserId.value
@@ -1669,7 +1669,7 @@ const forwardBusy = ref(false)
 
 // ---------- Черновики сообщений (автосохранение текста при смене чата) ----------
 // Ключ `userId:chatId` — черновики не «перетекают» между аккаунтами устройства.
-const DRAFTS_KEY = 'microshop_drafts'
+const DRAFTS_KEY = 'pismo_drafts'
 /** Момент последней программной установки текста поля (гасит «печатает…»). */
 let lastComposerProgrammaticEdit = 0
 
@@ -2128,7 +2128,7 @@ const refreshOpenThreadQuiet = async () => {
 
 // Оркестрация (таймеры/события) вынесена в composable.
 // ---------- Уведомления о новых сообщениях + счётчик в заголовке вкладки ----------
-const BASE_DOC_TITLE = 'Microshop — мессенджер'
+const BASE_DOC_TITLE = 'Pismo — мессенджер'
 
 const totalUnread = computed(() =>
   chats.value.reduce((sum, chat) => sum + (chat.unread_count || 0), 0)
@@ -2189,7 +2189,7 @@ const openContacts = () => {
 
 const goToChats = () => {
   // Если в «Контакты» пришли через историю — возвращаемся по ней.
-  if (!isDesktop.value && window.history.state && window.history.state.microshopNav) {
+  if (!isDesktop.value && window.history.state && window.history.state.pismoNav) {
     window.history.back()
     return
   }

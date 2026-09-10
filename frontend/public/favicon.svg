@@ -1,13 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Pismo">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3cc77e"/>
-      <stop offset="1" stop-color="#1e9b51"/>
+    <linearGradient id="pismo-bg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="64">
+      <stop offset="0" stop-color="#7b72ff"/>
+      <stop offset="1" stop-color="#3a32c9"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="16" fill="url(#g)"/>
-  <path d="M32 14c-10.5 0-19 7.3-19 16.2 0 5 2.7 9.5 7 12.4L18 50l9.4-4.9c1.5.4 3 .6 4.6.6 10.5 0 19-7.3 19-16.3S42.5 14 32 14z" fill="#ffffff"/>
-  <circle cx="24" cy="30.2" r="2.6" fill="#1e9b51"/>
-  <circle cx="32" cy="30.2" r="2.6" fill="#1e9b51"/>
-  <circle cx="40" cy="30.2" r="2.6" fill="#1e9b51"/>
+  <rect width="64" height="64" rx="14" fill="url(#pismo-bg)"/>
+  <!-- «Письмо-пузырь»: белая плашка с хвостиком сообщения. -->
+  <g fill="#ffffff">
+    <rect x="12.8" y="17.28" width="38.4" height="29.44" rx="7.65"/>
+    <path d="M19.33 46.13 L12.03 52.9 L26.62 46.43 Z"/>
+  </g>
+  <!-- Клапан конверта (фоном сквозь плашку). -->
+  <path d="M17.02 21.7 L32 29.94 L46.98 21.7" fill="none" stroke="url(#pismo-bg)" stroke-width="2.05" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

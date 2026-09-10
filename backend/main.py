@@ -15,7 +15,7 @@ from api_v1.events.bridge import start_bridge, stop_bridge
 from core.config import settings
 from core.models import db_helper
 
-logger = logging.getLogger("microshop")
+logger = logging.getLogger("pismo")
 
 # Uvicorn не настраивает корневой логгер на уровень INFO, поэтому сообщения
 # уровня INFO из модулей приложения (например, OTP-код для входа) не попадали
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Microshop",
+    title="Pismo",
     swagger_ui_parameters={"favicon_url": "/favicon.ico"},
     lifespan=lifespan,
 )
