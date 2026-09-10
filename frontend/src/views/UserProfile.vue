@@ -1071,6 +1071,18 @@ const onNotificationsToggle = async (val: boolean) => {
           </p>
         </div>
 
+        <!-- Документы: правила сообщества и политика (требования магазинов к UGC) -->
+        <div class="legal-row">
+          <a class="legal-link" href="/community.html" target="_blank" rel="noopener">
+            <q-icon name="gavel" size="16px" />
+            Правила сообщества
+          </a>
+          <a class="legal-link" href="/privacy.html" target="_blank" rel="noopener">
+            <q-icon name="privacy_tip" size="16px" />
+            Политика конфиденциальности
+          </a>
+        </div>
+
         <div class="form-actions">
           <button type="button" class="btn ghost" :disabled="saving" @click="closeModal">
             Отмена
@@ -1879,6 +1891,28 @@ const onNotificationsToggle = async (val: boolean) => {
   margin-top: 14px;
   padding-top: 14px;
   border-top: 1px dashed #e2e6ea;
+}
+
+/* Ссылки на документы: правила сообщества и политика (требования магазинов). */
+.legal-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 12px;
+}
+
+.legal-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ms-accent, #2ea25e);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.legal-link:hover {
+  text-decoration: underline;
 }
 
 .delete-account-btn {

@@ -16,6 +16,7 @@
 | Регистрация push-токена на сервере | `POST /api/v1/push/rustore/subscribe/` |
 | App Links (ссылки `pismo.space` открываются в приложении) | `frontend/public/.well-known/assetlinks.json` + `scripts/rustore/write_assetlinks.sh` |
 | Политика конфиденциальности | `frontend/public/privacy.html`, `docs/privacy-policy.md` |
+| Правила сообщества (Community Guidelines) | `frontend/public/community.html`, `docs/community-guidelines.md` |
 | Жалоба на контент, блокировка пользователя, удаление аккаунта (UGC) | `backend/api_v1/moderation/`, `backend/api_v1/users/deletion.py`, `frontend/src/components/messenger/{ReportDialog,BlockedUsersDialog,DeleteAccountDialog}.vue` |
 | Разбор жалоб модератором | `GET/PATCH /api/v1/moderation/reports/` (только `is_superuser`), экран «Жалобы» в меню «⋯» |
 | Скрипт скриншотов для карточки | `scripts/rustore/screenshots.mjs` |
