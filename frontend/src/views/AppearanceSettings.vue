@@ -51,6 +51,25 @@
       </div>
     </section>
 
+    <!-- Размер текста -->
+    <section class="appearance-section">
+      <h3 class="appearance-title">Размер текста</h3>
+      <div class="opt-row">
+        <button
+          v-for="opt in TEXT_SIZE_PRESETS"
+          :key="opt.key"
+          class="opt-pill text-size-pill"
+          :class="{ active: themeStore.textSizeKey === opt.key }"
+          :aria-pressed="themeStore.textSizeKey === opt.key"
+          @click="themeStore.setTextSize(opt.key)"
+        >
+          <span class="text-size-sample" :style="{ fontSize: opt.sample }">Аа</span>
+          <span>{{ opt.label }}</span>
+        </button>
+      </div>
+      <p class="hint">Действует на текст сообщений, поле ввода и список чатов.</p>
+    </section>
+
     <!-- Обои окна сообщений -->
     <section class="appearance-section">
       <h3 class="appearance-title">Обои окна сообщений</h3>
@@ -116,6 +135,7 @@ import { useThemeStore, fileToCompressedDataUrl } from '@/stores/theme'
 import {
   ACCENT_PRESETS,
   BUBBLE_STYLE_PRESETS,
+  TEXT_SIZE_PRESETS,
   WALLPAPER_PRESETS,
   type ThemeMode
 } from '@/stores/theme'
@@ -189,6 +209,25 @@ const onReset = () => {
   display: flex;
   flex-wrap: wrap; /* на узких экранах пилюли переносятся, а не вылезают */
   gap: 8px;
+}
+
+/* Пилюли размера текста: буква-образец показывает, насколько крупным будет текст. */
+.text-size-pill {
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+}
+
+.text-size-sample {
+  display: block;
+  line-height: 1.15;
+  font-weight: 700;
+}
+
+.hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ms-muted, #71808d);
 }
 
 .opt-pill {

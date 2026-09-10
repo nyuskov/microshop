@@ -489,7 +489,7 @@ watch(newMessage, () => {
   flex: 1;
   border: none;
   outline: none;
-  font-size: 15px;
+  font-size: calc(15px * var(--ms-text-scale, 1));
   line-height: 1.35;
   background: transparent;
   padding: 7px 4px;

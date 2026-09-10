@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { applyServiceWorkerUpdate, registerServiceWorker } from '@/services/pwa'
+import OfflineBanner from '@/components/common/OfflineBanner.vue'
 
 const updateAvailable = ref(false)
 let reloading = false
@@ -32,6 +33,8 @@ onBeforeUnmount(() => {
     <span class="pwa-update-text">Доступна новая версия приложения</span>
     <button type="button" class="pwa-update-btn" @click="onUpdateClick">Обновить</button>
   </div>
+  <!-- Нет сети / связь восстановлена (работает и на экране входа) -->
+  <OfflineBanner />
   <router-view></router-view>
 </template>
 

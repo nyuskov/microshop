@@ -16,6 +16,15 @@ export interface BubbleStylePreset {
   swatch: string
 }
 
+/** Размер текста интерфейса: множитель применяется к тексту сообщений, композера и списка чатов. */
+export interface TextSizePreset {
+  key: string
+  label: string
+  scale: number
+  /** Размер в пикселях для превью в настройках. */
+  sample: string
+}
+
 export interface WallpaperPreset {
   key: string
   label: string
@@ -45,6 +54,13 @@ export const BUBBLE_STYLE_PRESETS: BubbleStylePreset[] = [
   { key: 'peach', label: 'Персик', swatch: '#fde6d0' },
   { key: 'mint', label: 'Мята', swatch: '#d3f2e4' },
   { key: 'orange', label: 'Оранжевый', swatch: '#fee3c8' }
+]
+
+/** Размер текста интерфейса (множитель к базовым размерам). */
+export const TEXT_SIZE_PRESETS: TextSizePreset[] = [
+  { key: 'compact', label: 'Мелкий', scale: 0.9, sample: '13px' },
+  { key: 'normal', label: 'Обычный', scale: 1, sample: '15px' },
+  { key: 'large', label: 'Крупный', scale: 1.15, sample: '17px' }
 ]
 
 /** Обои окна сообщений (пресеты). Ключ 'custom' обрабатывается отдельно (своё фото). */
@@ -112,6 +128,7 @@ interface AppearanceState {
   mode: ThemeMode
   accentKey: string
   bubbleKey: string
+  textSizeKey: string
   wallpaperKey: string
   wallpaperCustom: string | null
   isSidebarCollapsed: boolean
@@ -122,6 +139,7 @@ const DEFAULT_STATE: Omit<AppearanceState, 'isSidebarCollapsed'> = {
   mode: DEFAULT_MODE,
   accentKey: 'green',
   bubbleKey: 'green',
+  textSizeKey: 'normal',
   wallpaperKey: 'default',
   wallpaperCustom: null
 }
@@ -210,6 +228,11 @@ export const useThemeStore = defineStore('theme', {
       document.documentElement.style.setProperty('--ms-accent', accentHex)
       document.documentElement.setAttribute('data-bubble', this.bubbleKey)
 
+      // Размер текста: множитель читают CSS-правила текста сообщений, композера и списка чатов.
+      const textSize =
+        TEXT_SIZE_PRESETS.find((item) => item.key === this.textSizeKey) ?? TEXT_SIZE_PRESETS[1]
+      document.documentElement.style.setProperty('--ms-text-scale', String(textSize.scale))
+
       // Цвет панели браузера: светлая тема — акцент, тёмная — цвет фона приложения.
       const themeColor = document.querySelector('meta[name="theme-color"]')
       if (themeColor) {
@@ -226,6 +249,7 @@ export const useThemeStore = defineStore('theme', {
             mode: this.mode,
             accentKey: this.accentKey,
             bubbleKey: this.bubbleKey,
+            textSizeKey: this.textSizeKey,
             wallpaperKey: this.wallpaperKey,
             wallpaperCustom: this.wallpaperCustom
           })
@@ -263,6 +287,11 @@ export const useThemeStore = defineStore('theme', {
       this.applyAppearance()
     },
 
+    setTextSize(key: string) {
+      this.textSizeKey = key
+      this.applyAppearance()
+    },
+
     setWallpaper(key: string) {
       this.wallpaperKey = key
       if (key !== 'custom') this.wallpaperCustom = null
@@ -288,6 +317,7 @@ export const useThemeStore = defineStore('theme', {
       this.mode = DEFAULT_MODE
       this.accentKey = DEFAULT_STATE.accentKey
       this.bubbleKey = DEFAULT_STATE.bubbleKey
+      this.textSizeKey = DEFAULT_STATE.textSizeKey
       this.wallpaperKey = DEFAULT_STATE.wallpaperKey
       this.wallpaperCustom = DEFAULT_STATE.wallpaperCustom
       this.applyAppearance()

@@ -1408,7 +1408,7 @@ onBeforeUnmount(() => {
 }
 
 .row-title {
-  font-size: 15px;
+  font-size: calc(15px * var(--ms-text-scale, 1));
   font-weight: 600;
   color: #141d26;
   white-space: nowrap;
@@ -1423,7 +1423,7 @@ onBeforeUnmount(() => {
 }
 
 .row-sub {
-  font-size: 13.5px;
+  font-size: calc(13.5px * var(--ms-text-scale, 1));
   color: #71808d;
   white-space: nowrap;
   overflow: hidden;

@@ -153,6 +153,7 @@
             :pending="pendingUploads"
             :is-group-chat="isGroupChat(selectedChat)"
             :members="selectedChat.users"
+            :unread-count="unreadAtOpen"
             @background-click="closePopups"
             @reach-top="loadOlderMessages"
             @quote-click="quoteClick"
@@ -643,6 +644,13 @@ let highlightTimer: number | undefined
 
 /** Ссылка на ленту сообщений (MessageThread) для управления прокруткой. */
 const threadRef = ref<InstanceType<typeof MessageThread> | null>(null)
+
+/**
+ * Сколько сообщений было непрочитано в момент открытия чата.
+ * Нужно ленте, чтобы нарисовать разделитель «Непрочитанные сообщения» и
+ * открыть чат на нём, а не прыгать в самый низ. Обнуляется при выборе чата.
+ */
+const unreadAtOpen = ref(0)
 
 // ---------- Фон окна сообщений (обои берутся из store оформления) ----------
 const chatBgStyle = computed(() => ({ background: themeStore.wallpaperCss }))
@@ -1312,6 +1320,8 @@ const scrollToBottom = () => {
 // ---------- Выбор / открытие чата ----------
 /** Открывает чат: сбрасывает состояние и грузит свежую порцию сообщений. */
 const openChatThread = async (chatId: number) => {
+  // Запоминаем непрочитанные до обнуления: лента нарисует по ним разделитель.
+  unreadAtOpen.value = chats.value.find((item) => item.id === chatId)?.unread_count ?? 0
   selectedChatId.value = chatId
   sendError.value = ''
   void prepareChatE2ee(chatId)

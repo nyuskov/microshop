@@ -567,7 +567,8 @@ const onReport = () => {
 .msg-text {
   display: block;
   color: #111;
-  font-size: 14.5px;
+  /* Размер текста сообщений подчиняется настройке «Размер текста». */
+  font-size: calc(14.5px * var(--ms-text-scale, 1));
   line-height: 1.35;
   word-wrap: break-word;
   white-space: pre-wrap;
