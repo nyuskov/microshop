@@ -14,6 +14,7 @@
       class="ms-drawer"
     >
       <ChatSidebar
+        ref="sidebarRef"
         :view="view"
         :current-user-id="currentUserId"
         :chats="chats"
@@ -51,9 +52,17 @@
     <!-- ======= Правая область чата ======= -->
     <q-page-container class="messenger-page">
       <main class="chat-panel" :style="chatBgStyle">
-        <template v-if="!selectedChat">
+        <template v-if="!selectedChatId">
           <ChatPlaceholder @open-contacts="openContacts" />
         </template>
+
+        <!-- Чат восстановлен из адреса (`?chat=`), но список чатов ещё грузится:
+             показываем загрузку, а не заглушку «выберите чат» — иначе при
+             обновлении страницы мелькает экран со списком и заглушкой. -->
+        <div v-else-if="!selectedChat" class="chat-restoring">
+          <q-spinner size="30px" color="primary" />
+          <span>Открываю чат…</span>
+        </div>
 
         <template v-else>
           <!-- Режим выбора сообщений: панель вместо шапки (как в чатах) -->
@@ -536,8 +545,22 @@ const videoRecOpen = ref(false)
 const $q = useQuasar()
 /** «Десктоп» = ширина окна ≥ 1024px (md и выше). Ниже — мобильный режим. */
 const isDesktop = computed(() => $q.screen.gt.sm)
+
+/**
+ * id чата из адреса — читаем ДО первого рендера, чтобы после перезагрузки чат
+ * открывался сразу, а список чатов не мелькал. Значение живёт в `?chat=<id>`
+ * (см. `syncChatUrl`). Исключение — запуск из push-кнопки «пометить прочитанным»
+ * (`markread=1`): там чат открывать не нужно.
+ */
+const initialSearch = typeof window === 'undefined' ? '' : window.location.search
+const initialChatId =
+  new URLSearchParams(initialSearch).get('markread') === '1' ? null : chatIdFromUrl(initialSearch)
+
+/** На мобильном список и нить — один экран: если в адресе чат, показываем нить. */
+const initialDrawerOpen = initialChatId === null || isDesktop.value
+
 /** Открыт ли drawer со списком чатов (значим в мобильном режиме). */
-const drawerOpen = ref(true)
+const drawerOpen = ref(initialDrawerOpen)
 /** Ширина панели чатов: фикс. 380px на десктопе, почти во весь экран на мобильном. */
 const drawerWidth = computed(() => (isDesktop.value ? 380 : Math.min($q.screen.width, 460)))
 
@@ -606,6 +629,16 @@ const onAppPopState = () => {
     showCreateGroupModal.value = false
     return
   }
+  // Режим выделения (сообщения или чаты) — «назад» выходит из него, а не уводит
+  // из чата или из приложения.
+  if (msgSelectionMode.value) {
+    exitMessageSelection()
+    return
+  }
+  if (sidebarRef.value?.selectionMode) {
+    sidebarRef.value.exitSelection()
+    return
+  }
   // Вкладка «Контакты» -> «Чаты».
   if (view.value === 'contacts') {
     view.value = 'chats'
@@ -647,7 +680,7 @@ const contacts = ref<SearchUserResult[]>([])
 const loadingChats = ref(false)
 const messagesLoading = ref(false)
 const contactsLoading = ref(false)
-const selectedChatId = ref<number | null>(null)
+const selectedChatId = ref<number | null>(initialChatId)
 
 const newMessage = ref('')
 const sending = ref(false)
@@ -667,6 +700,8 @@ let highlightTimer: number | undefined
 
 /** Ссылка на ленту сообщений (MessageThread) для управления прокруткой. */
 const threadRef = ref<InstanceType<typeof MessageThread> | null>(null)
+/** Список чатов: нужен доступ к режиму выделения (жест «назад» из него выходит). */
+const sidebarRef = ref<InstanceType<typeof ChatSidebar> | null>(null)
 
 /**
  * Сколько сообщений было непрочитано в момент открытия чата.
@@ -1341,8 +1376,14 @@ const scrollToBottom = () => {
 }
 
 // ---------- Выбор / открытие чата ----------
-/** Открывает чат: сбрасывает состояние и грузит свежую порцию сообщений. */
-const openChatThread = async (chatId: number) => {
+/**
+ * Открывает чат: сбрасывает состояние и грузит свежую порцию сообщений.
+ *
+ * `pushNav: false` — восстановление чата при запуске/перезагрузке: адрес уже
+ * указывает на этот чат, а лишний шаг истории делал бы «назад» через раз.
+ */
+const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {}) => {
+  const pushNav = options.pushNav !== false
   // Запоминаем непрочитанные до обнуления: лента нарисует по ним разделитель.
   unreadAtOpen.value = chats.value.find((item) => item.id === chatId)?.unread_count ?? 0
   selectedChatId.value = chatId
@@ -1373,7 +1414,7 @@ const openChatThread = async (chatId: number) => {
   // Мобильный режим: выбор чата закрывает drawer — нить на весь экран.
   // Запоминаем шаг в истории, чтобы системная «назад» вернула к списку.
   if (!isDesktop.value) {
-    pushMobileNav()
+    if (pushNav) pushMobileNav()
     drawerOpen.value = false
   }
 }
@@ -1629,6 +1670,19 @@ const selectedMessageIds = ref<number[]>([])
 
 const selectedMessagesOf = (): Message[] =>
   messages.value.filter((m) => selectedMessageIds.value.includes(m.id))
+
+/**
+ * Вход в любой режим выделения (сообщения или чаты) кладёт маркер в историю:
+ * системная «назад» тогда выходит из выделения (см. `onAppPopState`), а не уводит
+ * из чата или из приложения. Выход из выделения маркер не убирает — так же ведут
+ * себя модальные окна.
+ */
+const anySelectionActive = computed(
+  () => msgSelectionMode.value || Boolean(sidebarRef.value?.selectionMode)
+)
+watch(anySelectionActive, (active, wasActive) => {
+  if (active && !wasActive) pushMobileNav()
+})
 
 /** Выход из режима выбора сообщений. */
 const exitMessageSelection = () => {
@@ -2552,7 +2606,7 @@ onMounted(async () => {
     // Звонок открывается поверх, но открытый чат из адреса тоже вернём — иначе
     // после перезагрузки под звонком оказался бы список чатов.
     const chatDuringCall = chatIdFromUrl(window.location.search)
-    if (chatDuringCall !== null) void openChatFromPush(chatDuringCall)
+    if (chatDuringCall !== null) void openChatFromPush(chatDuringCall, { pushNav: false })
   } else {
     // Открыли через /?chat=<id> — в том числе обычная перезагрузка страницы,
     // когда чат был открыт (возможно, с пометкой прочитанным).
@@ -2561,29 +2615,44 @@ onMounted(async () => {
       if (markReadParam === '1') {
         void markChatReadQuietly(chatParam)
       } else {
-        void openChatFromPush(chatParam)
+        void openChatFromPush(chatParam, { pushNav: false })
       }
     }
   }
 })
 
+/** Выход из восстановления чата: показываем список чатов и чистим адрес. */
+const abortChatRestore = (chatId: number) => {
+  if (selectedChatId.value === chatId) {
+    selectedChatId.value = null
+    messages.value = []
+    drawerOpen.value = true
+  }
+  syncChatUrl(null)
+}
+
 /** Открывает чат по push-уведомлению (данные приходят из service worker). */
-const openChatFromPush = async (chatId: number) => {
-  if (!authStore.isAuthenticated) return
+const openChatFromPush = async (chatId: number, options: { pushNav?: boolean } = {}) => {
+  if (!authStore.isAuthenticated) {
+    // Пользователя откроет окно входа; пустой чат за ним показывать не нужно.
+    abortChatRestore(chatId)
+    return
+  }
   if (!chats.value.some((c) => c.id === chatId)) {
     try {
       chats.value = await fetchMyChats()
     } catch {
+      abortChatRestore(chatId)
       return
     }
   }
   // Чат мог быть удалён (или в адресе чужой id) — тогда просто остаёмся в
   // списке, а не открываем пустую нить с ошибкой.
   if (!chats.value.some((c) => c.id === chatId)) {
-    syncChatUrl(null)
+    abortChatRestore(chatId)
     return
   }
-  await openChatThread(chatId)
+  await openChatThread(chatId, options)
   if (!isDesktop.value) drawerOpen.value = false
 }
 
@@ -2810,6 +2879,18 @@ watch(
   flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+
+/* Чат восстанавливается из адреса (перезагрузка страницы, повторное открытие
+   PWA): вместо мигания списка чатов показываем лёгкую загрузку. */
+.chat-restoring {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--q-primary);
+  opacity: 0.85;
 }
 
 .chat-panel {

@@ -678,6 +678,10 @@ const exitSelection = () => {
   selectedIds.value = []
 }
 
+// Родителю нужен режим выделения: системная «назад» должна выходить из него
+// (см. `onAppPopState` в Messenger.vue).
+defineExpose({ selectionMode, exitSelection })
+
 const toggleSelect = (chatId: number) => {
   const next = new Set(selectedIds.value)
   if (next.has(chatId)) {
