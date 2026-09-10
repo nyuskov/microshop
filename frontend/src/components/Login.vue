@@ -298,7 +298,7 @@ function goBackToPhoneInput() {
         </button>
 
         <p class="privacy-hint">
-          Если пароля ещё нет — подтвердим номер кодом и предложим его создать.
+          Если пароля ещё нет — подтвердим номер кодом в Telegram и предложим его создать.
         </p>
       </div>
 
@@ -349,7 +349,7 @@ function goBackToPhoneInput() {
         </div>
         <h2 class="step-title">Введите код</h2>
         <p class="step-subtitle">
-          Код подтверждения отправлен на номер
+          Код подтверждения отправлен в <strong>Telegram</strong> на номер
           <strong>{{ prettyPhone(phoneOrUsername) }}</strong
           >.
         </p>
@@ -386,6 +386,11 @@ function goBackToPhoneInput() {
           <q-icon name="arrow_back" size="17px" />
           Изменить номер
         </button>
+
+        <p class="privacy-hint">
+          Код приходит в Telegram на этот номер. Нет Telegram или код не пришёл — напишите на
+          nyuskov@gmail.com.
+        </p>
       </div>
 
       <!-- Шаг 2в: создание пароля (новый номер или пароль ещё не задан) -->
