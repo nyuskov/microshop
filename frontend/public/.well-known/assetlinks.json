@@ -4,7 +4,7 @@
     "target": {
       "namespace": "android_app",
       "package_name": "space.pismo.app",
-      "sha256_cert_fingerprints": ["ЗАМЕНИТЕ_НА_SHA256_ОТПЕЧАТОК_КЛЮЧА_ПОДПИСИ"]
+      "sha256_cert_fingerprints": ["E1:77:B7:7F:1D:2E:6E:B6:44:98:66:B6:77:DE:76:D5:F4:39:9D:63:1D:63:6E:F8:B8:51:11:BE:65:01:2C:EB"]
     }
   }
 ]
