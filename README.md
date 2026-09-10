@@ -98,7 +98,7 @@ microshop/
 ├── scripts/monitoring/       # проверка прода + оповещения по e-mail (см. docs/monitoring.md)
 ├── scripts/ci/               # смоук-тест прода после деплоя (smoke_prod.sh)
 ├── db_dump/                  # дампы БД + media: latest + archive/ + logs/ (в .gitignore)
-├── docs/                     # production.md, offsite-backup.md, local-backup.md, email-smtp.md, monitoring.md, jwt-rotation.md, rustore.md, privacy-policy.md, terms-of-service.md, community-guidelines.md, rkn-notification.md
+├── docs/                     # production.md, offsite-backup.md, local-backup.md, email-smtp.md, monitoring.md, jwt-rotation.md, rustore.md, privacy-policy.md, terms-of-service.md, community-guidelines.md, rkn-notification.md, rkn-checklist.md, feature-proposals.md
 ├── .github/workflows/ci.yml  # backend (lint+mypy+pytest c Postgres) + frontend + deploy + smoke
 └── queries.sql
 ```
