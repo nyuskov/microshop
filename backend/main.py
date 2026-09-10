@@ -5,15 +5,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import text
 
 from api_v1 import router_v1
 from api_v1.events.bridge import start_bridge, stop_bridge
+from api_v1.health.views import router as health_router
 from core.config import settings
-from core.models import db_helper
 
 logger = logging.getLogger("pismo")
 
@@ -81,6 +80,10 @@ MEDIA_DIR = Path(__file__).resolve().parent / "media"
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
 app.include_router(router=router_v1, prefix=settings.api_v1_prefix)
+# Те же health-проверки доступны и на корне (`/health`, `/health/ready`) — их
+# используют healthcheck'и docker и локальная отладка; `/api/v1/health` нужен
+# мониторингу, т.к. наружу проксируется только `/api/` (см. api_v1/health).
+app.include_router(router=health_router)
 app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
 
 
@@ -91,33 +94,6 @@ app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
 )
 async def read_root() -> dict[str, str]:
     return {"Hello": "World"}
-
-
-@app.get(
-    "/health",
-    tags=["Базовый функционал"],
-    summary="Liveness-проверка",
-)
-async def health() -> dict[str, str]:
-    """Жив ли процесс (без обращения к БД)."""
-    return {"status": "ok"}
-
-
-@app.get(
-    "/health/ready",
-    tags=["Базовый функционал"],
-    summary="Readiness-проверка (доступность БД)",
-)
-async def health_ready(response: Response) -> dict[str, str]:
-    """Готов ли сервис принимать трафик (проверка соединения с БД)."""
-    try:
-        async with db_helper.session_factory() as session:
-            await session.execute(text("SELECT 1"))
-        return {"status": "ok", "database": "ok"}
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Readiness check failed: %s", exc)
-        response.status_code = 503
-        return {"status": "error", "database": "unreachable"}
 
 
 if __name__ == "__main__":

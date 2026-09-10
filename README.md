@@ -95,9 +95,10 @@ microshop/
 ├── backup_offsite.example.sh # пример выгрузки бэкапов в облако (rclone)
 ├── scripts/backup/           # бэкап прода → ~/Документы/pismo_backup (см. docs/local-backup.md)
 ├── scripts/monitoring/       # проверка прода + оповещения по e-mail (см. docs/monitoring.md)
+├── scripts/ci/               # смоук-тест прода после деплоя (smoke_prod.sh)
 ├── db_dump/                  # дампы БД + media: latest + archive/ + logs/ (в .gitignore)
 ├── docs/                     # production.md, offsite-backup.md, local-backup.md, email-smtp.md, monitoring.md, rustore.md, privacy-policy.md
-├── .github/workflows/ci.yml  # backend (lint+mypy+pytest c Postgres) + frontend
+├── .github/workflows/ci.yml  # backend (lint+mypy+pytest c Postgres) + frontend + deploy + smoke
 └── queries.sql
 ```
 
@@ -187,9 +188,10 @@ crontab -l | grep -v '# pismo-prod-backup' | crontab -   # удалить зад
 #### Мониторинг прода (сайт, БД, брокер, диск, свежесть бэкапа)
 
 `scripts/monitoring/check_prod.sh` запускается **локально** по cron и проверяет
-`https://pismo.space/`, `/health`, `/health/ready` (это БД + RabbitMQ),
-`/api/v1/auth/channels/`, состояние контейнеров, свободное место на диске сервера и
-свежесть последнего дампа. Обнаружив проблему, скрипт **пишет письмо по SMTP**
+`https://pismo.space/`, `/api/v1/health`, `/api/v1/health/ready` (это БД),
+`/api/v1/auth/channels/`, доступ без токена к защищённым эндпоинтам (должен быть
+401), состояние контейнеров, свободное место на диске сервера и свежесть
+последнего дампа. Обнаружив проблему, скрипт **пишет письмо по SMTP**
 (настройки берутся в том числе из продового `.env`, поэтому настраивать ничего не
 нужно); SMS через SMS Aero — опция `ALERT_SMS=1`. Повторные письма об одной проблеме
 — не чаще раза в 3 часа, при восстановлении приходит «прод снова в норме».
@@ -202,6 +204,23 @@ crontab -l | grep -v '# pismo-monitor' | crontab -   # удалить задач
 ```
 
 Лог: `~/Документы/pismo_backup/logs/monitor.log`. Подробности — `docs/monitoring.md`.
+
+#### Деплой и смоук-тест (CI)
+
+Пуш в `main` → GitHub Actions прогоняет backend/frontend/секреты, затем job `deploy`
+по ssh на прод-сервере: `git reset --hard origin/main`, `docker compose up -d --build
+--force-recreate`, прогон миграций и **проверка, что БД стоит на той же ревизии,
+что и код** (`alembic current` == `alembic heads`). После деплоя отдельный job
+`smoke` запускает `scripts/ci/smoke_prod.sh` — проверяет сайт, `/api/v1/health`,
+`/api/v1/health/ready`, `/api/v1/auth/channels/` и что защищённый эндпоинт требует
+токен. Если шаг падает — деплой считается неуспешным (приходит письмо от GitHub).
+
+Почему это нужно: `docker compose up -d` завершается успешно и когда внутри всё
+сломалось (роутер не собрался, миграция не применилась) — раньше это не замечалось.
+
+> Все health-проверки снаружи есть **только** по пути `/api/v1/health*`: nginx
+> проксирует на бэкенд лишь `/api/` и `/media/`, а `/health` отдаёт SPA-фолбэк
+> (200 + HTML), из-за чего проверка по коду ответа обманывала.
 
 - Дамп полный (`pg_dump --clean`), включает и схему, и данные, и таблицу `alembic_version`. Поэтому после restore миграции на старте `web` — no-op; если позже появятся новые миграции — применятся поверх восстановленных данных.
 - Если БД пустая (нет таблиц), `dump_db.sh` не затирает прежний дамп.
@@ -348,8 +367,10 @@ crontab -l | grep -v '# pismo-monitor' | crontab -   # удалить задач
 | Метод | Путь | Описание | Доступ |
 |---|---|---|---|
 | GET | `/` | корень: «Hello World» | — |
-| GET | `/health` | liveness | — |
+| GET | `/health` | liveness (healthcheck docker) | — |
+| GET | `/api/v1/health` | то же, но по пути, который проксируется наружу | — |
 | GET | `/health/ready` | readiness (проверка БД, 503 при недоступности) | — |
+| GET | `/api/v1/health/ready` | то же по проксируемому пути (мониторинг, CI) | — |
 | POST | `/auth/password/status/` | есть ли аккаунт/пароль у номера и доступна ли доставка кода | — |
 | POST | `/auth/password/register/` | создать аккаунт/пароль → токен (без подтверждения номера) | — |
 | POST | `/auth/password/login/` | вход по номеру+паролю → токен | — |

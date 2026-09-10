@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Ставит в локальный crontab проверку прода каждые 15 минут.
 #
-# Вызывает scripts/monitoring/check_prod.sh: сайт, /health, /health/ready,
-# контейнеры, место на диске, свежесть бэкапа; при проблеме — письмо по SMTP
+# Вызывает scripts/monitoring/check_prod.sh: сайт, /api/v1/health,
+# /api/v1/health/ready, защита эндпоинтов, контейнеры, место на диске, свежесть
+# бэкапа; при проблеме — письмо по SMTP
 # (Telegram из РФ-сетей недоступен, SMS Aero без договора отклоняет SMS).
 #
 # Использование:

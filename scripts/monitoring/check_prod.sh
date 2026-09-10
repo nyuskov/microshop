@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Мониторинг прод-сервера с локальной машины: сайт, health, диск, контейнеры,
-# свежесть бэкапа. При проблеме — оповещение на e-mail (SMTP), опционально SMS.
+# Мониторинг прод-сервера с локальной машины: сайт, API (/api/v1/health),
+# защита эндпоинтов, диск, контейнеры, свежесть бэкапа. При проблеме —
+# оповещение на e-mail (SMTP), опционально SMS.
 #
 # Почему e-mail: Telegram недоступен ни с прод-сервера, ни с локальной машины
 # (блокировка в РФ-сетях, проверено), а SMS Aero без договора с операторами
@@ -223,13 +224,26 @@ load_smtp_settings
 PROBLEMS=()
 add_problem() { PROBLEMS+=("$1"); }
 
+# check_http <url> <имя> [ожидаемый код] [подстрока в теле]
+#
+# Проверка тела обязательна для API: наружу nginx проксирует только `/api/` и
+# `/media/`, а любой другой путь (включая корневой `/health`) отдаёт SPA-фолбэк
+# с кодом 200 — без проверки содержимого падение API выглядело бы как «всё в
+# норме». По той же причине health опрашивается по пути `/api/v1/health`.
+BODY_FILE="$(mktemp)"
+trap 'rm -f "$BODY_FILE"' EXIT
+
 check_http() {
-    local url="$1" name="$2" expect="${3:-200}"
+    local url="$1" name="$2" expect="${3:-200}" needle="${4:-}"
     local code
-    code="$(curl -s -o /dev/null -m 15 -w '%{http_code}' "$url" 2>/dev/null)"
+    code="$(curl -s -o "$BODY_FILE" -m 15 -w '%{http_code}' "$url" 2>/dev/null)"
     [[ -z "$code" ]] && code="000"
     if [[ "$code" != "$expect" ]]; then
         add_problem "$name: HTTP $code ($url)"
+        return 1
+    fi
+    if [[ -n "$needle" ]] && ! grep -qF "$needle" "$BODY_FILE"; then
+        add_problem "$name: ответ не похож на API (нет '$needle') — отдаёт что-то другое ($url)"
         return 1
     fi
     return 0
@@ -248,11 +262,16 @@ fi
 
 echo "=== Проверка прода $SITE_URL ($(date '+%Y-%m-%d %H:%M:%S')) ==="
 
-# 1) Сайт и API живы (health-эндпоинты живут на корне, без /api/v1)
-check_http "$SITE_URL/" "сайт (фронтенд)" || true
-check_http "$SITE_URL/health" "API /health" || true
-check_http "$SITE_URL/health/ready" "API /health/ready (БД+RabbitMQ)" || true
-check_http "$SITE_URL/api/v1/auth/channels/" "API /auth/channels (роутер api_v1)" || true
+# 1) Сайт и API живы. Важно: health и прочие не-/api пути на проде отдаёт
+# SPA-фолбэк (200 + HTML), поэтому проверяем именно проксируемые пути — и
+# сверяем содержимое ответа, иначе «проверка» проходит на мёртвом API.
+check_http "$SITE_URL/" "сайт (фронтенд)" 200 "<!DOCTYPE html" || true
+check_http "$SITE_URL/api/v1/health" "API /api/v1/health" 200 '"status"' || true
+check_http "$SITE_URL/api/v1/health/ready" "API /api/v1/health/ready (БД)" 200 '"database":"ok"' || true
+check_http "$SITE_URL/api/v1/auth/channels/" "API /auth/channels (роутер api_v1)" 200 '"otp_available"' || true
+# Защищённый эндпоинт без токена обязан требовать авторизацию: 200 здесь означал
+# бы утечку данных (регрессия в зависимостях FastAPI).
+check_http "$SITE_URL/api/v1/users/search/?query=smoke" "защита API (401 без токена)" 401 || true
 
 # 2) Контейнеры на сервере и место на диске
 SSH_OUT="$(remote "cd $PROD_DIR && docker compose -p '$PROD_PROJECT' -f '$PROD_COMPOSE_FILE' ps --format '{{.Service}} {{.Status}}' && echo '---DISK---' && df -P / | tail -1" 2>&1)"
