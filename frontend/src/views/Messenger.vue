@@ -530,7 +530,7 @@ const showProfileModal = ref(false)
 
 /** Разделы профиля (см. UserProfile): нужно, чтобы "назад" выходил из раздела. */
 interface ProfileHandle {
-  section: string
+  isInSection: () => boolean
   backToSections: () => void
 }
 const profileRef = ref<ProfileHandle | null>(null)
@@ -626,7 +626,7 @@ const pushMobileNav = () => {
 const onAppPopState = () => {
   if (isDesktop.value) return
   // Раздел настроек профиля — «назад» возвращает к списку разделов.
-  if (showProfileModal.value && profileRef.value && profileRef.value.section !== 'root') {
+  if (showProfileModal.value && profileRef.value?.isInSection()) {
     profileRef.value.backToSections()
     return
   }
@@ -651,7 +651,7 @@ const onAppPopState = () => {
     exitMessageSelection()
     return
   }
-  if (sidebarRef.value?.selectionMode) {
+  if (sidebarRef.value?.isSelecting()) {
     sidebarRef.value.exitSelection()
     return
   }
@@ -1694,7 +1694,7 @@ const selectedMessagesOf = (): Message[] =>
  * себя модальные окна.
  */
 const anySelectionActive = computed(
-  () => msgSelectionMode.value || Boolean(sidebarRef.value?.selectionMode)
+  () => msgSelectionMode.value || Boolean(sidebarRef.value?.isSelecting())
 )
 watch(anySelectionActive, (active, wasActive) => {
   if (active && !wasActive) pushMobileNav()

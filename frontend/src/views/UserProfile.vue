@@ -185,8 +185,10 @@ const backToSections = () => {
 }
 
 // Родителю (Messenger) нужно знать, открыт ли раздел: тогда «назад» возвращает к
-// списку разделов, а не закрывает профиль целиком.
-defineExpose({ section, backToSections })
+// списку разделов, а не закрывает профиль целиком. Отдаём функции, а не ref'ы —
+// так не важно, как Vue разворачивает ссылки на дочерний компонент.
+const isInSection = () => section.value !== 'root'
+defineExpose({ backToSections, isInSection })
 
 // ---------- Отображение ----------
 const fullName = computed(() =>

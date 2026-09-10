@@ -679,8 +679,10 @@ const exitSelection = () => {
 }
 
 // Родителю нужен режим выделения: системная «назад» должна выходить из него
-// (см. `onAppPopState` в Messenger.vue).
-defineExpose({ selectionMode, exitSelection })
+// (см. `onAppPopState` в Messenger.vue). Отдаём функции — так не важно, как Vue
+// разворачивает ref'ы при доступе к дочернему компоненту.
+const isSelecting = () => selectionMode.value
+defineExpose({ exitSelection, isSelecting })
 
 const toggleSelect = (chatId: number) => {
   const next = new Set(selectedIds.value)
