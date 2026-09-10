@@ -1,13 +1,21 @@
 FROM node:20-alpine
 
-# Устанавливаем pnpm
-RUN npm install -g pnpm
+# pnpm ставим через corepack: версия берётся из package.json → "packageManager"
+# (pnpm@12.3.4). Раньше здесь был `npm install -g pnpm` без версии — при пересборке
+# (например, после `entry.sh` с `--rmi all`) из кеша/реестра подтягивалась другая
+# мажорная версия, и `pnpm install --frozen-lockfile` падал с
+# ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE (`Cannot update
+# packageManagerDependencies ... because the lockfile is not up to date`),
+# потому что новая pnpm хотела дописать метаданные в lockfile.
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable
 
 WORKDIR /app
 
-# Копируем package.json, pnpm-lock.yaml и .pnpmfile.cjs для кеширования слоя и настройки
+# Копируем package.json, pnpm-lock.yaml, pnpm-workspace.yaml и .pnpmfile.cjs для кеширования слоя и настройки
 COPY package*.json ./
 COPY pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml ./
 COPY .pnpmfile.cjs ./
 
 # Создаем .npmrc для игнорирования скриптов сборки
