@@ -174,10 +174,12 @@
             :quote-of="quoteFor"
             :selection-mode="msgSelectionMode"
             :selected-message-ids="selectedMessageIds"
-            :pending="pendingUploads"
+            :pending="threadPendingRows"
             :is-group-chat="isGroupChat(selectedChat)"
             :members="selectedChat.users"
             :unread-count="unreadAtOpen"
+            @retry-pending="retryOutboxItem"
+            @drop-pending="dropOutboxItem"
             @background-click="closePopups"
             @reach-top="loadOlderMessages"
             @quote-click="quoteClick"
@@ -431,7 +433,15 @@ import { Notify, useQuasar } from 'quasar'
 import LoginModal from '@/components/LoginModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
-import { getErrorMessage } from '@/services/errors'
+import {
+  addOutboxItem,
+  nextOutboxLocalId,
+  patchOutboxItem,
+  readOutbox,
+  removeOutboxItem,
+  type OutboxItem
+} from '@/utils/outbox'
+import { getErrorMessage, isNetworkError } from '@/services/errors'
 import { blockUser } from '@/services/moderation'
 import {
   fetchContacts,
@@ -480,6 +490,7 @@ import ChatPlaceholder from '@/components/messenger/ChatPlaceholder.vue'
 import InlineSearchBar from '@/components/messenger/InlineSearchBar.vue'
 import PinnedBar from '@/components/messenger/PinnedBar.vue'
 import MessageThread from '@/components/messenger/MessageThread.vue'
+import type { PendingRow } from '@/components/messenger/MessageThread.vue'
 import MessageComposer from '@/components/messenger/MessageComposer.vue'
 
 // Тяжёлые модалки/оверлеи подгружаем асинхронно — они нужны только после
@@ -1554,7 +1565,17 @@ const sendText = async () => {
     await loadPinned(chatId)
     scrollToBottom()
   } catch (error) {
-    sendError.value = getErrorMessage(error, 'Не удалось отправить сообщение')
+    // Связь пропала — не теряем набранное: ставим в очередь и отправим сами,
+    // как только сеть вернётся (сообщение видно в ленте как «Ждёт сети»).
+    if (isNetworkError(error)) {
+      queueOutgoingText(chatId, text, replyTarget.value?.id)
+      newMessage.value = ''
+      clearDraftFor(chatId)
+      clearReply()
+      void nextTick(scrollToBottom)
+    } else {
+      sendError.value = getErrorMessage(error, 'Не удалось отправить сообщение')
+    }
   } finally {
     sending.value = false
   }
@@ -1712,6 +1733,165 @@ const copyMessage = async (message: Message) => {
     console.error('Не удалось скопировать:', getErrorMessage(error))
   }
 }
+
+// ---------- Очередь сообщений, которые не ушли из-за сети ----------
+/** Сообщения текущего пользователя, ждущие связи (или уже отвергнутые сервером). */
+const outboxItems = ref<OutboxItem[]>([])
+/** Id, которые прямо сейчас отправляются (в ленте показываем «Отправка…»). */
+const outboxSending = ref<string[]>([])
+let outboxTimer: ReturnType<typeof setInterval> | undefined
+
+const reloadOutbox = () => {
+  outboxItems.value = readOutbox(currentUserId.value)
+}
+
+// В ленте показываем только сообщения открытого чата: у остальных чатов своё.
+const openChatOutboxRows = computed<PendingRow[]>(() => {
+  const chatId = selectedChatId.value
+  if (chatId === null) return []
+  return outboxItems.value
+    .filter((item) => item.chatId === chatId)
+    .map((item) => ({
+      localId: item.localId,
+      label: item.text,
+      status: outboxSending.value.includes(item.id)
+        ? 'sending'
+        : item.state === 'error'
+          ? 'failed'
+          : 'queued',
+      error: item.error ?? null
+    }))
+})
+
+/** Строки под лентой: загружаемые вложения + очередь сообщений. */
+const threadPendingRows = computed<PendingRow[]>(() => [
+  ...pendingUploads.value.map((item) => ({ ...item, status: 'sending' as const })),
+  ...openChatOutboxRows.value
+])
+
+/**
+ * Собрать текст для отправки: в «зашифрованном» чате шифруем в момент отправки
+ * (в очереди текст лежит открытым — ключи могут появиться позже).
+ */
+const buildWireText = async (
+  chatId: number,
+  text: string
+): Promise<{ wireText: string; encrypted: boolean }> => {
+  let wireText = text
+  let encrypted = false
+  const uid = currentUserId.value
+  const chat = chats.value.find((item) => item.id === chatId) ?? null
+  const peerId = peerIdOfChat(chat)
+  if (chat?.e2ee_enabled && uid !== null && peerId !== null && e2eeMyKeyReady.value) {
+    const aes = await chatAesKey(uid, peerId, chatId)
+    if (aes) {
+      wireText = await encryptText(aes, text)
+      encrypted = true
+    }
+  }
+  return { wireText, encrypted }
+}
+
+/** Поставить сообщение в очередь (связь пропала во время отправки). */
+const queueOutgoingText = (chatId: number, text: string, replyToId?: number | null) => {
+  const uid = currentUserId.value
+  const item: OutboxItem = {
+    id: `out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    localId: nextOutboxLocalId(outboxItems.value),
+    chatId,
+    text,
+    replyToId: replyToId ?? null,
+    createdAt: new Date().toISOString(),
+    state: 'queued'
+  }
+  addOutboxItem(uid, item)
+  reloadOutbox()
+}
+
+/**
+ * Отправить всё, что накопилось без сети.
+ *
+ * `onlyId` — повтор одного конкретного сообщения (кнопка «Повторить»).
+ */
+const flushOutbox = async (onlyId?: string) => {
+  const uid = currentUserId.value
+  if (uid === null) return
+  const items = outboxItems.value.filter((item) => !onlyId || item.id === onlyId)
+  for (const item of items) {
+    if (!onlyId && !navigator.onLine) return
+    outboxSending.value = [...outboxSending.value, item.id]
+    try {
+      const { wireText, encrypted } = await buildWireText(item.chatId, item.text)
+      const message = await sendNewMessage(item.chatId, wireText, item.replyToId, encrypted)
+      if (encrypted) {
+        message.text = item.text
+        message.encrypted = false
+      }
+      removeOutboxItem(uid, item.id)
+      reloadOutbox()
+      if (selectedChatId.value === item.chatId) {
+        messages.value = appendMessage(messages.value, message)
+        void loadPinned(item.chatId)
+        void nextTick(scrollToBottom)
+      }
+      await loadChats()
+    } catch (error) {
+      if (isNetworkError(error)) {
+        // Сеть снова пропала — оставляем в очереди и выйдем из цикла: остальные
+        // сообщения тоже не уйдут.
+        patchOutboxItem(uid, item.id, { state: 'queued', error: undefined })
+        reloadOutbox()
+        return
+      }
+      patchOutboxItem(uid, item.id, {
+        state: 'error',
+        error: getErrorMessage(error, 'Не удалось отправить')
+      })
+      reloadOutbox()
+    } finally {
+      outboxSending.value = outboxSending.value.filter((id) => id !== item.id)
+    }
+  }
+}
+
+/** Повтор одного сообщения из очереди (кнопка в ленте). */
+const retryOutboxItem = (localId: number) => {
+  const item = outboxItems.value.find((entry) => entry.localId === localId)
+  if (item) void flushOutbox(item.id)
+}
+
+/** Убрать неотправленное сообщение из очереди. */
+const dropOutboxItem = (localId: number) => {
+  const item = outboxItems.value.find((entry) => entry.localId === localId)
+  if (!item) return
+  removeOutboxItem(currentUserId.value, item.id)
+  reloadOutbox()
+}
+
+// ---------- Автоотправка очереди, когда связь вернулась ----------
+/** Раз в 20 секунд пробуем дослать то, что застряло (если браузер думает, что сеть есть). */
+const OUTBOX_RETRY_MS = 20_000
+
+const onNetworkOnline = () => {
+  void flushOutbox()
+}
+
+const startOutboxTimer = () => {
+  if (outboxTimer !== undefined) return
+  outboxTimer = window.setInterval(() => {
+    if (outboxItems.value.length === 0) return
+    void flushOutbox()
+  }, OUTBOX_RETRY_MS)
+}
+
+watch(
+  currentUserId,
+  (uid) => {
+    reloadOutbox()
+    if (uid !== null && outboxItems.value.length > 0) void flushOutbox()
+  },
+  { immediate: true }
+)
 
 // ---------- Мультивыделение сообщений (long-press; как в чатах) ----------
 /** Активен ли режим выбора сообщений в открытом чате. */
@@ -2666,6 +2846,9 @@ onMounted(async () => {
   window.addEventListener('message', handleWindowMessage)
   window.addEventListener('visibilitychange', handleCallVisibility)
   window.addEventListener('popstate', onAppPopState)
+  // Связь вернулась — досылаем то, что застряло без сети.
+  window.addEventListener('online', onNetworkOnline)
+  startOutboxTimer()
   scrollToBottom()
 
   // Холодный старт по уведомлению.
@@ -2813,6 +2996,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('message', handleWindowMessage)
   window.removeEventListener('visibilitychange', handleCallVisibility)
   window.removeEventListener('popstate', onAppPopState)
+  window.removeEventListener('online', onNetworkOnline)
+  if (outboxTimer !== undefined) {
+    window.clearInterval(outboxTimer)
+    outboxTimer = undefined
+  }
   disposeNativePush()
   stopRealtime()
   realtimeStore.setHandler(null)

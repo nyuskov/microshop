@@ -65,10 +65,15 @@
     --ms-accent-soft: color-mix(in srgb, var(--ms-accent) 16%, #ffffff);
     --ms-accent-border: color-mix(in srgb, var(--ms-accent) 55%, #ffffff);
 
-    /* Типографика и геометрия (общие для обеих тем) */
+    /* Типографика и геометрия (общие для обеих тем).
+       Шрифтов три — по назначению (см. scripts/fetch_fonts.py):
+       Roboto — обычный текст, Golos Text — заголовки, Roboto Mono — цифры. */
     --ms-font:
-        'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+        'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial,
         sans-serif;
+    --ms-font-display:
+        'Golos Text', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    --ms-font-mono: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     /* Множитель размера текста из настроек оформления (мелкий/обычный/крупный).
        Меняется в stores/theme.ts → applyAppearance(). */
     --ms-text-scale: 1;
@@ -807,12 +812,10 @@ html .messenger-shell [role='menuitem']:focus-visible {
 
 .sk-avatar,
 .sk-line {
-    background: linear-gradient(
-        90deg,
-        var(--ms-surface-2) 25%,
-        var(--ms-hover) 37%,
-        var(--ms-surface-2) 63%
-    );
+    background: linear-gradient(90deg,
+            var(--ms-surface-2) 25%,
+            var(--ms-hover) 37%,
+            var(--ms-surface-2) 63%);
     background-size: 400% 100%;
     animation: sk-shimmer 1.4s ease infinite;
 }
@@ -821,14 +824,47 @@ html .messenger-shell [role='menuitem']:focus-visible {
     from {
         background-position: 100% 0;
     }
+
     to {
         background-position: 0 0;
     }
 }
 
 @media (prefers-reduced-motion: reduce) {
+
     .sk-avatar,
     .sk-line {
         animation: none;
     }
+}
+
+/* ---------- Шрифты по назначению ---------- */
+
+/* Заголовки и крупные названия — Golos Text: современный рисунок, хорошо
+   смотрится крупно и «собирает» шапки/диалоги в единый стиль. */
+html h1,
+html h2,
+html h3,
+html .panel-title,
+html .chat-title,
+html .step-title,
+html .call-name,
+html .hero-name,
+html .settings-head-title,
+html .empty-state__title,
+html .ms-modal-head {
+    font-family: var(--ms-font-display);
+    letter-spacing: -0.01em;
+}
+
+/* Цифры — моноширинные: код из SMS, номер телефона, таймеры звонка и записи.
+   Табличные цифры не «дрожат» при вводе и отсчёте времени. */
+html .phone-input,
+html .phone-input .q-field__native,
+html #pf-phone,
+html .call-timer,
+html .vr-timer,
+html .vrm-timer {
+    font-family: var(--ms-font-mono);
+    font-variant-numeric: tabular-nums;
 }

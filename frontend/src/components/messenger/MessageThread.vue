@@ -65,16 +65,50 @@
           </template>
         </template>
         <div v-for="p in pending ?? []" :key="p.localId" class="pending-row">
-          <div class="pending-bubble">
+          <div class="pending-bubble" :class="`st-${p.status ?? 'sending'}`">
             <img v-if="p.previewUrl" :src="p.previewUrl" class="pending-preview" alt="" />
-            <q-icon v-else name="attach_file" class="pending-file-icon" size="16px" />
+            <q-icon
+              v-else-if="!isTextRow(p)"
+              name="attach_file"
+              class="pending-file-icon"
+              size="16px"
+            />
             <span class="pending-meta">
               <span class="pending-label">{{ p.label }}</span>
-              <span class="pending-status">
+              <!-- Вложение грузится -->
+              <span v-if="(p.status ?? 'sending') === 'sending'" class="pending-status">
                 <span class="pending-spinner" aria-hidden="true"></span>
                 Отправка…
               </span>
+              <!-- Текста не ушёл: ждём сеть и отправим сами -->
+              <span v-else-if="p.status === 'queued'" class="pending-status">
+                <q-icon name="schedule" size="14px" aria-hidden="true" />
+                Ждёт сети — отправим, как появится
+              </span>
+              <!-- Сервер отказал: без ручного повтора сообщение не уйдёт -->
+              <span v-else class="pending-status error">
+                <q-icon name="error" size="14px" aria-hidden="true" />
+                {{ p.error || 'Не отправлено' }}
+              </span>
             </span>
+            <button
+              v-if="p.status === 'failed'"
+              type="button"
+              class="pending-action"
+              title="Повторить отправку"
+              @click="emit('retry-pending', p.localId)"
+            >
+              <q-icon name="refresh" size="17px" />
+            </button>
+            <button
+              v-if="p.status && p.status !== 'sending'"
+              type="button"
+              class="pending-action danger"
+              title="Убрать из очереди"
+              @click="emit('drop-pending', p.localId)"
+            >
+              <q-icon name="close" size="17px" />
+            </button>
           </div>
         </div>
         <div v-if="!rows.length && (pending ?? []).length === 0" class="chat-status">
@@ -113,11 +147,19 @@ interface MessageQuote {
   text: string
 }
 
-/** Временный пузырь «Отправка…» (вложение ещё грузится на сервер). */
-interface PendingUpload {
+/**
+ * Временный пузырь внизу ленты.
+ *
+ * `sending` — вложение грузится на сервер; `queued` — текст не ушёл из-за сети и
+ * отправится сам; `failed` — сервер отказал, нужен ручной повтор.
+ */
+export interface PendingRow {
   localId: number
   label: string
   previewUrl?: string | null
+  status?: 'sending' | 'queued' | 'failed'
+  /** Текст ошибки для состояния `failed`. */
+  error?: string | null
 }
 
 const props = defineProps<{
@@ -132,8 +174,8 @@ const props = defineProps<{
   selectionMode: boolean
   /** Id выбранных сообщений. */
   selectedMessageIds: number[]
-  /** Вложения, которые сейчас отправляются (показываются внизу ленты). */
-  pending?: PendingUpload[]
+  /** Вложения/сообщения, которые ещё не отправлены (показываются внизу ленты). */
+  pending?: PendingRow[]
   /** Групповой ли открытый чат (показываем имена авторов). */
   isGroupChat?: boolean
   /** Участники группы (для имён авторов сообщений). */
@@ -158,6 +200,10 @@ const emit = defineEmits<{
   (e: 'forward', message: Message): void
   (e: 'save', message: Message): void
   (e: 'delete', message: Message): void
+  /** Повторить отправку стоящего в очереди сообщения. */
+  (e: 'retry-pending', localId: number): void
+  /** Убрать из очереди неотправленное сообщение. */
+  (e: 'drop-pending', localId: number): void
   (e: 'report', message: Message): void
   (e: 'open-image', message: Message): void
 }>()
@@ -326,6 +372,9 @@ const reveal = (messageId: number): boolean => {
     elRect.top - containerRect.top - containerRect.height / 2 + elRect.height / 2
   return true
 }
+
+/** Строка очереди — текст (без превью и без иконки вложения). */
+const isTextRow = (p: PendingRow): boolean => p.status === 'queued' || p.status === 'failed'
 
 /**
  * Ссылки на строки сообщений: нужны, чтобы открыть лист действий сообщения

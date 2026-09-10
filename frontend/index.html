@@ -1,27 +1,20 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
   <head>
-    <meta charset="UTF-8">
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <link rel="icon" href="/favicon.ico" sizes="any">
-    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png">
-    <link rel="manifest" href="/manifest.webmanifest">
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
-    >
-    <meta name="description" content="Pismo — мессенджер">
-    <meta name="theme-color" content="#5a50e0">
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Pismo — мессенджер" />
+    <meta name="theme-color" content="#5a50e0" />
     <title>Pismo — мессенджер</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    >
+    <!-- Шрифт Roboto подключён локально (src/assets/fonts.css): внешние запросы
+         к Google Fonts не нужны — и быстрее, и работает без них. -->
     <script>
       // Применяем сохранённую тему до первого кадра, чтобы не мигала светлая.
-      (function () {
+      ;(function () {
         try {
           var root = document.documentElement
           var stored = JSON.parse(localStorage.getItem('appearance') || '{}')
@@ -50,7 +43,11 @@
           root.style.setProperty('--ms-accent', accents[stored.accentKey] || '#2ea25e')
           if (stored.bubbleKey) root.setAttribute('data-bubble', stored.bubbleKey)
           var themeColor = document.querySelector('meta[name="theme-color"]')
-          if (themeColor) themeColor.setAttribute('content', dark ? '#10151c' : (accents[stored.accentKey] || '#2ea25e'))
+          if (themeColor)
+            themeColor.setAttribute(
+              'content',
+              dark ? '#10151c' : accents[stored.accentKey] || '#2ea25e'
+            )
         } catch (e) {
           /* невалидный localStorage — пропускаем */
         }

@@ -84,7 +84,7 @@
               </span>
               <h2 class="call-name audio-name">{{ displayName }}</h2>
               <p class="call-subtitle audio-sub">
-                Голосовой звонок · {{ callStore.formattedTime }}
+                Голосовой звонок · <span class="call-timer">{{ callStore.formattedTime }}</span>
               </p>
               <span v-if="callStore.peerScreenSharing" class="call-sharing">
                 <q-icon name="screen_share" size="13px" aria-hidden="true" />

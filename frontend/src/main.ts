@@ -15,6 +15,10 @@ import 'quasar/dist/quasar.css'
 // (полный набор 5 МБ — см. frontend/scripts/build-icons-font.py).
 import './assets/icons.css'
 
+// Основной шрифт Roboto — локально (кириллица + латиница):
+// frontend/scripts/fetch_font.py скачивает наборы и собирает fonts.css.
+import './assets/fonts.css'
+
 // Import global styles
 import './assets/style.css'
 import './assets/appearance.css'
