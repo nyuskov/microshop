@@ -1221,7 +1221,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 8px 12px 4px;
   background: #ffffff;
 }
 
@@ -1943,39 +1943,25 @@ onBeforeUnmount(() => {
   transition: color 0.16s ease;
 }
 
-/* Активная вкладка: «пилюля» под иконкой + акцентная подпись (Material-стиль). */
-.bottom-nav-btn > .q-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 58px;
-  height: 28px;
-  border-radius: 14px;
-  transition: background 0.16s ease;
-}
-
+/* Активная вкладка — только цветом: фон/подложка здесь лишние. */
 .bottom-nav-btn.active {
   color: var(--ms-accent);
   font-weight: 600;
 }
 
-.bottom-nav-btn.active > .q-icon {
-  background: var(--ms-accent-soft);
+.bottom-nav-btn:hover {
+  color: var(--ms-text-strong, var(--ms-text));
 }
 
-.bottom-nav-btn:hover > .q-icon {
-  background: var(--ms-hover);
-}
-
-.bottom-nav-btn.active:hover > .q-icon {
-  background: var(--ms-accent-soft);
+.bottom-nav-btn.active:hover {
+  color: var(--ms-accent);
 }
 
 /* Точка «есть новое»: прижата к «пилюле» иконки, а не к краю кнопки. */
 .bottom-nav-dot {
   position: absolute;
-  top: 3px;
-  right: calc(50% - 22px);
+  top: 5px;
+  right: calc(50% - 17px);
   width: 9px;
   height: 9px;
   border-radius: 50%;
@@ -1987,11 +1973,6 @@ onBeforeUnmount(() => {
   .bottom-nav-btn {
     font-size: 10.5px;
     padding: 6px 0 7px;
-  }
-
-  .bottom-nav-btn > .q-icon {
-    width: 52px;
-    height: 26px;
   }
 }
 </style>

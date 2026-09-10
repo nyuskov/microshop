@@ -193,7 +193,7 @@ const publish = async () => {
   display: flex;
   align-items: flex-start;
   gap: 14px;
-  padding: 12px 14px 13px;
+  padding: 8px 14px 12px;
   overflow-x: auto;
   border-bottom: 1px solid var(--ms-hairline);
   scrollbar-width: none;
