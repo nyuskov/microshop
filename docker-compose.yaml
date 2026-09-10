@@ -38,6 +38,15 @@ services:
       # Суточные лимиты отправки кодов (защита баланса SMS-шлюза).
       - AUTH_OTP_DAILY_LIMIT=${AUTH_OTP_DAILY_LIMIT:-50}
       - AUTH_OTP_PER_IP_DAILY_LIMIT=${AUTH_OTP_PER_IP_DAILY_LIMIT:-20}
+      # E-mail-канал (подтверждение адреса, вход по коду, сброс пароля).
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Pismo}
+      - SMTP_STARTTLS=${SMTP_STARTTLS:-true}
+      - SMTP_SSL=${SMTP_SSL:-false}
       # Web Push (PWA): VAPID-ключи; пока пусто — push выключен.
       - WEB_PUSH_VAPID_PUBLIC_KEY=${WEB_PUSH_VAPID_PUBLIC_KEY:-}
       - WEB_PUSH_VAPID_PRIVATE_KEY=${WEB_PUSH_VAPID_PRIVATE_KEY:-}
@@ -90,6 +99,15 @@ services:
       - SMS_AERO_EMAIL=${SMS_AERO_EMAIL:-}
       - SMS_AERO_API_KEY=${SMS_AERO_API_KEY:-}
       - SMS_AERO_SIGN=${SMS_AERO_SIGN:-}
+      # E-mail-канал: письма с кодами отправляет воркер.
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Pismo}
+      - SMTP_STARTTLS=${SMTP_STARTTLS:-true}
+      - SMTP_SSL=${SMTP_SSL:-false}
       - TELEGRAM_GATEWAY_TOKEN=${TELEGRAM_GATEWAY_TOKEN:-}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}

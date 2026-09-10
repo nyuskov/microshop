@@ -106,6 +106,9 @@ class UserWithDetailsSchema(BaseModel):
     first_name: str | None
     last_name: str | None
     email: EmailStr | None
+    # Подтверждён ли адрес кодом из письма: только подтверждённый e-mail можно
+    # использовать для входа без пароля и восстановления доступа.
+    email_verified: bool = False
     avatar_url: str | None = None
     status: str | None = None
     last_seen: datetime | None = None

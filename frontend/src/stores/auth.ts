@@ -25,6 +25,8 @@ export interface ApiUser {
   first_name: string | null
   last_name: string | null
   email: string | null
+  // Подтверждён ли адрес кодом из письма (вход без пароля и сброс пароля).
+  email_verified?: boolean
   is_superuser?: boolean
   // Состояние безопасности: задан ли пароль и не устарел/ослаб ли он.
   password_set?: boolean
@@ -154,6 +156,8 @@ export const useAuthStore = defineStore('auth', {
       registered: boolean
       has_password: boolean
       otp_available: boolean
+      email_otp_available: boolean
+      email_login_available: boolean
     }> {
       const response = await api.post('/auth/password/status/', {
         phone_number: phoneNumber
@@ -162,7 +166,67 @@ export const useAuthStore = defineStore('auth', {
         registered: boolean
         has_password: boolean
         otp_available: boolean
+        email_otp_available: boolean
+        email_login_available: boolean
       }
+    },
+
+    /** Какие каналы доставки кодов включены на сервере (публично). */
+    async fetchAuthChannels(): Promise<{
+      otp_available: boolean
+      email_otp_available: boolean
+    }> {
+      const response = await api.get('/auth/channels/')
+      return response.data as { otp_available: boolean; email_otp_available: boolean }
+    },
+
+    /** Письмо с кодом на адрес — чтобы подтвердить его в текущем аккаунте. */
+    async requestEmailVerification(email: string): Promise<string> {
+      const response = await api.post('/auth/email/request-verification/', { email })
+      return response.data?.detail ?? ''
+    },
+
+    /** Подтверждение адреса кодом из письма. */
+    async confirmEmailVerification(email: string, code: string): Promise<void> {
+      await api.post('/auth/email/confirm-verification/', { email, code })
+      await this.fetchUser()
+    },
+
+    /** Вход без пароля: письмо с кодом на подтверждённый адрес. */
+    async requestEmailLogin(email: string): Promise<string> {
+      const response = await api.post('/auth/email/login/request/', { email })
+      return response.data?.detail ?? ''
+    },
+
+    /** Вход по коду из письма. */
+    async confirmEmailLogin(
+      email: string,
+      code: string,
+      router: Router | null = null
+    ): Promise<void> {
+      const response = await api.post('/auth/email/login/confirm/', { email, code })
+      await this.applyTokenResponse(response.data, router)
+    },
+
+    /** Запрос кода для восстановления пароля. */
+    async requestPasswordReset(email: string): Promise<string> {
+      const response = await api.post('/auth/password/reset/request/', { email })
+      return response.data?.detail ?? ''
+    },
+
+    /** Сброс пароля кодом из письма (старые сессии на сервере отзываются). */
+    async confirmPasswordReset(
+      email: string,
+      code: string,
+      password: string,
+      router: Router | null = null
+    ): Promise<void> {
+      const response = await api.post('/auth/password/reset/confirm/', {
+        email,
+        code,
+        password
+      })
+      await this.applyTokenResponse(response.data, router)
     },
 
     /**

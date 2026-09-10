@@ -170,9 +170,74 @@ const securityIssues = computed<string[]>(() => {
   }
   if (!user.email) {
     issues.push('Добавьте e-mail — он понадобится для восстановления доступа.')
+  } else if (!user.email_verified && emailChannelAvailable.value) {
+    issues.push(
+      'Подтвердите e-mail — только подтверждённый адрес годится для входа и сброса пароля.'
+    )
   }
   return issues
 })
+
+// --- Подтверждение e-mail: код из письма ---
+const emailChannelAvailable = ref(false)
+const emailCodeSent = ref(false)
+const emailCodeInput = ref('')
+const emailBusy = ref(false)
+const emailNotice = ref('')
+const emailError = ref('')
+
+void authStore
+  .fetchAuthChannels()
+  .then((channels) => {
+    emailChannelAvailable.value = channels.email_otp_available
+  })
+  .catch(() => {
+    emailChannelAvailable.value = false
+  })
+
+const sendEmailCode = async () => {
+  const address = (authStore.current_user?.email ?? profileForm.email).trim()
+  if (!address) {
+    emailError.value = 'Сначала укажите e-mail и сохраните профиль.'
+    return
+  }
+
+  emailBusy.value = true
+  emailError.value = ''
+  emailNotice.value = ''
+  try {
+    const detail = await authStore.requestEmailVerification(address)
+    emailCodeSent.value = true
+    emailNotice.value = detail || 'Код отправлен на e-mail.'
+  } catch (error) {
+    emailError.value = getErrorMessage(error, 'Не удалось отправить код')
+  } finally {
+    emailBusy.value = false
+  }
+}
+
+const confirmEmailCode = async () => {
+  const address = (authStore.current_user?.email ?? profileForm.email).trim()
+  if (!emailCodeInput.value.trim()) {
+    emailError.value = 'Введите код из письма.'
+    return
+  }
+
+  emailBusy.value = true
+  emailError.value = ''
+  emailNotice.value = ''
+  try {
+    await authStore.confirmEmailVerification(address, emailCodeInput.value.trim())
+    emailCodeSent.value = false
+    emailCodeInput.value = ''
+    emailNotice.value =
+      'E-mail подтверждён — теперь по нему можно входить и восстанавливать пароль.'
+  } catch (error) {
+    emailError.value = getErrorMessage(error, 'Неверный код из письма')
+  } finally {
+    emailBusy.value = false
+  }
+}
 
 const passwordForm = reactive({
   current: '',
@@ -471,6 +536,17 @@ const onNotificationsToggle = async (val: boolean) => {
             <div class="field">
               <label for="pf-email">Email</label>
               <input id="pf-email" v-model="profileForm.email" type="email" placeholder="Email" />
+              <p class="field-hint">
+                <template v-if="authStore.current_user?.email_verified">
+                  <q-icon name="verified" size="14px" /> Подтверждён — можно входить по коду на
+                  e-mail.
+                </template>
+                <template v-else-if="emailChannelAvailable">
+                  Не подтверждён: подтвердите адрес, иначе войти по нему и восстановить пароль не
+                  получится.
+                </template>
+                <template v-else> Не подтверждён (отправка писем на сервере выключена). </template>
+              </p>
             </div>
           </div>
         </section>
@@ -565,6 +641,66 @@ const onNotificationsToggle = async (val: boolean) => {
             Вход — по номеру телефона. Пароль нужен, чтобы входить без кода в Telegram; минимум
             {{ PASSWORD_MIN_LENGTH }} символов, лучше — длинная фраза.
           </p>
+
+          <!-- Подтверждение e-mail: код из письма (канал входа и сброса пароля) -->
+          <div v-if="emailChannelAvailable" class="email-verify">
+            <div class="email-verify-text">
+              <strong>
+                {{
+                  authStore.current_user?.email_verified
+                    ? 'E-mail подтверждён'
+                    : 'Подтверждение e-mail'
+                }}
+              </strong>
+              <span>
+                {{
+                  authStore.current_user?.email_verified
+                    ? 'По нему можно войти без пароля и восстановить доступ.'
+                    : 'Без подтверждения адрес не годится для входа и восстановления пароля.'
+                }}
+              </span>
+            </div>
+
+            <template v-if="!authStore.current_user?.email_verified">
+              <div class="email-verify-actions">
+                <button
+                  type="button"
+                  class="revoke-btn"
+                  :disabled="emailBusy"
+                  @click="sendEmailCode"
+                >
+                  <q-icon name="forward_to_inbox" size="17px" />
+                  {{ emailCodeSent ? 'Отправить код ещё раз' : 'Отправить код на e-mail' }}
+                </button>
+
+                <div v-if="emailCodeSent" class="email-code-row">
+                  <input
+                    v-model="emailCodeInput"
+                    inputmode="numeric"
+                    maxlength="6"
+                    placeholder="Код из письма"
+                    aria-label="Код из письма"
+                    @keyup.enter="confirmEmailCode"
+                  />
+                  <button
+                    type="button"
+                    class="security-btn"
+                    :disabled="emailBusy"
+                    @click="confirmEmailCode"
+                  >
+                    Подтвердить
+                  </button>
+                </div>
+              </div>
+            </template>
+
+            <transition name="fade">
+              <p v-if="emailNotice" class="email-note">{{ emailNotice }}</p>
+            </transition>
+            <transition name="fade">
+              <p v-if="emailError" class="email-error">{{ emailError }}</p>
+            </transition>
+          </div>
 
           <form class="security-form" @submit.prevent="changePassword">
             <label v-if="authStore.current_user?.password_set" class="field-label" for="pf-current">
@@ -1178,6 +1314,80 @@ const onNotificationsToggle = async (val: boolean) => {
 .security-note {
   margin: 6px 0 0;
   font-size: 12.5px;
+  color: #8295a3;
+}
+
+/* Подтверждение e-mail в разделе «Безопасность». */
+.email-verify {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #e2e6ea;
+  border-radius: 12px;
+  background: #f8fafb;
+}
+
+.email-verify-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13.5px;
+  color: #1c2733;
+}
+
+.email-verify-text span {
+  font-size: 12.5px;
+  color: #6b7b88;
+}
+
+.email-verify-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.email-code-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+
+.email-code-row input {
+  flex: 1;
+  min-width: 120px;
+  padding: 9px 12px;
+  border: 1px solid #e2e6ea;
+  border-radius: 11px;
+  background: #fff;
+  font: inherit;
+  font-size: 14.5px;
+  color: #1c2733;
+}
+
+.email-code-row input:focus {
+  outline: none;
+  border-color: var(--ms-accent, #2ea25e);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ms-accent, #2ea25e) 15%, transparent);
+}
+
+.email-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: #2ea25e;
+}
+
+.email-error {
+  margin: 0;
+  font-size: 12.5px;
+  color: #d64545;
+}
+
+.field-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
   color: #8295a3;
 }
 

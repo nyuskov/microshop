@@ -4,7 +4,7 @@ import re
 import secrets
 from uuid import uuid4
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -79,6 +79,14 @@ async def get_user_by_phone_number(
         select(User).where(User.phone_number == phone_number)
     )
     return result.scalar_one_or_none()
+
+
+async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
+    """Возвращает пользователя по e-mail (без учёта регистра)."""
+    result = await session.execute(
+        select(User).where(func.lower(User.email) == email.strip().lower())
+    )
+    return result.scalars().first()
 
 
 def canonical_phone(raw: str) -> str:

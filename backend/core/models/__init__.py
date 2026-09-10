@@ -5,6 +5,7 @@ __all__ = [
     "Chat",
     "ChatMute",
     "DeviceKey",
+    "EmailCode",
     "Message",
     "MessageReaction",
     "OtpCode",
@@ -25,6 +26,7 @@ from .chat import Chat, user_chat_association_table  # noqa: F401
 from .chat_mute import ChatMute  # noqa: F401
 from .db_helper import DatabaseHelper, db_helper  # noqa: F401
 from .device_key import DeviceKey  # noqa: F401
+from .email_code import EmailCode  # noqa: F401
 from .message import Message  # noqa: F401
 from .message_reaction import MessageReaction  # noqa: F401
 from .otp_code import OtpCode  # noqa: F401

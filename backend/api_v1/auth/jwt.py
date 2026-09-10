@@ -111,8 +111,13 @@ async def update_me(
         )
 
     user_data = user_update.model_dump(exclude_unset=True, exclude={"profile"})
+    # Смена e-mail сбрасывает подтверждение: адрес мог быть указан ошибочно (или
+    # чужим), а подтверждённый e-mail — это канал входа и восстановления пароля.
+    email_changed = "email" in user_data and user_data["email"] != user.email
     for field, value in user_data.items():
         setattr(user, field, value)
+    if email_changed:
+        user.email_verified = False
 
     if user_update.profile is not None:
         if user.profile is None:

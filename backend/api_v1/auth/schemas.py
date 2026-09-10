@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 
 class RequestOTPRequest(BaseModel):
@@ -27,15 +27,62 @@ class PasswordStatusRequest(BaseModel):
 class PasswordStatusResponse(BaseModel):
     """Что известно о номере до входа.
 
-    ``otp_available`` — можно ли доставить код на этот номер (настроен SMS Aero
-    («код в Telegram» → SMS) или Telegram Gateway, либо у аккаунта привязан
-    Telegram-бот). Фронт сначала предлагает вход по коду, а если каналов нет —
-    сразу создание пароля, чтобы пользователь не встал на мёртвом шаге.
+    ``otp_available`` — можно ли доставить код на номер (SMS Aero/Telegram Gateway
+    или привязанный Telegram-бот). ``email_otp_available`` — включён ли канал
+    писем (SMTP), ``email_login_available`` — есть ли у аккаунта подтверждённый
+    e-mail, на который можно прислать код для входа без пароля.
     """
 
     registered: bool
     has_password: bool
     otp_available: bool = False
+    email_otp_available: bool = False
+    email_login_available: bool = False
+
+
+class AuthChannelsResponse(BaseModel):
+    """Какие каналы доставки кода включены на сервере.
+
+    Публичный ответ — чтобы экран входа не показывал заведомо недоступные
+    кнопки (например, вход по e-mail, когда SMTP не настроен).
+    """
+
+    otp_available: bool = False
+    email_otp_available: bool = False
+
+
+class EmailAddressRequest(BaseModel):
+    """Адрес для подтверждения (привязан к текущему аккаунту)."""
+
+    email: EmailStr
+
+
+class EmailCodeConfirmRequest(BaseModel):
+    """Код из письма для подтверждения адреса."""
+
+    email: EmailStr
+    code: str
+
+
+class EmailLoginRequest(BaseModel):
+    """Вход по адресу: код уйдёт на подтверждённый e-mail аккаунта."""
+
+    email: EmailStr
+
+
+class EmailLoginConfirmRequest(BaseModel):
+    """Подтверждение входа кодом из письма (пароль не нужен)."""
+
+    email: EmailStr
+    code: str
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    """Восстановление пароля: код из письма + новый пароль."""
+
+    email: EmailStr
+    code: str
+    password: str
 
 
 class PasswordRequest(BaseModel):

@@ -46,6 +46,15 @@ class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
     email: Mapped[str | None] = mapped_column(  # type: ignore[assignment]
         String(length=320), nullable=True
     )
+    # Подтверждён ли адрес кодом из письма. Только подтверждённый e-mail можно
+    # использовать для входа без пароля и восстановления доступа; при смене
+    # адреса флаг сбрасывается (см. users/views).
+    email_verified: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=text("false"),
+        nullable=False,
+    )
     avatar_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Текст-статус пользователя (например «в работе», «🚀»), задаётся в профиле.
     status: Mapped[str | None] = mapped_column(String(140), nullable=True)

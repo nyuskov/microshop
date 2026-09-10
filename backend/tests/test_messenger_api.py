@@ -2174,3 +2174,217 @@ async def test_revoke_all_sessions_endpoint(
         headers={"Authorization": f"Bearer {other_refresh}"},
     )
     assert after.status_code == 401, after.text
+
+
+# --- E-mail-канал: подтверждение адреса, вход по коду, сброс пароля --------
+
+
+@pytest.fixture
+def email_channel(monkeypatch: pytest.MonkeyPatch):
+    """Включает e-mail-канал и перехватывает письма (возвращает список кодов)."""
+    sent: list[tuple[str, str]] = []
+
+    def _fake_enqueue(email: str, code: str, subject: str, body: str) -> None:
+        sent.append((email, code))
+
+    monkeypatch.setattr("api_v1.auth.views.enqueue_email_code", _fake_enqueue)
+    monkeypatch.setattr("api_v1.auth.views.email_otp_available", lambda: True)
+    return sent
+
+
+async def test_email_verification_flow(
+    api: _ApiCtx, email_channel: list[tuple[str, str]]
+) -> None:
+    """Адрес привязывается только после кода из письма."""
+    user = await api.make_user(phone_number=_random_phone())
+    token = await api.token_for(user)
+    address = f"user{uuid.uuid4().hex[:8]}@example.com"
+
+    requested = await api.client.post(
+        "/api/v1/auth/email/request-verification/",
+        json={"email": address},
+        headers=api.auth(token),
+    )
+    assert requested.status_code == 200, requested.text
+    assert email_channel and email_channel[-1][0] == address
+    code = email_channel[-1][1]
+
+    # До подтверждения адрес не привязан и не считается подтверждённым.
+    me = await api.client.get("/api/v1/jwt/users/me/", headers=api.auth(token))
+    assert me.json()["email_verified"] is False
+
+    wrong = await api.client.post(
+        "/api/v1/auth/email/confirm-verification/",
+        json={"email": address, "code": "000000"},
+        headers=api.auth(token),
+    )
+    assert wrong.status_code == 401, wrong.text
+
+    confirmed = await api.client.post(
+        "/api/v1/auth/email/confirm-verification/",
+        json={"email": address, "code": code},
+        headers=api.auth(token),
+    )
+    assert confirmed.status_code == 200, confirmed.text
+
+    me = await api.client.get("/api/v1/jwt/users/me/", headers=api.auth(token))
+    body = me.json()
+    assert body["email"] == address
+    assert body["email_verified"] is True
+
+
+async def test_email_change_resets_verification(
+    api: _ApiCtx, email_channel: list[tuple[str, str]]
+) -> None:
+    """Смена адреса через профиль снимает подтверждение (иначе угон через почту)."""
+    user = await api.make_user(phone_number=_random_phone())
+    token = await api.token_for(user)
+    address = f"user{uuid.uuid4().hex[:8]}@example.com"
+
+    await api.client.post(
+        "/api/v1/auth/email/request-verification/",
+        json={"email": address},
+        headers=api.auth(token),
+    )
+    await api.client.post(
+        "/api/v1/auth/email/confirm-verification/",
+        json={"email": address, "code": email_channel[-1][1]},
+        headers=api.auth(token),
+    )
+
+    changed = await api.client.patch(
+        "/api/v1/jwt/users/me/",
+        json={"email": f"other{uuid.uuid4().hex[:8]}@example.com"},
+        headers=api.auth(token),
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["email_verified"] is False
+
+
+async def test_email_code_login(
+    api: _ApiCtx, email_channel: list[tuple[str, str]]
+) -> None:
+    """Вход без пароля: код на подтверждённый адрес → токены."""
+    user = await api.make_user(phone_number=_random_phone())
+    token = await api.token_for(user)
+    address = f"user{uuid.uuid4().hex[:8]}@example.com"
+    await api.client.post(
+        "/api/v1/auth/email/request-verification/",
+        json={"email": address},
+        headers=api.auth(token),
+    )
+    await api.client.post(
+        "/api/v1/auth/email/confirm-verification/",
+        json={"email": address, "code": email_channel[-1][1]},
+        headers=api.auth(token),
+    )
+
+    requested = await api.client.post(
+        "/api/v1/auth/email/login/request/", json={"email": address}
+    )
+    assert requested.status_code == 200, requested.text
+    code = email_channel[-1][1]
+
+    confirmed = await api.client.post(
+        "/api/v1/auth/email/login/confirm/",
+        json={"email": address, "code": code},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["access_token"] and confirmed.json()["refresh_token"]
+
+
+async def test_email_login_does_not_leak_registration(
+    api: _ApiCtx, email_channel: list[tuple[str, str]]
+) -> None:
+    """Незнакомый адрес: тот же ответ, но письма нет (нет перебора базы)."""
+    response = await api.client.post(
+        "/api/v1/auth/email/login/request/",
+        json={"email": f"nobody{uuid.uuid4().hex[:8]}@example.com"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert "Если адрес привязан" in response.json()["detail"]
+    assert email_channel == []
+
+
+async def test_password_reset_by_email_code(
+    api: _ApiCtx,
+    monkeypatch: pytest.MonkeyPatch,
+    email_channel: list[tuple[str, str]],
+) -> None:
+    """Сброс пароля: код из письма + новый пароль, прочие сессии отозваны."""
+    phone, access = await _account_with_password(api, monkeypatch)
+    address = f"user{uuid.uuid4().hex[:8]}@example.com"
+    await api.client.post(
+        "/api/v1/auth/email/request-verification/",
+        json={"email": address},
+        headers=api.auth(access),
+    )
+    await api.client.post(
+        "/api/v1/auth/email/confirm-verification/",
+        json={"email": address, "code": email_channel[-1][1]},
+        headers=api.auth(access),
+    )
+
+    # «Другое устройство» — своя сессия, после сброса она должна умереть.
+    other = await api.client.post(
+        "/api/v1/auth/password/login/",
+        json={"phone_number": phone, "password": _STRONG_PASSWORD},
+    )
+    other_refresh = other.json()["refresh_token"]
+
+    requested = await api.client.post(
+        "/api/v1/auth/password/reset/request/", json={"email": address}
+    )
+    assert requested.status_code == 200, requested.text
+    code = email_channel[-1][1]
+
+    # Слабый пароль политика не пропустит.
+    weak = await api.client.post(
+        "/api/v1/auth/password/reset/confirm/",
+        json={"email": address, "code": code, "password": "1234567890"},
+    )
+    assert weak.status_code == 400, weak.text
+
+    # Код одноразовый: после успешной проверки повторно им не воспользоваться.
+    reset = await api.client.post(
+        "/api/v1/auth/password/reset/confirm/",
+        json={"email": address, "code": code, "password": "moloko-korova-77"},
+    )
+    assert reset.status_code == 200, reset.text
+    assert reset.json()["access_token"] and reset.json()["refresh_token"]
+
+    revoked = await api.client.post(
+        "/api/v1/jwt/auth/refresh",
+        headers={"Authorization": f"Bearer {other_refresh}"},
+    )
+    assert revoked.status_code == 401, revoked.text
+
+    # Новый пароль работает, старый — нет.
+    assert (
+        await api.client.post(
+            "/api/v1/auth/password/login/",
+            json={"phone_number": phone, "password": "moloko-korova-77"},
+        )
+    ).status_code == 200
+    assert (
+        await api.client.post(
+            "/api/v1/auth/password/login/",
+            json={"phone_number": phone, "password": _STRONG_PASSWORD},
+        )
+    ).status_code == 401
+
+
+async def test_email_endpoints_require_channel(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Без настроенного SMTP канал честно выключен (400), а не молча не работает."""
+    monkeypatch.setattr("api_v1.auth.views.email_otp_available", lambda: False)
+
+    response = await api.client.post(
+        "/api/v1/auth/email/login/request/",
+        json={"email": f"user{uuid.uuid4().hex[:8]}@example.com"},
+    )
+
+    assert response.status_code == 400, response.text
+    assert "настроен" in response.json()["detail"]

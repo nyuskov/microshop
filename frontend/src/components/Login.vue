@@ -6,7 +6,9 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import { formatPhoneForBackend, isValidPhoneNumber, prettyPhone } from '@/utils/phone'
 import { PASSWORD_MIN_LENGTH, passwordProblem, passwordStrength } from '@/utils/passwordPolicy'
 
-type LoginState = 'phone' | 'password' | 'otp' | 'create'
+// Шаги входа: телефон → (пароль | код в Telegram | создание пароля), плюс
+// отдельная ветка работы с e-mail: вход по коду из письма и сброс пароля.
+type LoginState = 'phone' | 'password' | 'otp' | 'create' | 'email'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -34,6 +36,17 @@ onMounted(() => {
     state.value = props.initialState
     emit('state-changed', state.value)
   }
+
+  // Узнаём у сервера, включён ли канал писем: если нет — не показываем
+  // кнопки «войти по e-mail» и «забыли пароль», чтобы не вести в тупик.
+  void authStore
+    .fetchAuthChannels()
+    .then((channels) => {
+      emailChannelAvailable.value = channels.email_otp_available
+    })
+    .catch(() => {
+      emailChannelAvailable.value = false
+    })
 })
 
 const phoneOrUsername = ref('')
@@ -55,6 +68,19 @@ const otpAvailable = ref(false)
 const afterOtp = ref(false)
 const otpCode = ref('')
 const otpFieldRef = ref<HTMLInputElement | null>(null)
+
+// --- E-mail: вход по коду из письма и восстановление пароля ---
+const emailValue = ref('')
+const emailCode = ref('')
+const emailMode = ref<'login' | 'reset'>('login')
+/** Код отправлен: показываем поле ввода кода (и пароль при сбросе). */
+const emailCodeSent = ref(false)
+/** Включён ли на сервере канал писем (SMTP). */
+const emailChannelAvailable = ref(false)
+const resetPassword = ref('')
+const resetPasswordConfirm = ref('')
+const showEmailCode = ref(false)
+const showResetPassword = ref(false)
 
 const severity = ref<'success' | 'error' | 'info' | 'warn'>('success')
 const result = ref('')
@@ -283,6 +309,107 @@ function goBackToPhoneInput() {
   afterOtp.value = false
   result.value = ''
 }
+
+// --- E-mail: вход по коду из письма и восстановление пароля ---------------
+
+/** Открывает шаг работы с e-mail: вход по коду либо сброс пароля. */
+function openEmailStep(mode: 'login' | 'reset') {
+  emailMode.value = mode
+  emailValue.value = ''
+  emailCode.value = ''
+  resetPassword.value = ''
+  resetPasswordConfirm.value = ''
+  emailCodeSent.value = false
+  result.value = ''
+  state.value = 'email'
+  emit('state-changed', state.value)
+}
+
+/** Отправляет код на указанный адрес (письмо уходит только на подтверждённый). */
+async function sendEmailCode() {
+  if (isLoading.value) return
+  if (!emailValue.value.trim()) {
+    result.value = 'Введите e-mail.'
+    severity.value = 'error'
+    return
+  }
+
+  isLoading.value = true
+  result.value = ''
+  try {
+    const detail =
+      emailMode.value === 'login'
+        ? await authStore.requestEmailLogin(emailValue.value.trim())
+        : await authStore.requestPasswordReset(emailValue.value.trim())
+    emailCodeSent.value = true
+    result.value = detail || 'Код отправлен на e-mail.'
+    severity.value = 'info'
+  } catch (error: unknown) {
+    console.error('Request email code failed:', error)
+    result.value = getErrorMessage(error, 'Не удалось отправить код на e-mail.')
+    severity.value = 'error'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+/** Подтверждает код: вход без пароля либо смена пароля. */
+async function onEmailSubmit() {
+  if (isLoading.value) return
+  const code = emailCode.value.replace(/\D/g, '')
+  if (!emailCodeSent.value) {
+    await sendEmailCode()
+    return
+  }
+  if (code.length < 4) {
+    result.value = 'Введите код из письма.'
+    severity.value = 'error'
+    return
+  }
+
+  if (emailMode.value === 'reset') {
+    const problem = passwordProblem(resetPassword.value, {
+      email: emailValue.value.trim()
+    })
+    if (problem) {
+      result.value = problem
+      severity.value = 'error'
+      return
+    }
+    if (resetPassword.value !== resetPasswordConfirm.value) {
+      result.value = 'Пароли не совпадают.'
+      severity.value = 'error'
+      return
+    }
+  }
+
+  isLoading.value = true
+  result.value = ''
+  try {
+    if (emailMode.value === 'login') {
+      await authStore.confirmEmailLogin(emailValue.value.trim(), code, router)
+      finishLogin()
+      emit('close-modal')
+    } else {
+      await authStore.confirmPasswordReset(
+        emailValue.value.trim(),
+        code,
+        resetPassword.value,
+        router
+      )
+      finishLogin()
+      emit('close-modal')
+    }
+  } catch (error: unknown) {
+    console.error('Confirm email code failed:', error)
+    result.value = getErrorMessage(error, 'Неверный или истёкший код из письма.')
+    severity.value = 'error'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
 </script>
 
 <template>
@@ -318,6 +445,17 @@ function goBackToPhoneInput() {
         <p class="privacy-hint">
           Если пароля ещё нет — подтвердим номер кодом в Telegram и предложим его создать.
         </p>
+
+        <button
+          v-if="emailChannelAvailable"
+          class="link-btn"
+          type="button"
+          :disabled="isLoading"
+          @click="openEmailStep('login')"
+        >
+          <q-icon name="mail" size="17px" />
+          Войти по коду на e-mail
+        </button>
       </div>
 
       <!-- Шаг 2а: ввод пароля (номер уже зарегистрирован) -->
@@ -368,6 +506,147 @@ function goBackToPhoneInput() {
         <button class="link-btn" type="button" :disabled="isLoading" @click="goBackToPhoneInput">
           <q-icon name="arrow_back" size="17px" />
           Изменить номер
+        </button>
+
+        <button
+          v-if="emailChannelAvailable"
+          class="link-btn"
+          type="button"
+          :disabled="isLoading"
+          @click="openEmailStep('reset')"
+        >
+          <q-icon name="help_outline" size="17px" />
+          Забыли пароль?
+        </button>
+      </div>
+
+      <!-- Шаг e-mail: вход по коду из письма и восстановление пароля -->
+      <div v-else-if="state === 'email'" key="email" class="step">
+        <div class="brand">
+          <span class="brand-icon"><q-icon name="mail" size="30px" /></span>
+        </div>
+        <h2 class="step-title">
+          {{ emailMode === 'login' ? 'Вход по e-mail' : 'Восстановление пароля' }}
+        </h2>
+        <p class="step-subtitle">
+          {{
+            emailMode === 'login'
+              ? 'Пришлём код на подтверждённый адрес аккаунта.'
+              : 'Пришлём код на подтверждённый адрес, затем задайте новый пароль.'
+          }}
+        </p>
+
+        <form class="otp-form" @submit.prevent="onEmailSubmit">
+          <label class="field-label" for="email-input">E-mail</label>
+          <q-input
+            id="email-input"
+            v-model="emailValue"
+            type="email"
+            outlined
+            class="phone-input"
+            placeholder="name@example.com"
+            autocomplete="email"
+            aria-label="E-mail"
+            :disable="emailCodeSent"
+            hide-bottom-space
+          />
+
+          <template v-if="emailCodeSent">
+            <label class="field-label gap-top" for="email-code-input">Код из письма</label>
+            <q-input
+              id="email-code-input"
+              v-model="emailCode"
+              :type="showEmailCode ? 'text' : 'password'"
+              inputmode="numeric"
+              outlined
+              class="phone-input"
+              placeholder="6 цифр"
+              autocomplete="one-time-code"
+              aria-label="Код из письма"
+              hide-bottom-space
+            >
+              <template #append>
+                <q-icon
+                  :name="showEmailCode ? 'visibility_off' : 'visibility'"
+                  class="password-eye"
+                  size="20px"
+                  role="button"
+                  :aria-label="showEmailCode ? 'Скрыть код' : 'Показать код'"
+                  @click="showEmailCode = !showEmailCode"
+                />
+              </template>
+            </q-input>
+
+            <template v-if="emailMode === 'reset'">
+              <label class="field-label gap-top" for="reset-password-input">Новый пароль</label>
+              <q-input
+                id="reset-password-input"
+                v-model="resetPassword"
+                :type="showResetPassword ? 'text' : 'password'"
+                outlined
+                class="phone-input"
+                :placeholder="`Не короче ${PASSWORD_MIN_LENGTH} символов`"
+                autocomplete="new-password"
+                aria-label="Новый пароль"
+                hide-bottom-space
+              >
+                <template #append>
+                  <q-icon
+                    :name="showResetPassword ? 'visibility_off' : 'visibility'"
+                    class="password-eye"
+                    size="20px"
+                    role="button"
+                    :aria-label="showResetPassword ? 'Скрыть пароль' : 'Показать пароль'"
+                    @click="showResetPassword = !showResetPassword"
+                  />
+                </template>
+              </q-input>
+
+              <p v-if="resetPassword" class="password-meter" :data-score="resetPasswordScore.score">
+                <span class="password-meter-bar"
+                  ><span :style="{ width: `${resetPasswordScore.score * 33}%` }"
+                /></span>
+                {{ resetPasswordScore.label }}
+              </p>
+
+              <label class="field-label gap-top" for="reset-password-confirm">
+                Повторите пароль
+              </label>
+              <q-input
+                id="reset-password-confirm"
+                v-model="resetPasswordConfirm"
+                :type="showResetPassword ? 'text' : 'password'"
+                outlined
+                class="phone-input"
+                placeholder="Повторите пароль"
+                autocomplete="new-password"
+                aria-label="Повтор нового пароля"
+                hide-bottom-space
+              />
+            </template>
+          </template>
+
+          <button type="submit" class="btn btn-primary" :disabled="isLoading">
+            <span v-if="isLoading" class="spinner"></span>
+            <q-icon v-else :name="emailCodeSent ? 'check' : 'send'" size="17px" />
+            <span>{{ emailCodeSent ? 'Подтвердить' : 'Отправить код' }}</span>
+          </button>
+        </form>
+
+        <button
+          v-if="emailCodeSent"
+          class="link-btn"
+          type="button"
+          :disabled="isLoading"
+          @click="sendEmailCode"
+        >
+          <q-icon name="refresh" size="17px" />
+          Отправить код ещё раз
+        </button>
+
+        <button class="link-btn" type="button" :disabled="isLoading" @click="goBackToPhoneInput">
+          <q-icon name="arrow_back" size="17px" />
+          Вернуться к входу по номеру
         </button>
       </div>
 

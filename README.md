@@ -263,7 +263,22 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 - Флаги `password_set` и `password_weak` отдаются в `GET /jwt/users/me/`.
   `password_weak` ставится при входе (только там пароль виден в открытом виде),
   поэтому профиль показывает предложение сменить старый слабый пароль.
-- Все «личные» эндпоинты требуют заголовок `Authorization: Bearer <access_token>`.
+**E-mail-канал (второй после номера):** включён, когда заданы `SMTP_*` (см. `.env.example`).
+
+- Адрес подтверждается кодом из письма (`POST /auth/email/request-verification/` →
+  `.../confirm-verification/`) — только после этого он годится для входа без пароля и
+  восстановления доступа; при смене адреса через профиль `email_verified` сбрасывается.
+- Вход по коду из письма (`/auth/email/login/request|confirm/`) и сброс пароля
+  (`/auth/password/reset/request|confirm/`). Ответ на «запрос кода» одинаковый
+  независимо от того, есть ли такой адрес (защита от перебора базы), а код живёт
+  `auth_otp_expire_seconds`, одноразовый, с лимитом попыток и cooldown отправки.
+- Сброс пароля отзывает все refresh-сессии и сразу выдаёт токены этому устройству.
+- Ошибки валидации пароля проверяются ДО расхода кода, чтобы неудачная попытка не
+  сжигала код из письма.
+- Коды писем хранятся в `email_codes` (хеш, попытки, срок), письма отправляет воркер
+  (задача `tasks.otp_tasks.send_email_code`), при незаданном SMTP код пишется в лог.
+- `GET /auth/channels/` сообщает клиенту, включён ли e-mail-канал, чтобы экран входа
+  не показывал недоступные кнопки.- Все «личные» эндпоинты требуют заголовок `Authorization: Bearer <access_token>`.
 - `/jwt/*` — fastapi-users: `POST /jwt/auth/login|logout`, `GET/PATCH /jwt/users/me/`.
 - Custom-эндпоинты (`chats`, `messages`, `users/…`) используют `get_current_user` (`api_v1/auth/utils.py`), который принимает **те же** JWT от fastapi-users (в `decode_jwt` отключена проверка `aud`, субъект сверяется с БД). Защищённые от собственных токенов.
 
@@ -295,6 +310,13 @@ crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 | POST | `/auth/password/login/` | вход по номеру+паролю → токен | — |
 | POST | `/auth/password/set/` | задать/сменить пароль → `{detail, access_token, refresh_token}` (смена требует `current_password`, отзывает прочие сессии) | токен |
 | POST | `/auth/sessions/revoke-all/` | выйти на всех устройствах (отзыв всех refresh-сессий) | токен |
+| GET | `/auth/channels/` | какие каналы доставки кодов включены (для экрана входа) | — |
+| POST | `/auth/email/request-verification/` | письмо с кодом на адрес (привязать к аккаунту) | токен |
+| POST | `/auth/email/confirm-verification/` | подтвердить адрес кодом (`email_verified`) | токен |
+| POST | `/auth/email/login/request/` | вход без пароля: код на подтверждённый e-mail | — |
+| POST | `/auth/email/login/confirm/` | код из письма → токены | — |
+| POST | `/auth/password/reset/request/` | код для восстановления пароля | — |
+| POST | `/auth/password/reset/confirm/` | код + новый пароль → токены (прочие сессии отозваны) | — |
 | POST | `/auth/token/` | вход по логину+паролю (OAuth2 form) | — |
 | POST | `/auth/request-otp/` | запросить код на номер (SMS/Telegram) | — |
 | POST | `/auth/verify-otp/` | проверить код → токен (пароль ещё не задан) | — |

@@ -19,7 +19,7 @@ import logging
 
 from sqlalchemy import select
 
-from core import smsaero, telegram
+from core import mailer, smsaero, telegram
 from core.celery_app import celery_app
 from core.config import settings
 from core.models import User
@@ -35,6 +35,38 @@ _OTP_TASK_MAX_SECONDS = 300
 def _bound_telegram_chat(phone_number: str) -> int | None:
     """Возвращает привязанный к номеру Telegram-чат (или None)."""
     return run_async(_bound_telegram_chat_async(phone_number))
+
+
+@celery_app.task(
+    name="tasks.otp_tasks.send_email_code",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=5,
+    soft_time_limit=_OTP_TASK_MAX_SECONDS,
+    acks_late=False,
+)
+def send_email_code(self, email: str, code: str, subject: str, body: str) -> None:
+    """Отправляет письмо с кодом (SMTP → dev-лог).
+
+    Текст письма приходит от вызывающей стороны: для подтверждения адреса, входа
+    без пароля и сброса пароля тексты разные. Если SMTP не настроен (локальная
+    разработка), код печатается в лог воркера — как SMS-заглушка.
+    """
+    if mailer.is_configured():
+        try:
+            mailer.send_email(email, subject, body)
+            logger.info("Письмо с кодом отправлено на %s", mailer.mask_email(email))
+            return
+        except mailer.MailerError as exc:
+            logger.warning(
+                "SMTP недоступен (%s) — код для %s не отправлен",
+                exc,
+                mailer.mask_email(email),
+            )
+
+    logger.info(
+        "Почтовая заглушка (dev): код для %s -> %s", mailer.mask_email(email), code
+    )
 
 
 async def _bound_telegram_chat_async(phone_number: str) -> int | None:

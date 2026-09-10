@@ -11,7 +11,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.rate_limit import client_ip, enforce_limit, rate_limit_key, rate_limiter
-from core import passwords
+from core import mailer, passwords
 from core.celery_app import get_task
 from core.config import settings
 from core.models import TelegramBindLink, User, db_helper
@@ -21,8 +21,10 @@ from ..tokens.schemas import Token
 from ..users.crud import (
     create_user_by_phone_number,
     get_or_create_user_by_phone_number,
+    get_user_by_email,
     get_user_by_phone_number,
 )
+from . import email_codes
 from .jwt import get_jwt_strategy
 from .login_guard import lockout_seconds, register_failure, reset_failures
 from .otp_storage import (
@@ -35,8 +37,14 @@ from .otp_storage import (
 )
 from .refresh_sessions import issue_refresh_token, revoke_all_sessions
 from .schemas import (
+    AuthChannelsResponse,
+    EmailAddressRequest,
+    EmailCodeConfirmRequest,
+    EmailLoginConfirmRequest,
+    EmailLoginRequest,
     OTPResponse,
     PasswordRequest,
+    PasswordResetConfirmRequest,
     PasswordSetRequest,
     PasswordSetResponse,
     PasswordStatusRequest,
@@ -121,6 +129,44 @@ def enqueue_sms_otp(phone_number: str, otp_code: str) -> None:
             "RabbitMQ недоступен: задача SMS не поставлена в очередь "
             "(код отправки см. выше)"
         )
+
+
+def email_otp_available() -> bool:
+    """Включён ли канал писем (настроен SMTP и адрес отправителя)."""
+    return mailer.is_configured()
+
+
+def enqueue_email_code(email: str, code: str, subject: str, body: str) -> None:
+    """Кладёт отправку письма с кодом в очередь Celery.
+
+    Если SMTP не настроен — код уходит в лог web (dev-режим), чтобы сценарии
+    подтверждения адреса/входа/сброса можно было проверить без почтового сервера.
+    """
+    if not mailer.is_configured():
+        logger.info(
+            "Почтовая заглушка (dev): код для %s -> %s",
+            mailer.mask_email(email),
+            code,
+        )
+    try:
+        task = get_task("tasks.otp_tasks.send_email_code")
+        task.delay(email, code, subject, body)
+    except Exception:  # noqa: BLE001 - брокер может быть недоступен (dev без docker)
+        logger.warning(
+            "RabbitMQ недоступен: письмо с кодом не поставлено в очередь "
+            "(код отправки см. выше)"
+        )
+
+
+def _email_code_body(code: str, purpose: str) -> str:
+    """Текст письма с кодом: одна формулировка для всех сценариев."""
+    minutes = max(1, settings.auth_otp_expire_seconds // 60)
+    return (
+        f"{purpose}\n\n"
+        f"Код: {code}\n\n"
+        f"Код действует {minutes} мин.\n"
+        "Если вы не запрашивали код, просто игнорируйте это письмо."
+    )
 
 
 @router.post("/token/", response_model=Token)
@@ -347,16 +393,21 @@ async def password_status(
             detail="Неверный формат номера телефона.",
         )
     user = await get_user_by_phone_number(session, phone_number)
+    email_channel = email_otp_available()
     if user is None:
         return PasswordStatusResponse(
             registered=False,
             has_password=False,
             otp_available=otp_delivery_available(None),
+            email_otp_available=email_channel,
+            email_login_available=False,
         )
     return PasswordStatusResponse(
         registered=True,
         has_password=user.password_set,
         otp_available=otp_delivery_available(user),
+        email_otp_available=email_channel,
+        email_login_available=bool(email_channel and user.email_verified),
     )
 
 
@@ -535,6 +586,313 @@ async def revoke_sessions(
     await revoke_all_sessions(session, user_id=user.id)
     logger.info("Пользователь %s отозвал все сессии", user.id)
     return PasswordSetResponse(detail="Вы вышли на всех устройствах.")
+
+
+# --- E-mail: подтверждение адреса, вход по коду и сброс пароля -------------
+# Адрес вторичен по отношению к номеру телефона (номер подтверждается кодом в
+# Telegram), но именно он спасает, когда человек забыл пароль или потерял доступ
+# к Telegram. Поэтому использовать его как канал можно ТОЛЬКО после подтверждения
+# кодом из письма — иначе аккаунт угонялся бы через чужую/подставную почту.
+
+_EMAIL_CODE_SUBJECT = "Pismo: код подтверждения"
+# Одинаковый ответ на «запрос кода» — чтобы нельзя было узнать, есть ли у нас
+# такой адрес (защита от перебора базы пользователей).
+_EMAIL_REQUEST_DETAIL = "Если адрес привязан к аккаунту, письмо с кодом отправлено."
+
+
+async def _issue_email_code(
+    session: AsyncSession, request: Request, *, email: str, purpose: str
+) -> None:
+    """Проверяет лимиты, генерирует код и ставит отправку письма в очередь.
+
+    Лимиты: часовой на адрес, суточный общий (письма — публичный ресурс) и
+    cooldown повторной отправки. Превышение → 429 с ``Retry-After``.
+    """
+    address = email_codes.normalize_email(email)
+    cooldown = settings.auth_email_resend_cooldown_seconds
+    if not await email_codes.can_request_email_code(
+        session, email=address, cooldown_seconds=cooldown
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=("Код уже отправлен. " f"Повторите запрос через {cooldown} секунд."),
+            headers={"Retry-After": str(cooldown)},
+        )
+
+    await enforce_limit(
+        scope="auth:email-code-address",
+        value=address,
+        limit=settings.auth_email_per_address_per_hour,
+        window_seconds=3600,
+        detail="Слишком много писем на этот адрес за час. Попробуйте позже.",
+    )
+    if not await rate_limiter.allow(
+        rate_limit_key("auth:email-code-daily", "total"),
+        limit=settings.auth_email_daily_limit,
+        window_seconds=86400,
+    ):
+        logger.warning("Дневной лимит писем с кодами исчерпан")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="На сегодня письма с кодами не отправляются. Попробуйте завтра.",
+            headers={"Retry-After": "3600"},
+        )
+
+    code = generate_otp_code()
+    await email_codes.store_email_code(
+        session,
+        email=address,
+        code=code,
+        ttl_seconds=settings.auth_otp_expire_seconds,
+    )
+    enqueue_email_code(
+        address,
+        code,
+        _EMAIL_CODE_SUBJECT,
+        _email_code_body(code, purpose),
+    )
+
+
+async def _consume_email_code(
+    session: AsyncSession, request: Request, *, email: str, code: str
+) -> None:
+    """Проверяет код из письма, при неудаче бросает 401/429."""
+    await _enforce_ip_limit(request, scope="auth:email-verify", limit=20)
+    result = await email_codes.verify_email_code(
+        session,
+        email=email,
+        code=code,
+        max_attempts=settings.auth_email_verify_max_attempts,
+    )
+    if result is email_codes.EmailVerifyResult.OK:
+        return
+    if result is email_codes.EmailVerifyResult.TOO_MANY:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Слишком много неверных кодов. Запросите новый.",
+        )
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Неверный или истёкший код из письма.",
+    )
+
+
+@router.get("/channels/", response_model=AuthChannelsResponse)
+async def auth_channels(request: Request) -> AuthChannelsResponse:
+    """Публичный список доступных каналов доставки кодов (для экрана входа)."""
+    await _enforce_ip_limit(request, scope="auth:channels", limit=60)
+    return AuthChannelsResponse(
+        otp_available=otp_delivery_available(None),
+        email_otp_available=email_otp_available(),
+    )
+
+
+@router.post("/email/request-verification/", response_model=OTPResponse)
+async def request_email_verification(
+    request_data: EmailAddressRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> OTPResponse:
+    """Отправляет код на адрес, чтобы привязать и подтвердить его в аккаунте."""
+    await _enforce_ip_limit(request, scope="auth:email-verification", limit=10)
+    if not email_otp_available():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Отправка писем не настроена на сервере.",
+        )
+
+    address = email_codes.normalize_email(str(request_data.email))
+    owner = await get_user_by_email(session, address)
+    if owner is not None and owner.id != user.id and owner.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Этот e-mail уже привязан к другому аккаунту.",
+        )
+
+    await _issue_email_code(
+        session,
+        request,
+        email=address,
+        purpose="Подтверждение адреса e-mail в Pismo.",
+    )
+    return OTPResponse(detail=f"Код отправлен на {mailer.mask_email(address)}.")
+
+
+@router.post("/email/confirm-verification/", response_model=OTPResponse)
+async def confirm_email_verification(
+    request_data: EmailCodeConfirmRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> OTPResponse:
+    """Подтверждает адрес кодом из письма и привязывает его к аккаунту."""
+    address = email_codes.normalize_email(str(request_data.email))
+
+    # Проверки делаем ДО расхода кода: иначе неудачная попытка сожгла бы код.
+    owner = await get_user_by_email(session, address)
+    if owner is not None and owner.id != user.id and owner.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Этот e-mail уже привязан к другому аккаунту.",
+        )
+
+    await _consume_email_code(session, request, email=address, code=request_data.code)
+
+    user.email = address
+    user.email_verified = True
+    await session.commit()
+    logger.info("Пользователь %s подтвердил e-mail", user.id)
+    return OTPResponse(detail="Адрес подтверждён.")
+
+
+@router.post("/email/login/request/", response_model=OTPResponse)
+async def request_email_login(
+    request_data: EmailLoginRequest,
+    request: Request,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> OTPResponse:
+    """Вход без пароля: код на подтверждённый e-mail аккаунта."""
+    await _enforce_ip_limit(request, scope="auth:email-login", limit=10)
+    if not email_otp_available():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Вход по e-mail не настроен на сервере.",
+        )
+
+    address = email_codes.normalize_email(str(request_data.email))
+    cooldown = settings.auth_email_resend_cooldown_seconds
+    if not await email_codes.can_request_email_code(
+        session, email=address, cooldown_seconds=cooldown
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Код уже отправлен. Повторите через {cooldown} секунд.",
+            headers={"Retry-After": str(cooldown)},
+        )
+
+    user = await get_user_by_email(session, address)
+    # Отвечаем одинаково независимо от того, есть ли такой подтверждённый адрес:
+    # иначе этот эндпоинт превращается в проверку «зарегистрирован ли e-mail».
+    if user is not None and user.email_verified:
+        await _issue_email_code(
+            session,
+            request,
+            email=address,
+            purpose="Вход в Pismo по коду из письма.",
+        )
+    else:
+        logger.info("Запрошен вход по e-mail, но адрес не подтверждён: %s", address)
+
+    return OTPResponse(detail=_EMAIL_REQUEST_DETAIL)
+
+
+@router.post("/email/login/confirm/", response_model=TokenResponse)
+async def confirm_email_login(
+    request_data: EmailLoginConfirmRequest,
+    request: Request,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> TokenResponse:
+    """Проверяет код из письма и выдаёт токены (вход без пароля)."""
+    address = email_codes.normalize_email(str(request_data.email))
+    user = await get_user_by_email(session, address)
+    if user is None or not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный или истёкший код из письма.",
+        )
+
+    await _consume_email_code(session, request, email=address, code=request_data.code)
+    await reset_failures(session, identifier=address)
+
+    access_token = await get_jwt_strategy().write_token(user)
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=await issue_refresh_token(session, user_id=user.id),
+    )
+
+
+@router.post("/password/reset/request/", response_model=OTPResponse)
+async def request_password_reset(
+    request_data: EmailLoginRequest,
+    request: Request,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> OTPResponse:
+    """Восстановление доступа: код на подтверждённый e-mail аккаунта."""
+    await _enforce_ip_limit(request, scope="auth:password-reset", limit=10)
+    if not email_otp_available():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Восстановление по e-mail не настроено на сервере.",
+        )
+
+    address = email_codes.normalize_email(str(request_data.email))
+    cooldown = settings.auth_email_resend_cooldown_seconds
+    if not await email_codes.can_request_email_code(
+        session, email=address, cooldown_seconds=cooldown
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Код уже отправлен. Повторите через {cooldown} секунд.",
+            headers={"Retry-After": str(cooldown)},
+        )
+
+    user = await get_user_by_email(session, address)
+    if user is not None and user.email_verified:
+        await _issue_email_code(
+            session,
+            request,
+            email=address,
+            purpose="Сброс пароля Pismo.",
+        )
+
+    return OTPResponse(detail=_EMAIL_REQUEST_DETAIL)
+
+
+@router.post("/password/reset/confirm/", response_model=TokenResponse)
+async def confirm_password_reset(
+    request_data: PasswordResetConfirmRequest,
+    request: Request,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> TokenResponse:
+    """Меняет пароль по коду из письма и сразу входит на этом устройстве.
+
+    Все прежние сессии отзываются: сброс пароля обычно делают, когда есть
+    подозрение на взлом, поэтому остальные устройства должны вылететь.
+    """
+    address = email_codes.normalize_email(str(request_data.email))
+    user = await get_user_by_email(session, address)
+    if user is None or not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный или истёкший код из письма.",
+        )
+
+    # Пароль проверяем ДО расхода кода: иначе ошибка политики сожгла бы код.
+    password = _validate_new_password(
+        request_data.password,
+        phone_number=user.phone_number,
+        email=user.email,
+        username=user.username,
+    )
+    await _consume_email_code(session, request, email=address, code=request_data.code)
+
+    user.hashed_password = get_password_hash(password)
+    user.password_set = True
+    user.password_weak = False
+    await session.commit()
+
+    await revoke_all_sessions(session, user_id=user.id)
+    await reset_failures(session, identifier=address)
+    logger.info("Пользователь %s восстановил пароль по e-mail", user.id)
+
+    access_token = await get_jwt_strategy().write_token(user)
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=await issue_refresh_token(session, user_id=user.id),
+    )
 
 
 # --- Привязка Telegram (резервный канал доставки OTP) ---------------------

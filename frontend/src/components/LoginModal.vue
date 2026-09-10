@@ -18,7 +18,7 @@ import { useAuthStore } from '../stores/auth'
 
 const props = defineProps<{
   visible: boolean
-  initialState?: 'phone' | 'password' | 'otp' | 'create'
+  initialState?: 'phone' | 'password' | 'otp' | 'create' | 'email'
 }>()
 
 const emit = defineEmits<{
@@ -52,7 +52,7 @@ const shouldShowModal = computed({
   }
 })
 
-const state = ref<'phone' | 'password' | 'otp' | 'create'>(props.initialState || 'phone')
+const state = ref<'phone' | 'password' | 'otp' | 'create' | 'email'>(props.initialState || 'phone')
 
 // Синхронизация состояния с пропсом
 watch(
@@ -87,7 +87,7 @@ const onDialogHide = () => {
 }
 
 // Обработка события от Login.vue, когда состояние меняется (phone -> password/otp/create)
-const handleStateChanged = (newState: 'phone' | 'password' | 'otp' | 'create') => {
+const handleStateChanged = (newState: 'phone' | 'password' | 'otp' | 'create' | 'email') => {
   state.value = newState
 }
 

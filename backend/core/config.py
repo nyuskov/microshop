@@ -79,6 +79,25 @@ class Settings(BaseSettings):
     auth_login_max_failures: int = 5
     auth_login_lockout_seconds: int = 60
     auth_login_lockout_max_seconds: int = 1800
+
+    # --- Отправка кодов на e-mail (подтверждение адреса, вход, сброс пароля) ---
+    # Если SMTP не задан — канал выключен: код уходит в лог воркера (dev), а
+    # фронт не предлагает вход/восстановление по почте.
+    smtp_host: str | None = Field(default=None, validation_alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, validation_alias="SMTP_PORT")
+    smtp_user: str | None = Field(default=None, validation_alias="SMTP_USER")
+    smtp_password: str | None = Field(default=None, validation_alias="SMTP_PASSWORD")
+    # Адрес отправителя (From) — обязателен вместе с хостом.
+    smtp_from: str | None = Field(default=None, validation_alias="SMTP_FROM")
+    smtp_from_name: str = Field(default="Pismo", validation_alias="SMTP_FROM_NAME")
+    # STARTTLS для порта 587 (обычно) или неявный TLS для 465 (тогда smtp_ssl).
+    smtp_starttls: bool = Field(default=True, validation_alias="SMTP_STARTTLS")
+    smtp_ssl: bool = Field(default=False, validation_alias="SMTP_SSL")
+    # Лимиты канала: код стоит денег/репутации, а эндпоинты публичные.
+    auth_email_resend_cooldown_seconds: int = 60
+    auth_email_per_address_per_hour: int = 5
+    auth_email_daily_limit: int = 100
+    auth_email_verify_max_attempts: int = 5
     # Суточные лимиты на отправку кодов — защита баланса шлюза: каждый код это
     # деньги, а эндпоинт публичный. Глобальный лимит закрывает весь сервис
     # (лучше потерять регистрации, чем остаток на счету), лимит на IP не даёт
