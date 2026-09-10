@@ -2766,6 +2766,12 @@ const handleWindowMessage = (event: MessageEvent) => {
     void openChatFromPush(data.chat_id)
     return
   }
+  if (data.type === 'call-push') {
+    // Приложение было открыто, поэтому системного «будильника» не показывали:
+    // звонок разбирает сам интерфейс (offer придёт по сигнальному каналу).
+    syncCallRings()
+    return
+  }
   if (data.type === 'call-notification') {
     if (data.action === 'answer') {
       void callStore.acceptCall()
@@ -2845,22 +2851,33 @@ const ringIncomingCallWhenHidden = () => {
   }
 }
 
+/**
+ * Единственный источник правды о том, что «звонит»: если звонок уже не входящий
+ * (принят, идёт разговор, завершён) — ни рингтона, ни системного уведомления быть
+ * не должно, где бы оно ни появилось: после ответа, повторного push или возврата
+ * в приложение. Иначе получается «ещё один звонок» во время разговора.
+ */
+const syncCallRings = () => {
+  if (callStore.status === 'incoming') return
+  stopHiddenRingLoop()
+  void closeCallRings()
+}
+
 /** Приложение свернули во время входящего звонка — будим и «звоним». */
 const handleCallVisibility = () => {
   if (document.hidden) ringIncomingCallWhenHidden()
-  else stopHiddenRingLoop()
+  else {
+    stopHiddenRingLoop()
+    syncCallRings()
+  }
 }
 
 // Звонок ушёл из состояния «входящий» (принят/отменён/завершён) — убираем уведомление.
-watch(
-  () => callStore.status,
-  (status, prevStatus) => {
-    if (prevStatus === 'incoming' && status !== 'incoming') {
-      stopHiddenRingLoop()
-      void closeCallRings()
-    }
-  }
-)
+watch(() => callStore.status, syncCallRings)
+
+// Сервер повторил предложение уже идущего вызова (или пришёл повторный push) —
+// звонок заново не начинаем и висящее уведомление убираем.
+watch(() => callStore.ignoredCallOffers, syncCallRings)
 
 // Запуск из уведомления о звонке: offer доставлен (появился реальный звонок) —
 // убираем промежуточный экран. Рингтон уже продолжает стор (здесь не глушим).

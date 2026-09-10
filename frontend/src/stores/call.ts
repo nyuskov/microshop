@@ -433,6 +433,8 @@ interface CallState {
   notice: string
   secondsTimer: ReturnType<typeof setInterval> | undefined
   ringOutTimer: ReturnType<typeof setTimeout> | undefined
+  /** Сколько раз повторили уже принятый/идущий вызов (чтобы погасить уведомление). */
+  ignoredCallOffers: number
 }
 
 const DEFAULT_STATE: CallState = {
@@ -458,7 +460,8 @@ const DEFAULT_STATE: CallState = {
   connected: false,
   notice: '',
   secondsTimer: undefined,
-  ringOutTimer: undefined
+  ringOutTimer: undefined,
+  ignoredCallOffers: 0
 }
 
 function makeCallId(): string {
@@ -693,6 +696,8 @@ export const useCallStore = defineStore('call', {
           // Повторная доставка того же вызова (переподключение сокета, повторный
           // push из уведомления) — не начинаем звонок заново.
           if (callId && this.callId === callId && this.status !== 'idle') {
+            // Интерфейсу нужно погасить возможное системное уведомление.
+            this.ignoredCallOffers += 1
             break
           }
           if (this.status !== 'idle') {

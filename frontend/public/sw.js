@@ -16,7 +16,7 @@
  */
 
 const CACHE_PREFIX = 'pismo-v'
-const CACHE_VERSION = 10
+const CACHE_VERSION = 11
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 // Кэши прежнего названия приложения (microshop → Pismo): чистим один раз при активации.
 const LEGACY_CACHE_PREFIXES = ['microshop-v', 'microshop-auth']
@@ -112,7 +112,31 @@ self.addEventListener('fetch', (event) => {
 
 // ---------- Web Push (уведомления о сообщениях и входящих звонках) ----------
 
-self.addEventListener('push', (event) => {
+/** Есть ли окно приложения, которое видно пользователю прямо сейчас. */
+async function hasVisibleClient() {
+  const windows = await self.clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true
+  })
+  return windows.some((client) => client.visibilityState === 'visible')
+}
+
+/** Тихо сообщает открытым окнам о push — интерфейс сам разберётся со звонком. */
+function notifyVisibleClients(data) {
+  void self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+    for (const client of windows) {
+      if ('postMessage' in client) {
+        client.postMessage({
+          type: 'call-push',
+          call_id: data.call_id || null,
+          peer_id: data.peer_id || null
+        })
+      }
+    }
+  })
+}
+
+async function handlePush(event) {
   let payload = {}
   try {
     payload = event.data ? event.data.json() : {}
@@ -133,6 +157,13 @@ self.addEventListener('push', (event) => {
   // Входящий звонок (приложение закрыто/в фоне): держим уведомление на экране,
   // со звуком и вибрацией (как входящий вызов), добавляем кнопки.
   if (data.type === 'call') {
+    // Приложение уже открыто на экране: вызов показывает сам интерфейс, а
+    // повторный push (или push поверх идущего разговора) только «звонил» бы
+    // второй раз и оставлял висеть уведомление. Молча будим окно.
+    if (await hasVisibleClient()) {
+      notifyVisibleClients(data)
+      return
+    }
     options.requireInteraction = true
     options.renotify = true
     options.silent = false
@@ -146,7 +177,11 @@ self.addEventListener('push', (event) => {
     // (тап по телу уведомления открывает чат).
     options.actions = [{ action: 'mark-read', title: 'Пометить как прочитанное' }]
   }
-  event.waitUntil(self.registration.showNotification(title, options))
+  await self.registration.showNotification(title, options)
+}
+
+self.addEventListener('push', (event) => {
+  event.waitUntil(handlePush(event))
 })
 
 // ---------- Доступ к API из service worker (кнопки уведомлений) ----------
