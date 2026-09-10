@@ -1167,6 +1167,10 @@ const onNotificationsToggle = async (val: boolean) => {
             <q-icon name="privacy_tip" size="16px" />
             Политика конфиденциальности
           </a>
+          <a class="legal-link" href="/terms.html" target="_blank" rel="noopener">
+            <q-icon name="description" size="16px" />
+            Пользовательское соглашение
+          </a>
         </div>
 
         <div class="form-actions">

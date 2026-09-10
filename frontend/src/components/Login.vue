@@ -943,6 +943,7 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
     <p class="privacy-note">
       Продолжая, вы соглашаетесь с
       <a href="/privacy.html" target="_blank" rel="noopener">политикой конфиденциальности</a>,
+      <a href="/terms.html" target="_blank" rel="noopener">пользовательским соглашением</a>,
       <a href="/community.html" target="_blank" rel="noopener">правилами сообщества</a>
       и обработкой персональных данных.
     </p>
