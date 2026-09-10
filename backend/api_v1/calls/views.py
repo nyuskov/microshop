@@ -2,7 +2,8 @@
 
 Клиент подключается к ``/api/v1/ws/calls?token=<jwt>`` и обменивается JSON:
 ``call-offer``, ``call-answer``, ``ice-candidate``, ``call-cancel``,
-``call-decline``, ``call-end``. Сервер пересылает сообщения адресату.
+``call-decline``, ``call-end``, ``call-renegotiate``, ``call-renegotiate-answer``,
+``call-screen``. Сервер пересылает сообщения адресату.
 
 Если получатель offer офлайн (приложение закрыто), но у него есть push-канал
 (Web Push для PWA или RuStore Push для Android-приложения) — вызов «паркуется»,
@@ -80,6 +81,12 @@ RELAY_MESSAGE_TYPES = frozenset(
         "call-cancel",
         "call-decline",
         "call-end",
+        # Пересогласование SDP посреди звонка: добавление/замена видео-дорожки
+        # (демонстрация экрана, смена камеры). Сервер только пересылает SDP.
+        "call-renegotiate",
+        "call-renegotiate-answer",
+        # Статус демонстрации экрана — для индикатора у собеседника.
+        "call-screen",
     }
 )
 

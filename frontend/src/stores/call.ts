@@ -2,6 +2,12 @@ import { defineStore } from 'pinia'
 
 import { useAuthStore } from '@/stores/auth'
 import { ICE_SERVERS as CONFIG_ICE_SERVERS, WS_ORIGIN } from '@/config'
+import {
+  chooseDeviceId,
+  groupDevices,
+  readCallDevices,
+  writeCallDevices
+} from '@/utils/callDevices'
 
 /** Тип вызова: только голос или голос + видео. */
 export type CallKind = 'audio' | 'video'
@@ -28,6 +34,8 @@ interface SignalingMessage {
   sdp?: string
   candidate?: RTCIceCandidateInit
   reason?: string
+  /** Для ``call-screen`` — начинает/заканчивает ли собеседник показ экрана. */
+  sharing?: boolean
 }
 
 const WS_PATH = '/api/v1/ws/calls'
@@ -42,6 +50,17 @@ const VIDEO_CONSTRAINTS: MediaTrackConstraints = {
   frameRate: { ideal: 24, max: 30 }
 }
 
+// «Лёгкий» аудиоконстрейнт: эхоподавление и шумодав — как в обычном разговоре.
+const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
+  echoCancellation: true,
+  noiseSuppression: true
+}
+
+// Демонстрация экрана: чёткость важнее плавности (текст мелкий), поэтому 15 fps.
+const SCREEN_CONSTRAINTS: MediaTrackConstraints = {
+  frameRate: { ideal: 15, max: 30 }
+}
+
 // ICE-серверы централизованы в config.ts (переопределяются через VITE_ICE_SERVERS);
 // для звонков за «симметричным» NAT нужен TURN-сервер (см. docs/turn.md).
 const ICE_SERVERS: RTCConfiguration = { iceServers: CONFIG_ICE_SERVERS }
@@ -54,6 +73,15 @@ let localMedia: MediaStream | null = null
 let remoteMedia: MediaStream | null = null
 let pendingOffer: { callId: string; kind: CallKind; sdp: string } | null = null
 
+// Дорожки демонстрации экрана и «отложенная» камера: пока идёт показ экрана,
+// камеру гасим (иначе горит индикатор и тратится батарея), а при остановке
+// показа включаем заново — уже с выбранным в настройках устройством.
+let screenTrack: MediaStreamTrack | null = null
+
+// Счётчик «поколений» пересогласования: ответ на устаревший offer игнорируем,
+// иначе два одновременных пересогласования ломают SDP.
+let renegotiateSeq = 0
+
 let ringTimer: ReturnType<typeof setTimeout> | undefined
 let audioContext: AudioContext | null = null
 let unlockBound = false
@@ -65,6 +93,37 @@ function socketUrl(token: string): string {
 function stopAllTracks(stream: MediaStream | null | undefined) {
   if (!stream) return
   stream.getTracks().forEach((track) => track.stop())
+}
+
+/** Заменяет в потоке дорожку того же вида (камера/микрофон) новой. */
+function swapTrackInStream(
+  stream: MediaStream | null,
+  track: MediaStreamTrack | null,
+  kind: 'audio' | 'video'
+) {
+  if (!stream) return
+  stream.getTracks().forEach((existing) => {
+    if (existing.kind === kind && existing !== track) {
+      stream.removeTrack(existing)
+    }
+  })
+  if (track && !stream.getTracks().includes(track)) {
+    stream.addTrack(track)
+  }
+}
+
+/** Медиа-констрейнты с учётом выбранного в настройках устройства. */
+function mediaConstraints(
+  kind: CallKind,
+  cameraId?: string,
+  micId?: string
+): MediaStreamConstraints {
+  const audio: MediaTrackConstraints = { ...AUDIO_CONSTRAINTS }
+  if (micId) audio.deviceId = { exact: micId }
+  if (kind !== 'video') return { audio, video: false }
+  const video: MediaTrackConstraints = { ...VIDEO_CONSTRAINTS }
+  if (cameraId) video.deviceId = { exact: cameraId }
+  return { audio, video }
 }
 
 /* ------------------ Гудки (WebAudio, без внешних файлов) ------------------ */
@@ -287,6 +346,17 @@ interface CallState {
   peerAvatar: string | null
   micOn: boolean
   videoOn: boolean
+  /** Показываю свой экран собеседнику. */
+  screenSharing: boolean
+  /** Собеседник показывает экран. */
+  peerScreenSharing: boolean
+  /** Свои устройства (по мнению браузера) и выбранные среди них. */
+  cameras: MediaDeviceInfo[]
+  microphones: MediaDeviceInfo[]
+  speakers: MediaDeviceInfo[]
+  selectedCamera: string
+  selectedMic: string
+  selectedSpeaker: string
   seconds: number
   connected: boolean
   notice: string
@@ -303,6 +373,14 @@ const DEFAULT_STATE: CallState = {
   peerAvatar: null,
   micOn: true,
   videoOn: true,
+  screenSharing: false,
+  peerScreenSharing: false,
+  cameras: [],
+  microphones: [],
+  speakers: [],
+  selectedCamera: '',
+  selectedMic: '',
+  selectedSpeaker: '',
   seconds: 0,
   connected: false,
   notice: '',
@@ -325,6 +403,8 @@ export const useCallStore = defineStore('call', {
 
   getters: {
     isBusy: (state) => state.status === 'active' || state.status === 'outgoing',
+    /** Можно ли переключать камеру/микрофон по ходу звонка. */
+    canSwitchDevices: (state) => state.status === 'active',
     formattedTime: (state): string => {
       const m = Math.floor(state.seconds / 60)
       const s = state.seconds % 60
@@ -459,6 +539,28 @@ export const useCallStore = defineStore('call', {
           }
           break
         }
+        case 'call-renegotiate': {
+          // Собеседник меняет медиа (демонстрация экрана/смена устройства):
+          // отвечаем своим SDP-ответом.
+          if (!peerConnection || this.callId !== callId || !message.sdp) return
+          void this._answerRenegotiate(message.sdp)
+          break
+        }
+        case 'call-renegotiate-answer': {
+          if (!peerConnection || this.callId !== callId || !message.sdp) return
+          void peerConnection
+            .setRemoteDescription({ type: 'answer', sdp: message.sdp })
+            .catch(() => undefined)
+          break
+        }
+        case 'call-screen': {
+          if (this.callId !== callId) return
+          this.peerScreenSharing = Boolean(message.sharing)
+          // Показ экрана включается как видео — переводим интерфейс в видео-режим,
+          // чтобы было видно картинку собеседника (своя сторона уже это сделала).
+          if (this.peerScreenSharing) this.kind = 'video'
+          break
+        }
         case 'call-cancel': {
           if (this.status === 'incoming' && this.callId === callId) {
             this._cleanup()
@@ -520,10 +622,7 @@ export const useCallStore = defineStore('call', {
 
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true
-          },
+          audio: { echoCancellation: true, noiseSuppression: true },
           video: kind === 'video' ? VIDEO_CONSTRAINTS : false
         })
         localMedia = stream
@@ -541,6 +640,7 @@ export const useCallStore = defineStore('call', {
           sdp: offer.sdp ?? ''
         })
         this._armRingOutTimer()
+        void this.loadDevices()
       } catch {
         this._cleanup()
         this.notice =
@@ -558,10 +658,10 @@ export const useCallStore = defineStore('call', {
       ensureCallOutput()
       const kind = pendingOffer.kind
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true },
-          video: kind === 'video' ? VIDEO_CONSTRAINTS : false
-        })
+        this._restoreSavedDevices()
+        const stream = await navigator.mediaDevices.getUserMedia(
+          mediaConstraints(kind, this.selectedCamera, this.selectedMic)
+        )
         localMedia = stream
         peerConnection = new RTCPeerConnection(ICE_SERVERS)
         this._wirePeerConnection(peerConnection)
@@ -577,6 +677,7 @@ export const useCallStore = defineStore('call', {
           sdp: answer.sdp ?? ''
         })
         this._becomeActive()
+        void this.loadDevices()
       } catch {
         this._cleanup()
         this.notice = 'Не удалось получить доступ к камере/микрофону'
@@ -695,11 +796,247 @@ export const useCallStore = defineStore('call', {
 
     /** Переключить камеру. */
     toggleCamera() {
-      if (this.kind !== 'video') return
+      if (this.kind !== 'video' || this.screenSharing) return
       this.videoOn = !this.videoOn
       localMedia?.getVideoTracks().forEach((track) => {
         track.enabled = this.videoOn
       })
+    },
+
+    /** Подтягивает сохранённый выбор устройств (до первого getUserMedia). */
+    _restoreSavedDevices() {
+      const saved = readCallDevices()
+      if (!this.selectedCamera) this.selectedCamera = saved.camera ?? ''
+      if (!this.selectedMic) this.selectedMic = saved.mic ?? ''
+      if (!this.selectedSpeaker) this.selectedSpeaker = saved.speaker ?? ''
+    },
+
+    /* ---------------- Демонстрация экрана ---------------- */
+
+    /** Включить/выключить показ своего экрана собеседнику. */
+    async toggleScreenShare() {
+      if (this.status !== 'active') return
+      if (this.screenSharing) {
+        this.stopScreenShare()
+        return
+      }
+      await this._startScreenShare()
+    },
+
+    async _startScreenShare() {
+      if (!peerConnection || this.screenSharing) return
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getDisplayMedia) {
+        this.notice = 'Браузер не поддерживает демонстрацию экрана'
+        return
+      }
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: SCREEN_CONSTRAINTS })
+        const track = stream.getVideoTracks()[0]
+        if (!track) return
+        screenTrack = track
+        // Кнопка «Остановить показ» в самом браузере (плашка Chrome/Safari).
+        track.onended = () => this.stopScreenShare()
+
+        const sender = peerConnection.getSenders().find((item) => item.track?.kind === 'video')
+        if (sender) {
+          // Видеозвонок: подменяем дорожку без пересогласования.
+          await sender.replaceTrack(track)
+        } else {
+          // Аудиозвонок: добавляем видео-линию — нужен новый SDP.
+          peerConnection.addTrack(track, stream)
+          await this._renegotiate()
+        }
+        // Гасим камеру на время показа (вернём при остановке) и показываем экран в превью.
+        localMedia?.getVideoTracks().forEach((camera) => {
+          camera.stop()
+          localMedia?.removeTrack(camera)
+        })
+        if (!localMedia) localMedia = new MediaStream()
+        localMedia.addTrack(track)
+        this.screenSharing = true
+        this.videoOn = true
+        // Интерфейс становится видео-режимом: видно превью экрана и картинку собеседника.
+        this.kind = 'video'
+        this._sendScreenStatus(true)
+        void this._capVideoBitrate()
+      } catch {
+        // Отказ от выбора окна в диалоге браузера — не ошибка.
+        screenTrack = null
+        this.notice = ''
+      }
+    },
+
+    /** Останавливает показ экрана и возвращает камеру (если звонок видео). */
+    stopScreenShare() {
+      const track = screenTrack
+      screenTrack = null
+      if (track) {
+        track.onended = null
+        track.stop()
+      }
+      if (!this.screenSharing) return
+      this.screenSharing = false
+      if (track && localMedia) {
+        localMedia.removeTrack(track)
+      }
+      const sender = peerConnection?.getSenders().find((item) => item.track?.kind === 'video')
+      void this._restoreCamera(sender ?? null)
+      this._sendScreenStatus(false)
+    },
+
+    /** Возвращает камеру после показа экрана (или отключает видео-линию, если не удалось). */
+    async _restoreCamera(sender: RTCRtpSender | null) {
+      if (!peerConnection) return
+      const target =
+        sender ?? peerConnection.getSenders().find((item) => item.track?.kind === 'video')
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: this._videoConstraints()
+        })
+        const track = stream.getVideoTracks()[0]
+        if (!track) throw new Error('нет видеодорожки')
+        swapTrackInStream(localMedia, track, 'video')
+        track.enabled = this.videoOn
+        if (target) await target.replaceTrack(track)
+        else peerConnection.addTrack(track, localMedia ?? new MediaStream([track]))
+      } catch {
+        // Камера недоступна — просто перестаём отправлять видео, звонок продолжается.
+        if (target) await target.replaceTrack(null).catch(() => undefined)
+        this.videoOn = false
+      }
+    },
+
+    _sendScreenStatus(sharing: boolean) {
+      sendMessage({
+        type: 'call-screen',
+        to_user_id: this.peerId ?? 0,
+        call_id: this.callId ?? '',
+        sharing
+      })
+    },
+
+    /** Ответ на пересогласование от собеседника. */
+    async _answerRenegotiate(sdp: string) {
+      if (!peerConnection) return
+      try {
+        await peerConnection.setRemoteDescription({ type: 'offer', sdp })
+        const answer = await peerConnection.createAnswer()
+        await peerConnection.setLocalDescription(answer)
+        sendMessage({
+          type: 'call-renegotiate-answer',
+          to_user_id: this.peerId ?? 0,
+          call_id: this.callId ?? '',
+          sdp: answer.sdp ?? ''
+        })
+      } catch {
+        /* пересогласование не удалось — звонок продолжается как есть */
+      }
+    },
+
+    /** Инициирует пересогласование SDP (после добавления видео-линии). */
+    async _renegotiate() {
+      if (!peerConnection) return
+      const seq = ++renegotiateSeq
+      try {
+        const offer = await peerConnection.createOffer()
+        await peerConnection.setLocalDescription(offer)
+        if (seq !== renegotiateSeq) return
+        sendMessage({
+          type: 'call-renegotiate',
+          to_user_id: this.peerId ?? 0,
+          call_id: this.callId ?? '',
+          sdp: offer.sdp ?? ''
+        })
+      } catch {
+        /* без пересогласования видео не появится, но звонок жив */
+      }
+    },
+
+    /* ---------------- Устройства (камера/микрофон/динамик) ---------------- */
+
+    /** Обновляет список устройств (после разрешения доступа имена не пустые). */
+    async loadDevices() {
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) return
+      try {
+        const list = await navigator.mediaDevices.enumerateDevices()
+        const grouped = groupDevices(list)
+        const saved = readCallDevices()
+        this.cameras = grouped.cameras
+        this.microphones = grouped.microphones
+        this.speakers = grouped.speakers
+        this.selectedCamera = chooseDeviceId(grouped.cameras, this.selectedCamera || saved.camera)
+        this.selectedMic = chooseDeviceId(grouped.microphones, this.selectedMic || saved.mic)
+        this.selectedSpeaker = chooseDeviceId(
+          grouped.speakers,
+          this.selectedSpeaker || saved.speaker
+        )
+      } catch {
+        /* список устройств недоступен — остаются системные по умолчанию */
+      }
+    },
+
+    _videoConstraints(): MediaTrackConstraints {
+      const constraints: MediaTrackConstraints = { ...VIDEO_CONSTRAINTS }
+      if (this.selectedCamera) constraints.deviceId = { exact: this.selectedCamera }
+      return constraints
+    },
+
+    /** Сменить камеру по ходу звонка (готовим превью без перезапуска звонка). */
+    async setCameraDevice(deviceId: string) {
+      this.selectedCamera = deviceId
+      writeCallDevices({ camera: deviceId })
+      if (this.status !== 'active' || this.screenSharing || this.kind !== 'video') return
+      const sender = peerConnection?.getSenders().find((item) => item.track?.kind === 'video')
+      if (!sender || !peerConnection) return
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: this._videoConstraints()
+        })
+        const track = stream.getVideoTracks()[0]
+        if (!track) return
+        localMedia?.getVideoTracks().forEach((old) => {
+          old.stop()
+          localMedia?.removeTrack(old)
+        })
+        if (!localMedia) localMedia = new MediaStream()
+        localMedia.addTrack(track)
+        track.enabled = this.videoOn
+        await sender.replaceTrack(track)
+      } catch {
+        this.notice = 'Не удалось переключить камеру'
+      }
+    },
+
+    /** Сменить микрофон по ходу звонка. */
+    async setMicDevice(deviceId: string) {
+      this.selectedMic = deviceId
+      writeCallDevices({ mic: deviceId })
+      if (this.status !== 'active') return
+      const sender = peerConnection?.getSenders().find((item) => item.track?.kind === 'audio')
+      if (!sender) return
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { ...AUDIO_CONSTRAINTS, deviceId: { exact: deviceId } }
+        })
+        const track = stream.getAudioTracks()[0]
+        if (!track) return
+        localMedia?.getAudioTracks().forEach((old) => {
+          old.stop()
+          localMedia?.removeTrack(old)
+        })
+        if (!localMedia) localMedia = new MediaStream()
+        localMedia.addTrack(track)
+        track.enabled = this.micOn
+        await sender.replaceTrack(track)
+      } catch {
+        this.notice = 'Не удалось переключить микрофон'
+      }
+    },
+
+    /** Выбрать динамик (применит интерфейс через setSinkId, если браузер умеет). */
+    setSpeakerDevice(deviceId: string) {
+      this.selectedSpeaker = deviceId
+      writeCallDevices({ speaker: deviceId })
     },
 
     /** Возвращает текущий локальный поток (для превью). */
@@ -747,6 +1084,14 @@ export const useCallStore = defineStore('call', {
         window.clearInterval(this.secondsTimer)
         this.secondsTimer = undefined
       }
+      // Остановка показа экрана не должна дёргать getUserMedia для камеры:
+      // звонок уже завершается, поэтому просто гасим дорожку.
+      if (screenTrack) {
+        screenTrack.onended = null
+        screenTrack.stop()
+        screenTrack = null
+      }
+      renegotiateSeq += 1
       if (peerConnection) {
         peerConnection.onicecandidate = null
         peerConnection.ontrack = null

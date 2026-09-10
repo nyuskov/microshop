@@ -86,6 +86,10 @@
               <p class="call-subtitle audio-sub">
                 Голосовой звонок · {{ callStore.formattedTime }}
               </p>
+              <span v-if="callStore.peerScreenSharing" class="call-sharing">
+                <q-icon name="screen_share" size="13px" aria-hidden="true" />
+                Собеседник показывает экран
+              </span>
               <span class="call-e2ee" title="Медиа защищено сквозным шифрованием (DTLS-SRTP)">
                 <q-icon name="lock" size="11px" aria-hidden="true" />
                 Сквозное шифрование
@@ -107,6 +111,10 @@
               <div class="hud-info">
                 <div class="hud-name">{{ displayName }}</div>
                 <div class="hud-time">{{ callStore.formattedTime }}</div>
+                <span v-if="callStore.peerScreenSharing" class="call-sharing video">
+                  <q-icon name="screen_share" size="12px" aria-hidden="true" />
+                  Собеседник показывает экран
+                </span>
                 <span
                   class="call-e2ee video"
                   title="Медиа защищено сквозным шифрованием (DTLS-SRTP)"
@@ -147,7 +155,7 @@
                 <q-icon name="mic" size="26px" />
               </button>
               <button
-                v-if="callStore.kind === 'video'"
+                v-if="callStore.kind === 'video' && !callStore.screenSharing"
                 class="ctl-btn"
                 :class="{ off: !callStore.videoOn }"
                 title="Камера"
@@ -155,9 +163,91 @@
               >
                 <q-icon name="videocam" size="26px" />
               </button>
+              <button
+                class="ctl-btn"
+                :class="{ 'screen-on': callStore.screenSharing }"
+                :title="callStore.screenSharing ? 'Остановить показ экрана' : 'Показать экран'"
+                :aria-pressed="callStore.screenSharing"
+                @click="callStore.toggleScreenShare()"
+              >
+                <q-icon
+                  :name="callStore.screenSharing ? 'stop_screen_share' : 'screen_share'"
+                  size="26px"
+                />
+              </button>
+              <button
+                class="ctl-btn"
+                :class="{ 'speaker-on': settingsOpen }"
+                title="Устройства звонка"
+                :aria-pressed="settingsOpen"
+                @click="settingsOpen = !settingsOpen"
+              >
+                <q-icon name="tune" size="26px" />
+              </button>
               <button class="ctl-btn danger big" title="Завершить" @click="callStore.endCall()">
                 <q-icon name="call_end" size="28px" />
               </button>
+            </div>
+
+            <!-- Настройки устройств звонка -->
+            <div v-if="settingsOpen" class="call-settings">
+              <label v-if="callStore.cameras.length" class="settings-row">
+                <span class="settings-label">Камера</span>
+                <select
+                  class="settings-select"
+                  :value="callStore.selectedCamera"
+                  @change="onCameraChange($event)"
+                >
+                  <option
+                    v-for="cam in callStore.cameras"
+                    :key="cam.deviceId"
+                    :value="cam.deviceId"
+                  >
+                    {{ cam.label || 'Камера' }}
+                  </option>
+                </select>
+              </label>
+
+              <label v-if="callStore.microphones.length" class="settings-row">
+                <span class="settings-label">Микрофон</span>
+                <select
+                  class="settings-select"
+                  :value="callStore.selectedMic"
+                  @change="onMicChange($event)"
+                >
+                  <option
+                    v-for="mic in callStore.microphones"
+                    :key="mic.deviceId"
+                    :value="mic.deviceId"
+                  >
+                    {{ mic.label || 'Микрофон' }}
+                  </option>
+                </select>
+              </label>
+
+              <label v-if="callStore.speakers.length && canSelectSpeaker" class="settings-row">
+                <span class="settings-label">Звук</span>
+                <select
+                  class="settings-select"
+                  :value="callStore.selectedSpeaker"
+                  @change="onSpeakerChange($event)"
+                >
+                  <option
+                    v-for="spk in callStore.speakers"
+                    :key="spk.deviceId"
+                    :value="spk.deviceId"
+                  >
+                    {{ spk.label || 'Динамик' }}
+                  </option>
+                </select>
+              </label>
+
+              <p
+                v-if="!callStore.cameras.length && !callStore.microphones.length"
+                class="settings-hint"
+              >
+                Список устройств появится после разрешения доступа к камере и микрофону.
+              </p>
             </div>
           </div>
         </template>
@@ -174,7 +264,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useCallStore } from '@/stores/call'
 import { mediaUrl } from '@/services/chatService'
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
@@ -193,6 +283,38 @@ let attachTimer: ReturnType<typeof setInterval> | undefined
 // телефонах игнорируется, поэтому без этого «тихий» режим не работал бы.
 const EARP_VOLUME = 0.12
 const speakerOn = ref(false)
+
+// Панель выбора устройств (камера/микрофон/динамик) во время звонка.
+const settingsOpen = ref(false)
+
+/** Умеет ли браузер выводить звук на выбранное устройство (setSinkId). */
+const canSelectSpeaker = computed(
+  () => typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype
+)
+
+const onCameraChange = (event: Event) => {
+  const value = (event.target as HTMLSelectElement).value
+  void callStore.setCameraDevice(value)
+}
+
+const onMicChange = (event: Event) => {
+  const value = (event.target as HTMLSelectElement).value
+  void callStore.setMicDevice(value)
+}
+
+const onSpeakerChange = (event: Event) => {
+  callStore.setSpeakerDevice((event.target as HTMLSelectElement).value)
+}
+
+/** Направляет звук на выбранный динамик (Safari/iOS не поддерживают — молча пропускаем). */
+const applySink = () => {
+  if (!canSelectSpeaker.value || !callStore.selectedSpeaker) return
+  const parent = remoteVideoEl.value ?? remoteAudioEl.value
+  type SinkCapable = HTMLMediaElement & { setSinkId?: (id: string) => Promise<void> }
+  const el = parent as SinkCapable | null
+  if (!el?.setSinkId) return
+  void el.setSinkId(callStore.selectedSpeaker).catch(() => undefined)
+}
 
 const fallbackEl = (): HTMLMediaElement | null =>
   callStore.kind === 'video' ? remoteVideoEl.value : remoteAudioEl.value
@@ -290,6 +412,7 @@ const attachStreams = () => {
   }
   ensurePlaying(localVideoEl.value)
   applySpeaker()
+  applySink()
 }
 
 watch(
@@ -303,7 +426,17 @@ watch(
       window.clearInterval(attachTimer)
       attachTimer = undefined
       speakerOn.value = false
+      settingsOpen.value = false
     }
+  }
+)
+
+// Демонстрация экрана могла включиться из аудиозвонка (или наоборот завершиться) —
+// перебрасываем потоки в правильные элементы без ожидания следующего тика.
+watch(
+  () => [callStore.kind, callStore.screenSharing, callStore.selectedSpeaker],
+  () => {
+    void nextTick(attachStreams)
   }
 )
 
@@ -508,6 +641,33 @@ onBeforeUnmount(() => {
   padding: 1px 7px;
 }
 
+/* Плашка «собеседник показывает экран» */
+.call-sharing {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  color: #fff;
+  font-size: 11.5px;
+  background: rgba(58, 166, 224, 0.22);
+  border: 1px solid rgba(58, 166, 224, 0.5);
+  border-radius: 999px;
+  padding: 2px 10px;
+  user-select: none;
+}
+
+.call-sharing .q-icon {
+  color: #6cc4f0;
+  font-size: 1.05rem;
+}
+
+.call-sharing.video {
+  align-self: flex-start;
+  margin-top: 3px;
+  font-size: 10px;
+  padding: 1px 7px;
+}
+
 .local-video {
   position: absolute;
   right: 18px;
@@ -525,6 +685,84 @@ onBeforeUnmount(() => {
 
 .ctl-btn.speaker-on {
   color: var(--ms-accent, #2ea25e);
+}
+
+/* Кнопка демонстрации экрана в активном состоянии */
+.ctl-btn.screen-on {
+  background: #3aa6e0;
+}
+
+/* ---------- Панель устройств звонка ---------- */
+.call-settings {
+  position: absolute;
+  bottom: 108px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(360px, calc(100vw - 32px));
+  padding: 12px 14px;
+  background: rgba(16, 22, 30, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+}
+
+.settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.settings-select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 13.5px;
+  font-family: inherit;
+}
+
+.settings-select option {
+  color: #10161e;
+}
+
+.settings-hint {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+@media (max-width: 420px) {
+  .active-controls {
+    gap: 11px;
+  }
+
+  .ctl-btn {
+    width: 50px;
+    height: 50px;
+    font-size: 1.25rem;
+  }
+
+  .ctl-btn.big {
+    width: 58px;
+    height: 58px;
+  }
+
+  .call-settings {
+    bottom: 96px;
+  }
 }
 
 /* ---------- Управление ---------- */
