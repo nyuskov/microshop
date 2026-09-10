@@ -159,6 +159,24 @@ class Settings(BaseSettings):
         validation_alias="WEB_PUSH_VAPID_SUBJECT",
     )
 
+    # --- RuStore Push (Android-приложение из RuStore) ---
+    # ID проекта и сервисный токен: RuStore Консоль → Push-уведомления → Проекты.
+    # Пока не заданы — канал выключен (Web Push для PWA работает как обычно).
+    rustore_push_project_id: str | None = Field(
+        default=None, validation_alias="RUSTORE_PUSH_PROJECT_ID"
+    )
+    rustore_push_service_token: str | None = Field(
+        default=None, validation_alias="RUSTORE_PUSH_SERVICE_TOKEN"
+    )
+    # Базовый адрес Push API RuStore и таймаут запроса.
+    rustore_push_api_url: str = Field(
+        default="https://vkpns.rustore.ru/v1",
+        validation_alias="RUSTORE_PUSH_API_URL",
+    )
+    rustore_push_timeout: float = 10.0
+    # Время жизни push-сообщения (формат duration: "3600s").
+    rustore_push_ttl: str = "3600s"
+
 
 settings = Settings()
 

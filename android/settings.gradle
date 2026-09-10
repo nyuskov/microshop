@@ -1,0 +1,22 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        // Официальные репозитории RuStore (там лежит ru.rustore.sdk:pushclient и его
+        // транзитивные зависимости). Второй указан в документации SDK как альтернатива.
+        maven { url = uri("https://nexus-external.vkteam.ru/repository/maven/") }
+        maven { url = uri("https://artifactory-external.vkpartner.ru/artifactory/maven") }
+    }
+}
+
+rootProject.name = "Pismo"
+include ':app'

@@ -11,6 +11,7 @@ __all__ = [
     "Profile",
     "PushSubscription",
     "RefreshSession",
+    "RuStorePushToken",
     "TelegramBindLink",
     "User",
     "user_chat_association_table",
@@ -27,5 +28,6 @@ from .otp_code import OtpCode  # noqa: F401
 from .profile import Profile  # noqa: F401
 from .push_subscription import PushSubscription  # noqa: F401
 from .refresh_session import RefreshSession  # noqa: F401
+from .rustore_push_token import RuStorePushToken  # noqa: F401
 from .telegram_bind_link import TelegramBindLink  # noqa: F401
 from .user import User  # noqa: F401

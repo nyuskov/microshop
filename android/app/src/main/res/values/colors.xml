@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Брендовый цвет Pismo (совпадает с theme_color в manifest.webmanifest). -->
+    <color name="pismo_brand">#5A50E0</color>
+    <!-- Тёмный фон приложения (совпадает с background_color PWA). -->
+    <color name="pismo_background">#10151C</color>
+</resources>

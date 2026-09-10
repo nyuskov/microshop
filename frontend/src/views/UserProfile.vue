@@ -13,6 +13,7 @@ import {
 } from '@/utils/phone'
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
 import { disablePushNotifications, enablePushNotifications } from '@/services/pwa'
+import { disableNativePush, enableNativePush, isNativeApp } from '@/services/nativePush'
 
 const emit = defineEmits(['close-modal'])
 
@@ -255,12 +256,17 @@ const updateProfile = async () => {
   }
 }
 
-// ---------- Уведомления: тумблер профиля управляет Web Push-подпиской ----------
-// Включение — запрашиваем разрешение браузера и подписываемся (вызов идёт из
-// клика по тумблеру = жест пользователя, обязателен на мобильных). Выключение —
-// отписываемся от Web Push на этом устройстве.
+// ---------- Уведомления: тумблер профиля управляет push-подпиской ----------
+// В браузере это Web Push (разрешение браузера + подписка), в Android-приложении
+// из RuStore — RuStore Push (разрешение Android + push-токен RuStore). Вызов идёт
+// из клика по тумблеру = жест пользователя (обязателен на мобильных).
 const onNotificationsToggle = async (val: boolean) => {
   if (val) {
+    if (isNativeApp()) {
+      enableNativePush()
+      errorMessage.value = ''
+      return
+    }
     const res = await enablePushNotifications()
     if (res !== 'granted') {
       profileForm.notifications_enabled = false
@@ -275,6 +281,10 @@ const onNotificationsToggle = async (val: boolean) => {
     }
   } else {
     errorMessage.value = ''
+    if (isNativeApp()) {
+      await disableNativePush()
+      return
+    }
     await disablePushNotifications()
   }
 }

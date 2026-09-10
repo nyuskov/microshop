@@ -27,6 +27,7 @@
 - **Профиль и настройки** (`UserProfile`): имя/логин/email/**телефон** (маска +7)/био/**текст-статус**/дата рождения/язык/страна, уведомления, приватный режим, **аватар** (загрузка/удаление), выход.
 - **Вход по номеру + пароль** (если у номера нет пароля — предлагаем создать; OTP/SMS временно не используется в UI, эндпоинты сохранены).
 - Backend-качество: refresh-токены с ротацией/отзывом, rate-limit, pg_trgm-поиск, X-Request-ID и лог медленных запросов, Celery+RabbitMQ (SMS/GIF/очистка медиа по расписанию), health-эндпоинты, pytest, CI (black/isort/flake8/mypy/vue-tsc/eslint/vitest).
+- **Мобильное приложение для RuStore** (`android/`): WebView-оболочка над тем же веб-клиентом (pismo.space) + RuStore Push SDK вместо Web Push; сборка AAB/APK без установки Android SDK на хост (`scripts/rustore/build_android.sh`, образ `android/Dockerfile.build`), ключ подписи, App Links, политика конфиденциальности, скриншоты — см. `docs/rustore.md`.
 - Legacy-модули `products`/`posts`/`telegram` — с мессенджером не связаны (кандидаты на удаление).
 
 Ограничения (сознательные/текущие): только личные чаты (групповых нет — фича убрана); WebRTC-звонки без TURN (работают в локальных сетях); Web Push/PWA-уведомления не реализованы; секреты должны задаваться через `.env` (см. раздел 9). Вход в UI сейчас — **по номеру и паролю** (при первом входе предлагается создать пароль); SMS/OTP временно отключён до подключения платного шлюза (SMS Aero/Telegram — см. `.env.example`).
@@ -80,6 +81,8 @@ microshop/
 │       ├── config.ts         # API_ORIGIN / API_BASE_URL / WS_ORIGIN / mediaUrl
 │       ├── router/index.ts   # "/" → Messenger, "/auth/login/" → Login
 │       └── __tests__/        # vitest (unit-тесты)
+├── android/                  # Android-приложение для RuStore (WebView + RuStore Push SDK)
+├── scripts/rustore/          # сборка AAB/APK, ключ подписи, assetlinks, скриншоты
 ├── docker-compose.yaml       # дев-стек: db + rabbitmq + web + worker + beat + frontend + nginx
 ├── docker-compose.dev.yaml   # лёгкий вариант (web+db+nginx)
 ├── docker-compose.prod.yaml  # прод-стек (см. docs/production.md)
@@ -90,7 +93,7 @@ microshop/
 ├── cron_dump_db.sh / install_cron_backup.sh # ежедневный бэкап (БД + media) по cron
 ├── backup_offsite.example.sh # пример выгрузки бэкапов в облако (rclone)
 ├── db_dump/                  # дампы БД + media: latest + archive/ + logs/ (в .gitignore)
-├── docs/                     # production.md, offsite-backup.md
+├── docs/                     # production.md, offsite-backup.md, rustore.md, privacy-policy.md
 ├── .github/workflows/ci.yml  # backend (lint+mypy+pytest c Postgres) + frontend
 └── queries.sql
 ```

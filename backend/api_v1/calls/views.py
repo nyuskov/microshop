@@ -4,10 +4,11 @@
 ``call-offer``, ``call-answer``, ``ice-candidate``, ``call-cancel``,
 ``call-decline``, ``call-end``. Сервер пересылает сообщения адресату.
 
-Если получатель offer офлайн (приложение закрыто), но у него есть push-
-подписки — вызов «паркуется», а абоненту шлётся Web Push «Вам звонят…»;
-когда он откроет приложение и подключится, offer доставится. Если push-
-подписок нет — инициатору сразу уходит ``call-unavailable``.
+Если получатель offer офлайн (приложение закрыто), но у него есть push-канал
+(Web Push для PWA или RuStore Push для Android-приложения) — вызов «паркуется»,
+а абоненту шлётся уведомление «Вам звонят…»; когда он откроет приложение и
+подключится, offer доставится. Если push-каналов нет — инициатору сразу уходит
+``call-unavailable``.
 """
 
 import logging
@@ -20,6 +21,7 @@ from pydantic import BaseModel
 from api_v1.chats.crud import get_private_chat_id_between
 from api_v1.events.service import notify_chat
 from api_v1.push import crud as push_crud
+from core import rustore_push
 from core.config import settings
 from core.models import Message, User, db_helper
 
@@ -31,6 +33,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ws", tags=["Calls"])
 # REST-роутер звонков (для push-кнопки «Отклонить» из service worker).
 router_rest = APIRouter(prefix="/calls", tags=["Calls"])
+
+
+def _any_push_channel_configured() -> bool:
+    """Настроен ли хотя бы один канал уведомлений (Web Push или RuStore Push)."""
+    web_push = bool(
+        settings.web_push_vapid_public_key and settings.web_push_vapid_private_key
+    )
+    return web_push or rustore_push.is_configured()
 
 
 class CallDeclineRequest(BaseModel):
@@ -202,21 +212,22 @@ async def _relay_message(from_user_id: int, data: dict[str, Any]) -> None:
 async def _park_offer_and_push(
     *, callee_id: int, caller_id: int, offer: dict[str, Any]
 ) -> bool:
-    """Паркует входящий вызов для офлайн-абонента и шлёт ему Web Push.
+    """Паркует входящий вызов для офлайн-абонента и шлёт push.
 
-    Возвращает ``True``, если вызов «принят в обработку» (есть push-подписки).
+    Возвращает ``True``, если вызов «принят в обработку»: у абонента есть хотя бы
+    один push-канал — Web Push (PWA) или RuStore Push (Android-приложение).
     """
-    if (
-        not settings.web_push_vapid_public_key
-        or not settings.web_push_vapid_private_key
-    ):
+    if not _any_push_channel_configured():
         return False
 
     async with db_helper.session_factory() as session:
         subscriptions = await push_crud.get_subscriptions_for_users(
             session, [callee_id]
         )
-    if not subscriptions:
+        rustore_tokens = await push_crud.get_rustore_tokens_for_users(
+            session, [callee_id]
+        )
+    if not subscriptions and not rustore_tokens:
         return False
 
     await call_manager.park_offer(callee_id, offer)

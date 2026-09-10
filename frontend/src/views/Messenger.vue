@@ -463,6 +463,12 @@ import {
   showIncomingCallRing,
   closeCallRings
 } from '@/services/pwa'
+import {
+  disableNativePush,
+  enableNativePush,
+  initNativePush,
+  isNativeApp
+} from '@/services/nativePush'
 
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
@@ -2313,14 +2319,21 @@ watch(
   { immediate: true }
 )
 
-// Web Push (PWA): подписку создаём, только если в профиле включено
-// «Уведомления о сообщениях» (там же и выключаем). Включено -> подписываемся
-// (повторный вызов безопасен), выключено -> отписываемся. При „denied“/
-// „unsupported“ не дёргаем API.
+// Push-уведомления: в браузере — Web Push (подписка PWA), в Android-приложении
+// из RuStore — RuStore Push. Включено -> подписываемся (повторный вызов безопасен),
+// выключено -> отписываемся; при „denied“/„unsupported“ лишний раз не дёргаем API.
 const pushOptIn = computed(() => authStore.current_user?.profile?.notifications_enabled ?? true)
 
 const ensurePushState = () => {
   if (!ready.value) return
+  if (isNativeApp()) {
+    if (pushOptIn.value) {
+      enableNativePush()
+    } else {
+      void disableNativePush()
+    }
+    return
+  }
   if (pushOptIn.value) {
     const permission = getPushPermission()
     if (permission === 'denied' || permission === 'unsupported') return
@@ -2331,6 +2344,31 @@ const ensurePushState = () => {
 }
 
 watch([ready, pushOptIn], ensurePushState)
+
+// ---------- RuStore Push (Android-приложение из RuStore) ----------
+// Нативная оболочка (android/) присылает события: push-токен, статус, данные push
+// и цель перехода при клике по уведомлению. В браузере initNativePush() — no-op,
+// веб-версия продолжает жить на обычном Web Push.
+let disposeNativePush: () => void = () => {}
+
+/** Открывает чат, по которому тапнули уведомление (данные приходят из пушей). */
+const openNativeTarget = async (data: Record<string, string>) => {
+  const chatId = Number(data.chat_id)
+  if (!Number.isFinite(chatId) || chatId <= 0) return
+  await loadChats()
+  await openChatThread(chatId)
+}
+
+disposeNativePush = initNativePush({
+  onOpenTarget: (data) => {
+    void openNativeTarget(data)
+  },
+  onPushData: () => {
+    // Приложение открыто — подтягиваем свежие данные вместо системного уведомления.
+    void refreshChatsQuiet()
+    void refreshOpenThreadQuiet()
+  }
+})
 
 onMounted(async () => {
   await authStore.initializeApp()
@@ -2425,6 +2463,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('message', handleWindowMessage)
   window.removeEventListener('visibilitychange', handleCallVisibility)
   window.removeEventListener('popstate', onAppPopState)
+  disposeNativePush()
   stopRealtime()
   realtimeStore.setHandler(null)
   if (highlightTimer !== undefined) {

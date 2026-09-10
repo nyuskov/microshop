@@ -10,19 +10,86 @@
 событие в живые сокеты.
 """
 
+import asyncio
 import json
 import logging
 
 from pywebpush import WebPushException, webpush
 from sqlalchemy import delete, select
 
+from core import rustore_push
 from core.amqp import publish_realtime_event
 from core.celery_app import celery_app
 from core.config import settings
-from core.models import Message, PushSubscription, User
+from core.models import Message, PushSubscription, RuStorePushToken, User
 from tasks.base import make_engine, make_session, run_async
 
 logger = logging.getLogger(__name__)
+
+# ID каналов уведомлений Android-приложения (совпадают с PushChannels.java в android/).
+PUSH_CHANNEL_MESSAGES = "pismo_messages"
+PUSH_CHANNEL_CALLS = "pismo_calls"
+# Intent action для клика по уведомлению (android/app/src/main/AndroidManifest.xml).
+PUSH_CLICK_ACTION = "space.pismo.app.PUSH"
+
+
+def _web_push_configured() -> bool:
+    """Настроен ли Web Push (VAPID-ключи PWA)."""
+    return bool(
+        settings.web_push_vapid_public_key and settings.web_push_vapid_private_key
+    )
+
+
+def _rustore_message(
+    *, title: str, body: str, channel_id: str, data: dict[str, object]
+) -> dict[str, object]:
+    """Собирает сообщение для Push API RuStore (формат, совместимый с FCM)."""
+    return {
+        "notification": {"title": title, "body": body},
+        "data": {key: str(value) for key, value in data.items() if value is not None},
+        "android": {
+            "ttl": settings.rustore_push_ttl,
+            "notification": {
+                "channel_id": channel_id,
+                "click_action": PUSH_CLICK_ACTION,
+                "click_action_type": 0,
+            },
+        },
+    }
+
+
+async def _send_rustore_push(
+    session, user_ids: list[int], message: dict[str, object]
+) -> None:
+    """Шлёт push через RuStore всем токенам пользователей (если канал настроен).
+
+    Устаревшие токены (приложение удалено) удаляем из БД.
+    """
+    if not rustore_push.is_configured() or not user_ids:
+        return
+    stmt = select(RuStorePushToken).where(RuStorePushToken.user_id.in_(user_ids))
+    tokens = list((await session.execute(stmt)).scalars().all())
+    if not tokens:
+        return
+
+    stale: list[str] = []
+    for row in tokens:
+        status = await asyncio.to_thread(rustore_push.send, row.token, message)
+        if status == rustore_push.STATUS_INVALID_TOKEN:
+            stale.append(row.token)
+        elif status == rustore_push.STATUS_AUTH_ERROR:
+            # Общая проблема с сервисным токеном — дальше слать нет смысла.
+            logger.warning(
+                "RuStore Push: проверьте RUSTORE_PUSH_SERVICE_TOKEN/PROJECT_ID"
+            )
+            break
+
+    if stale:
+        await session.execute(
+            delete(RuStorePushToken).where(RuStorePushToken.token.in_(stale))
+        )
+        await session.commit()
+        logger.info("Удалено устаревших RuStore push-токенов: %s", len(stale))
 
 
 @celery_app.task(name="tasks.notifications.send_email", max_retries=3)
@@ -73,17 +140,14 @@ def send_message_push(
     message_id: int,
     sender_id: int,
 ) -> None:
-    """Отправляет Web Push о новом сообщении получателям (PWA).
+    """Отправляет push о новом сообщении получателям (Web Push + RuStore).
 
     Вызывается из ``api_v1.events.service.notify_chat`` при событии
-    ``message.new``. Доставка — через стандартный push-сервис браузера
-    (Web Push / RFC 8291, pywebpush). Если push-сервис отвечает 404/410 —
-    подписка устарела, удаляем её.
+    ``message.new``. PWA получает уведомление через push-сервис браузера
+    (Web Push / RFC 8291, pywebpush), Android-приложение — через RuStore Push.
+    Если push-сервис отвечает 404/410, подписка устарела — удаляем её.
     """
-    if (
-        not settings.web_push_vapid_public_key
-        or not settings.web_push_vapid_private_key
-    ):
+    if not _web_push_configured() and not rustore_push.is_configured():
         return
     run_async(_send_message_push_async(recipient_ids, chat_id, message_id, sender_id))
 
@@ -113,13 +177,32 @@ async def _send_message_push_async(
                 elif message.file_name:
                     body = f"Вложение: {message.file_name}"
 
+        await _send_rustore_push(
+            session,
+            recipient_ids,
+            _rustore_message(
+                title=title,
+                body=body,
+                channel_id=PUSH_CHANNEL_MESSAGES,
+                data={
+                    "type": "message",
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "peer_id": sender_id,
+                },
+            ),
+        )
+
+        # Дальше — Web Push для PWA (если VAPID-ключи заданы).
+        if not _web_push_configured():
+            return
+
         stmt = select(PushSubscription).where(
             PushSubscription.user_id.in_(recipient_ids)
         )
         subscriptions = list((await session.execute(stmt)).scalars().all())
         if not subscriptions:
             return
-
         stale_ids: list[int] = []
         payload = json.dumps(
             {
@@ -199,16 +282,12 @@ def send_call_push(
     caller_id: int,
     kind: str | None,
 ) -> None:
-    """Web Push о входящем звонке (приложение закрыто/офлайн).
+    """Push о входящем звонке (Web Push для PWA + RuStore Push для Android).
 
-    Показывает системное уведомление «Вам звонят…» с кнопками «Ответить»/
-    «Отклонить»; тап открывает приложение, где «висящий» offer уже ждёт
-    (см. ``calls.manager.park_offer``).
+    Показывает системное уведомление «Вам звонят…»; тап открывает приложение,
+    где «висящий» offer уже ждёт (см. ``calls.manager.park_offer``).
     """
-    if (
-        not settings.web_push_vapid_public_key
-        or not settings.web_push_vapid_private_key
-    ):
+    if not _web_push_configured() and not rustore_push.is_configured():
         return
     run_async(_send_call_push_async(user_id, call_id, caller_id, kind))
 
@@ -225,6 +304,26 @@ async def _send_call_push_async(
         caller = await session.get(User, caller_id)
         name = _display_name(caller) if caller else "Пользователь"
         kind_label = "Видеозвонок" if kind == "video" else "Аудиозвонок"
+
+        await _send_rustore_push(
+            session,
+            [user_id],
+            _rustore_message(
+                title="Входящий звонок",
+                body=f"{name} · {kind_label}",
+                channel_id=PUSH_CHANNEL_CALLS,
+                data={
+                    "type": "call",
+                    "call_id": call_id,
+                    "peer_id": caller_id,
+                    "kind": kind,
+                },
+            ),
+        )
+
+        # Дальше — Web Push для PWA (если VAPID-ключи заданы).
+        if not _web_push_configured():
+            return
 
         stmt = select(PushSubscription).where(PushSubscription.user_id == user_id)
         subscriptions = list((await session.execute(stmt)).scalars().all())

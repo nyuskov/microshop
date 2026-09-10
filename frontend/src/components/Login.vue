@@ -306,10 +306,34 @@ function goBackToPhoneInput() {
         {{ result }}
       </div>
     </transition>
+
+    <!-- Уведомление об обработке персональных данных (требование RuStore и 152-ФЗ). -->
+    <p class="privacy-note">
+      Продолжая, вы соглашаетесь с
+      <a href="/privacy.html" target="_blank" rel="noopener">политикой конфиденциальности</a>
+      и обработкой персональных данных.
+    </p>
   </div>
 </template>
 
 <style scoped>
+.privacy-note {
+  margin: 14px 4px 0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #7d8894;
+}
+
+.privacy-note a {
+  color: var(--ms-accent, #2ea25e);
+  text-decoration: none;
+}
+
+.privacy-note a:hover {
+  text-decoration: underline;
+}
+
 .login-modal {
   width: 100%;
   max-width: 460px;

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Звонки (WebRTC) и запись голосовых/видео-сообщений: CAMERA и RECORD_AUDIO
+         относятся к «чувствительным» разрешениям RuStore — их нужно задекларировать
+         в RuStore Консоль (см. docs/rustore.md). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- Уведомления (Android 13+) и входящие звонки -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" />
+
+    <application
+        android:name=".App"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Pismo"
+        android:usesCleartextTraffic="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode|density|fontScale"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.Pismo"
+            android:windowSoftInputMode="adjustResize">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- App Links: ссылки pismo.space открываются в приложении.
+                 Требует файл https://pismo.space/.well-known/assetlinks.json
+                 (см. frontend/public/.well-known/assetlinks.json). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="pismo.space" />
+            </intent-filter>
+
+            <!-- Клик по push-уведомлению RuStore (click_action_type = 0, intent action). -->
+            <intent-filter>
+                <action android:name="space.pismo.app.PUSH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Приём push-уведомлений RuStore -->
+        <service
+            android:name=".PismoMessagingService"
+            android:exported="true"
+            tools:ignore="ExportedService">
+            <intent-filter>
+                <action android:name="ru.rustore.sdk.pushclient.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- Push-клиент RuStore инициализируется сам (content provider SDK) по этому ID. -->
+        <meta-data
+            android:name="ru.rustore.sdk.pushclient.project_id"
+            android:value="${rustoreProjectId}" />
+        <meta-data
+            android:name="ru.rustore.sdk.pushclient.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="ru.rustore.sdk.pushclient.default_notification_color"
+            android:resource="@color/pismo_brand" />
+        <meta-data
+            android:name="ru.rustore.sdk.pushclient.default_notification_channel_id"
+            android:value="@string/push_channel_messages" />
+    </application>
+
+</manifest>

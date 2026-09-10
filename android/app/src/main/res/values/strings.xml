@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Pismo</string>
+
+    <!-- ID канала по умолчанию для push RuStore (значение = id канала из PushChannels). -->
+    <string name="push_channel_messages">pismo_messages</string>
+    <string name="push_channel_messages_desc">Сообщения и новые чаты</string>
+    <string name="push_channel_calls_title">Звонки</string>
+    <string name="push_channel_calls_desc">Входящие звонки: высокий приоритет, вибрация и звук</string>
+
+    <string name="choose_file">Выбор файла</string>
+    <string name="permission_denied">Без этого разрешения функция недоступна</string>
+    <string name="no_app_for_link">Нет приложения, которое открывает эту ссылку</string>
+
+    <string name="offline_title">Нет соединения</string>
+    <string name="offline_hint">Проверьте интернет и попробуйте снова.</string>
+    <string name="retry">Повторить</string>
+</resources>

@@ -1,0 +1,4 @@
+// Корневой build-файл: только объявление плагина Android Gradle Plugin.
+plugins {
+    id 'com.android.application' version '8.7.3' apply false
+}

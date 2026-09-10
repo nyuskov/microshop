@@ -976,6 +976,73 @@ async def test_push_subscribe_requires_auth(api: _ApiCtx) -> None:
     assert r.status_code == 401
 
 
+# --- RuStore Push (Android-приложение из RuStore) --------------------------
+
+
+async def test_rustore_push_token_requires_auth(api: _ApiCtx) -> None:
+    """Push-токен RuStore принимается только у авторизованного пользователя."""
+    r = await api.client.post(
+        "/api/v1/push/rustore/subscribe/",
+        json={"token": "rustore-token-123456"},
+    )
+    assert r.status_code == 401
+
+
+async def test_rustore_push_token_lifecycle(api: _ApiCtx) -> None:
+    """Токен RuStore: сохранение, перепривязка к другому аккаунту, удаление."""
+    from sqlalchemy import select
+
+    from core.models import RuStorePushToken
+
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    token = f"rt-{uuid.uuid4().hex}"
+
+    r = await api.client.post(
+        "/api/v1/push/rustore/subscribe/",
+        json={"token": token},
+        headers=api.auth(await api.token_for(u1)),
+    )
+    assert r.status_code == 200, r.text
+
+    async with api.factory() as session:
+        row = (
+            await session.execute(
+                select(RuStorePushToken).where(RuStorePushToken.token == token)
+            )
+        ).scalar_one()
+        assert row.user_id == u1.id
+
+    # Переустановка приложения/смена аккаунта: тот же токен приходит от другого
+    # пользователя — владелец должен обновиться (push не утекают прошлому).
+    r = await api.client.post(
+        "/api/v1/push/rustore/subscribe/",
+        json={"token": token},
+        headers=api.auth(await api.token_for(u2)),
+    )
+    assert r.status_code == 200, r.text
+    async with api.factory() as session:
+        row = (
+            await session.execute(
+                select(RuStorePushToken).where(RuStorePushToken.token == token)
+            )
+        ).scalar_one()
+        assert row.user_id == u2.id
+
+    # Выход из аккаунта: токен снимается, повторный вызов идемпотентен.
+    r = await api.client.post(
+        "/api/v1/push/rustore/unsubscribe/", json={"token": token}
+    )
+    assert r.status_code == 200, r.text
+    async with api.factory() as session:
+        remaining = (
+            await session.execute(
+                select(RuStorePushToken).where(RuStorePushToken.token == token)
+            )
+        ).scalar_one_or_none()
+        assert remaining is None
+
+
 # --- Mute чата (серверный; без Web Push в замьюченный чат) ------------------
 
 

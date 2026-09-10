@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Сплэш: тёмный фон + логотип по центру (картинка генерируется scripts/gen_pismo_icons.py). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/pismo_background" />
+    <item
+        android:drawable="@drawable/splash_logo"
+        android:gravity="center" />
+</layer-list>

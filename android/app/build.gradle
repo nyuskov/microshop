@@ -1,0 +1,77 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Ключ подписи в git не попадает: см. keystore.properties.example.
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
+def hasSigningKey = keystoreProperties.getProperty('storeFile') != null
+
+android {
+    namespace 'space.pismo.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'space.pismo.app'
+        // Android 8.0+ (каналы уведомлений, современный WebView).
+        minSdk 26
+        targetSdk 35
+        versionCode Integer.parseInt(project.findProperty('pismoVersionCode') ?: '1')
+        versionName project.findProperty('pismoVersionName') ?: '1.0.0'
+
+        // Адрес веб-приложения (тот же origin, что и PWA: pismo.space).
+        buildConfigField 'String', 'BASE_URL',
+                "\"${project.findProperty('pismoBaseUrl') ?: 'https://pismo.space'}\""
+        // ID проекта RuStore Push (RuStore Консоль → Push-уведомления → Проекты).
+        def rustoreProjectId = project.findProperty('rustoreProjectId') ?: ''
+        buildConfigField 'String', 'RUSTORE_PROJECT_ID', "\"${rustoreProjectId}\""
+        manifestPlaceholders = [rustoreProjectId: rustoreProjectId]
+    }
+
+    signingConfigs {
+        release {
+            if (hasSigningKey) {
+                storeFile rootProject.file(keystoreProperties.getProperty('storeFile'))
+                storePassword keystoreProperties.getProperty('storePassword')
+                keyAlias keystoreProperties.getProperty('keyAlias')
+                keyPassword keystoreProperties.getProperty('keyPassword')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
+                    'proguard-rules.pro'
+            if (hasSigningKey) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    packagingOptions {
+        resources {
+            excludes += ['META-INF/*.kotlin_module']
+        }
+    }
+}
+
+dependencies {
+    // Собственный push-сервис RuStore (без Google-сервисов).
+    implementation 'ru.rustore.sdk:pushclient:7.4.1'
+}

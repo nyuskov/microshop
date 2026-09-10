@@ -1,0 +1,18 @@
+# Сборка Android-приложения Pismo (оболочка RuStore).
+#
+# Ключ подписи и пароли — только локально, в git не попадают.
+keystore.properties
+*.jks
+*.keystore
+local.properties
+
+# Результаты сборки
+.gradle/
+build/
+app/build/
+captures/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
