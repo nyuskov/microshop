@@ -273,14 +273,19 @@
 
     <!-- Тост-уведомление о завершении/ошибке -->
     <transition name="call-fade">
-      <!-- Смена сети: показываем, что звонок восстанавливается, а не «завис» -->
-      <div v-if="callStore.reconnecting" class="call-reconnect">
-        <span class="call-reconnect-spinner" aria-hidden="true"></span>
-        Переподключаемся…
-      </div>
+      <!-- Смена сети: показываем, что звонок восстанавливается, а не «завис».
+           Обёртка обязательна: у <transition> может быть только один корневой
+           узел, а плашек две (переподключение и тост-уведомление) — с двумя
+           детьми шаблон вообще не компилируется. -->
+      <div v-if="callStore.reconnecting || noticeVisible" class="call-floats">
+        <div v-if="callStore.reconnecting" class="call-reconnect">
+          <span class="call-reconnect-spinner" aria-hidden="true"></span>
+          Переподключаемся…
+        </div>
 
-      <div v-if="noticeVisible" class="call-notice" @click="hideNotice">
-        {{ callStore.notice }}
+        <div v-if="noticeVisible" class="call-notice" @click="hideNotice">
+          {{ callStore.notice }}
+        </div>
       </div>
     </transition>
   </Teleport>

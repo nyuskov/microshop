@@ -18,6 +18,8 @@
     @pointermove="onPointerMove"
     @pointerup="onPointerUp"
     @pointercancel="onPointerCancel"
+    @dblclick.stop="onDoubleTap"
+    @contextmenu.prevent="openContextFromEvent($event)"
   >
     <!-- Подсказка свайпа: тянем сообщение вправо — отвечаем на него -->
     <span v-if="swipeX > 0" class="swipe-reply" :class="{ ready: swipeReady }">
@@ -232,13 +234,101 @@
         </button>
       </div>
     </div>
+
+    <!-- Лист действий.
+         На телефоне меню по наведению (.msg-actions) недоступно, поэтому все
+         действия и реакции живут здесь: удержание сообщения (или правый клик
+         на компьютере) открывает лист в точке нажатия. -->
+    <Teleport to="body">
+      <div v-if="ctxOpen" class="ctx-layer" @click="closeContext">
+        <div
+          ref="ctxRef"
+          class="ctx-menu"
+          role="menu"
+          aria-label="Действия с сообщением"
+          :style="ctxStyle"
+          @click.stop
+          @contextmenu.prevent
+        >
+          <!-- Быстрые реакции (пока не раскрыт полный набор) -->
+          <div v-if="selectable && !ctxAllEmoji" class="ctx-reactions">
+            <button
+              v-for="emoji in QUICK_REACTIONS"
+              :key="emoji"
+              class="ctx-emoji"
+              :class="{ active: hasMyReaction(message, emoji) }"
+              :title="`Поставить реакцию ${emoji}`"
+              @click="pickCtxEmoji(emoji)"
+            >
+              {{ emoji }}
+            </button>
+          </div>
+
+          <!-- Полный набор реакций — по запросу, чтобы лист не был громоздким -->
+          <div v-if="selectable && ctxAllEmoji" class="ctx-reactions wide">
+            <button
+              v-for="emoji in REACTION_EMOJIS"
+              :key="emoji"
+              class="ctx-emoji"
+              :class="{ active: hasMyReaction(message, emoji) }"
+              :title="`Поставить реакцию ${emoji}`"
+              @click="pickCtxEmoji(emoji)"
+            >
+              {{ emoji }}
+            </button>
+          </div>
+
+          <button v-if="selectable" class="ctx-item" @click="ctxAction('reply')">
+            <q-icon name="reply" size="18px" />
+            <span>Ответить</span>
+          </button>
+          <button class="ctx-item" @click="ctxAction('forward')">
+            <q-icon name="forward" size="18px" />
+            <span>Переслать</span>
+          </button>
+          <button v-if="message.text" class="ctx-item" @click="ctxAction('copy')">
+            <q-icon name="content_copy" size="18px" />
+            <span>Копировать</span>
+          </button>
+          <button class="ctx-item" @click="ctxAllEmoji = !ctxAllEmoji">
+            <q-icon :name="ctxAllEmoji ? 'expand_less' : 'add_reaction'" size="18px" />
+            <span>{{ ctxAllEmoji ? 'Скрыть лишние' : 'Все реакции' }}</span>
+          </button>
+          <button class="ctx-item" @click="ctxAction('pin')">
+            <q-icon name="push_pin" size="18px" />
+            <span>{{ message.is_pinned ? 'Открепить' : 'Закрепить' }}</span>
+          </button>
+          <button v-if="canSave" class="ctx-item" @click="ctxAction('save')">
+            <q-icon name="bookmark" size="18px" />
+            <span>Сохранить в Сохранённые</span>
+          </button>
+          <button v-if="isOwn && message.text" class="ctx-item" @click="ctxAction('edit')">
+            <q-icon name="edit" size="18px" />
+            <span>Редактировать</span>
+          </button>
+          <button v-if="selectable" class="ctx-item" @click="ctxAction('select')">
+            <q-icon name="checklist" size="18px" />
+            <span>Выбрать</span>
+          </button>
+          <button v-if="!isOwn" class="ctx-item" @click="ctxAction('report')">
+            <q-icon name="flag" size="18px" />
+            <span>Пожаловаться</span>
+          </button>
+          <button v-if="isOwn" class="ctx-item danger" @click="ctxAction('delete')">
+            <q-icon name="delete" size="18px" />
+            <span>Удалить</span>
+          </button>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { Message } from '@/types'
 import { mediaUrl } from '@/config'
+import { haptic, HAPTIC_HOLD } from '@/utils/haptics'
 import { avatarStyle, initials } from '@/utils/user'
 import { formatBytes, formatMsgTime } from '@/utils/format'
 import {
@@ -386,9 +476,12 @@ const callIcon = computed<string>(() => callMessageIcon(props.message))
 /** «Сохранить» доступно для обычных сообщений (не для отметок о звонках). */
 const canSave = computed<boolean>(() => props.message.kind !== 'call')
 
-// ---------- Режим выделения сообщений (long-press; как в чатах) ----------
+// ---------- Режим выделения сообщений (долгое нажатие; как в чатах) ----------
 let holdTimer: number | null = null
 let suppressNextSelect = false
+/** Точка удержания — в ней открывается лист действий. */
+let holdX = 0
+let holdY = 0
 
 const cancelHold = () => {
   if (holdTimer !== null) {
@@ -407,10 +500,13 @@ const onPointerDown = (event: PointerEvent) => {
   swipeX.value = 0
   cancelHold()
   suppressNextSelect = false
+  holdX = event.clientX
+  holdY = event.clientY
   holdTimer = window.setTimeout(() => {
     holdTimer = null
     suppressNextSelect = true
-    emit('select-start')
+    // Удержание открывает лист действий (в нём же пункт «Выбрать»).
+    void openContext(holdX, holdY)
   }, 480)
 }
 
@@ -563,6 +659,158 @@ const onReport = () => {
   moreOpen.value = false
   emit('report')
 }
+
+/* ---------- Лист действий: удержание (телефон) или правый клик ---------- */
+/** Быстрые реакции в верхней строке листа. */
+const QUICK_REACTIONS = ['👍', '❤️', '🔥', '😂', '😮', '😢', '🙏', '🎉']
+/** Ключ «последней реакции»: её ставит двойной тап. */
+const QUICK_REACTION_KEY = 'pismo_quick_reaction'
+
+const ctxOpen = ref(false)
+const ctxAllEmoji = ref(false)
+const ctxReady = ref(false)
+const ctxRef = ref<HTMLElement | null>(null)
+/** Точка нажатия — от неё считаем положение листа. */
+const ctxAnchor = ref({ x: 0, y: 0 })
+/** Текущее (подогнанное под экран) положение листа. */
+const ctxPos = ref({ x: 0, y: 0 })
+
+const ctxStyle = computed<Record<string, string>>(() => ({
+  left: `${ctxPos.value.x}px`,
+  top: `${ctxPos.value.y}px`,
+  // Пока не подогнали под границы экрана — не показываем, чтобы не «прыгало».
+  visibility: ctxReady.value ? 'visible' : 'hidden'
+}))
+
+const lastQuickReaction = (): string => {
+  try {
+    return localStorage.getItem(QUICK_REACTION_KEY) || '❤️'
+  } catch {
+    return '❤️'
+  }
+}
+
+const rememberQuickReaction = (emoji: string): void => {
+  try {
+    localStorage.setItem(QUICK_REACTION_KEY, emoji)
+  } catch {
+    /* приватный режим — просто не запомним */
+  }
+}
+
+/**
+ * Подогнать лист действий под границы экрана.
+ *
+ * Вызывается и при открытии, и после раскрытия полного набора реакций (лист
+ * становится выше и иначе ушёл бы за нижний край).
+ */
+const placeContext = async (): Promise<void> => {
+  await nextTick()
+  const el = ctxRef.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const { x, y } = ctxAnchor.value
+  ctxPos.value = {
+    x: Math.max(8, Math.min(x, window.innerWidth - rect.width - 8)),
+    y: Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))
+  }
+  ctxReady.value = true
+}
+
+/** Открыть лист действий в точке нажатия. */
+const openContext = async (x: number, y: number): Promise<void> => {
+  if (!props.selectable) return
+  haptic(HAPTIC_HOLD)
+  closeFloating()
+  ctxAllEmoji.value = false
+  ctxReady.value = false
+  ctxAnchor.value = { x, y }
+  ctxPos.value = { x, y }
+  ctxOpen.value = true
+  await placeContext()
+}
+
+const closeContext = (): void => {
+  ctxOpen.value = false
+}
+
+/** Правый клик на компьютере открывает тот же лист действий. */
+const openContextFromEvent = (event: MouseEvent): void => {
+  if (props.selectionMode) return
+  void openContext(event.clientX, event.clientY)
+}
+
+/** Реакция из листа действий. */
+const pickCtxEmoji = (emoji: string): void => {
+  rememberQuickReaction(emoji)
+  emit('toggle-reaction', emoji)
+  closeContext()
+}
+
+/** Действие из листа: закрываем лист и повторяем обычный emit. */
+const ctxAction = (
+  action: 'reply' | 'forward' | 'copy' | 'pin' | 'save' | 'edit' | 'select' | 'report' | 'delete'
+): void => {
+  closeContext()
+  if (action === 'reply') emit('set-reply')
+  else if (action === 'forward') emit('forward')
+  else if (action === 'copy') emit('copy')
+  else if (action === 'pin') emit('toggle-pin')
+  else if (action === 'save') emit('save')
+  else if (action === 'edit') emit('edit')
+  else if (action === 'select') emit('select-start')
+  else if (action === 'report') emit('report')
+  else emit('delete')
+}
+
+/**
+ * Двойной тап на телефоне — быстрая реакция (последняя использованная).
+ * На компьютере двойной клик оставляем выделению текста.
+ */
+const onDoubleTap = (): void => {
+  if (props.selectionMode || !props.selectable) return
+  const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false
+  if (!coarse) return
+  haptic()
+  emit('toggle-reaction', lastQuickReaction())
+}
+
+/** Esc закрывает лист действий. */
+const onCtxKeydown = (event: KeyboardEvent): void => {
+  if (event.key === 'Escape') closeContext()
+}
+
+watch(ctxOpen, (open) => {
+  if (open) window.addEventListener('keydown', onCtxKeydown)
+  else {
+    window.removeEventListener('keydown', onCtxKeydown)
+    ctxAllEmoji.value = false
+    ctxReady.value = false
+  }
+})
+
+// Раскрыли полный набор реакций — лист стал выше, пересчитываем положение.
+watch(ctxAllEmoji, () => {
+  if (ctxOpen.value) void placeContext()
+})
+
+// Перешли в режим выделения (например, из другого сообщения) — лист не нужен.
+watch(
+  () => props.selectionMode,
+  (on) => {
+    if (on) closeContext()
+  }
+)
+
+// Открыли меню по наведению — лист действий закрываем, чтобы не было двух меню.
+watch(
+  () => props.emojiPickerOpen,
+  (open) => {
+    if (open) closeContext()
+  }
+)
+
+onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 </script>
 
 <style scoped>
@@ -1139,5 +1387,88 @@ const onReport = () => {
   55% {
     box-shadow: 0 0 0 3px var(--ms-accent, #2ea25e);
   }
+}
+
+/* ---------- Лист действий (удержание/правый клик) ---------- */
+.ctx-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 4200;
+  background: rgba(15, 23, 42, 0.16);
+}
+
+.ctx-menu {
+  position: fixed;
+  min-width: 232px;
+  max-width: min(300px, calc(100vw - 16px));
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--ms-surface, #fff);
+  border: 1px solid var(--ms-border, #e2e6ea);
+  box-shadow: var(--ms-shadow-float, 0 6px 20px -8px rgba(15, 23, 42, 0.3));
+  color: var(--ms-text, #1c2733);
+}
+
+.ctx-reactions {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  padding: 2px 2px 6px;
+  border-bottom: 1px solid var(--ms-hairline, rgba(15, 23, 42, 0.08));
+  margin-bottom: 4px;
+}
+
+/* Полный набор реакций — 6 в ряд, чтобы лист не растягивался по высоте */
+.ctx-reactions.wide {
+  grid-template-columns: repeat(6, 1fr);
+}
+
+.ctx-emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.ctx-emoji:hover,
+.ctx-emoji:focus-visible {
+  background: var(--ms-surface-2, #eef1f4);
+}
+
+.ctx-emoji.active {
+  background: var(--ms-accent-soft, rgba(46, 162, 94, 0.16));
+}
+
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.ctx-item:hover,
+.ctx-item:focus-visible {
+  background: var(--ms-surface-2, #eef1f4);
+}
+
+.ctx-item.danger {
+  color: #e5484d;
 }
 </style>
