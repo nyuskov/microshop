@@ -93,8 +93,9 @@ microshop/
 ├── backup_media.sh           # снимок media-файлов в db_dump (зовёт cron_dump_db.sh)
 ├── cron_dump_db.sh / install_cron_backup.sh # ежедневный бэкап (БД + media) по cron
 ├── backup_offsite.example.sh # пример выгрузки бэкапов в облако (rclone)
+├── scripts/backup/           # бэкап прода → ~/Документы/pismo_backup (см. docs/local-backup.md)
 ├── db_dump/                  # дампы БД + media: latest + archive/ + logs/ (в .gitignore)
-├── docs/                     # production.md, offsite-backup.md, rustore.md, privacy-policy.md
+├── docs/                     # production.md, offsite-backup.md, local-backup.md, rustore.md, privacy-policy.md
 ├── .github/workflows/ci.yml  # backend (lint+mypy+pytest c Postgres) + frontend
 └── queries.sql
 ```
@@ -130,6 +131,7 @@ docker compose up --build  # из корня microshop
 | Автодамп перед сбросом | `./entry.sh` | дамп в `./db_dump/microshop_latest.sql`, затем `down -v` |
 | Ручной дамп | `./dump_db.sh` | в любой момент (сервис `db` поднимет сам, если нужно) |
 | Ручной бэкап media | `./backup_media.sh` | в любой момент — файлы вложений/аватаров в `db_dump/` |
+| **Бэкап прода на локальную машину** | `./scripts/backup/pull_prod_backup.sh` | БД + media + `.env` в `~/Документы/pismo_backup`, см. `docs/local-backup.md` |
 | **Автодамп по cron** | `./install_cron_backup.sh` (однократно) | ежедневно в 03:00 — БД **и** media, см. ниже |
 | Авто-restore | `docker compose up` | только когда volume БД создан заново/пуст (после `down -v`): postgres сам выполняет `./db_dump/*.sql` из `/docker-entrypoint-initdb.d` |
 | Ручной restore | `./restore_db.sh [файл.sql]` | перезаписывает данные в запущенной БД (осторожно!) |
@@ -162,6 +164,25 @@ CRON_SCHEDULE='0 */6 * * *' ./install_cron_backup.sh
 crontab -l | grep '# microshop-db-backup'              # посмотреть задачу
 crontab -l | grep -v '# microshop-db-backup' | crontab -   # удалить
 ```
+
+#### Бэкап прод-сервера на локальную машину (в `~/Документы/pismo_backup`)
+
+`scripts/backup/pull_prod_backup.sh` запускается **локально** и по ssh выкачивает с
+прода дамп БД, архив `media`, продовый `.env` (права 600) и метаданные (ревизия git,
+контейнеры, размеры). Копии ротируются (14/7/14), всё пишется через `.part` с проверкой
+`gzip -t`, от двух одновременных запусков защищает `flock`.
+
+```bash
+./scripts/backup/install_local_cron.sh     # ежедневно в 04:15 (локальный crontab)
+./scripts/backup/pull_prod_backup.sh       # или вручную
+crontab -l | grep -v '# pismo-prod-backup' | crontab -   # удалить задачу
+```
+
+Проверено 10.09.2026: дамп восстановлен в отдельную БД, содержимое совпало с продом
+(`users=5`, `alembic_version=e3f4a5b6c7d8`), скрипт работает и в окружении cron
+(`env -i PATH=/usr/bin:/bin`, без ssh-агента). Полная инструкция, разбор структуры
+папки и команды восстановления — `docs/local-backup.md`.
+
 - Дамп полный (`pg_dump --clean`), включает и схему, и данные, и таблицу `alembic_version`. Поэтому после restore миграции на старте `web` — no-op; если позже появятся новые миграции — применятся поверх восстановленных данных.
 - Если БД пустая (нет таблиц), `dump_db.sh` не затирает прежний дамп.
 
