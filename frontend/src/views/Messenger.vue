@@ -453,6 +453,7 @@ import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import { isImageFile, messageSnippet, optimizeImageFile } from '@/utils/media'
 import { mediaUrl } from '@/config'
+import { chatIdFromUrl, chatUrlWith } from '@/utils/chatUrl'
 import { usePeerActivity } from '@/composables/usePeerActivity'
 import { useRealtimeSync } from '@/composables/useRealtimeSync'
 import { useRecordButton } from '@/composables/useRecordButton'
@@ -540,6 +541,24 @@ const drawerOpen = ref(true)
 /** Ширина панели чатов: фикс. 380px на десктопе, почти во весь экран на мобильном. */
 const drawerWidth = computed(() => (isDesktop.value ? 380 : Math.min($q.screen.width, 460)))
 
+/**
+ * Держим открытый чат в адресной строке (`?chat=<id>`), чтобы перезагрузка
+ * страницы — в том числе pull-to-refresh или переоткрытие PWA — возвращала в тот
+ * же чат, а не в список. `replaceState`, а не переход роутера: запись в историю
+ * здесь не нужна (мобильная «назад» ведёт себя по своим маркерам), а параметры
+ * запуска звонка сохраняются — по ним приложение возвращается в звонок.
+ */
+const syncChatUrl = (chatId: number | null) => {
+  try {
+    const next = chatUrlWith(window.location.href, chatId)
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`
+    if (next === current) return
+    window.history.replaceState(window.history.state, '', next)
+  } catch {
+    /* история недоступна (например, внутри iframe) — просто не трогаем адрес */
+  }
+}
+
 /** На мобильном: «назад» из открытого чата — снова показать список (drawer). */
 const goBackToList = () => {
   if (!isDesktop.value) {
@@ -550,6 +569,7 @@ const goBackToList = () => {
       return
     }
     drawerOpen.value = true
+    syncChatUrl(null)
   } else {
     view.value = 'contacts'
   }
@@ -594,6 +614,9 @@ const onAppPopState = () => {
   // Открытая нить (drawer скрыт) -> список.
   if (selectedChatId.value !== null && !drawerOpen.value) {
     drawerOpen.value = true
+    // На мобильном список и нить — один экран: показали список, значит и в
+    // адресе чата быть не должно.
+    syncChatUrl(null)
     return
   }
   // Корень — выходим (позволяем браузеру завершить).
@@ -1323,6 +1346,8 @@ const openChatThread = async (chatId: number) => {
   // Запоминаем непрочитанные до обнуления: лента нарисует по ним разделитель.
   unreadAtOpen.value = chats.value.find((item) => item.id === chatId)?.unread_count ?? 0
   selectedChatId.value = chatId
+  // Открытый чат виден в адресе: перезагрузка вернёт в него же.
+  syncChatUrl(chatId)
   sendError.value = ''
   void prepareChatE2ee(chatId)
   messages.value = []
@@ -1869,6 +1894,7 @@ const removeDeletedChat = (chat: Chat) => {
   // Mute снимается на сервере самим удалением/выходом из чата.
   if (selectedChatId.value === chat.id) {
     selectedChatId.value = null
+    syncChatUrl(null)
     messages.value = []
     pinnedMessages.value = []
     highlightedMessageId.value = null
@@ -2365,6 +2391,7 @@ watch(
       pinnedMessages.value = []
       contacts.value = []
       selectedChatId.value = null
+      syncChatUrl(null)
       showChatInfoModal.value = false
       showGroupInfoModal.value = false
       showCreateGroupModal.value = false
@@ -2459,6 +2486,7 @@ const blockPeer = async (userId: number) => {
     if (chat) {
       chats.value = chats.value.filter((item) => item.id !== chat.id)
       selectedChatId.value = null
+      syncChatUrl(null)
       messages.value = []
     }
     await refreshChatsQuiet()
@@ -2521,14 +2549,19 @@ onMounted(async () => {
       peerId: Number(peerIdParam),
       action: launchAction
     }
+    // Звонок открывается поверх, но открытый чат из адреса тоже вернём — иначе
+    // после перезагрузки под звонком оказался бы список чатов.
+    const chatDuringCall = chatIdFromUrl(window.location.search)
+    if (chatDuringCall !== null) void openChatFromPush(chatDuringCall)
   } else {
-    // Открыли через /?chat=<id> (возможно, с пометкой прочитанным).
-    const chatParam = launchParams.get('chat')
-    if (chatParam && /^\d+$/.test(chatParam)) {
+    // Открыли через /?chat=<id> — в том числе обычная перезагрузка страницы,
+    // когда чат был открыт (возможно, с пометкой прочитанным).
+    const chatParam = chatIdFromUrl(window.location.search)
+    if (chatParam !== null) {
       if (markReadParam === '1') {
-        void markChatReadQuietly(Number(chatParam))
+        void markChatReadQuietly(chatParam)
       } else {
-        void openChatFromPush(Number(chatParam))
+        void openChatFromPush(chatParam)
       }
     }
   }
@@ -2543,6 +2576,12 @@ const openChatFromPush = async (chatId: number) => {
     } catch {
       return
     }
+  }
+  // Чат мог быть удалён (или в адресе чужой id) — тогда просто остаёмся в
+  // списке, а не открываем пустую нить с ошибкой.
+  if (!chats.value.some((c) => c.id === chatId)) {
+    syncChatUrl(null)
+    return
   }
   await openChatThread(chatId)
   if (!isDesktop.value) drawerOpen.value = false
