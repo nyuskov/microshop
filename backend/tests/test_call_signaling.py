@@ -129,18 +129,135 @@ def test_call_push_expiry() -> None:
 class _FakeWebSocket:
     """Заглушка WebSocket: менеджеру нужны только accept/send_json/close."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, fail: bool = False) -> None:
         self.sent: list[dict[str, object]] = []
         self.closed = False
+        #: Соединение «мёртвое»: отправка падает (телефон ушёл в сон и т.п.).
+        self.fail = fail
 
     async def accept(self) -> None:
         return None
 
     async def send_json(self, payload: dict[str, object]) -> None:
+        if self.fail:
+            raise RuntimeError("соединение закрыто")
         self.sent.append(payload)
 
     async def close(self, code: int = 1000, reason: str = "") -> None:
         self.closed = True
+
+
+def test_relay_whitelist_covers_media_state() -> None:
+    """Состояние микрофона/камеры собеседника пересылается.
+
+    Без этого выключенная камера выглядела бы как чёрный экран (и как поломка), а
+    выключенный микрофон — как «нас не слышно».
+    """
+    assert "call-media-state" in RELAY_MESSAGE_TYPES
+
+
+async def test_message_goes_to_all_user_devices() -> None:
+    """Сообщение уходит на ВСЕ устройства человека: телефон, компьютер, второе окно."""
+    from api_v1.calls.manager import call_manager
+
+    phone = _FakeWebSocket()
+    desktop = _FakeWebSocket()
+    await call_manager.connect(1701, phone)
+    await call_manager.connect(1701, desktop)
+    try:
+        delivered = await call_manager.send_to_user(1701, {"type": "call-offer"})
+
+        assert delivered is True
+        assert [item["type"] for item in phone.sent] == ["call-offer"]
+        assert [item["type"] for item in desktop.sent] == ["call-offer"]
+        assert call_manager.is_online(1701) is True
+    finally:
+        await call_manager.disconnect(1701, phone)
+        await call_manager.disconnect(1701, desktop)
+
+
+async def test_dead_device_is_forgotten() -> None:
+    """Мёртвое соединение выкидываем, чтобы оно не «съедало» доставку.
+
+    Иначе звонок считался бы доставленным устройству, которое спит, и не был бы
+    припаркован (то есть человек вообще не узнал бы о вызове).
+    """
+    from api_v1.calls.manager import call_manager
+
+    sleeping = _FakeWebSocket(fail=True)
+    alive = _FakeWebSocket()
+    await call_manager.connect(1703, sleeping)
+    await call_manager.connect(1703, alive)
+    try:
+        assert await call_manager.send_to_user(1703, {"type": "call-offer"}) is True
+        assert [item["type"] for item in alive.sent] == ["call-offer"]
+
+        # Осталось только живое устройство: мёртвое выброшено при отправке.
+        sleeping.fail = True
+        assert await call_manager.send_to_user(1703, {"type": "ice-candidate"}) is True
+
+        # А если живо только спящее — пользователь считается офлайн.
+        await call_manager.disconnect(1703, alive)
+        assert await call_manager.send_to_user(1703, {"type": "call-end"}) is False
+    finally:
+        await call_manager.disconnect(1703, sleeping)
+        await call_manager.disconnect(1703, alive)
+
+
+async def test_answer_on_one_device_silences_others() -> None:
+    """Ответили на телефоне — на компьютере в этот же момент звонок замолкает.
+
+    Звонок звонит на все устройства сразу, поэтому остальные надо остановить: иначе
+    человек слышит звонок на втором устройстве, пока уже разговаривает.
+    """
+    from api_v1.calls import views as calls_views
+    from api_v1.calls.manager import call_manager
+
+    caller = _FakeWebSocket()
+    phone = _FakeWebSocket()
+    desktop = _FakeWebSocket()
+    await call_manager.connect(1705, caller)
+    await call_manager.connect(1706, phone)
+    await call_manager.connect(1706, desktop)
+    try:
+        await calls_views._handle_message(
+            1705,
+            {
+                "type": "call-offer",
+                "to_user_id": 1706,
+                "call_id": "call-multi",
+                "kind": "audio",
+                "sdp": "offer-sdp",
+            },
+            caller,
+        )
+        assert [item["type"] for item in phone.sent] == ["call-offer"]
+        assert [item["type"] for item in desktop.sent] == ["call-offer"]
+
+        # Ответил телефон.
+        await calls_views._handle_message(
+            1706,
+            {
+                "type": "call-answer",
+                "to_user_id": 1705,
+                "call_id": "call-multi",
+                "sdp": "answer-sdp",
+            },
+            phone,
+        )
+
+        assert caller.sent[-1]["type"] == "call-answer"
+        assert [item["type"] for item in desktop.sent] == [
+            "call-offer",
+            "call-ended-elsewhere",
+        ]
+        assert desktop.sent[-1]["reason"] == "answered"
+        # Телефон, где ответили, такое сообщение не получает — он уже в разговоре.
+        assert [item["type"] for item in phone.sent] == ["call-offer"]
+    finally:
+        await call_manager.disconnect(1705, caller)
+        await call_manager.disconnect(1706, phone)
+        await call_manager.disconnect(1706, desktop)
 
 
 async def test_relay_queues_answer_while_caller_offline() -> None:

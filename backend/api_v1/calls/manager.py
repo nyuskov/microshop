@@ -6,6 +6,10 @@ ICE-candidates, отмена/сброс/завершение) между дву�
 Если вызываемый абонент офлайн (приложение закрыто), offer «паркуется»: когда он
 подключится, offer доставится и звонок его дождётся. Если у абонента есть push-канал,
 дополнительно шлётся уведомление (см. ``park_offer``/``take_pending_offer``).
+
+Одному человеку сообщения уходят на ВСЕ его подключённые устройства (телефон,
+вкладка на компьютере, второе окно): звонок звонит на всех, отвечает то, где
+успели нажать «Ответить» (см. ``send_to_other_devices``).
 """
 
 import asyncio
@@ -27,12 +31,17 @@ MAX_QUEUED_MESSAGES = 64
 class CallConnectionManager:
     """Хранит активные WebSocket-соединения пользователей.
 
-    У каждого пользователя может быть только одно активное соединение —
-    новое подключение заменяет предыдущее (актуально после перезагрузки вкладки).
+    У одного человека их может быть НЕСКОЛЬКО: телефон, вкладка на компьютере,
+    второе окно PWA. Звонок звонит на все его устройства сразу, а отвечает то, где
+    успели нажать «Ответить»; остальные получают ``call-ended-elsewhere``.
+
+    Раньше соединение было одно: новое подключение закрывало предыдущее
+    (``close(4000, "replaced")``), поэтому звонок приходил только на последнее
+    открытое устройство, а на первом пропадал и сигналинг.
     """
 
     def __init__(self) -> None:
-        self._connections: dict[int, WebSocket] = {}
+        self._connections: dict[int, set[WebSocket]] = {}
         self._lock = asyncio.Lock()
         # Припаркованные входящие вызовы для офлайн-абонентов: user_id -> offer.
         self._pending_offers: dict[int, dict[str, Any]] = {}
@@ -42,15 +51,7 @@ class CallConnectionManager:
     async def connect(self, user_id: int, websocket: WebSocket) -> None:
         await websocket.accept()
         async with self._lock:
-            previous = self._connections.get(user_id)
-            self._connections[user_id] = websocket
-        if previous is not None and previous is not websocket:
-            try:
-                await previous.close(code=4000, reason="replaced")
-            except Exception:  # noqa: BLE001 - могло уже закрыться
-                logger.debug(
-                    "Предыдущее соединение пользователя %s уже закрыто", user_id
-                )
+            self._connections.setdefault(user_id, set()).add(websocket)
         # Только что открыл приложение — есть «висящий» входящий вызов?
         pending = await self.take_pending_offer(user_id)
         if pending is not None:
@@ -61,23 +62,78 @@ class CallConnectionManager:
             await self._send(websocket, message)
 
     def is_online(self, user_id: int) -> bool:
-        return user_id in self._connections
+        return bool(self._connections.get(user_id))
 
     async def disconnect(self, user_id: int, websocket: WebSocket) -> None:
-        async with self._lock:
-            if self._connections.get(user_id) is websocket:
-                self._connections.pop(user_id, None)
+        await self._forget(user_id, [websocket])
 
     async def send_to_user(self, user_id: int, payload: dict[str, Any]) -> bool:
-        """Отправляет сообщение пользователю, если он подключён.
+        """Отправляет сообщение на ВСЕ устройства пользователя.
 
-        Возвращает ``True``, если сообщение доставлено.
+        Возвращает ``True``, если его приняло хотя бы одно (мёртвые соединения
+        попутно выкидываем — иначе они копились бы после сна телефона).
         """
         async with self._lock:
-            websocket = self._connections.get(user_id)
-        if websocket is None:
+            sockets = list(self._connections.get(user_id, ()))
+        return await self._broadcast(user_id, sockets, payload)
+
+    async def send_to_other_devices(
+        self,
+        user_id: int,
+        payload: dict[str, Any],
+        *,
+        exclude: WebSocket | None,
+    ) -> int:
+        """Сообщение всем устройствам пользователя, кроме указанного.
+
+        Нужно для «ответили на другом устройстве»: то, где нажали «Ответить»,
+        остальным сообщает, что звонить больше не нужно. Возвращает число
+        устройств, которые сообщение получили.
+        """
+        async with self._lock:
+            sockets = [
+                ws for ws in self._connections.get(user_id, ()) if ws is not exclude
+            ]
+        if not sockets:
+            return 0
+        delivered = 0
+        stale: list[WebSocket] = []
+        for websocket in sockets:
+            if await self._send(websocket, payload):
+                delivered += 1
+            else:
+                stale.append(websocket)
+        if stale:
+            await self._forget(user_id, stale)
+        return delivered
+
+    async def _broadcast(
+        self, user_id: int, sockets: list[WebSocket], payload: dict[str, Any]
+    ) -> bool:
+        """Рассылает сообщение по списку соединений и чистит мёртвые."""
+        if not sockets:
             return False
-        return await self._send(websocket, payload)
+        delivered = False
+        stale: list[WebSocket] = []
+        for websocket in sockets:
+            if await self._send(websocket, payload):
+                delivered = True
+            else:
+                stale.append(websocket)
+        if stale:
+            await self._forget(user_id, stale)
+        return delivered
+
+    async def _forget(self, user_id: int, sockets: list[WebSocket]) -> None:
+        """Убирает конкретные соединения пользователя (закрылись или не отвечают)."""
+        async with self._lock:
+            current = self._connections.get(user_id)
+            if current is None:
+                return
+            for websocket in sockets:
+                current.discard(websocket)
+            if not current:
+                self._connections.pop(user_id, None)
 
     @staticmethod
     async def _send(websocket: WebSocket, payload: dict[str, Any]) -> bool:

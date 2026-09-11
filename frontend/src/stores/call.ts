@@ -5,6 +5,14 @@ import { ICE_SERVERS as CONFIG_ICE_SERVERS, WS_ORIGIN } from '@/config'
 import { fetchIceServers } from '@/services/iceServers'
 import { kindAfterScreenShare } from '@/utils/callMode'
 import {
+  collectDiagnostics,
+  connectionQuality as qualityOf,
+  diagnosticsSummary as summaryOf,
+  type CallDiagnostics,
+  type ConnectionQuality,
+  type StatsSample
+} from '@/utils/callStats'
+import {
   chooseDeviceId,
   groupDevices,
   readCallDevices,
@@ -73,6 +81,9 @@ interface SignalingMessage {
   sharing?: boolean
   /** Для ``call-parked`` — отправлено ли собеседнику уведомление о звонке. */
   notified?: boolean
+  /** Для ``call-media-state`` — микрофон и камера собеседника. */
+  mic_on?: boolean
+  video_on?: boolean
 }
 
 const WS_PATH = '/api/v1/ws/calls'
@@ -108,6 +119,16 @@ const MEDIA_WATCHDOG_INTERVAL_MS = 3000
 const MEDIA_WATCHDOG_FAILURES_BEFORE_RESTART = 2
 /** Сколько раз пробуем починиться сами, прежде чем просто предупредить. */
 const MEDIA_WATCHDOG_MAX_RESTARTS = 3
+/** Как часто снимаем статистику соединения (качество связи и диагностика). */
+const STATS_POLL_INTERVAL_MS = 5000
+/**
+ * Ключ «в прошлый раз помог только релей».
+ *
+ * Если напрямую медиа так и не пошло (мобильный оператор режет P2P), следующий
+ * звонок начинаем сразу с `iceTransportPolicy: 'relay'` — то есть через TURN,
+ * вместо того чтобы заново проходить ту же беду и чинить её перезапуском ICE.
+ */
+const RELAY_ONLY_KEY = 'pismo_call_relay_only'
 
 // «Лёгкое» видео: невысокое разрешение и частота — видеозвонок должен работать
 // и через TURN-релей на мобильной сети (высокий битрейт 720p «валит» медиа,
@@ -137,8 +158,68 @@ let iceConfiguration: RTCConfiguration = { iceServers: CONFIG_ICE_SERVERS }
 /** Готовит конфигурацию ICE: тянет свежие TURN-креды под текущего пользователя. */
 async function loadIceConfiguration(): Promise<RTCConfiguration> {
   const servers = await fetchIceServers()
-  iceConfiguration = { iceServers: servers }
+  // Напрямую не получилось в прошлый раз — идём только через релей (TURN).
+  // Без TURN в списке так делать нельзя: остались бы без кандидатов вообще.
+  const relayOnly = relayOnlyEnabled() && hasTurnServer(servers)
+  iceConfiguration = {
+    iceServers: servers,
+    // Кандидаты собираем заранее — соединение поднимается на секунду-две быстрее.
+    iceCandidatePoolSize: 2,
+    ...(relayOnly ? { iceTransportPolicy: 'relay' as RTCIceTransportPolicy } : {})
+  }
   return iceConfiguration
+}
+
+/** Помним ли, что в прошлый раз помог только релей. */
+function relayOnlyEnabled(): boolean {
+  try {
+    return window.localStorage.getItem(RELAY_ONLY_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** Запомнить/забыть «только через релей» (private-режим просто не помнит). */
+function setRelayOnly(enabled: boolean): void {
+  try {
+    if (enabled) window.localStorage.setItem(RELAY_ONLY_KEY, '1')
+    else window.localStorage.removeItem(RELAY_ONLY_KEY)
+  } catch {
+    /* приватный режим — не страшно */
+  }
+}
+
+/** Есть ли среди ICE-серверов TURN (без него режим «только релей» бесполезен). */
+function hasTurnServer(servers: RTCIceServer[]): boolean {
+  return servers.some((server) => {
+    const urls = Array.isArray(server.urls) ? server.urls : [server.urls]
+    return urls.some(
+      (url) => typeof url === 'string' && url.trim().toLowerCase().startsWith('turn')
+    )
+  })
+}
+
+/**
+ * Понятный текст ошибки доступа к камере/микрофону.
+ *
+ * Советы в разных случаях разные: запрет в браузере, нет устройства, «занято
+ * другим приложением» (частый случай на Android). Раньше на всё был один текст
+ * «Не удалось получить доступ к камере/микрофону», и человек не знал, что делать.
+ */
+function mediaErrorMessage(error: unknown, kind: CallKind): string {
+  const name = error instanceof Error ? error.name : ''
+  const subject = kind === 'video' ? 'камере и микрофону' : 'микрофону'
+  if (name === 'NotAllowedError' || name === 'SecurityError') {
+    return `Доступ к ${subject} запрещён — разрешите его в настройках браузера`
+  }
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+    const device = kind === 'video' ? 'камеру и микрофон' : 'микрофон'
+    return `Не нашлось подходящего устройства: проверьте ${device}`
+  }
+  if (name === 'NotReadableError' || name === 'AbortError') {
+    return 'Камера или микрофон заняты другим приложением — закройте его и попробуйте снова'
+  }
+  return `Не удалось получить доступ к ${subject}`
 }
 
 /* ===================== Модульные (не реактивные) ресурсы звонка ===================== */
@@ -186,6 +267,9 @@ let mediaWatchdogRestarts = 0
 let mediaWatchdogBusy = false
 /** Перезапуск ICE уже идёт: второй не нужен (иначе счётчик попыток сгорит). */
 let iceRestartInFlight = false
+/* Статистика соединения: опрос раз в несколько секунд (качество + диагностика). */
+let statsTimer: ReturnType<typeof setInterval> | undefined
+let statsSample: StatsSample | null = null
 let audioContext: AudioContext | null = null
 let unlockBound = false
 
@@ -542,6 +626,12 @@ interface CallState {
   videoOn: boolean
   /** Показываю свой экран собеседнику. */
   screenSharing: boolean
+  /** Микрофон собеседника (по его сигналу `call-media-state`). */
+  peerMicOn: boolean
+  /** Идёт ли видео от собеседника (камера или показ экрана). */
+  peerVideoOn: boolean
+  /** Последняя снятая статистика соединения (качество связи и диагностика). */
+  diagnostics: CallDiagnostics | null
   /** Теряли связь и восстанавливаем (смена сети): показываем «Переподключаемся…». */
   reconnecting: boolean
   /** Собеседник показывает экран. */
@@ -572,6 +662,9 @@ const DEFAULT_STATE: CallState = {
   micOn: true,
   videoOn: true,
   screenSharing: false,
+  peerMicOn: true,
+  peerVideoOn: true,
+  diagnostics: null,
   peerScreenSharing: false,
   /** Теряли связь и восстанавливаем: в оверлее показываем «Переподключаемся…». */
   reconnecting: false,
@@ -608,6 +701,10 @@ export const useCallStore = defineStore('call', {
     isBusy: (state) => state.status === 'active' || state.status === 'outgoing',
     /** Можно ли переключать камеру/микрофон по ходу звонка. */
     canSwitchDevices: (state) => state.status === 'active',
+    /** Качество связи для индикатора («Плохая связь»). */
+    connectionQuality: (state): ConnectionQuality => qualityOf(state.diagnostics),
+    /** Короткая расшифровка диагностики (для панели и подписи). */
+    diagnosticsSummary: (state): string => summaryOf(state.diagnostics),
     formattedTime: (state): string => {
       const m = Math.floor(state.seconds / 60)
       const s = state.seconds % 60
@@ -803,6 +900,9 @@ export const useCallStore = defineStore('call', {
       // Пока читали статистику, звонок мог закончиться или соединение — замениться.
       if (this.status !== 'active' || pc !== peerConnection) return
       if (flowing) {
+        // Медиа пошло. Если для этого не понадобилось ни одного перезапуска —
+        // сеть в порядке, снимаем пометку «в прошлый раз помогал только релей».
+        if (mediaWatchdogRestarts === 0) setRelayOnly(false)
         this._clearMediaWatchdog()
         return
       }
@@ -821,6 +921,9 @@ export const useCallStore = defineStore('call', {
         return
       }
       mediaWatchdogRestarts += 1
+      // Напрямую не выходит: в следующий раз начнём сразу через TURN-релей
+      // (смена сети помогала именно потому, что заново поднимался ICE).
+      if (mediaWatchdogRestarts >= 2) setRelayOnly(true)
       this.reconnecting = true
       await this._restartIce(pc)
     },
@@ -898,6 +1001,22 @@ export const useCallStore = defineStore('call', {
         socket.close()
         socket = null
       }
+      this.connected = false
+    },
+
+    /**
+     * Отпускает сигнальный канал при уходе страницы (перезагрузка, закрытие).
+     *
+     * Состояние звонка НЕ трогаем: при перезагрузке оно поднимается заново
+     * (см. `recoverCallAfterReload`). А вот старый сокет закрываем сразу: у
+     * человека соединений может быть несколько (телефон, вкладка), и уходящая
+     * страница не должна продолжать получать сигналинг за второе устройство.
+     */
+    detachSignaling() {
+      if (!socket) return
+      socket.onclose = null
+      socket.close()
+      socket = null
       this.connected = false
     },
 
@@ -1017,6 +1136,26 @@ export const useCallStore = defineStore('call', {
           }
           break
         }
+        case 'call-ended-elsewhere': {
+          // Тот же звонок приняли или отклонили на другом устройстве этого же
+          // человека (звонок звонит сразу на все его устройства).
+          if (this.callId !== callId) return
+          if (this.status !== 'incoming' && this.status !== 'outgoing') return
+          this._cleanup()
+          this.notice =
+            message.reason === 'declined'
+              ? 'Звонок отклонён на другом устройстве'
+              : 'Звонок принят на другом устройстве'
+          break
+        }
+        case 'call-media-state': {
+          // Собеседник выключил микрофон/камеру: показываем это в интерфейсе,
+          // чтобы чёрный экран не выглядел поломкой.
+          if (this.callId !== callId) return
+          this.peerMicOn = message.mic_on !== false
+          this.peerVideoOn = message.video_on !== false
+          break
+        }
         case 'call-parked': {
           // Абонент не в сети: вызов ждёт его в приложении и будет доставлен,
           // как только он туда зайдёт (см. park_offer на бэкенде). Уведомление
@@ -1088,12 +1227,9 @@ export const useCallStore = defineStore('call', {
         })
         this._armRingOutTimer()
         void this.loadDevices()
-      } catch {
+      } catch (error) {
         this._cleanup()
-        this.notice =
-          kind === 'video'
-            ? 'Не удалось получить доступ к камере/микрофону'
-            : 'Не удалось получить доступ к микрофону'
+        this.notice = mediaErrorMessage(error, kind)
       }
     },
 
@@ -1143,12 +1279,12 @@ export const useCallStore = defineStore('call', {
         // Ответ мог не дойти — повторяем, пока не поднимется медиа.
         this._armAnswerRetry()
         void this.loadDevices()
-      } catch {
+      } catch (error) {
         this._cleanup()
         // Сообщаем зовущему отказ: без этого у него звонок идёт до таймаута,
         // хотя ответить мы не смогли (нет доступа к камере/микрофону).
         this._declineUnanswered(peerId, callId)
-        this.notice = 'Не удалось получить доступ к камере/микрофону'
+        this.notice = mediaErrorMessage(error, kind)
       }
     },
 
@@ -1299,6 +1435,57 @@ export const useCallStore = defineStore('call', {
       // Проверяем, что медиа действительно пошло (иначе чёрный экран и тишина,
       // а «лечится» это перезапуском ICE).
       this._armMediaWatchdog()
+      // Собеседнику сразу сообщаем своё состояние микрофона/камеры, а себе берём
+      // статистику соединения (индикатор качества и панель диагностики).
+      this._sendMediaState()
+      this._startStatsPolling()
+    },
+
+    /** Сообщает собеседнику состояние своего микрофона и камеры. */
+    _sendMediaState() {
+      if (this.status !== 'active' || !this.callId) return
+      sendMessage({
+        type: 'call-media-state',
+        to_user_id: this.peerId ?? 0,
+        call_id: this.callId,
+        mic_on: this.micOn,
+        // Показ экрана тоже идёт как видео — для собеседника картинка есть.
+        video_on: this.videoOn || this.screenSharing
+      })
+    },
+
+    /**
+     * Снимает статистику соединения: качество связи и данные для диагностики.
+     * Зовётся и по таймеру, и вручную из панели «Диагностика звонка».
+     */
+    async refreshDiagnostics(): Promise<void> {
+      const pc = peerConnection
+      if (!pc || typeof pc.getStats !== 'function') return
+      try {
+        const report = await pc.getStats()
+        const { diagnostics, sample } = collectDiagnostics(report, pc, statsSample)
+        statsSample = sample
+        this.diagnostics = diagnostics
+      } catch {
+        /* статистика может быть недоступна — звонку не мешаем */
+      }
+    },
+
+    _startStatsPolling() {
+      this._clearStatsPolling()
+      statsSample = null
+      void this.refreshDiagnostics()
+      statsTimer = window.setInterval(() => {
+        void this.refreshDiagnostics()
+      }, STATS_POLL_INTERVAL_MS)
+    },
+
+    _clearStatsPolling() {
+      if (statsTimer !== undefined) {
+        window.clearInterval(statsTimer)
+        statsTimer = undefined
+      }
+      statsSample = null
     },
 
     /** Запоминает звонок для восстановления после перезагрузки страницы. */
@@ -1423,6 +1610,8 @@ export const useCallStore = defineStore('call', {
       localMedia?.getAudioTracks().forEach((track) => {
         track.enabled = this.micOn
       })
+      // Собеседник должен видеть, что нас не слышно (а не думать, что сломалось).
+      this._sendMediaState()
     },
 
     /** Переключить камеру. */
@@ -1432,6 +1621,7 @@ export const useCallStore = defineStore('call', {
       localMedia?.getVideoTracks().forEach((track) => {
         track.enabled = this.videoOn
       })
+      this._sendMediaState()
     },
 
     /** Подтягивает сохранённый выбор устройств (до первого getUserMedia). */
@@ -1496,6 +1686,7 @@ export const useCallStore = defineStore('call', {
         // Интерфейс становится видео-режимом: видно превью экрана и картинку собеседника.
         this.kind = 'video'
         this._sendScreenStatus(true)
+        this._sendMediaState()
         void this._capVideoBitrate()
       } catch {
         // Отказ от выбора окна в диалоге браузера — не ошибка.
@@ -1529,10 +1720,12 @@ export const useCallStore = defineStore('call', {
         this.videoOn = false
         void this._dropVideoLine(sender)
         this._sendScreenStatus(false)
+        this._sendMediaState()
         return
       }
       void this._restoreCamera(sender)
       this._sendScreenStatus(false)
+      this._sendMediaState()
     },
 
     /**
@@ -1794,6 +1987,7 @@ export const useCallStore = defineStore('call', {
       mediaWatchdogRestarts = 0
       this._clearAnswerRetry()
       this._clearMediaWatchdog()
+      this._clearStatsPolling()
       // Звонок завершён осознанно — поднимать его после перезагрузки не нужно.
       forgetActiveCall()
       this.$patch({ ...DEFAULT_STATE, connected: this.connected })

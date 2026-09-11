@@ -97,6 +97,9 @@ RELAY_MESSAGE_TYPES = frozenset(
         "call-renegotiate-answer",
         # Статус демонстрации экрана — для индикатора у собеседника.
         "call-screen",
+        # Состояние микрофона и камеры собеседника: выключенную камеру показываем
+        # как «камера выключена», а не как чёрный экран (и не принимаем за обрыв).
+        "call-media-state",
         # Возврат собеседника в идущий звонок после перезагрузки страницы: у него
         # новое соединение и новые ICE-адреса, поэтому вторая сторона
         # пересогласовывает SDP (иначе звонок выглядел бы сброшенным).
@@ -205,8 +208,14 @@ async def _is_call_blocked(from_user_id: int, to_user_id: int) -> bool:
         return False
 
 
-async def _relay_message(from_user_id: int, data: dict[str, Any]) -> None:
-    """Пересылает сообщение сигналинга от одного участника другому."""
+async def _relay_message(
+    from_user_id: int, data: dict[str, Any], sender: WebSocket | None = None
+) -> None:
+    """Пересылает сообщение сигналинга от одного участника другому.
+
+    ``sender`` — соединение, от которого пришло сообщение: на остальные
+    устройства этого же человека уходит «ответили в другом месте» (см. ниже).
+    """
     raw_target = data.get("to_user_id")
     try:
         to_user_id = int(raw_target)  # type: ignore[arg-type]
@@ -216,6 +225,21 @@ async def _relay_message(from_user_id: int, data: dict[str, Any]) -> None:
     envelope = dict(data)
     envelope["from_user_id"] = from_user_id
     message_type = data.get("type")
+
+    # Ответили или отклонили на одном устройстве — на остальных устройствах
+    # этого же человека звонок должен замолчать (там он тоже звенит).
+    if message_type in ("call-answer", "call-decline"):
+        await call_manager.send_to_other_devices(
+            from_user_id,
+            {
+                "type": "call-ended-elsewhere",
+                "call_id": data.get("call_id"),
+                "to_user_id": to_user_id,
+                "from_user_id": from_user_id,
+                "reason": "answered" if message_type == "call-answer" else "declined",
+            },
+            exclude=sender,
+        )
 
     # Заблокированная пара не звонит друг другу: сообщение не пересылаем, вызов не
     # паркуем и push не шлём. Зовущему отвечаем как при недоступности — о самом
@@ -367,12 +391,14 @@ async def _park_offer_and_notify(
     return notified
 
 
-async def _handle_message(from_user_id: int, data: Any) -> None:
+async def _handle_message(
+    from_user_id: int, data: Any, sender: WebSocket | None = None
+) -> None:
     if not isinstance(data, dict):
         return
     if data.get("type") not in RELAY_MESSAGE_TYPES:
         return
-    await _relay_message(from_user_id, data)
+    await _relay_message(from_user_id, data, sender)
 
 
 class IceServersResponse(BaseModel):
@@ -411,7 +437,7 @@ async def websocket_calls(websocket: WebSocket) -> None:
     try:
         while True:
             data = await websocket.receive_json()
-            await _handle_message(user.id, data)
+            await _handle_message(user.id, data, websocket)
     except WebSocketDisconnect:
         logger.debug("Пользователь %s отключился от сигналинга", user.id)
     finally:

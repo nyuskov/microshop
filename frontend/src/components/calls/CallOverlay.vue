@@ -61,14 +61,29 @@
         </template>
 
         <template v-else-if="callStore.status === 'active'">
-          <!-- Видео собеседника (звук — Web Audio или фолбэк элемента) -->
+          <!-- Видео собеседника (звук — Web Audio или фолбэк элемента).
+               Когда камера выключена, видеопотока нет: показываем аватар и
+               подпись, а не чёрный прямоугольник. -->
           <video
-            v-if="callStore.kind === 'video'"
+            v-if="callStore.kind === 'video' && callStore.peerVideoOn"
             ref="remoteVideoEl"
             class="remote-video"
             autoplay
             playsinline
           ></video>
+          <div v-if="callStore.kind === 'video' && !callStore.peerVideoOn" class="peer-video-off">
+            <span class="call-avatar huge" :style="avatarStyle(displayName)">
+              <img
+                v-if="avatarUrl && !avatarImgFailed"
+                :src="avatarUrl"
+                class="avatar-img"
+                alt=""
+                @error="avatarImgFailed = true"
+              />
+              <template v-else>{{ displayNameInitials }}</template>
+            </span>
+            <p class="peer-video-off-text">Камера собеседника выключена</p>
+          </div>
           <!-- Аудио-звонок: элемент для воспроизведения/фолбэка (mute задаётся в коде) -->
           <audio v-if="callStore.kind === 'audio'" ref="remoteAudioEl" autoplay playsinline></audio>
 
@@ -89,6 +104,25 @@
               <p class="call-subtitle audio-sub">
                 Голосовой звонок · <span class="call-timer">{{ callStore.formattedTime }}</span>
               </p>
+              <div v-if="hasCallBadges" class="call-badges">
+                <span
+                  v-if="!callStore.peerMicOn"
+                  class="call-badge"
+                  title="Собеседник выключил микрофон"
+                >
+                  <q-icon :name="icon('mic_off')" size="12px" aria-hidden="true" />
+                  Микрофон собеседника выключен
+                </span>
+                <span
+                  v-if="callStore.connectionQuality !== 'good'"
+                  class="call-badge"
+                  :class="callStore.connectionQuality"
+                  :title="callStore.diagnosticsSummary"
+                >
+                  <q-icon :name="icon('wifi_off')" size="12px" aria-hidden="true" />
+                  Плохая связь
+                </span>
+              </div>
               <span v-if="callStore.peerScreenSharing" class="call-sharing">
                 <q-icon :name="icon('screen_share')" size="13px" aria-hidden="true" />
                 Собеседник показывает экран
@@ -114,6 +148,25 @@
               <div class="hud-info">
                 <div class="hud-name">{{ displayName }}</div>
                 <div class="hud-time">{{ callStore.formattedTime }}</div>
+                <div v-if="hasCallBadges" class="call-badges">
+                  <span
+                    v-if="!callStore.peerMicOn"
+                    class="call-badge"
+                    title="Собеседник выключил микрофон"
+                  >
+                    <q-icon :name="icon('mic_off')" size="12px" aria-hidden="true" />
+                    Микрофон выключен
+                  </span>
+                  <span
+                    v-if="callStore.connectionQuality !== 'good'"
+                    class="call-badge"
+                    :class="callStore.connectionQuality"
+                    :title="callStore.diagnosticsSummary"
+                  >
+                    <q-icon :name="icon('wifi_off')" size="12px" aria-hidden="true" />
+                    Плохая связь
+                  </span>
+                </div>
                 <span v-if="callStore.peerScreenSharing" class="call-sharing video">
                   <q-icon :name="icon('screen_share')" size="12px" aria-hidden="true" />
                   Собеседник показывает экран
@@ -223,6 +276,46 @@
                 <q-icon :name="icon('picture_in_picture')" size="20px" />
                 <span>Окно поверх других</span>
               </button>
+              <!-- Диагностика: куда идёт медиа (напрямую/через релей) и как оно
+                   себя чувствует. Нужна, когда «нет звука» или «чёрный экран». -->
+              <button
+                class="more-row"
+                :class="{ on: diagnosticsOpen }"
+                role="menuitem"
+                @click="onDiagnosticsRow"
+              >
+                <q-icon :name="icon('wifi')" size="20px" />
+                <span>Диагностика звонка</span>
+                <q-icon
+                  v-if="diagnosticsOpen"
+                  :name="icon('check')"
+                  size="16px"
+                  class="more-mark"
+                />
+              </button>
+            </div>
+
+            <!-- Панель диагностики соединения -->
+            <div v-if="diagnosticsOpen" class="call-diagnostics">
+              <p v-if="!callStore.diagnostics" class="diagnostics-hint">
+                Собираем данные о соединении…
+              </p>
+              <template v-else>
+                <div v-for="row in diagRows" :key="row.label" class="diag-row">
+                  <span class="diag-label">{{ row.label }}</span>
+                  <span class="diag-value">{{ row.value }}</span>
+                </div>
+              </template>
+              <div class="diag-actions">
+                <button class="diag-btn" @click="copyDiagnostics">
+                  <q-icon :name="icon(copiedDiagnostics ? 'check' : 'content_copy')" size="14px" />
+                  {{ copiedDiagnostics ? 'Скопировано' : 'Скопировать' }}
+                </button>
+                <button class="diag-btn" @click="callStore.refreshDiagnostics()">
+                  <q-icon :name="icon('refresh')" size="14px" />
+                  Обновить
+                </button>
+              </div>
             </div>
 
             <!-- Настройки устройств звонка -->
@@ -329,6 +422,69 @@ const noticeVisible = ref(false)
 let noticeTimer: ReturnType<typeof setTimeout> | undefined
 let attachTimer: ReturnType<typeof setInterval> | undefined
 
+/** Есть ли у собеседника видеодорожка (нужно, чтобы переписать элемент при её появлении). */
+const remoteVideoTracks = ref(0)
+/** Показаны ли бейджи «микрофон выключен» / «плохая связь». */
+const hasCallBadges = computed(() => !callStore.peerMicOn || callStore.connectionQuality !== 'good')
+
+/** Открыта ли панель «Диагностика звонка». */
+const diagnosticsOpen = ref(false)
+const copiedDiagnostics = ref(false)
+let copyTimer: ReturnType<typeof setTimeout> | undefined
+
+/** Куда идёт медиа: напрямую, через NAT или через наш релей. */
+const routeLabel = computed<string>(() => {
+  const diag = callStore.diagnostics
+  if (!diag) return '—'
+  if (diag.candidateType === 'relay') {
+    return `через релей (TURN${diag.relayProtocol ? `, ${diag.relayProtocol}` : ''})`
+  }
+  if (diag.candidateType === 'srflx' || diag.candidateType === 'prflx') {
+    return 'напрямую через NAT'
+  }
+  if (diag.candidateType === 'host') return 'напрямую'
+  return 'определяем…'
+})
+
+/** Строки панели диагностики — то, что полезно при разборе «нет звука». */
+const diagRows = computed<Array<{ label: string; value: string }>>(() => {
+  const diag = callStore.diagnostics
+  if (!diag) return []
+  return [
+    { label: 'Соединение', value: `ICE: ${diag.iceState} · ${diag.connectionState}` },
+    { label: 'Маршрут', value: routeLabel.value },
+    { label: 'Задержка', value: `${diag.rttMs} мс` },
+    { label: 'Потери', value: `${diag.lossPercent}%` },
+    { label: 'Дрожание', value: `${diag.jitterMs} мс` },
+    { label: 'Приём', value: `${diag.inboundKbps} кбит/с` },
+    { label: 'Отправка', value: `${diag.outboundKbps} кбит/с` },
+    { label: 'Кодеки', value: diag.codecs.join(', ') || '—' }
+  ]
+})
+
+/** Текст отчёта для копирования в поддержку/чат. */
+const diagnosticsText = computed<string>(() =>
+  [
+    `Звонок: ${callStore.kind === 'video' ? 'видео' : 'аудио'}, ${callStore.formattedTime}`,
+    ...diagRows.value.map((row) => `${row.label}: ${row.value}`),
+    `Итого: ${callStore.diagnosticsSummary}`
+  ].join('\n')
+)
+
+const copyDiagnostics = async (): Promise<void> => {
+  try {
+    await navigator.clipboard.writeText(diagnosticsText.value)
+    copiedDiagnostics.value = true
+    if (copyTimer !== undefined) window.clearTimeout(copyTimer)
+    copyTimer = window.setTimeout(() => {
+      copiedDiagnostics.value = false
+      copyTimer = undefined
+    }, 2000)
+  } catch {
+    /* нет доступа к буферу — не страшно, данные видны на экране */
+  }
+}
+
 // «Громкая связь»: по умолчанию тихо («к уху»), кнопкой — на максимум.
 // Громкость задаём через Web Audio gain в call.ts — element.volume на
 // телефонах игнорируется, поэтому без этого «тихий» режим не работал бы.
@@ -359,8 +515,17 @@ const onScreenRow = () => {
 }
 
 const onDevicesRow = () => {
+  diagnosticsOpen.value = false
   settingsOpen.value = !settingsOpen.value
   moreOpen.value = false
+}
+
+/** Пункт «Диагностика звонка»: открывает панель и сразу снимает свежие цифры. */
+const onDiagnosticsRow = () => {
+  settingsOpen.value = false
+  moreOpen.value = false
+  diagnosticsOpen.value = !diagnosticsOpen.value
+  if (diagnosticsOpen.value) void callStore.refreshDiagnostics()
 }
 
 /** Есть ли смысл в «окне поверх других»: нужен видеоряд и поддержка PiP. */
@@ -477,6 +642,7 @@ const attachStreams = () => {
   if (isVideo) {
     const remoteVideo = remoteVideoEl.value
     const videoTracks = remote ? remote.getVideoTracks().length : 0
+    remoteVideoTracks.value = videoTracks
     if (remoteVideo) {
       const needsBind =
         remoteVideo.srcObject !== remote ||
@@ -525,6 +691,8 @@ watch(
       attachTimer = undefined
       speakerOn.value = false
       settingsOpen.value = false
+      diagnosticsOpen.value = false
+      copiedDiagnostics.value = false
       moreOpen.value = false
     }
   }
@@ -534,6 +702,15 @@ watch(
 // перебрасываем потоки в правильные элементы без ожидания следующего тика.
 watch(
   () => [callStore.kind, callStore.screenSharing, callStore.selectedSpeaker],
+  () => {
+    void nextTick(attachStreams)
+  }
+)
+
+// Камеру собеседник мог включить/выключить — перебрасываем потоки в элемент
+// (и обратно), не дожидаясь следующего тика обновления.
+watch(
+  () => callStore.peerVideoOn,
   () => {
     void nextTick(attachStreams)
   }
@@ -570,6 +747,7 @@ const hideNotice = () => {
 onBeforeUnmount(() => {
   if (attachTimer !== undefined) window.clearInterval(attachTimer)
   if (noticeTimer !== undefined) window.clearTimeout(noticeTimer)
+  if (copyTimer !== undefined) window.clearTimeout(copyTimer)
 })
 </script>
 
@@ -845,6 +1023,117 @@ onBeforeUnmount(() => {
 .more-row .more-mark {
   margin-left: auto;
   opacity: 0.85;
+}
+
+/* ---------- Собеседник выключил камеру: аватар вместо чёрного экрана ---------- */
+.peer-video-off {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: radial-gradient(900px 600px at 50% 35%, #22303f, #0f151c 75%);
+}
+
+.peer-video-off-text {
+  margin: 0;
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* ---------- Бейджи: микрофон собеседника и качество связи ---------- */
+.call-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.call-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.call-badge.fair {
+  background: rgba(255, 193, 7, 0.24);
+}
+
+.call-badge.bad {
+  background: rgba(244, 67, 54, 0.3);
+}
+
+/* ---------- Панель диагностики звонка ---------- */
+.call-diagnostics {
+  position: absolute;
+  bottom: 108px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(340px, calc(100vw - 32px));
+  padding: 12px 14px;
+  background: rgba(16, 22, 30, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+}
+
+.diag-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.diag-label {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.diag-value {
+  text-align: right;
+}
+
+.diagnostics-hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.diag-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.diag-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.diag-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
 }
 
 /* ---------- Панель устройств звонка ---------- */

@@ -84,7 +84,11 @@ class FakePeerConnection {
   }
 }
 
-const fakeStream = () => ({ getTracks: () => [] as MediaStreamTrack[] })
+const fakeStream = () => ({
+  getTracks: () => [] as MediaStreamTrack[],
+  getAudioTracks: () => [] as MediaStreamTrack[],
+  getVideoTracks: () => [] as MediaStreamTrack[]
+})
 
 const stubMedia = () => {
   Object.defineProperty(globalThis, 'RTCPeerConnection', {
@@ -135,7 +139,9 @@ describe('медиа не пошло — перезапускаем ICE сами
   })
 
   afterEach(() => {
-    useCallStore()._cleanup()
+    const store = useCallStore()
+    store.disconnect()
+    store._cleanup()
     vi.useRealTimers()
   })
 
@@ -185,5 +191,88 @@ describe('медиа не пошло — перезапускаем ICE сами
     expect(store.status).toBe('active')
     expect(store.notice).toContain('переключить сеть')
     expect(pc?.createOffer).toHaveBeenCalledWith({ iceRestart: true })
+  })
+
+  it('в следующий раз пойдём через релей (напрямую не вышло дважды)', async () => {
+    window.localStorage.clear()
+    await startActiveCall()
+
+    await vi.advanceTimersByTimeAsync(30_000)
+
+    expect(window.localStorage.getItem('pismo_call_relay_only')).toBe('1')
+  })
+})
+
+describe('состояние медиа собеседника и другие устройства', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    setActivePinia(createPinia())
+    FakeWebSocket.instances = []
+    FakePeerConnection.instances = []
+    window.localStorage.clear()
+    const auth = useAuthStore()
+    auth.isAuthenticated = true
+    auth.accessToken = 'test-token'
+    stubMedia()
+  })
+
+  afterEach(() => {
+    const store = useCallStore()
+    store.disconnect()
+    store._cleanup()
+    vi.useRealTimers()
+  })
+
+  it('переключение микрофона сообщается собеседнику', async () => {
+    const store = await startActiveCall()
+
+    store.toggleMic()
+
+    const state = FakeWebSocket.instances[0].messages
+      .filter((message) => message.type === 'call-media-state')
+      .pop()
+    expect(state).toMatchObject({ call_id: store.callId, mic_on: false, video_on: true })
+    expect(store.micOn).toBe(false)
+  })
+
+  it('состояние собеседника (микрофон и камера) применяется в интерфейсе', async () => {
+    const store = await startActiveCall()
+    const callId = store.callId ?? ''
+
+    store._handleMessage({ type: 'call-media-state', call_id: callId, mic_on: false })
+    expect(store.peerMicOn).toBe(false)
+    // Поле не пришло — считаем, что видео есть (старый клиент его не шлёт).
+    expect(store.peerVideoOn).toBe(true)
+
+    store._handleMessage({
+      type: 'call-media-state',
+      call_id: callId,
+      mic_on: true,
+      video_on: false
+    })
+    expect(store.peerMicOn).toBe(true)
+    expect(store.peerVideoOn).toBe(false)
+  })
+
+  it('ответили на другом устройстве — входящий звонок замолкает', () => {
+    const store = useCallStore()
+    store.$patch({ status: 'incoming', callId: 'call-1', peerId: 7 })
+
+    store._handleMessage({ type: 'call-ended-elsewhere', call_id: 'call-1', reason: 'answered' })
+
+    expect(store.status).toBe('idle')
+    expect(store.notice).toContain('на другом устройстве')
+  })
+
+  it('на устройстве, где ответили, такое сообщение ничего не ломает', async () => {
+    const store = await startActiveCall()
+
+    store._handleMessage({
+      type: 'call-ended-elsewhere',
+      call_id: store.callId ?? '',
+      reason: 'answered'
+    })
+
+    expect(store.status).toBe('active')
   })
 })
