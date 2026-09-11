@@ -10,6 +10,28 @@
 import { api } from './api'
 
 let registration: ServiceWorkerRegistration | null = null
+let periodicUpdateTimer: number | null = null
+
+/** Просит браузер проверить обновление SW (молча — ошибки сети не важны). */
+function requestUpdateCheck(): void {
+  if (document.visibilityState !== 'visible') return
+  void registration?.update().catch(() => undefined)
+}
+
+/**
+ * Свои проверки обновления.
+ *
+ * Браузер сам проверяет sw.js нечасто (для УСТАНОВЛЕННОЙ PWA — примерно раз в
+ * сутки), поэтому пользователь мог бы неделями работать на старой версии.
+ * Проверяем при возврате к приложению и раз в час, пока оно открыто: если
+ * на сервере другая версия, она встанет сама (skipWaiting + клик по баннеру
+ * или автоматическая перезагрузка) — переустанавливать ничего не нужно.
+ */
+function scheduleUpdateChecks(): void {
+  if (periodicUpdateTimer !== null) return
+  document.addEventListener('visibilitychange', requestUpdateCheck)
+  periodicUpdateTimer = window.setInterval(requestUpdateCheck, 60 * 60 * 1000)
+}
 
 /** Регистрирует SW и вызывает onUpdate, когда доступна новая версия. */
 export function registerServiceWorker(onUpdate: () => void): void {
@@ -18,6 +40,8 @@ export function registerServiceWorker(onUpdate: () => void): void {
   // origin ('serviceWorker' in navigator === false) молча пропускаем. В dev
   // после первой регистрации возможен один авто-reload (взятие контроля).
   if (!('serviceWorker' in navigator)) return
+
+  scheduleUpdateChecks()
 
   window.addEventListener('load', () => {
     navigator.serviceWorker
