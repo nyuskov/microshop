@@ -7,6 +7,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from tasks import notifications
 
 
@@ -56,3 +58,41 @@ def test_rustore_message_drops_empty_avatar() -> None:
         data={"type": "call", "peer_avatar": None},
     )
     assert "peer_avatar" not in message["data"]
+
+
+async def test_call_record_skips_message_push(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Запись о звонке не порождает push «Новое сообщение».
+
+    Иначе после разговора (или после отмены звонка) участникам приходило
+    уведомление о «новом сообщении» — хотя это системная отметка о звонке,
+    и человек о нём уже знает.
+    """
+    from api_v1.events import service
+
+    enqueued: list[tuple] = []
+
+    async def _members(session: object, chat_id: int) -> list[int]:
+        return [1, 2]
+
+    async def _muted(session: object, chat_id: int) -> set[int]:
+        return set()
+
+    async def _broadcast(recipients: list[int], payload: dict) -> None:
+        return None
+
+    monkeypatch.setattr(service, "chat_member_ids", _members)
+    monkeypatch.setattr(service, "muted_user_ids", _muted)
+    monkeypatch.setattr(service.events_manager, "broadcast", _broadcast)
+    monkeypatch.setattr(
+        service, "_maybe_enqueue_message_push", lambda *args: enqueued.append(args)
+    )
+
+    payload = {"type": "message.new", "chat_id": 1, "message_id": 5, "sender_id": 1}
+
+    # Отметка о звонке: события сокетам идут, push — нет.
+    await service.notify_chat(object(), chat_id=1, payload=payload, push=False)
+    assert enqueued == []
+
+    # Обычное сообщение уведомляет как раньше (флаг ничего не сломал).
+    await service.notify_chat(object(), chat_id=1, payload=payload)
+    assert len(enqueued) == 1

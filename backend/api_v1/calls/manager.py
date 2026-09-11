@@ -96,6 +96,22 @@ class CallConnectionManager:
         offer.pop("_expires_at", None)
         return offer
 
+    async def has_pending_offer(self, user_id: int, call_id: str | None = None) -> bool:
+        """Есть ли у пользователя ещё «висящий» входящий вызов (не истёк).
+
+        Нужно, чтобы не слать push о звонке, которого уже нет: отменили, или
+        абонент сам подключился и забрал offer (``take_pending_offer``).
+        """
+        async with self._lock:
+            offer = self._pending_offers.get(user_id)
+        if offer is None:
+            return False
+        if offer.get("_expires_at", 0) < time.monotonic():
+            return False
+        if call_id and offer.get("call_id") != call_id:
+            return False
+        return True
+
     async def discard_pending_offer(self, callee_id: int, call_id: str | None) -> None:
         """Убирает парковку, если она относится к указанному вызову."""
         if not call_id:

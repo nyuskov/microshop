@@ -12,7 +12,9 @@
 ``call-unavailable``.
 """
 
+import asyncio
 import logging
+from collections.abc import Coroutine
 from datetime import datetime, timezone
 from typing import Any
 
@@ -167,6 +169,9 @@ async def _persist_call_record(meta: dict[str, Any], state: str, duration: int) 
                     "sender_id": caller,
                 },
                 exclude_user_id=None,
+                # Запись о звонке — не новое сообщение: push «Новое сообщение»
+                # после разговора не нужен, человек о звонке уже знает.
+                push=False,
             )
     except Exception:  # noqa: BLE001 - история звонка не роняет сигналинг
         logger.exception("Не удалось записать отметку о звонке")
@@ -217,6 +222,60 @@ async def _relay_message(from_user_id: int, data: dict[str, Any]) -> None:
         await call_manager.discard_pending_offer(to_user_id, data.get("call_id"))
 
 
+#: Пауза перед push о входящем звонке.
+#:
+#: За это время зовущий может отменить вызов, а абонент — сам открыть приложение
+#: и забрать припаркованный offer. Тогда уведомление «Вам звонят» не отправляем:
+#: иначе человек получал бы его, когда звонка уже нет (отменён или уже отвечен).
+CALL_PUSH_DELAY_SECONDS = 2.0
+#: Сколько push о звонке остаётся актуальным (зовущий «звонит» ~30 с).
+CALL_PUSH_VALID_SECONDS = 30.0
+
+#: Фоновые задачи веб-процесса: держим ссылки, иначе сборщик мусора их съест.
+_background_tasks: set[asyncio.Task[None]] = set()
+
+
+def _spawn(coro: Coroutine[Any, Any, None]) -> None:
+    """Запускает фоновую задачу, не блокируя обработку сигналинга."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
+def _call_push_expires_at() -> int:
+    """Момент (мс UTC), после которого push о звонке показывать бессмысленно."""
+    seconds = datetime.now(timezone.utc).timestamp() + CALL_PUSH_VALID_SECONDS
+    return int(seconds * 1000)
+
+
+async def _enqueue_call_push_when_ringing(
+    *, callee_id: int, caller_id: int, offer: dict[str, Any]
+) -> None:
+    """Ставит push о входящем звонке — только если вызов ещё «висит».
+
+    Проверку делаем с задержкой (``CALL_PUSH_DELAY_SECONDS``) и в том же процессе,
+    который держит парковку: отменил зовущий или абонент уже подключился —
+    уведомление не нужно, он и так знает о звонке.
+    """
+    call_id = offer.get("call_id")
+    try:
+        await asyncio.sleep(CALL_PUSH_DELAY_SECONDS)
+        if not await call_manager.has_pending_offer(callee_id, call_id):
+            logger.info("Звонок %s уже снят — push не отправляем", call_id)
+            return
+        from core.celery_app import get_task
+
+        get_task("tasks.notifications.send_call_push").delay(
+            callee_id,
+            call_id,
+            caller_id,
+            offer.get("kind"),
+            _call_push_expires_at(),
+        )
+    except Exception:  # noqa: BLE001 - push не должен ронять сигналинг
+        logger.exception("Не удалось поставить задачу push о входящем звонке")
+
+
 async def _park_offer_and_push(
     *, callee_id: int, caller_id: int, offer: dict[str, Any]
 ) -> bool:
@@ -249,17 +308,11 @@ async def _park_offer_and_push(
             "to_user_id": callee_id,
         },
     )
-    try:
-        from core.celery_app import get_task
-
-        get_task("tasks.notifications.send_call_push").delay(
-            callee_id,
-            offer.get("call_id"),
-            caller_id,
-            offer.get("kind"),
+    _spawn(
+        _enqueue_call_push_when_ringing(
+            callee_id=callee_id, caller_id=caller_id, offer=offer
         )
-    except Exception:  # noqa: BLE001 - push не должен ронять сигналинг
-        logger.exception("Не удалось поставить задачу push о входящем звонке")
+    )
     return True
 
 

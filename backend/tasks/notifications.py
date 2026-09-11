@@ -14,6 +14,7 @@
 import asyncio
 import json
 import logging
+import time
 
 from pywebpush import WebPushException, webpush
 from sqlalchemy import delete, select
@@ -337,15 +338,30 @@ def send_call_push(
     call_id: str | None,
     caller_id: int,
     kind: str | None,
+    expires_at: int | None = None,
 ) -> None:
     """Push о входящем звонке (Web Push для PWA + RuStore Push для Android).
 
     Показывает системное уведомление «Вам звонят…»; тап открывает приложение,
     где «висящий» offer уже ждёт (см. ``calls.manager.park_offer``).
+
+    ``expires_at`` (мс UTC) — момент, после которого звонок уже не актуален
+    (зовущий отменил или абонент ответил): такое уведомление не отправляем, чтобы
+    человек не получал «Вам звонят» о прошедшем звонке.
     """
     if not _web_push_configured() and not rustore_push.is_configured():
         return
-    run_async(_send_call_push_async(user_id, call_id, caller_id, kind))
+    if _call_push_expired(expires_at):
+        logger.info("Push о звонке %s устарел — не отправляем", call_id)
+        return
+    run_async(_send_call_push_async(user_id, call_id, caller_id, kind, expires_at))
+
+
+def _call_push_expired(expires_at: int | None) -> bool:
+    """Просрочен ли push о звонке (мс UTC; None — срок не задан)."""
+    if not expires_at:
+        return False
+    return time.time() * 1000 > expires_at
 
 
 async def _send_call_push_async(
@@ -353,6 +369,7 @@ async def _send_call_push_async(
     call_id: str | None,
     caller_id: int,
     kind: str | None,
+    expires_at: int | None = None,
 ) -> None:
     engine = make_engine()
     session = make_session(engine)
@@ -374,6 +391,9 @@ async def _send_call_push_async(
                     "peer_id": caller_id,
                     "kind": kind,
                     "peer_avatar": caller.avatar_url if caller else None,
+                    # Срок годности: устройство могло получить push поздно
+                    # (Doze) — тогда показывать «Вам звонят» уже незачем.
+                    "expires_at": expires_at,
                 },
             ),
         )
@@ -400,6 +420,7 @@ async def _send_call_push_async(
                     "call_id": call_id,
                     "peer_id": caller_id,
                     "kind": kind,
+                    "expires_at": expires_at,
                 },
             },
             ensure_ascii=False,

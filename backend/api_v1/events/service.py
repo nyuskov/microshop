@@ -54,11 +54,20 @@ async def notify_chat(
     chat_id: int,
     payload: dict[str, Any],
     exclude_user_id: int | None = None,
+    push: bool = True,
 ) -> None:
-    """Отправляет событие всем участникам чата, кроме ``exclude_user_id``."""
+    """Отправляет событие всем участникам чата, кроме ``exclude_user_id``.
+
+    ``push=False`` — событие живым сокетам отдаём, а Web Push не шлём. Так
+    делается для системных записей (например, «звонок завершён»): о звонке
+    человек уже знает, а уведомление «Новое сообщение» после разговора только
+    путает (это не текстовое сообщение).
+    """
     members = await chat_member_ids(session, chat_id)
     recipients = [user_id for user_id in members if user_id != exclude_user_id]
     await events_manager.broadcast(recipients, payload)
+    if not push:
+        return
 
     # Web Push: при новом сообщении уведомляем получателей, чьё приложение
     # закрыто (подписки PWA). Событие кладём в очередь Celery, чтобы не
