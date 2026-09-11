@@ -56,6 +56,19 @@ function extensionForMime(mime: string): string {
   return map[mime] ?? subtype ?? 'bin'
 }
 
+/**
+ * Имя присланного файла с расширением.
+ *
+ * Провайдеры часто отдают имя без расширения (например, «1000012345»), а сервер
+ * принимает вложения только с известным расширением — без него человек видел бы
+ * «не удалось отправить». Поэтому расширение дописываем по MIME-типу.
+ */
+export function sharedFileName(name: string, mime: string): string {
+  const trimmed = (name || '').trim()
+  if (/\.[a-z0-9]{1,8}$/i.test(trimmed)) return trimmed
+  return `${trimmed || 'shared'}.${extensionForMime(mime)}`
+}
+
 /** Приводит «сырые» данные (событие или ответ моста) к описанию. */
 function toDescriptor(raw: unknown): NativeShareDescriptor | null {
   if (!raw || typeof raw !== 'object') return null
@@ -137,7 +150,7 @@ export async function readNativeShareFile(descriptor: NativeShareDescriptor): Pr
   if (!parts.length) return null
 
   const mime = descriptor.mime || 'application/octet-stream'
-  const name = descriptor.name || `shared.${extensionForMime(mime)}`
+  const name = sharedFileName(descriptor.name, mime)
   return new File(parts, name, { type: mime })
 }
 
