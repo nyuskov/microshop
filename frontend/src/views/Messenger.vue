@@ -265,7 +265,7 @@
     :current-user-id="currentUserId"
     :busy="nativeShareBusy"
     @close="cancelNativeShare"
-    @share="sendNativeShare"
+    @share="sendIncomingShare"
   />
 
   <!-- Profile Modal (Quasar) -->
@@ -496,6 +496,7 @@ import {
 import type { Chat, ChatUser, Message } from '@/types'
 import { avatarUrlOf, chatPeer, chatTitle, displayName, isGroupChat } from '@/utils/user'
 import { usernameFromProfilePath } from '@/utils/profileLink'
+import { shareTargetFromSearch, withoutShareTargetParams } from '@/utils/shareTarget'
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import { isImageFile, messageSnippet, optimizeImageFile } from '@/utils/media'
@@ -2890,16 +2891,19 @@ const resolveProfileLink = async () => {
   }
 }
 
-// ---------- «Поделиться» из системного меню Android ----------
-// Человек нажал «Поделиться» в браузере/галерее/заметках и выбрал Pismo:
-// нативная оболочка присылает содержимое, здесь выбираем чат и отправляем.
-// В браузере (PWA) этот блок не активируется — initNativeShare() там no-op.
+// ---------- «Поделиться» (Android-приложение и PWA) ----------
+// Два источника, один путь обработки:
+//  * приложение Android — нативная оболочка присылает содержимое событием
+//    pismo:share (текст/ссылка/картинка, см. services/nativeShare.ts);
+//  * установленная PWA — Chrome открывает страницу с параметрами
+//    title/text/url (share_target в манифесте, см. utils/shareTarget.ts).
+// Дальше одинаково: выбираем чат в диалоге и отправляем.
 const nativeShare = ref<NativeShareDescriptor | null>(null)
 const nativeShareFile = ref<File | null>(null)
 const nativeSharePreviewUrl = ref<string | null>(null)
 const nativeShareBusy = ref(false)
 /** «Поделиться» нажали до входа — придержим, пока человек не войдёт. */
-let pendingNativeShare: NativeShareDescriptor | null = null
+let pendingIncomingShare: NativeShareDescriptor | null = null
 
 /** Сбрасывает состояние диалога (нативную часть не трогает). */
 const resetNativeShareState = () => {
@@ -2920,10 +2924,10 @@ const cancelNativeShare = () => {
   discardNativeShare()
 }
 
-/** Принимает содержимое из системного меню и готовит превью. */
-const acceptNativeShare = async (descriptor: NativeShareDescriptor) => {
+/** Принимает содержимое «поделиться» и готовит превью. */
+const acceptIncomingShare = async (descriptor: NativeShareDescriptor) => {
   if (!authStore.isAuthenticated) {
-    pendingNativeShare = descriptor
+    pendingIncomingShare = descriptor
     return
   }
   resetNativeShareState()
@@ -2971,7 +2975,7 @@ const encryptSharedText = async (
 }
 
 /** Отправляет принятое содержимое в выбранный чат. */
-const sendNativeShare = async (chatId: number) => {
+const sendIncomingShare = async (chatId: number) => {
   const target = nativeShare.value
   if (!target || nativeShareBusy.value) return
   const text = target.text.trim()
@@ -3012,8 +3016,34 @@ const sendNativeShare = async (chatId: number) => {
 }
 
 const disposeNativeShare = initNativeShare((descriptor) => {
-  void acceptNativeShare(descriptor)
+  void acceptIncomingShare(descriptor)
 })
+
+// «Поделиться» из установленной PWA: Chrome дописал параметры в адрес.
+// Забираем их до первой отрисовки и сразу чистим адрес (они длинные и не должны
+// попасть в историю); если человек ещё не вошёл — диалог откроется после входа.
+const shareTargetPayload = shareTargetFromSearch(
+  typeof window === 'undefined' ? '' : window.location.search
+)
+if (shareTargetPayload) {
+  try {
+    window.history.replaceState(
+      window.history.state,
+      '',
+      withoutShareTargetParams(window.location.href)
+    )
+  } catch {
+    /* история недоступна — адрес просто останется как есть */
+  }
+  void acceptIncomingShare({
+    text: shareTargetPayload.text,
+    subject: '',
+    mime: '',
+    name: '',
+    size: 0,
+    hasFile: false
+  })
+}
 
 watch(
   ready,
@@ -3025,10 +3055,10 @@ watch(
       // Ссылка-профиль и отложенное «Поделиться» открываются уже после входа
       // и загрузки чатов: иначе некуда было бы открывать/отправлять.
       await resolveProfileLink()
-      if (pendingNativeShare) {
-        const held = pendingNativeShare
-        pendingNativeShare = null
-        await acceptNativeShare(held)
+      if (pendingIncomingShare) {
+        const held = pendingIncomingShare
+        pendingIncomingShare = null
+        await acceptIncomingShare(held)
       }
       startRealtime()
       void callStore.connect()
