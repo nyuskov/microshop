@@ -322,12 +322,30 @@ async def send_attachment_message(
     file_size: int | None,
     text: str = "",
     reply_to_id: int | None = None,
+    encrypted: bool = False,
 ) -> dict:
-    """Отправляет сообщение с файлом-вложением."""
+    """Отправляет сообщение с файлом-вложением.
+
+    ``encrypted=True`` — вложение зашифровано на клиенте (на сервере только
+    шифротекст), а ``text`` — зашифрованный конверт с ключом/именем файла.
+    В «обычном» чате такие вложения запрещены: если положить их как есть,
+    ключ и имя файла оказались бы на сервере в открытом виде.
+    """
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
     await _ensure_not_blocked(session, chat_id=chat_id, user_id=user_id)
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
+
+    chat_e2ee = await session.scalar(
+        select(Chat.e2ee_enabled).where(Chat.id == chat_id)
+    )
+    if encrypted and not chat_e2ee:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Зашифрованное вложение можно отправить только в зашифрованный чат",
+        )
+    if not chat_e2ee:
+        encrypted = False
 
     message = Message(
         text=text,
@@ -338,6 +356,7 @@ async def send_attachment_message(
         file_url=file_url,
         mime_type=mime_type,
         file_size=file_size,
+        encrypted=encrypted,
     )
     session.add(message)
     await session.commit()

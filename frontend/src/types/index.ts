@@ -16,6 +16,25 @@ export interface MessageFile {
   size: number | null
 }
 
+/**
+ * Конверт зашифрованного вложения (E2EE).
+ *
+ * Лежит ВНУТРИ зашифрованного текста сообщения, поэтому сервер его не читает:
+ * видны только шифротекст файла и нейтральное имя `enc_*.bin`. `k` — ключ
+ * файла, `i` — его IV, `n`/`m`/`s` — настоящее имя, MIME-тип и размер,
+ * `c` — подпись к файлу (тоже зашифрована).
+ */
+export interface EncryptedFileMeta {
+  v: 1
+  t: 'file'
+  n: string
+  m: string
+  s: number
+  k: string
+  i: string
+  c?: string
+}
+
 export interface ReactionSummary {
   emoji: string
   count: number
@@ -107,6 +126,11 @@ export interface Message {
   is_read: boolean
   is_pinned: boolean
   encrypted?: boolean
+  /**
+   * Конверт зашифрованного вложения. Заполняется клиентом после расшифровки
+   * текста сообщения (в API его нет); пока пусто — показываем «🔒 Вложение».
+   */
+  e2ee_file?: EncryptedFileMeta | null
   /** kind: 'text' — обычное; 'call' — системная отметка о звонке. */
   kind?: 'text' | 'call'
   call_kind?: 'audio' | 'video'

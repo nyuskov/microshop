@@ -84,57 +84,69 @@
       </div>
 
       <!-- Вложение -->
-      <template v-if="message.file">
+      <template v-if="file">
         <button
-          v-if="isImageFile(message.file)"
+          v-if="isImageFile(file)"
           class="attachment attachment-image-btn"
           type="button"
-          :title="`Открыть изображение «${message.file.name}»`"
+          :title="`Открыть изображение «${file.name}»`"
           @click.stop="emit('open-image')"
         >
           <img
-            :src="mediaAbsolute(message.file.url)"
-            :alt="message.file.name"
+            v-if="fileUrl"
+            :src="fileUrl"
+            :alt="file.name"
             class="attachment-image"
             loading="lazy"
           />
-        </button>
-        <RoundVideoMessage
-          v-else-if="isRecordedVideoMessage(message.file)"
-          :src="mediaAbsolute(message.file.url)"
-          :name="message.file.name"
-          :size="message.file.size"
-        />
-        <video
-          v-else-if="isVideoFile(message.file)"
-          class="attachment-video"
-          :src="mediaAbsolute(message.file.url)"
-          controls
-          preload="metadata"
-          @click.stop
-        ></video>
-        <AudioMessage
-          v-else-if="isAudioFile(message.file)"
-          :src="mediaAbsolute(message.file.url)"
-          :name="message.file.name"
-          :size="message.file.size"
-        />
-        <a
-          v-else
-          class="attachment"
-          :href="mediaAbsolute(message.file.url)"
-          :download="message.file.name"
-          target="_blank"
-          rel="noopener"
-        >
-          <span class="attachment-card">
-            <q-icon :name="icon(fileIcon(message.file))" size="26px" />
-            <span class="attachment-info">
-              <span class="attachment-name">{{ message.file.name }}</span>
-              <span class="attachment-meta">{{ formatBytes(message.file.size) }}</span>
-            </span>
+          <span v-else class="attachment-locked">
+            <q-icon :name="icon('lock')" size="20px" />
+            <span>{{ lockedLabel }}</span>
           </span>
-        </a>
+        </button>
+        <template v-else-if="fileUrl">
+          <RoundVideoMessage
+            v-if="isRecordedVideoMessage(file)"
+            :src="fileUrl"
+            :name="file.name"
+            :size="file.size"
+          />
+          <video
+            v-else-if="isVideoFile(file)"
+            class="attachment-video"
+            :src="fileUrl"
+            controls
+            preload="metadata"
+            @click.stop
+          ></video>
+          <AudioMessage
+            v-else-if="isAudioFile(file)"
+            :src="fileUrl"
+            :name="file.name"
+            :size="file.size"
+          />
+          <a
+            v-else
+            class="attachment"
+            :href="fileUrl"
+            :download="file.name"
+            target="_blank"
+            rel="noopener"
+          >
+            <span class="attachment-card">
+              <q-icon :name="icon(fileIcon(file))" size="26px" />
+              <span class="attachment-info">
+                <span class="attachment-name">{{ file.name }}</span>
+                <span class="attachment-meta">{{ formatBytes(file.size) }}</span>
+              </span>
+            </span>
+          </a>
+        </template>
+        <!-- Зашифрованный файл: пока не расшифрован, вместо содержимого — замок. -->
+        <span v-else class="attachment attachment-locked">
+          <q-icon :name="icon('lock')" size="20px" />
+          <span>{{ lockedLabel }}</span>
+        </span>
       </template>
 
       <!-- Очень длинные тексты показываем свёрнутыми: иначе одна «простыня»
@@ -349,6 +361,7 @@ import { followLink } from '@/composables/useExternalLinkGuard'
 import {
   callMessageIcon,
   callMessageText,
+  effectiveFile,
   fileIcon,
   isAudioFile,
   isImageFile,
@@ -356,6 +369,7 @@ import {
   isRoundVideoOnly,
   isVideoFile
 } from '@/utils/media'
+import { decryptedMediaFor } from '@/composables/useDecryptedMedia'
 import AudioMessage from '@/components/media/AudioMessage.vue'
 import RoundVideoMessage from '@/components/media/RoundVideoMessage.vue'
 import LinkPreviewCard from '@/components/messenger/LinkPreviewCard.vue'
@@ -505,6 +519,28 @@ const REACTION_EMOJIS = [
 ]
 
 const mediaAbsolute = (path: string): string => mediaUrl(path)
+
+/** Вложение с настоящим именем/типом (у E2EE — из расшифрованного конверта). */
+const file = computed(() => effectiveFile(props.message))
+
+/** Расшифрованное вложение (blob-ссылка) — только для зашифрованных файлов. */
+const decrypted = computed(() => decryptedMediaFor(props.message))
+
+/**
+ * URL вложения: у зашифрованного файла — расшифрованная blob-ссылка (пока её
+ * нет, показываем «замок», а не шифротекст), у обычного — прямая ссылка.
+ */
+const fileUrl = computed<string>(() => {
+  const attachment = file.value
+  if (!attachment) return ''
+  const local = decrypted.value
+  if (local) return local.status === 'ready' ? local.url : ''
+  return mediaAbsolute(attachment.url)
+})
+
+const lockedLabel = computed<string>(() =>
+  decrypted.value?.status === 'failed' ? '🔒 Не удалось расшифровать' : '🔒 Расшифровываем…'
+)
 
 const hasMyReaction = (message: Message, emoji: string): boolean =>
   message.reactions.some((reaction) => reaction.reacted_by_me && reaction.emoji === emoji)
@@ -1212,6 +1248,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 .attachment-card i {
   font-size: 1.6rem;
   color: #d4585e;
+}
+
+/* Зашифрованное вложение, которое ещё не расшифровано (или не читается) */
+.attachment-locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #f4f6f8;
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #5c6a75;
+  font-size: 13.5px;
 }
 
 .attachment-info {

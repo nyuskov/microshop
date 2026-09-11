@@ -3567,3 +3567,228 @@ async def test_accepted_secrets_deduplicates(
 
     monkeypatch.setattr(settings.auth_jwt, "secret_key_previous", "  ")
     assert settings.auth_jwt.accepted_secrets() == [settings.auth_jwt.secret_key]
+
+
+# --- E2EE: ключ группы и шифрованные вложения ------------------------------
+
+
+async def _enable_group_e2ee(api: _ApiCtx, token: str, chat_id: int) -> None:
+    """Включает сквозное шифрование в группе (создателем/админом)."""
+    response = await api.client.put(
+        f"/api/v1/chats/{chat_id}/e2ee/",
+        json={"enabled": True},
+        headers=api.auth(token),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["e2ee_enabled"] is True
+
+
+async def test_group_e2ee_toggle_requires_admin(api: _ApiCtx) -> None:
+    """Шифрование группы включает только создатель/админ, участник — 403."""
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    t1 = await api.token_for(u1)
+    t2 = await api.token_for(u2)
+    chat = await _create_group(api, t1, "Секретная группа", [u2.id])
+
+    member_try = await api.client.put(
+        f"/api/v1/chats/{chat['id']}/e2ee/",
+        json={"enabled": True},
+        headers=api.auth(t2),
+    )
+    assert member_try.status_code == 403
+
+    await _enable_group_e2ee(api, t1, chat["id"])
+
+    # Флаг виден в списке чатов (фронт рисует замок).
+    chat_card = next(c for c in await _my_chats(api, t2) if c["id"] == chat["id"])
+    assert chat_card["e2ee_enabled"] is True
+
+
+async def test_group_e2ee_keys_distribution_and_guards(api: _ApiCtx) -> None:
+    """Обёртки ключа группы: доступ только участникам и только им в раздачу."""
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    u3 = await api.make_user()
+    t1 = await api.token_for(u1)
+    t2 = await api.token_for(u2)
+    t3 = await api.token_for(u3)
+    chat = await _create_group(api, t1, "Ключи", [u2.id])
+    keys_url = f"/api/v1/keys/group/{chat['id']}/"
+
+    # Пока шифрование выключено, ключа нет: эндпоинт отвечает 200 и has_key=false
+    # (клиент не должен отличать «не включено» от «ещё не раздали»).
+    r = await api.client.get(keys_url, headers=api.auth(t1))
+    assert r.status_code == 200
+    assert r.json()["has_key"] is False
+
+    # А раздавать обёртки в незашифрованной группе нельзя — 400.
+    r = await api.client.put(
+        keys_url,
+        json={"keys": [{"user_id": u1.id, "wrapped_key": "e2ee1:x:y"}]},
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 400
+
+    await _enable_group_e2ee(api, t1, chat["id"])
+
+    # Ключа ещё нет ни у кого — участник видит has_key=false, а не ошибку.
+    r = await api.client.get(keys_url, headers=api.auth(t2))
+    assert r.status_code == 200
+    assert r.json()["has_key"] is False
+
+    # Создатель раздаёт свою обёртку и обёртку участника.
+    r = await api.client.put(
+        keys_url,
+        json={
+            "keys": [
+                {"user_id": u1.id, "wrapped_key": "e2ee1:aaaa:bbbb"},
+                {"user_id": u2.id, "wrapped_key": "e2ee1:cccc:dddd"},
+            ],
+            "replace": True,
+        },
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["count"] == 2
+
+    # Каждый читает СВОЮ обёртку и узнаёт, кто её раздал (нужно для расшифровки).
+    mine = (await api.client.get(keys_url, headers=api.auth(t2))).json()
+    assert mine["has_key"] is True
+    assert mine["wrapped_key"] == "e2ee1:cccc:dddd"
+    assert mine["wrapped_by"] == u1.id
+
+    # Посторонний не видит ключ и не может раздавать.
+    r = await api.client.get(keys_url, headers=api.auth(t3))
+    assert r.status_code == 404
+    r = await api.client.put(
+        keys_url,
+        json={"keys": [{"user_id": u1.id, "wrapped_key": "e2ee1:x:y"}]},
+        headers=api.auth(t3),
+    )
+    assert r.status_code == 404
+
+    # Раздавать можно только действующим участникам чата.
+    r = await api.client.put(
+        keys_url,
+        json={"keys": [{"user_id": u3.id, "wrapped_key": "e2ee1:x:y"}]},
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 400
+
+
+async def test_group_e2ee_key_rotation_replaces_wrappers(api: _ApiCtx) -> None:
+    """Ротация ключа: replace=true убирает прежние обёртки участников."""
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    u3 = await api.make_user()
+    t1 = await api.token_for(u1)
+    t2 = await api.token_for(u2)
+    chat = await _create_group(api, t1, "Ротация", [u2.id, u3.id])
+    keys_url = f"/api/v1/keys/group/{chat['id']}/"
+    await _enable_group_e2ee(api, t1, chat["id"])
+
+    r = await api.client.put(
+        keys_url,
+        json={
+            "keys": [
+                {"user_id": u1.id, "wrapped_key": "e2ee1:v1:v1"},
+                {"user_id": u2.id, "wrapped_key": "e2ee1:v1:v1"},
+                {"user_id": u3.id, "wrapped_key": "e2ee1:v1:v1"},
+            ],
+            "replace": True,
+        },
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 200, r.text
+
+    # Исключаем u3 и выпускаем новый ключ для оставшихся.
+    kicked = await api.client.delete(
+        f"/api/v1/chats/{chat['id']}/members/{u3.id}/", headers=api.auth(t1)
+    )
+    assert kicked.status_code in (200, 204), kicked.text
+
+    r = await api.client.put(
+        keys_url,
+        json={
+            "keys": [
+                {"user_id": u1.id, "wrapped_key": "e2ee1:v2:v2"},
+                {"user_id": u2.id, "wrapped_key": "e2ee1:v2:v2"},
+            ],
+            "replace": True,
+        },
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["count"] == 2
+
+    # У оставшегося участника — обёртка НОВОГО ключа, а не прежняя.
+    mine = (await api.client.get(keys_url, headers=api.auth(t2))).json()
+    assert mine["wrapped_key"] == "e2ee1:v2:v2"
+
+    # Раздача себе без replace не затирает обёртки остальных.
+    r = await api.client.put(
+        keys_url,
+        json={"keys": [{"user_id": u1.id, "wrapped_key": "e2ee1:v3:v3"}]},
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 200, r.text
+    still = (await api.client.get(keys_url, headers=api.auth(t2))).json()
+    assert still["wrapped_key"] == "e2ee1:v2:v2"
+
+
+async def test_encrypted_attachment_only_in_e2ee_chat(api: _ApiCtx) -> None:
+    """Шифрованное вложение принимается только в зашифрованном чате."""
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    token = await api.token_for(u1)
+
+    created = await api.client.post(
+        "/api/v1/chats/private/",
+        json={"user_id": u2.id},
+        headers=api.auth(token),
+    )
+    assert created.status_code == 200, created.text
+    chat_id = created.json()["id"]
+
+    # Обычный (незашифрованный) чат шифрованный блоб не принимает: иначе на
+    # сервере оказался бы ключ файла в открытом виде.
+    refused = await api.client.post(
+        "/api/v1/messages/attachment/",
+        params={
+            "chat_id": chat_id,
+            "filename": "enc_deadbeef.bin",
+            "caption": "e2ee1:aaaa:bbbb",
+            "encrypted": "true",
+        },
+        content=b"\x00fake-ciphertext",
+        headers={**api.auth(token), "Content-Type": "application/octet-stream"},
+    )
+    assert refused.status_code == 400
+
+    # После включения E2EE тот же запрос проходит, флаг сохраняется.
+    enabled = await api.client.put(
+        f"/api/v1/chats/{chat_id}/e2ee/",
+        json={"enabled": True},
+        headers=api.auth(token),
+    )
+    assert enabled.status_code == 200, enabled.text
+
+    accepted = await api.client.post(
+        "/api/v1/messages/attachment/",
+        params={
+            "chat_id": chat_id,
+            "filename": "enc_deadbeef.bin",
+            "caption": "e2ee1:aaaa:bbbb",
+            "mime": "application/octet-stream",
+            "encrypted": "true",
+        },
+        content=b"\x00fake-ciphertext",
+        headers={**api.auth(token), "Content-Type": "application/octet-stream"},
+    )
+    assert accepted.status_code == 200, accepted.text
+    body = accepted.json()
+    assert body["encrypted"] is True
+    # Настоящее имя файла сервер не знает — на диске нейтральное.
+    assert body["file"]["name"] == "enc_deadbeef.bin"
+    assert body["file"]["mime"] == "application/octet-stream"

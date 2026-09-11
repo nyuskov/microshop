@@ -648,7 +648,7 @@ import {
 } from '@/utils/user'
 import { splitByQuery } from '@/utils/search'
 import { ONLINE_WINDOW_SECONDS, formatChatTime, formatMsgTime } from '@/utils/format'
-import { mediaTypeLabel } from '@/utils/media'
+import { isLockedFile, lockedFileLabel, mediaTypeLabel } from '@/utils/media'
 
 const props = defineProps<{
   view: 'chats' | 'contacts' | 'stories'
@@ -1029,6 +1029,8 @@ const previewText = (chat: Chat): string => {
   // Скрытое модерацией: сервер не отдаёт ни текст, ни файл — показываем пометку,
   // а не пустую строку (иначе выглядит как сбой).
   if (last.hidden) return 'Скрыто до проверки модератором'
+  // Зашифрованное вложение: содержимое и имя файла серверу неизвестны.
+  if (isLockedFile(last)) return lockedFileLabel(last)
   if (last.encrypted && isEncryptedPayload(last.text)) return '🔒 Сообщение'
   const me = props.currentUserId
   const mine = me !== null && last.user_id === me
@@ -1117,6 +1119,7 @@ const messageSenderPrefix = (message: Message): string =>
 /** Текст сниппета сообщения (текст или тип вложения). */
 const messageSnippetText = (message: Message): string => {
   if (message.hidden) return 'Скрыто до проверки модератором'
+  if (isLockedFile(message)) return lockedFileLabel(message)
   if (message.encrypted && isEncryptedPayload(message.text)) return '🔒 Сообщение'
   if (message.text) return message.text
   return message.file ? mediaTypeLabel(message.file) : ''

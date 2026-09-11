@@ -7,7 +7,14 @@ from sqlalchemy.orm import selectinload
 
 from api_v1.events.service import notify_chat, notify_user
 from api_v1.moderation import crud as moderation_crud
-from core.models import Chat, ChatMute, Message, User, user_chat_association_table
+from core.models import (
+    Chat,
+    ChatGroupKey,
+    ChatMute,
+    Message,
+    User,
+    user_chat_association_table,
+)
 from core.models.associations import ROLE_ADMIN, ROLE_CREATOR, ROLE_MEMBER
 
 
@@ -33,7 +40,12 @@ async def is_user_chat_member(
 async def set_chat_e2ee(
     session: AsyncSession, *, chat_id: int, user_id: int, enabled: bool
 ) -> bool:
-    """Включает/выключает сквозное шифрование (тип чата) для участника."""
+    """Включает/выключает сквозное шифрование (тип чата) для участника.
+
+    Доступно в личных чатах и в групповых (там переключать может создатель или
+    админ). В «Сохранённых сообщениях» шифрование не имеет смысла — ключа
+    собеседника нет.
+    """
     if not await is_user_chat_member(session, chat_id, user_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -45,12 +57,26 @@ async def set_chat_e2ee(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Чат не найден",
         )
-    if chat.is_group or chat.is_self:
+    if chat.is_self:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Сквозное шифрование доступно только в личных чатах",
+            detail="Сквозное шифрование недоступно в «Сохранённых сообщениях»",
         )
+    if chat.is_group:
+        role = await get_member_role(session, chat_id=chat_id, user_id=user_id)
+        if role not in (ROLE_CREATOR, ROLE_ADMIN):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Шифрование группы включает создатель или админ",
+            )
     chat.e2ee_enabled = enabled
+    if chat.is_group and not enabled:
+        # Выключаем шифрование — обёртки ключа группы больше не нужны. Если
+        # оставить их, повторное включение переиспользовало бы старый ключ,
+        # известный в том числе бывшим участникам.
+        await session.execute(
+            delete(ChatGroupKey).where(ChatGroupKey.chat_id == chat_id)
+        )
     await session.commit()
     return chat.e2ee_enabled
 

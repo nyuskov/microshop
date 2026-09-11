@@ -70,7 +70,8 @@ export const chatPeerTitle = (chat: Chat, currentUserId: number | null): string 
 }
 
 /** Личный чат ровно с двумя участниками. */
-export const isPrivateChat = (chat: Chat): boolean => chat.users.length === 2
+export const isPrivateChat = (chat: Chat): boolean =>
+  !chat.is_group && !chat.is_self && chat.users.length === 2
 
 /** Групповой чат (общий для нескольких участников). */
 export const isGroupChat = (chat: Chat): boolean =>

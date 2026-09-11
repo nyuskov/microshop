@@ -137,10 +137,16 @@ async def create_attachment_message(
     caption: str = Query(default="", max_length=4000),
     reply_to_id: int | None = Query(default=None),
     mime: str | None = Query(default=None, max_length=120),
+    encrypted: bool = Query(default=False),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
-    """Отправляет файл/изображение как сообщение (тело запроса — байты файла)."""
+    """Отправляет файл/изображение как сообщение (тело запроса — байты файла).
+
+    При ``encrypted=true`` тело — уже зашифрованный на клиенте блоб
+    (имя файла нейтральное, ``application/octet-stream``), поэтому проверять
+    расширение и сигнатуры нечего: сервер такие данные не читает.
+    """
     await _enforce_user_rate_limit(
         user,
         scope="messages:upload",
@@ -158,7 +164,8 @@ async def create_attachment_message(
             detail=f"Файл слишком большой (максимум {MAX_UPLOAD_MB} МБ)",
         )
 
-    validate_attachment_upload(filename, content)
+    if not encrypted:
+        validate_attachment_upload(filename, content)
     # Квота проверяется до записи на диск (см. api_v1/media_quota.py).
     await enforce_media_quota(session, user_id=user.id, incoming_bytes=len(content))
 
@@ -173,6 +180,7 @@ async def create_attachment_message(
         file_size=len(content),
         text=caption.strip(),
         reply_to_id=reply_to_id,
+        encrypted=encrypted,
     )
 
 

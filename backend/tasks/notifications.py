@@ -196,7 +196,12 @@ async def _send_message_push_async(
         if message is not None:
             if message.encrypted:
                 # E2EE: на сервере лежит шифротекст — в уведомление текст не шлём.
-                body = "🔒 Сообщение защищено сквозным шифрованием"
+                # Для вложений уточняем, что защищено именно вложение.
+                body = (
+                    "🔒 Вложение защищено сквозным шифрованием"
+                    if message.file_url
+                    else "🔒 Сообщение защищено сквозным шифрованием"
+                )
             else:
                 text = (message.text or "").strip()
                 if text:

@@ -9,16 +9,44 @@ export const isAudioFile = (file: MessageFile): boolean => file.mime?.startsWith
 
 export const isVideoFile = (file: MessageFile): boolean => file.mime?.startsWith('video/') ?? false
 
+/**
+ * Вложение сообщения «как его видит получатель».
+ *
+ * У зашифрованного вложения на сервере лежит нейтральное имя (`enc_*.bin`) и
+ * `application/octet-stream` — настоящие имя/тип/размер приходят в конверте
+ * внутри зашифрованного текста. Пока конверт не расшифрован, отдаём то, что
+ * есть (интерфейс должен показать хотя бы «🔒 Вложение»).
+ */
+export const effectiveFile = (message: Message): MessageFile | null => {
+  const file = message.file
+  if (!file) return null
+  const meta = message.e2ee_file
+  if (!meta) return file
+  return { name: meta.n, url: file.url, mime: meta.m, size: meta.s }
+}
+
+/** Зашифрованное вложение, конверт которого ещё не расшифрован (или не читается). */
+export const isLockedFile = (message: Message): boolean =>
+  !!message.file && !!message.encrypted && !message.e2ee_file
+
+/** Подпись зашифрованного вложения для списка чатов и цитат. */
+export const lockedFileLabel = (message: Message): string => {
+  const mime = message.file?.mime ?? ''
+  if (mime.startsWith('image/')) return '🔒 Изображение'
+  if (mime.startsWith('video/')) return '🔒 Видео'
+  if (mime.startsWith('audio/')) return '🔒 Голосовое'
+  return '🔒 Вложение'
+}
+
 /** Видео, записанное через кнопку «видеосообщение» (имя файла video_*), — кружок. */
 export const isRecordedVideoMessage = (file: MessageFile): boolean =>
   isVideoFile(file) && (file.name.toLowerCase().startsWith('video_') ?? false)
 
 /** Пузырь, содержащий только кружок-видео (без текста/ответа), — без фона. */
-export const isRoundVideoOnly = (message: Message): boolean =>
-  !!message.file &&
-  isRecordedVideoMessage(message.file) &&
-  !message.text &&
-  message.reply_to_id == null
+export const isRoundVideoOnly = (message: Message): boolean => {
+  const file = effectiveFile(message)
+  return !!file && isRecordedVideoMessage(file) && !message.text && message.reply_to_id == null
+}
 
 export const mediaTypeLabel = (file: MessageFile): string => {
   if (isImageFile(file)) return 'Изображение'
@@ -45,13 +73,18 @@ export const messageSnippet = (message: Message): string => {
     const callText = callMessageText(message)
     return callText ? `📞 ${callText}` : '📞 Звонок'
   }
-  if (message.encrypted && isEncryptedPayload(message.text)) return '🔒 Сообщение'
-  if (message.file) {
-    if (isImageFile(message.file)) return '📷 Изображение'
-    if (isAudioFile(message.file)) return '🎤 Голосовое'
-    if (isVideoFile(message.file)) return '🎥 Видео'
-    return `📎 ${message.file.name}`
+  // Зашифрованное вложение, которое ещё не расшифровано (превью из списка чатов).
+  if (isLockedFile(message)) return lockedFileLabel(message)
+  const file = effectiveFile(message)
+  if (file) {
+    // Зашифрованное вложение: в тексте лежит конверт, «🔒» подчёркивает защиту.
+    const lock = message.e2ee_file ? '🔒 ' : ''
+    if (isImageFile(file)) return `${lock}📷 Изображение`
+    if (isAudioFile(file)) return `${lock}🎤 Голосовое`
+    if (isVideoFile(file)) return `${lock}🎥 Видео`
+    return `${lock}📎 ${file.name}`
   }
+  if (message.encrypted && isEncryptedPayload(message.text)) return '🔒 Сообщение'
   return message.text || ''
 }
 

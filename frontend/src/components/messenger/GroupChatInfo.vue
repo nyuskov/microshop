@@ -77,6 +77,31 @@
 
         <p v-if="error" class="gi-error">{{ error }}</p>
 
+        <!-- Тип группы: обычная / зашифрованная (E2EE) -->
+        <div class="gi-section gi-e2ee">
+          <div class="gi-e2ee-row">
+            <div class="gi-e2ee-info">
+              <div class="gi-e2ee-title">Сквозное шифрование</div>
+              <div class="gi-e2ee-desc">
+                Обычная группа — текст и файлы читает сервер (видны в превью и уведомлениях).
+                Зашифрованная — переписку читают только участники; ключ группы хранится на
+                устройствах и меняется, когда состав группы меняется.
+              </div>
+            </div>
+            <q-toggle
+              :model-value="!!e2eeEnabled"
+              color="primary"
+              keep-color
+              :disable="e2eeBusy || busy || !canManage"
+              aria-label="Сквозное шифрование группы"
+              @update:model-value="onToggleE2ee"
+            />
+          </div>
+          <p v-if="!canManage" class="gi-e2ee-hint">
+            Включить или выключить шифрование может создатель группы или админ.
+          </p>
+        </div>
+
         <!-- Участники -->
         <div class="gi-section">
           <div class="gi-section-head">
@@ -220,6 +245,10 @@ const props = defineProps<{
   contacts: SearchUserResult[]
   /** id пользователей, которые сейчас «в сети». */
   onlineUserIds?: number[]
+  /** Включено ли сквозное шифрование в группе. */
+  e2eeEnabled?: boolean
+  /** Идёт переключение шифрования (блокирует тумблер). */
+  e2eeBusy?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -228,6 +257,13 @@ const emit = defineEmits<{
   (e: 'updated'): void
   /** Пользователь покинул группу или удалил её — убрать чат локально. */
   (e: 'left'): void
+  /** Переключатель «Сквозное шифрование». */
+  (e: 'toggle-e2ee', enabled: boolean): void
+  /**
+   * Состав группы изменился. `rotate=true` — участника исключили: ключ группы
+   * нужно выпустить заново, иначе исключённый читал бы новые сообщения.
+   */
+  (e: 'members-changed', rotate: boolean): void
 }>()
 
 const loading = ref(false)
@@ -244,6 +280,11 @@ const addSelected = ref<Set<number>>(new Set())
 const myRole = computed<string>(() => props.chat.my_role || detail.value?.my_role || 'member')
 const isCreator = computed<boolean>(() => myRole.value === 'creator')
 const canManage = computed<boolean>(() => myRole.value === 'creator' || myRole.value === 'admin')
+
+/** Тумблер «Сквозное шифрование» — решение принимает родитель (Messenger). */
+const onToggleE2ee = (value: boolean | string | null) => {
+  emit('toggle-e2ee', value === true || value === 'true')
+}
 
 const groupAvatar = computed<string | undefined>(() => {
   const url = detail.value?.avatar_url ?? props.chat.avatar_url
@@ -387,6 +428,8 @@ const confirmAdd = async () => {
     closeAddPanel()
     await load()
     emit('updated')
+    // Новому участнику нужна своя обёртка ключа группы (ротация не нужна).
+    emit('members-changed', false)
   } catch (err) {
     error.value = getErrorMessage(err, 'Не удалось добавить участников')
   } finally {
@@ -435,6 +478,8 @@ const runMemberAction = async (action: MemberAction, member: ChatMember) => {
       await removeGroupMember(props.chat.id, member.id)
       await load()
       emit('updated')
+      // Исключённый не должен читать новые сообщения — ключ выпускаем заново.
+      emit('members-changed', true)
     } catch (err) {
       error.value = getErrorMessage(err, 'Не удалось исключить участника')
     } finally {
@@ -644,6 +689,41 @@ const deleteGroup = async () => {
 
 .gi-section {
   margin-top: 14px;
+}
+
+/* Тип группы: обычная / зашифрованная (E2EE) */
+.gi-e2ee-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--ms-border, #e3e8ee);
+  border-radius: var(--ms-radius, 12px);
+  background: var(--ms-surface-2, #f5f7fa);
+}
+
+.gi-e2ee-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.gi-e2ee-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ms-text, #1c2733);
+}
+
+.gi-e2ee-desc {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ms-muted, #71808d);
+}
+
+.gi-e2ee-hint {
+  margin: 6px 2px 0;
+  font-size: 11.5px;
+  color: var(--ms-muted, #71808d);
 }
 
 .gi-section-head {

@@ -16,11 +16,12 @@
 import logging
 from pathlib import Path
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models import (
     Chat,
+    ChatGroupKey,
     ChatMute,
     DeviceKey,
     Message,
@@ -102,6 +103,14 @@ async def delete_user_account(session: AsyncSession, user: User) -> None:
     )
     await session.execute(delete(ChatMute).where(ChatMute.user_id == user_id))
     await session.execute(delete(DeviceKey).where(DeviceKey.user_id == user_id))
+    # Обёртки ключа группы: свои — удаляем, в чужих проставляем NULL
+    # (обёртку всё равно сможет расшифровать только её владелец).
+    await session.execute(delete(ChatGroupKey).where(ChatGroupKey.user_id == user_id))
+    await session.execute(
+        update(ChatGroupKey)
+        .where(ChatGroupKey.wrapped_by == user_id)
+        .values(wrapped_by=None)
+    )
     await session.execute(
         delete(PushSubscription).where(PushSubscription.user_id == user_id)
     )

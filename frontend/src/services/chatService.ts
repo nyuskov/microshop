@@ -198,7 +198,8 @@ export const sendAttachmentMessage = async (
   file: File,
   caption = '',
   replyToId?: number | null,
-  onProgress?: (percent: number) => void
+  onProgress?: (percent: number) => void,
+  encrypted = false
 ): Promise<Message> => {
   const params: Record<string, string | number> = {
     chat_id: chatId,
@@ -208,6 +209,12 @@ export const sendAttachmentMessage = async (
   }
   if (replyToId) {
     params.reply_to_id = replyToId
+  }
+  // Зашифрованное вложение (E2EE): тело запроса — шифротекст, поэтому сервер не
+  // проверяет сигнатуры изображений и не пытается угадать тип. Имя файла тоже
+  // нейтральное (`enc_*.bin`) — настоящее лежит в зашифрованном конверте.
+  if (encrypted) {
+    params.encrypted = 'true'
   }
   const response = await api.post<Message>('/messages/attachment/', file, {
     params,

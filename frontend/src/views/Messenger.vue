@@ -321,9 +321,12 @@
         :current-user-id="currentUserId"
         :contacts="contacts"
         :online-user-ids="onlineUserIds"
+        :e2ee-enabled="!!selectedChat.e2ee_enabled"
         @close="showGroupInfoModal = false"
         @updated="onGroupInfoUpdated"
         @left="onGroupLeft"
+        @toggle-e2ee="onChatInfoToggleE2ee"
+        @members-changed="onGroupMembersChanged"
       />
     </template>
   </q-dialog>
@@ -469,6 +472,7 @@ import {
   searchMessages,
   editMessage,
   forwardMessage,
+  fetchChatDetail,
   openPrivateChat,
   sendAttachmentMessage,
   sendNewMessage,
@@ -484,21 +488,29 @@ import {
 import {
   ENCRYPTED_FALLBACK,
   bootstrapE2ee,
-  chatAesKey,
+  chatAesKeyFor,
   decryptText,
+  distributeGroupKey,
+  e2eeReadyForChat,
   encryptText,
   isE2eeAvailable,
   isEncryptedPayload,
-  peerPublicKey,
   resetE2eeSession
 } from '@/services/e2ee'
-import type { Chat, ChatUser, Message } from '@/types'
+import { encryptFileForChat, parseFileMeta } from '@/services/e2eeFiles'
+import {
+  decryptedMediaFor,
+  preloadDecryptedMedia,
+  releaseDecryptedMedia,
+  releaseDecryptedMediaExcept
+} from '@/composables/useDecryptedMedia'
+import type { Chat, ChatUser, EncryptedFileMeta, Message } from '@/types'
 import { avatarUrlOf, chatPeer, chatTitle, displayName, isGroupChat } from '@/utils/user'
 import { usernameFromProfilePath } from '@/utils/profileLink'
 import { shareTargetFromSearch, withoutShareTargetParams } from '@/utils/shareTarget'
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
-import { isImageFile, messageSnippet, optimizeImageFile } from '@/utils/media'
+import { effectiveFile, isImageFile, messageSnippet, optimizeImageFile } from '@/utils/media'
 import { mediaUrl } from '@/config'
 import {
   chatIdFromUrl,
@@ -981,12 +993,44 @@ const applyChatE2ee = async (chatId: number, enabled: boolean) => {
   chat.e2ee_enabled = enabled
   try {
     await setChatE2ee(chatId, enabled)
-    // Обновляем готовность ключа собеседника — от неё зависит замок в шапке.
+    // В группе мало включить флаг: ключ нужно раздать участникам.
+    if (enabled && isGroupChat(chat)) await distributeGroupKeys(chatId)
+    // Обновляем готовность ключа — от неё зависит замок в шапке.
     void prepareChatE2ee(chatId)
   } catch (error) {
     chat.e2ee_enabled = previous
     console.error('Не удалось изменить тип чата:', getErrorMessage(error))
   }
+}
+
+/**
+ * Раздаёт ключ группы участникам (или пересобирает его).
+ *
+ * `rotate` — выпустить НОВЫЙ ключ: обязателен после исключения участника,
+ * иначе исключённый продолжит читать новые сообщения.
+ */
+const distributeGroupKeys = async (chatId: number, rotate = false): Promise<void> => {
+  const uid = currentUserId.value
+  if (uid === null || !e2eeMyKeyReady.value) return
+  try {
+    const detail = await fetchChatDetail(chatId)
+    const ids = detail.members.map((member) => member.id)
+    const { missing } = await distributeGroupKey(uid, chatId, ids, { rotate })
+    if (missing.length > 0) {
+      console.warn(
+        'Ключ группы не удалось отдать участникам (нет ключа устройства):',
+        missing.join(', ')
+      )
+    }
+  } catch (error) {
+    console.error('Не удалось раздать ключ группы:', getErrorMessage(error))
+  }
+}
+
+/** Состав группы изменился — ключ надо пересобрать (после исключения — новый). */
+const onGroupMembersChanged = (rotate: boolean) => {
+  const chat = selectedChat.value
+  if (chat !== null) void distributeGroupKeys(chat.id, rotate)
 }
 
 /** Обработчик переключателя типа чата в «Информации о чате». */
@@ -1009,15 +1053,23 @@ const saveMessageToSelf = async (message: Message) => {
 }
 
 // ---------- Просмотр изображений (lightbox) ----------
-const lightboxImages = computed(() =>
-  messages.value
-    .filter((m) => m.file !== null && isImageFile(m.file))
-    .map((m) => ({
+const lightboxImages = computed(() => {
+  const items: { id: number; url: string; name: string }[] = []
+  for (const m of messages.value) {
+    const attachment = effectiveFile(m)
+    if (!attachment || !isImageFile(attachment)) continue
+    // Зашифрованную картинку показываем только расшифрованной: ссылка на
+    // шифротекст дала бы «битую» картинку.
+    const local = m.e2ee_file ? decryptedMediaFor(m) : null
+    if (m.e2ee_file && local?.status !== 'ready') continue
+    items.push({
       id: m.id,
-      url: mediaUrl(m.file!.url),
-      name: m.file!.name || 'Изображение'
-    }))
-)
+      url: local?.url ?? mediaUrl(attachment.url),
+      name: attachment.name || 'Изображение'
+    })
+  }
+  return items
+})
 const lightboxIndex = ref<number | null>(null)
 
 const openImageFromMessage = (message: Message) => {
@@ -1095,7 +1147,8 @@ const findPeerUser = (
   return contacts.value.find((contact) => contact.id === id)
 }
 
-const isPrivateChat = (chat: Chat | null): boolean => !!chat && chat.users.length === 2
+const isPrivateChat = (chat: Chat | null): boolean =>
+  !!chat && !chat.is_group && !chat.is_self && chat.users.length === 2
 
 // ---------- Сквозное шифрование (E2EE): ключи, шифрование/расшифровка ----------
 /** Мой ключ готов и опубликован на сервере (можно шифровать исходящие). */
@@ -1103,22 +1156,39 @@ const e2eeMyKeyReady = ref(false)
 /** Для открытого чата: есть ли у собеседника опубликованный ключ. */
 const e2eePeerReadyByChat = ref<Record<number, boolean>>({})
 
-const peerIdOfChat = (chat: Chat | null): number | null => {
-  if (!isPrivateChat(chat)) return null
-  const peer = otherUserOfChat(chat as Chat)
-  return peer ? peer.id : null
+/**
+ * Ключ чата для шифрования/расшифровки: у личного чата — общий секрет двух
+ * сторон, у группы — её собственный ключ. null = чат не зашифрован/ключей нет.
+ */
+const chatKeyOf = async (chat: Chat | null): Promise<CryptoKey | null> => {
+  const uid = currentUserId.value
+  if (uid === null || !chat || !chat.e2ee_enabled || !e2eeMyKeyReady.value) return null
+  return chatAesKeyFor(uid, chat)
 }
 
-/** Подтягивает ключ собеседника чата (для отправки и индикатора в шапке). */
+/**
+ * Локально подставляет расшифрованный конверт отправленного файла: сервер
+ * вернул шифротекст и нейтральное имя, а настоящее имя/тип/подпись есть только
+ * у нас — иначе пузырь мигал бы «замком» до повторной расшифровки.
+ */
+const applyLocalFileEnvelope = (message: Message, meta: EncryptedFileMeta): void => {
+  message.e2ee_file = meta
+  message.text = meta.c ?? ''
+  message.encrypted = false
+  if (message.file) {
+    message.file = { ...message.file, name: meta.n, mime: meta.m, size: meta.s }
+  }
+}
+
+/** Проверяет готовность чата к E2EE (ключ собеседника/группы) — для замка в шапке. */
 const prepareChatE2ee = async (chatId: number): Promise<void> => {
   const uid = currentUserId.value
   const chat = chats.value.find((c) => c.id === chatId) ?? selectedChat.value
-  const peerId = peerIdOfChat(chat ?? null)
-  if (uid === null || peerId === null || !isE2eeAvailable()) return
-  const pub = await peerPublicKey(peerId)
+  if (uid === null || !chat || !isE2eeAvailable()) return
+  const ready = await e2eeReadyForChat(uid, chat)
   e2eePeerReadyByChat.value = {
     ...e2eePeerReadyByChat.value,
-    [chatId]: !!pub
+    [chatId]: ready
   }
 }
 
@@ -1138,13 +1208,10 @@ const selectedChatE2ee = computed<boolean>(() => {
 const applyDecryptMessages = async (chatId: number, list: Message[]): Promise<Message[]> => {
   const need = list.filter((m) => m.encrypted && isEncryptedPayload(m.text))
   if (need.length === 0) return list
-  const uid = currentUserId.value
-  const chat = chats.value.find((c) => c.id === chatId)
-  const peerId = peerIdOfChat(chat ?? null)
+  const chat = chats.value.find((c) => c.id === chatId) ?? selectedChat.value
+  const key = await chatKeyOf(chat)
   const fallback = (m: Message): Message =>
     m.encrypted && isEncryptedPayload(m.text) ? { ...m, text: ENCRYPTED_FALLBACK } : m
-  if (uid === null || peerId === null) return list.map(fallback)
-  const key = await chatAesKey(uid, peerId, chatId)
   if (!key) return list.map(fallback)
   const out: Message[] = []
   for (const m of list) {
@@ -1153,10 +1220,23 @@ const applyDecryptMessages = async (chatId: number, list: Message[]): Promise<Me
       continue
     }
     const plain = await decryptText(key, m.text)
-    out.push(
-      plain === null ? { ...m, text: ENCRYPTED_FALLBACK } : { ...m, text: plain, encrypted: false }
-    )
+    if (plain === null) {
+      out.push({ ...m, text: ENCRYPTED_FALLBACK })
+      continue
+    }
+    // Зашифрованное вложение: в тексте лежит конверт с ключом файла, его
+    // настоящим именем/типом и подписью. Показываем подпись, а сам файл
+    // расшифровывает useDecryptedMedia (по нему строится blob-ссылка).
+    const meta = m.file ? parseFileMeta(plain) : null
+    if (meta) {
+      out.push({ ...m, text: meta.c ?? '', encrypted: false, e2ee_file: meta })
+    } else {
+      out.push({ ...m, text: plain, encrypted: false })
+    }
   }
+  // Заранее запускаем расшифровку вложений: к моменту отрисовки/лайтбокса
+  // картинки уже готовы (и грузятся один раз на сообщение).
+  preloadDecryptedMedia(out)
   return out
 }
 
@@ -1530,6 +1610,8 @@ const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {
   showChatInfoModal.value = false
   showGroupInfoModal.value = false
   await Promise.all([loadThreadLatest(chatId), loadPinned(chatId)])
+  // Blob-ссылки расшифрованных вложений других чатов больше не нужны.
+  releaseDecryptedMediaExcept(messages.value.map((message) => message.id))
   // Мы читаем чат — непрочитанные обнуляем сразу (не дожидаясь синхронизации).
   const opened = chats.value.find((item) => item.id === chatId)
   if (opened) opened.unread_count = 0
@@ -1603,18 +1685,13 @@ const sendText = async () => {
     // превью списка и в push-уведомлениях — как в обычных чатах Telegram).
     let wireText = text
     let wireEncrypted = false
-    const uid = currentUserId.value
-    const e2eeChatOn = !!selectedChat.value?.e2ee_enabled
-    const e2eePeerId = peerIdOfChat(selectedChat.value)
-    if (e2eeChatOn && uid !== null && e2eePeerId !== null && e2eeMyKeyReady.value) {
-      const aes = await chatAesKey(uid, e2eePeerId, chatId)
-      if (aes) {
-        wireText = await encryptText(aes, text)
-        wireEncrypted = true
-        e2eePeerReadyByChat.value = {
-          ...e2eePeerReadyByChat.value,
-          [chatId]: true
-        }
+    const aes = await chatKeyOf(selectedChat.value)
+    if (aes) {
+      wireText = await encryptText(aes, text)
+      wireEncrypted = true
+      e2eePeerReadyByChat.value = {
+        ...e2eePeerReadyByChat.value,
+        [chatId]: true
       }
     }
     const message = await sendNewMessage(chatId, wireText, replyTarget.value?.id, wireEncrypted)
@@ -1671,19 +1748,26 @@ const onFileSelected = async (file: File) => {
   sendingFile.value = true
   try {
     // Фото с камеры/галереи сжимаем на клиенте — грузится быстрее.
-    const uploadFile = isImage ? await optimizeImageFile(file) : file
+    const optimized = isImage ? await optimizeImageFile(file) : file
+    const caption = newMessage.value.trim()
+    // «Зашифрованный» чат: и содержимое, и настоящее имя файла уезжают
+    // только в шифрованном виде (на сервере остаётся блоб enc_*.bin).
+    const aes = await chatKeyOf(selectedChat.value)
+    const payload = aes ? await encryptFileForChat(aes, optimized, caption) : null
     const message = await sendAttachmentMessage(
       chatId,
-      uploadFile,
-      newMessage.value.trim(),
+      payload ? payload.blob : optimized,
+      payload ? payload.text : caption,
       replyTarget.value?.id,
       (percent) => {
         // Сжатие могло занять время — прогресс показываем только актуального пузыря.
         if (pendingUploads.value.some((p) => p.localId === localId)) {
           setPendingProgress(localId, percent)
         }
-      }
+      },
+      !!payload
     )
+    if (payload) applyLocalFileEnvelope(message, payload.meta)
     removePendingUpload(localId)
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     newMessage.value = ''
@@ -1747,17 +1831,22 @@ const uploadRecordedMedia = async (payload: RecordedMedia, kind: 'voice' | 'vide
     const file = new File([payload.blob], mediaFileName(kind, payload.mime), {
       type: payload.mime
     })
+    // Голосовые и кружки шифруются так же, как обычные вложения.
+    const aes = await chatKeyOf(selectedChat.value)
+    const encrypted = aes ? await encryptFileForChat(aes, file) : null
     const message = await sendAttachmentMessage(
       chatId,
-      file,
-      '',
+      encrypted ? encrypted.blob : file,
+      encrypted ? encrypted.text : '',
       replyTarget.value?.id,
       (percent) => {
         if (pendingUploads.value.some((p) => p.localId === localId)) {
           setPendingProgress(localId, percent)
         }
-      }
+      },
+      !!encrypted
     )
+    if (encrypted) applyLocalFileEnvelope(message, encrypted.meta)
     removePendingUpload(localId)
     clearReply()
     sendTypingStop(chatId)
@@ -1867,15 +1956,11 @@ const buildWireText = async (
 ): Promise<{ wireText: string; encrypted: boolean }> => {
   let wireText = text
   let encrypted = false
-  const uid = currentUserId.value
   const chat = chats.value.find((item) => item.id === chatId) ?? null
-  const peerId = peerIdOfChat(chat)
-  if (chat?.e2ee_enabled && uid !== null && peerId !== null && e2eeMyKeyReady.value) {
-    const aes = await chatAesKey(uid, peerId, chatId)
-    if (aes) {
-      wireText = await encryptText(aes, text)
-      encrypted = true
-    }
+  const aes = await chatKeyOf(chat)
+  if (aes) {
+    wireText = await encryptText(aes, text)
+    encrypted = true
   }
   return { wireText, encrypted }
 }
@@ -2919,13 +3004,9 @@ const encryptSharedText = async (
   chatId: number,
   text: string
 ): Promise<{ text: string; encrypted: boolean }> => {
-  const uid = currentUserId.value
+  if (!text) return { text, encrypted: false }
   const chat = chats.value.find((item) => item.id === chatId) ?? null
-  const peerId = peerIdOfChat(chat)
-  if (!text || !chat?.e2ee_enabled || uid === null || peerId === null || !e2eeMyKeyReady.value) {
-    return { text, encrypted: false }
-  }
-  const aes = await chatAesKey(uid, peerId, chatId)
+  const aes = await chatKeyOf(chat)
   if (!aes) return { text, encrypted: false }
   return { text: await encryptText(aes, text), encrypted: true }
 }
@@ -2945,7 +3026,17 @@ const sendIncomingShare = async (chatId: number) => {
     if (file) {
       // Фото сжимаем на клиенте — как при обычной отправке вложения.
       const upload = file.type.startsWith('image/') ? await optimizeImageFile(file) : file
-      await sendAttachmentMessage(chatId, upload, text)
+      const aes = await chatKeyOf(chats.value.find((item) => item.id === chatId) ?? null)
+      const payload = aes ? await encryptFileForChat(aes, upload, text) : null
+      const message = await sendAttachmentMessage(
+        chatId,
+        payload ? payload.blob : upload,
+        payload ? payload.text : text,
+        undefined,
+        undefined,
+        !!payload
+      )
+      if (payload) applyLocalFileEnvelope(message, payload.meta)
     } else {
       const wire = await encryptSharedText(chatId, text)
       await sendNewMessage(chatId, wire.text, undefined, wire.encrypted)
@@ -3031,6 +3122,7 @@ watch(
       stopRealtime()
       callStore.disconnect()
       resetE2eeSession()
+      releaseDecryptedMedia()
       e2eeMyKeyReady.value = false
       e2eePeerReadyByChat.value = {}
       chats.value = []
