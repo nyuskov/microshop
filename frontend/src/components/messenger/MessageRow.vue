@@ -141,14 +141,25 @@
            растягивает ленту на несколько экранов. -->
       <!-- Упоминания @логин подсвечиваем: видно, к кому обращаются -->
       <span v-if="message.text" class="msg-text" :class="{ clamped: isClamped }">
-        <template v-for="(part, index) in textParts" :key="index"
-          ><span v-if="part.type === 'mention'" class="msg-mention">{{ part.value }}</span
-          ><template v-else>{{ part.value }}</template></template
-        >
+        <template v-for="(part, index) in textParts" :key="index">
+          <span v-if="part.type === 'mention'" class="msg-mention">{{ part.value }}</span>
+          <a
+            v-else-if="part.type === 'link'"
+            class="msg-link"
+            :href="part.href"
+            rel="noopener noreferrer"
+            @click.stop.prevent="followMessageLink(part.href)"
+            >{{ part.value }}</a
+          >
+          <template v-else>{{ part.value }}</template>
+        </template>
       </span>
       <button v-if="canCollapse" type="button" class="msg-more" @click.stop="expanded = !expanded">
         {{ expanded ? 'Свернуть' : 'Показать полностью' }}
       </button>
+
+      <!-- Карточка внешней ссылки (превью сайта, как в Telegram) -->
+      <LinkPreviewCard v-if="linkPreview" :preview="linkPreview" />
 
       <span class="msg-meta">
         <span v-if="message.edited_at" class="msg-edited" title="изменено">изменено</span>
@@ -338,7 +349,8 @@ import { mediaUrl } from '@/config'
 import { haptic, HAPTIC_HOLD } from '@/utils/haptics'
 import { avatarStyle, initials } from '@/utils/user'
 import { formatBytes, formatMsgTime } from '@/utils/format'
-import { splitMentions } from '@/utils/mentions'
+import { splitMessageText } from '@/utils/mentions'
+import { followLink } from '@/composables/useExternalLinkGuard'
 import {
   callMessageIcon,
   callMessageText,
@@ -351,6 +363,8 @@ import {
 } from '@/utils/media'
 import AudioMessage from '@/components/media/AudioMessage.vue'
 import RoundVideoMessage from '@/components/media/RoundVideoMessage.vue'
+import LinkPreviewCard from '@/components/messenger/LinkPreviewCard.vue'
+import { useLinkPreview } from '@/composables/useLinkPreview'
 
 export interface MessageQuote {
   name: string
@@ -376,7 +390,17 @@ let swipeFeedback = false
 /** С какого размера текст сворачиваем (примерно 12 строк). */
 const LONG_TEXT_LIMIT = 600
 
-const textParts = computed(() => splitMentions(props.message.text ?? ''))
+const textParts = computed(() => splitMessageText(props.message.text ?? ''))
+
+/**
+ * Переход по ссылке из текста.
+ *
+ * Сами не открываем: свой адрес откроет приложение, а чужой — только после
+ * подтверждения «Переходите на внешний сайт» (см. useExternalLinkGuard).
+ */
+const followMessageLink = (url?: string) => {
+  if (url) void followLink(url)
+}
 
 const expanded = ref(false)
 /** Корень строки сообщения — нужен для замеров (свайп, лист действий). */
@@ -436,6 +460,13 @@ const emit = defineEmits<{
   (e: 'report'): void
   (e: 'open-image'): void
 }>()
+
+// Превью ссылки из текста: только у обычных текстовых сообщений — у
+// зашифрованных текст на сервере не читается, у отметок о звонках текста нет.
+const linkPreviewText = computed<string | null>(() =>
+  props.message.encrypted || props.message.kind === 'call' ? null : (props.message.text ?? null)
+)
+const { preview: linkPreview } = useLinkPreview(() => linkPreviewText.value)
 
 // ---------- «Переслано от …»: аватар автора и переход к нему ----------
 const forwarderName = computed<string>(
@@ -1001,6 +1032,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 .msg-mention {
   color: var(--ms-accent, #2ea25e);
   font-weight: 600;
+}
+
+/* Ссылка в тексте: подчёркнутая, цвет — как у текста (читается в любом пузыре) */
+.msg-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  cursor: pointer;
+  word-break: break-all;
+}
+
+.msg-link:hover {
+  opacity: 0.85;
 }
 
 .msg-more:hover {

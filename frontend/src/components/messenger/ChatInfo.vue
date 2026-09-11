@@ -20,6 +20,11 @@
           </div>
           <div v-if="peer.status" class="ci-status">{{ peer.status }}</div>
           <div class="ci-presence">{{ subtitle }}</div>
+          <!-- Ссылка на профиль: по ней человек откроет чат с собеседником -->
+          <button v-if="peerLink" type="button" class="ci-link-btn" @click="sharePeerLink">
+            <q-icon :name="icon(linkNotice ? 'check' : 'share')" size="15px" />
+            {{ linkNotice || 'Поделиться ссылкой' }}
+          </button>
         </div>
       </template>
 
@@ -87,10 +92,11 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { Chat, ChatUser, Message } from '@/types'
 import { mediaUrl } from '@/config'
 import { avatarStyle, avatarUrlOf, chatPeer, chatPeerTitle, initials } from '@/utils/user'
+import { profileLinkFor, profileShareText } from '@/utils/profileLink'
 import { formatBytes, formatMsgTime } from '@/utils/format'
 import { fileIcon, isImageFile } from '@/utils/media'
 
@@ -125,6 +131,41 @@ const peerName = computed<string>(() => {
   return value || 'Чат'
 })
 const peerAvatar = computed<string | undefined>(() => avatarUrlOf(peer.value))
+
+// ---------- Ссылка на профиль собеседника ----------
+// Открыв её, человек попадёт в чат с ним (см. resolveProfileLink в Messenger.vue).
+const peerLink = computed<string | null>(() =>
+  peer.value && peer.value.id !== props.currentUserId ? profileLinkFor(peer.value.username) : null
+)
+const linkNotice = ref('')
+
+/** «Поделиться» через систему, где её нет — просто копируем ссылку. */
+const sharePeerLink = async () => {
+  const link = peerLink.value
+  if (!link) return
+  const share = navigator.share
+  if (typeof share === 'function') {
+    try {
+      await share.call(navigator, {
+        title: 'Pismo',
+        text: profileShareText(link, peerName.value),
+        url: link
+      })
+      return
+    } catch {
+      /* человек закрыл системное окно — это не ошибка */
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(link)
+    linkNotice.value = 'Ссылка скопирована'
+  } catch {
+    linkNotice.value = 'Не удалось скопировать'
+  }
+  window.setTimeout(() => {
+    linkNotice.value = ''
+  }, 2500)
+}
 
 /** Изображения/гифки из загруженной истории чата. */
 const images = computed(() =>
@@ -220,6 +261,31 @@ const files = computed(() =>
 .ci-presence {
   margin-top: 6px;
   font-size: 12.5px;
+  color: var(--ms-accent, #2ea25e);
+}
+
+/* Ссылка на профиль собеседника */
+.ci-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 7px 12px;
+  border: 1px solid var(--ms-border, #e2e6ea);
+  border-radius: 999px;
+  background: var(--ms-surface, #ffffff);
+  color: var(--ms-text, #1c2733);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ci-link-btn:hover {
+  background: var(--ms-hover, #f2f4f6);
+}
+
+.ci-link-btn .q-icon {
   color: var(--ms-accent, #2ea25e);
 }
 

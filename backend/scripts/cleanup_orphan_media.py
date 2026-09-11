@@ -1,8 +1,10 @@
 """Удаляет файлы-«сироты» в media (на которые нет ссылок в БД).
 
-Файлы сообщений (messages.file_url) и аватары (user.avatar_url), оставшиеся на
-диске после удаления записей или сбоев, копятся бесконечно. Скрипт находит файлы
-в backend/media, на которые нет ссылок в БД, и (по флагу) удаляет их.
+Файлы сообщений (messages.file_url), аватары (user.avatar_url), медиа историй
+(stories.media_url) и картинки превью ссылок (link_previews.image_url),
+оставшиеся на диске после удаления записей или сбоев, копятся бесконечно.
+Скрипт находит файлы в backend/media, на которые нет ссылок в БД, и (по флагу)
+удаляет их.
 
 Запуск (нужен доступ к БД, например внутри контейнера web):
     poetry run python -m scripts.cleanup_orphan_media           # dry-run, только список
@@ -18,7 +20,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from core.models import Message, User, db_helper
+from core.models import LinkPreview, Message, Story, User, db_helper
 
 MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
 
@@ -34,7 +36,7 @@ def _collect_names(urls: list[str | None]) -> set[str]:
 
 
 async def _collect_used(session) -> set[str]:
-    """Имена файлов, на которые ссылаются сообщения и аватары."""
+    """Имена файлов, на которые ссылаются сообщения, аватары, истории, превью."""
     used: set[str] = set()
 
     result = await session.execute(
@@ -44,6 +46,16 @@ async def _collect_used(session) -> set[str]:
 
     result = await session.execute(
         select(User.avatar_url).where(User.avatar_url.is_not(None))
+    )
+    used |= _collect_names([row[0] for row in result.all()])
+
+    result = await session.execute(
+        select(Story.media_url).where(Story.media_url.is_not(None))
+    )
+    used |= _collect_names([row[0] for row in result.all()])
+
+    result = await session.execute(
+        select(LinkPreview.image_url).where(LinkPreview.image_url.is_not(None))
     )
     used |= _collect_names([row[0] for row in result.all()])
 

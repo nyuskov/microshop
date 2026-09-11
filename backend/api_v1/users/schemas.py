@@ -88,6 +88,25 @@ class UserSearchResultSchema(BaseModel):
     last_seen: datetime | None = None
 
 
+class UserLinkPreviewSchema(BaseModel):
+    """Данные пользователя для ссылки-профиля (`/u/<логин>`).
+
+    Намеренно БЕЗ номера телефона: такую ссылку можно переслать в любой чат или
+    опубликовать, и она не должна раскрывать персональные данные. Телефон
+    остаётся виден только там, где он и раньше был — в списке контактов и в
+    уже существующем чате (там это ожидаемо, ведь номер знает собеседник).
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    first_name: str | None
+    last_name: str | None
+    avatar_url: str | None = None
+    status: str | None = None
+
+
 class PhoneMatchRequest(BaseModel):
     """Номера из телефонной книги для поиска в мессенджере."""
 

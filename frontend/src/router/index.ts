@@ -2,7 +2,7 @@ import Messenger from '../views/Messenger.vue' // Импортируем нов�
 // import Home from '../components/Home.vue' // Закомментируем старый
 // import Registration from '../components/Registration.vue' // Закомментировал импорт
 import Login from '../components/Login.vue'
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteLocation } from 'vue-router'
 import { useAuthStore } from '@/stores/auth' // Import the auth store
 
 const routes = [
@@ -10,6 +10,14 @@ const routes = [
     path: '/', // Главная страница
     name: 'Messenger', // Переименуем для ясности
     component: Messenger // Используем новый компонент
+  },
+  // Ссылка-профиль: https://pismo.space/u/<логин>. Открывается тот же
+  // мессенджер — он сам находит человека по логину и открывает с ним чат
+  // (см. resolveProfileLink в Messenger.vue).
+  {
+    path: '/u/:username',
+    name: 'ProfileLink',
+    component: Messenger
   },
   // {
   //   path: '/auth/registration/',
@@ -20,6 +28,13 @@ const routes = [
     path: '/auth/login/',
     name: 'Login',
     component: Login
+  },
+  // Любой другой адрес — на главную. Без этого правила неизвестный путь давал
+  // пустой экран: nginx отдаёт index.html для всех путей, а роутер маршрут не
+  // находил и не рисовал ничего.
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: (to: RouteLocation) => ({ path: '/', query: to.query })
   }
 ]
 
@@ -33,8 +48,10 @@ router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
 
   // Define routes that do not require authentication
-  // Добавляем 'Messenger' в список публичных маршрутов
-  const publicRoutes = ['Login', 'Messenger']
+  // Добавляем 'Messenger' в список публичных маршрутов.
+  // 'ProfileLink' тоже публичный: по ссылке может прийти незарегистрированный
+  // человек — мессенджер покажет ему экран входа, а после входа откроет чат.
+  const publicRoutes = ['Login', 'Messenger', 'ProfileLink']
 
   // Check if the route requires authentication
   if (!publicRoutes.includes(to.name as string)) {

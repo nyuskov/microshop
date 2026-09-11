@@ -22,6 +22,12 @@ interface NativeBridge {
   isNotificationPermissionGranted?: () => boolean
   getAppVersion?: () => string
   openExternal?: (url: string) => void
+  /** «Поделиться» из системного меню: описание содержимого в JSON. */
+  shareInfo?: () => string
+  /** Кусок содержимого в base64 (см. services/nativeShare.ts). */
+  readShareChunk?: (offset: number, length: number) => string
+  /** Освободить содержимое в нативной части. */
+  clearShare?: () => void
 }
 
 declare global {
@@ -50,7 +56,7 @@ export function isNativeApp(): boolean {
 }
 
 /** Мост в нативный слой (есть только внутри Android-приложения). */
-function nativeBridge(): NativeBridge | null {
+export function nativeBridge(): NativeBridge | null {
   if (typeof window === 'undefined') return null
   return window.PismoNative ?? null
 }

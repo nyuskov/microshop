@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { applyMention, mentionBeforeCaret, splitMentions } from '@/utils/mentions'
+import { applyMention, mentionBeforeCaret, splitMessageText } from '@/utils/mentions'
 
-describe('splitMentions', () => {
+describe('splitMessageText', () => {
   it('разбивает текст на обычные куски и упоминания', () => {
-    expect(splitMentions('привет @ivan, как дела?')).toEqual([
+    expect(splitMessageText('привет @ivan, как дела?')).toEqual([
       { type: 'text', value: 'привет ' },
       { type: 'mention', value: '@ivan' },
       { type: 'text', value: ', как дела?' }
@@ -11,20 +11,34 @@ describe('splitMentions', () => {
   })
 
   it('находит несколько упоминаний и текст без них', () => {
-    expect(splitMentions('@a1 @b2')).toEqual([
+    expect(splitMessageText('@a1 @b2')).toEqual([
       { type: 'mention', value: '@a1' },
       { type: 'text', value: ' ' },
       { type: 'mention', value: '@b2' }
     ])
-    expect(splitMentions('обычный текст')).toEqual([{ type: 'text', value: 'обычный текст' }])
+    expect(splitMessageText('обычный текст')).toEqual([{ type: 'text', value: 'обычный текст' }])
   })
 
   it('слишком короткий логин упоминанием не считается', () => {
-    expect(splitMentions('@a')).toEqual([{ type: 'text', value: '@a' }])
+    expect(splitMessageText('@a')).toEqual([{ type: 'text', value: '@a' }])
   })
 
   it('пустая строка даёт пустой список', () => {
-    expect(splitMentions('')).toEqual([])
+    expect(splitMessageText('')).toEqual([])
+  })
+
+  it('выделяет ссылку отдельным фрагментом', () => {
+    expect(splitMessageText('смотри https://habr.com/ru/feed/ — полезно')).toEqual([
+      { type: 'text', value: 'смотри ' },
+      { type: 'link', value: 'https://habr.com/ru/feed/', href: 'https://habr.com/ru/feed/' },
+      { type: 'text', value: ' — полезно' }
+    ])
+  })
+
+  it('внутри ссылки упоминание не ищем', () => {
+    expect(splitMessageText('https://t.me/@durov')).toEqual([
+      { type: 'link', value: 'https://t.me/@durov', href: 'https://t.me/@durov' }
+    ])
   })
 })
 

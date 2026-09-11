@@ -181,6 +181,28 @@ class Settings(BaseSettings):
     # Как часто обновлять last_seen пользователя при активности (секунды).
     last_seen_update_seconds: int = 10
 
+    # --- Предпросмотр внешних ссылок (карточка ссылки в сообщении) ---
+    # Сервер сам ходит по ссылке из сообщения и достаёт заголовок/описание/картинку
+    # (как это делают Telegram и WhatsApp). Это хождение наружу — самая опасная
+    # часть, поэтому ограничено по времени, размеру, числу переходов и адресам
+    # (только публичные IP — см. core/link_preview.py).
+    link_preview_timeout_seconds: float = 6.0
+    link_preview_max_bytes: int = 512 * 1024
+    link_preview_max_redirects: int = 3
+    # Успешную карточку держим неделю, неудачную — час: сайт мог «отлежаться».
+    link_preview_cache_hours: int = 24 * 7
+    link_preview_failure_cache_minutes: int = 60
+    # Картинку превью скачиваем к себе (а не отдаём клиенту чужой адрес): так
+    # превью работает и там, где сайт запрещает прямые ссылки, а IP пользователя
+    # не утекает на сторонний сайт.
+    link_preview_image_max_bytes: int = 4 * 1024 * 1024
+    link_preview_limit_per_minute: int = 30
+    # Прокси для хождения по ссылкам (``http://user:pass@host:port`` или пусто).
+    # С российского сервера часть сайтов недоступна напрямую (например,
+    # youtube.com — таймаут на TLS). Если задать прокси за пределами РФ,
+    # превью таких ссылок заработает без правок кода.
+    link_preview_proxy_url: str | None = None
+
     # Разрешённые источники для CORS
     cors_origins: list[str] = Field(
         default_factory=lambda: [

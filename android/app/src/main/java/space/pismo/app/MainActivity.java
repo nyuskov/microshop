@@ -5,9 +5,12 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.OpenableColumns;
+import android.util.Base64;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
@@ -30,6 +33,8 @@ import android.widget.Toast;
 
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -56,12 +61,29 @@ public class MainActivity extends Activity {
     private static final int REQ_WEB_PERMISSIONS = 1002;
     private static final int REQ_NOTIFICATIONS = 1003;
 
+    /**
+     * Больше этого размера присланный файл не читаем.
+     *
+     * Лимит загрузки на сервере — 15 МБ, и в WebView такой файл пришлось бы
+     * держать в памяти страницы целиком: смысла нет, а падение получится обидное.
+     */
+    private static final int MAX_SHARE_BYTES = 20 * 1024 * 1024;
+
     private FrameLayout root;
     private WebView webView;
     private View errorView;
     private ValueCallback<Uri[]> filePathCallback;
     private PermissionRequest pendingWebPermission;
     private JSONObject pendingOpenTarget;
+
+    /** Содержимое системного «Поделиться» (ожидает выбора чата на странице). */
+    private volatile SharedContent sharedContent;
+
+    /** Байты присланного файла: читаются один раз, по запросу страницы. */
+    private byte[] sharedBytes;
+
+    /** Событие {@code pismo:share} уже отдано текущей странице. */
+    private volatile boolean shareDelivered;
 
     // ------------------------------------------------------------------ жизненный цикл
 
@@ -78,9 +100,13 @@ public class MainActivity extends Activity {
         createWebView();
         WebBridge.attach(webView);
 
+        // Разбираем интент ДО загрузки страницы: onPageFinished может сработать
+        // раньше, чем мы успеем запомнить, куда идти и чем поделились.
+        rememberOpenTarget(getIntent());
+        rememberShare(getIntent());
+
         Uri launchUri = extractLaunchUri(getIntent());
         webView.loadUrl(launchUri != null ? launchUri.toString() : BuildConfig.BASE_URL);
-        rememberOpenTarget(getIntent());
     }
 
     @Override
@@ -95,6 +121,12 @@ public class MainActivity extends Activity {
         if (target != null) {
             // Приложение уже открыто — сразу отдаём событие странице.
             WebBridge.sendOpenTarget(target);
+        }
+        if (adoptShare(intent)) {
+            // Приложение уже открыто — содержимое отдаём сразу, страница
+            // предложит выбрать чат.
+            shareDelivered = true;
+            WebBridge.sendShare(shareDetail(sharedContent));
         }
     }
 
@@ -192,6 +224,14 @@ public class MainActivity extends Activity {
             if (pendingOpenTarget != null) {
                 WebBridge.sendOpenTarget(pendingOpenTarget);
                 pendingOpenTarget = null;
+            }
+            // Содержимое «Поделиться»: отдаём один раз (страница могла забрать
+            // его сама через PismoNative.shareInfo() — тогда событие лишнее).
+            shareDelivered = false;
+            JSONObject share = pendingShareTarget();
+            if (share != null) {
+                shareDelivered = true;
+                WebBridge.sendShare(share);
             }
             WebBridge.dispatch("page-ready", null);
         }
@@ -438,6 +478,196 @@ public class MainActivity extends Activity {
         pendingOpenTarget = openTargetOf(intent);
     }
 
+    // ------------------------------------------------------------------ «Поделиться»
+
+    /** Содержимое системного «Поделиться»: текст и/или один файл. */
+    private static final class SharedContent {
+        final String text;
+        final String subject;
+        final String mime;
+        final String name;
+        final Uri uri;
+        final long size;
+
+        SharedContent(
+                String text, String subject, String mime, String name, Uri uri, long size) {
+            this.text = text;
+            this.subject = subject;
+            this.mime = mime;
+            this.name = name;
+            this.uri = uri;
+            this.size = size;
+        }
+    }
+
+    /** Запоминает содержимое «Поделиться» при холодном старте (отдадим после загрузки). */
+    private void rememberShare(Intent intent) {
+        sharedContent = null;
+        sharedBytes = null;
+        shareDelivered = false;
+        adoptShare(intent);
+    }
+
+    /** Принимает содержимое «Поделиться»: {@code true} — если в интенте есть что отдавать. */
+    private boolean adoptShare(Intent intent) {
+        SharedContent content = sharedContentOf(intent);
+        if (content == null) {
+            return false;
+        }
+        sharedContent = content;
+        // Новое содержимое — прежние байты больше не нужны.
+        sharedBytes = null;
+        return true;
+    }
+
+    /** Что ещё не отдано странице; {@code null} — нечего отдавать. */
+    private JSONObject pendingShareTarget() {
+        if (sharedContent == null || shareDelivered) {
+            return null;
+        }
+        return shareDetail(sharedContent);
+    }
+
+    /** Описание содержимого «Поделиться» для страницы. */
+    private JSONObject shareDetail(SharedContent content) {
+        JSONObject detail = new JSONObject();
+        try {
+            detail.put("text", content.text);
+            detail.put("subject", content.subject);
+            detail.put("mime", content.mime);
+            detail.put("name", content.name);
+            detail.put("size", content.size);
+            detail.put("hasFile", content.uri != null);
+        } catch (Exception ignored) {
+            // значения — строки и число, ошибка возможна только теоретически
+        }
+        return detail;
+    }
+
+    /** Разбирает интент «Поделиться»; {@code null} — если это не он или делиться нечем. */
+    private SharedContent sharedContentOf(Intent intent) {
+        if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) {
+            return null;
+        }
+        String text = intent.getStringExtra(Intent.EXTRA_TEXT);
+        String subject = intent.getStringExtra(Intent.EXTRA_SUBJECT);
+        String mime = intent.getType();
+        Uri uri = streamUriOf(intent);
+        boolean hasText = text != null && !text.trim().isEmpty();
+        if (uri == null && !hasText) {
+            return null;
+        }
+        String name = "";
+        long size = 0;
+        if (uri != null) {
+            name = displayNameOf(uri);
+            size = sizeOf(uri);
+            if (mime == null || mime.isEmpty()) {
+                mime = getContentResolver().getType(uri);
+            }
+        }
+        return new SharedContent(
+                text == null ? "" : text,
+                subject == null ? "" : subject,
+                mime == null ? "" : mime,
+                name,
+                uri,
+                size);
+    }
+
+    /** Uri присланного файла (EXTRA_STREAM или первый элемент ClipData). */
+    @SuppressWarnings("deprecation")
+    private Uri streamUriOf(Intent intent) {
+        Uri uri;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            uri = intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri.class);
+        } else {
+            uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+        }
+        if (uri == null && intent.getClipData() != null
+                && intent.getClipData().getItemCount() > 0) {
+            uri = intent.getClipData().getItemAt(0).getUri();
+        }
+        return uri;
+    }
+
+    /** Имя присланного файла из системного провайдера. */
+    private String displayNameOf(Uri uri) {
+        try (Cursor cursor = getContentResolver()
+                .query(uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                if (index >= 0 && !cursor.isNull(index)) {
+                    String name = cursor.getString(index);
+                    if (name != null && !name.isEmpty()) {
+                        return name;
+                    }
+                }
+            }
+        } catch (Exception exc) {
+            Log.w(TAG, "Не удалось узнать имя присланного файла", exc);
+        }
+        String fallback = uri.getLastPathSegment();
+        return fallback == null ? "" : fallback;
+    }
+
+    /** Размер присланного файла (0 — провайдер его не сообщил). */
+    private long sizeOf(Uri uri) {
+        try (Cursor cursor = getContentResolver()
+                .query(uri, new String[]{OpenableColumns.SIZE}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int index = cursor.getColumnIndex(OpenableColumns.SIZE);
+                if (index >= 0 && !cursor.isNull(index)) {
+                    return cursor.getLong(index);
+                }
+            }
+        } catch (Exception exc) {
+            Log.w(TAG, "Не удалось узнать размер присланного файла", exc);
+        }
+        return 0;
+    }
+
+    /**
+     * Читает присланный файл целиком (один раз — дальше отдаёт из памяти).
+     *
+     * Вызывается из JS-потока WebView (методы {@code @JavascriptInterface}
+     * выполняются не в UI-потоке), поэтому чтение здесь не блокирует интерфейс.
+     */
+    private synchronized byte[] readSharedBytes() {
+        if (sharedBytes != null) {
+            return sharedBytes;
+        }
+        SharedContent content = sharedContent;
+        if (content == null || content.uri == null) {
+            return null;
+        }
+        if (content.size > MAX_SHARE_BYTES) {
+            return null;
+        }
+        try (InputStream input = getContentResolver().openInputStream(content.uri)) {
+            if (input == null) {
+                return null;
+            }
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buffer = new byte[64 * 1024];
+            int total = 0;
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_SHARE_BYTES) {
+                    Log.w(TAG, "Присланный файл больше лимита — пропускаем");
+                    return null;
+                }
+                out.write(buffer, 0, read);
+            }
+            sharedBytes = out.toByteArray();
+            return sharedBytes;
+        } catch (Exception exc) {
+            Log.w(TAG, "Не удалось прочитать присланный файл", exc);
+            return null;
+        }
+    }
+
     /** Данные push-уведомления (чат/звонок) из интента или {@code null}. */
     private JSONObject openTargetOf(Intent intent) {
         if (intent == null) {
@@ -519,6 +749,45 @@ public class MainActivity extends Activity {
                     openInBrowser(Uri.parse(url));
                 }
             });
+        }
+
+        /**
+         * Описание содержимого из системного «Поделиться» (JSON) или пустая
+         * строка. Страница зовёт это сама как страховку: событие {@code pismo:share}
+         * могло прийти раньше, чем она успела подписаться.
+         */
+        @JavascriptInterface
+        public String shareInfo() {
+            SharedContent content = sharedContent;
+            if (content == null) {
+                return "";
+            }
+            // Страница забрала содержимое сама — событие ей уже не нужно.
+            shareDelivered = true;
+            return shareDetail(content).toString();
+        }
+
+        /**
+         * Кусок присланного файла в base64.
+         *
+         * Частями, а не целиком: вызов JS из нативной части ограничен по размеру,
+         * и большая картинка одним куском не пролезла бы.
+         */
+        @JavascriptInterface
+        public String readShareChunk(int offset, int length) {
+            byte[] data = readSharedBytes();
+            if (data == null || offset < 0 || offset >= data.length) {
+                return "";
+            }
+            int count = Math.min(Math.max(length, 1), data.length - offset);
+            return Base64.encodeToString(data, offset, count, Base64.NO_WRAP);
+        }
+
+        /** Страница закончила с содержимым (отправила или отменила). */
+        @JavascriptInterface
+        public void clearShare() {
+            sharedContent = null;
+            sharedBytes = null;
         }
     }
 }

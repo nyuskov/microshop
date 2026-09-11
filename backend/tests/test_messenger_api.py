@@ -768,6 +768,131 @@ async def test_users_no_public_listing_or_foreign_chats(api: _ApiCtx) -> None:
     assert me_resp.status_code == 200, me_resp.text
 
 
+# --- Ссылка-профиль (/u/<логин>) -------------------------------------------
+
+
+async def test_user_link_lookup_via_api(api: _ApiCtx) -> None:
+    """По ссылке-профилю логин находит человека и отдаёт только публичные поля."""
+    me = await api.make_user()
+    peer = await api.make_user(username="link_target_1")
+    token = await api.token_for(me)
+
+    response = await api.client.get(
+        "/api/v1/users/by-username/link_target_1",
+        headers=api.auth(token),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"] == peer.id
+    assert body["username"] == "link_target_1"
+    # Номер телефона по ссылке не раскрываем (ссылку можно переслать кому угодно).
+    assert "phone_number" not in body
+
+    # Регистр логина не важен, ведущая «@» игнорируется.
+    for variant in ("Link_Target_1", "@link_target_1"):
+        variant_resp = await api.client.get(
+            f"/api/v1/users/by-username/{variant}",
+            headers=api.auth(token),
+        )
+        assert variant_resp.status_code == 200, variant_resp.text
+        assert variant_resp.json()["id"] == peer.id
+
+    # Неизвестный логин — 404; без токена — 401 (ссылка не публичный эндпоинт).
+    missing = await api.client.get(
+        "/api/v1/users/by-username/nobody_here_at_all",
+        headers=api.auth(token),
+    )
+    assert missing.status_code == 404
+
+    anonymous = await api.client.get("/api/v1/users/by-username/link_target_1")
+    assert anonymous.status_code == 401
+
+
+# --- Предпросмотр внешних ссылок -------------------------------------------
+
+
+async def test_link_preview_via_api(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Карточка внешней ссылки собирается один раз и дальше берётся из кэша.
+
+    Хождение в интернет подменено: тест не должен зависеть от доступности
+    YouTube и не должен «дёргать» чужие сайты из CI.
+    """
+    from api_v1.link_previews import views as link_views
+    from core.link_preview import LinkPreviewData
+
+    me = await api.make_user()
+    token = await api.token_for(me)
+    calls: list[str] = []
+
+    def fake_fetch(url: str, **kwargs: object) -> LinkPreviewData:
+        calls.append(url)
+        return LinkPreviewData(
+            url=url,
+            title="Видео на YouTube",
+            description="Описание видео",
+            site_name="YouTube",
+            image_url="https://i.ytimg.com/vi/SOi0APxsdgE/hqdefault.jpg",
+        )
+
+    def fake_image(url: str, **kwargs: object) -> None:
+        # Картинку «скачать» не удалось — карточка должна остаться без неё.
+        return None
+
+    monkeypatch.setattr(link_views, "fetch_preview", fake_fetch)
+    monkeypatch.setattr(link_views, "fetch_preview_image", fake_image)
+    # Кэш надолго, чтобы второй запрос точно взял строку из БД.
+    monkeypatch.setattr(link_views.settings, "link_preview_cache_hours", 24)
+
+    # Фрагмент (#...) в кэш не попадает: адрес нормализуется.
+    payload = {"url": "https://www.youtube.com/watch?v=SOi0APxsdgE&t=30#frag"}
+    first = await api.client.post(
+        "/api/v1/link-preview/", json=payload, headers=api.auth(token)
+    )
+    assert first.status_code == 200, first.text
+    body = first.json()
+    assert body["ok"] is True
+    assert body["title"] == "Видео на YouTube"
+    assert body["description"] == "Описание видео"
+    assert body["site_name"] == "YouTube"
+    assert body["domain"] == "youtube.com"
+    assert body["image_url"] is None
+    assert body["url"] == "https://www.youtube.com/watch?v=SOi0APxsdgE&t=30"
+
+    second = await api.client.post(
+        "/api/v1/link-preview/", json=payload, headers=api.auth(token)
+    )
+    assert second.status_code == 200, second.text
+    assert second.json()["title"] == "Видео на YouTube"
+    # Обращение к сайту было ровно одно — второй раз отдал кэш.
+    assert calls == ["https://www.youtube.com/watch?v=SOi0APxsdgE&t=30"]
+
+    # Сайт недоступен: ответ всё равно успешный (клиент просто не покажет карточку).
+    monkeypatch.setattr(link_views, "fetch_preview", lambda url, **kwargs: None)
+    failed = await api.client.post(
+        "/api/v1/link-preview/",
+        json={"url": "https://unreachable.example/page"},
+        headers=api.auth(token),
+    )
+    assert failed.status_code == 200, failed.text
+    assert failed.json()["ok"] is False
+    assert failed.json()["title"] is None
+
+    # Не ссылка — 400; без токена — 401.
+    invalid = await api.client.post(
+        "/api/v1/link-preview/",
+        json={"url": "ftp://example.com/file"},
+        headers=api.auth(token),
+    )
+    assert invalid.status_code == 400
+
+    anonymous = await api.client.post(
+        "/api/v1/link-preview/", json={"url": "https://example.com/"}
+    )
+    assert anonymous.status_code == 401
+
+
 # --- Поиск сообщений через API --------------------------------------------
 
 

@@ -60,6 +60,23 @@
                 <data android:scheme="https" android:host="pismo.space" />
             </intent-filter>
 
+            <!-- Системное «Поделиться»: Pismo появляется в списке приложений,
+                 когда делятся ссылкой/текстом (браузер, заметки) или картинкой
+                 (галерея, скриншот). Содержимое приходит в MainActivity, оттуда
+                 уходит на страницу событием `pismo:share` — там выбирается чат.
+                 ACTION_SEND_MULTIPLE не заявляем: несколько картинок сразу мы
+                 пока не отправляем, а обещать в списке «Поделиться» нечего. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+
             <!-- Клик по push-уведомлению RuStore (click_action_type = 0, intent action). -->
             <intent-filter>
                 <action android:name="space.pismo.app.PUSH" />

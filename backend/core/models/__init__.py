@@ -6,6 +6,7 @@ __all__ = [
     "ChatMute",
     "DeviceKey",
     "EmailCode",
+    "LinkPreview",
     "LoginDevice",
     "Message",
     "MessageReaction",
@@ -32,6 +33,7 @@ from .chat_mute import ChatMute  # noqa: F401
 from .db_helper import DatabaseHelper, db_helper  # noqa: F401
 from .device_key import DeviceKey  # noqa: F401
 from .email_code import EmailCode  # noqa: F401
+from .link_preview import LinkPreview  # noqa: F401
 from .login_device import LoginDevice  # noqa: F401
 from .message import Message  # noqa: F401
 from .message_reaction import MessageReaction  # noqa: F401

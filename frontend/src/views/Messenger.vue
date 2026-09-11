@@ -255,6 +255,19 @@
     @forward="sendForward"
   />
 
+  <!-- Содержимое, присланное из системного «Поделиться» Android -->
+  <ShareToChatDialog
+    v-if="nativeShare"
+    :text="nativeShare.text"
+    :file-name="nativeShare.name"
+    :preview-url="nativeSharePreviewUrl"
+    :chats="chats"
+    :current-user-id="currentUserId"
+    :busy="nativeShareBusy"
+    @close="cancelNativeShare"
+    @share="sendNativeShare"
+  />
+
   <!-- Profile Modal (Quasar) -->
   <q-dialog v-model="showProfileModal" @hide="onProfileHidden">
     <q-card class="ms-modal ms-modal-profile">
@@ -453,6 +466,7 @@ import {
   fetchMessages,
   fetchMyChats,
   fetchPinnedMessages,
+  fetchUserByUsername,
   searchMessages,
   editMessage,
   forwardMessage,
@@ -481,6 +495,7 @@ import {
 } from '@/services/e2ee'
 import type { Chat, ChatUser, Message } from '@/types'
 import { avatarUrlOf, chatPeer, chatTitle, displayName, isGroupChat } from '@/utils/user'
+import { usernameFromProfilePath } from '@/utils/profileLink'
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import { isImageFile, messageSnippet, optimizeImageFile } from '@/utils/media'
@@ -512,6 +527,10 @@ import MessageComposer from '@/components/messenger/MessageComposer.vue'
 const UserProfile = defineAsyncComponent(() => import('./UserProfile.vue'))
 const CallOverlay = defineAsyncComponent(() => import('@/components/calls/CallOverlay.vue'))
 const ForwardDialog = defineAsyncComponent(() => import('@/components/messenger/ForwardDialog.vue'))
+// Приём содержимого из системного «Поделиться» Android (выбор чата).
+const ShareToChatDialog = defineAsyncComponent(
+  () => import('@/components/messenger/ShareToChatDialog.vue')
+)
 const ChatInfo = defineAsyncComponent(() => import('@/components/messenger/ChatInfo.vue'))
 const GroupCreateDialog = defineAsyncComponent(
   () => import('@/components/messenger/GroupCreateDialog.vue')
@@ -549,6 +568,13 @@ import {
   initNativePush,
   isNativeApp
 } from '@/services/nativePush'
+import {
+  MAX_SHARE_FILE_BYTES,
+  clearNativeShare,
+  initNativeShare,
+  readNativeShareFile,
+  type NativeShareDescriptor
+} from '@/services/nativeShare'
 
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
@@ -2807,6 +2833,188 @@ const dismissCallLaunch = () => {
   stopCallLaunchScreen()
 }
 
+// ---------- Ссылка-профиль: https://pismo.space/u/<логин> ----------
+// Такую ссылку можно набрать в браузере, переслать в другой мессенджер или
+// открыть приложением Android (App Links). Роутер отдаёт её маршруту
+// `/u/:username`, а разбор и открытие чата живут здесь: логин превращается в
+// личный чат, а адрес сразу становится обычным (`/?chat=<id>`).
+const profileLinkUsername = ref<string | null>(
+  typeof window === 'undefined' ? null : usernameFromProfilePath(window.location.pathname)
+)
+let profileLinkResolving = false
+
+/** Открывает чат по ссылке-профилю (после входа и загрузки списка чатов). */
+const resolveProfileLink = async () => {
+  const username = profileLinkUsername.value
+  if (!username || profileLinkResolving) return
+  profileLinkResolving = true
+  profileLinkUsername.value = null
+  // Убираем `/u/<логин>` из адреса: дальше ссылку на открытый чат держит `?chat=`
+  // (иначе путь остался бы вида `/u/<логин>?chat=<id>` и после перезагрузки
+  // ссылка «открывалась» бы заново).
+  try {
+    window.history.replaceState(window.history.state, '', '/')
+  } catch {
+    /* история недоступна (iframe) — адрес просто останется как есть */
+  }
+  try {
+    const target = await fetchUserByUsername(username)
+    if (target.id === currentUserId.value) {
+      // Ссылка на себя: открываем «Сохранённые сообщения».
+      const self = chats.value.find((chat) => chat.is_self)
+      if (self) {
+        await openChatThread(self.id)
+      } else {
+        Notify.create({
+          message: 'Это ваша ссылка',
+          caption: `@${target.username}`,
+          timeout: 3000
+        })
+      }
+      return
+    }
+    const chat = await openPrivateChat(target.id)
+    upsertChat(chat)
+    view.value = 'chats'
+    await openChatThread(chat.id)
+  } catch (error) {
+    Notify.create({
+      type: 'negative',
+      message: 'Ссылка не открылась',
+      caption: `Логин «${username}» не найден`,
+      timeout: 4000
+    })
+    console.error('Не удалось открыть ссылку-профиль:', getErrorMessage(error))
+  } finally {
+    profileLinkResolving = false
+  }
+}
+
+// ---------- «Поделиться» из системного меню Android ----------
+// Человек нажал «Поделиться» в браузере/галерее/заметках и выбрал Pismo:
+// нативная оболочка присылает содержимое, здесь выбираем чат и отправляем.
+// В браузере (PWA) этот блок не активируется — initNativeShare() там no-op.
+const nativeShare = ref<NativeShareDescriptor | null>(null)
+const nativeShareFile = ref<File | null>(null)
+const nativeSharePreviewUrl = ref<string | null>(null)
+const nativeShareBusy = ref(false)
+/** «Поделиться» нажали до входа — придержим, пока человек не войдёт. */
+let pendingNativeShare: NativeShareDescriptor | null = null
+
+/** Сбрасывает состояние диалога (нативную часть не трогает). */
+const resetNativeShareState = () => {
+  if (nativeSharePreviewUrl.value) URL.revokeObjectURL(nativeSharePreviewUrl.value)
+  nativeSharePreviewUrl.value = null
+  nativeShareFile.value = null
+  nativeShare.value = null
+}
+
+/** Закрывает диалог и освобождает содержимое в нативной части. */
+const discardNativeShare = () => {
+  resetNativeShareState()
+  clearNativeShare()
+}
+
+const cancelNativeShare = () => {
+  if (nativeShareBusy.value) return
+  discardNativeShare()
+}
+
+/** Принимает содержимое из системного меню и готовит превью. */
+const acceptNativeShare = async (descriptor: NativeShareDescriptor) => {
+  if (!authStore.isAuthenticated) {
+    pendingNativeShare = descriptor
+    return
+  }
+  resetNativeShareState()
+  nativeShare.value = descriptor
+  if (!descriptor.hasFile) return
+  if (descriptor.size > MAX_SHARE_FILE_BYTES) {
+    Notify.create({
+      type: 'warning',
+      message: 'Файл слишком большой',
+      caption: 'Отправим только текст',
+      timeout: 4000
+    })
+    nativeShare.value = { ...descriptor, hasFile: false, size: 0 }
+    return
+  }
+  try {
+    const file = await readNativeShareFile(descriptor)
+    if (!file) return
+    nativeShareFile.value = file
+    if (file.type.startsWith('image/')) {
+      nativeSharePreviewUrl.value = URL.createObjectURL(file)
+    }
+  } catch (error) {
+    console.error('Не удалось прочитать присланный файл:', getErrorMessage(error))
+  }
+}
+
+/**
+ * Текст для отправки: в «зашифрованном» чате — шифротекст, если ключи готовы
+ * (ровно как при обычной отправке), иначе открытый текст.
+ */
+const encryptSharedText = async (
+  chatId: number,
+  text: string
+): Promise<{ text: string; encrypted: boolean }> => {
+  const uid = currentUserId.value
+  const chat = chats.value.find((item) => item.id === chatId) ?? null
+  const peerId = peerIdOfChat(chat)
+  if (!text || !chat?.e2ee_enabled || uid === null || peerId === null || !e2eeMyKeyReady.value) {
+    return { text, encrypted: false }
+  }
+  const aes = await chatAesKey(uid, peerId, chatId)
+  if (!aes) return { text, encrypted: false }
+  return { text: await encryptText(aes, text), encrypted: true }
+}
+
+/** Отправляет принятое содержимое в выбранный чат. */
+const sendNativeShare = async (chatId: number) => {
+  const target = nativeShare.value
+  if (!target || nativeShareBusy.value) return
+  const text = target.text.trim()
+  const file = nativeShareFile.value
+  if (!text && !file) {
+    discardNativeShare()
+    return
+  }
+  nativeShareBusy.value = true
+  try {
+    if (file) {
+      // Фото сжимаем на клиенте — как при обычной отправке вложения.
+      const upload = file.type.startsWith('image/') ? await optimizeImageFile(file) : file
+      await sendAttachmentMessage(chatId, upload, text)
+    } else {
+      const wire = await encryptSharedText(chatId, text)
+      await sendNewMessage(chatId, wire.text, undefined, wire.encrypted)
+    }
+    const chat = chats.value.find((item) => item.id === chatId)
+    Notify.create({
+      message: 'Отправлено',
+      caption: chat ? `В чат «${chatTitle(chat, currentUserId.value)}»` : '',
+      timeout: 2500
+    })
+    await loadChats()
+    if (selectedChatId.value === chatId) await refreshThread()
+    discardNativeShare()
+  } catch (error) {
+    Notify.create({
+      type: 'negative',
+      message: 'Не удалось отправить',
+      caption: getErrorMessage(error),
+      timeout: 4000
+    })
+  } finally {
+    nativeShareBusy.value = false
+  }
+}
+
+const disposeNativeShare = initNativeShare((descriptor) => {
+  void acceptNativeShare(descriptor)
+})
+
 watch(
   ready,
   async (isReady) => {
@@ -2814,6 +3022,14 @@ watch(
       const uid = currentUserId.value
       e2eeMyKeyReady.value = uid !== null && isE2eeAvailable() ? await bootstrapE2ee(uid) : false
       await Promise.all([loadChats(), loadContacts()])
+      // Ссылка-профиль и отложенное «Поделиться» открываются уже после входа
+      // и загрузки чатов: иначе некуда было бы открывать/отправлять.
+      await resolveProfileLink()
+      if (pendingNativeShare) {
+        const held = pendingNativeShare
+        pendingNativeShare = null
+        await acceptNativeShare(held)
+      }
       startRealtime()
       void callStore.connect()
       if (callLaunch.value) {
@@ -3141,6 +3357,7 @@ onBeforeUnmount(() => {
     outboxTimer = undefined
   }
   disposeNativePush()
+  disposeNativeShare()
   stopRealtime()
   realtimeStore.setHandler(null)
   if (highlightTimer !== undefined) {

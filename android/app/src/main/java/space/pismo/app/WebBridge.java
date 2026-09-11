@@ -21,7 +21,11 @@ import java.util.Map;
  *     <li>{@code pismo:rustore-token} — получен/обновился push-токен RuStore;</li>
  *     <li>{@code pismo:push-status} — статус push (например, {@code unavailable});</li>
  *     <li>{@code pismo:push} — пришло push-сообщение при живом приложении;</li>
- *     <li>{@code pismo:open} — приложение открыто по ссылке/уведомлению (чат/звонок).</li>
+ *     <li>{@code pismo:open} — приложение открыто по ссылке/уведомлению (чат/звонок);</li>
+ *     <li>{@code pismo:share} — в приложение поделились содержимым из другого
+ *     приложения (ссылка, текст, картинка) — страница предложит выбрать чат.
+ *     Сами байты файла страница забирает по частям через
+ *     {@code PismoNative.readShareChunk} (см. services/nativeShare.ts).</li>
  * </ul>
  */
 final class WebBridge {
@@ -115,5 +119,10 @@ final class WebBridge {
     /** Сообщает странице, что нужно открыть чат/звонок (клик по уведомлению). */
     static void sendOpenTarget(JSONObject detail) {
         dispatch("open", detail);
+    }
+
+    /** Передаёт содержимое системного «Поделиться» (страница выберет чат). */
+    static void sendShare(JSONObject detail) {
+        dispatch("share", detail);
     }
 }

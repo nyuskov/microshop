@@ -46,6 +46,9 @@ x-web-slot: &web-slot
     TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
     TELEGRAM_GATEWAY_BASE_URL: ${TELEGRAM_GATEWAY_BASE_URL:-https://gateway.telegram.org}
+    # Предпросмотр внешних ссылок в сообщениях: прокси для сайтов, до которых
+    # сервер сам не дотягивается (например, youtube.com с российского хостинга).
+    LINK_PREVIEW_PROXY_URL: ${LINK_PREVIEW_PROXY_URL:-}
     # Суточные лимиты отправки кодов (защита баланса SMS-шлюза).
     AUTH_OTP_DAILY_LIMIT: ${AUTH_OTP_DAILY_LIMIT:-50}
     AUTH_OTP_PER_IP_DAILY_LIMIT: ${AUTH_OTP_PER_IP_DAILY_LIMIT:-20}

@@ -77,6 +77,37 @@ async def search_users(
     return await crud.search_users_by_query(session, query, exclude_user_id=user.id)
 
 
+@router.get("/by-username/{username}", response_model=schemas.UserLinkPreviewSchema)
+async def get_user_by_link(
+    username: str,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> User:
+    """Пользователь по ссылке-профилю (`https://pismo.space/u/<логин>`).
+
+    Так открываются ссылки, которыми делятся вне мессенджера: приложение по
+    логину находит человека и открывает (или создаёт) с ним личный чат.
+
+    Номер телефона в ответе не отдаём — см. `UserLinkPreviewSchema`. Регистр
+    логина не важен. Лимит запросов общий с поиском людей: перебирать логины
+    по ссылкам так же неудобно, как и через поиск.
+    """
+    await enforce_limit(
+        scope="users:search",
+        value=str(user.id),
+        limit=settings.user_search_limit_per_minute,
+        window_seconds=60,
+        detail="Слишком много запросов. Попробуйте позже.",
+    )
+    found = await crud.find_user_by_username(session, username)
+    if found is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не найден",
+        )
+    return found
+
+
 @router.get("/contacts/", response_model=list[schemas.UserSearchResultSchema])
 async def get_contacts(
     user: User = Depends(get_current_user),

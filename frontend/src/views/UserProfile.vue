@@ -7,6 +7,7 @@ import { removeAvatar, uploadAvatar } from '@/services/api'
 import { mediaUrl } from '@/services/chatService'
 import { formatPhoneForBackend, localPhoneDigits, maskPhoneLocal } from '@/utils/phone'
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
+import { profileLinkFor, profileShareText } from '@/utils/profileLink'
 import {
   checkForAppUpdate,
   disablePushNotifications,
@@ -104,7 +105,15 @@ watch(
 // (личные данные, пароль, сессии, журнал входов, хранилище) — теперь у каждого
 // раздела своя страница, как в мессенджерах на телефоне.
 type SettingsSection =
-  'root' | 'account' | 'security' | 'privacy' | 'notifications' | 'storage' | 'appearance' | 'about'
+  | 'root'
+  | 'account'
+  | 'security'
+  | 'privacy'
+  | 'notifications'
+  | 'storage'
+  | 'link'
+  | 'appearance'
+  | 'about'
 
 interface SettingsRow {
   key: Exclude<SettingsSection, 'root'>
@@ -124,6 +133,7 @@ const SETTINGS_ROWS: SettingsRow[] = [
   { key: 'privacy', icon: 'lock', title: 'Приватность', desc: 'Видимость профиля в поиске' },
   { key: 'notifications', icon: 'notifications', title: 'Уведомления', desc: 'Push-уведомления' },
   { key: 'storage', icon: 'cloud', title: 'Хранилище', desc: 'Сколько занимают вложения' },
+  { key: 'link', icon: 'share', title: 'Моя ссылка', desc: 'Ссылка на ваш профиль' },
   {
     key: 'appearance',
     icon: 'palette',
@@ -191,6 +201,48 @@ const backToSections = () => {
 // так не важно, как Vue разворачивает ссылки на дочерний компонент.
 const isInSection = () => section.value !== 'root'
 defineExpose({ backToSections, isInSection })
+
+// ---------- Ссылка на профиль ----------
+// Логин уникален в базе, поэтому ссылку можно давать кому угодно: открыв её,
+// человек попадает в чат с вами (см. resolveProfileLink в Messenger.vue).
+// Номер телефона в ссылке не виден.
+const myProfileLink = computed<string | null>(() =>
+  profileLinkFor(authStore.current_user?.username ?? null)
+)
+const linkNotice = ref('')
+
+const copyProfileLink = async () => {
+  const link = myProfileLink.value
+  if (!link) return
+  linkNotice.value = ''
+  try {
+    await navigator.clipboard.writeText(link)
+    linkNotice.value = 'Ссылка скопирована'
+  } catch (error) {
+    linkNotice.value = getErrorMessage(error, 'Не удалось скопировать ссылку')
+  }
+}
+
+/** «Поделиться» через систему (телефон); где его нет — копируем ссылку. */
+const shareProfileLink = async () => {
+  const link = myProfileLink.value
+  if (!link) return
+  const share = navigator.share
+  if (typeof share !== 'function') {
+    await copyProfileLink()
+    return
+  }
+  try {
+    await share.call(navigator, {
+      title: 'Pismo',
+      text: profileShareText(link, heroName.value),
+      url: link
+    })
+    linkNotice.value = ''
+  } catch {
+    /* человек закрыл системное окно — это не ошибка */
+  }
+}
 
 // ---------- Отображение ----------
 const fullName = computed(() =>
@@ -1044,6 +1096,34 @@ const onNotificationsToggle = async (val: boolean) => {
             </button>
             <p v-if="cacheNotice" class="storage-hint">{{ cacheNotice }}</p>
           </div>
+        </section>
+
+        <!-- Моя ссылка: по ней человек открывает чат с вами -->
+        <section v-if="section === 'link'" class="card-section">
+          <h3 class="section-title">Моя ссылка</h3>
+          <p class="profile-link-hint">
+            Дайте эту ссылку — по ней в Pismo откроется чат с вами. Номер телефона в ссылке не
+            виден: логин уникален и служит только адресом профиля.
+          </p>
+          <template v-if="myProfileLink">
+            <div class="profile-link-row">
+              <input
+                class="profile-link-input"
+                type="text"
+                readonly
+                :value="myProfileLink"
+                aria-label="Ссылка на профиль"
+              />
+              <button type="button" class="btn primary" @click="shareProfileLink">
+                <q-icon :name="icon('share')" size="17px" /> Поделиться
+              </button>
+              <button type="button" class="btn ghost" @click="copyProfileLink">
+                <q-icon :name="icon('content_copy')" size="17px" /> Копировать
+              </button>
+            </div>
+            <p v-if="linkNotice" class="notice success">{{ linkNotice }}</p>
+          </template>
+          <p v-else class="profile-link-hint">Логин не задан — ссылку пока не создать.</p>
         </section>
 
         <!-- Безопасность: пароль и сессии -->
@@ -2551,6 +2631,47 @@ const onNotificationsToggle = async (val: boolean) => {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Ссылка на профиль: строку адреса можно выделить целиком и скопировать */
+.profile-link-hint {
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ms-muted);
+}
+
+.profile-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.profile-link-input {
+  flex: 1 1 240px;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1.5px solid var(--ms-border);
+  border-radius: 11px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--ms-text-strong);
+  background: var(--ms-surface-2);
+  outline: none;
+}
+
+.profile-link-row .btn {
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+@media (max-width: 560px) {
+  .profile-link-row .btn {
+    flex: 1 1 auto;
   }
 }
 

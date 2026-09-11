@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { applyServiceWorkerUpdate, registerServiceWorker } from '@/services/pwa'
 import { useVisualViewport } from '@/composables/useVisualViewport'
 import OfflineBanner from '@/components/common/OfflineBanner.vue'
+import ExternalLinkDialog from '@/components/common/ExternalLinkDialog.vue'
 
 // Высота с учётом экранной клавиатуры — нужна всему приложению (и логину тоже).
 useVisualViewport()
@@ -39,6 +40,8 @@ onBeforeUnmount(() => {
   </div>
   <!-- Нет сети / связь восстановлена (работает и на экране входа) -->
   <OfflineBanner />
+  <!-- Подтверждение перехода на внешний сайт (окно одно на всё приложение) -->
+  <ExternalLinkDialog />
   <router-view></router-view>
 </template>
 

@@ -36,6 +36,23 @@ async def get_user_by_username(session: AsyncSession, username: str) -> User | N
     return result.scalar_one_or_none()
 
 
+async def find_user_by_username(session: AsyncSession, username: str) -> User | None:
+    """Находит пользователя по логину без учёта регистра.
+
+    Отдельно от `get_user_by_username`: тот используется при входе, где сравнение
+    точное (логин — это идентификатор аккаунта). А ссылку-профиль
+    (`https://pismo.space/u/<логин>`) люди набирают и пересылают как обычный
+    текст, поэтому здесь регистр в расчёт не берём.
+    """
+    name = username.strip().lstrip("@")
+    if not name:
+        return None
+    result = await session.execute(
+        select(User).where(func.lower(User.username) == name.lower())
+    )
+    return result.scalar_one_or_none()
+
+
 async def search_users_by_query(
     session: AsyncSession,
     query: str,

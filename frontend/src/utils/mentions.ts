@@ -1,30 +1,65 @@
 /**
- * Упоминания в сообщениях: `@логин`.
+ * Разбор текста сообщения: упоминания `@логин` и ссылки.
  *
  * В групповом чате важно понимать, к кому обращаются: имя упомянутого подсвечиваем
  * (см. MessageRow), а в поле ввода подсказываем участников, как только набрали `@`.
+ * Ссылки выделяем отдельно — их можно нажать и перейти (с предупреждением
+ * о переходе на чужой сайт, см. `useExternalLinkGuard`).
  */
 
-/** Что нашли в тексте: обычный фрагмент или упоминание. */
-export interface MentionPart {
-  type: 'text' | 'mention'
+import { findLinks } from './linkPreview'
+
+/** Что нашли в тексте: обычный фрагмент, упоминание или ссылка. */
+export interface MessageTextPart {
+  type: 'text' | 'mention' | 'link'
   value: string
+  /** Адрес для перехода (только у ссылок). */
+  href?: string
 }
 
 /** Регулярка упоминания: `@логин` (буквы, цифры, подчёркивание, точка, дефис). */
 const MENTION_RE = /@[a-zA-Z0-9_.-]{2,64}/g
 
-/** Разбирает текст сообщения на обычные фрагменты и упоминания. */
-export function splitMentions(text: string): MentionPart[] {
-  const parts: MentionPart[] = []
-  let lastIndex = 0
+/** Один найденный фрагмент: где начинается и что это. */
+interface Mark {
+  index: number
+  length: number
+  part: MessageTextPart
+}
+
+/** Разбирает текст сообщения на обычные фрагменты, упоминания и ссылки. */
+export function splitMessageText(text: string): MessageTextPart[] {
+  const marks: Mark[] = []
+
   for (const match of text.matchAll(MENTION_RE)) {
-    const index = match.index ?? 0
-    if (index > lastIndex) parts.push({ type: 'text', value: text.slice(lastIndex, index) })
-    parts.push({ type: 'mention', value: match[0] })
-    lastIndex = index + match[0].length
+    marks.push({
+      index: match.index ?? 0,
+      length: match[0].length,
+      part: { type: 'mention', value: match[0] }
+    })
   }
-  if (lastIndex < text.length) parts.push({ type: 'text', value: text.slice(lastIndex) })
+  for (const link of findLinks(text)) {
+    marks.push({
+      index: link.index,
+      length: link.value.length,
+      part: { type: 'link', value: link.value, href: link.href }
+    })
+  }
+
+  marks.sort((left, right) => left.index - right.index)
+
+  const parts: MessageTextPart[] = []
+  let cursor = 0
+  for (const mark of marks) {
+    // Пересечения пропускаем: внутри ссылки упоминаний не ищем.
+    if (mark.index < cursor) continue
+    if (mark.index > cursor) {
+      parts.push({ type: 'text', value: text.slice(cursor, mark.index) })
+    }
+    parts.push(mark.part)
+    cursor = mark.index + mark.length
+  }
+  if (cursor < text.length) parts.push({ type: 'text', value: text.slice(cursor) })
   return parts
 }
 

@@ -20,6 +20,16 @@ export interface SearchUserResult {
   avatar_url?: string | null
 }
 
+/** Публичные данные пользователя по ссылке-профилю (без номера телефона). */
+export interface UserLinkPreview {
+  id: number
+  username: string
+  first_name: string | null
+  last_name: string | null
+  avatar_url?: string | null
+  status?: string | null
+}
+
 /** Сколько ждём загрузку вложения (обычные запросы живут 15 с). */
 export const ATTACHMENT_UPLOAD_TIMEOUT_MS = 120_000
 
@@ -294,6 +304,19 @@ export const searchUsers = async (query: string): Promise<SearchUserResult[]> =>
 /** Ищет пользователей мессенджера по номерам из телефонной книги. */
 export const matchUsersByPhone = async (phones: string[]): Promise<SearchUserResult[]> => {
   const response = await api.post<SearchUserResult[]>('/users/match-by-phone/', { phones })
+  return response.data
+}
+
+/**
+ * Пользователь по ссылке-профилю (`https://pismo.space/u/<логин>`).
+ *
+ * В ответе нет номера телефона: ссылку можно переслать кому угодно, и она не
+ * должна раскрывать персональные данные (см. UserLinkPreviewSchema на бэкенде).
+ */
+export const fetchUserByUsername = async (username: string): Promise<UserLinkPreview> => {
+  const response = await api.get<UserLinkPreview>(
+    `/users/by-username/${encodeURIComponent(username)}`
+  )
   return response.data
 }
 

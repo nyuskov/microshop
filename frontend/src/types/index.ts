@@ -32,6 +32,24 @@ export interface ForwardedFrom {
   chat_id: number | null
 }
 
+/**
+ * Карточка внешней ссылки из сообщения (превью сайта, как в Telegram).
+ *
+ * `image_url` — путь к НАШЕМУ файлу (`/media/...`): картинку скачал сервер,
+ * поэтому её нужно прогонять через `mediaUrl()`.
+ */
+export interface LinkPreview {
+  url: string
+  /** Удалось ли собрать карточку (иначе её не показываем). */
+  ok: boolean
+  title?: string | null
+  description?: string | null
+  site_name?: string | null
+  image_url?: string | null
+  /** Домен для подписи (youtube.com). */
+  domain?: string | null
+}
+
 export interface Chat {
   id: number
   name: string
