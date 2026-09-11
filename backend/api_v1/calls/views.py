@@ -5,11 +5,17 @@
 ``call-decline``, ``call-end``, ``call-renegotiate``, ``call-renegotiate-answer``,
 ``call-screen``. Сервер пересылает сообщения адресату.
 
-Если получатель offer офлайн (приложение закрыто), но у него есть push-канал
-(Web Push для PWA или RuStore Push для Android-приложения) — вызов «паркуется»,
-а абоненту шлётся уведомление «Вам звонят…»; когда он откроет приложение и
-подключится, offer доставится. Если push-каналов нет — инициатору сразу уходит
-``call-unavailable``.
+Если получатель offer офлайн (приложение закрыто) — вызов «паркуется»: когда он
+откроет приложение и подключится, offer доставится, и звонок его дождётся. Если
+у абонента есть push-канал (Web Push для PWA или RuStore Push для Android) —
+дополнительно шлётся уведомление «Вам звонят…»; без уведомления зовущему
+сообщается об этом (``call-parked`` с ``notified=false``), но вызов всё равно
+ждёт в парковке.
+
+Короткий обрыв сигнального канала (смена сети, перезапуск страницы) не теряет
+сообщения: не доставленный ответ на звонок и ICE-кандидаты придерживаются в
+менеджере и уходят адресату, когда он подключится снова. Иначе у зовущего звонок
+продолжал бы звонить, хотя собеседник уже нажал «Ответить».
 """
 
 import asyncio
@@ -23,6 +29,7 @@ from pydantic import BaseModel
 
 from api_v1.chats.crud import get_private_chat_id_between
 from api_v1.events.service import notify_chat
+from api_v1.moderation import crud as moderation_crud
 from api_v1.push import crud as push_crud
 from core import rustore_push
 from core.config import settings
@@ -181,6 +188,23 @@ async def _persist_call_record(meta: dict[str, Any], state: str, duration: int) 
         logger.exception("Не удалось записать отметку о звонке")
 
 
+async def _is_call_blocked(from_user_id: int, to_user_id: int) -> bool:
+    """Блокировка между участниками звонка (в любую сторону).
+
+    Проверка обязательна: заблокированный не должен ни дозвониться, ни получить
+    push «Вам звонят…». Ошибка БД не должна ронять сигналинг — тогда просто
+    пропускаем вызов, как раньше.
+    """
+    try:
+        async with db_helper.session_factory() as session:
+            return await moderation_crud.is_blocked_between(
+                session, user_id=to_user_id, other_id=from_user_id
+            )
+    except Exception:  # noqa: BLE001 - блокировки не роняют сигналинг
+        logger.exception("Не удалось проверить блокировки для звонка")
+        return False
+
+
 async def _relay_message(from_user_id: int, data: dict[str, Any]) -> None:
     """Пересылает сообщение сигналинга от одного участника другому."""
     raw_target = data.get("to_user_id")
@@ -192,6 +216,23 @@ async def _relay_message(from_user_id: int, data: dict[str, Any]) -> None:
     envelope = dict(data)
     envelope["from_user_id"] = from_user_id
     message_type = data.get("type")
+
+    # Заблокированная пара не звонит друг другу: сообщение не пересылаем, вызов не
+    # паркуем и push не шлём. Зовущему отвечаем как при недоступности — о самом
+    # факте блокировки не сообщаем.
+    if await _is_call_blocked(from_user_id, to_user_id):
+        if message_type == "call-offer":
+            await call_manager.send_to_user(
+                from_user_id,
+                {
+                    "type": "call-unavailable",
+                    "call_id": data.get("call_id"),
+                    "to_user_id": to_user_id,
+                    "from_user_id": to_user_id,
+                },
+            )
+        await call_manager.discard_pending_offer(to_user_id, data.get("call_id"))
+        return
 
     if message_type in _CALL_TRACK_TYPES:
         await _track_call_event(message_type, from_user_id, to_user_id, data)
@@ -205,25 +246,23 @@ async def _relay_message(from_user_id: int, data: dict[str, Any]) -> None:
 
     # Абонент офлайн.
     if message_type == "call-offer":
-        parked = await _park_offer_and_push(
+        # Вызов паркуем ВСЕГДА, а уведомление шлём, если есть чем будить
+        # (Web Push/RuStore Push). Без уведомления человек может открыть
+        # приложение сам — звонок его дождётся.
+        await _park_offer_and_notify(
             callee_id=to_user_id,
             caller_id=from_user_id,
             offer=envelope,
         )
-        if not parked:
-            # Нет ни подписок, ни соединения — не достучаться.
-            await call_manager.send_to_user(
-                from_user_id,
-                {
-                    "type": "call-unavailable",
-                    "call_id": data.get("call_id"),
-                    "to_user_id": to_user_id,
-                    "from_user_id": to_user_id,
-                },
-            )
     elif message_type in ("call-cancel", "call-decline", "call-end"):
         # Отменяем/снимаем «висящий» вызов у офлайн-абонента.
         await call_manager.discard_pending_offer(to_user_id, data.get("call_id"))
+    else:
+        # Ответ на звонок и ICE-кандидаты: абонент мог отвалиться на секунду
+        # (смена сети, перезапуск страницы). Если просто выбросить сообщение,
+        # у зовущего звонок продолжит звонить, хотя собеседник уже ответил, —
+        # поэтому придерживаем до следующего подключения.
+        await call_manager.queue_message(to_user_id, envelope)
 
 
 #: Пауза перед push о входящем звонке.
@@ -232,8 +271,13 @@ async def _relay_message(from_user_id: int, data: dict[str, Any]) -> None:
 #: и забрать припаркованный offer. Тогда уведомление «Вам звонят» не отправляем:
 #: иначе человек получал бы его, когда звонка уже нет (отменён или уже отвечен).
 CALL_PUSH_DELAY_SECONDS = 2.0
-#: Сколько push о звонке остаётся актуальным (зовущий «звонит» ~30 с).
-CALL_PUSH_VALID_SECONDS = 30.0
+#: Сколько push о звонке остаётся актуальным.
+#:
+#: Зовущий ждёт ответа 60 секунд (``RING_OUT_TIMEOUT_MS`` на клиенте), и
+#: уведомление, пришедшее в этом окне, ещё актуально — человек может успеть
+#: ответить. Дольше держать нельзя: иначе «Вам звонят» появляется, когда звонок
+#: уже снят (то же правило, что в ``sw.js``).
+CALL_PUSH_VALID_SECONDS = 55.0
 
 #: Фоновые задачи веб-процесса: держим ссылки, иначе сборщик мусора их съест.
 _background_tasks: set[asyncio.Task[None]] = set()
@@ -280,44 +324,47 @@ async def _enqueue_call_push_when_ringing(
         logger.exception("Не удалось поставить задачу push о входящем звонке")
 
 
-async def _park_offer_and_push(
+async def _park_offer_and_notify(
     *, callee_id: int, caller_id: int, offer: dict[str, Any]
 ) -> bool:
-    """Паркует входящий вызов для офлайн-абонента и шлёт push.
+    """Паркует вызов офлайн-абоненту и, если есть канал, шлёт push.
 
-    Возвращает ``True``, если вызов «принят в обработку»: у абонента есть хотя бы
-    один push-канал — Web Push (PWA) или RuStore Push (Android-приложение).
+    Возвращает ``True``, если уведомление действительно ушло: у абонента есть
+    хотя бы один push-канал — Web Push (PWA) или RuStore Push (Android-приложение)
+    — и он на него подписан. Без уведомления вызов всё равно остаётся в парковке:
+    человек может сам открыть приложение, и звонок его дождётся в течение
+    ``park_offer`` (см. ``CallConnectionManager.park_offer``).
     """
-    if not _any_push_channel_configured():
-        return False
-
-    async with db_helper.session_factory() as session:
-        subscriptions = await push_crud.get_subscriptions_for_users(
-            session, [callee_id]
-        )
-        rustore_tokens = await push_crud.get_rustore_tokens_for_users(
-            session, [callee_id]
-        )
-    if not subscriptions and not rustore_tokens:
-        return False
+    notified = False
+    if _any_push_channel_configured():
+        async with db_helper.session_factory() as session:
+            subscriptions = await push_crud.get_subscriptions_for_users(
+                session, [callee_id]
+            )
+            rustore_tokens = await push_crud.get_rustore_tokens_for_users(
+                session, [callee_id]
+            )
+        notified = bool(subscriptions or rustore_tokens)
 
     await call_manager.park_offer(callee_id, offer)
-    # Собеседник не в сети: он получит push и сможет ответить, если откроет
-    # приложение. Зовущему говорим об этом, чтобы он понимал, что происходит.
+    # Собеседник не в сети: говорим зовущему, что происходит, — звонок ждёт
+    # (и отправлено ли уведомление), чтобы он не гадал, почему никто не берёт.
     await call_manager.send_to_user(
         caller_id,
         {
             "type": "call-parked",
             "call_id": offer.get("call_id"),
             "to_user_id": callee_id,
+            "notified": notified,
         },
     )
-    _spawn(
-        _enqueue_call_push_when_ringing(
-            callee_id=callee_id, caller_id=caller_id, offer=offer
+    if notified:
+        _spawn(
+            _enqueue_call_push_when_ringing(
+                callee_id=callee_id, caller_id=caller_id, offer=offer
+            )
         )
-    )
-    return True
+    return notified
 
 
 async def _handle_message(from_user_id: int, data: Any) -> None:

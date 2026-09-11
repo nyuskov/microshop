@@ -89,18 +89,9 @@
                 <q-icon :name="icon('done_all')" size="20px" />
               </button>
               <!-- Действия с сообщением (реакции, ответить, закрепить, удалить,
-                   пожаловаться): удержание занято выделением, поэтому меню
-                   живёт здесь. Показываем только для одного сообщения. -->
-              <button
-                v-if="selectedMessageIds.length === 1"
-                class="icon-btn"
-                title="Действия с сообщением"
-                aria-label="Действия с сообщением"
-                aria-haspopup="menu"
-                @click="openMessageActions"
-              >
-                <q-icon :name="icon('more_vert')" size="20px" />
-              </button>
+                   пожаловаться) — кнопки в панели нет: на телефоне меню
+                   открывается удержанием выбранного сообщения, на компьютере —
+                   наведением/правым щелчком по нему. -->
               <button
                 class="icon-btn"
                 title="Переслать выбранные"
@@ -523,14 +514,7 @@ import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import { effectiveFile, isImageFile, messageSnippet, optimizeImageFile } from '@/utils/media'
 import { mediaUrl } from '@/config'
-import {
-  chatIdFromUrl,
-  chatUrlWith,
-  readStoredChatId,
-  readStoredSection,
-  storeChatId,
-  storeSection
-} from '@/utils/chatUrl'
+import { chatIdFromUrl, chatUrlWith, readStoredSection, storeSection } from '@/utils/chatUrl'
 import { haptic } from '@/utils/haptics'
 import { usePeerActivity } from '@/composables/usePeerActivity'
 import { useRealtimeSync } from '@/composables/useRealtimeSync'
@@ -651,18 +635,17 @@ const isDesktop = computed(() => $q.screen.gt.sm)
  * (`markread=1`): там чат открывать не нужно.
  */
 /**
- * Открытый чат живёт в адресе (`?chat=`) и в памяти приложения.
+ * Открытый чат берём ТОЛЬКО из адреса (`?chat=`).
  *
- * Адрес нужен для обычной перезагрузки, память — для запуска установленного
- * приложения с домашнего экрана: там адрес всегда `start_url` (`/`), поэтому без
- * памяти человек каждый раз попадал бы в список чатов вместо своего чата.
+ * Адрес возвращает в тот же чат при перезагрузке (pull-to-refresh, кнопка
+ * «Обновить»). Запуск приложения заново (с домашнего экрана, из недавних — там
+ * адрес всегда `start_url` «/») всегда открывает главную: человек возвращается в
+ * мессенджер и сам решает, куда идти.
  */
 const initialSearch = typeof window === 'undefined' ? '' : window.location.search
 const initialChatFromUrl = chatIdFromUrl(initialSearch)
 const initialChatId =
-  new URLSearchParams(initialSearch).get('markread') === '1'
-    ? null
-    : (initialChatFromUrl ?? readStoredChatId())
+  new URLSearchParams(initialSearch).get('markread') === '1' ? null : initialChatFromUrl
 
 /** На мобильном список и нить — один экран: если в адресе чат, показываем нить. */
 const initialDrawerOpen = initialChatId === null || isDesktop.value
@@ -682,9 +665,8 @@ const drawerWidth = computed(() => (isDesktop.value ? 380 : Math.min($q.screen.w
  * роутер считает состояние «подменённым» и переписывает адрес. Из-за этого
  * «назад» срабатывал не всегда, а обновление открывало не ту страницу.
  */
-const syncChatUrl = (chatId: number | null, options: { keepStored?: boolean } = {}) => {
+const syncChatUrl = (chatId: number | null) => {
   try {
-    if (!(options.keepStored && chatId === null)) storeChatId(chatId)
     const next = chatUrlWith(window.location.href, chatId)
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`
     if (next === current) return
@@ -857,9 +839,9 @@ const onAppPopState = (event: PopStateEvent) => {
 /** Раздел нижнего меню: Чаты / Истории / Контакты. */
 type Section = 'chats' | 'contacts' | 'stories'
 
-// Раздел помним между запусками: обновление PWA (баннер «Обновить») и запуск с
-// домашнего экрана перезагружают приложение — без этого человек всегда попадал
-// на «Чаты», даже если читал истории или листал контакты.
+// Раздел помним между перезагрузками (кнопка «Обновить», pull-to-refresh):
+// иначе человек, читавший истории, после обновления оказывался на «Чатах».
+// Запуск приложения заново всегда открывает главную (см. utils/chatUrl).
 const view = ref<Section>(readStoredSection())
 const chats = ref<Chat[]>([])
 const messages = ref<Message[]>([])
@@ -2278,19 +2260,8 @@ const toggleSelectAllMessages = () => {
 }
 
 /**
- * Действия с выбранным сообщением (кнопка «⋯» в панели выделения).
- *
- * Удержание на телефоне сразу выделяет сообщение (без промежуточного меню),
- * поэтому список действий — реакции, ответить, закрепить, сохранить,
- * редактировать, пожаловаться, удалить — живёт здесь.
+ * «Переслать» выбранные сообщения — открыть диалог выбора чатов.
  */
-const openMessageActions = () => {
-  const ids = selectedMessageIds.value
-  if (ids.length !== 1) return
-  threadRef.value?.openActions(ids[0])
-}
-
-/** «Переслать» выбранные сообщения — открыть диалог выбора чатов. */
 const bulkForwardMessages = () => {
   const sources = selectedMessagesOf().filter((m) => m.kind !== 'call')
   if (sources.length === 0) return
@@ -2995,6 +2966,12 @@ const CALL_LAUNCH_WAIT_MS = 25_000
 // Действие из push-уведомления, ожидающее доставки offer (см. watcher'ы ниже).
 let autoAnswerPending = false
 let autoDeclinePending = false
+/**
+ * Чат, который нужно открыть после входа (запуск из уведомления при истёкшей
+ * сессии). Живёт только в памяти страницы: между запусками чат не помним —
+ * приложение всегда открывается на главной.
+ */
+let pendingChatAfterLogin: number | null = null
 
 /** Имя собеседника для экрана «Входящий звонок…». */
 const callLaunchPeerName = computed<string>(() => {
@@ -3041,6 +3018,68 @@ const dismissCallLaunch = () => {
   autoDeclinePending = false
   callLaunch.value = null
   stopCallLaunchScreen()
+}
+
+/**
+ * Применяет «запуск из уведомления о звонке»: экран ожидания offer и действие
+ * из push («Ответить»/«Отклонить»).
+ *
+ * Нужна отдельно от watcher'а готовности, потому что готовность и запуск
+ * приходят в разном порядке: при холодном старте сессия восстанавливается из
+ * localStorage сразу, поэтому `ready` уже true к моменту разбора адреса
+ * — раньше действие «Ответить» из уведомления в таком случае терялось, и
+ * звонок приходилось принимать вручную (зовущий всё это время слышал гудки).
+ */
+const applyCallLaunch = () => {
+  const launch = callLaunch.value
+  if (!launch || !ready.value) return
+  const wanted = launch.action === 'answer' || launch.action === 'decline' ? launch.action : 'focus'
+  // Offer мог прийти раньше, чем мы обработали запуск: тогда watcher статуса
+  // уже не сработает, поэтому действие выполняем сразу.
+  if (callStore.status === 'incoming') {
+    callLaunch.value = null
+    callLaunchScreen.value = 'none'
+    if (callLaunchTimer !== undefined) {
+      window.clearTimeout(callLaunchTimer)
+      callLaunchTimer = undefined
+    }
+    if (wanted === 'answer') void callStore.acceptCall()
+    else if (wanted === 'decline') callStore.declineCall()
+    return
+  }
+  if (callStore.status !== 'idle') return
+  if (wanted === 'decline') {
+    // «Отклонить» — без экрана: ждём доставки offer и отклоняем (см. watcher).
+    autoDeclinePending = true
+    // Через окно ожидания флаг снимаем: иначе он выстрелил бы на следующем
+    // звонке (offer по отклонённому вызову уже не придёт).
+    if (callLaunchTimer !== undefined) window.clearTimeout(callLaunchTimer)
+    callLaunchTimer = window.setTimeout(() => {
+      callLaunchTimer = undefined
+      autoDeclinePending = false
+      callLaunch.value = null
+    }, CALL_LAUNCH_WAIT_MS)
+    return
+  }
+  autoAnswerPending = wanted === 'answer'
+  showCallLaunchRing()
+}
+
+/**
+ * Запускает экран входящего звонка по данным уведомления (адрес `?call=…`,
+ * нативная оболочка Android, push). Приложение может быть полностью закрыто:
+ * сам вызов уже ждёт в парковке на сервере (см. `calls.park_offer`).
+ */
+const beginCallLaunch = (
+  callId: string,
+  peerId: number,
+  action: 'answer' | 'decline' | 'focus' = 'focus'
+) => {
+  if (!callId || !peerId) return
+  // Звонок уже идёт/звонит — стор разберётся сам, экран ожидания только мешал бы.
+  if (callStore.status !== 'idle') return
+  callLaunch.value = { callId, peerId, action }
+  applyCallLaunch()
 }
 
 // ---------- Ссылка-профиль: https://pismo.space/u/<логин> ----------
@@ -3277,15 +3316,8 @@ watch(
       }
       startRealtime()
       void callStore.connect()
-      if (callLaunch.value) {
-        // Действие из push: «Отклонить» — без экрана; «Ответить»/тело — экран звонка.
-        if (callLaunch.value.action === 'decline') {
-          autoDeclinePending = true
-        } else {
-          autoAnswerPending = callLaunch.value.action === 'answer'
-          showCallLaunchRing()
-        }
-      }
+      // Звонок из уведомления: показать экран ожидания и выполнить действие.
+      applyCallLaunch()
     } else {
       stopRealtime()
       callStore.disconnect()
@@ -3340,8 +3372,17 @@ watch([ready, pushOptIn], ensurePushState)
 // веб-версия продолжает жить на обычном Web Push.
 let disposeNativePush: () => void = () => {}
 
-/** Открывает чат, по которому тапнули уведомление (данные приходят из пушей). */
+/** Открывает чат/звонок, по которому тапнули уведомление (данные из push). */
 const openNativeTarget = async (data: Record<string, string>) => {
+  // Звонок: показываем экран входящего звонка — сам вызов уже ждёт в парковке
+  // на сервере и придёт по сигнальному каналу, как только он поднимется.
+  const callId = String(data.call_id ?? '')
+  const callPeerId = Number(data.peer_id)
+  if ((data.type === 'call' || callId) && callId && Number.isFinite(callPeerId) && callPeerId > 0) {
+    const action = data.action === 'answer' || data.action === 'decline' ? data.action : 'focus'
+    beginCallLaunch(callId, callPeerId, action)
+    return
+  }
   const chatId = Number(data.chat_id)
   if (!Number.isFinite(chatId) || chatId <= 0) return
   await loadChats()
@@ -3352,10 +3393,15 @@ disposeNativePush = initNativePush({
   onOpenTarget: (data) => {
     void openNativeTarget(data)
   },
-  onPushData: () => {
+  onPushData: (data) => {
     // Приложение открыто — подтягиваем свежие данные вместо системного уведомления.
     void refreshChatsQuiet()
     void refreshOpenThreadQuiet()
+    // Звонок: WebView мог быть в фоне и сигнальный канал уже отвалился.
+    // Показываем экран входящего звонка — offer ждёт в парковке на сервере.
+    if (data.type === 'call' && data.call_id) {
+      beginCallLaunch(String(data.call_id), Number(data.peer_id), 'focus')
+    }
   }
 })
 
@@ -3514,23 +3560,20 @@ onMounted(async () => {
   const actionParam = launchParams.get('action')
   const markReadParam = launchParams.get('markread')
   if (callIdParam && peerIdParam && /^\d+$/.test(peerIdParam)) {
-    // Приложение открыли по звонку (?call=<id>&peer=<uid>&action=…).
+    // Приложение открыли по звонку (?call=<id>&peer=<uid>&action=…). При
+    // холодном старте сессия уже восстановлена, поэтому применяем запуск сразу
+    // (а не только по watcher'у готовности — он в этом случае не сработает).
     const launchAction =
       actionParam === 'answer' || actionParam === 'decline' ? actionParam : 'focus'
-    callLaunch.value = {
-      callId: callIdParam,
-      peerId: Number(peerIdParam),
-      action: launchAction
-    }
+    beginCallLaunch(callIdParam, Number(peerIdParam), launchAction)
     // Звонок открывается поверх, но открытый чат из адреса тоже вернём — иначе
     // после перезагрузки под звонком оказался бы список чатов.
     const chatDuringCall = chatIdFromUrl(window.location.search)
     if (chatDuringCall !== null) void openChatFromPush(chatDuringCall, { pushNav: false })
   } else {
-    // Два случая: обычная перезагрузка страницы, когда чат был открыт
-    // (`?chat=<id>`, возможно с пометкой «прочитано»), и запуск установленного
-    // приложения с домашнего экрана — там адрес всегда `start_url` («/»), поэтому
-    // чат берём из памяти приложения.
+    // Обычная навигация: перезагрузка страницы, когда чат был открыт
+    // (`?chat=<id>`, возможно с пометкой «прочитано»), или запуск приложения
+    // заново — там адрес `start_url` («/»), и мы остаёмся на главной.
     const chatParam = chatIdFromUrl(window.location.search)
     if (chatParam !== null && markReadParam === '1') {
       void markChatReadQuietly(chatParam)
@@ -3546,33 +3589,26 @@ onMounted(async () => {
       const stillLoading =
         selectedChatId.value === initialChatId &&
         !chats.value.some((chat) => chat.id === initialChatId)
-      if (stillLoading) abortChatRestore(initialChatId, { keepStored: true })
+      if (stillLoading) abortChatRestore(initialChatId)
     }, 20_000)
   }
 })
 
-/**
- * Выход из восстановления чата: показываем список чатов и чистим адрес.
- *
- * `keepStored` — когда не получилось из-за сети: адрес чистим, а чат помним,
- * чтобы следующий запуск приложения попробовал снова (иначе одну сетевую
- * ошибку на старте человек видел бы как «приложение забыло мой чат» навсегда).
- */
-const abortChatRestore = (chatId: number, options: { keepStored?: boolean } = {}) => {
+/** Выход из восстановления чата: показываем список чатов и чистим адрес. */
+const abortChatRestore = (chatId: number) => {
   if (selectedChatId.value === chatId) {
     selectedChatId.value = null
     messages.value = []
     drawerOpen.value = true
   }
-  syncChatUrl(null, { keepStored: options.keepStored === true })
+  syncChatUrl(null)
 }
 
 /**
  * Загружает список чатов для восстановления: до трёх попыток при сбое.
  *
- * Три, а не две: сразу после обновления приложения (баннер «Обновить», запуск с
- * домашнего экрана) сеть и API могут быть ещё не готовы, и чат «терялся» —
- * человек оказывался на списке чатов вместо своего диалога.
+ * Три, а не две: сразу после перезагрузки приложения сеть и API могут быть ещё
+ * не готовы, и чат из адреса «терялся» — человек оказывался на списке чатов.
  */
 const loadChatsForRestore = async (): Promise<boolean> => {
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -3591,16 +3627,17 @@ const loadChatsForRestore = async (): Promise<boolean> => {
 const openChatFromPush = async (chatId: number, options: { pushNav?: boolean } = {}) => {
   if (!authStore.isAuthenticated) {
     // Пользователя откроет окно входа; пустой чат за ним показывать не нужно,
-    // но чат помним: после входа он откроется сам.
-    abortChatRestore(chatId, { keepStored: true })
+    // но чат запоминаем на время сеанса — после входа он откроется сам.
+    pendingChatAfterLogin = chatId
+    abortChatRestore(chatId)
     return
   }
   if (!chats.value.some((c) => c.id === chatId) && !(await loadChatsForRestore())) {
-    abortChatRestore(chatId, { keepStored: true })
+    abortChatRestore(chatId)
     return
   }
   // Чат мог быть удалён (или в адресе чужой id) — тогда просто остаёмся в
-  // списке, а не открываем пустую нить с ошибкой. Адрес и память чистим.
+  // списке, а не открываем пустую нить с ошибкой. Адрес чистим.
   if (!chats.value.some((c) => c.id === chatId)) {
     abortChatRestore(chatId)
     return
@@ -3627,7 +3664,13 @@ const markChatReadQuietly = async (chatId: number) => {
 
 /** Слушаем сообщения от service worker (клик по уведомлению). */
 const handleWindowMessage = (event: MessageEvent) => {
-  const data = event.data as { type?: string; chat_id?: number; action?: string } | null
+  const data = event.data as {
+    type?: string
+    chat_id?: number
+    action?: string
+    call_id?: string | null
+    peer_id?: number | null
+  } | null
   if (!data) return
   if (data.type === 'mark-chat-read' && typeof data.chat_id === 'number') {
     void markChatReadQuietly(data.chat_id)
@@ -3651,10 +3694,23 @@ const handleWindowMessage = (event: MessageEvent) => {
     return
   }
   if (data.type === 'call-notification') {
+    // Кнопки системного уведомления о звонке (service worker) и кнопки из push.
+    const callId = String(data.call_id ?? '')
+    const peerId = Number(data.peer_id)
     if (data.action === 'answer') {
-      void callStore.acceptCall()
+      if (callStore.status === 'incoming') {
+        void callStore.acceptCall()
+      } else if (callId && Number.isFinite(peerId) && peerId > 0) {
+        // Offer ещё не доставлен (канал отвалился, приложение было в фоне):
+        // ждём его и отвечаем — иначе зовущий так и будет слышать гудки.
+        beginCallLaunch(callId, peerId, 'answer')
+      }
     } else if (data.action === 'decline') {
-      callStore.declineCall()
+      if (callStore.status === 'incoming') {
+        callStore.declineCall()
+      } else if (callId && Number.isFinite(peerId) && peerId > 0) {
+        callStore.declineCallTo(peerId, callId)
+      }
     }
     // data.action === 'focus' — окно просто вернули в фокус, оверлей звонка виден.
   }
@@ -3691,6 +3747,13 @@ watch(
   () => authStore.isAuthenticated,
   (isAuthenticated) => {
     showLoginModal.value = !isAuthenticated
+    // Запуск из уведомления, пока сессия была недействительна: после входа
+    // открываем запрошенный чат (память только этого сеанса).
+    if (isAuthenticated && pendingChatAfterLogin !== null) {
+      const chatId = pendingChatAfterLogin
+      pendingChatAfterLogin = null
+      void openChatFromPush(chatId, { pushNav: false })
+    }
   },
   { immediate: true }
 )

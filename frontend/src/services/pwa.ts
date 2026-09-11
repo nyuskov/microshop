@@ -108,6 +108,20 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return output
 }
 
+/** Обратное преобразование: ArrayBuffer ключа подписки → base64url без паддинга. */
+function uint8ArrayToUrlBase64(bytes: ArrayBuffer | null): string {
+  if (!bytes || bytes.byteLength === 0) return ''
+  let binary = ''
+  const view = new Uint8Array(bytes)
+  for (let i = 0; i < view.length; i += 1) binary += String.fromCharCode(view[i])
+  return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+/** VAPID-ключ, под который оформлена подписка браузера ('' — неизвестен). */
+function subscriptionKey(subscription: PushSubscription): string {
+  return uint8ArrayToUrlBase64(subscription.options?.applicationServerKey ?? null)
+}
+
 /** Публичный VAPID-ключ сервера (пусто — push на сервере выключен). */
 async function fetchVapidPublicKey(): Promise<string> {
   try {
@@ -140,9 +154,22 @@ export async function enablePushNotifications(): Promise<
 
   try {
     const reg = await navigator.serviceWorker.ready
+    const publicKey = await fetchVapidPublicKey()
     let subscription = await reg.pushManager.getSubscription()
+    // Подписка могла остаться под СТАРЫЙ VAPID-ключ (ключи на сервере меняли,
+    // подписку переносили между окружениями). Тогда push-сервис отвечает
+    // ошибкой на наши запросы, а сервер считает, что канал есть: уведомления
+    // молча не приходят — в том числе о звонке при закрытом приложении.
+    if (
+      subscription &&
+      publicKey &&
+      subscriptionKey(subscription) &&
+      subscriptionKey(subscription) !== publicKey.replace(/=+$/, '')
+    ) {
+      await subscription.unsubscribe().catch(() => undefined)
+      subscription = null
+    }
     if (!subscription) {
-      const publicKey = await fetchVapidPublicKey()
       if (!publicKey) return 'disabled'
       subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
@@ -154,6 +181,8 @@ export async function enablePushNotifications(): Promise<
       keys?: { p256dh?: string; auth?: string }
     }
     if (json.endpoint && json.keys?.p256dh && json.keys.auth) {
+      // Повторная отправка безопасна (upsert): строка подписки живёт в БД,
+      // пока человек не выключил уведомления сам.
       await api.post('/push/subscribe/', {
         endpoint: json.endpoint,
         p256dh: json.keys.p256dh,

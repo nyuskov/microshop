@@ -71,6 +71,8 @@ interface SignalingMessage {
   reason?: string
   /** Для ``call-screen`` — начинает/заканчивает ли собеседник показ экрана. */
   sharing?: boolean
+  /** Для ``call-parked`` — отправлено ли собеседнику уведомление о звонке. */
+  notified?: boolean
 }
 
 const WS_PATH = '/api/v1/ws/calls'
@@ -90,6 +92,22 @@ const ICE_DISCONNECTED_GRACE_MS = 3500
 /** Пауза между попытками перезапуска ICE. */
 const ICE_RETRY_DELAY_MS = 5000
 const ICE_RESTART_MAX_ATTEMPTS = 3
+/** Пауза перед повторной отправкой ответа: ждём, пока поднимется медиа. */
+const ANSWER_RETRY_MS = 2500
+/** Сколько раз повторяем ответ, если зовущий его так и не получил. */
+const ANSWER_RETRY_MAX_ATTEMPTS = 4
+/**
+ * Как часто проверяем, что от собеседника реально идёт медиа.
+ *
+ * Баг: соединение числится установленным, а звука и видео нет (мобильная сеть,
+ * TURN-релей); лечилось это только ручной сменой Wi-Fi↔LTE — то есть перезапуском
+ * ICE. Делаем это сами.
+ */
+const MEDIA_WATCHDOG_INTERVAL_MS = 3000
+/** Сколько проверок подряд «медиа нет», прежде чем перезапускать ICE. */
+const MEDIA_WATCHDOG_FAILURES_BEFORE_RESTART = 2
+/** Сколько раз пробуем починиться сами, прежде чем просто предупредить. */
+const MEDIA_WATCHDOG_MAX_RESTARTS = 3
 
 // «Лёгкое» видео: невысокое разрешение и частота — видеозвонок должен работать
 // и через TURN-релей на мобильной сети (высокий битрейт 720p «валит» медиа,
@@ -154,6 +172,20 @@ let socketRetryTimer: ReturnType<typeof setTimeout> | undefined
 let socketRetryDeadline = 0
 /** Инициатор звонка: он перезапускает ICE первым, отвечающий — с задержкой. */
 let isCaller = false
+/**
+ * Наш SDP-ответ: нужен, чтобы повторить ответ собеседнику, если тот его не
+ * получил (см. `_armAnswerRetry`).
+ */
+let lastAnswerSdp: string | null = null
+let answerRetryTimer: ReturnType<typeof setTimeout> | undefined
+let answerRetryAttempts = 0
+/* Наблюдатель за медиа: звонок «установлен», но звук/видео так и не пришли. */
+let mediaWatchdogTimer: ReturnType<typeof setInterval> | undefined
+let mediaWatchdogFailures = 0
+let mediaWatchdogRestarts = 0
+let mediaWatchdogBusy = false
+/** Перезапуск ICE уже идёт: второй не нужен (иначе счётчик попыток сгорит). */
+let iceRestartInFlight = false
 let audioContext: AudioContext | null = null
 let unlockBound = false
 
@@ -448,6 +480,33 @@ function teardownCallOutput() {
   }
 }
 
+/**
+ * Идёт ли от собеседника реальный медиапоток.
+ *
+ * Смотрим именно на принятые RTP-байты, а не на `iceConnectionState`: соединение
+ * может числиться «подключённым», пока пакеты никуда не идут — тогда в звонке нет
+ * ни звука, ни видео. Лечится это перезапуском ICE (то же делает ручное
+ * переключение Wi-Fi↔LTE).
+ */
+async function remoteMediaFlowing(pc: RTCPeerConnection): Promise<boolean> {
+  const ice = pc.iceConnectionState
+  if (ice !== 'connected' && ice !== 'completed') return false
+  // Статистики нет (старый браузер) — не мешаем звонку и считаем, что всё идёт.
+  if (typeof pc.getStats !== 'function') return true
+  try {
+    const stats = await pc.getStats()
+    let flowing = false
+    stats.forEach((report: { type?: string; bytesReceived?: number }) => {
+      if (report.type !== 'inbound-rtp') return
+      if (Number(report.bytesReceived ?? 0) > 0) flowing = true
+    })
+    return flowing
+  } catch {
+    // Статистику не получить — не трогаем живой звонок.
+    return true
+  }
+}
+
 function startRingtone(kind: 'outgoing' | 'incoming') {
   stopRingtone()
   try {
@@ -534,10 +593,12 @@ function makeCallId(): string {
   return `call-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-function sendMessage(message: SignalingMessage) {
+function sendMessage(message: SignalingMessage): boolean {
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(message))
+    return true
   }
+  return false
 }
 
 export const useCallStore = defineStore('call', {
@@ -587,6 +648,9 @@ export const useCallStore = defineStore('call', {
           socketRetryDeadline = 0
           iceRestartAttempts = 0
           if (peerConnection) this._scheduleIceRestart(ICE_RETRY_DELAY_MS)
+          // Отвечающая сторона: повторяем ответ — пока канал был закрыт, он мог
+          // «уйти в никуда», и зовущий всё ещё звонит.
+          if (this.status === 'active' && !isCaller) this._resendAnswer()
         } else if (this.status === 'idle') {
           // Страница могла быть перезагружена во время звонка (случайный жест
           // «потянуть вниз», manual reload) — поднимаем его.
@@ -676,6 +740,8 @@ export const useCallStore = defineStore('call', {
         rejoinTimer = undefined
       }
       iceRestartAttempts = 0
+      // Медиа пошло — значит ответ дошёл, повторять его больше не нужно.
+      this._clearAnswerRetry()
       if (this.reconnecting && this.connected) this.reconnecting = false
     },
 
@@ -691,13 +757,84 @@ export const useCallStore = defineStore('call', {
       }, delay)
     },
 
+    /**
+     * Наблюдает за медиа после установления звонка: соединение может числиться
+     * установленным, а звука/видео не будет (чёрный экран, тишина).
+     */
+    _armMediaWatchdog() {
+      this._clearMediaWatchdog()
+      if (this.status !== 'active' || typeof window === 'undefined') return
+      mediaWatchdogRestarts = 0
+      mediaWatchdogTimer = window.setInterval(() => {
+        void this._checkMediaFlow()
+      }, MEDIA_WATCHDOG_INTERVAL_MS)
+    },
+
+    _clearMediaWatchdog() {
+      if (mediaWatchdogTimer !== undefined) {
+        window.clearInterval(mediaWatchdogTimer)
+        mediaWatchdogTimer = undefined
+      }
+      mediaWatchdogFailures = 0
+    },
+
+    /**
+     * Проверяет, идёт ли от собеседника медиа, и чинит соединение сам.
+     *
+     * Это автоматическая замена ручного «переключить Wi-Fi↔LTE»: если ICE/DTLS
+     * считаются установленными, а пакеты не идут, перезапускаем ICE. Если медиа
+     * уже идёт — наблюдатель выключается (своё дело сделал).
+     */
+    async _checkMediaFlow() {
+      if (this.status !== 'active' || mediaWatchdogBusy) return
+      const pc = peerConnection
+      if (!pc) {
+        this._clearMediaWatchdog()
+        return
+      }
+      mediaWatchdogBusy = true
+      const flowing = await (async () => {
+        try {
+          return await remoteMediaFlowing(pc)
+        } finally {
+          mediaWatchdogBusy = false
+        }
+      })()
+      // Пока читали статистику, звонок мог закончиться или соединение — замениться.
+      if (this.status !== 'active' || pc !== peerConnection) return
+      if (flowing) {
+        this._clearMediaWatchdog()
+        return
+      }
+      mediaWatchdogFailures += 1
+      // Зовущий ждёт меньше, отвечающий — дольше: иначе два одновременных
+      // пересогласования SDP столкнутся (glare) и оба сорвутся.
+      const failuresNeeded = isCaller
+        ? MEDIA_WATCHDOG_FAILURES_BEFORE_RESTART
+        : MEDIA_WATCHDOG_FAILURES_BEFORE_RESTART + 1
+      if (mediaWatchdogFailures < failuresNeeded) return
+      mediaWatchdogFailures = 0
+      if (mediaWatchdogRestarts >= MEDIA_WATCHDOG_MAX_RESTARTS) {
+        // Сами не починили — дальше только предупреждаем, звонок не рвём.
+        this._clearMediaWatchdog()
+        this.notice = 'Звук и видео не идут — попробуйте переключить сеть или перезвонить'
+        return
+      }
+      mediaWatchdogRestarts += 1
+      this.reconnecting = true
+      await this._restartIce(pc)
+    },
+
     /** Перезапуск ICE: собираем адреса на новых интерфейсах и пересогласуем SDP. */
     async _restartIce(connection: RTCPeerConnection) {
       if (this.status !== 'active' || connection !== peerConnection) return
+      // Перезапуск уже идёт: второй только сожжёт попытки (см. наблюдатель медиа).
+      if (iceRestartInFlight) return
       if (iceRestartAttempts >= ICE_RESTART_MAX_ATTEMPTS) {
         this._forceEnd('Связь потеряна — звонок завершён')
         return
       }
+      iceRestartInFlight = true
       iceRestartAttempts += 1
       this.reconnecting = true
       try {
@@ -714,6 +851,8 @@ export const useCallStore = defineStore('call', {
         })
       } catch {
         /* не получилось — попробуем ещё раз по таймеру */
+      } finally {
+        iceRestartInFlight = false
       }
       this._scheduleIceRestart(ICE_RETRY_DELAY_MS)
     },
@@ -794,7 +933,11 @@ export const useCallStore = defineStore('call', {
         case 'call-answer': {
           if (this.status === 'outgoing' && this.callId === callId && peerConnection) {
             if (message.sdp) {
-              void peerConnection.setRemoteDescription({ type: 'answer', sdp: message.sdp })
+              // Повторный ответ (страховка отвечающей стороны) не должен ронять
+              // обработку: первый уже применён, второй просто игнорируем.
+              void peerConnection
+                .setRemoteDescription({ type: 'answer', sdp: message.sdp })
+                .catch(() => undefined)
             }
             this._becomeActive()
           }
@@ -858,7 +1001,12 @@ export const useCallStore = defineStore('call', {
         case 'call-decline': {
           if (this.status === 'outgoing' && this.callId === callId) {
             this._cleanup()
-            this.notice = message.reason === 'busy' ? 'Абонент занят' : 'Абонент отклонил звонок'
+            this.notice =
+              message.reason === 'busy'
+                ? 'Абонент занят'
+                : message.reason === 'failed'
+                  ? 'Собеседник не смог ответить'
+                  : 'Абонент отклонил звонок'
           }
           break
         }
@@ -870,9 +1018,13 @@ export const useCallStore = defineStore('call', {
           break
         }
         case 'call-parked': {
-          // Абонент не в сети, но уведомление ушло — он может ответить,
-          // открыв приложение (см. park_offer на бэкенде).
-          this.notice = 'Собеседник не в сети — отправили уведомление о звонке'
+          // Абонент не в сети: вызов ждёт его в приложении и будет доставлен,
+          // как только он туда зайдёт (см. park_offer на бэкенде). Уведомление
+          // уходит, только если у него включены push-уведомления.
+          this.notice =
+            message.notified === false
+              ? 'Собеседник не в сети без уведомлений — звонок ждёт его в приложении'
+              : 'Собеседник не в сети — отправили уведомление о звонке'
           break
         }
         case 'call-unavailable': {
@@ -952,6 +1104,19 @@ export const useCallStore = defineStore('call', {
       // Контекст вывода создаём в жесте пользователя (иначе аудио заглушится).
       ensureCallOutput()
       const kind = pendingOffer.kind
+      const offerSdp = pendingOffer.sdp
+      // Собеседник и вызов нужны и после `_cleanup()` — сохраняем заранее.
+      const peerId = this.peerId ?? 0
+      const callId = this.callId ?? ''
+      // Сигнальный канал мог отвалиться, пока звонил телефон (фон, смена сети).
+      // Поднимаем его заранее: иначе ответ молча уйдёт «в никуда» и у зовущего
+      // звонок продолжит звонить, хотя мы уже нажали «Ответить».
+      const connected = await this.connect()
+      if (!connected) {
+        this._cleanup()
+        this.notice = 'Не удалось ответить: нет связи с сервером'
+        return
+      }
       try {
         this._restoreSavedDevices()
         const ice = await loadIceConfiguration()
@@ -962,34 +1127,117 @@ export const useCallStore = defineStore('call', {
         peerConnection = new RTCPeerConnection(ice)
         this._wirePeerConnection(peerConnection)
         stream.getTracks().forEach((track) => peerConnection?.addTrack(track, stream))
-        await peerConnection.setRemoteDescription({ type: 'offer', sdp: pendingOffer.sdp })
+        await peerConnection.setRemoteDescription({ type: 'offer', sdp: offerSdp })
         const answer = await peerConnection.createAnswer()
         await peerConnection.setLocalDescription(answer)
         isCaller = false
         this.kind = kind
+        lastAnswerSdp = answer.sdp ?? null
         sendMessage({
           type: 'call-answer',
-          to_user_id: this.peerId ?? 0,
-          call_id: this.callId ?? '',
+          to_user_id: peerId,
+          call_id: callId,
           sdp: answer.sdp ?? ''
         })
         this._becomeActive()
+        // Ответ мог не дойти — повторяем, пока не поднимется медиа.
+        this._armAnswerRetry()
         void this.loadDevices()
       } catch {
         this._cleanup()
+        // Сообщаем зовущему отказ: без этого у него звонок идёт до таймаута,
+        // хотя ответить мы не смогли (нет доступа к камере/микрофону).
+        this._declineUnanswered(peerId, callId)
         this.notice = 'Не удалось получить доступ к камере/микрофону'
       }
+    },
+
+    /**
+     * Отправляет сигналинг, при необходимости поднимая сигнальный канал.
+     *
+     * Без этого важные сообщения (ответ на звонок, отказ, сброс) молча терялись,
+     * если сокет в этот момент был закрыт: телефон вышел из фона, сменилась сеть.
+     * Тогда у одной стороны звонок уже завершён, а у другой всё ещё звонит.
+     */
+    async _sendSignaling(message: SignalingMessage): Promise<boolean> {
+      if (sendMessage(message)) return true
+      if (await this.connect()) return sendMessage(message)
+      return false
+    },
+
+    /**
+     * Сообщает зовущему, что ответить не вышло.
+     *
+     * Вызывается после `_cleanup()` (состояние звонка уже не наше), поэтому
+     * собеседник и call_id передаются явно. `reason`: 'failed' — принять не
+     * получилось (нет доступа к камере/микрофону), 'declined' — человек отклонил.
+     */
+    _declineUnanswered(peerId: number, callId: string, reason = 'failed') {
+      if (!peerId || !callId) return
+      void this._sendSignaling({
+        type: 'call-decline',
+        to_user_id: peerId,
+        call_id: callId,
+        reason
+      })
+    },
+
+    /**
+     * Повторяет ответ собеседнику, пока медиа не поднялось.
+     *
+     * Зовущий мог не получить ответ (короткий обрыв его канала, перезапуск
+     * сервера) и продолжает звонить, хотя мы уже разговариваем. Повторный ответ
+     * безвреден: зовущий применяет его, только пока сам ждёт ответа.
+     */
+    _armAnswerRetry() {
+      this._clearAnswerRetry()
+      const tick = () => {
+        answerRetryTimer = undefined
+        const pc = peerConnection
+        if (!pc || isCaller || this.status !== 'active' || !lastAnswerSdp) return
+        if (
+          pc.iceConnectionState === 'connected' ||
+          pc.iceConnectionState === 'completed' ||
+          pc.connectionState === 'connected'
+        ) {
+          return
+        }
+        if (answerRetryAttempts >= ANSWER_RETRY_MAX_ATTEMPTS) return
+        answerRetryAttempts += 1
+        this._resendAnswer()
+        answerRetryTimer = window.setTimeout(tick, ANSWER_RETRY_MS)
+      }
+      answerRetryTimer = window.setTimeout(tick, ANSWER_RETRY_MS)
+    },
+
+    /** Отправляет сохранённый ответ ещё раз (см. `_armAnswerRetry`). */
+    _resendAnswer() {
+      if (isCaller || !lastAnswerSdp || this.status !== 'active') return
+      sendMessage({
+        type: 'call-answer',
+        to_user_id: this.peerId ?? 0,
+        call_id: this.callId ?? '',
+        sdp: lastAnswerSdp
+      })
+    },
+
+    _clearAnswerRetry() {
+      if (answerRetryTimer !== undefined) {
+        window.clearTimeout(answerRetryTimer)
+        answerRetryTimer = undefined
+      }
+      answerRetryAttempts = 0
     },
 
     /** Отклонить входящий звонок. */
     declineCall() {
       if (this.status !== 'incoming') return
-      sendMessage({
-        type: 'call-decline',
-        to_user_id: this.peerId ?? 0,
-        call_id: this.callId ?? ''
-      })
+      const peerId = this.peerId ?? 0
+      const callId = this.callId ?? ''
       this._cleanup()
+      // Канал мог отвалиться, пока звонил телефон: тогда зовущий иначе «звонит»
+      // до таймаута и в истории остаётся пропущенный вместо отказа.
+      this._declineUnanswered(peerId, callId, 'declined')
     },
 
     /** Входящий рингтон для экрана «Входящий звонок…» (до доставки offer). */
@@ -1008,30 +1256,27 @@ export const useCallStore = defineStore('call', {
         this.declineCall()
         return
       }
-      sendMessage({ type: 'call-decline', to_user_id: peerId, call_id: callId })
       this._cleanup()
+      this._declineUnanswered(peerId, callId, 'declined')
     },
 
     /** Отменить исходящий звонок до ответа. */
     cancelCall() {
       if (this.status !== 'outgoing') return
-      sendMessage({
-        type: 'call-cancel',
-        to_user_id: this.peerId ?? 0,
-        call_id: this.callId ?? ''
-      })
+      const peerId = this.peerId ?? 0
+      const callId = this.callId ?? ''
       this._cleanup()
+      // Без гарантированной отправки собеседник продолжал бы звонить в тишине.
+      void this._sendSignaling({ type: 'call-cancel', to_user_id: peerId, call_id: callId })
     },
 
     /** Завершить активный звонок. */
     endCall() {
       if (this.status === 'idle') return
-      sendMessage({
-        type: 'call-end',
-        to_user_id: this.peerId ?? 0,
-        call_id: this.callId ?? ''
-      })
+      const peerId = this.peerId ?? 0
+      const callId = this.callId ?? ''
       this._cleanup()
+      void this._sendSignaling({ type: 'call-end', to_user_id: peerId, call_id: callId })
     },
 
     _becomeActive() {
@@ -1051,6 +1296,9 @@ export const useCallStore = defineStore('call', {
       void this._capVideoBitrate()
       // Пока звонок идёт — помним о нём: перезагрузка страницы не должна его терять.
       this.rememberCall()
+      // Проверяем, что медиа действительно пошло (иначе чёрный экран и тишина,
+      // а «лечится» это перезапуском ICE).
+      this._armMediaWatchdog()
     },
 
     /** Запоминает звонок для восстановления после перезагрузки страницы. */
@@ -1541,6 +1789,11 @@ export const useCallStore = defineStore('call', {
       iceRestartAttempts = 0
       socketRetryDeadline = 0
       isCaller = false
+      lastAnswerSdp = null
+      iceRestartInFlight = false
+      mediaWatchdogRestarts = 0
+      this._clearAnswerRetry()
+      this._clearMediaWatchdog()
       // Звонок завершён осознанно — поднимать его после перезагрузки не нужно.
       forgetActiveCall()
       this.$patch({ ...DEFAULT_STATE, connected: this.connected })

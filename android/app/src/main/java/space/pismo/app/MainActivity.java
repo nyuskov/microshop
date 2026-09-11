@@ -76,6 +76,12 @@ public class MainActivity extends Activity {
     private PermissionRequest pendingWebPermission;
     private JSONObject pendingOpenTarget;
 
+    /**
+     * Замок для цели перехода: страница может забрать её сама из JS-потока
+     * (см. {@code PismoNative.openTargetInfo}), а накопление идёт в UI-потоке.
+     */
+    private final Object openTargetLock = new Object();
+
     /** Содержимое системного «Поделиться» (ожидает выбора чата на странице). */
     private volatile SharedContent sharedContent;
 
@@ -222,8 +228,7 @@ public class MainActivity extends Activity {
                 WebBridge.sendPushToken(token);
             }
             if (pendingOpenTarget != null) {
-                WebBridge.sendOpenTarget(pendingOpenTarget);
-                pendingOpenTarget = null;
+                WebBridge.sendOpenTarget(takePendingOpenTarget());
             }
             // Содержимое «Поделиться»: отдаём один раз (страница могла забрать
             // его сама через PismoNative.shareInfo() — тогда событие лишнее).
@@ -475,7 +480,22 @@ public class MainActivity extends Activity {
 
     /** Сохраняет цель перехода из push, чтобы отдать её странице после загрузки. */
     private void rememberOpenTarget(Intent intent) {
-        pendingOpenTarget = openTargetOf(intent);
+        setPendingOpenTarget(openTargetOf(intent));
+    }
+
+    private void setPendingOpenTarget(JSONObject target) {
+        synchronized (openTargetLock) {
+            pendingOpenTarget = target;
+        }
+    }
+
+    /** Забирает цель перехода один раз (второй раз уже некому отдавать). */
+    private JSONObject takePendingOpenTarget() {
+        synchronized (openTargetLock) {
+            JSONObject target = pendingOpenTarget;
+            pendingOpenTarget = null;
+            return target;
+        }
     }
 
     // ------------------------------------------------------------------ «Поделиться»
@@ -679,7 +699,8 @@ public class MainActivity extends Activity {
         }
         JSONObject detail = new JSONObject();
         boolean hasData = false;
-        for (String key : new String[]{"type", "chat_id", "message_id", "peer_id", "call_id"}) {
+        for (String key : new String[]{"type", "chat_id", "message_id", "peer_id", "call_id",
+                "action"}) {
             String value = intent.getStringExtra(key);
             if (value != null && !value.isEmpty()) {
                 try {
@@ -788,6 +809,18 @@ public class MainActivity extends Activity {
         public void clearShare() {
             sharedContent = null;
             sharedBytes = null;
+        }
+
+        /**
+         * Цель перехода из уведомления (чат или звонок) в JSON или пустая строка.
+         * Страница зовёт это сама при старте: событие {@code pismo:open} может
+         * обогнать подписку на него — тогда холодный старт по «Ответить» терял
+         * действие, и звонок приходилось принимать вручную.
+         */
+        @JavascriptInterface
+        public String openTargetInfo() {
+            JSONObject target = takePendingOpenTarget();
+            return target == null ? "" : target.toString();
         }
     }
 }

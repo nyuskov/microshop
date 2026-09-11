@@ -3,9 +3,9 @@
 Сервер выступает лишь ретранслятором сообщений WebRTC (SDP offer/answer,
 ICE-candidates, отмена/сброс/завершение) между двумя участниками вызова.
 
-Если вызываемый абонент офлайн (приложение закрыто), offer «паркуется» и ему
-шлётся Web Push — когда он откроет приложение и подключится, offer доставится
-(см. ``park_offer``/``take_pending_offer``).
+Если вызываемый абонент офлайн (приложение закрыто), offer «паркуется»: когда он
+подключится, offer доставится и звонок его дождётся. Если у абонента есть push-канал,
+дополнительно шлётся уведомление (см. ``park_offer``/``take_pending_offer``).
 """
 
 import asyncio
@@ -16,6 +16,12 @@ from typing import Any
 from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
+
+#: Сколько держим недоставленное сигнальное сообщение (обычно абонент успевает
+#: переподключиться за это время: мобильная сеть, перезапуск страницы).
+QUEUED_MESSAGE_TTL_SECONDS = 45.0
+#: Предел очереди на пользователя: «мёртвый» сокет не должен копить сообщения.
+MAX_QUEUED_MESSAGES = 64
 
 
 class CallConnectionManager:
@@ -30,6 +36,8 @@ class CallConnectionManager:
         self._lock = asyncio.Lock()
         # Припаркованные входящие вызовы для офлайн-абонентов: user_id -> offer.
         self._pending_offers: dict[int, dict[str, Any]] = {}
+        # Недоставленный сигналинг (ответ на звонок, ICE-кандидаты): user_id -> [msg].
+        self._queued_messages: dict[int, list[dict[str, Any]]] = {}
 
     async def connect(self, user_id: int, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -47,6 +55,10 @@ class CallConnectionManager:
         pending = await self.take_pending_offer(user_id)
         if pending is not None:
             await self._send(websocket, pending)
+        # …и придержанный сигналинг: порядок сохраняется (offer был отложен раньше
+        # ICE-кандидатов, значит и придёт первым).
+        for message in await self.take_queued_messages(user_id):
+            await self._send(websocket, message)
 
     def is_online(self, user_id: int) -> bool:
         return user_id in self._connections
@@ -77,9 +89,15 @@ class CallConnectionManager:
             return False
 
     async def park_offer(
-        self, callee_id: int, offer: dict[str, Any], ttl_seconds: float = 55.0
+        self, callee_id: int, offer: dict[str, Any], ttl_seconds: float = 75.0
     ) -> None:
-        """Паркует входящий вызов для офлайн-абонента (до его подключения)."""
+        """Паркует входящий вызов для офлайн-абонента (до его подключения).
+
+        Срок жизни должен быть не меньше, чем зовущий ждёт ответа
+        (``RING_OUT_TIMEOUT_MS`` = 60 с на клиенте): push, холодный старт и вход
+        в аккаунт занимают время, и вызов обязан дождаться, пока человек откроет
+        приложение.
+        """
         async with self._lock:
             parked = dict(offer)
             parked["_expires_at"] = time.monotonic() + ttl_seconds
@@ -120,6 +138,49 @@ class CallConnectionManager:
             offer = self._pending_offers.get(callee_id)
             if offer is not None and offer.get("call_id") == call_id:
                 self._pending_offers.pop(callee_id, None)
+
+    async def queue_message(self, user_id: int, payload: dict[str, Any]) -> None:
+        """Придерживает сигнальное сообщение до следующего подключения абонента.
+
+        Короткий обрыв сигнального канала (смена сети, перезапуск страницы,
+        повторное подключение) не должен «терять» ответ на звонок: иначе у
+        зовущего звонок продолжает звонить, хотя собеседник уже нажал «Ответить».
+        """
+        async with self._lock:
+            self._prune_queued_locked()
+            queue = self._queued_messages.setdefault(user_id, [])
+            entry = dict(payload)
+            entry["_expires_at"] = time.monotonic() + QUEUED_MESSAGE_TTL_SECONDS
+            queue.append(entry)
+            if len(queue) > MAX_QUEUED_MESSAGES:
+                del queue[0 : len(queue) - MAX_QUEUED_MESSAGES]
+
+    async def take_queued_messages(self, user_id: int) -> list[dict[str, Any]]:
+        """Отдаёт придержанные сообщения абонента (просроченные выбрасывает)."""
+        async with self._lock:
+            queue = self._queued_messages.pop(user_id, [])
+        now = time.monotonic()
+        fresh: list[dict[str, Any]] = []
+        for entry in queue:
+            if entry.get("_expires_at", 0) < now:
+                continue
+            entry.pop("_expires_at", None)
+            fresh.append(entry)
+        return fresh
+
+    def _prune_queued_locked(self) -> None:
+        """Чистит истёкшие очереди (иначе они копились бы для «молчащих» абонентов)."""
+        now = time.monotonic()
+        for user_id in list(self._queued_messages):
+            alive = [
+                entry
+                for entry in self._queued_messages[user_id]
+                if entry.get("_expires_at", 0) >= now
+            ]
+            if alive:
+                self._queued_messages[user_id] = alive
+            else:
+                del self._queued_messages[user_id]
 
 
 call_manager = CallConnectionManager()

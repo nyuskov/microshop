@@ -1,10 +1,11 @@
 /**
  * Адрес страницы и открытый чат.
  *
- * Открытый чат держим в адресной строке (`?chat=<id>`), чтобы перезагрузка
- * страницы (в том числе pull-to-refresh в PWA) возвращала в тот же чат, а не в
- * список чатов. Разбор и сборка адреса — чистые функции, поэтому их легко
- * тестировать отдельно от компонента.
+ * Открытый чат держим только в адресной строке (`?chat=<id>`): перезагрузка
+ * страницы (pull-to-refresh, кнопка «Обновить», возврат в PWA) возвращает в тот
+ * же чат, а запуск приложения заново всегда открывает главную — список чатов.
+ * Разбор и сборка адреса — чистые функции, поэтому их легко тестировать отдельно
+ * от компонента.
  */
 
 /** Параметр адреса с идентификатором открытого чата. */
@@ -16,16 +17,7 @@ export const CHAT_PARAM = 'chat'
  */
 const EPHEMERAL_PARAMS = ['markread']
 
-/**
- * Ключ, под которым помним открытый чат между запусками приложения.
- *
- * Зачем, если есть `?chat=` в адресе: установленное приложение (PWA) при запуске
- * с домашнего экрана открывается по `start_url` — то есть просто «/», без
- * параметров. Без этой памяти каждый такой запуск начинался бы со списка чатов,
- * хотя человек просто вернулся в приложение.
- */
-export const OPEN_CHAT_STORAGE_KEY = 'pismo_open_chat'
-
+/** Доступ к localStorage (в приватном режиме его может не быть). */
 function safeStorage(): Storage | null {
   try {
     return typeof localStorage === 'undefined' ? null : localStorage
@@ -35,26 +27,20 @@ function safeStorage(): Storage | null {
   }
 }
 
-/** id открытого чата из памяти приложения (`null` — ничего не помним). */
-export function readStoredChatId(storage: Storage | null = safeStorage()): number | null {
-  try {
-    const raw = storage?.getItem(OPEN_CHAT_STORAGE_KEY)
-    return raw && /^\d+$/.test(raw) ? Number(raw) : null
-  } catch {
-    return null
-  }
-}
-
 /**
- * Запомнить открытый чат: `null` — чат закрыт (показывается список), помнить
- * нечего.
+ * Была ли текущая загрузка страницы ПЕРЕЗАГРУЗКОЙ, а не запуском приложения.
+ *
+ * Разница принципиальная: при перезагрузке (pull-to-refresh, кнопка «Обновить»,
+ * возврат в развёрнутое окно PWA) человека возвращаем туда, где он был, а при
+ * запуске приложения заново всегда показываем главную — список чатов.
  */
-export function storeChatId(chatId: number | null, storage: Storage | null = safeStorage()): void {
+export function isPageReload(): boolean {
   try {
-    if (chatId === null) storage?.removeItem(OPEN_CHAT_STORAGE_KEY)
-    else storage?.setItem(OPEN_CHAT_STORAGE_KEY, String(chatId))
+    const entries = performance.getEntriesByType?.('navigation') ?? []
+    const type = (entries[0] as { type?: string } | undefined)?.type
+    return type === 'reload'
   } catch {
-    /* не смогли сохранить — не страшно, адрес всё равно содержит чат */
+    return false
   }
 }
 
@@ -81,12 +67,9 @@ export function chatUrlWith(currentUrl: string, chatId: number | null): string {
 }
 
 /**
- * Раздел приложения, в котором был пользователь (`chats` / `stories` /
- * `contacts`).
+ * Ключ, под которым помним раздел приложения (`chats`/`stories`/`contacts`).
  *
- * Зачем помнить: PWA после обновления (кнопка «Обновить» в баннере) и при запуске
- * с домашнего экрана перезагружается — без этой памяти человек всегда оказывался
- * на «Чатах», даже если читал истории или листал контакты.
+ * Нужен только для перезагрузки — см. `readStoredSection`.
  */
 export const SECTION_STORAGE_KEY = 'pismo_view'
 
@@ -95,8 +78,21 @@ const SECTIONS = ['chats', 'stories', 'contacts'] as const
 
 export type StoredSection = (typeof SECTIONS)[number]
 
-/** Раздел из памяти приложения (по умолчанию — чаты). */
+/**
+ * Раздел приложения, в котором был пользователь (`chats` / `stories` /
+ * `contacts`).
+ *
+ * Помним его только для перезагрузки: кнопка «Обновить» и pull-to-refresh не
+ * должны выкидывать человека из историй или контактов на «Чаты». Запуск
+ * приложения заново всегда открывает главную, поэтому та память не читается.
+ */
 export function readStoredSection(storage: Storage | null = safeStorage()): StoredSection {
+  if (!isPageReload()) {
+    // Запуск приложения заново: всегда главная («Чаты»). Память приводим в
+    // согласованность — иначе следующая перезагрузка вернула бы в старый раздел.
+    storeSection('chats', storage)
+    return 'chats'
+  }
   try {
     const raw = storage?.getItem(SECTION_STORAGE_KEY)
     return SECTIONS.includes(raw as StoredSection) ? (raw as StoredSection) : 'chats'

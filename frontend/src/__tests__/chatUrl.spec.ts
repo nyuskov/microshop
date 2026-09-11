@@ -2,9 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   chatIdFromUrl,
   chatUrlWith,
-  readStoredChatId,
+  isPageReload,
   readStoredSection,
-  storeChatId,
   storeSection
 } from '@/utils/chatUrl'
 
@@ -64,62 +63,55 @@ describe('chatUrlWith', () => {
   })
 })
 
-describe('память об открытом чате (запуск PWA с домашнего экрана)', () => {
-  /** Простая заглушка localStorage. */
-  const makeStorage = (): Storage => {
-    const map = new Map<string, string>()
-    return {
-      get length() {
-        return map.size
-      },
-      clear: () => map.clear(),
-      getItem: (key: string) => map.get(key) ?? null,
-      key: (index: number) => Array.from(map.keys())[index] ?? null,
-      removeItem: (key: string) => void map.delete(key),
-      setItem: (key: string, value: string) => void map.set(key, value)
-    } as Storage
-  }
-
-  it('запоминает и читает id чата', () => {
-    const storage = makeStorage()
-    storeChatId(42, storage)
-    expect(readStoredChatId(storage)).toBe(42)
-  })
-
-  it('забывает чат, когда он закрыт', () => {
-    const storage = makeStorage()
-    storeChatId(42, storage)
-    storeChatId(null, storage)
-    expect(readStoredChatId(storage)).toBeNull()
-  })
-
-  it('не падает на мусоре в хранилище', () => {
-    const storage = makeStorage()
-    storage.setItem('pismo_open_chat', 'не число')
-    expect(readStoredChatId(storage)).toBeNull()
-  })
-
-  it('переживает недоступное хранилище', () => {
-    expect(readStoredChatId(null)).toBeNull()
-    expect(() => storeChatId(1, null)).not.toThrow()
-  })
-})
-
-describe('раздел приложения между запусками', () => {
+describe('перезагрузка против запуска приложения заново', () => {
   beforeEach(() => localStorage.clear())
 
-  it('по умолчанию — чаты', () => {
-    expect(readStoredSection()).toBe('chats')
+  /** Подменяет тип загрузки страницы (jsdom не заполняет Navigation Timing). */
+  const stubNavigation = (type: 'reload' | 'navigate' | 'back_forward') => {
+    Object.defineProperty(performance, 'getEntriesByType', {
+      configurable: true,
+      value: () => [{ type }]
+    })
+  }
+
+  it('перезагрузку считает перезагрузкой', () => {
+    stubNavigation('reload')
+    expect(isPageReload()).toBe(true)
   })
 
-  it('помнит раздел: после обновления приложения возвращаемся в него же', () => {
+  it('обычное открытие перезагрузкой не считает', () => {
+    stubNavigation('navigate')
+    expect(isPageReload()).toBe(false)
+  })
+
+  it('при перезагрузке возвращает в тот же раздел', () => {
+    stubNavigation('reload')
     storeSection('stories')
     expect(readStoredSection()).toBe('stories')
     storeSection('contacts')
     expect(readStoredSection()).toBe('contacts')
   })
 
+  it('при запуске приложения заново всегда открывает главную — чаты', () => {
+    stubNavigation('navigate')
+    storeSection('stories')
+    expect(readStoredSection()).toBe('chats')
+    // Память тоже приведена в порядок: следующая перезагрузка вернёт в «Чаты»,
+    // а не в раздел, из которого человек уходил до закрытия приложения.
+    expect(localStorage.getItem('pismo_view')).toBe('chats')
+  })
+
+  it('без Navigation Timing считает, что приложение запустили заново', () => {
+    Object.defineProperty(performance, 'getEntriesByType', {
+      configurable: true,
+      value: () => []
+    })
+    storeSection('contacts')
+    expect(readStoredSection()).toBe('chats')
+  })
+
   it('мусор в хранилище не ломает запуск', () => {
+    stubNavigation('reload')
     localStorage.setItem('pismo_view', 'что-то не то')
     expect(readStoredSection()).toBe('chats')
   })

@@ -22,6 +22,12 @@ interface NativeBridge {
   isNotificationPermissionGranted?: () => boolean
   getAppVersion?: () => string
   openExternal?: (url: string) => void
+  /**
+   * Цель перехода из уведомления (чат/звонок) в JSON или пустая строка.
+   * Забирается один раз: страница зовёт сама при старте, чтобы не потерять
+   * действие, если событие `pismo:open` обогнало подписку.
+   */
+  openTargetInfo?: () => string
   /** «Поделиться» из системного меню: описание содержимого в JSON. */
   shareInfo?: () => string
   /** Кусок содержимого в base64 (см. services/nativeShare.ts). */
@@ -103,6 +109,24 @@ function onNativeEvent<T>(name: string, handler: (detail: T) => void): () => voi
   return () => window.removeEventListener(`pismo:${name}`, listener)
 }
 
+/**
+ * Цель перехода, накопленная нативным слоем (чат или звонок), или null.
+ *
+ * Забираем её запросом, а не только событием: при холодном старте по уведомлению
+ * событие может прийти раньше, чем страница на него подпишется, и «Ответить»
+ * из уведомления терялось бы (звонок пришлось бы принимать вручную).
+ */
+function readPendingOpenTarget(): NativePushData | null {
+  try {
+    const raw = nativeBridge()?.openTargetInfo?.() ?? ''
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as NativePushData
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 export interface NativePushHandlers {
   /** Клик по уведомлению: нужно открыть чат/звонок. */
   onOpenTarget?: (data: NativePushData) => void
@@ -136,6 +160,9 @@ export function initNativePush(handlers: NativePushHandlers = {}): () => void {
   if (existing) void sendTokenToServer(existing)
   // Просим нативный слой получить/обновить токен (и разрешение на уведомления).
   bridge?.requestPushToken?.()
+  // Цель перехода (чат/звонок), если приложение открыли по уведомлению.
+  const pendingTarget = readPendingOpenTarget()
+  if (pendingTarget) handlers.onOpenTarget?.(pendingTarget)
 
   return () => {
     disposers.forEach((dispose) => dispose())
