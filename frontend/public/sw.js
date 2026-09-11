@@ -16,7 +16,7 @@
  */
 
 const CACHE_PREFIX = 'pismo-v'
-const CACHE_VERSION = 13
+const CACHE_VERSION = 14
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 // Кэши прежнего названия приложения (microshop → Pismo): чистим один раз при активации.
 const LEGACY_CACHE_PREFIXES = ['microshop-v', 'microshop-auth']
@@ -192,6 +192,17 @@ async function handlePush(event) {
     // Уведомление о сообщении: нейтральная кнопка «Пометить как прочитанное»
     // (тап по телу уведомления открывает чат).
     options.actions = [{ action: 'mark-read', title: 'Пометить как прочитанное' }]
+  } else if (data.type === 'security') {
+    // Событие безопасности (новый вход в аккаунт, заморозка). Держим уведомление
+    // на экране и даём кнопку «Это не я»: она завершает все сессии одним
+    // запросом даже с закрытым приложением (см. api_v1/auth/panic.py).
+    options.tag = 'pismo-security'
+    options.requireInteraction = true
+    options.renotify = true
+    options.vibrate = [200, 100, 200]
+    if (data.panic_token) {
+      options.actions = [{ action: 'panic', title: 'Это не я' }]
+    }
   }
   await self.registration.showNotification(title, options)
 }
@@ -226,6 +237,25 @@ async function swApiPost(path, body) {
     return resp.ok
   } catch {
     return false
+  }
+}
+
+/**
+ * Тревога «это не я»: у эндпоинта своя авторизация — подписанный panic-токен
+ * из уведомления, поэтому access-токен (его может не быть или он уже отозван)
+ * не нужен. Возвращает ответ сервера или null, если запрос не дошёл.
+ */
+async function swPanic(panicToken) {
+  try {
+    const resp = await fetch('/api/v1/auth/security/panic/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: panicToken })
+    })
+    if (!resp.ok) return null
+    return await resp.json()
+  } catch {
+    return null
   }
 }
 
@@ -290,6 +320,38 @@ self.addEventListener('notificationclick', (event) => {
           '&action=' +
           encodeURIComponent(action)
         await self.clients.openWindow(callUrl)
+        return
+      }
+
+      // Уведомление о безопасности: кнопка «Это не я» завершает все сессии.
+      if (data.type === 'security') {
+        if (action === 'panic' && data.panic_token) {
+          const result = await swPanic(data.panic_token)
+          if (result) {
+            await self.registration.showNotification(
+              result.frozen ? 'Аккаунт заморожен' : 'Сессии завершены',
+              {
+                body: result.frozen
+                  ? 'Все устройства вышли, вход закрыт. Разморозить можно кодом из письма.'
+                  : 'Все устройства вышли из аккаунта.',
+                icon: absoluteUrl('/icons/icon-192.png'),
+                badge: absoluteUrl('/icons/badge-96.png'),
+                tag: 'pismo-security'
+              }
+            )
+            return
+          }
+        }
+        // Тап по телу (или тревога не дошла) — открываем приложение с диалогом
+        // «новый вход», чтобы человек разобрался в интерфейсе.
+        for (const client of windows) {
+          if ('focus' in client) {
+            client.focus()
+            client.postMessage({ type: 'security-alert' })
+            return
+          }
+        }
+        await self.clients.openWindow('/?security=1')
         return
       }
 

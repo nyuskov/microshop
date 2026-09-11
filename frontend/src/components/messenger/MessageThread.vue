@@ -144,6 +144,7 @@
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
 import { uploadStatusText } from '@/utils/upload'
+import { parseServerTime } from '@/utils/format'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { ChatUser, Message } from '@/types'
 import type { MessageRow as ThreadRow } from '@/utils/thread'
@@ -356,7 +357,9 @@ const authorNameFor = (row: ThreadRow, index: number): string => {
   if (message.kind === 'call' || message.user_id === props.currentUserId) return ''
   const prev = index > 0 ? props.rows[index - 1] : null
   if (prev && prev.kind === 'message' && prev.message.user_id === message.user_id) {
-    const gap = new Date(message.timestamp).getTime() - new Date(prev.message.timestamp).getTime()
+    const gap =
+      parseServerTime(message.timestamp).getTime() -
+      parseServerTime(prev.message.timestamp).getTime()
     if (!Number.isNaN(gap) && gap < GROUP_BURST_MS) return ''
   }
   const member = props.members?.find((user) => user.id === message.user_id)

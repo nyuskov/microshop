@@ -3,6 +3,7 @@ import { icon } from '@/utils/icons'
 import { reactive, ref, watch, computed } from 'vue'
 import { useAuthStore, type AuthSession as AuthSessionRow } from '@/stores/auth'
 import { getErrorMessage } from '@/services/errors'
+import { parseServerTime } from '@/utils/format'
 import { removeAvatar, uploadAvatar } from '@/services/api'
 import { mediaUrl } from '@/services/chatService'
 import { formatPhoneForBackend, localPhoneDigits, maskPhoneLocal } from '@/utils/phone'
@@ -541,6 +542,39 @@ const sessionsLoading = ref(false)
 const sessionsError = ref('')
 const sessionsNotice = ref('')
 
+// --- Заморозка аккаунта («стоп-кран» при угоне) ---
+const freezeBusy = ref(false)
+const freezeError = ref('')
+
+/**
+ * Заморозка: все сессии гаснут, вход закрыт до подтверждения владения почтой.
+ *
+ * Если пароль у аккаунта уже задан — сервер потребует его: иначе чужой человек
+ * с угнанной сессией мог бы «заморозить» аккаунт владельцу (DoS).
+ */
+const startFreeze = async () => {
+  if (freezeBusy.value) return
+  let password: string | undefined
+  if (authStore.user?.password_set) {
+    const entered = window.prompt('Введите пароль, чтобы заморозить аккаунт')
+    if (entered === null) return
+    password = entered
+  }
+  const confirmed = window.confirm(
+    'Заморозить аккаунт? Все устройства выйдут, вход будет закрыт до разморозки кодом из письма.'
+  )
+  if (!confirmed) return
+  freezeBusy.value = true
+  freezeError.value = ''
+  try {
+    await authStore.freezeAccount(password)
+    emit('close-modal')
+  } catch (error) {
+    freezeError.value = getErrorMessage(error, 'Не удалось заморозить аккаунт')
+  } finally {
+    freezeBusy.value = false
+  }
+}
 const loadSessions = async () => {
   sessionsLoading.value = true
   sessionsError.value = ''
@@ -601,7 +635,7 @@ const platformLabel = (agent: string): string => {
 
 /** Дата и время входа в читаемом виде. */
 const sessionTime = (iso: string): string => {
-  const date = new Date(iso)
+  const date = parseServerTime(iso)
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleString('ru-RU', {
     day: '2-digit',
@@ -1364,6 +1398,25 @@ const onNotificationsToggle = async (val: boolean) => {
               Вход с нового устройства требует код из письма, а о каждом таком входе мы сообщаем на
               подтверждённый e-mail.
             </p>
+
+            <!-- Стоп-кран на случай угона: закрываем вход всем до подтверждения почты -->
+            <div class="freeze-block">
+              <div class="freeze-info">
+                <span class="freeze-title">Заморозить аккаунт</span>
+                <span class="freeze-desc">
+                  Если в аккаунт вошли чужие: все устройства выйдут, вход будет закрыт. Разморозить
+                  можно кодом на подтверждённый e-mail.
+                </span>
+              </div>
+              <button type="button" class="freeze-btn" :disabled="freezeBusy" @click="startFreeze">
+                {{ freezeBusy ? 'Заморозка…' : 'Заморозить' }}
+              </button>
+            </div>
+            <transition name="fade">
+              <p v-if="freezeError" class="sessions-note error-text">
+                <q-icon :name="icon('error')" size="16px" /> {{ freezeError }}
+              </p>
+            </transition>
           </div>
 
           <!-- История событий аккаунта: ответ на «что происходило с аккаунтом» -->
@@ -2323,6 +2376,58 @@ const onNotificationsToggle = async (val: boolean) => {
 
 .sessions-note.error-text {
   color: var(--ms-danger);
+}
+
+/* Заморозка аккаунта: заметный, но не «кричащий» блок в разделе «Безопасность» */
+.freeze-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--ms-border, #e2e6ea);
+  border-radius: 12px;
+  background: var(--ms-surface-2, #f6f8f9);
+}
+
+.freeze-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.freeze-title {
+  font-weight: 600;
+  color: var(--ms-text-strong, #1d2733);
+}
+
+.freeze-desc {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ms-muted, #93a0ab);
+}
+
+.freeze-btn {
+  flex-shrink: 0;
+  border: 1px solid var(--ms-danger, #c0392b);
+  background: transparent;
+  color: var(--ms-danger, #c0392b);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.freeze-btn:hover:not(:disabled) {
+  background: var(--ms-danger-bg, #fdecea);
+}
+
+.freeze-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* Подтверждение e-mail в разделе «Безопасность». */

@@ -23,10 +23,40 @@ let getAccessToken: AccessTokenProvider = () => null
 let refreshHandler: RefreshHandler | null = null
 let refreshInFlight: Promise<boolean> | null = null
 
-/** Регистрирует источник access-токена и обработчик 401 (вызывается один раз). */
-export function registerAuth(tokenProvider: AccessTokenProvider, onRefresh: RefreshHandler): void {
+/**
+ * Причина потери сессии, о которой сообщает сервер:
+ * - `session_revoked` — «вышел на всех», сменился пароль, сессия отозвана;
+ * - `account_frozen` — аккаунт заморожен (стоп-кран на случай угона).
+ * Обновлять токен в этих случаях бессмысленно: сессия больше не существует.
+ */
+export type AuthLostReason = 'session_revoked' | 'account_frozen'
+export type AuthLostHandler = (reason: AuthLostReason, message: string) => void
+
+let authLostHandler: AuthLostHandler | null = null
+
+/** Регистрирует источник access-токена, обработчик 401 и потерю сессии. */
+export function registerAuth(
+  tokenProvider: AccessTokenProvider,
+  onRefresh: RefreshHandler,
+  onAuthLost?: AuthLostHandler
+): void {
   getAccessToken = tokenProvider
   refreshHandler = onRefresh
+  authLostHandler = onAuthLost ?? null
+}
+
+/** Код причины из ответа сервера (`detail.code`), если он есть. */
+function authLostReasonOf(error: AxiosError): { reason: AuthLostReason; message: string } | null {
+  const status = error.response?.status
+  if (status !== 401 && status !== 403) return null
+  const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
+  if (!detail || typeof detail !== 'object') return null
+  const code = (detail as { code?: string }).code
+  if (code !== 'session_revoked' && code !== 'account_frozen') return null
+  return {
+    reason: code,
+    message: (detail as { message?: string }).message ?? ''
+  }
 }
 
 const api = axios.create({
@@ -72,6 +102,13 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const config = error.config as (InternalAxiosRequestConfig & { _retried?: boolean }) | undefined
     const status = error.response?.status
+    // Сессия отозвана сервером или аккаунт заморожен: refresh не поможет —
+    // сообщаем стору (он почистит токены и покажет экран входа/разморозки).
+    const lost = authLostReasonOf(error)
+    if (lost) {
+      authLostHandler?.(lost.reason, lost.message)
+      return Promise.reject(error)
+    }
     if (
       status === 401 &&
       config &&

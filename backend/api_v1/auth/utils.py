@@ -107,6 +107,61 @@ async def authenticate_user(
     return user
 
 
+# Заморозка аккаунта: код для клиента — чтобы отличить от «просто истёк токен».
+ACCOUNT_FROZEN_CODE = "account_frozen"
+ACCOUNT_FROZEN_MESSAGE = (
+    "Аккаунт заморожен. Восстановите доступ по коду из письма — "
+    "или напишите в поддержку: nyuskov@gmail.com."
+)
+SESSION_REVOKED_CODE = "session_revoked"
+SESSION_REVOKED_MESSAGE = (
+    "Сессия завершена: выполнен выход на всех устройствах или изменён пароль. "
+    "Войдите заново."
+)
+
+
+def access_token_problem(payload: dict, user: User) -> str | None:
+    """Годится ли access-токен для этого пользователя прямо сейчас.
+
+    ``None`` — всё в порядке. Иначе код причины:
+
+    - ``"frozen"`` — аккаунт заморожен (владельцем, тревогой или поддержкой);
+    - ``"revoked"`` — токен выдан ДО отзыва доступа (claim ``epoch`` меньше
+      текущей эпохи пользователя): так работают «выйти на всех устройствах»,
+      смена/сброс пароля и заморозка — вор вылетает сразу, а не через 30 минут.
+
+    Токены, выданные до появления эпохи, приходят без claim'а — считаем их
+    эпохой 0, то есть действующими (иначе деплой разлогинил бы всех).
+    """
+    if not user.is_active:
+        return "frozen"
+    epoch = payload.get("epoch")
+    if epoch is None:
+        return None
+    try:
+        token_epoch = int(epoch)
+    except (TypeError, ValueError):
+        return "revoked"
+    return None if token_epoch == int(user.token_epoch or 0) else "revoked"
+
+
+def frozen_account_error() -> HTTPException:
+    """403 с машиночитаемым кодом: фронт показывает экран разморозки."""
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={"code": ACCOUNT_FROZEN_CODE, "message": ACCOUNT_FROZEN_MESSAGE},
+    )
+
+
+def session_revoked_error() -> HTTPException:
+    """401 на отозванный access-токен (не путать с истёкшим)."""
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={"code": SESSION_REVOKED_CODE, "message": SESSION_REVOKED_MESSAGE},
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     session: AsyncSession = Depends(db_helper.session_dependency),
@@ -137,6 +192,15 @@ async def get_current_user(
     )
     if user is None:
         raise credentials_exception
+
+    # Заморозка и отзыв доступа проверяются на КАЖДОМ запросе: без этого
+    # украденный access-токен жил бы до истечения, а «замороженный» аккаунт
+    # продолжал бы читать переписку.
+    problem = access_token_problem(payload, user)
+    if problem == "frozen":
+        raise frozen_account_error()
+    if problem is not None:
+        raise session_revoked_error()
 
     # ВАЖНО: здесь НЕ обновляем last_seen и не делаем commit — иначе любой
     # read-only запрос писал бы в БД. Присутствие обновляется точечно там, где
@@ -184,6 +248,11 @@ async def resolve_user_from_websocket(websocket: WebSocket) -> User | None:
     async with db_helper.session_factory() as session:
         user = await get_user_by_id(session, int(sub_value))
     if user is None:
+        await websocket.close(code=4401)
+        return None
+    # Отозванный токен/заморозка закрывают и WebSocket (звонки, события) — иначе
+    # вор продолжал бы получать события и звонить, несмотря на «выйти на всех».
+    if access_token_problem(payload, user) is not None:
         await websocket.close(code=4401)
         return None
     return user

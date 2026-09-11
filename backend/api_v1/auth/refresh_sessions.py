@@ -10,14 +10,15 @@ import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import jwt
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
-from core.models import RefreshSession
+from core.models import RefreshSession, User
 
 from .device import DeviceInfo
-from .utils import build_refresh_token
+from .utils import REFRESH_TOKEN_TYPE, build_refresh_token, decode_jwt
 
 
 def _hash_jti(jti: str) -> str:
@@ -99,17 +100,94 @@ async def rotate_refresh_token(
     return build_refresh_token(user_id, new_jti)
 
 
-async def revoke_all_sessions(session: AsyncSession, *, user_id: int) -> None:
-    """Отзывает все активные refresh-сессии пользователя (например, при logout)."""
-    await session.execute(
-        update(RefreshSession)
-        .where(
-            RefreshSession.user_id == user_id,
-            RefreshSession.revoked_at.is_(None),
-        )
-        .values(revoked_at=datetime.now(timezone.utc))
-    )
+async def bump_token_epoch(session: AsyncSession, *, user_id: int) -> None:
+    """Поднимает «эпоху» доступа: все выданные ранее access-токены гаснут.
+
+    Единственный способ отозвать уже выданный access-токен (он stateless и живёт
+    30 минут). Номер эпохи вшит в токен, а здесь увеличивается — токены с прежней
+    эпохой перестают приниматься (см. ``utils.access_token_problem``).
+    """
+    user = await session.get(User, user_id)
+    if user is None:
+        return
+    user.token_epoch = int(user.token_epoch or 0) + 1
     await session.commit()
+
+
+async def revoke_all_sessions(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    keep_jti_hash: str | None = None,
+    bump_epoch: bool = True,
+) -> None:
+    """Отзывает все активные refresh-сессии пользователя.
+
+    ``keep_jti_hash`` — хеш jti сессии, которую НЕ трогаем: так «выйти на всех
+    устройствах» оставляет владельца в приложении на текущем устройстве.
+
+    ``bump_epoch`` — вместе с refresh-сессиями погасить и выданные access-токены
+    (мгновенный отзыв доступа). Выключен только для технических вызовов, где
+    токены гасить нельзя.
+    """
+    stmt = update(RefreshSession).where(
+        RefreshSession.user_id == user_id,
+        RefreshSession.revoked_at.is_(None),
+    )
+    if keep_jti_hash is not None:
+        stmt = stmt.where(RefreshSession.jti_hash != keep_jti_hash)
+    await session.execute(stmt.values(revoked_at=datetime.now(timezone.utc)))
+    await session.commit()
+    if bump_epoch:
+        await bump_token_epoch(session, user_id=user_id)
+
+
+async def revoke_all_except(
+    session: AsyncSession, *, user_id: int, refresh_token: str | None
+) -> None:
+    """«Выйти на всех устройствах», не выкидывая текущее (если оно передано)."""
+    keep = jti_hash_of(refresh_token) if refresh_token else None
+    await revoke_all_sessions(session, user_id=user_id, keep_jti_hash=keep)
+
+
+async def revoke_by_refresh_token(
+    session: AsyncSession, *, refresh_token: str
+) -> int | None:
+    """Гасит сессию по её refresh-токену и возвращает id владельца (для аудита).
+
+    Основа серверного logout: клиент шлёт свой refresh-токен, сервер отзывает
+    именно эту сессию. Без этого украденный refresh оставался бы валидным все 30
+    дней, даже если владелец «вышел» из приложения.
+    """
+    jti = jti_of(refresh_token)
+    if jti is None:
+        return None
+    now = datetime.now(timezone.utc)
+    stmt = select(RefreshSession).where(RefreshSession.jti_hash == _hash_jti(jti))
+    row = (await session.execute(stmt)).scalar_one_or_none()
+    if row is None or row.revoked_at is not None:
+        return None
+    row.revoked_at = now
+    await session.commit()
+    return row.user_id
+
+
+def jti_of(refresh_token: str) -> str | None:
+    """jti из refresh-токена (``None`` — это не паш refresh-токен)."""
+    try:
+        payload = decode_jwt(refresh_token)
+    except jwt.InvalidTokenError:
+        return None
+    if payload.get("type") != REFRESH_TOKEN_TYPE:
+        return None
+    jti = payload.get("jti")
+    return jti if isinstance(jti, str) and jti else None
+
+
+def jti_hash_of(refresh_token: str) -> str | None:
+    """Хеш jti (в таком виде сессии лежат в БД)."""
+    jti = jti_of(refresh_token)
+    return _hash_jti(jti) if jti else None
 
 
 async def list_active_sessions(

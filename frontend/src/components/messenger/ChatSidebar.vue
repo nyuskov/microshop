@@ -706,7 +706,12 @@ import {
   isGroupChat
 } from '@/utils/user'
 import { splitByQuery } from '@/utils/search'
-import { ONLINE_WINDOW_SECONDS, formatChatTime, formatMsgTime } from '@/utils/format'
+import {
+  ONLINE_WINDOW_SECONDS,
+  formatChatTime,
+  formatMsgTime,
+  parseServerTime
+} from '@/utils/format'
 import { isLockedFile, lockedFileLabel, mediaTypeLabel } from '@/utils/media'
 
 const props = defineProps<{
@@ -898,7 +903,7 @@ const isUserOnline = (user: ChatUser | undefined | null): boolean => {
   if (!user) return false
   if (props.onlineUserIds?.includes(user.id)) return true
   if (!user.last_seen) return false
-  const seen = new Date(user.last_seen).getTime()
+  const seen = parseServerTime(user.last_seen).getTime()
   if (Number.isNaN(seen)) return false
   return Date.now() - seen <= ONLINE_WINDOW_SECONDS * 1000
 }

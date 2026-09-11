@@ -45,11 +45,17 @@ from .otp_storage import (
     store_otp,
     verify_otp,
 )
+from .panic import apply_panic, decode_panic_token
 from .refresh_sessions import (
+    bump_token_epoch,
     issue_refresh_token,
+    jti_hash_of,
+    jti_of,
     list_active_sessions,
     revoke_all_sessions,
+    revoke_by_refresh_token,
     revoke_session,
+    rotate_refresh_token,
 )
 from .schemas import (
     AuthChannelsResponse,
@@ -60,7 +66,12 @@ from .schemas import (
     EmailCodeConfirmRequest,
     EmailLoginConfirmRequest,
     EmailLoginRequest,
+    FreezeRequest,
+    FreezeResponse,
+    LogoutRequest,
     OTPResponse,
+    PanicRequest,
+    PanicResponse,
     PasswordRequest,
     PasswordResetConfirmRequest,
     PasswordSetRequest,
@@ -68,13 +79,15 @@ from .schemas import (
     PasswordStatusRequest,
     PasswordStatusResponse,
     RequestOTPRequest,
+    RevokeAllRequest,
     SecurityLogEntry,
     SecurityLogResponse,
     SessionRevokeResponse,
     TokenResponse,
     VerifyOTPRequest,
 )
-from .utils import authenticate_user, get_current_user
+from .security_notifications import notify_account_frozen, notify_account_unfrozen
+from .utils import authenticate_user, frozen_account_error, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +115,16 @@ async def _enforce_ip_limit(request: Request, *, scope: str, limit: int) -> None
 def generate_otp_code() -> str:
     """Генерирует 6-значный числовой OTP-код."""
     return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def _ensure_active(user: User) -> None:
+    """Не пускает замороженный аккаунт (кроме явной разморозки по коду).
+
+    Заморозка — «стоп-кран» на случай угона: если бы входы её игнорировали,
+    вор просто зашёл бы заново, и смысла в заморозке не было бы.
+    """
+    if not user.is_active:
+        raise frozen_account_error()
 
 
 def validate_phone_number_format(phone_number: str) -> bool:
@@ -210,6 +233,11 @@ async def _require_device_verification(
     первый вход аккаунта либо подтвердить кодом нечем). Если устройство новое и
     подтверждение возможно — отправляет код и поднимает 428 с challenge-токеном.
     """
+    # Замороженный аккаунт закрыт для всех способов входа: это «стоп-кран» при
+    # угоне, и обойти его повторным входом нельзя. Разморозка — отдельный явный
+    # шаг с кодом из письма (POST /account/unfreeze/).
+    _ensure_active(user)
+
     if not await has_any_device(session, user_id=user.id):
         # Первое устройство аккаунта (регистрация) — подтверждать нечего.
         await security_notifications.remember_login_device(session, user, request)
@@ -814,6 +842,7 @@ async def password_login(
         )
 
     await reset_failures(session, identifier=phone_number)
+    _ensure_active(user)
 
     # Пароль пришёл в открытом виде — единственный момент, когда можно проверить
     # его по текущей политике (у нас хранится только хеш). Если он слабый (пароль
@@ -922,17 +951,25 @@ async def set_password(
 @router.post("/sessions/revoke-all/", response_model=PasswordSetResponse)
 async def revoke_sessions(
     request: Request,
+    payload: RevokeAllRequest | None = None,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> PasswordSetResponse:
-    """Выходит из аккаунта на всех устройствах (кроме текущего запроса).
+    """Выходит из аккаунта на всех устройствах, кроме текущего.
 
-    Текущий access-токен продолжает работать до истечения (30 мин), но его
-    refresh-сессия тоже отозвана, так что продлить вход не получится — фронт
-    после этого чистит токены и уводит на экран входа.
+    Отзываются все refresh-сессии, а «эпоха» доступа поднимается — поэтому
+    выданные ранее access-токены (в том числе украденные) перестают работать
+    СРАЗУ, а не через 30 минут. Своему устройству выдаём новую пару токенов,
+    чтобы владелец не вылетел сам (``refresh_token`` в запросе — это его сессия).
     """
     await _enforce_ip_limit(request, scope="auth:revoke-all", limit=10)
-    await revoke_all_sessions(session, user_id=user.id)
+    own_token = payload.refresh_token if payload is not None else None
+    own_jti = jti_of(own_token) if own_token else None
+    await revoke_all_sessions(
+        session,
+        user_id=user.id,
+        keep_jti_hash=jti_hash_of(own_token) if own_token else None,
+    )
     await security_notifications.notify_security_event(
         session,
         user,
@@ -948,7 +985,229 @@ async def revoke_sessions(
         request=request,
         detail="выход на всех устройствах",
     )
+
+    # Текущее устройство остаётся в системе: ротируем его сессию и выдаём токены
+    # с новой эпохой (старые уже погашены).
+    if own_jti is not None:
+        renewed = await rotate_refresh_token(session, jti=own_jti, user_id=user.id)
+        if renewed is not None:
+            return PasswordSetResponse(
+                detail="Остальные устройства вышли из аккаунта.",
+                access_token=await get_jwt_strategy().write_token(user),
+                refresh_token=renewed,
+            )
     return PasswordSetResponse(detail="Вы вышли на всех устройствах.")
+
+
+@router.post("/logout/", status_code=204)
+async def logout(
+    request: Request,
+    payload: LogoutRequest | None = None,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Выход из аккаунта на этом устройстве: сессия гасится НА СЕРВЕРЕ.
+
+    Раньше «Выйти» только чистило токены в браузере — украденный refresh
+    оставался валидным все 30 дней. Теперь клиент присылает свой refresh-токен,
+    и сервер отзывает именно эту сессию.
+
+    Эндпоинт намеренно без access-токена (только по refresh): выход должен
+    работать и когда access уже протух, иначе получался бы 401 и цикл обновления.
+    """
+    await _enforce_ip_limit(request, scope="auth:logout", limit=30)
+    if payload is not None and payload.refresh_token:
+        user_id = await revoke_by_refresh_token(
+            session, refresh_token=payload.refresh_token
+        )
+        if user_id is not None:
+            await audit.log_security_event(
+                session,
+                event="session_revoked",
+                user_id=user_id,
+                request=request,
+                detail="выход из приложения на этом устройстве",
+            )
+
+
+# --- Заморозка аккаунта ----------------------------------------------------
+# «Стоп-кран» на случай угона: аккаунт перестаёт пускать кого-либо (включая вора
+# с валидным токеном) до подтверждения владения почтой. Заморозить можно только
+# при наличии канала восстановления (подтверждённый e-mail) — иначе владелец
+# запер бы себя снаружи без выхода.
+
+
+@router.post("/account/freeze/", response_model=FreezeResponse)
+async def freeze_account(
+    request: Request,
+    payload: FreezeRequest | None = None,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> FreezeResponse:
+    """Заморозка аккаунта: мгновенно выкинуть всех и закрыть входы."""
+    address = security_notifications.notification_recipient(user)
+    if address is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Сначала подтвердите e-mail в профиле: заморозить аккаунт можно "
+                "только тогда, когда есть чем его разморозить."
+            ),
+        )
+    if user.password_set:
+        password = (payload.password if payload is not None else None) or ""
+        if not verify_password(password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Неверный пароль.",
+            )
+    await _enforce_ip_limit(request, scope="auth:freeze", limit=10)
+
+    user.is_active = False
+    await session.commit()
+    # Отзыв всех сессий + поднятие эпохи: вор вылетает немедленно.
+    await revoke_all_sessions(session, user_id=user.id)
+
+    await notify_account_frozen(session, user=user, request=request, source="self")
+    return FreezeResponse(
+        detail=(
+            "Аккаунт заморожен: все устройства вышли, вход закрыт. "
+            "Разморозить можно кодом из письма."
+        ),
+        frozen=True,
+        recovery_hint=mailer.mask_email(address),
+    )
+
+
+@router.post("/account/unfreeze/request/", response_model=OTPResponse)
+async def request_account_unfreeze(
+    request_data: EmailAddressRequest,
+    request: Request,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> OTPResponse:
+    """Код на подтверждённый e-mail для разморозки аккаунта."""
+    await _enforce_ip_limit(request, scope="auth:unfreeze", limit=10)
+    if not email_otp_available():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Восстановление по e-mail не настроено на сервере.",
+        )
+    address = email_codes.normalize_email(str(request_data.email))
+    cooldown = settings.auth_email_resend_cooldown_seconds
+    if not await email_codes.can_request_email_code(
+        session, email=address, cooldown_seconds=cooldown
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Код уже отправлен. Повторите через {cooldown} секунд.",
+            headers={"Retry-After": str(cooldown)},
+        )
+
+    user = await get_user_by_email(session, address)
+    if user is not None and user.email_verified and not user.is_active:
+        await _issue_email_code(
+            session,
+            request,
+            email=address,
+            purpose="Разморозка аккаунта Pismo.",
+            user_id=user.id,
+        )
+    # Ответ одинаковый и когда адрес неизвестен, и когда аккаунт не заморожен:
+    # по нему нельзя понять, зарегистрирован ли адрес.
+    return OTPResponse(detail=_EMAIL_REQUEST_DETAIL)
+
+
+@router.post("/account/unfreeze/", response_model=TokenResponse)
+async def confirm_account_unfreeze(
+    request_data: EmailCodeConfirmRequest,
+    request: Request,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> TokenResponse:
+    """Разморозка аккаунта по коду из письма и вход на этом устройстве."""
+    address = email_codes.normalize_email(str(request_data.email))
+    user = await get_user_by_email(session, address)
+    if user is None or not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный или истёкший код из письма.",
+        )
+    await _consume_email_code(session, request, email=address, code=request_data.code)
+
+    user.is_active = True
+    await session.commit()
+    # Эпоха поднимается и здесь: пока аккаунт был заморожен, токены могли
+    # остаться у вора — после разморозки они не должны ожить.
+    await bump_token_epoch(session, user_id=user.id)
+    await reset_failures(session, identifier=address)
+
+    logger.warning("Пользователь %s разморозил аккаунт по коду из письма", user.id)
+    await audit.log_security_event(
+        session,
+        event="account_unfrozen",
+        user_id=user.id,
+        request=request,
+        detail="аккаунт разморожен по коду из письма",
+    )
+    await security_notifications.remember_login_device(
+        session, user, request, notify=False
+    )
+    # Уведомляем о разморозке: если владелец её не делал — это тревожный сигнал.
+    await notify_account_unfrozen(session, user=user, request=request)
+    return TokenResponse(
+        access_token=await get_jwt_strategy().write_token(user),
+        token_type="bearer",
+        refresh_token=await issue_refresh_token(
+            session, user_id=user.id, device=device_info(request)
+        ),
+    )
+
+
+@router.post("/security/panic/", response_model=PanicResponse)
+async def security_panic(
+    request_data: PanicRequest,
+    request: Request,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> PanicResponse:
+    """Тревога «это были не я» из push-уведомления.
+
+    Работает без access-токена: в уведомлении лежит короткоживущий подписанный
+    ``panic``-токен (см. ``auth/panic.py``). Повторный вызов безопасен —
+    после первой тревоги эпоха другая, и токен просто считается уже применённым.
+    """
+    await _enforce_ip_limit(request, scope="auth:panic", limit=10)
+    decoded = decode_panic_token(request_data.token)
+    if decoded is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=(
+                "Ссылка тревоги недействительна. Откройте приложение и нажмите "
+                "«Выйти на всех устройствах»."
+            ),
+        )
+    user_id, token_epoch = decoded
+    user = await get_user_by_id(session, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Ссылка тревоги недействительна.",
+        )
+    if token_epoch != int(user.token_epoch or 0):
+        # Уже выполнено (в том числе повторный тап по уведомлению).
+        return PanicResponse(
+            detail="Сессии уже завершены.",
+            revoked=True,
+            frozen=not user.is_active,
+        )
+
+    result = await apply_panic(session, user=user, request=request, source="push")
+    frozen = bool(result["frozen"])
+    return PanicResponse(
+        detail=(
+            "Все устройства вышли из аккаунта."
+            + (" Аккаунт заморожен до подтверждения почты." if frozen else "")
+        ),
+        revoked=True,
+        frozen=frozen,
+    )
 
 
 # --- E-mail: подтверждение адреса, вход по коду и сброс пароля -------------
@@ -1188,6 +1447,9 @@ async def confirm_email_login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный или истёкший код из письма.",
         )
+    # Замороженный аккаунт сюда тоже не пускаем — иначе заморозка обходилась бы
+    # обычным входом по коду из письма. Разморозка — отдельный явный шаг.
+    _ensure_active(user)
 
     await _consume_email_code(session, request, email=address, code=request_data.code)
     await reset_failures(session, identifier=address)
@@ -1271,6 +1533,9 @@ async def confirm_password_reset(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный или истёкший код из письма.",
         )
+    # Сброс пароля — тоже вход: замороженному аккаунту отказываем, а код не
+    # расходуем (после разморозки его можно запросить заново).
+    _ensure_active(user)
 
     # Пароль проверяем ДО расхода кода: иначе ошибка политики сожгла бы код.
     password = _validate_new_password(

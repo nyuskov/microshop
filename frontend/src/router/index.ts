@@ -2,7 +2,7 @@ import Messenger from '../views/Messenger.vue' // Импортируем нов�
 // import Home from '../components/Home.vue' // Закомментируем старый
 // import Registration from '../components/Registration.vue' // Закомментировал импорт
 import Login from '../components/Login.vue'
-import { createRouter, createWebHistory, type RouteLocation } from 'vue-router'
+import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth' // Import the auth store
 
 const routes = [
@@ -29,12 +29,15 @@ const routes = [
     name: 'Login',
     component: Login
   },
-  // Любой другой адрес — на главную. Без этого правила неизвестный путь давал
-  // пустой экран: nginx отдаёт index.html для всех путей, а роутер маршрут не
-  // находил и не рисовал ничего.
+  // Неизвестный адрес — экран «Страница не найдена» в стиле приложения.
+  // Раньше тут был редирект на главную: nginx отдаёт index.html для любого пути
+  // (SPA-фолбэк), и человек, попавший на битую ссылку, молча оказывался в
+  // списке чатов, не понимая, что адрес неверный. Статический `public/404.html`
+  // при этом остаётся для случаев вне приложения (нет файла/ассета).
   {
     path: '/:pathMatch(.*)*',
-    redirect: (to: RouteLocation) => ({ path: '/', query: to.query })
+    name: 'NotFound',
+    component: () => import('../views/NotFound.vue')
   }
 ]
 
@@ -51,7 +54,7 @@ router.beforeEach((to, from, next) => {
   // Добавляем 'Messenger' в список публичных маршрутов.
   // 'ProfileLink' тоже публичный: по ссылке может прийти незарегистрированный
   // человек — мессенджер покажет ему экран входа, а после входа откроет чат.
-  const publicRoutes = ['Login', 'Messenger', 'ProfileLink']
+  const publicRoutes = ['Login', 'Messenger', 'ProfileLink', 'NotFound']
 
   // Check if the route requires authentication
   if (!publicRoutes.includes(to.name as string)) {

@@ -645,6 +645,13 @@ node node_modules/prettier/bin/prettier.cjs --write <files> # формат
 
 В CI проверки остаются строгими (`.github/workflows/ci.yml`): `vue-tsc --noEmit` и `eslint --no-cache src` запускаются отдельными шагами и падают с ошибкой. Смягчение только в dev-режиме Vite — чтобы правка не оставляла без сайта до следующего коммита.
 
+### Экраны ошибок (404 / 500)
+
+Пользователь никогда не должен видеть пустой экран или голый текст ошибки браузера:
+
+- **внутри приложения** — маршрут `/:pathMatch(.*)*` рисует `views/NotFound.vue` («Страница не найдена» в стиле приложения с кнопками «К чатам»/«Назад»); фатальные ошибки рендера/обработчиков ловят `main.ts` (`app.config.errorHandler` + `window.onerror`) и показывают `FatalErrorScreen.vue` с перезагрузкой;
+- **статически** — `public/404.html` и `public/500.html` (одна палитра с приложением, без внешних ресурсов и service worker'а). Их отдаёт nginx: `error_page 404 =404 /404.html` (нет файла/ассета — статус остаётся 404) и `error_page 500 502 503 504 =500 /500.html`. Ответы `/api/` и `/media/` не перехватываются (`proxy_intercept_errors` выключен), поэтому JSON-ошибки бэкенда уходят клиенту как есть.
+
 ### Ключевые точки
 
 - `main.ts` — Quasar 2 (Dialog/Notify, lang ru, **Material Symbols Rounded** — `@quasar/extras/material-symbols-rounded`; Quasar рендерит `<q-icon>` с классом `.material-icons`, на него в `quasar.css` повешен алиас шрифта), тема/оформление через `stores/theme.ts` (`data-theme`, токены `--ms-*`; тема ставится ДО первого кадра inline-скриптом в `index.html`, чтобы не мигала), инициализация auth.

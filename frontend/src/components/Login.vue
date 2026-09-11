@@ -3,14 +3,15 @@ import { icon } from '@/utils/icons'
 import { useRouter } from 'vue-router'
 import { useAuthStore, deviceChallengeOf, type DeviceChallenge } from '../stores/auth'
 import { getErrorMessage } from '../services/errors'
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { formatPhoneForBackend, isValidPhoneNumber, prettyPhone } from '@/utils/phone'
 import { PASSWORD_MIN_LENGTH, passwordProblem, passwordStrength } from '@/utils/passwordPolicy'
 
 // Шаги входа: телефон → (пароль | код в Telegram | создание пароля), плюс
 // отдельная ветка работы с e-mail: вход по коду из письма и сброс пароля.
 // 'device' — подтверждение входа с нового устройства кодом из письма (2FA).
-type LoginState = 'phone' | 'password' | 'otp' | 'create' | 'email' | 'device'
+// 'unfreeze' — аккаунт заморожен (стоп-кран при угоне): доступ возвращаем кодом.
+type LoginState = 'phone' | 'password' | 'otp' | 'create' | 'email' | 'device' | 'unfreeze'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -484,13 +485,147 @@ async function onEmailSubmit() {
 }
 
 const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
+
+// --- Заморозка аккаунта: возвращаем доступ кодом из письма ---
+// Экран показываем, когда сервер сообщил о заморозке (403 account_frozen):
+// обычные шаги входа тут не помогут — аккаунт закрыт до подтверждения почты.
+const unfreezeEmail = ref('')
+const unfreezeCode = ref('')
+const unfreezeSent = ref(false)
+const unfreezeBusy = ref(false)
+const unfreezeError = ref('')
+
+watch(
+  () => authStore.frozen,
+  (frozen) => {
+    if (!frozen) return
+    state.value = 'unfreeze'
+    if (!unfreezeEmail.value && emailValue.value) unfreezeEmail.value = emailValue.value
+    emit('state-changed', state.value)
+  },
+  { immediate: true }
+)
+
+/** Код на подтверждённый e-mail: единственный способ разморозить аккаунт. */
+const requestUnfreeze = async () => {
+  if (unfreezeBusy.value) return
+  unfreezeBusy.value = true
+  unfreezeError.value = ''
+  try {
+    await authStore.requestAccountUnfreeze(unfreezeEmail.value)
+    unfreezeSent.value = true
+  } catch (error: unknown) {
+    console.error('Request unfreeze failed:', error)
+    unfreezeError.value = getErrorMessage(error, 'Не удалось отправить код на этот адрес.')
+  } finally {
+    unfreezeBusy.value = false
+  }
+}
+
+/** Разморозка кодом из письма: аккаунт снова активен, входим на этом устройстве. */
+const confirmUnfreeze = async () => {
+  if (unfreezeBusy.value) return
+  unfreezeBusy.value = true
+  unfreezeError.value = ''
+  try {
+    await authStore.confirmAccountUnfreeze(unfreezeEmail.value, unfreezeCode.value, router)
+    finishLogin()
+    emit('close-modal')
+  } catch (error: unknown) {
+    console.error('Confirm unfreeze failed:', error)
+    unfreezeError.value = getErrorMessage(error, 'Неверный или истёкший код из письма.')
+  } finally {
+    unfreezeBusy.value = false
+  }
+}
+
+/** Уходим с экрана заморозки — например, чтобы войти в другой аккаунт. */
+const leaveFrozen = () => {
+  authStore.frozen = false
+  unfreezeSent.value = false
+  unfreezeCode.value = ''
+  state.value = 'phone'
+  emit('state-changed', state.value)
+}
 </script>
 
 <template>
   <div class="login-modal">
     <transition name="fade" mode="out-in">
+      <!-- Шаг заморозки аккаунта: все сессии завершены, вход закрыт -->
+      <div v-if="state === 'unfreeze'" key="unfreeze" class="step">
+        <div class="brand">
+          <span class="brand-icon"><q-icon :name="icon('lock')" size="30px" /></span>
+        </div>
+        <h2 class="step-title">Аккаунт заморожен</h2>
+        <p class="step-subtitle">
+          Все устройства вышли из аккаунта, вход закрыт — так работает защита от угона. Вернуть
+          доступ можно кодом на подтверждённый e-mail аккаунта.
+        </p>
+
+        <form
+          class="otp-form"
+          @submit.prevent="unfreezeSent ? confirmUnfreeze() : requestUnfreeze()"
+        >
+          <label class="field-label" for="unfreeze-email">E-mail аккаунта</label>
+          <q-input
+            id="unfreeze-email"
+            v-model="unfreezeEmail"
+            type="email"
+            outlined
+            class="phone-input"
+            placeholder="name@example.com"
+            autocomplete="email"
+            aria-label="E-mail аккаунта"
+            :disable="unfreezeSent"
+            hide-bottom-space
+          />
+
+          <template v-if="unfreezeSent">
+            <label class="field-label gap-top" for="unfreeze-code">Код из письма</label>
+            <q-input
+              id="unfreeze-code"
+              v-model="unfreezeCode"
+              outlined
+              class="phone-input"
+              placeholder="6 цифр"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              aria-label="Код из письма"
+              hide-bottom-space
+            />
+          </template>
+
+          <q-btn
+            unelevated
+            no-caps
+            color="primary"
+            type="submit"
+            class="submit-btn full"
+            :loading="unfreezeBusy"
+            :disable="unfreezeBusy"
+          >
+            {{ unfreezeSent ? 'Разморозить аккаунт' : 'Отправить код' }}
+          </q-btn>
+        </form>
+
+        <transition name="fade">
+          <div v-if="unfreezeError" class="login-message msg-error" role="alert">
+            {{ unfreezeError }}
+          </div>
+        </transition>
+
+        <p class="privacy-note">
+          Нет доступа к почте аккаунта? Напишите на
+          <a href="mailto:nyuskov@gmail.com">nyuskov@gmail.com</a> — вернём доступ вручную.
+        </p>
+        <button class="link-btn" type="button" :disabled="unfreezeBusy" @click="leaveFrozen">
+          Войти в другой аккаунт
+        </button>
+      </div>
+
       <!-- Шаг 1: номер телефона -->
-      <div v-if="state === 'phone'" key="phone" class="step">
+      <div v-else-if="state === 'phone'" key="phone" class="step">
         <div class="brand">
           <span class="brand-icon"><q-icon :name="icon('call')" size="30px" /></span>
         </div>
@@ -937,6 +1072,18 @@ const resetPasswordScore = computed(() => passwordStrength(resetPassword.value))
     <transition name="fade">
       <div v-if="showNotice" class="login-message" :class="'msg-' + severity" role="alert">
         {{ result }}
+      </div>
+    </transition>
+
+    <!-- Сервер завершил сессию (выход на всех устройствах / смена пароля):
+         объясняем, почему выкинуло, — иначе это выглядит как сбой. -->
+    <transition name="fade">
+      <div
+        v-if="authStore.sessionNotice && state !== 'unfreeze'"
+        class="login-message msg-info"
+        role="status"
+      >
+        {{ authStore.sessionNotice }}
       </div>
     </transition>
 

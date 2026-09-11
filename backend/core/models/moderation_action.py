@@ -24,6 +24,10 @@ ACTION_MESSAGE_AUTO_HIDDEN = "message_auto_hidden"
 ACTION_REPORT_STATUS_CHANGED = "report_status_changed"
 ACTION_MESSAGE_HIDDEN = "message_hidden"
 ACTION_MESSAGE_RESTORED = "message_restored"
+# Спасение угнанного аккаунта по обращению владельца (поддержка).
+ACTION_SESSIONS_REVOKED = "sessions_revoked"
+ACTION_ACCOUNT_FROZEN = "account_frozen"
+ACTION_ACCOUNT_UNFROZEN = "account_unfrozen"
 
 MODERATION_ACTIONS = frozenset(
     {
@@ -32,6 +36,9 @@ MODERATION_ACTIONS = frozenset(
         ACTION_REPORT_STATUS_CHANGED,
         ACTION_MESSAGE_HIDDEN,
         ACTION_MESSAGE_RESTORED,
+        ACTION_SESSIONS_REVOKED,
+        ACTION_ACCOUNT_FROZEN,
+        ACTION_ACCOUNT_UNFROZEN,
     }
 )
 

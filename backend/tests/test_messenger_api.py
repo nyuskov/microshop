@@ -2006,6 +2006,14 @@ async def test_set_password_after_otp_login(
         headers=api.auth(token),
     )
     assert first.status_code == 200, first.text
+    # Смена пароля гасит ВСЕ прежние access-токены (эпоха доступа поднялась),
+    # поэтому дальше работаем токеном из ответа — как это делает приложение.
+    assert first.json()["access_token"]
+    old_token = token
+    token = first.json()["access_token"]
+    stale = await api.client.get("/api/v1/auth/sessions/", headers=api.auth(old_token))
+    assert stale.status_code == 401, stale.text
+    assert stale.json()["detail"]["code"] == "session_revoked"
 
     login = await api.client.post(
         "/api/v1/auth/password/login/",
@@ -2026,6 +2034,8 @@ async def test_set_password_after_otp_login(
         headers=api.auth(token),
     )
     assert good.status_code == 200, good.text
+    # Каждая смена пароля гасит прежние токены — берём свежий из ответа.
+    token = good.json()["access_token"]
     assert (
         await api.client.post(
             "/api/v1/auth/password/login/",
@@ -2937,18 +2947,28 @@ async def test_sessions_list_and_single_revoke(api: _ApiCtx) -> None:
         row["id"] for row in sessions if row["current"]
     ]
 
-    # Отозванная сессия больше не может продлить вход.
+    # Повторный отзыв той же сессии — 404 (проверяем до попытки «переиспользовать»
+    # refresh: после неё гасятся ВСЕ сессии, и на этом токене уже будет 401).
+    missing = await api.client.delete(
+        f"/api/v1/auth/sessions/{other['id']}/",
+        headers={**api.auth(token_b), "User-Agent": device_b},
+    )
+    assert missing.status_code == 404, missing.text
+
+    # Отозванная сессия больше не может продлить вход, а попытка «переиспользовать»
+    # её refresh = признак кражи: гаснут ВСЕ сессии, включая текущий access-токен.
     refresh_a = await api.client.post(
         "/api/v1/jwt/auth/refresh",
         headers={"Authorization": f"Bearer {login_a.json()['refresh_token']}"},
     )
     assert refresh_a.status_code == 401, refresh_a.text
 
-    missing = await api.client.delete(
-        f"/api/v1/auth/sessions/{other['id']}/",
+    dead = await api.client.get(
+        "/api/v1/auth/sessions/",
         headers={**api.auth(token_b), "User-Agent": device_b},
     )
-    assert missing.status_code == 404, missing.text
+    assert dead.status_code == 401, dead.text
+    assert dead.json()["detail"]["code"] == "session_revoked"
 
 
 async def test_sessions_list_hides_foreign_sessions(api: _ApiCtx) -> None:
@@ -3385,6 +3405,13 @@ async def test_security_log_records_login_and_password_change(
     )
     assert changed.status_code == 200, changed.text
 
+    # Прежний access-токен отозван СРАЗУ (а не через 30 минут): смена пароля
+    # поднимает эпоху доступа.
+    stale = await api.client.get("/api/v1/auth/security-log/", headers=api.auth(token))
+    assert stale.status_code == 401, stale.text
+    assert stale.json()["detail"]["code"] == "session_revoked"
+    token = changed.json()["access_token"]
+
     log = await api.client.get("/api/v1/auth/security-log/", headers=api.auth(token))
     assert log.status_code == 200, log.text
     events = log.json()["items"]
@@ -3456,9 +3483,20 @@ async def test_security_log_covers_sessions_and_email_change(api: _ApiCtx) -> No
     login = await api.client.post(
         "/api/v1/auth/password/login/", **_login_request(phone, _STRONG_PASSWORD, "D1")
     )
-    token = login.json()["access_token"]
+    body = login.json()
+    token = body["access_token"]
 
-    await api.client.post("/api/v1/auth/sessions/revoke-all/", headers=api.auth(token))
+    # Передаём свой refresh-токен: текущее устройство остаётся в системе, поэтому
+    # из ответа берём новую пару — старый access отозван сразу.
+    revoked = await api.client.post(
+        "/api/v1/auth/sessions/revoke-all/",
+        json={"refresh_token": body["refresh_token"]},
+        headers=api.auth(token),
+    )
+    assert revoked.status_code == 200, revoked.text
+    assert revoked.json()["refresh_token"]
+    assert revoked.json()["access_token"]
+    token = revoked.json()["access_token"]
     await api.client.patch(
         "/api/v1/jwt/users/me/",
         json={"email": f"new{uuid.uuid4().hex[:8]}@example.com"},
@@ -3927,3 +3965,28 @@ async def test_contacts_write_is_rate_limited(api: _ApiCtx) -> None:
 
     assert codes[:limit] == [200] * limit
     assert codes[-1] == 429
+
+
+async def test_message_timestamp_is_explicitly_utc(api: _ApiCtx) -> None:
+    """Время сообщения приходит с явным смещением UTC.
+
+    Колонка «timestamp without time zone» отдавалась как ``2026-09-10T18:59:11``
+    без смещения — и браузер трактовал это как ЛОКАЛЬНОЕ время: в UTC+3
+    сообщение показывалось на три часа раньше отправленного (чаты, разделители
+    дней, «вчера/сегодня»). Теперь сервер помечает такое время как UTC, и клиент
+    сам переводит его в пояс устройства.
+    """
+    from datetime import datetime
+
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    token = await api.token_for(u1)
+    chat = await api.private_chat(token, u2.id)
+    await api.send(token, chat["id"], "проверка времени")
+
+    messages = await api.list_messages(token, chat["id"])
+    raw = messages[-1]["timestamp"]
+    assert raw.endswith("+00:00") or raw.endswith("Z"), raw
+    parsed = datetime.fromisoformat(raw)
+    assert parsed.tzinfo is not None, raw
+    assert parsed.utcoffset() is not None and parsed.utcoffset().total_seconds() == 0

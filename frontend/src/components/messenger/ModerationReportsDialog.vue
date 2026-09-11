@@ -161,6 +161,7 @@ import {
   type ReportStatus
 } from '@/services/moderation'
 import { getErrorMessage } from '@/services/errors'
+import { parseServerTime } from '@/utils/format'
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -234,7 +235,7 @@ const setStatus = async (report: ModerationReport, status: ReportStatus) => {
 
 /** Дата жалобы в коротком виде (дд.мм чч:мм). */
 const formatReportDate = (iso: string): string =>
-  new Date(iso).toLocaleString('ru-RU', {
+  new Date(parseServerTime(iso)).toLocaleString('ru-RU', {
     day: '2-digit',
     month: '2-digit',
     hour: '2-digit',

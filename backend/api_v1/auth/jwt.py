@@ -1,5 +1,6 @@
 """Интеграция fastapi-users: JWT-аутентификация и профиль пользователя."""
 
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import jwt
@@ -21,7 +22,12 @@ from sqlalchemy.orm import selectinload
 
 from api_v1.auth.refresh_sessions import rotate_refresh_token
 from api_v1.auth.schemas import TokenResponse
-from api_v1.auth.utils import REFRESH_TOKEN_AUDIENCE, REFRESH_TOKEN_TYPE, decode_jwt
+from api_v1.auth.utils import (
+    REFRESH_TOKEN_AUDIENCE,
+    REFRESH_TOKEN_TYPE,
+    access_token_problem,
+    decode_jwt,
+)
 from api_v1.users.crud import get_user_by_id
 from api_v1.users.schemas import UserUpdateWithProfileSchema, UserWithDetailsSchema
 from core.config import settings
@@ -67,6 +73,30 @@ class RotatingJWTStrategy(JWTStrategy):
     def __init__(self, *, secrets: list[str], lifetime_seconds: int) -> None:
         super().__init__(secret=secrets[0], lifetime_seconds=lifetime_seconds)
         self._decode_secrets = secrets
+        # Подписываем всегда текущим ключом; предыдущий нужен только для чтения.
+        self._sign_secret = secrets[0]
+        self._lifetime_seconds = int(lifetime_seconds)
+
+    async def write_token(self, user: User) -> str:
+        """Выпускает access-токен с номером «эпохи» пользователя.
+
+        Claim ``epoch`` нужен для мгновенного отзыва: access-токены не хранятся
+        в БД, и без такого claim'а «выйти на всех устройствах» оставляло бы вору
+        доступ ещё на 30 минут. См. ``auth/utils.access_token_problem``.
+
+        Токен собираем сами (а не через ``JWTStrategy.write_token``), чтобы
+        добавить свой claim в стандартный payload fastapi-users: состав полей
+        остаётся совместимым (``sub``/``aud``/``exp``).
+        """
+        now = datetime.now(timezone.utc)
+        payload = {
+            "sub": str(user.id),
+            "aud": self.token_audience,
+            "epoch": int(user.token_epoch or 0),
+            "iat": now,
+            "exp": now + timedelta(seconds=self._lifetime_seconds),
+        }
+        return jwt.encode(payload, self._sign_secret, algorithm=self.algorithm)
 
     async def read_token(
         self, token: str | None, user_manager: BaseUserManager
@@ -87,12 +117,15 @@ class RotatingJWTStrategy(JWTStrategy):
                 return None
             try:
                 parsed_id = user_manager.parse_id(user_id)
-                return await user_manager.get(parsed_id)
+                user = await user_manager.get(parsed_id)
             except (
                 fastapi_users_exceptions.UserNotExists,
                 fastapi_users_exceptions.InvalidID,
             ):
                 return None
+            # Заморожённый аккаунт и отозванный токен не проходят и здесь
+            # (этот путь используют служебные роутеры fastapi-users: /jwt/users/me).
+            return None if access_token_problem(data, user) is not None else user
         return None
 
 

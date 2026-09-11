@@ -66,6 +66,11 @@ function usedIconNames(text: string): string[] {
   }
   // icon = 'name'
   for (const m of text.matchAll(/\bicon\s*=\s*'([a-z0-9_]+)'/g)) names.push(m[1])
+  // icon="name" на наших компонентах (EmptyState, ChatPlaceholder): имя уходит
+  // в `icon()` внутри компонента, поэтому проверять надо так же строго.
+  for (const m of text.matchAll(/<(?:EmptyState|ChatPlaceholder)\b[^>]*?\sicon="([a-z0-9_]+)"/gs)) {
+    names.push(m[1])
+  }
   return names
 }
 

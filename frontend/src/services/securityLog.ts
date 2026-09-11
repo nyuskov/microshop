@@ -10,6 +10,7 @@
  * Хранится 180 дней, доступно только владельцу аккаунта.
  */
 import { api } from './api'
+import { parseServerTime } from '@/utils/format'
 
 export interface SecurityLogEntry {
   id: number
@@ -48,7 +49,7 @@ export function isAlertEvent(event: string): boolean {
 
 /** Короткая метка времени события (дд.мм чч:мм). */
 export function formatEventTime(iso: string): string {
-  const date = new Date(iso)
+  const date = parseServerTime(iso)
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleString('ru-RU', {
     day: '2-digit',

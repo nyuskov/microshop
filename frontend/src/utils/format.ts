@@ -1,7 +1,27 @@
 /** Утилиты форматирования дат, присутствия и размеров. */
 
-export const toDate = (value: string | Date): Date =>
-  typeof value === 'string' ? new Date(value) : value
+/**
+ * Разбирает время, пришедшее с сервера, с учётом его часового пояса.
+ *
+ * Сервер живёт в UTC, но часть значений уходит БЕЗ смещения
+ * (``2026-09-10T18:59:11.428769`` — такие колонки в БД хранятся как
+ * ``timestamp without time zone``). По стандарту ISO 8601 браузер считает такую
+ * строку ЛОКАЛЬНЫМ временем, поэтому в UTC+3 сообщение показывалось на три часа
+ * раньше отправленного.
+ *
+ * Здесь строка без смещения явно помечается как UTC — дальше всё форматирование
+ * (``toLocaleTimeString`` и т. п.) само переводит время в пояс устройства.
+ * Значения со смещением (``Z`` / ``+00:00``) не трогаем.
+ */
+export const parseServerTime = (value: string | Date): Date => {
+  if (typeof value !== 'string') return value
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)
+  if (hasZone) return new Date(value)
+  // «2026-09-10 18:59:11» → «2026-09-10T18:59:11Z» (пробел тоже допустим).
+  return new Date(`${value.replace(' ', 'T')}Z`)
+}
+
+export const toDate = (value: string | Date): Date => parseServerTime(value)
 
 const isToday = (date: Date): boolean => date.toDateString() === new Date().toDateString()
 
@@ -43,7 +63,7 @@ export const pluralRu = (n: number, one: string, few: string, many: string): str
 /** Текст «был(а) … назад» / «в сети» по last_seen. */
 export const lastSeenLabel = (value?: string | null, allowOnline = true): string => {
   if (!value) return ''
-  const date = new Date(value)
+  const date = parseServerTime(value)
   if (Number.isNaN(date.getTime())) return ''
   const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000))
   if (seconds <= ONLINE_WINDOW_SECONDS) return allowOnline ? 'в сети' : 'был(а) только что'

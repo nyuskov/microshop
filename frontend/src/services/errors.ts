@@ -26,8 +26,15 @@ export function isNetworkError(error: unknown): boolean {
  */
 export function getErrorMessage(error: unknown, fallback = 'Произошла ошибка.'): string {
   if (axios.isAxiosError(error)) {
-    const data = error.response?.data as { detail?: string; message?: string } | undefined
-    return data?.detail || data?.message || error.message || fallback
+    const data = error.response?.data as { detail?: unknown; message?: string } | undefined
+    // detail может быть строкой или объектом { code, message } (2FA-челлендж,
+    // заморозка аккаунта): в интерфейсе нужен человеческий текст, а не «[object]».
+    if (typeof data?.detail === 'string' && data.detail) return data.detail
+    if (data?.detail && typeof data.detail === 'object') {
+      const message = (data.detail as { message?: unknown }).message
+      if (typeof message === 'string' && message) return message
+    }
+    return data?.message || error.message || fallback
   }
   if (error instanceof Error) {
     return error.message

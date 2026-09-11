@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Что-то пошло не так — Pismo</title>
+    <meta name="theme-color" content="#10151c" />
+    <!-- Служебная страница: в поиске ей делать нечего. -->
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+      :root {
+        --brand: #6c63ff;
+        --bg: #10151c;
+        --surface: #182029;
+        --border: #24303c;
+        --text: #e8edf3;
+        --muted: #9aa7b4;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #eef1f4;
+          --surface: #ffffff;
+          --border: #e2e6ea;
+          --text: #1d2733;
+          --muted: #6b7883;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          16px/1.6 -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          Ubuntu,
+          sans-serif;
+      }
+      main {
+        width: 100%;
+        max-width: 520px;
+        text-align: center;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 36px 28px 32px;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18);
+      }
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 56px;
+        height: 56px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #e58e7a, #c25e4a);
+        margin-bottom: 18px;
+      }
+      .brand svg {
+        width: 28px;
+        height: 28px;
+        fill: #fff;
+      }
+      .code {
+        margin: 0;
+        font-size: 56px;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: 2px;
+        color: #e58e7a;
+      }
+      h1 {
+        margin: 12px 0 8px;
+        font-size: 22px;
+        line-height: 1.3;
+      }
+      p {
+        margin: 0 0 22px;
+        color: var(--muted);
+        font-size: 15px;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+      }
+      button.button,
+      a.button {
+        display: inline-block;
+        padding: 12px 22px;
+        border: none;
+        border-radius: 12px;
+        background: var(--brand);
+        color: #fff;
+        font-size: 15px;
+        font-weight: 600;
+        text-decoration: none;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      a.button.secondary {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+      button.button:hover,
+      a.button:hover {
+        filter: brightness(1.06);
+      }
+      .hint {
+        margin: 22px 0 0;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .hint a {
+        color: var(--brand);
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="brand" aria-hidden="true">
+        <svg viewBox="0 0 24 24" role="img">
+          <path d="M12 2 1 21h22L12 2Zm0 6 6.5 11h-13L12 8Zm-1 4h2v4h-2v-4Zm0 5h2v2h-2v-2Z" />
+        </svg>
+      </span>
+      <p class="code">500</p>
+      <h1>Что-то пошло не так</h1>
+      <p>
+        На сервере произошла ошибка — мы уже разбираемся. Обычно помогает обновить страницу через
+        минуту.
+      </p>
+      <div class="actions">
+        <button class="button" type="button" onclick="window.location.reload()">Обновить</button>
+        <a class="button secondary" href="/">Открыть Pismo</a>
+      </div>
+      <p class="hint">
+        Не помогло? Напишите на
+        <a href="mailto:nyuskov@gmail.com">nyuskov@gmail.com</a> — разберёмся вручную.
+      </p>
+    </main>
+  </body>
+</html>

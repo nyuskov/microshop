@@ -27,8 +27,20 @@ import './assets/a11y.css'
 // Import the new theme store
 import { useThemeStore } from './stores/theme'
 import { migrateLegacyStorage } from './utils/storage'
+import { reportFatalError } from './utils/fatalError'
 
 const app = createApp(App)
+
+// Фатальные ошибки (рендер компонента, ошибка в обработчике) показываем
+// понятным экраном с перезагрузкой вместо белого экрана — см. FatalErrorScreen.
+// Ошибки запросов сюда не попадают: их разбирает интерфейс.
+app.config.errorHandler = (error) => {
+  console.error('Фатальная ошибка приложения:', error)
+  reportFatalError(error)
+}
+window.addEventListener('error', (event) => {
+  if (event.error) reportFatalError(event.error)
+})
 
 app.use(createPinia())
 app.use(router)

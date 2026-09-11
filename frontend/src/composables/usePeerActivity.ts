@@ -6,7 +6,7 @@
  */
 import { onScopeDispose, reactive } from 'vue'
 
-import { ONLINE_WINDOW_SECONDS } from '@/utils/format'
+import { ONLINE_WINDOW_SECONDS, parseServerTime } from '@/utils/format'
 
 export interface PeerPresenceState {
   online: boolean
@@ -26,7 +26,7 @@ export function usePeerActivity(options: PeerActivityOptions) {
 
   const isWithinOnlineWindow = (value?: string | null): boolean => {
     if (!value) return false
-    const date = new Date(value)
+    const date = parseServerTime(value)
     if (Number.isNaN(date.getTime())) return false
     return Date.now() - date.getTime() <= ONLINE_WINDOW_SECONDS * 1000
   }

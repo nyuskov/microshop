@@ -18,6 +18,7 @@ from core.models import (
     User,
     user_chat_association_table,
 )
+from core.timeutils import as_utc
 
 _NOT_MEMBER_DETAIL = "Вы не являетесь участником этого чата"
 _BLOCKED_DETAIL = "Нельзя отправить сообщение: пользователь недоступен"
@@ -106,7 +107,7 @@ def message_to_dict(message: Message, user_id: int) -> dict:
         "chat_id": message.chat_id,
         "user_id": message.user_id,
         "text": message.text,
-        "timestamp": message.timestamp,
+        "timestamp": as_utc(message.timestamp),
         "reply_to_id": message.reply_to_id,
         "is_read": message.is_read,
         "is_pinned": message.is_pinned,
@@ -139,7 +140,7 @@ def message_basic_to_dict(message: Message) -> dict:
         "chat_id": message.chat_id,
         "user_id": message.user_id,
         "text": "" if hidden else message.text,
-        "timestamp": message.timestamp,
+        "timestamp": as_utc(message.timestamp),
         "reply_to_id": message.reply_to_id,
         "is_read": message.is_read,
         "is_pinned": message.is_pinned,

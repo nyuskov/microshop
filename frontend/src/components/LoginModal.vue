@@ -16,8 +16,8 @@ import { ref, watch, computed } from 'vue'
 import Login from './Login.vue'
 import { useAuthStore } from '../stores/auth'
 
-/** Шаги входа (совпадают с LoginState в Login.vue) + 2FA нового устройства. */
-type LoginState = 'phone' | 'password' | 'otp' | 'create' | 'email' | 'device'
+/** Шаги входа (совпадают с LoginState в Login.vue) + 2FA и заморозка аккаунта. */
+type LoginState = 'phone' | 'password' | 'otp' | 'create' | 'email' | 'device' | 'unfreeze'
 
 const props = defineProps<{
   visible: boolean

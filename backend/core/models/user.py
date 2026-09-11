@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from fastapi_users.db import SQLAlchemyBaseUserTable
-from sqlalchemy import BigInteger, Boolean, DateTime, String, text
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .associations import user_chat_association_table
@@ -61,6 +61,14 @@ class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
     # Время последней активности — для присутствия («в сети» / «был(а) N назад»).
     last_seen: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    # «Эпоха» access-токенов: access-токены живут 30 минут и в БД не хранятся,
+    # поэтому отозвать их напрямую нельзя. Вместо этого номер эпохи вшит в токен
+    # (claim ``epoch``), а при «выходе на всех устройствах», смене пароля или
+    # заморозке аккаунта счётчик увеличивается — все ранее выданные токены сразу
+    # перестают приниматься (см. api_v1/auth/utils.access_token_problem).
+    token_epoch: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0"), nullable=False
     )
     # ID Telegram-чата с нашим ботом (привязка) — для доставки OTP в личку,
     # когда Telegram Gateway недоступен/не настроен.

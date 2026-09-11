@@ -397,6 +397,9 @@
   <!-- Разбор жалоб — только у администраторов (пункт «⋯» появляется им одним) -->
   <ModerationReportsDialog v-if="showReports && authStore.isAdmin" @close="showReports = false" />
 
+  <!-- Новый вход в аккаунт (из push «Это не я» / ?security=1) -->
+  <SecurityAlertDialog v-model="showSecurityAlert" />
+
   <!-- Промежуточный экран при запуске из уведомления о звонке -->
   <Teleport to="body">
     <div v-if="callLaunchScreen === 'ring' && callStore.status === 'idle'" class="call-launch-wait">
@@ -567,6 +570,7 @@ import { useCallStore } from '@/stores/call'
 import { useContactsStore } from '@/stores/contacts'
 import { useRealtimeStore } from '@/stores/realtime'
 import { useStoriesStore } from '@/stores/stories'
+import SecurityAlertDialog from '@/components/messenger/SecurityAlertDialog.vue'
 import { mediaFileName, type RecordedMedia } from '@/services/recorder'
 import {
   disablePushNotifications,
@@ -3420,6 +3424,34 @@ const onBlockedUsersChanged = () => {
   void refreshChatsQuiet()
 }
 
+/**
+ * Диалог «Новый вход в аккаунт».
+ *
+ * Показывается, если приложение открыли из push о новом входе (`?security=1`)
+ * или пришло сообщение от service worker: у владельца должно быть действие в
+ * один тап — завершить чужие сессии или заморозить аккаунт.
+ */
+const showSecurityAlert = ref(new URLSearchParams(initialSearch).get('security') === '1')
+
+/** Убираем `?security=1` из адреса, чтобы перезагрузка не открывала диалог снова. */
+const clearSecurityParam = () => {
+  try {
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has('security')) return
+    url.searchParams.delete('security')
+    router.options.history.replace(
+      `${url.pathname}${url.search}${url.hash}`,
+      window.history.state ?? {}
+    )
+  } catch {
+    /* адрес недоступен — не критично */
+  }
+}
+
+watch(showSecurityAlert, (open) => {
+  if (!open) clearSecurityParam()
+})
+
 onMounted(async () => {
   await authStore.initializeApp()
   // Истории грузим сразу: точка «есть новое» должна быть видна без захода в раздел.
@@ -3567,6 +3599,13 @@ const handleWindowMessage = (event: MessageEvent) => {
     // Приложение было открыто, поэтому системного «будильника» не показывали:
     // звонок разбирает сам интерфейс (offer придёт по сигнальному каналу).
     syncCallRings()
+    return
+  }
+  if (data.type === 'security-alert') {
+    // Service worker получил тап по уведомлению о новом входе — разбираемся
+    // в приложении (завершить чужие сессии или заморозить аккаунт).
+    showSecurityAlert.value = true
+    pushMobileNav()
     return
   }
   if (data.type === 'call-notification') {

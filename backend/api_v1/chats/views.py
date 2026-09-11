@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -106,11 +106,19 @@ async def _ensure_group(chat: Chat | None) -> Chat:
     return chat
 
 
+# «Самое старое время» для чатов без сообщений. С UTC: время сообщения приходит
+# из API уже с явным смещением (core/timeutils.as_utc), и сравнение с наивной
+# датой упало бы с TypeError.
+_MIN_TIME = datetime.min.replace(tzinfo=timezone.utc)
+
+
 def _chat_sort_key(item: dict):
     """Ключ сортировки: чаты с сообщениями сначала, новые — выше."""
     last = item.get("last_message")
     if last is None:
-        return (1, datetime.min)
+        # Время без сообщений — «самое старое». Сравнивать наивную дату с
+        # приходящей из API (теперь всегда с UTC) нельзя — TypeError.
+        return (1, _MIN_TIME)
     return (0, last["timestamp"])
 
 

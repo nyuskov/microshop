@@ -42,6 +42,12 @@ EVENT_TITLES: dict[str, str] = {
     "email_verified": "Адрес e-mail подтверждён",
     "sessions_revoked": "Выход на всех устройствах",
     "session_revoked": "Завершён вход с устройства",
+    "account_frozen": "Аккаунт заморожен",
+    "account_unfrozen": "Аккаунт разморожен",
+    "panic": "Тревога «это были не я»",
+    "admin_sessions_revoked": "Поддержка завершила все входы",
+    "admin_frozen": "Аккаунт заморожен поддержкой",
+    "admin_unfrozen": "Аккаунт разморожен поддержкой",
     "account_deleted": "Аккаунт удалён",
 }
 

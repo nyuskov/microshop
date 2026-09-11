@@ -7,6 +7,7 @@
  */
 
 import type { StoryGroup, StoryItem } from '@/services/stories'
+import { parseServerTime } from '@/utils/format'
 
 /** История вместе с её автором (для сквозного показа «все подряд»). */
 export interface FlatStory {
@@ -81,7 +82,7 @@ export function groupProgress(group: StoryGroup): { total: number; seen: number 
 
 /** «5 мин», «3 ч», «2 дн» — сколько живёт история (для подписи под аватаркой). */
 export function formatStoryAge(createdAt: string, now: Date = new Date()): string {
-  const created = new Date(createdAt)
+  const created = parseServerTime(createdAt)
   if (Number.isNaN(created.getTime())) return ''
   const seconds = Math.max(0, Math.round((now.getTime() - created.getTime()) / 1000))
   if (seconds < 60) return 'только что'

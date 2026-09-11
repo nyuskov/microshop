@@ -52,6 +52,9 @@ EVENT_SUBJECTS: dict[str, str] = {
     "sessions_revoked": "Pismo: выполнен выход на всех устройствах",
     "email_changed": "Pismo: адрес e-mail в аккаунте изменён",
     "new_device": "Pismo: вход с нового устройства",
+    "account_frozen": "Pismo: аккаунт заморожен",
+    "account_unfrozen": "Pismo: аккаунт разморожен",
+    "panic": "Pismo: сработала тревога «это были не я»",
 }
 
 # События, о которых имеет смысл сообщать (остальное — ошибка в коде вызова).
@@ -109,6 +112,81 @@ async def _allowed_by_daily_cap(user_id: int) -> bool:
         rate_limit_key("notify:security-daily", str(user_id)),
         limit=_MAX_NOTIFICATIONS_PER_DAY,
         window_seconds=86400,
+    )
+
+
+def enqueue_security_push(
+    user_id: int, *, title: str, body: str, panic_token: str | None = None
+) -> None:
+    """Ставит в очередь push о событии безопасности (Web Push и RuStore).
+
+    Push — второй канал рядом с письмом, и он важен именно тем, что работает
+    БЕЗ подтверждённого e-mail: раньше владелец без подтверждённой почты вообще
+    не узнавал о чужом входе (ни письма, ни уведомления).
+
+    ``panic_token`` добавляет в уведомление кнопку «Это не я» (см. ``panic.py``).
+    """
+    try:
+        task = get_task("tasks.notifications.send_security_push")
+        task.delay(user_id, title, body, panic_token)
+    except Exception:  # noqa: BLE001 - брокер может быть недоступен (dev без docker)
+        logger.warning(
+            "RabbitMQ недоступен: push о безопасности для %s не поставлен в очередь",
+            user_id,
+        )
+
+
+async def notify_account_frozen(
+    session: AsyncSession,
+    *,
+    user: User,
+    request: Request | None = None,
+    source: str = "self",
+) -> None:
+    """Сообщает владельцу о заморозке аккаунта (письмо + push).
+
+    Заморозка — действие самого владельца (или поддержки), но именно оно чаще
+    всего случается ПОСЛЕ чужого входа: важно, чтобы письмо с «это были не вы?»
+    ушло сразу и на два канала.
+    """
+    where = "из приложения" if source == "self" else "поддержкой"
+    await notify_security_event(
+        session,
+        user,
+        event="account_frozen",
+        request=request,
+        details=(
+            f"Аккаунт заморожен {where}: все устройства вышли, вход закрыт.\n"
+            "Разморозить можно кодом из письма (Профиль → Безопасность или "
+            "экран входа)."
+        ),
+    )
+    enqueue_security_push(
+        user.id,
+        title="Аккаунт заморожён",
+        body="Все устройства вышли. Разморозить можно кодом из письма.",
+    )
+
+
+async def notify_account_unfrozen(
+    session: AsyncSession, *, user: User, request: Request | None = None
+) -> None:
+    """Сообщает владельцу, что аккаунт снова активен (письмо + push).
+
+    Это защита от незаметной разморозки: если владелец видит такое письмо, а сам
+    ничего не делал — значит доступ восстановил кто-то другой.
+    """
+    await notify_security_event(
+        session,
+        user,
+        event="account_unfrozen",
+        request=request,
+        details="Аккаунт снова активен. Если это были не вы — смените пароль.",
+    )
+    enqueue_security_push(
+        user.id,
+        title="Аккаунт разморожен",
+        body="Доступ восстановлен. Если это были не вы — смените пароль.",
     )
 
 
@@ -235,6 +313,19 @@ async def remember_login_device(
                 f"IP-адрес: {info.ip or 'неизвестен'}\n"
                 "Вход выполнен успешно."
             ),
+        )
+        # Push с кнопкой «Это не я»: владелец может выкинуть вора одним тапом,
+        # не заходя в приложение (и даже если e-mail у аккаунта не подтверждён).
+        from .panic import build_panic_token
+
+        enqueue_security_push(
+            user.id,
+            title="Новый вход в аккаунт",
+            body=(
+                f"{info.label} · {info.ip or 'IP неизвестен'}. "
+                "Если это не вы — нажмите «Это не я»."
+            ),
+            panic_token=build_panic_token(user),
         )
     return True
 

@@ -4,6 +4,7 @@ import { applyServiceWorkerUpdate, registerServiceWorker } from '@/services/pwa'
 import { useVisualViewport } from '@/composables/useVisualViewport'
 import OfflineBanner from '@/components/common/OfflineBanner.vue'
 import ExternalLinkDialog from '@/components/common/ExternalLinkDialog.vue'
+import FatalErrorScreen from '@/components/common/FatalErrorScreen.vue'
 
 // Высота с учётом экранной клавиатуры — нужна всему приложению (и логину тоже).
 useVisualViewport()
@@ -42,6 +43,8 @@ onBeforeUnmount(() => {
   <OfflineBanner />
   <!-- Подтверждение перехода на внешний сайт (окно одно на всё приложение) -->
   <ExternalLinkDialog />
+  <!-- Фатальная ошибка приложения: вместо белого экрана — понятное сообщение -->
+  <FatalErrorScreen />
   <router-view></router-view>
 </template>
 

@@ -116,6 +116,52 @@ class PasswordSetResponse(BaseModel):
     refresh_token: str | None = None
 
 
+class LogoutRequest(BaseModel):
+    """Выход из аккаунта на этом устройстве (отзыв именно этой сессии)."""
+
+    refresh_token: str | None = None
+
+
+class RevokeAllRequest(BaseModel):
+    """«Выйти на всех устройствах».
+
+    ``refresh_token`` — сессия текущего устройства: её оставляем живой, чтобы
+    владелец не вылетел сам. Без него гасим вообще всё (например, тревога из
+    уведомления или запрос из чужого места).
+    """
+
+    refresh_token: str | None = None
+
+
+class FreezeRequest(BaseModel):
+    """Заморозка аккаунта: если пароль задан — подтверждаем его."""
+
+    password: str | None = None
+
+
+class FreezeResponse(BaseModel):
+    """Результат заморозки: что именно произошло (для показа пользователю)."""
+
+    detail: str
+    frozen: bool
+    # Канал, которым владелец сможет разморозить аккаунт (e-mail адреса).
+    recovery_hint: str | None = None
+
+
+class PanicRequest(BaseModel):
+    """Тревога «это были не я» из push-уведомления (без access-токена)."""
+
+    token: str
+
+
+class PanicResponse(BaseModel):
+    """Результат тревоги: сессии отозваны, аккаунт (если было чем) заморожен."""
+
+    detail: str
+    revoked: bool
+    frozen: bool
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

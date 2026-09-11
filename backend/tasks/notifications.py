@@ -40,6 +40,9 @@ PUSH_TTL_MESSAGE = 86_400
 # ID каналов уведомлений Android-приложения (совпадают с PushChannels.java в android/).
 PUSH_CHANNEL_MESSAGES = "pismo_messages"
 PUSH_CHANNEL_CALLS = "pismo_calls"
+# События безопасности (новый вход, заморозка): отдельный канал, чтобы владелец
+# мог оставить его включённым даже при отключённых уведомлениях о сообщениях.
+PUSH_CHANNEL_SECURITY = "pismo_security"
 # Intent action для клика по уведомлению (android/app/src/main/AndroidManifest.xml).
 PUSH_CLICK_ACTION = "space.pismo.app.PUSH"
 
@@ -354,6 +357,108 @@ def _push_icon(user: User | None) -> str:
     """
     avatar = (user.avatar_url or "").strip() if user else ""
     return avatar or PUSH_ICON_DEFAULT
+
+
+@celery_app.task(name="tasks.notifications.send_security_push")
+def send_security_push(
+    user_id: int, title: str, body: str, panic_token: str | None = None
+) -> None:
+    """Push о событии безопасности: новый вход, заморозка, тревога.
+
+    Отдельно от push о сообщениях и работает даже без подтверждённого e-mail:
+    раньше владелец без почты вообще не узнавал о чужом входе. Если передан
+    ``panic_token``, в уведомлении появляется кнопка «Это не я» — по ней
+    приложение завершает все сессии одним запросом (см. ``api_v1/auth/panic.py``).
+    """
+    run_async(_send_security_push_async(user_id, title, body, panic_token))
+
+
+async def _send_security_push_async(
+    user_id: int, title: str, body: str, panic_token: str | None = None
+) -> None:
+    engine = make_engine()
+    session = make_session(engine)
+    try:
+        data: dict[str, object] = {"type": "security"}
+        if panic_token:
+            data["panic_token"] = panic_token
+        await _send_rustore_push(
+            session,
+            [user_id],
+            _rustore_message(
+                title=title,
+                body=body,
+                channel_id=PUSH_CHANNEL_SECURITY,
+                data=data,
+            ),
+        )
+
+        if not _web_push_configured():
+            return
+        stmt = select(PushSubscription).where(PushSubscription.user_id == user_id)
+        subscriptions = list((await session.execute(stmt)).scalars().all())
+        if not subscriptions:
+            return
+        payload = json.dumps(
+            {
+                "title": title,
+                "body": body,
+                "icon": PUSH_ICON_DEFAULT,
+                "badge": PUSH_BADGE,
+                # Уведомления безопасности заменяют друг друга, а не копятся.
+                "tag": "pismo-security",
+                "data": data,
+            },
+            ensure_ascii=False,
+        )
+        await _web_push_to_subscriptions(
+            session, subscriptions, payload, PUSH_TTL_MESSAGE, PUSH_HEADERS_MESSAGE
+        )
+    finally:
+        await session.close()
+        await engine.dispose()
+
+
+async def _web_push_to_subscriptions(
+    session,
+    subscriptions: list[PushSubscription],
+    payload: str,
+    ttl: int,
+    headers: dict[str, str],
+) -> None:
+    """Рассылает готовый payload по подпискам, убирая устаревшие (404/410)."""
+    stale_ids: list[int] = []
+    for sub in subscriptions:
+        try:
+            webpush(
+                subscription_info={
+                    "endpoint": sub.endpoint,
+                    "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
+                },
+                data=payload,
+                vapid_private_key=settings.web_push_vapid_private_key,
+                vapid_claims={"sub": settings.web_push_vapid_subject},
+                ttl=ttl,
+                headers=headers,
+                timeout=10,
+            )
+        except WebPushException as exc:
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            if status_code in (404, 410):
+                stale_ids.append(sub.id)
+            else:
+                logger.warning(
+                    "push не доставлен (endpoint …%s): %s", sub.endpoint[-24:], exc
+                )
+        except Exception as exc:  # noqa: BLE001 - сеть/таймауты не роняют задачу
+            logger.warning("push error (endpoint …%s): %s", sub.endpoint[-24:], exc)
+
+    if stale_ids:
+        await session.execute(
+            delete(PushSubscription).where(PushSubscription.id.in_(stale_ids))
+        )
+        await session.commit()
+        logger.info("Удалено устаревших push-подписок: %s", len(stale_ids))
 
 
 @celery_app.task(

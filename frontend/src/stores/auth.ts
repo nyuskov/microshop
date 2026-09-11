@@ -73,12 +73,41 @@ export function deviceChallengeOf(error: unknown): DeviceChallenge | null {
   return detail as DeviceChallenge
 }
 
+/** Ответ 403 «аккаунт заморожен» (или null, если это другая ошибка). */
+export function frozenAccountOf(error: unknown): DeviceChallenge | null {
+  if (!axios.isAxiosError(error) || error.response?.status !== 403) return null
+  const data = error.response.data as { detail?: unknown } | undefined
+  const detail = data?.detail
+  if (!detail || typeof detail !== 'object') return null
+  return (detail as { code?: string }).code === 'account_frozen'
+    ? (detail as DeviceChallenge)
+    : null
+}
+
+/**
+ * Ответ 401 «сессия отозвана»: выполнен выход на всех устройствах, изменён
+ * пароль или аккаунт заморожен. Обновлять токен бессмысленно — нужно войти заново.
+ */
+export function sessionRevokedOf(error: unknown): boolean {
+  if (!axios.isAxiosError(error) || error.response?.status !== 401) return false
+  const data = error.response.data as { detail?: unknown } | undefined
+  const detail = data?.detail
+  if (!detail || typeof detail !== 'object') return false
+  return (detail as { code?: string }).code === 'session_revoked'
+}
+
 interface AuthState {
   user: ApiUser | null
   isAuthenticated: boolean
   current_user: ApiUser | null
   accessToken: string | null
   refreshToken: string | null
+  /** Аккаунт заморожен (403 от сервера): показываем экран разморозки. */
+  frozen: boolean
+  /** Куда ушёл код разморозки (маскированный адрес) — подсказка пользователю. */
+  frozenHint: string
+  /** Пояснение для экрана входа после отзыва сессии сервером. */
+  sessionNotice: string
 }
 
 const DEFAULT_STATE: AuthState = {
@@ -86,7 +115,10 @@ const DEFAULT_STATE: AuthState = {
   isAuthenticated: false,
   current_user: null,
   accessToken: null,
-  refreshToken: null
+  refreshToken: null,
+  frozen: false,
+  frozenHint: '',
+  sessionNotice: ''
 }
 
 function loadState(): AuthState {
@@ -169,6 +201,9 @@ export const useAuthStore = defineStore('auth', {
       this.accessToken = data.access_token
       this.refreshToken = data.refresh_token ?? null
       this.isAuthenticated = true
+      this.sessionNotice = ''
+      this.frozen = false
+      this.frozenHint = ''
       this.saveState()
 
       try {
@@ -286,11 +321,103 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    /** Выходит из аккаунта на всех устройствах (кроме текущего). */
+    /**
+     * Выходит из аккаунта на всех устройствах (кроме текущего).
+     *
+     * Сервер поднимает «эпоху» доступа: выданные ранее access-токены (в том
+     * числе украденные) перестают работать СРАЗУ, а текущему устройству выдаётся
+     * новая пара токенов — поэтому её обязательно сохраняем.
+     */
     async revokeAllSessions(): Promise<void> {
-      await api.post('/auth/sessions/revoke-all/', {})
+      const response = await api.post('/auth/sessions/revoke-all/', {
+        refresh_token: this.refreshToken
+      })
+      if (response.data?.access_token) {
+        this.accessToken = response.data.access_token
+        this.refreshToken = response.data.refresh_token ?? this.refreshToken
+        this.isAuthenticated = true
+        this.saveState()
+        return
+      }
+      // Текущую сессию сохранить не удалось — работаем как «вышли везде».
+      this.resetAuth()
     },
 
+    /**
+     * Заморозка аккаунта («стоп-кран» на случай угона).
+     *
+     * Все сессии гаснут, вход закрыт до подтверждения владения почтой. Пароль
+     * нужен, если он у аккаунта уже задан (защита от заморозки чужой сессии).
+     */
+    async freezeAccount(password?: string): Promise<string> {
+      const response = await api.post('/auth/account/freeze/', {
+        password: password ?? null
+      })
+      this.resetAuth()
+      this.frozen = true
+      this.frozenHint = response.data?.recovery_hint ?? ''
+      return response.data?.detail ?? ''
+    },
+
+    /** Код на подтверждённый e-mail для разморозки аккаунта. */
+    async requestAccountUnfreeze(email: string): Promise<string> {
+      const response = await api.post('/auth/account/unfreeze/request/', { email })
+      return response.data?.detail ?? ''
+    },
+
+    /** Разморозка аккаунта кодом из письма + вход на этом устройстве. */
+    async confirmAccountUnfreeze(
+      email: string,
+      code: string,
+      router: Router | null = null
+    ): Promise<void> {
+      const response = await api.post('/auth/account/unfreeze/', { email, code })
+      this.frozen = false
+      this.frozenHint = ''
+      await this.applyTokenResponse(response.data, router)
+    },
+
+    /**
+     * Помечает аккаунт замороженным и уводит на экран входа: дальше человек
+     * либо разморозит его кодом из письма, либо напишет в поддержку.
+     */
+    async markFrozen(hint = '', router: Router | null = null): Promise<void> {
+      const wasFrozen = this.frozen
+      this.resetAuth()
+      this.frozen = true
+      this.frozenHint = hint || this.frozenHint
+      if (!wasFrozen && router) {
+        await router.push({ name: 'Login' })
+      }
+    },
+
+    /**
+     * Сервер завершил сессию (выход на всех устройствах, смена пароля).
+     * Показываем экран входа с пояснением — иначе «выкинуло» выглядит как сбой.
+     */
+    markSessionEnded(message = ''): void {
+      this.resetAuth()
+      this.sessionNotice =
+        message || 'Сессия завершена. Войдите заново — другим устройствам доступ закрыт.'
+    },
+
+    /** Выходит из аккаунта на этом устройстве: сессия гасится НА СЕРВЕРЕ. */
+    async logout(router: Router | null = null) {
+      const token = this.refreshToken
+      this.sessionNotice = ''
+      this.resetAuth()
+      if (router) {
+        await router.push({ name: 'Login' })
+      }
+      if (!token) return
+      try {
+        // Эндпоинт без access-токена (только по refresh) — выход работает и
+        // когда access уже протух; сеть не должна мешать локальному выходу.
+        await api.post('/auth/logout/', { refresh_token: token })
+      } catch {
+        /* нет сети или сессия уже мертва — локально мы уже вышли */
+      }
+    },
     /** Второй шаг входа с нового устройства: код из письма → токены. */
     async verifyDeviceLogin(
       challengeToken: string,
@@ -349,13 +476,6 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    async logout(router: Router | null = null) {
-      this.resetAuth()
-      if (router) {
-        await router.push({ name: 'Login' })
-      }
-    },
-
     async refreshTokens() {
       if (!this.refreshToken) {
         throw new Error('No refresh token available')
@@ -374,7 +494,9 @@ export const useAuthStore = defineStore('auth', {
         return response.data
       } catch (error) {
         console.error('Refresh token error:', error)
-        await this.logout()
+        // Refresh не сработал: продлить вход нечем — локально выходим без
+        // сетевого logout (токен уже мёртв, запрос был бы впустую).
+        this.resetAuth()
         throw error
       }
     },
@@ -389,7 +511,7 @@ export const useAuthStore = defineStore('auth', {
         // Если interceptor не смог обновить токен (401) — выходим.
         if (axios.isAxiosError(error) && error.response?.status === 401) {
           console.error('Access token invalid, logging out.')
-          await this.logout()
+          this.resetAuth()
         } else {
           console.error('Failed to fetch user:', getErrorMessage(error))
           this.user = null
@@ -459,5 +581,15 @@ registerAuth(
     } catch {
       return false
     }
+  },
+  (reason, message) => {
+    // Сервер сам сказал, что сессии больше нет: чистим токены и объясняем
+    // человеку, что произошло (выход на всех / заморозка), а не «ошибка сети».
+    const store = useAuthStore()
+    if (reason === 'account_frozen') {
+      void store.markFrozen(message)
+      return
+    }
+    store.markSessionEnded(message)
   }
 )
