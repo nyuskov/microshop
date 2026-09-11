@@ -271,7 +271,12 @@ services:
     volumes:
       - certbot_etc:/etc/letsencrypt
       - certbot_var:/var/lib/letsencrypt
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done'"
+      # Копия сертификатов для coturn: он работает под nobody, а в каталог
+      # Let's Encrypt попасть не может (live/ и privkey — 0700 root). Обновляем
+      # копию при каждом renew — иначе после продления coturn остался бы со
+      # старым сертификатом.
+      - turn_certs:/turn-certs
+    entrypoint: "/bin/sh -c 'publish_certs() { mkdir -p /turn-certs; cp -fL /etc/letsencrypt/live/pismo.space/fullchain.pem /etc/letsencrypt/live/pismo.space/privkey.pem /turn-certs/ 2>/dev/null || true; chown root:65534 /turn-certs /turn-certs/*.pem 2>/dev/null || true; chmod 0750 /turn-certs 2>/dev/null || true; chmod 0640 /turn-certs/*.pem 2>/dev/null || true; }; publish_certs; trap exit TERM; while :; do certbot renew; publish_certs; sleep 12h & wait $${!}; done'"
 
   # TURN-сервер для WebRTC-звонков за «симметричным» NAT (мобильные операторы).
   # Creds — временные (TURN REST API): общий секрет TURN_SECRET в .env, статического
@@ -295,16 +300,16 @@ services:
       - --fingerprint
       - --lt-cred-mech
       - --no-cli
-      # TLS для TURN включается, когда в файрволе открыт 5349:
-      # - --tls-listening-port=5349
-      # - --cert=/etc/letsencrypt/live/pismo.space/fullchain.pem
-      # - --pkey=/etc/letsencrypt/live/pismo.space/privkey.pem
-      - --no-tls
+      # TLS для TURN (TURNS, 5349/tcp): нужен там, где оператор режет UDP и P2P.
+      # Сертификаты читаем из /turn-certs — копия, которую готовит certbot
+      # (в сам каталог Let's Encrypt coturn не имеет доступа: он не root).
+      - --tls-listening-port=5349
+      - --cert=/turn-certs/fullchain.pem
+      - --pkey=/turn-certs/privkey.pem
       - --no-dtls
       - --external-ip=176.108.249.9
     volumes:
-      # Сертификаты Let's Encrypt — понадобятся, когда включим TURNS (5349).
-      - certbot_etc:/etc/letsencrypt:ro
+      - turn_certs:/turn-certs:ro
 
 networks:
   server_network:
@@ -318,3 +323,5 @@ volumes:
   rabbitmq_data:
   certbot_etc: # Новые тома для постоянного хранения SSL ключей
   certbot_var:
+  # Копия сертификатов для coturn (читаемая пользователем nobody) — см. certbot.
+  turn_certs:
