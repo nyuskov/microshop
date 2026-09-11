@@ -16,7 +16,7 @@
  */
 
 const CACHE_PREFIX = 'pismo-v'
-const CACHE_VERSION = 11
+const CACHE_VERSION = 12
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 // Кэши прежнего названия приложения (microshop → Pismo): чистим один раз при активации.
 const LEGACY_CACHE_PREFIXES = ['microshop-v', 'microshop-auth']
@@ -136,6 +136,15 @@ function notifyVisibleClients(data) {
   })
 }
 
+/** Абсолютный адрес картинки уведомления (аватар приходит путём `/media/...`). */
+function absoluteUrl(path) {
+  try {
+    return new URL(path, self.location.origin).href
+  } catch {
+    return path
+  }
+}
+
 async function handlePush(event) {
   let payload = {}
   try {
@@ -149,8 +158,9 @@ async function handlePush(event) {
   const title = payload.title || 'Pismo'
   const options = {
     body: payload.body || '',
-    icon: payload.icon || '/icons/icon-192.png',
-    badge: payload.badge || '/icons/badge-96.png',
+    // Крупная иконка — аватар отправителя (приходит путём), иначе иконка Pismo.
+    icon: absoluteUrl(payload.icon || '/icons/icon-192.png'),
+    badge: absoluteUrl(payload.badge || '/icons/badge-96.png'),
     data,
     tag: callId ? 'call-' + callId : chatId ? 'chat-' + chatId : undefined
   }

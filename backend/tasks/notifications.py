@@ -41,6 +41,12 @@ PUSH_CHANNEL_CALLS = "pismo_calls"
 # Intent action для клика по уведомлению (android/app/src/main/AndroidManifest.xml).
 PUSH_CLICK_ACTION = "space.pismo.app.PUSH"
 
+# Иконка уведомления по умолчанию. Если у отправителя есть аватар, вместо неё
+# показываем аватар (см. _push_icon) — так видно, от кого сообщение.
+PUSH_ICON_DEFAULT = "/icons/icon-192.png"
+# Маленькая монохромная иконка (строка состояния Android) — всегда своя.
+PUSH_BADGE = "/icons/badge-96.png"
+
 
 def _web_push_configured() -> bool:
     """Настроен ли Web Push (VAPID-ключи PWA)."""
@@ -221,6 +227,9 @@ async def _send_message_push_async(
                     "chat_id": chat_id,
                     "message_id": message_id,
                     "peer_id": sender_id,
+                    # Аватар отправителя — приложение может показать его
+                    # крупной иконкой (картинку по URL тянет уже устройство).
+                    "peer_avatar": sender.avatar_url if sender else None,
                 },
             ),
         )
@@ -240,8 +249,9 @@ async def _send_message_push_async(
             {
                 "title": title,
                 "body": body,
-                "icon": "/icons/icon-192.png",
-                "badge": "/icons/badge-96.png",
+                # Крупная иконка — аватар отправителя (как в мессенджерах).
+                "icon": _push_icon(sender),
+                "badge": PUSH_BADGE,
                 "data": {
                     "type": "message",
                     "chat_id": chat_id,
@@ -302,6 +312,18 @@ def _display_name(user: User) -> str:
     return user.username
 
 
+def _push_icon(user: User | None) -> str:
+    """Иконка уведомления: аватар отправителя, иначе иконка приложения.
+
+    Путь отдаём относительный (`/media/...`): service worker лежит на том же
+    origin и сам разворачивает его в абсолютный (см. frontend/public/sw.js),
+    поэтому знать публичный адрес приложения серверу не нужно. Ссылка на
+    аватар не секрет — она и так видна в интерфейсе.
+    """
+    avatar = (user.avatar_url or "").strip() if user else ""
+    return avatar or PUSH_ICON_DEFAULT
+
+
 @celery_app.task(
     name="tasks.notifications.send_call_push",
     bind=True,
@@ -351,6 +373,7 @@ async def _send_call_push_async(
                     "call_id": call_id,
                     "peer_id": caller_id,
                     "kind": kind,
+                    "peer_avatar": caller.avatar_url if caller else None,
                 },
             ),
         )
@@ -369,8 +392,9 @@ async def _send_call_push_async(
             {
                 "title": "Входящий звонок",
                 "body": f"{name} · {kind_label}",
-                "icon": "/icons/icon-192.png",
-                "badge": "/icons/badge-96.png",
+                # У входящего звонка тоже показываем аватар звонящего.
+                "icon": _push_icon(caller),
+                "badge": PUSH_BADGE,
                 "data": {
                     "type": "call",
                     "call_id": call_id,
