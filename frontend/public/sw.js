@@ -183,7 +183,9 @@ async function handlePush(event) {
     options.requireInteraction = true
     options.renotify = true
     options.silent = false
-    options.vibrate = [250, 120, 250, 120, 250, 120, 250]
+    // Вибрация — два спокойных толчка с длинной паузой. Частый «дребезг»
+    // (7 коротких импульсов подряд) сильно бил по нервам при каждом звонке.
+    options.vibrate = [220, 700, 220]
     options.actions = [
       { action: 'answer', title: 'Ответить' },
       { action: 'decline', title: 'Отклонить' }

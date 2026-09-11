@@ -379,71 +379,127 @@ function mediaConstraints(
 
 /* ------------------ Гудки (WebAudio, без внешних файлов) ------------------ */
 
+/** Мастер-громкость гудков (цепочка gain → компрессор → выход). */
+let ringGain: GainNode | null = null
+
+/**
+ * Общая громкость рингтона. Ниже единицы намеренно: звонок звучит в тишине
+ * (часто — в наушниках или ночью) и не должен пугать.
+ */
+const RING_LEVEL = 0.8
+/** Плавное затухание при остановке: без него слышен щелчок обрыва. */
+const RING_FADE_MS = 220
+/** Пауза между повторами фразы: входящий — спокойный, исходящий — пореже. */
+const RING_INCOMING_LOOP_MS = 5000
+const RING_OUTGOING_LOOP_MS = 3200
+
+/**
+ * Цепочка вывода гудков: gain → компрессор → выход.
+ *
+ * Компрессор здесь вместо простого gain: он мягко придерживает пики
+ * перекрывающихся нот. Без него сумма нот уходила за 1.0, браузер срезал
+ * верхушки — звук становился дребезжащим и раздражающим.
+ */
+function ensureRingChain(ctx: AudioContext): GainNode {
+  if (ringGain) return ringGain
+  const gain = ctx.createGain()
+  gain.gain.value = RING_LEVEL
+  const limiter = ctx.createDynamicsCompressor()
+  limiter.threshold.value = -18
+  limiter.knee.value = 14
+  limiter.ratio.value = 6
+  limiter.attack.value = 0.01
+  limiter.release.value = 0.35
+  gain.connect(limiter)
+  limiter.connect(ctx.destination)
+  ringGain = gain
+  return gain
+}
+
 function stopRingtone() {
   if (ringTimer !== undefined) {
     window.clearTimeout(ringTimer)
     ringTimer = undefined
   }
-  if (audioContext) {
-    void audioContext.close().catch(() => undefined)
-    audioContext = null
+  const ctx = audioContext
+  const gain = ringGain
+  audioContext = null
+  ringGain = null
+  if (!ctx) return
+  /* Плавно уводим громкость в ноль и только потом закрываем контекст: резкий
+     close() посреди ноты слышен как щелчок — он и делал гудок «резким». */
+  try {
+    if (gain) {
+      const now = ctx.currentTime
+      gain.gain.cancelScheduledValues(now)
+      gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.0001), now)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + RING_FADE_MS / 1000)
+    }
+  } catch {
+    /* контекст уже закрыт */
   }
+  window.setTimeout(() => {
+    void ctx.close().catch(() => undefined)
+  }, RING_FADE_MS + 80)
 }
 
 type RingNote = { at: number; f: number; d: number; vol?: number }
 
 /**
- * Входящий звонок — полифоничный «маримбовый» перезвон (оригинальная фраза):
- * мелодия E5→G5→A5→B5→D6→E6 с низким басом и «эхом».
+ * Входящий звонок: спокойная «стеклянная» фраза в ля-мажорной пентатонике.
+ *
+ * Прежний вариант был плотным маримбовым перезвоном из 12 нот с сильными
+ * «бьющими» партиалами: на телефоне он звучал резко и успевал надоесть за
+ * первый же гудок. Здесь ноты реже и тише, с длинными хвостами и мягкой опорой
+ * в басу — слышно, но не раздражает.
  */
 const INCOMING_RING: RingNote[] = [
-  { at: 0.0, f: 659.25, d: 0.8, vol: 0.5 }, // E5
-  { at: 0.0, f: 164.81, d: 1.5, vol: 0.3 }, // E3 (бас)
-  { at: 0.16, f: 783.99, d: 0.8, vol: 0.42 }, // G5
-  { at: 0.32, f: 880.0, d: 0.8, vol: 0.42 }, // A5
-  { at: 0.48, f: 987.77, d: 0.9, vol: 0.44 }, // B5
-  { at: 0.64, f: 1174.66, d: 0.9, vol: 0.4 }, // D6
-  { at: 0.84, f: 1318.51, d: 1.0, vol: 0.42 }, // E6
-  { at: 1.16, f: 987.77, d: 0.7, vol: 0.28 }, // эхо B5
-  { at: 1.34, f: 880.0, d: 0.7, vol: 0.26 }, // эхо A5
-  { at: 1.52, f: 783.99, d: 0.8, vol: 0.26 }, // эхо G5
-  { at: 1.72, f: 659.25, d: 1.0, vol: 0.28 }, // эхо E5
-  { at: 1.72, f: 164.81, d: 1.7, vol: 0.24 } // E3 (бас)
+  { at: 0.0, f: 220.0, d: 3.4, vol: 0.1 }, // A3 — тёплая опора
+  { at: 0.0, f: 440.0, d: 2.6, vol: 0.14 }, // A4
+  { at: 0.34, f: 739.99, d: 1.9, vol: 0.3 }, // F#5
+  { at: 0.78, f: 880.0, d: 1.9, vol: 0.28 }, // A5
+  { at: 1.22, f: 1108.73, d: 2.2, vol: 0.26 }, // C#6
+  { at: 1.72, f: 880.0, d: 2.6, vol: 0.2 } // A5 — спокойное разрешение
 ]
-/** Гудки «вызова» для звонящего — мягкая пара маримбовых нот. */
+
+/** Гудки ожидания для звонящего: редкие тихие ноты вместо частых «бипов». */
 const OUTGOING_RING: RingNote[] = [
-  { at: 0.0, f: 523.25, d: 0.6, vol: 0.4 }, // C5
-  { at: 0.0, f: 130.81, d: 1.1, vol: 0.24 }, // C3 (низ)
-  { at: 0.62, f: 523.25, d: 0.6, vol: 0.4 } // C5
+  { at: 0.0, f: 196.0, d: 1.6, vol: 0.12 }, // G3
+  { at: 0.0, f: 392.0, d: 1.1, vol: 0.22 }, // G4
+  { at: 0.5, f: 523.25, d: 1.1, vol: 0.18 } // C5
 ]
 
 /**
- * Нота в стиле маримбы: сильная основная + «бьющая» партиала ~4× (даёт
- * характерное дребезжание деревянного барового инструмента) + яркий верх.
+ * Мягкая нота: чистый синус + очень тихая октава и слабый третий обертон.
+ *
+ * Никаких партиал ×4 и ×9.2 (как у маримбы): именно они давали металлический
+ * призвук, от которого звонок быстро надоедал. Атака 12 мс убирает щелчок,
+ * длинный экспоненциальный хвост — «стеклянный» шлейф.
  */
-function marimbaNote(freq: number, when: number, dur: number, volume: number) {
+function softNote(freq: number, when: number, dur: number, volume: number) {
   if (!audioContext) return
-  const ctx = audioContext as AudioContext
-  const part = (ratio: number, rel: number, decay: number, type: OscillatorType = 'sine') => {
+  const ctx = audioContext
+  const out = ringGain ?? ctx.destination
+  const part = (ratio: number, rel: number, decay: number) => {
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
-    osc.type = type
+    osc.type = 'sine'
     osc.frequency.value = freq * ratio
     const peak = Math.max(0.0002, volume * rel)
     gain.gain.setValueAtTime(0.0001, when)
-    gain.gain.exponentialRampToValueAtTime(peak, when + 0.005)
+    gain.gain.exponentialRampToValueAtTime(peak, when + 0.012)
     gain.gain.exponentialRampToValueAtTime(0.0001, when + dur * decay)
     osc.connect(gain)
-    gain.connect(ctx.destination)
+    gain.connect(out)
     osc.start(when)
-    osc.stop(when + dur + 0.04)
+    osc.stop(when + dur + 0.05)
   }
   part(1, 1, 1) // фундаментал
-  part(3.98, 0.45, 0.8) // «бьющая» партиала
-  part(9.2, 0.14, 0.6) // яркий верх
+  part(2, 0.18, 0.7) // октава — звучит мягче и «дороже»
+  part(3, 0.05, 0.45) // лёгкий блик на затухании
 }
 
-/** Играет полифоничную фразу (ноты могут перекрываться) и повторяет её. */
+/** Играет фразу (ноты перекрываются) и повторяет её после паузы. */
 function scheduleRing(notes: RingNote[], loopMs: number) {
   if (ringTimer !== undefined) {
     window.clearTimeout(ringTimer)
@@ -451,17 +507,20 @@ function scheduleRing(notes: RingNote[], loopMs: number) {
   ringTimer = window.setTimeout(function tick() {
     const ctx = audioContext
     if (!ctx) return
-    const base = ctx.currentTime + 0.08
-    notes.forEach((n) => marimbaNote(n.f, base + n.at, n.d, n.vol ?? 0.4))
+    const base = ctx.currentTime + 0.06
+    notes.forEach((n) => softNote(n.f, base + n.at, n.d, n.vol ?? 0.3))
     ringTimer = window.setTimeout(tick, loopMs)
   }, 150)
 }
 
-/** Лёгкая вибрация при входящем звонке (Android, когда страница видима). */
+/**
+ * Лёгкая вибрация при входящем звонке (Android, когда страница видима).
+ * Два коротких толчка с длинной паузой: частые толчки бьют по нервам.
+ */
 function vibrateRing() {
   try {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate([200, 90, 200, 90, 200, 90, 200])
+      navigator.vibrate([160, 800, 160])
     }
   } catch {
     /* вибрация недоступна — не критично */
@@ -599,13 +658,14 @@ function startRingtone(kind: 'outgoing' | 'incoming') {
       (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!Ctor) return
     audioContext = new Ctor()
+    ensureRingChain(audioContext)
     bindAudioUnlockOnce()
     resumeAudioIfSuspended()
-    // Входящий — полифоничный маримбовый перезвон; исходящему — мягкие гудки.
+    // Входящий — мягкий «стеклянный» перезвон; исходящему — редкие тихие гудки.
     if (kind === 'outgoing') {
-      scheduleRing(OUTGOING_RING, 2200)
+      scheduleRing(OUTGOING_RING, RING_OUTGOING_LOOP_MS)
     } else {
-      scheduleRing(INCOMING_RING, 3600)
+      scheduleRing(INCOMING_RING, RING_INCOMING_LOOP_MS)
       vibrateRing()
     }
   } catch {

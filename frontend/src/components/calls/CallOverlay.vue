@@ -6,7 +6,7 @@
         v-if="callStore.status !== 'idle'"
         class="call-overlay"
         @mousedown.stop
-        @pointerdown="callStore.resumeOutput()"
+        @pointerdown="onOverlayPointerDown"
       >
         <template v-if="callStore.status === 'incoming'">
           <div class="call-card">
@@ -213,6 +213,7 @@
                 <q-icon :name="icon('videocam')" size="26px" />
               </button>
               <button
+                ref="moreBtnEl"
                 class="ctl-btn"
                 :class="{ 'screen-on': callStore.screenSharing, 'speaker-on': moreOpen }"
                 :title="moreOpen ? 'Скрыть меню' : 'Ещё'"
@@ -227,156 +228,163 @@
               </button>
             </div>
 
-            <!-- Меню «ещё»: редкие во время звонка действия -->
-            <div v-if="moreOpen" class="call-more" role="menu">
-              <button class="more-row" role="menuitem" @click="onSpeakerRow">
-                <q-icon :name="icon(speakerOn ? 'volume_up' : 'volume_down')" size="20px" />
-                <span>{{ speakerOn ? 'Обычный режим' : 'Громкая связь' }}</span>
-                <q-icon v-if="speakerOn" :name="icon('check')" size="16px" class="more-mark" />
-              </button>
-              <button
-                v-if="canShareScreen || callStore.screenSharing"
-                class="more-row"
-                :class="{ on: callStore.screenSharing }"
-                role="menuitem"
-                @click="onScreenRow"
-              >
-                <q-icon
-                  :name="icon(callStore.screenSharing ? 'stop_screen_share' : 'screen_share')"
-                  size="20px"
-                />
-                <span>{{
-                  callStore.screenSharing ? 'Остановить показ экрана' : 'Показать экран'
-                }}</span>
-                <q-icon
-                  v-if="callStore.screenSharing"
-                  :name="icon('check')"
-                  size="16px"
-                  class="more-mark"
-                />
-              </button>
-              <button
-                class="more-row"
-                :class="{ on: settingsOpen }"
-                role="menuitem"
-                @click="onDevicesRow"
-              >
-                <q-icon :name="icon('tune')" size="20px" />
-                <span>Устройства звонка</span>
-                <q-icon v-if="settingsOpen" :name="icon('check')" size="16px" class="more-mark" />
-              </button>
-              <!-- Картинка в картинке: разговор можно свернуть в плавающее окно
-                   и заниматься другим (видеозвонок или показ экрана). -->
-              <button
-                v-if="canPictureInPicture"
-                class="more-row"
-                role="menuitem"
-                @click="onPictureInPictureRow"
-              >
-                <q-icon :name="icon('picture_in_picture')" size="20px" />
-                <span>Окно поверх других</span>
-              </button>
-              <!-- Диагностика: куда идёт медиа (напрямую/через релей) и как оно
-                   себя чувствует. Нужна, когда «нет звука» или «чёрный экран». -->
-              <button
-                class="more-row"
-                :class="{ on: diagnosticsOpen }"
-                role="menuitem"
-                @click="onDiagnosticsRow"
-              >
-                <q-icon :name="icon('wifi')" size="20px" />
-                <span>Диагностика звонка</span>
-                <q-icon
-                  v-if="diagnosticsOpen"
-                  :name="icon('check')"
-                  size="16px"
-                  class="more-mark"
-                />
-              </button>
-            </div>
-
-            <!-- Панель диагностики соединения -->
-            <div v-if="diagnosticsOpen" class="call-diagnostics">
-              <p v-if="!callStore.diagnostics" class="diagnostics-hint">
-                Собираем данные о соединении…
-              </p>
-              <template v-else>
-                <div v-for="row in diagRows" :key="row.label" class="diag-row">
-                  <span class="diag-label">{{ row.label }}</span>
-                  <span class="diag-value">{{ row.value }}</span>
-                </div>
-              </template>
-              <div class="diag-actions">
-                <button class="diag-btn" @click="copyDiagnostics">
-                  <q-icon :name="icon(copiedDiagnostics ? 'check' : 'content_copy')" size="14px" />
-                  {{ copiedDiagnostics ? 'Скопировано' : 'Скопировать' }}
+            <!-- Меню «ещё» и панели (устройства, диагностика) — один слой поповеров:
+                 тап мимо любой из них закрывает всё (см. onOverlayPointerDown). -->
+            <div ref="popoversEl" class="call-popovers">
+              <!-- Меню «ещё»: редкие во время звонка действия -->
+              <div v-if="moreOpen" class="call-more" role="menu">
+                <button class="more-row" role="menuitem" @click="onSpeakerRow">
+                  <q-icon :name="icon(speakerOn ? 'volume_up' : 'volume_down')" size="20px" />
+                  <span>{{ speakerOn ? 'Обычный режим' : 'Громкая связь' }}</span>
+                  <q-icon v-if="speakerOn" :name="icon('check')" size="16px" class="more-mark" />
                 </button>
-                <button class="diag-btn" @click="callStore.refreshDiagnostics()">
-                  <q-icon :name="icon('refresh')" size="14px" />
-                  Обновить
+                <button
+                  v-if="canShareScreen || callStore.screenSharing"
+                  class="more-row"
+                  :class="{ on: callStore.screenSharing }"
+                  role="menuitem"
+                  @click="onScreenRow"
+                >
+                  <q-icon
+                    :name="icon(callStore.screenSharing ? 'stop_screen_share' : 'screen_share')"
+                    size="20px"
+                  />
+                  <span>{{
+                    callStore.screenSharing ? 'Остановить показ экрана' : 'Показать экран'
+                  }}</span>
+                  <q-icon
+                    v-if="callStore.screenSharing"
+                    :name="icon('check')"
+                    size="16px"
+                    class="more-mark"
+                  />
+                </button>
+                <button
+                  class="more-row"
+                  :class="{ on: settingsOpen }"
+                  role="menuitem"
+                  @click="onDevicesRow"
+                >
+                  <q-icon :name="icon('tune')" size="20px" />
+                  <span>Устройства звонка</span>
+                  <q-icon v-if="settingsOpen" :name="icon('check')" size="16px" class="more-mark" />
+                </button>
+                <!-- Картинка в картинке: разговор можно свернуть в плавающее окно
+                   и заниматься другим (видеозвонок или показ экрана). -->
+                <button
+                  v-if="canPictureInPicture"
+                  class="more-row"
+                  role="menuitem"
+                  @click="onPictureInPictureRow"
+                >
+                  <q-icon :name="icon('picture_in_picture')" size="20px" />
+                  <span>Окно поверх других</span>
+                </button>
+                <!-- Диагностика: куда идёт медиа (напрямую/через релей) и как оно
+                   себя чувствует. Нужна, когда «нет звука» или «чёрный экран». -->
+                <button
+                  class="more-row"
+                  :class="{ on: diagnosticsOpen }"
+                  role="menuitem"
+                  @click="onDiagnosticsRow"
+                >
+                  <q-icon :name="icon('wifi')" size="20px" />
+                  <span>Диагностика звонка</span>
+                  <q-icon
+                    v-if="diagnosticsOpen"
+                    :name="icon('check')"
+                    size="16px"
+                    class="more-mark"
+                  />
                 </button>
               </div>
-            </div>
 
-            <!-- Настройки устройств звонка -->
-            <div v-if="settingsOpen" class="call-settings">
-              <label v-if="callStore.cameras.length" class="settings-row">
-                <span class="settings-label">Камера</span>
-                <select
-                  class="settings-select"
-                  :value="callStore.selectedCamera"
-                  @change="onCameraChange($event)"
-                >
-                  <option
-                    v-for="cam in callStore.cameras"
-                    :key="cam.deviceId"
-                    :value="cam.deviceId"
+              <!-- Панель диагностики соединения -->
+              <div v-if="diagnosticsOpen" class="call-diagnostics">
+                <p v-if="!callStore.diagnostics" class="diagnostics-hint">
+                  Собираем данные о соединении…
+                </p>
+                <template v-else>
+                  <div v-for="row in diagRows" :key="row.label" class="diag-row">
+                    <span class="diag-label">{{ row.label }}</span>
+                    <span class="diag-value">{{ row.value }}</span>
+                  </div>
+                </template>
+                <div class="diag-actions">
+                  <button class="diag-btn" @click="copyDiagnostics">
+                    <q-icon
+                      :name="icon(copiedDiagnostics ? 'check' : 'content_copy')"
+                      size="14px"
+                    />
+                    {{ copiedDiagnostics ? 'Скопировано' : 'Скопировать' }}
+                  </button>
+                  <button class="diag-btn" @click="callStore.refreshDiagnostics()">
+                    <q-icon :name="icon('refresh')" size="14px" />
+                    Обновить
+                  </button>
+                </div>
+              </div>
+
+              <!-- Настройки устройств звонка -->
+              <div v-if="settingsOpen" class="call-settings">
+                <label v-if="callStore.cameras.length" class="settings-row">
+                  <span class="settings-label">Камера</span>
+                  <select
+                    class="settings-select"
+                    :value="callStore.selectedCamera"
+                    @change="onCameraChange($event)"
                   >
-                    {{ cam.label || 'Камера' }}
-                  </option>
-                </select>
-              </label>
+                    <option
+                      v-for="cam in callStore.cameras"
+                      :key="cam.deviceId"
+                      :value="cam.deviceId"
+                    >
+                      {{ cam.label || 'Камера' }}
+                    </option>
+                  </select>
+                </label>
 
-              <label v-if="callStore.microphones.length" class="settings-row">
-                <span class="settings-label">Микрофон</span>
-                <select
-                  class="settings-select"
-                  :value="callStore.selectedMic"
-                  @change="onMicChange($event)"
-                >
-                  <option
-                    v-for="mic in callStore.microphones"
-                    :key="mic.deviceId"
-                    :value="mic.deviceId"
+                <label v-if="callStore.microphones.length" class="settings-row">
+                  <span class="settings-label">Микрофон</span>
+                  <select
+                    class="settings-select"
+                    :value="callStore.selectedMic"
+                    @change="onMicChange($event)"
                   >
-                    {{ mic.label || 'Микрофон' }}
-                  </option>
-                </select>
-              </label>
+                    <option
+                      v-for="mic in callStore.microphones"
+                      :key="mic.deviceId"
+                      :value="mic.deviceId"
+                    >
+                      {{ mic.label || 'Микрофон' }}
+                    </option>
+                  </select>
+                </label>
 
-              <label v-if="callStore.speakers.length && canSelectSpeaker" class="settings-row">
-                <span class="settings-label">Звук</span>
-                <select
-                  class="settings-select"
-                  :value="callStore.selectedSpeaker"
-                  @change="onSpeakerChange($event)"
-                >
-                  <option
-                    v-for="spk in callStore.speakers"
-                    :key="spk.deviceId"
-                    :value="spk.deviceId"
+                <label v-if="callStore.speakers.length && canSelectSpeaker" class="settings-row">
+                  <span class="settings-label">Звук</span>
+                  <select
+                    class="settings-select"
+                    :value="callStore.selectedSpeaker"
+                    @change="onSpeakerChange($event)"
                   >
-                    {{ spk.label || 'Динамик' }}
-                  </option>
-                </select>
-              </label>
+                    <option
+                      v-for="spk in callStore.speakers"
+                      :key="spk.deviceId"
+                      :value="spk.deviceId"
+                    >
+                      {{ spk.label || 'Динамик' }}
+                    </option>
+                  </select>
+                </label>
 
-              <p
-                v-if="!callStore.cameras.length && !callStore.microphones.length"
-                class="settings-hint"
-              >
-                Список устройств появится после разрешения доступа к камере и микрофону.
-              </p>
+                <p
+                  v-if="!callStore.cameras.length && !callStore.microphones.length"
+                  class="settings-hint"
+                >
+                  Список устройств появится после разрешения доступа к камере и микрофону.
+                </p>
+              </div>
             </div>
           </div>
         </template>
@@ -498,10 +506,41 @@ const settingsOpen = ref(false)
 // устройства). В панели они не помещаются на телефоне в одну строку.
 const moreOpen = ref(false)
 
+// Слой поповеров (меню и панели) и кнопка «Ещё»: нужны, чтобы по тапу МИМО
+// закрывать открытое, а тап по самой кнопке продолжал переключать меню.
+const popoversEl = ref<HTMLElement | null>(null)
+const moreBtnEl = ref<HTMLElement | null>(null)
+
+/** Закрыть всё открытое поверх звонка (меню, устройства, диагностика). */
+const closePanels = () => {
+  moreOpen.value = false
+  settingsOpen.value = false
+  diagnosticsOpen.value = false
+}
+
+/**
+ * Нажатие в любом месте звонка.
+ *
+ * Заодно закрываем открытый поповер: раньше панель диагностики (и устройства)
+ * закрывались только повторным заходом в меню — тапом мимо они не сбрасывались.
+ * Сам тап при этом не съедаем: кнопка, по которой попали, сработает как обычно.
+ */
+const onOverlayPointerDown = (event: PointerEvent) => {
+  callStore.resumeOutput()
+  const target = event.target
+  if (!(target instanceof Node)) return
+  if (popoversEl.value?.contains(target)) return
+  if (moreBtnEl.value?.contains(target)) return
+  closePanels()
+}
+
 /** Открыть/закрыть меню «ещё»; панель устройств и меню разом не показываем. */
 const toggleMore = () => {
   moreOpen.value = !moreOpen.value
-  if (moreOpen.value) settingsOpen.value = false
+  if (moreOpen.value) {
+    settingsOpen.value = false
+    diagnosticsOpen.value = false
+  }
 }
 
 const onSpeakerRow = () => {
@@ -519,7 +558,6 @@ const onDevicesRow = () => {
   settingsOpen.value = !settingsOpen.value
   moreOpen.value = false
 }
-
 /** Пункт «Диагностика звонка»: открывает панель и сразу снимает свежие цифры. */
 const onDiagnosticsRow = () => {
   settingsOpen.value = false
