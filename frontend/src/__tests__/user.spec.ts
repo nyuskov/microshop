@@ -1,6 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
-import { avatarStyle, displayName, fullName, initials } from '@/utils/user'
+import {
+  avatarStyle,
+  contactNameOf,
+  displayName,
+  fullName,
+  initials,
+  setContactNames
+} from '@/utils/user'
 
 describe('displayName', () => {
   it('собирает имя из first_name + last_name или username', () => {
@@ -42,5 +49,27 @@ describe('avatarStyle', () => {
       ['Анна Смирнова', 'Пётр Иванов', 'Мария Кузнецова'].map((n) => avatarStyle(n).background)
     )
     expect(styles.size).toBeGreaterThan(1)
+  })
+})
+
+describe('личные имена контактов', () => {
+  afterEach(() => {
+    // Реестр имён — модульное состояние: чистим, чтобы не протекало в другие тесты.
+    setContactNames({})
+  })
+
+  it('displayName показывает имя контакта вместо имени из профиля', () => {
+    setContactNames({ 7: 'Мама' })
+    expect(
+      displayName({ id: 7, username: 'phone_ab12cd', first_name: null, last_name: null })
+    ).toBe('Мама')
+    expect(contactNameOf(7)).toBe('Мама')
+  })
+
+  it('без личного имени работает обычное правило (профиль → логин)', () => {
+    setContactNames({ 7: 'Мама' })
+    expect(displayName({ id: 8, username: 'u', first_name: 'Иван', last_name: null })).toBe('Иван')
+    expect(displayName({ username: 'u', first_name: null, last_name: null })).toBe('u')
+    expect(contactNameOf(null)).toBeUndefined()
   })
 })

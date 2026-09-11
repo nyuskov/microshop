@@ -5,6 +5,7 @@ from .auth.views import router as auth_router
 from .calls.views import router as calls_router
 from .calls.views import router_rest as calls_rest_router
 from .chats.views import router as chats_router
+from .contacts.views import router as contacts_router
 from .events.views import router as events_router
 from .health.views import router as health_router
 from .keys.views import router as keys_router
@@ -22,6 +23,7 @@ router_v1.include_router(health_router)
 router_v1.include_router(jwt_router)
 router_v1.include_router(users_router)
 router_v1.include_router(chats_router)
+router_v1.include_router(contacts_router)
 router_v1.include_router(keys_router)
 router_v1.include_router(messages_router)
 router_v1.include_router(link_previews_router)

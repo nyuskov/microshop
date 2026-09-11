@@ -12,6 +12,7 @@
       :show-if-above="true"
       :overlay="!isDesktop"
       :no-swipe-open="!isDesktop && selectedChatId !== null"
+      :no-swipe-close="!isDesktop && selectedChatId === null"
       bordered
       class="ms-drawer"
     >
@@ -465,7 +466,6 @@ import {
 import { getErrorMessage, isNetworkError } from '@/services/errors'
 import { blockUser } from '@/services/moderation'
 import {
-  fetchContacts,
   fetchMessages,
   fetchMyChats,
   fetchPinnedMessages,
@@ -483,8 +483,7 @@ import {
   deleteMessage,
   deleteChat,
   setChatMuted,
-  setChatE2ee,
-  type SearchUserResult
+  setChatE2ee
 } from '@/services/chatService'
 import {
   ENCRYPTED_FALLBACK,
@@ -565,6 +564,7 @@ const ModerationReportsDialog = defineAsyncComponent(
 // Просмотрщик историй — открывается по клику на историю.
 const StoryViewer = defineAsyncComponent(() => import('@/components/stories/StoryViewer.vue'))
 import { useCallStore } from '@/stores/call'
+import { useContactsStore } from '@/stores/contacts'
 import { useRealtimeStore } from '@/stores/realtime'
 import { useStoriesStore } from '@/stores/stories'
 import { mediaFileName, type RecordedMedia } from '@/services/recorder'
@@ -726,6 +726,15 @@ let handlingSystemBack = false
 let programmaticBack = false
 /** Drawer открылся сам (по системному «назад») — маркер уже израсходован. */
 let drawerOpenedByBack = false
+/** Drawer открыли мы сами (переход в раздел) — чужие маркеры не гасим. */
+let drawerOpenedBySection = false
+
+/** Показать список разделов на мобильном (открыть drawer), не гася историю. */
+const revealDrawer = () => {
+  if (isDesktop.value || drawerOpen.value) return
+  drawerOpenedBySection = true
+  drawerOpen.value = true
+}
 
 /**
  * Гасит маркер истории, поставленный `pushMobileNav()`.
@@ -883,10 +892,13 @@ const clearPendingUploads = () => {
   pendingUploads.value = []
 }
 const pinnedMessages = ref<Message[]>([])
-const contacts = ref<SearchUserResult[]>([])
+// Раздел «Контакты» — моя записная книжка (кого я добавил и как назвал),
+// а не справочник всех пользователей: справочник ищется через поиск.
+const contactsStore = useContactsStore()
+const contacts = computed<ChatUser[]>(() => contactsStore.users)
 const loadingChats = ref(false)
 const messagesLoading = ref(false)
-const contactsLoading = ref(false)
+const contactsLoading = computed(() => contactsStore.loading)
 const selectedChatId = ref<number | null>(initialChatId)
 
 const newMessage = ref('')
@@ -1633,13 +1645,10 @@ const loadPinned = async (chatId: number) => {
 }
 
 const loadContacts = async () => {
-  contactsLoading.value = true
   try {
-    contacts.value = await fetchContacts()
+    await contactsStore.load()
   } catch (error) {
     console.error('Не удалось загрузить контакты:', getErrorMessage(error))
-  } finally {
-    contactsLoading.value = false
   }
 }
 
@@ -1701,7 +1710,11 @@ const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {
 
 const selectChat = async (chatId: number) => {
   if (selectedChatId.value === chatId) {
-    // Мобильный: повторный выбор активного чата из списка снова открывает нить.
+    // Повторный выбор того же чата (он остался выбранным после «назад» в список):
+    // на мобильном снова показываем нить. Обязательно возвращаем чат в адрес и в
+    // память приложения — иначе после обновления страницы человек оказывался на
+    // списке чатов, хотя был в переписке (?chat= в адресе не было).
+    syncChatUrl(chatId)
     if (!isDesktop.value) {
       pushMobileNav()
       drawerOpen.value = false
@@ -2196,8 +2209,9 @@ watch(
   drawerOpen,
   (open) => {
     if (!open || isDesktop.value) return
-    if (drawerOpenedByBack) {
+    if (drawerOpenedByBack || drawerOpenedBySection) {
       drawerOpenedByBack = false
+      drawerOpenedBySection = false
       return
     }
     stepBackInApp()
@@ -2903,14 +2917,25 @@ const closeOpenChat = () => {
 
 /** Переключение раздела по нижнему меню — всегда прямой переход. */
 const switchSection = (section: Section) => {
-  if (view.value === section) return
-  pushMobileNav(section)
-  view.value = section
-  // На мобильном список и нить — один экран: уходя в другой раздел, закрываем
-  // открытую переписку. Иначе в адресе останется `?chat=`, и после обновления
-  // страница вернётся в чат, хотя человек был в разделе — «обновление открывает
-  // не ту страницу».
-  if (!isDesktop.value) closeOpenChat()
+  if (isDesktop.value) {
+    if (view.value === section) return
+    view.value = section
+  } else {
+    // На мобильном разделы (Чаты/Истории/Контакты) живут в drawer'е. Если он
+    // закрыт (человек на заглушке «Выберите, кому хотели бы написать») и мы
+    // просто меняем `view`, переход происходит «невидимо» — кнопка «Открыть
+    // контакты» как будто не работает. Поэтому всегда показываем список.
+    if (view.value === section && drawerOpen.value) return
+    if (view.value !== section) {
+      pushMobileNav(section)
+      view.value = section
+    }
+    // Уходя из переписки в раздел, закрываем её: иначе в адресе останется
+    // `?chat=`, и после обновления страница вернётся в чат, хотя человек был в
+    // разделе — «обновление открывает не ту страницу».
+    closeOpenChat()
+    revealDrawer()
+  }
   if (section === 'stories') void storiesStore.load()
 }
 
@@ -3258,7 +3283,7 @@ watch(
       chats.value = []
       messages.value = []
       pinnedMessages.value = []
-      contacts.value = []
+      contactsStore.reset()
       selectedChatId.value = null
       syncChatUrl(null)
       showChatInfoModal.value = false

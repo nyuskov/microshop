@@ -32,10 +32,28 @@ export default defineConfig({
   plugins: [
     vue(),
     vueJsx(),
+    // Проверки типов в dev НЕ должны закрывать сайт: страница остаётся рабочей,
+    // а ошибки/предупреждения показываются бейджем внизу справа (панель
+    // раскрывается по клику) и пишутся в терминал vite.
     checker({
-      typescript: true
+      typescript: true,
+      // overlay: true (по умолчанию) — на весь экран и прячет приложение:
+      // не даём ошибке типов блокировать работу в dev.
+      overlay: { initialIsOpen: false, position: 'br' },
+      terminal: true,
+      // В сборке (CI/релиз) проверки по-прежнему ломают билд.
+      enableBuild: true
     }),
-    eslint()
+    // eslint в dev только сообщает о проблемах: ошибки линта печатаются в
+    // терминал (failOnError: false → console.log вместо ошибки модуля).
+    // Так одна опечатка в стилях не оставляет вместо приложения белый экран.
+    eslint({
+      emitError: true,
+      emitWarning: true,
+      failOnError: false,
+      failOnWarning: false,
+      lintOnStart: false
+    })
   ],
   resolve: {
     alias: {
@@ -45,6 +63,9 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    // Не стираем лог терминала на каждой пересборке: предупреждения/ошибки
+    // проверок остаются видимыми «внизу», их не нужно искать заново.
+    clearScreen: false,
     // Подставляем нашу безопасную конфигурацию вместо жесткого readFileSync
     https: httpsConfig,
     proxy: {

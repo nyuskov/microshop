@@ -23,6 +23,30 @@
         </div>
       </template>
 
+      <!-- Личное имя контакта: видит только владелец (как в Telegram) -->
+      <div v-if="peer" class="ci-section ci-e2ee">
+        <div class="ci-e2ee-row">
+          <div class="ci-e2ee-info">
+            <div class="ci-e2ee-title">Контакт</div>
+            <div class="ci-e2ee-desc">
+              {{
+                contactName
+                  ? `В ваших контактах: ${contactName}`
+                  : 'Добавьте в контакты и назовите по-своему — имя видите только вы.'
+              }}
+            </div>
+          </div>
+          <q-btn
+            flat
+            no-caps
+            dense
+            color="primary"
+            :label="contactName ? 'Переименовать' : 'В контакты'"
+            @click="contactDialogOpen = true"
+          />
+        </div>
+      </div>
+
       <!-- Тип чата: обычный / зашифрованный (E2EE) -->
       <div v-if="peer" class="ci-section ci-e2ee">
         <div class="ci-e2ee-row">
@@ -82,14 +106,19 @@
         В этом чате пока нет общих вложений
       </div>
     </q-card-section>
+
+    <!-- Диалог «Добавить в контакты / Имя контакта» -->
+    <ContactNameDialog v-if="peer" v-model="contactDialogOpen" :user="peer" />
   </q-card>
 </template>
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { Chat, ChatUser, Message } from '@/types'
 import { mediaUrl } from '@/config'
+import ContactNameDialog from '@/components/messenger/ContactNameDialog.vue'
+import { useContactsStore } from '@/stores/contacts'
 import { avatarStyle, avatarUrlOf, chatPeer, chatPeerTitle, initials } from '@/utils/user'
 import { formatBytes, formatMsgTime } from '@/utils/format'
 import { fileIcon, isImageFile } from '@/utils/media'
@@ -119,6 +148,12 @@ const onToggleE2ee = (val: boolean | string | null) => {
 }
 
 const peer = computed<ChatUser | undefined>(() => chatPeer(props.chat, props.currentUserId))
+
+/** Личное имя собеседника (пусто — не добавлен в контакты / не назван). */
+const contactsStore = useContactsStore()
+const contactDialogOpen = ref(false)
+const contactName = computed<string>(() => (peer.value ? contactsStore.nameOf(peer.value.id) : ''))
+
 const peerName = computed<string>(() => {
   const value =
     props.chat.users.length === 2 ? chatPeerTitle(props.chat, props.currentUserId) : props.chat.name

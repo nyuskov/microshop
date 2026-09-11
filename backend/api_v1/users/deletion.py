@@ -23,6 +23,7 @@ from core.models import (
     Chat,
     ChatGroupKey,
     ChatMute,
+    Contact,
     DeviceKey,
     Message,
     MessageReaction,
@@ -102,6 +103,10 @@ async def delete_user_account(session: AsyncSession, user: User) -> None:
         )
     )
     await session.execute(delete(ChatMute).where(ChatMute.user_id == user_id))
+    # Контакты: и «моя книжка», и записи других людей обо мне (иначе остались бы
+    # битые ссылки на удалённый аккаунт).
+    await session.execute(delete(Contact).where(Contact.owner_id == user_id))
+    await session.execute(delete(Contact).where(Contact.contact_user_id == user_id))
     await session.execute(delete(DeviceKey).where(DeviceKey.user_id == user_id))
     # Обёртки ключа группы: свои — удаляем, в чужих проставляем NULL
     # (обёртку всё равно сможет расшифровать только её владелец).

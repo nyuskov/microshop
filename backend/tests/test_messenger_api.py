@@ -3792,3 +3792,138 @@ async def test_encrypted_attachment_only_in_e2ee_chat(api: _ApiCtx) -> None:
     # Настоящее имя файла сервер не знает — на диске нейтральное.
     assert body["file"]["name"] == "enc_deadbeef.bin"
     assert body["file"]["mime"] == "application/octet-stream"
+
+
+# --- Контакты («записная книжка») -----------------------------------------
+
+
+async def test_contacts_add_rename_and_list(api: _ApiCtx) -> None:
+    """Контакт добавляется, переименовывается и виден только владельцу."""
+    owner = await api.make_user()
+    peer = await api.make_user()
+    owner_token = await api.token_for(owner)
+
+    created = await api.client.put(
+        f"/api/v1/contacts/{peer.id}/",
+        json={"custom_name": "  Мама  "},
+        headers=api.auth(owner_token),
+    )
+    assert created.status_code == 200, created.text
+    body = created.json()
+    # Имя хранится без лишних пробелов, данные человека — полные.
+    assert body["custom_name"] == "Мама"
+    assert body["user"]["id"] == peer.id
+    assert body["user"]["username"] == peer.username
+
+    listed = await api.client.get("/api/v1/contacts/", headers=api.auth(owner_token))
+    assert listed.status_code == 200, listed.text
+    assert [item["user"]["id"] for item in listed.json()] == [peer.id]
+    assert listed.json()[0]["custom_name"] == "Мама"
+
+    # Повторный PUT — это переименование, а не дубликат.
+    renamed = await api.client.put(
+        f"/api/v1/contacts/{peer.id}/",
+        json={"custom_name": "Мамуля"},
+        headers=api.auth(owner_token),
+    )
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["custom_name"] == "Мамуля"
+    listed = await api.client.get("/api/v1/contacts/", headers=api.auth(owner_token))
+    assert len(listed.json()) == 1
+
+    # Пустое имя — сброс псевдонима (показывается обычное имя из профиля).
+    cleared = await api.client.put(
+        f"/api/v1/contacts/{peer.id}/",
+        json={"custom_name": "   "},
+        headers=api.auth(owner_token),
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["custom_name"] is None
+
+
+async def test_contact_is_private_to_owner(api: _ApiCtx) -> None:
+    """Записная книжка односторонняя: собеседник не видит запись о себе."""
+    owner = await api.make_user()
+    peer = await api.make_user()
+    owner_token = await api.token_for(owner)
+    peer_token = await api.token_for(peer)
+
+    await api.client.put(
+        f"/api/v1/contacts/{peer.id}/",
+        json={"custom_name": "Сосед"},
+        headers=api.auth(owner_token),
+    )
+
+    peer_list = await api.client.get("/api/v1/contacts/", headers=api.auth(peer_token))
+    assert peer_list.status_code == 200, peer_list.text
+    assert peer_list.json() == []
+
+
+async def test_contacts_reject_self_and_unknown_user(api: _ApiCtx) -> None:
+    """Себя в контакты не добавить; несуществующий пользователь — 404."""
+    owner = await api.make_user()
+    token = await api.token_for(owner)
+
+    itself = await api.client.put(
+        f"/api/v1/contacts/{owner.id}/",
+        json={"custom_name": "Я"},
+        headers=api.auth(token),
+    )
+    assert itself.status_code == 400, itself.text
+
+    unknown = await api.client.put(
+        "/api/v1/contacts/999999/",
+        json={"custom_name": "Никто"},
+        headers=api.auth(token),
+    )
+    assert unknown.status_code == 404, unknown.text
+
+
+async def test_contact_delete_keeps_chat(api: _ApiCtx) -> None:
+    """Удаление из контактов не удаляет переписку."""
+    owner = await api.make_user()
+    peer = await api.make_user()
+    token = await api.token_for(owner)
+    chat = await api.private_chat(token, peer.id)
+
+    await api.client.put(
+        f"/api/v1/contacts/{peer.id}/",
+        json={"custom_name": "Друг"},
+        headers=api.auth(token),
+    )
+    removed = await api.client.delete(
+        f"/api/v1/contacts/{peer.id}/", headers=api.auth(token)
+    )
+    assert removed.status_code == 204, removed.text
+
+    listed = await api.client.get("/api/v1/contacts/", headers=api.auth(token))
+    assert listed.json() == []
+
+    # Повторное удаление — тоже 204 (идемпотентно).
+    again = await api.client.delete(
+        f"/api/v1/contacts/{peer.id}/", headers=api.auth(token)
+    )
+    assert again.status_code == 204, again.text
+
+    chats = await api.client.get("/api/v1/chats/", headers=api.auth(token))
+    assert chat["id"] in [item["id"] for item in chats.json()]
+
+
+async def test_contacts_write_is_rate_limited(api: _ApiCtx) -> None:
+    """Запись в записную книжку ограничена по частоте (защита от спама)."""
+    owner = await api.make_user()
+    peer = await api.make_user()
+    token = await api.token_for(owner)
+    limit = settings.contact_write_limit_per_minute
+
+    codes = []
+    for _ in range(limit + 1):
+        response = await api.client.put(
+            f"/api/v1/contacts/{peer.id}/",
+            json={"custom_name": "Спам"},
+            headers=api.auth(token),
+        )
+        codes.append(response.status_code)
+
+    assert codes[:limit] == [200] * limit
+    assert codes[-1] == 429

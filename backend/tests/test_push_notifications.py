@@ -96,3 +96,18 @@ async def test_call_record_skips_message_push(monkeypatch: pytest.MonkeyPatch) -
     # Обычное сообщение уведомляет как раньше (флаг ничего не сломал).
     await service.notify_chat(object(), chat_id=1, payload=payload)
     assert len(enqueued) == 1
+
+
+def test_group_by_title_uses_personal_contact_name() -> None:
+    """Заголовок уведомления — личное имя контакта у каждого получателя.
+
+    Один общий push на всех не подходит: у кого отправитель записан как «Мама»,
+    тот видит «Мама», остальные — обычное имя из профиля.
+    """
+    groups = notifications._group_by_title([1, 2, 3], {2: "Мама"}, "Иван Петров")
+    assert groups == {"Иван Петров": [1, 3], "Мама": [2]}
+
+
+def test_group_by_title_without_personal_names() -> None:
+    """Нет личных имён — все получатели в одной группе (один запрос в RuStore)."""
+    assert notifications._group_by_title([4, 5], {}, "Иван") == {"Иван": [4, 5]}

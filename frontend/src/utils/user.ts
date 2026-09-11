@@ -3,6 +3,25 @@
 import { mediaUrl } from '@/config'
 import type { Chat, ChatUser } from '@/types'
 
+/**
+ * Личные имена контактов («записная книжка»).
+ *
+ * Живут в модуле, а не в конкретном компоненте: имя контакта должно
+ * подставляться ВЕЗДЕ — в списке чатов, шапке, превью, поиске, уведомлениях,
+ * без правок каждого места. Реестр обновляет стор контактов
+ * (`setContactNames`), поэтому `displayName()` всегда видит свежие имена.
+ */
+let contactNames: Record<number, string> = {}
+
+/** Обновляет реестр имён контактов (вызывает стор контактов). */
+export const setContactNames = (names: Record<number, string>): void => {
+  contactNames = names
+}
+
+/** Имя, которым пользователь назвал контакт (если назвал). */
+export const contactNameOf = (userId: number | null | undefined): string | undefined =>
+  userId === null || userId === undefined ? undefined : contactNames[userId]
+
 export const fullName = (
   first: string | null | undefined,
   last: string | null | undefined,
@@ -14,11 +33,16 @@ export const fullName = (
   return username
 }
 
+/**
+ * Отображаемое имя пользователя.
+ * Приоритет: личное имя контакта → имя и фамилия из профиля → логин.
+ */
 export const displayName = (user: {
+  id?: number
   first_name?: string | null
   last_name?: string | null
   username: string
-}): string => fullName(user.first_name, user.last_name, user.username)
+}): string => contactNameOf(user.id) ?? fullName(user.first_name, user.last_name, user.username)
 
 export const initials = (value: string): string => {
   const clean = value.trim()

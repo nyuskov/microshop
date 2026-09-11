@@ -19,6 +19,7 @@ import time
 from pywebpush import WebPushException, webpush
 from sqlalchemy import delete, select
 
+from api_v1.contacts.crud import contact_names_for
 from core import mailer, rustore_push
 from core.amqp import publish_realtime_event
 from core.celery_app import celery_app
@@ -54,6 +55,21 @@ def _web_push_configured() -> bool:
     return bool(
         settings.web_push_vapid_public_key and settings.web_push_vapid_private_key
     )
+
+
+def _group_by_title(
+    recipient_ids: list[int], titles: dict[int, str], fallback: str
+) -> dict[str, list[int]]:
+    """Группирует получателей по заголовку уведомления.
+
+    Личное имя контакта («Мама») у каждого получателя своё, поэтому один общий
+    push на всех уже не годится: собираем группы с одинаковым заголовком и шлём
+    на каждую свою копию уведомления.
+    """
+    groups: dict[str, list[int]] = {}
+    for user_id in recipient_ids:
+        groups.setdefault(titles.get(user_id, fallback), []).append(user_id)
+    return groups
 
 
 def _rustore_message(
@@ -198,6 +214,14 @@ async def _send_message_push_async(
         sender = await session.get(User, sender_id)
         message = await session.get(Message, message_id)
 
+        # «Как в Telegram»: если отправитель записан у получателя в контактах под
+        # своим именем («Мама»), в уведомлении показываем именно его. Имя личное:
+        # остальные видят обычное имя отправителя.
+        titles = (
+            await contact_names_for(session, owner_ids=recipient_ids, peer_id=sender_id)
+            if sender is not None
+            else {}
+        )
         title = _display_name(sender) if sender else "Новое сообщение"
         body = "Новое сообщение"
         if message is not None:
@@ -216,24 +240,29 @@ async def _send_message_push_async(
                 elif message.file_name:
                     body = f"Вложение: {message.file_name}"
 
-        await _send_rustore_push(
-            session,
-            recipient_ids,
-            _rustore_message(
-                title=title,
-                body=body,
-                channel_id=PUSH_CHANNEL_MESSAGES,
-                data={
-                    "type": "message",
-                    "chat_id": chat_id,
-                    "message_id": message_id,
-                    "peer_id": sender_id,
-                    # Аватар отправителя — приложение может показать его
-                    # крупной иконкой (картинку по URL тянет уже устройство).
-                    "peer_avatar": sender.avatar_url if sender else None,
-                },
-            ),
-        )
+        # Заголовок у каждого получателя может быть свой (личное имя контакта),
+        # поэтому шлём группами по одинаковому заголовку.
+        for group_title, group_ids in _group_by_title(
+            recipient_ids, titles, title
+        ).items():
+            await _send_rustore_push(
+                session,
+                group_ids,
+                _rustore_message(
+                    title=group_title,
+                    body=body,
+                    channel_id=PUSH_CHANNEL_MESSAGES,
+                    data={
+                        "type": "message",
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "peer_id": sender_id,
+                        # Аватар отправителя — приложение может показать его
+                        # крупной иконкой (картинку по URL тянет уже устройство).
+                        "peer_avatar": sender.avatar_url if sender else None,
+                    },
+                ),
+            )
 
         # Дальше — Web Push для PWA (если VAPID-ключи заданы).
         if not _web_push_configured():
@@ -246,23 +275,25 @@ async def _send_message_push_async(
         if not subscriptions:
             return
         stale_ids: list[int] = []
-        payload = json.dumps(
-            {
-                "title": title,
-                "body": body,
-                # Крупная иконка — аватар отправителя (как в мессенджерах).
-                "icon": _push_icon(sender),
-                "badge": PUSH_BADGE,
-                "data": {
-                    "type": "message",
-                    "chat_id": chat_id,
-                    "message_id": message_id,
-                    "peer_id": sender_id,
-                },
-            },
-            ensure_ascii=False,
-        )
         for sub in subscriptions:
+            # Заголовок собираем на каждую подписку: у получателя может быть своё
+            # личное имя отправителя («Мама») — см. titles выше.
+            payload = json.dumps(
+                {
+                    "title": titles.get(sub.user_id, title),
+                    "body": body,
+                    # Крупная иконка — аватар отправителя (как в мессенджерах).
+                    "icon": _push_icon(sender),
+                    "badge": PUSH_BADGE,
+                    "data": {
+                        "type": "message",
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "peer_id": sender_id,
+                    },
+                },
+                ensure_ascii=False,
+            )
             try:
                 webpush(
                     subscription_info={
@@ -376,6 +407,13 @@ async def _send_call_push_async(
     try:
         caller = await session.get(User, caller_id)
         name = _display_name(caller) if caller else "Пользователь"
+        # Личное имя звонящего у получателя («Мама») — как в списке чатов.
+        if caller is not None:
+            custom = (
+                await contact_names_for(session, owner_ids=[user_id], peer_id=caller_id)
+            ).get(user_id)
+            if custom:
+                name = custom
         kind_label = "Видеозвонок" if kind == "video" else "Аудиозвонок"
 
         await _send_rustore_push(

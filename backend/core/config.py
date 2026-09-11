@@ -166,6 +166,8 @@ class Settings(BaseSettings):
     message_upload_limit_per_minute: int = 10
     message_search_limit_per_minute: int = 60
     user_search_limit_per_minute: int = 60
+    # Контакты (записная книжка): добавление, переименование, удаление.
+    contact_write_limit_per_minute: int = 30
     # Жалобы на пользователей/контент (модерация UGC): не чаще N раз в час.
     user_report_limit_per_hour: int = 20
     avatar_upload_limit_per_minute: int = 10

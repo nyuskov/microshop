@@ -446,7 +446,7 @@
             </div>
           </div>
 
-          <!-- Обычный список контактов (скрыт, пока показаны результаты из книги) -->
+          <!-- Список контактов: моя записная книжка (кого я добавил) -->
           <template v-if="phoneMatched === null || phoneImportOpen">
             <div v-if="contactsLoading" class="sk-list" aria-busy="true">
               <span class="sr-only">Загрузка контактов…</span>
@@ -458,35 +458,86 @@
                 </span>
               </div>
             </div>
-            <div v-else-if="!filteredContacts.length" class="empty-hint">Контакты не найдены</div>
-            <div v-else class="chat-scroll">
-              <button
-                v-for="contact in filteredContacts"
-                :key="contact.id"
-                class="row-item"
-                @click="openChatWithContact(contact)"
-              >
-                <span class="avatar" :style="avatarStyle(displayName(contact))">
-                  <img
-                    v-if="avatarUrlOf(contact)"
-                    :src="avatarUrlOf(contact)"
-                    class="avatar-img"
-                    alt=""
-                  />
-                  <template v-else>{{ initials(displayName(contact)) }}</template>
-                </span>
-                <span class="row-text">
-                  <span class="row-title">{{ displayName(contact) }}</span>
-                  <span class="row-sub"
-                    >@{{ contact.username
-                    }}<template v-if="contact.phone_number">
-                      · {{ contact.phone_number }}</template
-                    ></span
+
+            <template v-else>
+              <!-- Найденные в мессенджере (по поиску) — кого можно добавить -->
+              <div v-if="contactsSearchBusy" class="search-status" aria-busy="true">
+                Ищем людей…
+              </div>
+              <template v-else-if="foundNotInContacts.length">
+                <div class="section-label">Найдены в мессенджере</div>
+                <div class="people-results">
+                  <div v-for="user in foundNotInContacts" :key="user.id" class="contact-row">
+                    <button class="row-item" @click="openChatWithContact(user)">
+                      <span class="avatar" :style="avatarStyle(displayName(user))">
+                        <img
+                          v-if="avatarUrlOf(user)"
+                          :src="avatarUrlOf(user)"
+                          class="avatar-img"
+                          alt=""
+                        />
+                        <template v-else>{{ initials(displayName(user)) }}</template>
+                      </span>
+                      <span class="row-text">
+                        <span class="row-title">{{ displayName(user) }}</span>
+                        <span class="row-sub">@{{ user.username }}</span>
+                      </span>
+                    </button>
+                    <button
+                      class="contact-action"
+                      title="Добавить в контакты"
+                      aria-label="Добавить в контакты"
+                      @click="openContactName(user)"
+                    >
+                      <q-icon :name="icon('person_add')" size="18px" />
+                    </button>
+                  </div>
+                </div>
+              </template>
+
+              <p v-if="contactsSearchError" class="cn-side-error">{{ contactsSearchError }}</p>
+
+              <div v-if="!filteredContacts.length && !foundNotInContacts.length" class="empty-hint">
+                {{
+                  contactsQuery.trim()
+                    ? 'Никого не нашли — проверьте логин или телефон'
+                    : 'Контактов пока нет. Найдите человека по логину или телефону и добавьте его.'
+                }}
+              </div>
+
+              <div v-else-if="filteredContacts.length" class="chat-scroll">
+                <div v-for="contact in filteredContacts" :key="contact.id" class="contact-row">
+                  <button class="row-item" @click="openChatWithContact(contact)">
+                    <span class="avatar" :style="avatarStyle(displayName(contact))">
+                      <img
+                        v-if="avatarUrlOf(contact)"
+                        :src="avatarUrlOf(contact)"
+                        class="avatar-img"
+                        alt=""
+                      />
+                      <template v-else>{{ initials(displayName(contact)) }}</template>
+                    </span>
+                    <span class="row-text">
+                      <span class="row-title">{{ displayName(contact) }}</span>
+                      <span class="row-sub"
+                        >@{{ contact.username
+                        }}<template v-if="contact.phone_number">
+                          · {{ contact.phone_number }}</template
+                        ></span
+                      >
+                    </span>
+                  </button>
+                  <button
+                    class="contact-action"
+                    title="Имя контакта"
+                    aria-label="Имя контакта"
+                    @click="openContactName(contact)"
                   >
-                </span>
-                <q-icon :name="icon('chevron_right')" class="row-arrow" size="20px" />
-              </button>
-            </div>
+                    <q-icon :name="icon('edit')" size="17px" />
+                  </button>
+                </div>
+              </div>
+            </template>
           </template>
         </template>
       </div>
@@ -526,6 +577,13 @@
         <span>Контакты</span>
       </button>
     </nav>
+
+    <!-- Личное имя контакта: добавление / переименование / удаление -->
+    <ContactNameDialog
+      v-if="contactDialogUser"
+      v-model="contactDialogOpen"
+      :user="contactDialogUser"
+    />
   </aside>
 
   <!-- Импорт контактов из телефонной книги -->
@@ -625,6 +683,7 @@ import { icon } from '@/utils/icons'
 import { useStoriesStore } from '@/stores/stories'
 import StoriesFeed from '@/components/stories/StoriesFeed.vue'
 import StoriesStrip from '@/components/stories/StoriesStrip.vue'
+import ContactNameDialog from '@/components/messenger/ContactNameDialog.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import {
@@ -654,7 +713,7 @@ const props = defineProps<{
   view: 'chats' | 'contacts' | 'stories'
   currentUserId: number | null
   chats: Chat[]
-  contacts: SearchUserResult[]
+  contacts: ChatUser[]
   selectedChatId: number | null
   loadingChats: boolean
   contactsLoading: boolean
@@ -756,6 +815,68 @@ const userResults = ref<SearchUserResult[]>([])
 const messageResults = ref<Message[]>([])
 const searchError = ref('')
 const contactsQuery = ref('')
+// Поиск по всему мессенджеру в разделе «Контакты»: найденных показываем
+// отдельным блоком с кнопкой «добавить в контакты» (как в Telegram).
+const foundUsers = ref<SearchUserResult[]>([])
+const contactsSearchBusy = ref(false)
+const contactsSearchError = ref('')
+let contactsTimer: number | null = null
+/** Диалог «Добавить в контакты / Имя контакта». */
+const contactDialogOpen = ref(false)
+const contactDialogUser = ref<ChatUser | null>(null)
+
+const openContactName = (user: ChatUser | SearchUserResult) => {
+  contactDialogUser.value = user as ChatUser
+  contactDialogOpen.value = true
+}
+
+/**
+ * Найденные в мессенджере за вычетом тех, кого уже добавили.
+ *
+ * Список результатов поиска не трогаем (он живёт до следующего запроса), а
+ * фильтруем на отображении: после нажатия «+» человек сразу пропадает из
+ * блока «Найдены в мессенджере» и появляется в моих контактах.
+ */
+const foundNotInContacts = computed<SearchUserResult[]>(() => {
+  const mine = new Set(props.contacts.map((contact) => contact.id))
+  return foundUsers.value.filter((user) => !mine.has(user.id))
+})
+
+// Минимальная длина запроса: короче — слишком много совпадений (и лишний трафик).
+const CONTACTS_SEARCH_MIN = 2
+
+watch(contactsQuery, (value) => {
+  if (contactsTimer !== null) {
+    window.clearTimeout(contactsTimer)
+    contactsTimer = null
+  }
+  contactsSearchError.value = ''
+  const query = value.trim()
+  if (query.length < CONTACTS_SEARCH_MIN) {
+    foundUsers.value = []
+    contactsSearchBusy.value = false
+    return
+  }
+  contactsSearchBusy.value = true
+  contactsTimer = window.setTimeout(async () => {
+    try {
+      const results = await searchUsers(query)
+      // Уже добавленные и я сам — не предлагаем повторно.
+      const mine = new Set(props.contacts.map((contact) => contact.id))
+      foundUsers.value = results.filter(
+        (user) => !mine.has(user.id) && user.id !== props.currentUserId
+      )
+    } catch (error) {
+      contactsSearchError.value = getErrorMessage(error, 'Не удалось выполнить поиск')
+    } finally {
+      contactsSearchBusy.value = false
+    }
+  }, 300)
+})
+
+onBeforeUnmount(() => {
+  if (contactsTimer !== null) window.clearTimeout(contactsTimer)
+})
 
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
@@ -1014,7 +1135,7 @@ const orderedChats = computed<Chat[]>(() => {
   return [...self, ...top, ...rest]
 })
 
-const filteredContacts = computed<SearchUserResult[]>(() => {
+const filteredContacts = computed<ChatUser[]>(() => {
   const query = contactsQuery.value.trim().toLowerCase()
   if (!query) return props.contacts
   return props.contacts.filter((contact) =>
@@ -1666,6 +1787,44 @@ onBeforeUnmount(() => {
   cursor: pointer;
   text-align: left;
   transition: background 0.12s;
+}
+
+/* Строка контакта: тап по строке открывает чат, а кнопка справа заводит имя. */
+.contact-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 6px;
+}
+
+.contact-row .row-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.contact-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #6b7883;
+  cursor: pointer;
+}
+
+.contact-action:hover {
+  background: #eef1f4;
+}
+
+.cn-side-error {
+  margin: 0;
+  padding: 10px 14px;
+  color: #c0392b;
+  font-size: 12.5px;
 }
 
 .row-item:hover {

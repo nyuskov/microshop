@@ -69,6 +69,18 @@ export interface LinkPreview {
   domain?: string | null
 }
 
+/**
+ * Контакт в моей «записной книжке».
+ *
+ * `custom_name` — как Я назвал человека. Вижу его только я (собеседник его не
+ * видит и не узнаёт о нём). Пусто — показывается обычное имя из профиля.
+ */
+export interface Contact {
+  user: ChatUser
+  custom_name: string | null
+  created_at: string
+}
+
 export interface Chat {
   id: number
   name: string
