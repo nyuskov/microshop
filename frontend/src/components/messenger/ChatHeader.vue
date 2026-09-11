@@ -52,7 +52,7 @@
       </span>
 
       <!-- Остальные действия — под «⋯»: в шапке видна только кнопка звонка. -->
-      <span class="ms-dropdown-wrap" @click.stop>
+      <span ref="menuWrapEl" class="ms-dropdown-wrap" @click.stop>
         <button
           class="icon-btn"
           :class="{ open: chatMenuOpen }"
@@ -149,8 +149,13 @@ const avatarUrl = computed<string | undefined>(() =>
   isGroupChat(props.chat) ? groupAvatarUrl(props.chat) : avatarUrlOf(peer.value)
 )
 
-// Меню «⋯» в шапке: закрывается по клику вне панели.
+// Меню «⋯» в шапке: закрывается тапом/кликом мимо самого меню.
+//
+// «Мимо» считаем относительно меню, а не шапки: иначе тап по свободному месту
+// в шапке (на телефоне она узкая) меню не закрывал.
 const rootEl = ref<HTMLElement | null>(null)
+/** Обёртка меню «⋯» (кнопка + выпадающий список). */
+const menuWrapEl = ref<HTMLElement | null>(null)
 const chatMenuOpen = ref(false)
 let outsideHandler: ((event: PointerEvent) => void) | null = null
 watch(chatMenuOpen, (open) => {
@@ -160,8 +165,8 @@ watch(chatMenuOpen, (open) => {
   }
   if (open) {
     outsideHandler = (event: PointerEvent) => {
-      const el = rootEl.value
-      if (el && !el.contains(event.target as Node)) chatMenuOpen.value = false
+      const wrap = menuWrapEl.value
+      if (wrap && !wrap.contains(event.target as Node)) chatMenuOpen.value = false
     }
     document.addEventListener('pointerdown', outsideHandler)
   }

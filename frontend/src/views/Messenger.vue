@@ -450,6 +450,7 @@ import {
   defineAsyncComponent
 } from 'vue'
 import { Notify, useQuasar } from 'quasar'
+import { useRouter } from 'vue-router'
 import LoginModal from '@/components/LoginModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -625,6 +626,8 @@ const videoRecOpen = ref(false)
 
 // ---------- Quasar: адаптивный layout (drawer на мобильном) ----------
 const $q = useQuasar()
+// История роутера — единственный «писатель» адреса и истории (см. syncChatUrl).
+const router = useRouter()
 /** «Десктоп» = ширина окна ≥ 1024px (md и выше). Ниже — мобильный режим. */
 const isDesktop = computed(() => $q.screen.gt.sm)
 
@@ -659,9 +662,12 @@ const drawerWidth = computed(() => (isDesktop.value ? 380 : Math.min($q.screen.w
 /**
  * Держим открытый чат в адресной строке (`?chat=<id>`), чтобы перезагрузка
  * страницы — в том числе pull-to-refresh или переоткрытие PWA — возвращала в тот
- * же чат, а не в список. `replaceState`, а не переход роутера: запись в историю
- * здесь не нужна (мобильная «назад» ведёт себя по своим маркерам), а параметры
- * запуска звонка сохраняются — по ним приложение возвращается в звонок.
+ * же чат, а не в список.
+ *
+ * Пишем через историю РОУТЕРА (а не window.history.replaceState): прямая запись
+ * затирает служебные поля vue-router (position/back/forward) в записи истории,
+ * роутер считает состояние «подменённым» и переписывает адрес. Из-за этого
+ * «назад» срабатывал не всегда, а обновление открывало не ту страницу.
  */
 const syncChatUrl = (chatId: number | null, options: { keepStored?: boolean } = {}) => {
   try {
@@ -669,7 +675,7 @@ const syncChatUrl = (chatId: number | null, options: { keepStored?: boolean } = 
     const next = chatUrlWith(window.location.href, chatId)
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`
     if (next === current) return
-    window.history.replaceState(window.history.state, '', next)
+    router.options.history.replace(next, {})
   } catch {
     /* история недоступна (например, внутри iframe) — просто не трогаем адрес */
   }
@@ -696,22 +702,66 @@ const goBackToList = () => {
 // историю; на popstate откатываем экран на шаг. На «корне» (список чатов)
 // системная «назад» выходит из приложения.
 const pushMobileNav = (section?: Section) => {
-  if (!isDesktop.value) {
-    try {
-      // В записи истории храним раздел, который будет показан на этом шаге:
-      // по «назад» возвращаемся именно в него, а не всегда в «Чаты».
-      window.history.pushState({ pismoNav: true, pismoView: section ?? view.value }, '')
-    } catch {
-      /* история недоступна — игнорируем */
-    }
+  if (isDesktop.value) return
+  try {
+    // В записи истории храним раздел, который будет показан на этом шаге:
+    // по «назад» возвращаемся именно в него, а не всегда в «Чаты».
+    //
+    // Пишем через историю РОУТЕРА: window.history.pushState затирает его
+    // служебные поля (position/back/forward), и роутер начинает переписывать
+    // адрес — история и экран расходятся.
+    const url = `${window.location.pathname}${window.location.search}${window.location.hash}`
+    router.options.history.push(url, {
+      pismoNav: true,
+      pismoView: section ?? view.value
+    })
+  } catch {
+    /* история недоступна — игнорируем */
   }
 }
 
-const onAppPopState = (event: PopStateEvent) => {
-  if (isDesktop.value) return
+/** Идёт обработка системного «назад» — программные шаги назад не нужны. */
+let handlingSystemBack = false
+/** Маркер гасим сами (программным шагом назад) — обработчик popstate молчит. */
+let programmaticBack = false
+/** Drawer открылся сам (по системному «назад») — маркер уже израсходован. */
+let drawerOpenedByBack = false
+
+/**
+ * Гасит маркер истории, поставленный `pushMobileNav()`.
+ *
+ * Нужен, когда экран закрыли «вручную» (крестик, клик по фону, жест, действие
+ * над выбранным): без этого маркер остаётся висеть, и следующее системное
+ * «назад» тратится на пустой шаг — человек видит, что «назад не работает».
+ * Возвращает true, если маркер был и его убрали.
+ */
+const stepBackInApp = (): boolean => {
+  if (isDesktop.value || handlingSystemBack) return false
+  const state = window.history.state as { pismoNav?: boolean } | null
+  if (!state?.pismoNav) return false
+  programmaticBack = true
+  try {
+    router.options.history.go(-1)
+  } catch {
+    programmaticBack = false
+    return false
+  }
+  return true
+}
+
+/**
+ * Обработка шага назад (системный жест/кнопка или `stepBackInApp`).
+ * Закрываем ровно один слой интерфейса — от верхнего к нижнему.
+ */
+const handleAppBack = (state: { pismoView?: Section } | null) => {
   // Просмотр истории — «назад» закрывает просмотрщик.
   if (openStoryId.value !== null) {
     openStoryId.value = null
+    return
+  }
+  // Просмотр изображения (лайтбокс) — закрываем его.
+  if (lightboxIndex.value !== null) {
+    lightboxIndex.value = null
     return
   }
   // Раздел настроек профиля — «назад» возвращает к списку разделов.
@@ -744,7 +794,7 @@ const onAppPopState = (event: PopStateEvent) => {
   }
   // Возврат в предыдущий раздел: «назад» идёт по истории переходов
   // (Чаты → Истории → Контакты и обратно), а не всегда в «Чаты».
-  const previousView = (event.state as { pismoView?: Section } | null)?.pismoView
+  const previousView = state?.pismoView
   if (previousView && previousView !== view.value) {
     view.value = previousView
     return
@@ -756,6 +806,7 @@ const onAppPopState = (event: PopStateEvent) => {
   }
   // Открытая нить (drawer скрыт) -> список.
   if (selectedChatId.value !== null && !drawerOpen.value) {
+    drawerOpenedByBack = true
     drawerOpen.value = true
     // На мобильном список и нить — один экран: показали список, значит и в
     // адресе чата быть не должно.
@@ -763,6 +814,21 @@ const onAppPopState = (event: PopStateEvent) => {
     return
   }
   // Корень — выходим (позволяем браузеру завершить).
+}
+
+const onAppPopState = (event: PopStateEvent) => {
+  // Маркер погасили сами (экран уже закрыт вручную) — обрабатывать нечего.
+  if (programmaticBack) {
+    programmaticBack = false
+    return
+  }
+  if (isDesktop.value) return
+  handlingSystemBack = true
+  try {
+    handleAppBack(event.state as { pismoView?: Section } | null)
+  } finally {
+    handlingSystemBack = false
+  }
 }
 
 // ---------- Данные ----------
@@ -1075,6 +1141,9 @@ const lightboxIndex = ref<number | null>(null)
 const openImageFromMessage = (message: Message) => {
   if (lightboxImages.value.length === 0) return
   const idx = lightboxImages.value.findIndex((item) => item.id === message.id)
+  // Лайтбокс — полноэкранный слой: системная «назад» должна закрывать его
+  // (см. `handleAppBack`), значит нужен маркер в истории.
+  pushMobileNav()
   lightboxIndex.value = idx >= 0 ? idx : 0
 }
 
@@ -2077,16 +2146,64 @@ const selectedMessagesOf = (): Message[] =>
 
 /**
  * Вход в любой режим выделения (сообщения или чаты) кладёт маркер в историю:
- * системная «назад» тогда выходит из выделения (см. `onAppPopState`), а не уводит
- * из чата или из приложения. Выход из выделения маркер не убирает — так же ведут
- * себя модальные окна.
+ * системная «назад» тогда выходит из выделения, а не уводит из чата или из
+ * приложения. Выход маркер гасит — каким бы способом выделение ни сняли
+ * (кнопка «Отмена», действие над выбранным, системное «назад»).
+ *
+ * `flush: 'sync'` — чтобы реакция на смену была внутри обработчика «назад»
+ * (`handlingSystemBack` тогда ещё true, и лишнего шага не будет).
  */
 const anySelectionActive = computed(
-  () => msgSelectionMode.value || Boolean(sidebarRef.value?.isSelecting())
+  () => msgSelectionMode.value || Boolean(sidebarRef.value?.selectionMode)
 )
-watch(anySelectionActive, (active, wasActive) => {
-  if (active && !wasActive) pushMobileNav()
-})
+watch(
+  anySelectionActive,
+  (active, wasActive) => {
+    if (active === wasActive) return
+    if (active) pushMobileNav()
+    else stepBackInApp()
+  },
+  { flush: 'sync' }
+)
+
+/**
+ * Экран поверх (модалки, просмотрщик истории, лайтбокс) закрыли ЛЮБЫМ способом —
+ * крестиком, кликом по фону, жестом. Гасим маркер истории: иначе следующее
+ * системное «назад» потратится на пустой шаг («назад не работает»).
+ */
+const overlayOpen = computed(
+  () =>
+    showProfileModal.value ||
+    showChatInfoModal.value ||
+    showGroupInfoModal.value ||
+    showCreateGroupModal.value ||
+    openStoryId.value !== null ||
+    lightboxIndex.value !== null
+)
+watch(
+  overlayOpen,
+  (open, wasOpen) => {
+    if (wasOpen && !open) stepBackInApp()
+  },
+  { flush: 'sync' }
+)
+
+/**
+ * На мобильном список и нить — один экран. Если список открыли жестом (drawer),
+ * маркер от нити больше не нужен — гасим его, иначе «назад» уйдёт впустую.
+ */
+watch(
+  drawerOpen,
+  (open) => {
+    if (!open || isDesktop.value) return
+    if (drawerOpenedByBack) {
+      drawerOpenedByBack = false
+      return
+    }
+    stepBackInApp()
+  },
+  { flush: 'sync' }
+)
 
 /** Выход из режима выбора сообщений. */
 const exitMessageSelection = () => {
@@ -2776,11 +2893,24 @@ const openStory = (storyId: number) => {
 
 const openContacts = () => switchSection('contacts')
 
+/** Закрывает открытую переписку (на мобильном список и нить — один экран). */
+const closeOpenChat = () => {
+  selectedChatId.value = null
+  messages.value = []
+  pinnedMessages.value = []
+  syncChatUrl(null)
+}
+
 /** Переключение раздела по нижнему меню — всегда прямой переход. */
 const switchSection = (section: Section) => {
   if (view.value === section) return
   pushMobileNav(section)
   view.value = section
+  // На мобильном список и нить — один экран: уходя в другой раздел, закрываем
+  // открытую переписку. Иначе в адресе останется `?chat=`, и после обновления
+  // страница вернётся в чат, хотя человек был в разделе — «обновление открывает
+  // не ту страницу».
+  if (!isDesktop.value) closeOpenChat()
   if (section === 'stories') void storiesStore.load()
 }
 

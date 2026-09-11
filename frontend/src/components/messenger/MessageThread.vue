@@ -19,51 +19,48 @@
         </div>
       </div>
       <template v-else>
-        <template
-          v-for="(row, index) in rows"
-          :key="row.kind === 'day' ? 'd' + index : row.message.id"
-        >
-          <div v-if="row.kind === 'day'" class="day-divider">
-            <span>{{ row.label }}</span>
+        <div v-for="group in dayGroups" :key="group.key" class="day-group">
+          <div v-if="group.label" class="day-divider">
+            <span>{{ group.label }}</span>
           </div>
-          <template v-else>
+          <template v-for="item in group.items" :key="item.row.message.id">
             <div
-              v-if="unreadDividerId === row.message.id"
+              v-if="unreadDividerId === item.row.message.id"
               class="unread-divider"
               data-unread-divider
             >
               <span>Непрочитанные сообщения</span>
             </div>
             <MessageRow
-              :ref="(el: unknown) => setRowRef(row.message.id, el)"
-              :message="row.message"
-              :is-own="row.message.user_id === currentUserId"
+              :ref="(el: unknown) => setRowRef(item.row.message.id, el)"
+              :message="item.row.message"
+              :is-own="item.row.message.user_id === currentUserId"
               :viewer-id="currentUserId"
-              :highlighted="highlightedMessageId === row.message.id"
-              :emoji-picker-open="emojiPickerFor === row.message.id"
-              :quote="quoteOf(row.message)"
+              :highlighted="highlightedMessageId === item.row.message.id"
+              :emoji-picker-open="emojiPickerFor === item.row.message.id"
+              :quote="quoteOf(item.row.message)"
               :selection-mode="selectionMode"
-              :selected="selectedMessageIds.includes(row.message.id)"
-              :selectable="row.message.kind !== 'call'"
-              :author-name="authorNameFor(row, index)"
-              @quote-click="emit('quote-click', row.message)"
-              @select-start="emit('select-start', row.message)"
-              @toggle-select="emit('toggle-select', row.message)"
-              @forwarder-click="emit('forwarder-click', row.message)"
-              @toggle-emoji-picker="emit('toggle-emoji-picker', row.message)"
-              @set-reply="emit('set-reply', row.message)"
-              @toggle-reaction="emit('toggle-reaction', row.message, $event)"
-              @toggle-pin="emit('toggle-pin', row.message)"
-              @copy="emit('copy', row.message)"
-              @edit="emit('edit', row.message)"
-              @forward="emit('forward', row.message)"
-              @save="emit('save', row.message)"
-              @delete="emit('delete', row.message)"
-              @report="emit('report', row.message)"
-              @open-image="emit('open-image', row.message)"
+              :selected="selectedMessageIds.includes(item.row.message.id)"
+              :selectable="item.row.message.kind !== 'call'"
+              :author-name="authorNameFor(item.row, item.index)"
+              @quote-click="emit('quote-click', item.row.message)"
+              @select-start="emit('select-start', item.row.message)"
+              @toggle-select="emit('toggle-select', item.row.message)"
+              @forwarder-click="emit('forwarder-click', item.row.message)"
+              @toggle-emoji-picker="emit('toggle-emoji-picker', item.row.message)"
+              @set-reply="emit('set-reply', item.row.message)"
+              @toggle-reaction="emit('toggle-reaction', item.row.message, $event)"
+              @toggle-pin="emit('toggle-pin', item.row.message)"
+              @copy="emit('copy', item.row.message)"
+              @edit="emit('edit', item.row.message)"
+              @forward="emit('forward', item.row.message)"
+              @save="emit('save', item.row.message)"
+              @delete="emit('delete', item.row.message)"
+              @report="emit('report', item.row.message)"
+              @open-image="emit('open-image', item.row.message)"
             />
           </template>
-        </template>
+        </div>
         <div v-for="p in pending ?? []" :key="p.localId" class="pending-row">
           <div class="pending-bubble" :class="`st-${p.status ?? 'sending'}`">
             <img v-if="p.previewUrl" :src="p.previewUrl" class="pending-preview" alt="" />
@@ -322,6 +319,31 @@ watch(
     showJumpDown.value = false
   }
 )
+
+// ---------- Группировка по дням (для «липкой» даты) ----------
+/** Строка ленты с её позицией в общем списке (нужна для имён авторов). */
+type DayGroupItem = { row: Extract<ThreadRow, { kind: 'message' }>; index: number }
+
+/**
+ * Строки ленты, сгруппированные по дням.
+ *
+ * Разделитель дня «липнет» к верху ленты, но только в границах своего дня:
+ * «липкий» элемент не выходит за пределы родителя, поэтому каждый день обёрнут
+ * в свой блок (`.day-group`). Без группировки два разделителя («12 сентября» и
+ * «Вчера») висели бы друг на друге при прокрутке.
+ */
+const dayGroups = computed(() => {
+  const groups: { key: string; label: string; items: DayGroupItem[] }[] = []
+  props.rows.forEach((row, index) => {
+    if (row.kind === 'day') {
+      groups.push({ key: `day-${index}`, label: row.label, items: [] })
+      return
+    }
+    if (groups.length === 0) groups.push({ key: 'day-start', label: '', items: [] })
+    groups[groups.length - 1].items.push({ row, index })
+  })
+  return groups
+})
 
 // ---------- Имена авторов в групповых чатах ----------
 // Показываем имя в начале «серии» сообщений собеседника: предыдущее сообщение
@@ -606,6 +628,14 @@ onMounted(() => {
 .jump-down.has-new .jump-new {
   background: #fff;
   border-color: var(--ms-accent, #2ea25e);
+}
+
+/* Группа одного дня: разделитель «липнет» только в её пределах, поэтому даты
+   соседних дней не накладываются друг на друга. Flex обязателен: пузыри
+   выравниваются через `align-self` (свои — вправо, чужие — влево). */
+.day-group {
+  display: flex;
+  flex-direction: column;
 }
 
 /* Дата «прилипает» к верху ленты, пока прокручиваешь её день. */

@@ -72,7 +72,7 @@
         >
           <q-icon :name="icon('contacts')" size="20px" />
         </button>
-        <span class="ms-dropdown-wrap" @click.stop>
+        <span ref="menuWrapEl" class="ms-dropdown-wrap" @click.stop>
           <button
             class="icon-btn"
             :class="{ open: settingsMenuOpen }"
@@ -726,8 +726,14 @@ const panelTitle = computed<string>(() => {
   return 'Чаты'
 })
 const rootEl = ref<HTMLElement | null>(null)
+/** Обёртка меню «⋯» (кнопка + выпадающий список) — по ней считаем «клик мимо». */
+const menuWrapEl = ref<HTMLElement | null>(null)
 const settingsMenuOpen = ref(false)
-// Клик вне панели закрывает «⋯» (раньше это делал closePopups() в Messenger).
+// Тап/клик мимо меню закрывает «⋯».
+//
+// ВАЖНО: «мимо» считаем относительно самого меню, а не всей панели: на телефоне
+// панель занимает весь экран, и тап «в сторону» попадал ВНУТРЬ панели — меню
+// не закрывалось (выглядело как «залипло»).
 let outsideHandler: ((event: PointerEvent) => void) | null = null
 watch(settingsMenuOpen, (open) => {
   if (outsideHandler) {
@@ -736,8 +742,8 @@ watch(settingsMenuOpen, (open) => {
   }
   if (open) {
     outsideHandler = (event: PointerEvent) => {
-      const el = rootEl.value
-      if (el && !el.contains(event.target as Node)) settingsMenuOpen.value = false
+      const wrap = menuWrapEl.value
+      if (wrap && !wrap.contains(event.target as Node)) settingsMenuOpen.value = false
     }
     document.addEventListener('pointerdown', outsideHandler)
   }
@@ -844,7 +850,7 @@ const onHotkeys = (event: KeyboardEvent) => {
 onMounted(() => window.addEventListener('keydown', onHotkeys))
 onBeforeUnmount(() => window.removeEventListener('keydown', onHotkeys))
 
-defineExpose({ exitSelection, isSelecting })
+defineExpose({ exitSelection, isSelecting, selectionMode })
 
 const toggleSelect = (chatId: number) => {
   const next = new Set(selectedIds.value)
