@@ -28,7 +28,9 @@ from core.models import (
     db_helper,
     user_chat_association_table,
 )
+from core.timeutils import as_utc
 
+from ..auth import audit, security_notifications
 from ..auth.utils import get_current_user
 
 router = APIRouter(prefix="/keys", tags=["E2EE-ключи"])
@@ -44,6 +46,9 @@ class KeyResponse(BaseModel):
     user_id: int
     has_key: bool
     public_key: str | None = None
+    # Когда ключ последний раз менялся — собеседник по этому полю видит, что
+    # устройство сменилось (и может предупредить о риске перехвата).
+    changed_at: str | None = None
 
 
 @router.put("/me/", status_code=200)
@@ -52,17 +57,43 @@ async def put_my_key(
     user: Annotated[User, Depends(get_current_user)],
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> dict[str, bool]:
-    """Регистрирует/заменяет «текущий» публичный ключ моего устройства."""
+    """Регистрирует/заменяет «текущий» публичный ключ моего устройства.
+
+    Смена ключа — событие безопасности, а не техническая мелочь: с этого момента
+    собеседники шифруют сообщения на НОВЫЙ ключ, и сторона, получившая доступ к
+    аккаунту, могла бы подсунуть свой ключ и читать переписку (MITM). Поэтому о
+    смене пишем в журнал и уведомляем владельца — письмом и push.
+    """
     row = (
         await session.execute(select(DeviceKey).where(DeviceKey.user_id == user.id))
     ).scalar_one_or_none()
+    changed = row is not None and row.public_key != payload.public_key
     if row is None:
         row = DeviceKey(user_id=user.id, public_key=payload.public_key)
         session.add(row)
     else:
         row.public_key = payload.public_key
     await session.commit()
-    return {"ok": True}
+
+    if changed:
+        await audit.log_security_event(
+            session,
+            event="e2ee_key_changed",
+            user_id=user.id,
+            detail="публичный ключ шифрования устройства заменён",
+        )
+        await security_notifications.notify_security_event(
+            session,
+            user,
+            event="e2ee_key_changed",
+            details=(
+                "Ключ сквозного шифрования заменён (например, вход с нового "
+                "устройства или очистка данных браузера).\nЕсли это были не вы — "
+                "аккаунт мог быть угнан: смените пароль и нажмите «Выйти на всех "
+                "устройствах»."
+            ),
+        )
+    return {"ok": True, "changed": changed}
 
 
 @router.get("/{user_id}/", response_model=KeyResponse)
@@ -80,7 +111,15 @@ async def get_user_key(
     ).scalar_one_or_none()
     if row is None:
         return KeyResponse(user_id=user_id, has_key=False, public_key=None)
-    return KeyResponse(user_id=user_id, has_key=True, public_key=row.public_key)
+    changed_at = as_utc(row.updated_at)
+    return KeyResponse(
+        user_id=user_id,
+        has_key=True,
+        public_key=row.public_key,
+        # Собеседник сравнивает ключ с тем, что видел раньше: расхождение —
+        # повод предупредить человека (возможен перехват после угона аккаунта).
+        changed_at=changed_at.isoformat() if changed_at is not None else None,
+    )
 
 
 # --------------------------------------------------------------------------

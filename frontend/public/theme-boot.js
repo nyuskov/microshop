@@ -1,0 +1,36 @@
+// Применяем сохранённую тему до первого кадра, чтобы не мигала светлая.
+;(function () {
+  try {
+    var root = document.documentElement
+    var stored = JSON.parse(localStorage.getItem('appearance') || '{}')
+    var mode = stored.mode || null
+    if (mode !== 'light' && mode !== 'dark' && mode !== 'system') {
+      var legacy = localStorage.getItem('app-theme')
+      if (legacy === 'light' || legacy === 'dark') mode = legacy
+    }
+    if (mode !== 'light' && mode !== 'dark' && mode !== 'system') mode = 'dark'
+    var dark =
+      mode === 'dark' ||
+      (mode === 'system' &&
+        window.matchMedia &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches)
+    root.setAttribute('data-theme', dark ? 'dark' : 'light')
+    var accents = {
+      green: '#2ea25e',
+      blue: '#2f7fd1',
+      cyan: '#14a09c',
+      violet: '#7c5cd6',
+      pink: '#d6579a',
+      orange: '#ee7f1d',
+      red: '#e04545',
+      indigo: '#5a6ee8'
+    }
+    root.style.setProperty('--ms-accent', accents[stored.accentKey] || '#2ea25e')
+    if (stored.bubbleKey) root.setAttribute('data-bubble', stored.bubbleKey)
+    var themeColor = document.querySelector('meta[name="theme-color"]')
+    if (themeColor)
+      themeColor.setAttribute('content', dark ? '#10151c' : accents[stored.accentKey] || '#2ea25e')
+  } catch (e) {
+    /* невалидный localStorage — пропускаем */
+  }
+})()

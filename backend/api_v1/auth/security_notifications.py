@@ -55,6 +55,7 @@ EVENT_SUBJECTS: dict[str, str] = {
     "account_frozen": "Pismo: аккаунт заморожен",
     "account_unfrozen": "Pismo: аккаунт разморожен",
     "panic": "Pismo: сработала тревога «это были не я»",
+    "e2ee_key_changed": "Pismo: ключ шифрования устройства изменён",
 }
 
 # События, о которых имеет смысл сообщать (остальное — ошибка в коде вызова).
@@ -136,6 +137,19 @@ def enqueue_security_push(
         )
 
 
+def _push_body(details: str, subject: str) -> str:
+    """Короткий текст push: первая содержательная строка события, недлинно.
+
+    В уведомлении на телефоне нет места для абзацев, но именно первая строка
+    (устройство, IP, что случилось) и есть самое полезное.
+    """
+    for line in details.splitlines():
+        text = line.strip()
+        if text:
+            return text if len(text) <= 160 else text[:157] + "…"
+    return subject
+
+
 async def notify_account_frozen(
     session: AsyncSession,
     *,
@@ -161,11 +175,6 @@ async def notify_account_frozen(
             "экран входа)."
         ),
     )
-    enqueue_security_push(
-        user.id,
-        title="Аккаунт заморожён",
-        body="Все устройства вышли. Разморозить можно кодом из письма.",
-    )
 
 
 async def notify_account_unfrozen(
@@ -183,11 +192,6 @@ async def notify_account_unfrozen(
         request=request,
         details="Аккаунт снова активен. Если это были не вы — смените пароль.",
     )
-    enqueue_security_push(
-        user.id,
-        title="Аккаунт разморожен",
-        body="Доступ восстановлен. Если это были не вы — смените пароль.",
-    )
 
 
 async def notify_security_event(
@@ -198,58 +202,72 @@ async def notify_security_event(
     request: Request | None = None,
     details: str = "",
     recipient: str | None = None,
+    push: bool = True,
 ) -> bool:
-    """Отправляет письмо о критичном действии. ``True`` — письмо поставлено в очередь.
+    """Сообщает о критичном действии в аккаунте. ``True`` — письмо поставлено в очередь.
+
+    Каналов два, и они дополняют друг друга:
+
+    * письмо — подробности, адресовано только владельцу почты;
+    * push — быстрый и, главное, работает БЕЗ подтверждённого e-mail: раньше
+      владелец без подтверждённой почты вообще не узнавал о чужом входе.
 
     ``recipient`` нужен для смены e-mail: там письмо идёт на СТАРЫЙ адрес, а не
-    на текущий адрес аккаунта.
+    на текущий адрес аккаунта. ``push=False`` — когда вызывающий сам отправляет
+    отдельный push (например, с кнопкой «Это не я»).
 
-    Ничего не роняем: если письмо не ушло (нет SMTP, нет подтверждённого адреса,
-    брокер лежит), действие пользователя всё равно уже выполнено — это
+    Ничего не роняем: если уведомление не ушло (нет SMTP, нет подтверждённого
+    адреса, брокер лежит), действие пользователя всё равно уже выполнено — это
     уведомление, а не часть транзакции.
     """
     if event not in KNOWN_EVENTS:
         logger.warning("Неизвестное событие безопасности: %s", event)
         return False
 
-    to = recipient or notification_recipient(user)
-    if not to:
-        logger.info(
-            "Уведомление «%s» для пользователя %s пропущено: "
-            "нет подтверждённого e-mail",
-            event,
-            user.id,
-        )
-        return False
-
     if not await _allowed_by_daily_cap(user.id):
         logger.warning(
             "Суточный лимит уведомлений исчерпан (пользователь %s): "
-            "письмо «%s» не отправлено",
+            "событие «%s» не отправлено",
             user.id,
             event,
         )
         return False
 
-    lines = [
-        EVENT_SUBJECTS[event],
-        "",
-        f"Время: {_now()}",
-    ]
-    if details:
-        lines.append(details)
-    lines.extend(
-        ["", _ADVICE, "", "— Pismo, автоматическое уведомление о безопасности"]
-    )
+    to = recipient or notification_recipient(user)
+    if not to:
+        logger.info(
+            "Письмо о событии «%s» (пользователь %s) пропущено: "
+            "нет подтверждённого e-mail — отправляем только push",
+            event,
+            user.id,
+        )
+    else:
+        lines = [
+            EVENT_SUBJECTS[event],
+            "",
+            f"Время: {_now()}",
+        ]
+        if details:
+            lines.append(details)
+        lines.extend(
+            ["", _ADVICE, "", "— Pismo, автоматическое уведомление о безопасности"]
+        )
 
-    enqueue_security_email(to, EVENT_SUBJECTS[event], "\n".join(lines))
-    logger.info(
-        "Уведомление «%s» поставлено в очередь для пользователя %s (%s)",
-        event,
-        user.id,
-        mailer.mask_email(to),
-    )
-    return True
+        enqueue_security_email(to, EVENT_SUBJECTS[event], "\n".join(lines))
+        logger.info(
+            "Уведомление «%s» поставлено в очередь для пользователя %s (%s)",
+            event,
+            user.id,
+            mailer.mask_email(to),
+        )
+
+    if push:
+        enqueue_security_push(
+            user.id,
+            title=EVENT_SUBJECTS[event],
+            body=_push_body(details, EVENT_SUBJECTS[event]),
+        )
+    return bool(to)
 
 
 async def remember_login_device(
@@ -313,6 +331,8 @@ async def remember_login_device(
                 f"IP-адрес: {info.ip or 'неизвестен'}\n"
                 "Вход выполнен успешно."
             ),
+            # Push здесь свой (с кнопкой «Это не я»), общий не нужен.
+            push=False,
         )
         # Push с кнопкой «Это не я»: владелец может выкинуть вора одним тапом,
         # не заходя в приложение (и даже если e-mail у аккаунта не подтверждён).

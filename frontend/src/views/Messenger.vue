@@ -399,6 +399,11 @@
 
   <!-- Новый вход в аккаунт (из push «Это не я» / ?security=1) -->
   <SecurityAlertDialog v-model="showSecurityAlert" />
+  <PeerKeyChangedDialog
+    v-model="showPeerKeyChanged"
+    :peer-name="peerKeyChangedName"
+    @accept="acceptChangedPeerKey"
+  />
 
   <!-- Промежуточный экран при запуске из уведомления о звонке -->
   <Teleport to="body">
@@ -490,6 +495,7 @@ import {
 } from '@/services/chatService'
 import {
   ENCRYPTED_FALLBACK,
+  acceptPeerKey,
   bootstrapE2ee,
   chatAesKeyFor,
   decryptText,
@@ -498,7 +504,9 @@ import {
   encryptText,
   isE2eeAvailable,
   isEncryptedPayload,
-  resetE2eeSession
+  onPeerKeyChanged,
+  resetE2eeSession,
+  type PeerKeyChange
 } from '@/services/e2ee'
 import { encryptFileForChat, parseFileMeta } from '@/services/e2eeFiles'
 import {
@@ -571,6 +579,7 @@ import { useContactsStore } from '@/stores/contacts'
 import { useRealtimeStore } from '@/stores/realtime'
 import { useStoriesStore } from '@/stores/stories'
 import SecurityAlertDialog from '@/components/messenger/SecurityAlertDialog.vue'
+import PeerKeyChangedDialog from '@/components/messenger/PeerKeyChangedDialog.vue'
 import { mediaFileName, type RecordedMedia } from '@/services/recorder'
 import {
   disablePushNotifications,
@@ -3433,6 +3442,34 @@ const onBlockedUsersChanged = () => {
  */
 const showSecurityAlert = ref(new URLSearchParams(initialSearch).get('security') === '1')
 
+/**
+ * Предупреждение о смене ключа шифрования собеседника.
+ *
+ * Ключ E2EE привязан к устройству: он меняется, когда человек заходит с нового
+ * телефона (нормально) — и ровно так же выглядит подмена ключа тем, кто угнал
+ * аккаунт и хочет читать чужую переписку. Сервер эти случаи не различает, а
+ * человек — да, поэтому спрашиваем его, а не шифруем молча.
+ */
+const showPeerKeyChanged = ref(false)
+const peerKeyChanged = ref<PeerKeyChange | null>(null)
+/** Отписка от события E2EE (снимается при уходе с экрана). */
+let unsubscribePeerKey: (() => void) | null = null
+
+/** Имя собеседника для текста предупреждения (с учётом моего имени контакта). */
+const peerKeyChangedName = computed<string>(() => {
+  const change = peerKeyChanged.value
+  if (!change) return ''
+  const peer = findPeerUser(change.userId)
+  return peer ? displayName(peer) : ''
+})
+
+/** «Понятно, это его устройство»: запоминаем новый ключ и больше не спрашиваем. */
+const acceptChangedPeerKey = () => {
+  const change = peerKeyChanged.value
+  if (change) acceptPeerKey(change.userId, change.current)
+  peerKeyChanged.value = null
+}
+
 /** Убираем `?security=1` из адреса, чтобы перезагрузка не открывала диалог снова. */
 const clearSecurityParam = () => {
   try {
@@ -3462,6 +3499,11 @@ onMounted(async () => {
   window.addEventListener('popstate', onAppPopState)
   // Связь вернулась — досылаем то, что застряло без сети.
   window.addEventListener('online', onNetworkOnline)
+  // Собеседник сменил ключ шифрования — предупреждаем один раз на каждый ключ.
+  unsubscribePeerKey = onPeerKeyChanged((change) => {
+    peerKeyChanged.value = change
+    showPeerKeyChanged.value = true
+  })
   startOutboxTimer()
   scrollToBottom()
 
@@ -3624,6 +3666,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('visibilitychange', handleCallVisibility)
   window.removeEventListener('popstate', onAppPopState)
   window.removeEventListener('online', onNetworkOnline)
+  unsubscribePeerKey?.()
+  unsubscribePeerKey = null
   if (outboxTimer !== undefined) {
     window.clearInterval(outboxTimer)
     outboxTimer = undefined

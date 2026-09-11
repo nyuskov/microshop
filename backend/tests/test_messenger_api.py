@@ -3990,3 +3990,73 @@ async def test_message_timestamp_is_explicitly_utc(api: _ApiCtx) -> None:
     parsed = datetime.fromisoformat(raw)
     assert parsed.tzinfo is not None, raw
     assert parsed.utcoffset() is not None and parsed.utcoffset().total_seconds() == 0
+
+
+# --- E2EE: публичный ключ устройства --------------------------------------
+
+
+async def test_device_key_change_is_detected_and_reported(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Смена публичного ключа устройства — событие безопасности.
+
+    Один и тот же ключ при каждом входе — норма (bootstrap), о нём молчим.
+    Новый ключ означает либо новое устройство самого владельца, либо подмену
+    ключа тем, кто получил доступ к аккаунту и хочет читать переписку (MITM).
+    Отличить одно от другого может только владелец, поэтому пишем событие в
+    журнал безопасности и уведомляем его (письмо + push).
+    """
+    from sqlalchemy import select
+
+    from api_v1.auth import security_notifications
+    from core.models import SecurityEvent
+
+    reported: list[str] = []
+
+    async def fake_notify(
+        session: object, user: object, *, event: str, **kwargs: object
+    ) -> bool:
+        reported.append(event)
+        return True
+
+    monkeypatch.setattr(security_notifications, "notify_security_event", fake_notify)
+
+    user = await api.make_user()
+    headers = api.auth(await api.token_for(user))
+
+    first = await api.client.put(
+        "/api/v1/keys/me/", json={"public_key": "JWK-1"}, headers=headers
+    )
+    assert first.status_code == 200, first.text
+    assert first.json() == {"ok": True, "changed": False}
+
+    again = await api.client.put(
+        "/api/v1/keys/me/", json={"public_key": "JWK-1"}, headers=headers
+    )
+    assert again.json()["changed"] is False
+    assert reported == []
+
+    swapped = await api.client.put(
+        "/api/v1/keys/me/", json={"public_key": "JWK-2"}, headers=headers
+    )
+    assert swapped.json() == {"ok": True, "changed": True}
+    assert reported == ["e2ee_key_changed"]
+
+    async with api.factory() as session:
+        events = (
+            (
+                await session.execute(
+                    select(SecurityEvent).where(SecurityEvent.user_id == user.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert [event.event for event in events] == ["e2ee_key_changed"]
+
+    # Собеседник видит и ключ, и время смены: по времени клиент понимает, что
+    # ключ поменялся, и предупреждает человека (TOFU).
+    fetched = await api.client.get(f"/api/v1/keys/{user.id}/", headers=headers)
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["public_key"] == "JWK-2"
+    assert fetched.json()["changed_at"]

@@ -46,6 +46,68 @@ export const GROUP_KEY_BYTES = 32
 
 const storageKeyFor = (userId: number): string => `${STORE_PREFIX}${userId}`
 
+/**
+ * Ключ собеседника, который мы уже видели (`pismo_e2ee_peer_v1_<id>`).
+ *
+ * Смысл — TOFU («доверяем первому ключу»): если у собеседника ПОМЕНЯЛСЯ
+ * публичный ключ, то либо он зашёл с нового устройства/почистил браузер (всё
+ * нормально), либо его аккаунт угнали и подсунули свой ключ, чтобы читать
+ * переписку (MITM). Отличить одно от другого может только человек, поэтому
+ * обязанность приложения — показать предупреждение, а не молча шифровать.
+ */
+const peerSeenKeyFor = (userId: number): string => `${STORE_PREFIX}peer_v1_${userId}`
+
+/** Ключ собеседника, который человек подтвердил кнопкой «Понятно». */
+const peerAcceptedKeyFor = (userId: number): string => `${STORE_PREFIX}peer_ok_v1_${userId}`
+
+export interface PeerKeyChange {
+  /** Собеседник, у которого сменился ключ. */
+  userId: number
+  /** Прежний ключ (JWK, JSON) или null, если раньше нам его не показывали. */
+  previous: string | null
+  /** Новый ключ (JWK, JSON). */
+  current: string
+}
+
+type PeerKeyListener = (change: PeerKeyChange) => void
+
+const peerKeyListeners = new Set<PeerKeyListener>()
+
+/** Подписка на смену ключа собеседника (для предупреждения в интерфейсе). */
+export function onPeerKeyChanged(listener: PeerKeyListener): () => void {
+  peerKeyListeners.add(listener)
+  return () => {
+    peerKeyListeners.delete(listener)
+  }
+}
+
+/** Человек подтвердил новый ключ собеседника: больше не предупреждаем. */
+export function acceptPeerKey(userId: number, jwk: string): void {
+  safeSet(peerAcceptedKeyFor(userId), jwk)
+}
+
+/**
+ * Замечает смену ключа собеседника и сообщает об этом интерфейсу.
+ *
+ * Возвращает true, если человека нужно предупредить: ключ изменился и новый
+ * ключ ещё не подтверждён вручную.
+ */
+function trackPeerKey(userId: number, jwk: string): boolean {
+  const seen = safeGet(peerSeenKeyFor(userId))
+  safeSet(peerSeenKeyFor(userId), jwk)
+  if (!seen || seen === jwk) return false
+  if (safeGet(peerAcceptedKeyFor(userId)) === jwk) return false
+  const change: PeerKeyChange = { userId, previous: seen, current: jwk }
+  for (const listener of peerKeyListeners) {
+    try {
+      listener(change)
+    } catch {
+      /* предупреждение не должно ломать шифрование */
+    }
+  }
+  return true
+}
+
 const safeGet = (key: string): string | null => {
   try {
     return window.localStorage.getItem(key)
@@ -158,6 +220,7 @@ export async function peerPublicKey(userId: number): Promise<string | null> {
   } catch {
     jwk = null
   }
+  if (jwk) trackPeerKey(userId, jwk)
   peerKeyCache.set(userId, jwk)
   return jwk
 }
