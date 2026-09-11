@@ -145,6 +145,8 @@ let shareReturnKind: CallKind = 'video'
 let renegotiateSeq = 0
 
 let ringTimer: ReturnType<typeof setTimeout> | undefined
+/** Отсчёт до «собеседник так и не вернулся» после перезагрузки страницы. */
+let rejoinTimer: ReturnType<typeof setTimeout> | undefined
 /* Восстановление связи при смене сети (Wi-Fi → LTE и обратно). */
 let iceRecoveryTimer: ReturnType<typeof setTimeout> | undefined
 let iceRestartAttempts = 0
@@ -154,6 +156,70 @@ let socketRetryDeadline = 0
 let isCaller = false
 let audioContext: AudioContext | null = null
 let unlockBound = false
+
+/* --------- Идущий звонок переживает перезагрузку страницы --------- */
+
+/**
+ * Где лежит «памятка» об идущем звонке.
+ *
+ * sessionStorage, а не localStorage: запись нужна только этой вкладке и только
+ * до перезагрузки. Если приложение закрыли, звонок давно завершён — поднимать
+ * его при следующем запуске нельзя.
+ */
+const CALL_SESSION_KEY = 'pismo_call_session'
+/** Сколько считаем «мы только что перезагрузились» (дольше — это уже другой случай). */
+const CALL_REJOIN_WINDOW_MS = 60_000
+/** Как часто отмечаем идущий звонок «живым» (секунды, кратные этому числу). */
+const CALL_TOUCH_EVERY_SECONDS = 5
+/** Сколько ждём пересогласования от собеседника, прежде чем считать звонок сброшенным. */
+const CALL_REJOIN_TIMEOUT_MS = 12_000
+
+interface StoredCall {
+  callId: string
+  peerId: number
+  kind: CallKind
+  /** Когда звонок стал активным — чтобы вернуть честный счётчик времени. */
+  startedAt: number
+  /**
+   * Когда мы в последний раз видели звонок живым.
+   *
+   * Именно по этому полю решаем, восстанавливать ли звонок: разговор мог идти
+   * час, и это не повод считать запись устаревшей — важно, чтобы после
+   * перезагрузки звонок был ещё «свежим».
+   */
+  touchedAt: number
+}
+
+function rememberActiveCall(call: StoredCall): void {
+  try {
+    window.sessionStorage.setItem(CALL_SESSION_KEY, JSON.stringify(call))
+  } catch {
+    /* приватный режим — просто не сможем восстановить звонок */
+  }
+}
+
+function forgetActiveCall(): void {
+  try {
+    window.sessionStorage.removeItem(CALL_SESSION_KEY)
+  } catch {
+    /* нечего чистить */
+  }
+}
+
+/** Звонок, который шёл до перезагрузки страницы (или null). */
+function callAfterReload(): StoredCall | null {
+  try {
+    const raw = window.sessionStorage.getItem(CALL_SESSION_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as StoredCall
+    if (!parsed?.callId || !parsed.peerId) return null
+    const touched = parsed.touchedAt ?? parsed.startedAt ?? 0
+    if (Date.now() - touched > CALL_REJOIN_WINDOW_MS) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
 
 function socketUrl(token: string): string {
   return `${WS_ORIGIN}${WS_PATH}?token=${encodeURIComponent(token)}`
@@ -521,6 +587,10 @@ export const useCallStore = defineStore('call', {
           socketRetryDeadline = 0
           iceRestartAttempts = 0
           if (peerConnection) this._scheduleIceRestart(ICE_RETRY_DELAY_MS)
+        } else if (this.status === 'idle') {
+          // Страница могла быть перезагружена во время звонка (случайный жест
+          // «потянуть вниз», manual reload) — поднимаем его.
+          void this.recoverCallAfterReload()
         }
       }
       socket.onmessage = (event) => {
@@ -600,6 +670,10 @@ export const useCallStore = defineStore('call', {
       if (iceRecoveryTimer !== undefined) {
         window.clearTimeout(iceRecoveryTimer)
         iceRecoveryTimer = undefined
+      }
+      if (rejoinTimer !== undefined) {
+        window.clearTimeout(rejoinTimer)
+        rejoinTimer = undefined
       }
       iceRestartAttempts = 0
       if (this.reconnecting && this.connected) this.reconnecting = false
@@ -747,6 +821,16 @@ export const useCallStore = defineStore('call', {
           void peerConnection
             .setRemoteDescription({ type: 'answer', sdp: message.sdp })
             .catch(() => undefined)
+          break
+        }
+        case 'call-rejoin': {
+          // Собеседник перезагрузил страницу: у него новое соединение и новые
+          // ICE-адреса, а его прежний SDP мёртв. Связь жива только у нас,
+          // поэтому пересогласуемся заново: для него это выглядит как короткое
+          // «Переподключаемся…», а не как сброшенный звонок.
+          if (this.status !== 'active' || this.callId !== callId || !peerConnection) return
+          iceRestartAttempts = 0
+          void this._restartIce(peerConnection)
           break
         }
         case 'call-screen': {
@@ -959,9 +1043,95 @@ export const useCallStore = defineStore('call', {
       }
       this.secondsTimer = window.setInterval(() => {
         this.seconds += 1
+        // Отмечаем звонок живым: перезагрузка должна поднимать свежий разговор,
+        // а не только что начатый.
+        if (this.seconds % CALL_TOUCH_EVERY_SECONDS === 0) this.rememberCall()
       }, 1000)
       // Режем битрейт видео, чтобы звонок стабильно шёл через TURN/мобильный.
       void this._capVideoBitrate()
+      // Пока звонок идёт — помним о нём: перезагрузка страницы не должна его терять.
+      this.rememberCall()
+    },
+
+    /** Запоминает звонок для восстановления после перезагрузки страницы. */
+    rememberCall() {
+      if (!this.callId || !this.peerId || this.status !== 'active') return
+      rememberActiveCall({
+        callId: this.callId,
+        peerId: this.peerId,
+        kind: this.kind,
+        startedAt: Date.now() - this.seconds * 1000,
+        touchedAt: Date.now()
+      })
+    },
+
+    /**
+     * Поднимает звонок заново после перезагрузки страницы.
+     *
+     * Перезагрузка убивает WebRTC: камера, микрофон и SDP жили в старой странице.
+     * Собеседник этого не видит — его соединение остаётся живым, он просто
+     * перестаёт слышать и видеть. Поэтому создаём новое соединение и просим
+     * собеседника пересогласоваться, а сами отвечаем на его offer.
+     */
+    async recoverCallAfterReload(): Promise<boolean> {
+      const stored = callAfterReload()
+      if (!stored || this.status !== 'idle' || !this.connected) return false
+      // Попытка одна: не выйдет — сообщим, что звонок завершён.
+      forgetActiveCall()
+
+      try {
+        this._restoreSavedDevices()
+        const ice = await loadIceConfiguration()
+        const stream = await navigator.mediaDevices.getUserMedia(
+          mediaConstraints(stored.kind, this.selectedCamera, this.selectedMic)
+        )
+        localMedia = stream
+        peerConnection = new RTCPeerConnection(ice)
+        this._wirePeerConnection(peerConnection)
+        stream.getTracks().forEach((track) => peerConnection?.addTrack(track, stream))
+        isCaller = false
+        this.$patch({
+          status: 'active',
+          kind: stored.kind,
+          callId: stored.callId,
+          peerId: stored.peerId,
+          micOn: true,
+          videoOn: true
+        })
+        this._becomeActive()
+        // Время разговора считаем от момента, когда звонок стал активным до
+        // перезагрузки: счётчик не должен начинаться заново.
+        this.seconds = Math.max(0, Math.round((Date.now() - stored.startedAt) / 1000))
+        this.rememberCall()
+        // Пока пересогласования нет, связи нет — показываем «Переподключаемся…».
+        this.reconnecting = true
+        sendMessage({
+          type: 'call-rejoin',
+          to_user_id: stored.peerId,
+          call_id: stored.callId
+        })
+        this._armRejoinTimeout()
+        void this.loadDevices()
+        return true
+      } catch {
+        this._cleanup()
+        this.notice = 'Звонок завершён: не удалось восстановить связь'
+        return false
+      }
+    },
+
+    /** Если собеседник не откликнулся на возврат — звонок действительно кончился. */
+    _armRejoinTimeout() {
+      if (rejoinTimer !== undefined) window.clearTimeout(rejoinTimer)
+      rejoinTimer = window.setTimeout(() => {
+        rejoinTimer = undefined
+        if (this.status !== 'active' || !this.reconnecting) return
+        const pc = peerConnection
+        if (pc && (pc.iceConnectionState === 'connected' || pc.connectionState === 'connected')) {
+          return
+        }
+        this._forceEnd('Собеседник недоступен — звонок завершён')
+      }, CALL_REJOIN_TIMEOUT_MS)
     },
 
     /** Ограничивает битрейт отправляемого видео (~300 Кбит/с). */
@@ -1360,6 +1530,10 @@ export const useCallStore = defineStore('call', {
         window.clearTimeout(iceRecoveryTimer)
         iceRecoveryTimer = undefined
       }
+      if (rejoinTimer !== undefined) {
+        window.clearTimeout(rejoinTimer)
+        rejoinTimer = undefined
+      }
       if (socketRetryTimer !== undefined) {
         window.clearTimeout(socketRetryTimer)
         socketRetryTimer = undefined
@@ -1367,6 +1541,8 @@ export const useCallStore = defineStore('call', {
       iceRestartAttempts = 0
       socketRetryDeadline = 0
       isCaller = false
+      // Звонок завершён осознанно — поднимать его после перезагрузки не нужно.
+      forgetActiveCall()
       this.$patch({ ...DEFAULT_STATE, connected: this.connected })
     },
 

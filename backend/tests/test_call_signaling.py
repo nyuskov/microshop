@@ -36,6 +36,15 @@ def test_relay_whitelist_covers_screen_share() -> None:
     assert screen_share <= RELAY_MESSAGE_TYPES
 
 
+def test_relay_whitelist_covers_call_rejoin() -> None:
+    """Возврат в идущий звонок после перезагрузки страницы пересылается.
+
+    Без этого звонок «слетал» бы при обновлении страницы: собеседник не узнал бы,
+    что у второй стороны новое соединение и нужен новый SDP.
+    """
+    assert "call-rejoin" in RELAY_MESSAGE_TYPES
+
+
 async def test_track_call_event_ignores_unknown_types() -> None:
     """Новые типы не должны ломать запись истории звонков (и не создавать её)."""
     # Пересогласование приходит с чужим/отсутствующим call_id — обработчик обязан

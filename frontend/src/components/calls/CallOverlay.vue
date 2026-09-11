@@ -586,6 +586,10 @@ onBeforeUnmount(() => {
   font-family: var(--ms-font);
   user-select: none;
   overflow: hidden;
+  /* Жест «потянуть вниз» не должен уходить в документ: браузер понял бы это как
+     pull-to-refresh и перезагрузил страницу прямо во время разговора. */
+  overscroll-behavior: none;
+  touch-action: manipulation;
 }
 
 .call-card {
