@@ -110,6 +110,9 @@ export const ICON_MAP: Record<string, string> = {
   group_add: 'user-plus',
   contacts: 'book-user',
   verified_user: 'shield',
+  // Роли участника группы: выдать / снять админку (см. GroupChatInfo.vue).
+  admin_panel_settings: 'shield-user',
+  shield_person: 'shield-minus',
 
   // Звонки и медиа
   call: 'phone',

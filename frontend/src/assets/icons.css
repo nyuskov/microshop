@@ -357,6 +357,14 @@
   content: '\E1FF ';
 }
 
+.icon-shield-minus::before {
+  content: '\E518 ';
+}
+
+.icon-shield-user::before {
+  content: '\E647 ';
+}
+
 .icon-skip-back::before {
   content: '\E15F ';
 }
