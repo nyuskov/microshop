@@ -57,7 +57,6 @@
               @copy="emit('copy', row.message)"
               @edit="emit('edit', row.message)"
               @forward="emit('forward', row.message)"
-              @share="emit('share', row.message)"
               @save="emit('save', row.message)"
               @delete="emit('delete', row.message)"
               @report="emit('report', row.message)"
@@ -214,7 +213,6 @@ const emit = defineEmits<{
   (e: 'copy', message: Message): void
   (e: 'edit', message: Message): void
   (e: 'forward', message: Message): void
-  (e: 'share', message: Message): void
   (e: 'save', message: Message): void
   (e: 'delete', message: Message): void
   /** Повторить отправку стоящего в очереди сообщения. */

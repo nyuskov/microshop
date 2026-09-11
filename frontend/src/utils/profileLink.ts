@@ -38,9 +38,3 @@ export function usernameFromProfilePath(pathname: string): string | null {
     return null
   }
 }
-
-/** Текст для системного «Поделиться» (короткое пояснение + ссылка). */
-export function profileShareText(link: string, name?: string | null): string {
-  const title = (name ?? '').trim()
-  return title ? `${title} — в Pismo: ${link}` : `Я в Pismo: ${link}`
-}

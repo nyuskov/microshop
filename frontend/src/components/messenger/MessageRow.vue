@@ -302,11 +302,6 @@
             <q-icon :name="icon('forward')" size="18px" />
             <span>Переслать</span>
           </button>
-          <!-- Поделиться в другое приложение (системное окно «Поделиться») -->
-          <button v-if="canWebShare" class="ctx-item" @click="ctxAction('share')">
-            <q-icon :name="icon('share')" size="18px" />
-            <span>Поделиться</span>
-          </button>
           <button v-if="message.text" class="ctx-item" @click="ctxAction('copy')">
             <q-icon :name="icon('content_copy')" size="18px" />
             <span>Копировать</span>
@@ -452,8 +447,6 @@ const emit = defineEmits<{
   (e: 'copy'): void
   (e: 'edit'): void
   (e: 'forward'): void
-  /** Поделиться сообщением во внешнее приложение (Web Share). */
-  (e: 'share'): void
   (e: 'save'): void
   (e: 'delete'): void
   /** Жалоба на сообщение (модерация UGC, требование RuStore). */
@@ -820,12 +813,11 @@ const pickCtxEmoji = (emoji: string): void => {
 
 /** Действие из листа: закрываем лист и повторяем обычный emit. */
 const ctxAction = (
-  action: 'reply' | 'forward' | 'share' | 'copy' | 'pin' | 'save' | 'edit' | 'report' | 'delete'
+  action: 'reply' | 'forward' | 'copy' | 'pin' | 'save' | 'edit' | 'report' | 'delete'
 ): void => {
   closeContext()
   if (action === 'reply') emit('set-reply')
   else if (action === 'forward') emit('forward')
-  else if (action === 'share') emit('share')
   else if (action === 'copy') emit('copy')
   else if (action === 'pin') emit('toggle-pin')
   else if (action === 'save') emit('save')
@@ -833,9 +825,6 @@ const ctxAction = (
   else if (action === 'report') emit('report')
   else emit('delete')
 }
-
-/** Системное «Поделиться» доступно не везде (iOS/Android — да, десктоп — нет). */
-const canWebShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
 
 /**
  * Открыть лист действий у самого сообщения.

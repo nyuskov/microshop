@@ -7,7 +7,7 @@ import { removeAvatar, uploadAvatar } from '@/services/api'
 import { mediaUrl } from '@/services/chatService'
 import { formatPhoneForBackend, localPhoneDigits, maskPhoneLocal } from '@/utils/phone'
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
-import { profileLinkFor, profileShareText } from '@/utils/profileLink'
+import { profileLinkFor } from '@/utils/profileLink'
 import {
   checkForAppUpdate,
   disablePushNotifications,
@@ -220,27 +220,6 @@ const copyProfileLink = async () => {
     linkNotice.value = 'Ссылка скопирована'
   } catch (error) {
     linkNotice.value = getErrorMessage(error, 'Не удалось скопировать ссылку')
-  }
-}
-
-/** «Поделиться» через систему (телефон); где его нет — копируем ссылку. */
-const shareProfileLink = async () => {
-  const link = myProfileLink.value
-  if (!link) return
-  const share = navigator.share
-  if (typeof share !== 'function') {
-    await copyProfileLink()
-    return
-  }
-  try {
-    await share.call(navigator, {
-      title: 'Pismo',
-      text: profileShareText(link, heroName.value),
-      url: link
-    })
-    linkNotice.value = ''
-  } catch {
-    /* человек закрыл системное окно — это не ошибка */
   }
 }
 
@@ -1114,9 +1093,6 @@ const onNotificationsToggle = async (val: boolean) => {
                 :value="myProfileLink"
                 aria-label="Ссылка на профиль"
               />
-              <button type="button" class="btn primary" @click="shareProfileLink">
-                <q-icon :name="icon('share')" size="17px" /> Поделиться
-              </button>
               <button type="button" class="btn ghost" @click="copyProfileLink">
                 <q-icon :name="icon('content_copy')" size="17px" /> Копировать
               </button>
