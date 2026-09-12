@@ -16,6 +16,10 @@ export interface RealtimeSyncOptions {
   isMe: (userId: number) => boolean
   getSelectedChatId: () => number | null
   onPresence: (userId: number, online: boolean, lastSeen: string | null) => void
+  /** Полный снимок статусов собеседников (приходит сразу после подключения). */
+  onPresenceSnapshot?: (
+    users: { user_id: number; online: boolean; last_seen: string | null }[]
+  ) => void
   onTyping: (chatId: number, userId: number) => void
   onTypingStop: (chatId: number) => void
   /** Мягкий refetch списка чатов (после дебаунса). */
@@ -55,6 +59,10 @@ export function useRealtimeSync(options: RealtimeSyncOptions) {
     switch (event.type) {
       case 'presence':
         options.onPresence(event.user_id, event.online, event.last_seen)
+        return
+      case 'presence.snapshot':
+        // Сервер — источник правды: снимок заменяет локальные догадки целиком.
+        options.onPresenceSnapshot?.(event.users)
         return
       case 'typing':
         options.onTyping(event.chat_id, event.user_id)

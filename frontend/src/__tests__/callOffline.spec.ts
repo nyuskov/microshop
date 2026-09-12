@@ -29,7 +29,7 @@ vi.mock('@/services/api', async (importOriginal) => {
 
 import { api } from '@/services/api'
 import { useCallStore } from '@/stores/call'
-import { enablePushNotifications } from '@/services/pwa'
+import { enablePushNotifications, showIncomingCallRing } from '@/services/pwa'
 
 describe('абонент не в сети: вызов ждёт его в приложении', () => {
   beforeEach(() => setActivePinia(createPinia()))
@@ -99,6 +99,52 @@ function stubPushApi(subscriptionKey: string | null) {
   })
   return { unsubscribe, subscribe }
 }
+
+describe('уведомление о звонке из приложения (приложение свёрнуто)', () => {
+  /** Заглушка service worker: запоминает показанное уведомление. */
+  function stubNotifications() {
+    const shown: { title: string; options: Record<string, unknown> }[] = []
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: {
+        ready: Promise.resolve({
+          showNotification: async (title: string, options: Record<string, unknown>) => {
+            shown.push({ title, options })
+          }
+        })
+      }
+    })
+    Object.defineProperty(globalThis, 'Notification', {
+      configurable: true,
+      value: { permission: 'granted', requestPermission: vi.fn(async () => 'granted') }
+    })
+    // Разрешения хватает мало: `getPushPermission` считает браузер неподходящим
+    // без Push API, и уведомление тогда просто не показывается.
+    Object.defineProperty(globalThis, 'PushManager', { configurable: true, value: class {} })
+    return shown
+  }
+
+  it('показывает ТОЛЬКО «Ответить»: кнопка отказа превращалась в отказ при нажатии на «Ответить»', async () => {
+    const shown = stubNotifications()
+
+    await showIncomingCallRing({
+      title: 'Аня',
+      body: 'Входящий звонок',
+      callId: 'call-1',
+      peerId: 5
+    })
+
+    expect(shown).toHaveLength(1)
+    // Кнопка отказа раньше была здесь — и на Android нажатие на «Ответить»
+    // приходило в service worker как «Отклонить», звонок рвался у отвечавшего и
+    // продолжал играть у зовущего.
+    expect(shown[0].options.actions).toEqual([{ action: 'answer', title: 'Ответить' }])
+    // Уведомление держится на экране и относится к конкретному вызову — по тегу
+    // его закрывает service worker, когда звонок перестал звонить.
+    expect(shown[0].options.tag).toBe('call-call-1')
+    expect(shown[0].options.requireInteraction).toBe(true)
+  })
+})
 
 describe('Web Push-подписка под старый ключ', () => {
   beforeEach(() => {

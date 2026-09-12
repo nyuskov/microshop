@@ -11,7 +11,7 @@ from sqlalchemy import distinct, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
-from core.models import ChatMute, user_chat_association_table
+from core.models import ChatMute, User, user_chat_association_table
 
 from .manager import events_manager
 
@@ -39,6 +39,32 @@ async def presence_peer_ids(session: AsyncSession, user_id: int) -> list[int]:
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def presence_snapshot(
+    session: AsyncSession, user_id: int
+) -> list[dict[str, Any]]:
+    """Снимок присутствия собеседников: кто реально у экрана и когда был.
+
+    Отправляется клиенту сразу после подключения. Без него только что
+    перезагруженное приложение (и любой новый клиент) не знает фактических
+    статусов и выводит «в сети» из времени последней активности — а это неверно.
+    """
+    peer_ids = await presence_peer_ids(session, user_id)
+    if not peer_ids:
+        return []
+    stmt = select(User.id, User.last_seen).where(User.id.in_(peer_ids))
+    result = await session.execute(stmt)
+    return [
+        {
+            "user_id": row.id,
+            "online": events_manager.is_present(row.id),
+            "last_seen": (
+                row.last_seen.isoformat() if row.last_seen is not None else None
+            ),
+        }
+        for row in result.all()
+    ]
 
 
 async def muted_user_ids(session: AsyncSession, chat_id: int) -> set[int]:

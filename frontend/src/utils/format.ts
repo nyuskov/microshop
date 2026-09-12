@@ -60,8 +60,13 @@ export const pluralRu = (n: number, one: string, few: string, many: string): str
   return many
 }
 
-/** Текст «был(а) … назад» / «в сети» по last_seen. */
-export const lastSeenLabel = (value?: string | null, allowOnline = true): string => {
+/** Текст «был(а) … назад» по last_seen.
+ *
+ * По умолчанию НЕ выдаёт «в сети»: присутствие — это отдельное состояние из
+ * WS-канала, а `last_seen` обновляется и когда приложение свёрнуто (heartbeat),
+ * поэтому по времени выводить онлайн нельзя — получается ложное «в сети».
+ */
+export const lastSeenLabel = (value?: string | null, allowOnline = false): string => {
   if (!value) return ''
   const date = parseServerTime(value)
   if (Number.isNaN(date.getTime())) return ''

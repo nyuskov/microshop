@@ -6,8 +6,6 @@
  */
 import { onScopeDispose, reactive } from 'vue'
 
-import { ONLINE_WINDOW_SECONDS, parseServerTime } from '@/utils/format'
-
 export interface PeerPresenceState {
   online: boolean
   last_seen: string | null
@@ -24,15 +22,33 @@ export function usePeerActivity(options: PeerActivityOptions) {
   // ---- Присутствие ----
   const peerPresence = reactive<Record<number, PeerPresenceState>>({})
 
-  const isWithinOnlineWindow = (value?: string | null): boolean => {
-    if (!value) return false
-    const date = parseServerTime(value)
-    if (Number.isNaN(date.getTime())) return false
-    return Date.now() - date.getTime() <= ONLINE_WINDOW_SECONDS * 1000
-  }
-
   const applyPresence = (userId: number, online: boolean, lastSeen: string | null) => {
     peerPresence[userId] = { online, last_seen: lastSeen }
+  }
+
+  /**
+   * Применяет снимок присутствия с сервера (приходит сразу после подключения WS).
+   * Полностью заменяет локальное состояние: сервер — единственный источник правды,
+   * поэтому устаревший `last_seen` больше не превращается в «в сети».
+   */
+  const applyPresenceSnapshot = (
+    list: { user_id: number; online: boolean; last_seen: string | null }[]
+  ) => {
+    clearPresence()
+    for (const item of list) {
+      if (options.isMe(item.user_id)) continue
+      peerPresence[item.user_id] = { online: item.online, last_seen: item.last_seen }
+    }
+  }
+
+  /**
+   * «Затравка» присутствия из ответа /chats: используется только время последней
+   * активности и НИКОГДА не выводится «в сети» — иначе появляется ложный онлайн.
+   */
+  const seedPresence = (userId: number, lastSeen: string | null) => {
+    if (options.isMe(userId)) return
+    if (peerPresence[userId]) return
+    peerPresence[userId] = { online: false, last_seen: lastSeen }
   }
 
   const clearPresence = () => {
@@ -85,8 +101,9 @@ export function usePeerActivity(options: PeerActivityOptions) {
   return {
     peerPresence,
     peerTypingUntil,
-    isWithinOnlineWindow,
     applyPresence,
+    applyPresenceSnapshot,
+    seedPresence,
     clearPresence,
     isPeerTyping,
     markPeerTyping,

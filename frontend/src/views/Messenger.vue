@@ -1478,8 +1478,9 @@ const peerStatus = (chat: Chat): string => {
 const {
   peerPresence,
   peerTypingUntil,
-  isWithinOnlineWindow,
   applyPresence,
+  applyPresenceSnapshot,
+  seedPresence,
   isPeerTyping,
   markPeerTyping,
   clearPeerTyping,
@@ -1502,17 +1503,14 @@ const typingChatIds = computed<number[]>(() =>
     .map((chatId) => Number(chatId))
 )
 
-/** Подмешивает присутствие из свежего ответа /chats (не перетирая WS-статус). */
+/** Подмешивает присутствие из свежего ответа /chats (без выдумывания «в сети»). */
 const syncPresenceFromChats = (list: Chat[]) => {
   for (const chat of list) {
     const other = otherUserOfChat(chat)
     if (!other) continue
-    const known = peerPresence[other.id]
-    if (known?.online) continue
-    peerPresence[other.id] = {
-      online: isWithinOnlineWindow(other.last_seen),
-      last_seen: other.last_seen ?? null
-    }
+    // Только время последней активности. Статус «в сети» приходит исключительно
+    // по WS (`presence`/`presence.snapshot`), иначе получается ложный онлайн.
+    seedPresence(other.id, other.last_seen ?? null)
   }
 }
 
@@ -1536,7 +1534,7 @@ const presenceText = (chat: Chat): string => {
   const known = peerPresence[other.id]
   if (known?.online) return 'в сети'
   if (known) return known.last_seen ? lastSeenLabel(known.last_seen, false) : 'был(а) давно'
-  return lastSeenLabel(other.last_seen) || 'был(а) давно'
+  return lastSeenLabel(other.last_seen, false) || 'был(а) давно'
 }
 
 const chatSubtitle = (chat: Chat): string => {
@@ -3095,6 +3093,7 @@ const { start: startRealtime, stop: stopRealtime } = useRealtimeSync({
   isMe: (userId) => userId === currentUserId.value,
   getSelectedChatId: () => selectedChatId.value,
   onPresence: applyPresence,
+  onPresenceSnapshot: applyPresenceSnapshot,
   onTyping: markPeerTyping,
   onTypingStop: clearPeerTyping,
   onChatsSync: refreshChatsQuiet,
@@ -3700,7 +3699,10 @@ const openNativeTarget = async (data: Record<string, string>) => {
   const callId = String(data.call_id ?? '')
   const callPeerId = Number(data.peer_id)
   if ((data.type === 'call' || callId) && callId && Number.isFinite(callPeerId) && callPeerId > 0) {
-    const action = data.action === 'answer' || data.action === 'decline' ? data.action : 'focus'
+    // Отказ из уведомления не выполняем (см. `handleWindowMessage`): на Android
+    // кнопка приходит как соседнее действие, и «отказ» на деле означал «хочу
+    // ответить». Показываем экран звонка.
+    const action = data.action === 'answer' ? 'answer' : 'focus'
     beginCallLaunch(callId, callPeerId, action)
     return
   }
@@ -3984,8 +3986,7 @@ onMounted(async () => {
     // Приложение открыли по звонку (?call=<id>&peer=<uid>&action=…). При
     // холодном старте сессия уже восстановлена, поэтому применяем запуск сразу
     // (а не только по watcher'у готовности — он в этом случае не сработает).
-    const launchAction =
-      actionParam === 'answer' || actionParam === 'decline' ? actionParam : 'focus'
+    const launchAction = actionParam === 'answer' ? 'answer' : 'focus'
     beginCallLaunch(callIdParam, Number(peerIdParam), launchAction)
     // Звонок открывается поверх, но открытый чат из адреса тоже вернём — иначе
     // после перезагрузки под звонком оказался бы список чатов.
@@ -4162,10 +4163,12 @@ const handleWindowMessage = (event: MessageEvent) => {
         beginCallLaunch(callId, peerId, 'answer')
       }
     } else if (data.action === 'decline') {
-      if (callStore.status === 'incoming') {
-        callStore.declineCall()
-      } else if (callId && Number.isFinite(peerId) && peerId > 0) {
-        callStore.declineCallTo(peerId, callId)
+      // Внешний отказ больше не выполняем: кнопки «Отклонить» в уведомлении нет,
+      // а на Android нажатие на кнопку приходит как СОСЕДНЕЕ действие — то есть
+      // «отказ» здесь означал «человек хотел ответить/посмотреть, кто звонит».
+      // Показываем экран звонка: решение принимает сам человек.
+      if (callId && Number.isFinite(peerId) && peerId > 0) {
+        beginCallLaunch(callId, peerId, 'focus')
       }
     } else if (callId && Number.isFinite(peerId) && peerId > 0 && callStore.status === 'idle') {
       // Тап по телу уведомления (не по кнопке): показываем экран звонка.

@@ -35,6 +35,10 @@ export type RealtimeEvent =
     }
   | { type: 'chat.read'; chat_id: number; reader_id: number }
   | { type: 'presence'; user_id: number; online: boolean; last_seen: string | null }
+  | {
+      type: 'presence.snapshot'
+      users: { user_id: number; online: boolean; last_seen: string | null }[]
+    }
   | { type: 'typing'; chat_id: number; user_id: number }
   | { type: 'typing-stop'; chat_id: number; user_id: number }
 

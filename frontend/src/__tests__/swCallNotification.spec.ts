@@ -30,6 +30,10 @@ interface Harness {
   /** Что сейчас «висит» на экране устройства (как в настоящем браузере). */
   displayed: { tag: string; closed: boolean }[]
   token: string | null
+  /** Сделать окно невидимым (приложение свёрнуто). */
+  hideClient: () => void
+  /** Сделать окно видимым (приложение открыто перед человеком). */
+  showClient: () => void
 }
 
 function loadServiceWorker(): Harness {
@@ -41,6 +45,9 @@ function loadServiceWorker(): Harness {
   const opened: string[] = []
   const apiPosts: Harness['apiPosts'] = []
   const displayed: Harness['displayed'] = []
+  // По умолчанию окно скрыто: push о звонке приходит тогда, когда человек в
+  // другом приложении. Открытое окно проверяем отдельно (`showClient`).
+  const clientState = { visibilityState: 'hidden' }
   const harness: Harness = {
     sw,
     calls,
@@ -49,10 +56,19 @@ function loadServiceWorker(): Harness {
     opened,
     apiPosts,
     displayed,
-    token: 'test-token'
+    token: 'test-token',
+    hideClient: () => {
+      clientState.visibilityState = 'hidden'
+    },
+    showClient: () => {
+      clientState.visibilityState = 'visible'
+    }
   }
 
   const client = {
+    get visibilityState() {
+      return clientState.visibilityState
+    },
     focus: () => calls.push('client.focus'),
     postMessage: (data: Record<string, unknown>) => posted.push(data)
   }
@@ -160,7 +176,7 @@ describe('service worker: кнопки уведомления о звонке', 
     harness = loadServiceWorker()
   })
 
-  it('в уведомлении о звонке одна кнопка — «Ответить»', async () => {
+  it('в уведомлении о звонке одна кнопка — «Ответить», отказа нет', async () => {
     const event = pushEvent({
       type: 'call',
       call_id: 'call-1',
@@ -174,18 +190,19 @@ describe('service worker: кнопки уведомления о звонке', 
     expect(harness.notifications[0].options.actions).toEqual([
       { action: 'answer', title: 'Ответить' }
     ])
-    // Кнопки отказа намеренно нет: на Android нажатие на кнопку уведомления
-    // приходит как действие СОСЕДНЕЙ кнопки, и «Ответить» превращалось в отказ.
+    // Кнопки отказа нет: на Android нажатие на кнопку уведомления приходит как
+    // действие СОСЕДНЕЙ кнопки, и «Ответить» превращалось в отказ.
     expect(JSON.stringify(harness.notifications[0].options.actions)).not.toContain('decline')
     expect(harness.notifications[0].options.requireInteraction).toBe(true)
   })
 
-  it('«Ответить» не отклоняет звонок, а отдаёт действие странице', async () => {
+  it('«Ответить» из старого уведомления отдаёт действие странице, а не отказ', async () => {
+    harness.showClient()
     const event = clickEvent('answer', { type: 'call', call_id: 'call-1', peer_id: 5 })
     harness.sw.notificationclick?.(event)
     await Promise.all(event.waits)
 
-    // Главное: серверный отказ не вызывается.
+    // Главное: серверный отказ не вызывается НИКОГДА.
     expect(harness.apiPosts.map((post) => post.path)).not.toContain('/api/v1/calls/decline/')
     expect(harness.posted).toEqual([
       { type: 'call-notification', action: 'answer', call_id: 'call-1', peer_id: 5 }
@@ -193,20 +210,32 @@ describe('service worker: кнопки уведомления о звонке', 
     expect(harness.opened).toEqual([])
   })
 
-  it('«Отклонить» из СТАРОГО уведомления (две кнопки) отклоняет звонок', async () => {
-    // Такую кнопку мы больше не показываем, но старые уведомления у людей на
-    // экранах ещё висят — их кнопка должна работать.
+  it('«Отклонить» из СТАРОГО уведомления НЕ отклоняет звонок', async () => {
+    // Такую кнопку мы больше не показываем, но на экранах людей висят старые
+    // уведомления с двумя кнопками. Их «отказ» выполнять нельзя: на Android он
+    // приходит и когда человек жал «Ответить». Показываем экран звонка.
+    harness.showClient()
     const event = clickEvent('decline', { type: 'call', call_id: 'call-1', peer_id: 5 })
     harness.sw.notificationclick?.(event)
     await Promise.all(event.waits)
 
-    expect(harness.apiPosts).toEqual([
-      { path: '/api/v1/calls/decline/', body: { call_id: 'call-1', to_user_id: 5 } }
-    ])
+    expect(harness.apiPosts.map((post) => post.path)).not.toContain('/api/v1/calls/decline/')
     expect(harness.posted).toEqual([
-      { type: 'call-notification', action: 'decline', call_id: 'call-1', peer_id: 5 }
+      { type: 'call-notification', action: 'focus', call_id: 'call-1', peer_id: 5 }
     ])
     expect(harness.opened).toEqual([])
+  })
+
+  it('свёрнутое приложение открывается по адресу звонка (сообщение в фон теряется)', async () => {
+    harness.hideClient()
+    const event = clickEvent('answer', { type: 'call', call_id: 'call-1', peer_id: 5 })
+    harness.sw.notificationclick?.(event)
+    await Promise.all(event.waits)
+
+    // Замороженной странице postMessage может не дойти — вместо этого открываем
+    // (или фокусируем) окно с адресом звонка: экран появится после загрузки.
+    expect(harness.opened).toEqual(['/?call=call-1&peer=5&action=answer'])
+    expect(harness.apiPosts.map((post) => post.path)).not.toContain('/api/v1/calls/decline/')
   })
 })
 

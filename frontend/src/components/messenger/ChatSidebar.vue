@@ -727,12 +727,7 @@ import {
   isGroupChat
 } from '@/utils/user'
 import { splitByQuery } from '@/utils/search'
-import {
-  ONLINE_WINDOW_SECONDS,
-  formatChatTime,
-  formatMsgTime,
-  parseServerTime
-} from '@/utils/format'
+import { formatChatTime, formatMsgTime } from '@/utils/format'
 import { isLockedFile, lockedFileLabel, mediaTypeLabel } from '@/utils/media'
 import { plainMessageText } from '@/utils/mentions'
 
@@ -920,15 +915,15 @@ const savedStyle: Record<string, string> = {
   background: 'linear-gradient(135deg, #3b82f6, #1e40af)'
 }
 
-/** «В сети»: пользователь в списке присутствия либо был активен недавно. */
-const isUserOnline = (user: ChatUser | undefined | null): boolean => {
-  if (!user) return false
-  if (props.onlineUserIds?.includes(user.id)) return true
-  if (!user.last_seen) return false
-  const seen = parseServerTime(user.last_seen).getTime()
-  if (Number.isNaN(seen)) return false
-  return Date.now() - seen <= ONLINE_WINDOW_SECONDS * 1000
-}
+/**
+ * «В сети»: только явное присутствие из WS-канала.
+ *
+ * Раньше здесь был ещё фоллбэк по `last_seen` (±30 секунд), и при свёрнутом
+ * приложении зелёная точка загоралась после каждого heartbeat — собеседник видел
+ * «онлайн» у того, кто давно ушёл. Теперь источник правды один — `presence`.
+ */
+const isUserOnline = (user: ChatUser | undefined | null): boolean =>
+  !!user && (props.onlineUserIds?.includes(user.id) ?? false)
 
 /** Индикатор онлайн показываем только у личных (1-1) чатов. */
 const chatPeerOnline = (chat: Chat): boolean => {

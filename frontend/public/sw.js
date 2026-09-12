@@ -18,7 +18,7 @@
  */
 
 const CACHE_PREFIX = 'pismo-v'
-const CACHE_VERSION = 23
+const CACHE_VERSION = 24
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 // Кэш медиа живёт отдельно: обновление версии приложения не сбрасывает картинки.
 const MEDIA_CACHE_PREFIX = 'pismo-media-v'
@@ -301,11 +301,13 @@ async function handlePush(event) {
     // Вибрация — два спокойных толчка с длинной паузой. Частый «дребезг»
     // (7 коротких импульсов подряд) сильно бил по нервам при каждом звонке.
     options.vibrate = [220, 700, 220]
-    // Кнопка только одна — «Ответить». Кнопку отказа из уведомления убрали
-    // намеренно: на части устройств (Android) нажатие на кнопку доходит до
-    // service worker как действие СОСЕДНЕЙ кнопки, и «Ответить» превращалось в
-    // отказ — зовущий слышал «Абонент отклонил звонок», хотя человек собирался
-    // ответить. Ответить можно отсюда, отклонить — в приложении, а
+    // Кнопка только одна — «Ответить». Кнопку отказа убрали намеренно: на части
+    // устройств (Android) нажатие на кнопку доходит до service worker как
+    // действие СОСЕДНЕЙ кнопки, и «Ответить» превращалось в отказ — зовущий
+    // слышал «Абонент отклонил звонок», хотя человек собирался ответить. Плюс
+    // обработчик клика ниже теперь НИКОГДА не выполняет отказ: даже если такое
+    // действие придёт из старого уведомления, откроется экран звонка и решение
+    // примет человек. Ответить можно кнопкой, отклонить — в приложении, а
     // проигнорированное уведомление — обычный пропущенный звонок.
     options.actions = [{ action: 'answer', title: 'Ответить' }]
     // Прошлые звонки уже не звонят: их уведомления с экрана убираем, иначе они
@@ -416,63 +418,40 @@ self.addEventListener('notificationclick', (event) => {
     (async () => {
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
 
-      // Входящий звонок: «Ответить»/тап открывают приложение к экрану звонка.
+      // Входящий звонок: любой тап (или кнопка из старого уведомления) открывает
+      // приложение к экрану звонка.
       if (data.type === 'call') {
-        // «Отклонить» — сначала на сервер (без фокуса/открытия приложения).
+        // ВАЖНО: service worker НИКОГДА не отправляет отказ. Раньше кнопка
+        // «Ответить»/«Отклонить» обрабатывалась здесь, и на Android нажатие на
+        // кнопку приходило как действие СОСЕДНЕЙ кнопки: «Ответить» превращалось
+        // в отказ, звонок обрывался у обоих, а у зовущего продолжал играть (его
+        // канал в фоне мог быть мёртв). Теперь решение принимает только человек —
+        // в приложении, на экране звонка.
         //
-        // Сейчас такую кнопку в уведомлении о звонке мы не показываем (см.
-        // `options.actions` выше), но обработчик оставлен: у людей на экранах
-        // могут висеть старые уведомления с двумя кнопками, и они должны
-        // работать.
-        if (action === 'decline') {
-          const ok = await swApiPost('/api/v1/calls/decline/', {
-            call_id: data.call_id || '',
-            to_user_id: data.peer_id || null
+        // Кнопку «Ответить» из старых уведомлений уважаем: приложение сразу
+        // примет звонок. Любое другое действие (в том числе legacy «Отклонить»)
+        // приводится к «показать экран звонка».
+        const wanted = action === 'answer' ? 'answer' : 'focus'
+        const callId = encodeURIComponent(data.call_id || '')
+        const peerId = encodeURIComponent(data.peer_id || '')
+        const callUrl = '/?call=' + callId + '&peer=' + peerId + '&action=' + wanted
+        // Окно видно пользователю — будим его без перезагрузки: экран звонка
+        // появится мгновенно.
+        const visible = windows.find(
+          (client) => 'focus' in client && client.visibilityState === 'visible'
+        )
+        if (visible) {
+          visible.focus()
+          visible.postMessage({
+            type: 'call-notification',
+            action: wanted,
+            call_id: data.call_id || null,
+            peer_id: data.peer_id || null
           })
-          // Живой странице тихо сообщаем (гасит рингтон/уведомления) — НЕ фокусируем.
-          for (const client of windows) {
-            if ('focus' in client) {
-              client.postMessage({
-                type: 'call-notification',
-                action: 'decline',
-                call_id: data.call_id || null,
-                peer_id: data.peer_id || null
-              })
-            }
-          }
-          if (!ok && windows.length === 0) {
-            // Нет токена/сети и нет окна — откроем и отклоним в приложении.
-            await self.clients.openWindow(
-              '/?call=' +
-                encodeURIComponent(data.call_id || '') +
-                '&peer=' +
-                encodeURIComponent(data.peer_id || '') +
-                '&action=decline'
-            )
-          }
           return
         }
-        // «Ответить»/тап: окно есть — отдаём действие странице (с фокусом).
-        for (const client of windows) {
-          if ('focus' in client) {
-            client.focus()
-            client.postMessage({
-              type: 'call-notification',
-              action,
-              call_id: data.call_id || null,
-              peer_id: data.peer_id || null
-            })
-            return
-          }
-        }
-        // Приложение закрыто — открываем к экрану звонка.
-        const callUrl =
-          '/?call=' +
-          encodeURIComponent(data.call_id || '') +
-          '&peer=' +
-          encodeURIComponent(data.peer_id || '') +
-          '&action=' +
-          encodeURIComponent(action)
+        // Приложение закрыто или свёрнуто: переданное в фоне сообщение может
+        // потеряться (страница заморожена), поэтому открываем адрес со звонком.
         await self.clients.openWindow(callUrl)
         return
       }

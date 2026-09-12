@@ -11,6 +11,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { effectScope } from 'vue'
 
 vi.mock('@/services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/services/api')>()
@@ -24,6 +25,8 @@ import { api } from '@/services/api'
 import { isCallStillPending } from '@/services/pendingCall'
 import { useAuthStore } from '@/stores/auth'
 import { useRealtimeStore } from '@/stores/realtime'
+import { usePeerActivity } from '@/composables/usePeerActivity'
+import { lastSeenLabel } from '@/utils/format'
 
 /** Заглушка WebSocket: открывается на следующей задаче и помнит отправленное. */
 class FakeWebSocket {
@@ -159,6 +162,50 @@ describe('событийный канал сообщает о том, что м�
 
     expect(socket.messages).toEqual([{ type: 'activity', active: true }, { type: 'bye' }])
     realtime.disconnect()
+  })
+})
+
+describe('присутствие на клиенте: «в сети» приходит только по WS', () => {
+  /** Изолированный scope: composable снимает таймеры при размонтировании. */
+  const make = () => {
+    const scope = effectScope()
+    const activity = scope.run(() => usePeerActivity({ isMe: (id) => id === 1 }))!
+    return { scope, activity }
+  }
+
+  it('затравка из /chats не включает «в сети», даже если активность секунду назад', () => {
+    const { scope, activity } = make()
+    // Симптом: собеседник свёрнул приложение, а у нас зелёная точка — потому что
+    // `last_seen` освежался heartbeat-ом каждую минуту.
+    activity.seedPresence(2, new Date().toISOString())
+
+    expect(activity.peerPresence[2].online).toBe(false)
+    expect(activity.peerPresence[2].last_seen).not.toBeNull()
+    scope.stop()
+  })
+
+  it('снимок с сервера заменяет состояние целиком и не трогает мой статус', () => {
+    const { scope, activity } = make()
+    activity.applyPresence(2, true, null)
+    activity.applyPresenceSnapshot([
+      { user_id: 1, online: true, last_seen: null },
+      { user_id: 2, online: false, last_seen: '2026-01-01T00:00:00+00:00' },
+      { user_id: 3, online: true, last_seen: null }
+    ])
+
+    expect(activity.peerPresence[1]).toBeUndefined()
+    expect(activity.peerPresence[2]).toEqual({
+      online: false,
+      last_seen: '2026-01-01T00:00:00+00:00'
+    })
+    expect(activity.peerPresence[3].online).toBe(true)
+    scope.stop()
+  })
+
+  it('подпись времени никогда не превращается в «в сети» без разрешения', () => {
+    const now = new Date().toISOString()
+    expect(lastSeenLabel(now)).toBe('был(а) только что')
+    expect(lastSeenLabel(now, false)).toBe('был(а) только что')
   })
 })
 

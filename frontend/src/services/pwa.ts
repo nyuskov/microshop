@@ -245,8 +245,14 @@ export async function isPushSubscribed(): Promise<boolean> {
 
 /**
  * Показывает системное уведомление о входящем звонке (когда приложение
- * свёрнуто/в фоне): тап открывает приложение к экрану звонка, кнопки
- * «Ответить»/«Отклонить» управляют звонком через service worker.
+ * свёрнуто/в фоне): тап открывает приложение к экрану звонка, кнопка «Ответить»
+ * работает через service worker.
+ *
+ * Кнопка ТОЛЬКО ОДНА. Раньше здесь были ещё «Отклонить», и это ломало звонки: на
+ * Android нажатие на кнопку приходит в service worker как действие СОСЕДНЕЙ
+ * кнопки, поэтому человек жал «Ответить», а уведомление отправляло отказ —
+ * звонок рвался у отвечавшего, а у зовущего продолжал играть. Service worker
+ * теперь к тому же никогда не выполняет отказ сам (см. `public/sw.js`).
  */
 export async function showIncomingCallRing(opts: {
   title: string
@@ -268,10 +274,7 @@ export async function showIncomingCallRing(opts: {
       silent: false,
       vibrate: [250, 120, 250, 120, 250, 120, 250],
       // actions/renotify/vibrate нет в старых типах NotificationOptions — приводим.
-      actions: [
-        { action: 'answer', title: 'Ответить' },
-        { action: 'decline', title: 'Отклонить' }
-      ],
+      actions: [{ action: 'answer', title: 'Ответить' }],
       data: { type: 'call', call_id: opts.callId, peer_id: opts.peerId }
     }
     await reg.showNotification(opts.title, options as unknown as NotificationOptions)

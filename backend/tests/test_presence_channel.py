@@ -33,6 +33,11 @@ class FakeWebSocket:
         #: Пауза перед выдачей сообщения — чтобы проверить отложенные ветки.
         self.delay = delay
         self.closed_with: int | None = None
+        #: Что сервер отправил клиенту (снимок присутствия).
+        self.sent: list[Any] = []
+
+    async def send_json(self, payload: Any) -> None:
+        self.sent.append(payload)
 
     async def receive_json(self) -> Any:
         if self._messages:
@@ -69,6 +74,19 @@ class Presence:
     def __init__(self) -> None:
         self.broadcasts: list[tuple[int, bool]] = []
         self.manager = EventsConnectionManager()
+        #: Сколько раз сервер обновил `last_seen` по heartbeat.
+        self.touches = 0
+
+
+#: Снимок присутствия, который «прислал бы» сервер (собеседники 8 и 9).
+SNAPSHOT: list[dict[str, Any]] = [
+    {
+        "user_id": 8,
+        "online": True,
+        "last_seen": "2026-01-01T00:00:00+00:00",
+    },
+    {"user_id": 9, "online": False, "last_seen": None},
+]
 
 
 @pytest.fixture
@@ -95,8 +113,12 @@ def presence(monkeypatch: pytest.MonkeyPatch) -> Presence:
         return [8]
 
     async def fake_touch(_user: object, _session: object) -> None:
-        return None
+        state.touches += 1
 
+    async def fake_snapshot(_session: object, _user_id: int) -> list[dict[str, Any]]:
+        return SNAPSHOT
+
+    monkeypatch.setattr(events_views, "presence_snapshot", fake_snapshot)
     monkeypatch.setattr(events_views, "get_user_by_id", fake_user)
     monkeypatch.setattr(events_views, "presence_peer_ids", fake_peers)
     monkeypatch.setattr(events_views, "touch_last_seen", fake_touch)
@@ -193,3 +215,83 @@ async def test_old_client_without_activity_shows_online(
     await _run(websocket)
 
     assert (7, True) in presence.broadcasts
+
+
+async def test_presence_snapshot_sent_on_connect(
+    presence: Presence, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Сразу после подключения клиент получает фактические статусы собеседников.
+
+    Иначе свежезагруженное приложение не знает, кто у экрана, и выводит «в сети»
+    из времени последней активности — отсюда плавающий статус.
+    """
+    monkeypatch.setattr(events_views, "WS_IDLE_TIMEOUT_SECONDS", 0.05)
+    websocket = FakeWebSocket()
+
+    await _run(websocket)
+
+    assert websocket.sent[0] == {"type": "presence.snapshot", "users": SNAPSHOT}
+
+
+async def test_snapshot_failure_does_not_break_channel(
+    presence: Presence, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Сбой снимка не роняет канал: присутствие — вспомогательная функция."""
+    monkeypatch.setattr(events_views, "WS_IDLE_TIMEOUT_SECONDS", 0.05)
+
+    async def boom(_session: object, _user_id: int) -> list[dict[str, Any]]:
+        raise RuntimeError("БД недоступна")
+
+    monkeypatch.setattr(events_views, "presence_snapshot", boom)
+    websocket = FakeWebSocket()
+
+    await _run(websocket)
+
+    assert websocket.sent == []
+    assert (7, False) in presence.broadcasts
+
+
+async def test_hidden_client_heartbeat_does_not_refresh_last_seen(
+    presence: Presence, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Свёрнутое приложение не освежает `last_seen`.
+
+    Иначе собеседник часами видит «был(а) только что»: heartbeat идёт и когда
+    человек давно ушёл в другое приложение.
+    """
+    monkeypatch.setattr(events_views, "WS_IDLE_TIMEOUT_SECONDS", 30)
+    monkeypatch.setattr(events_views, "WS_LAST_SEEN_TOUCH_SECONDS", 0)
+    websocket = FakeWebSocket(
+        [
+            {"type": "ping"},
+            {"type": "activity", "active": False},
+            {"type": "ping"},
+            {"type": "bye"},
+        ]
+    )
+
+    await _run(websocket)
+
+    # До первого `activity` сервер ещё не знает состояния — одно касание допустимо,
+    # после «свёрнуто» heartbeat больше времени не обновляет.
+    assert presence.touches <= 1
+
+
+async def test_active_client_heartbeat_refreshes_last_seen(
+    presence: Presence, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Пока человек у экрана, `last_seen` освежается по heartbeat."""
+    monkeypatch.setattr(events_views, "WS_IDLE_TIMEOUT_SECONDS", 30)
+    monkeypatch.setattr(events_views, "WS_LAST_SEEN_TOUCH_SECONDS", 0)
+    websocket = FakeWebSocket(
+        [
+            {"type": "activity", "active": True},
+            {"type": "ping"},
+            {"type": "ping"},
+            {"type": "bye"},
+        ]
+    )
+
+    await _run(websocket)
+
+    assert presence.touches >= 2
