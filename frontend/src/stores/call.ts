@@ -243,13 +243,16 @@ let shareReturnKind: CallKind = 'video'
 // иначе два одновременных пересогласования ломают SDP.
 let renegotiateSeq = 0
 
-let ringTimer: ReturnType<typeof setTimeout> | undefined
+// Таймеры создаются через `window.*`, то есть это DOM-таймеры, и их идентификатор
+// имеет тип `number`. Через `ReturnType<typeof setTimeout>` сюда попадают типы
+// Node (`NodeJS.Timeout`), и проверка типов падает — а она в CI блокирует деплой.
+let ringTimer: number | undefined
 /** Отсчёт до «собеседник так и не вернулся» после перезагрузки страницы. */
-let rejoinTimer: ReturnType<typeof setTimeout> | undefined
+let rejoinTimer: number | undefined
 /* Восстановление связи при смене сети (Wi-Fi → LTE и обратно). */
-let iceRecoveryTimer: ReturnType<typeof setTimeout> | undefined
+let iceRecoveryTimer: number | undefined
 let iceRestartAttempts = 0
-let socketRetryTimer: ReturnType<typeof setTimeout> | undefined
+let socketRetryTimer: number | undefined
 let socketRetryDeadline = 0
 /** Инициатор звонка: он перезапускает ICE первым, отвечающий — с задержкой. */
 let isCaller = false
@@ -258,7 +261,7 @@ let isCaller = false
  * получил (см. `_armAnswerRetry`).
  */
 let lastAnswerSdp: string | null = null
-let answerRetryTimer: ReturnType<typeof setTimeout> | undefined
+let answerRetryTimer: number | undefined
 let answerRetryAttempts = 0
 /* Наблюдатель за медиа: звонок «установлен», но звук/видео так и не пришли. */
 let mediaWatchdogTimer: ReturnType<typeof setInterval> | undefined
@@ -268,7 +271,7 @@ let mediaWatchdogBusy = false
 /** Перезапуск ICE уже идёт: второй не нужен (иначе счётчик попыток сгорит). */
 let iceRestartInFlight = false
 /* Статистика соединения: опрос раз в несколько секунд (качество + диагностика). */
-let statsTimer: ReturnType<typeof setInterval> | undefined
+let statsTimer: number | undefined
 let statsSample: StatsSample | null = null
 let audioContext: AudioContext | null = null
 let unlockBound = false
@@ -707,7 +710,7 @@ interface CallState {
   connected: boolean
   notice: string
   secondsTimer: ReturnType<typeof setInterval> | undefined
-  ringOutTimer: ReturnType<typeof setTimeout> | undefined
+  ringOutTimer: number | undefined
   /** Сколько раз повторили уже принятый/идущий вызов (чтобы погасить уведомление). */
   ignoredCallOffers: number
 }
