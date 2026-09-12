@@ -494,6 +494,7 @@ import {
 } from '@/utils/outbox'
 import { getErrorMessage, isChatGoneError, isNetworkError } from '@/services/errors'
 import { isCallStillPending } from '@/services/pendingCall'
+import { watchServiceWorkerUpdate } from '@/services/swUpdate'
 import { blockUser } from '@/services/moderation'
 import {
   fetchMessages,
@@ -3965,6 +3966,12 @@ onMounted(async () => {
   // Холодный старт: уведомления о звонках прошлых запусков («Вам звонят» о
   // вызове, который давно принят/отклонён/отменён) на экране не оставляем.
   if (callStore.status !== 'incoming') void closeCallRings()
+  // Выкатили новую версию — приложение обновится само, когда это безопасно:
+  // иначе PWA на телефоне может сутками работать на старом коде.
+  watchServiceWorkerUpdate(
+    () =>
+      callStore.status === 'idle' && callLaunchScreen.value === 'none' && !newMessage.value.trim()
+  )
   scrollToBottom()
 
   // Холодный старт по уведомлению.
@@ -4216,17 +4223,13 @@ watch(
 
 // ---------- Входящий звонок при свёрнутом приложении (системное уведомление) ----------
 // Если звонок пришёл, а приложение свёрнуто/в фоне — показываем системный
-// «будильник» (кнопки Ответить/Отклонить) и, пока приложение в фоне, повторяем
-// его как рингтон (тот же tag + renotify -> Android снова играет звук/вибрацию).
-let hiddenRingLoop: ReturnType<typeof setInterval> | undefined
-
-const stopHiddenRingLoop = () => {
-  if (hiddenRingLoop !== undefined) {
-    window.clearInterval(hiddenRingLoop)
-    hiddenRingLoop = undefined
-  }
-}
-
+// «будильник» с кнопкой «Ответить» ОДИН раз на звонок.
+//
+// Раньше уведомление пере-показывалось каждые 3,5 секунды (ради звука/вибрации,
+// «как рингтон»). На Android это выглядело как бесконечный поток уведомлений:
+// нажал «Ответить» — оно тут же возвращается; а если звонок к тому моменту уже
+// завершился, возвращалось вечно. Уведомление и так держится на экране
+// (`requireInteraction`), а когда звонок закончится, его закроет service worker.
 const buildCallRing = () => {
   const peerName =
     callStore.peerName && !callStore.peerName.startsWith('@') ? callStore.peerName : ''
@@ -4239,21 +4242,9 @@ const buildCallRing = () => {
 }
 
 const ringIncomingCallWhenHidden = () => {
-  if (!document.hidden) {
-    stopHiddenRingLoop()
-    return
-  }
+  if (!document.hidden) return
   if (callStore.status !== 'incoming' || callStore.peerId === null || !callStore.callId) return
   void showIncomingCallRing(buildCallRing())
-  if (hiddenRingLoop === undefined) {
-    hiddenRingLoop = window.setInterval(() => {
-      if (!document.hidden || callStore.status !== 'incoming') {
-        stopHiddenRingLoop()
-        return
-      }
-      void showIncomingCallRing(buildCallRing())
-    }, 3500)
-  }
 }
 
 /**
@@ -4264,17 +4255,13 @@ const ringIncomingCallWhenHidden = () => {
  */
 const syncCallRings = () => {
   if (callStore.status === 'incoming') return
-  stopHiddenRingLoop()
   void closeCallRings()
 }
 
 /** Приложение свернули во время входящего звонка — будим и «звоним». */
 const handleCallVisibility = () => {
   if (document.hidden) ringIncomingCallWhenHidden()
-  else {
-    stopHiddenRingLoop()
-    syncCallRings()
-  }
+  else syncCallRings()
 }
 
 // Звонок ушёл из состояния «входящий» (принят/отменён/завершён) — убираем уведомление.
