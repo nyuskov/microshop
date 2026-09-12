@@ -409,20 +409,20 @@ watch(newMessage, () => {
 <style scoped>
 .input-area {
   padding: 10px 14px;
-  background: #f0f2f5;
-  border-top: 1px solid #e2e6ea;
+  background: var(--ms-surface-2);
+  border-top: 1px solid var(--ms-border);
   position: relative;
 }
 
 .round-btn.muted {
-  color: #9aa7b2;
+  color: var(--ms-icon-3);
 }
 
 .inline-error {
-  color: #d64545;
+  color: var(--ms-danger);
   font-size: 12px;
   padding: 6px 14px;
-  background: #fdecec;
+  background: var(--ms-danger-bg);
   margin-bottom: 6px;
 }
 
@@ -438,8 +438,8 @@ watch(newMessage, () => {
 }
 
 .gif-btn.active {
-  background: #e3f2e5;
-  color: #1e9b51;
+  background: var(--ms-accent-soft);
+  color: var(--ms-accent);
 }
 
 /* Кнопка записи голосового/видеосообщения (удержание 2 c — переключение режима) */
@@ -455,9 +455,19 @@ watch(newMessage, () => {
   user-select: none;
 }
 
-.mic-hold-btn.holding,
+.mic-hold-btn.holding {
+  /* Удержание = идёт запись: кнопка становится акцентной */
+  background: var(--ms-accent);
+  color: var(--ms-on-accent);
+}
+
+.mic-hold-btn.holding .q-icon {
+  color: var(--ms-on-accent);
+}
+
 .mic-hold-btn.mode-video {
-  color: #2ea25e;
+  background: var(--ms-accent-soft);
+  color: var(--ms-accent);
 }
 
 .mic-hold-btn.holding::after {
@@ -465,7 +475,7 @@ watch(newMessage, () => {
   position: absolute;
   inset: -3px;
   border-radius: 50%;
-  border: 2px solid #2ea25e;
+  border: 2px solid var(--ms-accent);
   opacity: 0;
   animation: mic-hold-ring 2s ease-out forwards;
   pointer-events: none;
@@ -477,8 +487,8 @@ watch(newMessage, () => {
   bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(20, 26, 32, 0.85);
-  color: #fff;
+  background: var(--ms-tooltip-bg);
+  color: var(--ms-tooltip-text);
   padding: 4px 10px;
   border-radius: 10px;
   font-size: 11.5px;
@@ -515,8 +525,8 @@ watch(newMessage, () => {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #ffffff;
-  border-left: 3px solid #3aa6e0;
+  background: var(--ms-surface);
+  border-left: 3px solid var(--ms-info);
   border-radius: 8px;
   padding: 6px 10px;
   margin-bottom: 8px;
@@ -532,12 +542,12 @@ watch(newMessage, () => {
 .reply-bar-name {
   font-size: 12.5px;
   font-weight: 700;
-  color: #3aa6e0;
+  color: var(--ms-info);
 }
 
 .reply-bar-text {
   font-size: 13px;
-  color: #5c6a75;
+  color: var(--ms-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -547,7 +557,7 @@ watch(newMessage, () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #ffffff;
+  background: var(--ms-surface);
   border-radius: 12px;
   padding: 5px 10px;
   position: relative;
@@ -561,7 +571,8 @@ watch(newMessage, () => {
   line-height: 1.35;
   background: transparent;
   padding: 7px 4px;
-  color: #141d26;
+  color: var(--ms-text-strong);
+  caret-color: var(--ms-accent);
   resize: none;
   overflow-y: auto;
   min-height: 24px;
@@ -580,8 +591,8 @@ watch(newMessage, () => {
 }
 
 .send-btn {
-  background: #2ea25e;
-  color: #fff;
+  background: var(--ms-accent);
+  color: var(--ms-on-accent);
   border: none;
   width: 36px;
   height: 36px;
@@ -594,7 +605,7 @@ watch(newMessage, () => {
 }
 
 .send-btn:hover {
-  background: #288e52;
+  background: var(--ms-accent-strong);
 }
 
 .hidden-file {
@@ -648,7 +659,7 @@ watch(newMessage, () => {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  color: #fff;
+  color: var(--ms-on-accent);
   font-size: 12px;
   font-weight: 700;
 }
@@ -683,9 +694,9 @@ watch(newMessage, () => {
   bottom: 58px;
   right: 14px;
   width: min(360px, calc(100vw - 28px));
-  background: #ffffff;
+  background: var(--ms-surface);
   border-radius: 16px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--ms-shadow-pop);
   padding: 8px;
   z-index: 30;
   display: flex;
@@ -697,7 +708,7 @@ watch(newMessage, () => {
   display: flex;
   gap: 4px;
   flex-shrink: 0;
-  border-bottom: 1px solid #eef0f2;
+  border-bottom: 1px solid var(--ms-border);
   padding-bottom: 6px;
 }
 
@@ -710,13 +721,13 @@ watch(newMessage, () => {
   font: inherit;
   font-size: 13px;
   font-weight: 600;
-  color: #5b6b79;
+  color: var(--ms-icon-2);
   cursor: pointer;
 }
 
 .extras-tab.active {
-  background: #e3f2e5;
-  color: #1e9b51;
+  background: var(--ms-accent-soft);
+  color: var(--ms-accent);
 }
 
 /* Категории эмодзи: «Недавние» + группы по смыслу. */
@@ -799,12 +810,12 @@ watch(newMessage, () => {
 }
 
 .emoji-option:hover {
-  background: #f0f2f4;
+  background: var(--ms-hover);
   transform: scale(1.18);
 }
 
 .emoji-option.active {
-  background: #e3f2e5;
+  background: var(--ms-accent-soft);
 }
 
 /* ---------- Мобильная адаптация ---------- */

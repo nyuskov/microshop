@@ -29,16 +29,40 @@ export interface DecryptedMedia {
 const cache = reactive<Record<number, DecryptedMedia | undefined>>({})
 const inflight = new Set<number>()
 
+export interface DecryptedMediaOptions {
+  /**
+   * Можно ли начинать загрузку. По умолчанию — сразу.
+   *
+   * Строка передаёт сюда «я показалась на экране» (`useVisibleOnce`): иначе при
+   * открытии чата скачивались бы и расшифровывались вложения всей загруженной
+   * истории — а это и трафик, и AES на каждое вложение, и blob-ссылки в памяти.
+   */
+  enabled?: () => boolean
+}
+
 /**
  * Расшифрованное вложение сообщения или null, если вложение не зашифровано.
- * Первый вызов запускает расшифровку — дальше значение приходит само.
+ *
+ * Возвращает запись сразу (пока файл не готов — статус `loading`), а загрузку
+ * начинает, только если это разрешено. Важно: при «не разрешено» отдаём именно
+ * запись в статусе `loading`, а не null — иначе разметка возьмёт исходный
+ * шифротекст и покажет его как обычное вложение.
  */
-export function decryptedMediaFor(message: Message): DecryptedMedia | null {
+export function decryptedMediaFor(
+  message: Message,
+  options: DecryptedMediaOptions = {}
+): DecryptedMedia | null {
   const meta = message.e2ee_file
   const file = message.file
   if (!meta || !file) return null
+  const canLoad = options.enabled === undefined || options.enabled()
+
   const cached = cache[message.id]
-  if (cached) return cached
+  if (cached) {
+    // Загрузку могли отложить до появления на экране — самое время начать.
+    if (cached.status === 'loading' && canLoad) void load(message)
+    return cached
+  }
   cache[message.id] = {
     status: 'loading',
     url: '',
@@ -46,7 +70,7 @@ export function decryptedMediaFor(message: Message): DecryptedMedia | null {
     mime: meta.m,
     size: meta.s
   }
-  void load(message)
+  if (canLoad) void load(message)
   return cache[message.id] ?? null
 }
 

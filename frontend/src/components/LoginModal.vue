@@ -110,6 +110,6 @@ const onOtpVerified = () => {
   background: var(--ms-surface) !important;
   color: var(--ms-text) !important;
   border: 1px solid var(--ms-border);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+  box-shadow: var(--ms-shadow-pop);
 }
 </style>

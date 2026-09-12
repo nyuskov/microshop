@@ -7,7 +7,7 @@
       aria-label="Переслать сообщение"
       @mousedown.self="emit('close')"
     >
-      <div class="fwd-card">
+      <div ref="trapContainer" class="fwd-card" tabindex="-1">
         <!-- Шапка -->
         <header class="fwd-head">
           <div class="fwd-title">
@@ -99,9 +99,13 @@
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
 import { computed, ref } from 'vue'
+import { useFocusTrap } from '@/composables/useFocusTrap'
 import type { Chat, Message } from '@/types'
 import { avatarStyle, avatarUrlOf, chatPeer, chatPeerTitle, initials } from '@/utils/user'
 import { fileIcon, mediaTypeLabel, messageSnippet } from '@/utils/media'
+
+// Оверлей самодельный (не q-dialog) — фокус держим сами, иначе Tab уводит в чат.
+const { container: trapContainer } = useFocusTrap()
 
 const props = defineProps<{
   /** Пересылаемое сообщение (одно) либо список (мультивыбор). */
@@ -190,7 +194,7 @@ const confirmForward = () => {
   position: fixed;
   inset: 0;
   z-index: 4000;
-  background: rgba(15, 20, 26, 0.45);
+  background: var(--ms-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -207,7 +211,7 @@ const confirmForward = () => {
   background: var(--ms-surface, #ffffff);
   color: var(--ms-text, #1c2733);
   border-radius: 18px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--ms-shadow-pop);
   overflow: hidden;
   animation: fwd-pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
@@ -373,7 +377,7 @@ const confirmForward = () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--ms-on-accent);
   font-size: 15px;
   font-weight: 600;
   flex: none;
@@ -428,7 +432,7 @@ const confirmForward = () => {
 .fwd-item.selected .fwd-check {
   background: var(--ms-accent, #2ea25e);
   border-color: var(--ms-accent, #2ea25e);
-  color: #fff;
+  color: var(--ms-on-accent);
 }
 
 .fwd-empty {
@@ -496,7 +500,7 @@ const confirmForward = () => {
 
 .fwd-btn.send {
   background: var(--ms-accent, #2ea25e);
-  color: #fff;
+  color: var(--ms-on-accent);
 }
 
 .fwd-btn.send:hover:not(:disabled) {

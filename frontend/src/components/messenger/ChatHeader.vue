@@ -210,9 +210,9 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   align-items: center;
   gap: 10px;
   padding: 8px 14px;
-  background: #ffffff;
-  border-bottom: 1px solid #e2e6ea;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  background: var(--ms-surface);
+  border-bottom: 1px solid var(--ms-border);
+  box-shadow: var(--ms-shadow-sm);
   z-index: 2;
 }
 
@@ -221,15 +221,15 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
 }
 
 .icon-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: #202b34;
+  background: var(--ms-hover);
+  color: var(--ms-text);
 }
 
 .avatar {
   width: 46px;
   height: 46px;
   border-radius: 50%;
-  color: #fff;
+  color: var(--ms-on-accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -266,7 +266,7 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   border-radius: 50%;
   background: var(--ms-accent);
   border: 2px solid var(--ms-surface);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 0 0 1px var(--ms-hairline);
   z-index: 1;
 }
 
@@ -292,7 +292,7 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
 .chat-title {
   font-size: 16px;
   font-weight: 600;
-  color: #141d26;
+  color: var(--ms-text-strong);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -304,9 +304,9 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   max-width: 170px;
   font-size: 11px;
   font-weight: 600;
-  color: #2ea25e;
-  background: rgba(46, 162, 94, 0.1);
-  border: 1px solid rgba(46, 162, 94, 0.35);
+  color: var(--ms-accent);
+  background: var(--ms-accent-soft);
+  border: 1px solid var(--ms-accent-border);
   border-radius: 10px;
   padding: 1px 7px;
   white-space: nowrap;
@@ -322,7 +322,7 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   gap: 4px;
   min-width: 0;
   font-size: 13px;
-  color: #7b8a96;
+  color: var(--ms-muted);
 }
 
 .chat-subtitle-text {
@@ -412,10 +412,10 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   top: calc(100% + 8px);
   right: 0;
   min-width: 210px;
-  background: #ffffff;
-  border: 1px solid #e2e6ea;
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-border);
   border-radius: 12px;
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--ms-shadow-pop);
   padding: 6px;
   z-index: 130;
   display: flex;
@@ -435,18 +435,18 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   text-align: left;
   font-size: 14px;
   font-family: inherit;
-  color: #1c2733;
+  color: var(--ms-text-strong);
   white-space: nowrap;
 }
 
 .ms-dropdown-item:hover {
-  background: #f2f4f6;
+  background: var(--ms-hover);
 }
 
 .ms-dropdown-item .q-icon {
   width: 18px;
   text-align: center;
-  color: #5b6b79;
+  color: var(--ms-icon-2);
 }
 
 /* ---------- Мобильная адаптация ---------- */

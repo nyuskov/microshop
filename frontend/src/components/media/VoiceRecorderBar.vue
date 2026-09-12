@@ -227,14 +227,14 @@ onBeforeUnmount(() => {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px 10px;
-  background: #ffffff;
+  background: var(--ms-surface);
   border-radius: 12px;
   padding: 7px 12px;
 }
 
 /* Состояние ошибки доступа к микрофону */
 .vr-err-icon {
-  color: #d64545;
+  color: var(--ms-danger);
   flex-shrink: 0;
   display: inline-flex;
 }
@@ -244,8 +244,8 @@ onBeforeUnmount(() => {
   min-width: 0;
   font-size: 12.5px;
   line-height: 1.35;
-  color: #b04040;
-  background: #fdecec;
+  color: var(--ms-danger);
+  background: var(--ms-danger-bg);
   border-radius: 8px;
   padding: 6px 9px;
 }
@@ -254,7 +254,7 @@ onBeforeUnmount(() => {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #e04545;
+  background: var(--ms-danger);
   animation: vr-blink 1s ease-in-out infinite;
   flex-shrink: 0;
 }
@@ -273,7 +273,7 @@ onBeforeUnmount(() => {
   flex: 1;
   font-size: 13.5px;
   font-weight: 600;
-  color: #1c2733;
+  color: var(--ms-text-strong);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -281,7 +281,7 @@ onBeforeUnmount(() => {
 
 .vr-timer {
   font-size: 13px;
-  color: #8a98a3;
+  color: var(--ms-muted-2);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
@@ -305,21 +305,21 @@ onBeforeUnmount(() => {
 }
 
 .vr-btn.danger {
-  background: #fdecec;
-  color: #d64545;
+  background: var(--ms-danger-bg);
+  color: var(--ms-danger);
 }
 
 .vr-btn.danger:hover {
-  background: #f8dada;
+  background: color-mix(in srgb, var(--ms-danger) 16%, transparent);
 }
 
 .vr-btn.accent {
-  background: #e3f2e5;
-  color: #2ea25e;
+  background: var(--ms-accent-soft);
+  color: var(--ms-accent);
 }
 
 .vr-btn.accent:hover {
-  background: #d0ead5;
+  background: color-mix(in srgb, var(--ms-accent) 16%, transparent);
 }
 
 .vr-play {
@@ -328,8 +328,8 @@ onBeforeUnmount(() => {
   border-radius: 50%;
   border: none;
   cursor: pointer;
-  background: #2ea25e;
-  color: #fff;
+  background: var(--ms-accent);
+  color: var(--ms-on-accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -344,7 +344,7 @@ onBeforeUnmount(() => {
 }
 
 .vr-play:hover {
-  background: #39b56c;
+  background: var(--ms-accent-strong);
 }
 
 .vr-hidden-audio {

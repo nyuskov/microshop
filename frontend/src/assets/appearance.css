@@ -20,25 +20,29 @@
     /* Текст */
     --ms-text: #1c2733;
     --ms-text-strong: #141d26;
-    --ms-muted: #71808d;
-    --ms-muted-2: #8a98a3;
-    --ms-muted-3: #97a5b0;
+    /* Три уровня приглушённого текста. Значения подобраны под WCAG AA (4.5:1):
+       --ms-muted и --ms-muted-2 — это текст (подписи, превью, время в списке),
+       поэтому они тёмные. --ms-muted-3 — только иконки-заглушки (норма 3:1),
+       для текста его использовать не нужно. Проверка — scripts/check-contrast.mjs. */
+    --ms-muted: #5c6a75;
+    --ms-muted-2: #63707a;
+    --ms-muted-3: #6b7883;
 
     /* Иконки */
     --ms-icon: #52626f;
     --ms-icon-2: #5b6b79;
-    --ms-icon-3: #9aa7b2;
+    --ms-icon-3: #87949e;
 
     /* Акцент и опасность */
     --ms-accent: #2ea25e;
     --ms-on-accent: #ffffff;
-    --ms-danger: #d64545;
+    --ms-danger: #c53030;
     --ms-danger-bg: #fdecec;
-    --ms-info: #3aa6e0;
-    --ms-tick: #37aee2;
+    --ms-info: #19719f;
+    --ms-tick: #2b87b4;
 
     /* Предупреждение/успех/информационные подложки (логин, профиль, статусы) */
-    --ms-warn: #b8860b;
+    --ms-warn: #8a6508;
     --ms-warn-bg: #fdf3e3;
     --ms-ok-bg: #e8f8ee;
     --ms-info-bg: #e8f2fb;
@@ -46,12 +50,15 @@
     /* Пузыри сообщений */
     --ms-bubble-out: #dcf8c6;
     --ms-bubble-text: #111111;
-    --ms-bubble-time: #8a98a3;
+    /* Время и галочки лежат на фоне пузыря, а его цвет выбирает пользователь
+       (светлые пресеты вплоть до сиреневого) — поэтому тон взят с запасом,
+       чтобы 4.5:1 / 3:1 держались на самом светлом варианте. */
+    --ms-bubble-time: #55626c;
 
     /* Закреплённые сообщения */
     --ms-pinned-bg: #fffdf4;
     --ms-pinned-border: #efe4c8;
-    --ms-pinned-icon: #c9a227;
+    --ms-pinned-icon: #a8851f;
     --ms-pinned-text: #8a7320;
     --ms-pinned-chip-bg: #f3e6b8;
     --ms-pinned-item: #4a4a3c;
@@ -59,6 +66,10 @@
     /* Фон окна сообщений по умолчанию */
     --ms-chat-bg: #eef1f4;
     --ms-chat-dots: radial-gradient(circle at 1px 1px, rgba(120, 144, 156, 0.12) 1px, transparent 0);
+    /* Плашка даты в ленте: полупрозрачная, фон под ней размывается (Telegram).
+       Значение задано rgba, а не `color-mix`: прозрачность должна работать и в
+       браузерах без поддержки color-mix. */
+    --ms-date-pill: rgba(255, 255, 255, 0.62);
 
     /* Производные (пересчитываются браузером из --ms-accent) */
     --ms-accent-strong: color-mix(in srgb, var(--ms-accent) 88%, #000000);
@@ -77,6 +88,24 @@
     /* Множитель размера текста из настроек оформления (мелкий/обычный/крупный).
        Меняется в stores/theme.ts → applyAppearance(). */
     --ms-text-scale: 1;
+
+    /* Шкала размеров текста: мелкий вспомогательный, служебный, основной,
+       крупный. Держим её в токенах, иначе в компонентах соседствуют
+       `font-size: 0.9rem` и `font-size: 12px` — визуально это разные вещи. */
+    --ms-fs-xs: 11px;
+    --ms-fs-sm: 12px;
+    --ms-fs-md: 13px;
+    --ms-fs-base: 14px;
+    --ms-fs-lg: 16px;
+    --ms-fs-xl: 20px;
+
+    /* Шкала отступов: однотипные панели должны совпадать по геометрии. */
+    --ms-space-1: 4px;
+    --ms-space-2: 8px;
+    --ms-space-3: 12px;
+    --ms-space-4: 16px;
+    --ms-space-5: 24px;
+
     --ms-radius-sm: 10px;
     --ms-radius: 12px;
     --ms-radius-lg: 18px;
@@ -86,6 +115,25 @@
     --ms-hairline: color-mix(in srgb, var(--ms-border) 55%, transparent);
     /* Тень «плавающих» панелей (нижнее меню): мягкая, без чёрного края. */
     --ms-shadow-float: 0 6px 20px -8px rgba(15, 23, 42, 0.3);
+    /* Тень всплывающих меню и панелей (dropdown, GIF, стикеры). В тёмной теме
+       переопределяется ниже: чёрная тень на тёмном фоне выглядит грязно. */
+    --ms-shadow-pop: 0 8px 26px rgba(0, 0, 0, 0.24);
+    /* Подложка модальных окон. */
+    --ms-backdrop: rgba(15, 23, 42, 0.45);
+    /* Лёгкая подложка под листом действий (долгое нажатие): сцены нужны двух
+       «сила» — плотная для модалки и едва заметная для меню. */
+    --ms-scrim-soft: rgba(15, 23, 42, 0.16);
+    /* Всплывающая подсказка (смена режима записи и т.п.). В тёмной теме она
+       светлая — тёмная подсказка на тёмном фоне была бы нечитаемой. */
+    --ms-tooltip-bg: rgba(20, 26, 32, 0.85);
+    --ms-tooltip-text: #ffffff;
+
+    /* Экран звонка: всегда тёмный, независимо от темы — поэтому значения одни
+       и те же в светлой и тёмной схеме (в тёмной секции не переопределяются). */
+    --ms-call-bg: rgba(9, 13, 18, 0.92);
+    --ms-call-fg: #ffffff;
+    --ms-call-ring: rgba(255, 255, 255, 0.15);
+    --ms-call-danger: #e5484d;
 }
 
 /* ---------- Токены: тёмная тема ---------- */
@@ -103,8 +151,8 @@ html[data-theme='dark'] {
     --ms-text: #dbe4ec;
     --ms-text-strong: #eef2f6;
     --ms-muted: #8fa0ad;
-    --ms-muted-2: #6e7d8a;
-    --ms-muted-3: #64717d;
+    --ms-muted-2: #838f9b;
+    --ms-muted-3: #7d8a97;
 
     --ms-icon: #a8b8c6;
     --ms-icon-2: #93a5b3;
@@ -133,11 +181,17 @@ html[data-theme='dark'] {
 
     --ms-chat-bg: #0f141b;
     --ms-chat-dots: radial-gradient(circle at 1px 1px, rgba(150, 170, 190, 0.08) 1px, transparent 0);
+    --ms-date-pill: rgba(23, 30, 38, 0.72);
 
     --ms-accent-soft: color-mix(in srgb, var(--ms-accent) 22%, #171e26);
     --ms-accent-border: color-mix(in srgb, var(--ms-accent) 60%, #171e26);
     --ms-hairline: color-mix(in srgb, var(--ms-border) 70%, transparent);
     --ms-shadow-float: 0 6px 20px -8px rgba(0, 0, 0, 0.75);
+    --ms-shadow-pop: 0 8px 26px rgba(0, 0, 0, 0.6);
+    --ms-backdrop: rgba(0, 0, 0, 0.6);
+    --ms-scrim-soft: rgba(0, 0, 0, 0.32);
+    --ms-tooltip-bg: rgba(230, 236, 242, 0.92);
+    --ms-tooltip-text: #141d26;
 }
 
 /* ---------- Цвет исходящих сообщений (светлая тема) ---------- */
@@ -193,26 +247,17 @@ html[data-theme='dark'][data-bubble='mint'] {
 /* ==========================================================================
    Messenger.vue: применяем токены поверх scoped-стилей.
    Селекторы с префиксом "html .messenger-shell" имеют приоритет выше scoped.
+
+   Здесь остались только правила, у которых слой — единственный источник
+   стиля, и все они общие для нескольких компонентов (состояния `.round-btn`
+   и `.ghost-btn`, `.search-status`, микро-взаимодействия, общий фокус для
+   клавиатуры). Всё, что дублировало стили компонентов или принадлежало одному
+   компоненту, удалено: 109 → 8 правил (`scripts/check-style-duplicates.mjs`).
+   ВАЖНО: правило в этом слое молча перебивает компонент, поэтому если такое же
+   свойство есть и в компоненте — значения должны совпадать, иначе проверка
+   `check-style-duplicates.mjs` (шаг CI и база `style-duplicates-baseline.json`)
+   упадёт.
    ========================================================================== */
-
-/* Каркас */
-html .messenger-shell {
-    background: var(--ms-shell);
-}
-
-html .messenger-shell .messenger-page {
-    background: var(--ms-body);
-}
-
-html .messenger-shell .side-panel {
-    background: var(--ms-surface);
-    border-right-color: var(--ms-border);
-}
-
-html .messenger-shell .chat-panel {
-    background-color: var(--ms-chat-bg);
-    background-image: var(--ms-chat-dots);
-}
 
 /* Базовая геометрия круглых кнопок (общая для всех компонентов Messenger;
    цвета и hover переопределяются ниже и в scoped-стилях компонентов).
@@ -221,7 +266,7 @@ html .messenger-shell .chat-panel {
 .icon-btn {
     background: none;
     border: none;
-    color: #52626f;
+    color: var(--ms-icon);
     width: 34px;
     height: 34px;
     border-radius: 50%;
@@ -235,7 +280,7 @@ html .messenger-shell .chat-panel {
 .round-btn {
     background: none;
     border: none;
-    color: #5b6b79;
+    color: var(--ms-icon-2);
     width: 32px;
     height: 32px;
     border-radius: 50%;
@@ -248,30 +293,9 @@ html .messenger-shell .chat-panel {
 }
 
 /* Общие элементы */
-html .messenger-shell .icon-btn {
-    color: var(--ms-icon);
-}
-
-html .messenger-shell .icon-btn:hover {
-    background: var(--ms-hover);
-    color: var(--ms-text);
-}
-
-html .messenger-shell .round-btn {
-    color: var(--ms-icon-2);
-}
-
 html .messenger-shell .round-btn:hover {
     background: var(--ms-hover);
     color: var(--ms-text);
-}
-
-html .messenger-shell .round-btn.danger:hover {
-    color: var(--ms-danger);
-}
-
-html .messenger-shell .round-btn.muted {
-    color: var(--ms-icon-3);
 }
 
 html .messenger-shell .round-btn.active {
@@ -279,109 +303,9 @@ html .messenger-shell .round-btn.active {
     color: var(--ms-accent);
 }
 
-/* Одна кнопка записи голосового/видео (клик = голосовое, удержание 2 c = видео) */
-html .messenger-shell .mic-hold-btn.mode-video {
-    background: var(--ms-accent-soft);
-    color: var(--ms-accent);
-}
-
-html .messenger-shell .mic-hold-btn.holding {
-    background: var(--ms-accent);
-    color: #ffffff;
-}
-
-html .messenger-shell .mic-hold-btn.holding .q-icon {
-    color: #ffffff;
-}
-
-html .messenger-shell .mic-hold-btn.holding::after {
-    border-color: var(--ms-accent);
-}
-
-html .messenger-shell .inline-error {
-    color: var(--ms-danger);
-    background: var(--ms-danger-bg);
-}
-
-/* Заголовки панелей */
-html .messenger-shell .panel-header {
-    background: var(--ms-surface);
-}
-
-html .messenger-shell .panel-title {
-    color: var(--ms-text);
-}
-
-html .messenger-shell .panel-search {
-    background: var(--ms-surface-2);
-}
-
-html .messenger-shell .search-icon {
-    color: var(--ms-muted-3);
-}
-
-html .messenger-shell .panel-search-input {
-    color: var(--ms-text);
-}
-
-/* Списки */
-html .messenger-shell .section-label {
+/* Списки и заглушки: цвета .chat-placeholder живут в ChatPlaceholder.vue */
+html .messenger-shell .search-status {
     color: var(--ms-muted);
-}
-
-html .messenger-shell .row-item:hover {
-    background: var(--ms-hover);
-}
-
-html .messenger-shell .row-item.active {
-    background: var(--ms-accent-soft);
-}
-
-html .messenger-shell .row-title {
-    color: var(--ms-text-strong);
-}
-
-html .messenger-shell .row-time {
-    color: var(--ms-muted-3);
-}
-
-html .messenger-shell .row-sub {
-    color: var(--ms-muted);
-}
-
-html .messenger-shell .tick {
-    color: var(--ms-tick);
-}
-
-html .messenger-shell .unread-badge {
-    background: var(--ms-accent);
-    color: var(--ms-on-accent);
-}
-
-html .messenger-shell .row-arrow {
-    color: var(--ms-icon-3);
-}
-
-html .messenger-shell .people-results {
-    border-bottom-color: var(--ms-border);
-}
-
-html .messenger-shell .search-status,
-html .messenger-shell .empty-hint {
-    color: var(--ms-muted-3);
-}
-
-/* Пустое состояние */
-html .messenger-shell .chat-placeholder {
-    color: var(--ms-muted);
-}
-
-html .messenger-shell .placeholder-icon {
-    color: var(--ms-icon-3);
-}
-
-html .messenger-shell .chat-placeholder h3 {
-    color: var(--ms-icon-2);
 }
 
 html .messenger-shell .ghost-btn {
@@ -395,323 +319,21 @@ html .messenger-shell .ghost-btn:hover {
 }
 
 /* Шапка чата */
-html .messenger-shell .chat-header {
-    background: var(--ms-surface);
-    border-bottom-color: var(--ms-border);
-}
-
-html .messenger-shell .chat-title {
-    color: var(--ms-text-strong);
-}
-
-html .messenger-shell .chat-status-pill {
-    color: var(--ms-accent);
-    background: var(--ms-accent-soft);
-    border-color: var(--ms-accent-border);
-}
-
-/* Dropdown-меню (⋮ настройки и звонки) */
-html .messenger-shell .ms-dropdown {
-    background: var(--ms-surface);
-    border-color: var(--ms-border);
-    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.24);
-}
-
-html .messenger-shell .ms-dropdown-item {
-    color: var(--ms-text-strong);
-}
-
-html .messenger-shell .ms-dropdown-item:hover {
-    background: var(--ms-hover);
-}
-
-html .messenger-shell .ms-dropdown-item i {
-    color: var(--ms-icon-2);
-}
-
-/* Панель GIF */
-html .messenger-shell .gif-picker {
-    background: var(--ms-surface);
-    border-color: var(--ms-border);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
-}
-
-html .messenger-shell .gif-head {
-    background: var(--ms-surface-2);
-}
-
-html .messenger-shell .gif-search-input {
-    color: var(--ms-text-strong);
-}
-
-html .messenger-shell .gif-chip {
-    border-color: var(--ms-border);
-    background: var(--ms-surface);
-    color: var(--ms-text);
-}
-
-html .messenger-shell .gif-chip:hover {
-    background: var(--ms-hover);
-}
-
-html .messenger-shell .gif-chip.active {
-    background: var(--ms-accent-soft);
-    border-color: var(--ms-accent-border);
-}
-
-html .messenger-shell .gif-tile {
-    background: var(--ms-surface-2);
-}
-
-html .messenger-shell .gif-status {
-    color: var(--ms-muted-2);
-}
-
-html .messenger-shell .chat-subtitle {
-    color: var(--ms-muted);
-}
-
+/* Dropdown-меню (⋮ настройки и звонки). Тень берётся из компонента
+   (`var(--ms-shadow-pop)`) — литерал здесь ломал тёмную тему. */
+/* Панель GIF. Тень — токеном в компоненте, см. .ms-dropdown выше. */
 /* Закреплённые */
-html .messenger-shell .pinned-bar {
-    background: var(--ms-pinned-bg);
-    border-bottom-color: var(--ms-pinned-border);
-}
-
-html .messenger-shell .pinned-icon {
-    color: var(--ms-pinned-icon);
-}
-
-html .messenger-shell .pinned-head {
-    color: var(--ms-pinned-text);
-}
-
-html .messenger-shell .pinned-count {
-    background: var(--ms-pinned-chip-bg);
-    color: var(--ms-pinned-text);
-}
-
-html .messenger-shell .pinned-item {
-    color: var(--ms-pinned-item);
-}
-
-html .messenger-shell .pinned-sender {
-    color: var(--ms-accent);
-}
-
-html .messenger-shell .pinned-item:hover {
-    background: color-mix(in srgb, var(--ms-icon) 10%, transparent);
-}
-
 /* Сообщения */
-html .messenger-shell .day-divider span {
-    background: var(--ms-surface);
-    color: var(--ms-muted);
-}
-
-html .messenger-shell .msg.out .msg-bubble {
-    background: var(--ms-bubble-out);
-}
-
-html .messenger-shell .msg.in .msg-bubble {
-    background: var(--ms-surface);
-}
-
+/* Плашка даты намеренно НЕ описана здесь: её вид (полупрозрачность + блюр)
+   задан в MessageThread.vue. Локальный селектор `html .messenger-shell …` по
+   специфичности сильнее scoped-правила и молча перебивал фон плашки — из-за
+   этого прозрачность и размытие не работали. */
 /* Пузырь, где лежит только «кружок»-видеосообщение, — без фона и отступов */
-html .messenger-shell .msg .msg-bubble.round-video-only {
-    background: transparent;
-    box-shadow: none;
-    padding: 2px;
-}
-
-html .messenger-shell .msg-text {
-    color: var(--ms-bubble-text);
-}
-
-html .messenger-shell .msg-time {
-    color: var(--ms-bubble-time);
-}
-
-html .messenger-shell .msg-ticks {
-    color: var(--ms-bubble-time);
-}
-
-html .messenger-shell .msg-ticks.read {
-    color: var(--ms-tick);
-}
-
-html .messenger-shell .reply-quote {
-    background: color-mix(in srgb, var(--ms-icon) 8%, transparent);
-    border-left-color: var(--ms-info);
-}
-
-html .messenger-shell .msg.out .reply-quote {
-    border-left-color: var(--ms-accent);
-}
-
-html .messenger-shell .quote-name {
-    color: var(--ms-info);
-}
-
-html .messenger-shell .quote-name.mine {
-    color: var(--ms-accent);
-}
-
-html .messenger-shell .quote-text {
-    color: var(--ms-muted);
-}
-
-/* Вложения */
-html .messenger-shell .attachment-card {
-    background: var(--ms-surface-2);
-    color: var(--ms-text-strong);
-}
-
-html .messenger-shell .attachment-card i {
-    color: #d4585e;
-}
-
-html .messenger-shell .attachment-name {
-    color: var(--ms-text-strong);
-}
-
-html .messenger-shell .attachment-meta {
-    color: var(--ms-muted-2);
-}
-
 /* Действия и реакции */
-html .messenger-shell .msg-actions {
-    background: var(--ms-surface);
-}
-
-html .messenger-shell .reaction-chip {
-    border-color: var(--ms-border);
-    background: var(--ms-surface);
-    color: var(--ms-text);
-}
-
-html .messenger-shell .reaction-chip.mine {
-    background: var(--ms-accent-soft);
-    border-color: var(--ms-accent-border);
-}
-
-html .messenger-shell .emoji-picker {
-    background: var(--ms-surface);
-}
-
-html .messenger-shell .emoji-option:hover {
-    background: var(--ms-hover);
-}
-
-html .messenger-shell .emoji-option.active {
-    background: var(--ms-accent-soft);
-}
-
-html .messenger-shell .more-menu {
-    background: var(--ms-surface);
-}
-
-html .messenger-shell .more-item {
-    color: var(--ms-text);
-}
-
-html .messenger-shell .more-item:hover {
-    background: var(--ms-hover);
-}
-
-html .messenger-shell .more-item.danger {
-    color: var(--ms-danger);
-}
-
-/* Поиск по сообщениям */
-html .messenger-shell .inline-search {
-    background: var(--ms-surface);
-    border-bottom-color: var(--ms-border);
-}
-
-html .messenger-shell .inline-search-input {
-    color: var(--ms-text);
-}
-
-/* Ввод */
-html .messenger-shell .input-area {
-    background: var(--ms-surface-2);
-    border-top-color: var(--ms-border);
-}
-
-html .messenger-shell .reply-bar {
-    background: var(--ms-surface);
-    border-left-color: var(--ms-info);
-}
-
-html .messenger-shell .reply-bar-name {
-    color: var(--ms-info);
-}
-
-html .messenger-shell .reply-bar-text {
-    color: var(--ms-muted);
-}
-
-html .messenger-shell .input-row {
-    background: var(--ms-surface);
-}
-
-html .messenger-shell .text-input {
-    color: var(--ms-text-strong);
-    caret-color: var(--ms-accent);
-}
-
-html .messenger-shell .send-btn {
-    background: var(--ms-accent);
-    color: var(--ms-on-accent);
-}
-
-html .messenger-shell .send-btn:hover {
-    background: var(--ms-accent-strong);
-}
-
-html .messenger-shell .chat-status {
-    color: var(--ms-muted-2);
-}
+/* Шапка, меню и поля ввода описаны в своих компонентах (ChatHeader,
+   GifPicker, InlineSearchBar, MessageComposer). */
 
 /* Панель записи голосового сообщения */
-html .messenger-shell .voice-recorder {
-    background: var(--ms-surface);
-}
-
-html .messenger-shell .vr-label {
-    color: var(--ms-text-strong);
-}
-
-html .messenger-shell .vr-timer {
-    color: var(--ms-muted-2);
-}
-
-html .messenger-shell .vr-btn.danger {
-    background: var(--ms-danger-bg);
-    color: var(--ms-danger);
-}
-
-html .messenger-shell .vr-btn.danger:hover {
-    background: color-mix(in srgb, var(--ms-danger) 16%, transparent);
-}
-
-html .messenger-shell .vr-btn.accent {
-    background: var(--ms-accent-soft);
-    color: var(--ms-accent);
-}
-
-html .messenger-shell .vr-btn.accent:hover {
-    background: color-mix(in srgb, var(--ms-accent) 16%, transparent);
-}
-
-html .messenger-shell .vr-play {
-    background: var(--ms-accent);
-}
-
-html .messenger-shell .vr-play:hover {
-    background: var(--ms-accent-strong);
-}
-
 /* ==========================================================================
    Микро-взаимодействия и плавная смена темы.
    Не вешаем transition на каждый элемент — только на крупные поверхности и

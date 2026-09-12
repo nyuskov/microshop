@@ -273,8 +273,10 @@
         <div
           ref="ctxRef"
           class="ctx-menu"
-          role="menu"
+          role="dialog"
+          aria-modal="true"
           aria-label="Действия с сообщением"
+          tabindex="-1"
           :style="ctxStyle"
           @click.stop
           @contextmenu.prevent
@@ -359,6 +361,9 @@ import { avatarStyle, initials } from '@/utils/user'
 import { formatBytes, formatMsgTime } from '@/utils/format'
 import { splitMessageText } from '@/utils/mentions'
 import { followLink } from '@/composables/useExternalLinkGuard'
+import { focusableElements, useFocusTrap } from '@/composables/useFocusTrap'
+import { useVisibleOnce } from '@/composables/useVisibleOnce'
+import { menuFocusTarget } from '@/utils/menu'
 import {
   callMessageIcon,
   callMessageText,
@@ -415,6 +420,14 @@ const followMessageLink = (url?: string) => {
 const expanded = ref(false)
 /** Корень строки сообщения — нужен для замеров (свайп, лист действий). */
 const rowRoot = ref<HTMLElement | null>(null)
+/**
+ * Строка дошла до экрана (один раз и навсегда).
+ *
+ * По этому флагу запускаются дорогие вещи: запрос карточки ссылки и расшифровка
+ * вложения. Сначала так делали для всей загруженной истории сразу — на открытие
+ * чата уходили десятки запросов и расшифровок.
+ */
+const { visible: rowVisible } = useVisibleOnce(rowRoot)
 const canCollapse = computed(() => (props.message.text?.length ?? 0) > LONG_TEXT_LIMIT)
 const isClamped = computed(() => canCollapse.value && !expanded.value)
 
@@ -474,7 +487,11 @@ const emit = defineEmits<{
 const linkPreviewText = computed<string | null>(() =>
   props.message.encrypted || props.message.kind === 'call' ? null : (props.message.text ?? null)
 )
-const { preview: linkPreview } = useLinkPreview(() => linkPreviewText.value)
+const { preview: linkPreview } = useLinkPreview(() => linkPreviewText.value, {
+  // Карточку ссылки просим только когда строка дошла до экрана: иначе на
+  // открытие чата уходили бы десятки запросов сразу (см. useVisibleOnce).
+  enabled: () => rowVisible.value
+})
 
 // ---------- «Переслано от …»: аватар автора и переход к нему ----------
 const forwarderName = computed<string>(
@@ -525,7 +542,11 @@ const mediaAbsolute = (path: string): string => mediaUrl(path)
 const file = computed(() => effectiveFile(props.message))
 
 /** Расшифрованное вложение (blob-ссылка) — только для зашифрованных файлов. */
-const decrypted = computed(() => decryptedMediaFor(props.message))
+const decrypted = computed(() =>
+  // Расшифровку начинаем, когда строка дошла до экрана: иначе на открытие чата
+  // скачивались бы вложения всей истории.
+  decryptedMediaFor(props.message, { enabled: () => rowVisible.value })
+)
 
 /**
  * URL вложения: у зашифрованного файла — расшифрованная blob-ссылка (пока её
@@ -765,7 +786,12 @@ const QUICK_REACTION_KEY = 'pismo_quick_reaction'
 const ctxOpen = ref(false)
 const ctxAllEmoji = ref(false)
 const ctxReady = ref(false)
-const ctxRef = ref<HTMLElement | null>(null)
+/**
+ * Лист действий — модальный слой: фокус переносим внутрь, держим там и
+ * возвращаем на место при закрытии. Ждём `ctxReady`: пока лист скрыт
+ * (`visibility: hidden`), фокус в него не поставить.
+ */
+const { container: ctxRef } = useFocusTrap(() => ctxOpen.value && ctxReady.value)
 /** Точка нажатия — от неё считаем положение листа. */
 const ctxAnchor = ref({ x: 0, y: 0 })
 /** Текущее (подогнанное под экран) положение листа. */
@@ -844,6 +870,12 @@ const closeContext = (): void => {
 /** Правый клик на компьютере открывает тот же лист действий. */
 const openContextFromEvent = (event: MouseEvent): void => {
   if (props.selectionMode) return
+  // Клавиатура (Shift+F10 или клавиша «Меню») присылает событие без координат —
+  // открываем лист у самого сообщения, а не в левом верхнем углу экрана.
+  if (event.clientX === 0 && event.clientY === 0) {
+    openActions()
+    return
+  }
   void openContext(event.clientX, event.clientY)
 }
 
@@ -900,9 +932,23 @@ const onDoubleTap = (): void => {
   emit('toggle-reaction', lastQuickReaction())
 }
 
-/** Esc закрывает лист действий. */
+/** Esc закрывает лист действий, стрелки — переход по пунктам и реакциям. */
 const onCtxKeydown = (event: KeyboardEvent): void => {
-  if (event.key === 'Escape') closeContext()
+  if (event.key === 'Escape') {
+    closeContext()
+    return
+  }
+  const root = ctxRef.value
+  if (!root) return
+  const items = focusableElements(root)
+  const target = menuFocusTarget(
+    event.key,
+    items.indexOf(document.activeElement as HTMLElement),
+    items.length
+  )
+  if (target === null) return
+  event.preventDefault()
+  items[target].focus()
 }
 
 watch(ctxOpen, (open) => {
@@ -978,17 +1024,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
   position: relative;
   padding: 7px 11px 6px;
   border-radius: 12px;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--ms-shadow-sm);
   min-width: 70px;
 }
 
 .msg.out .msg-bubble {
-  background: #dcf8c6;
+  background: var(--ms-bubble-out);
   border-top-right-radius: 3px;
 }
 
 .msg.in .msg-bubble {
-  background: #ffffff;
+  background: var(--ms-surface);
   border-top-left-radius: 3px;
 }
 
@@ -1085,7 +1131,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 
 .msg-text {
   display: block;
-  color: #111;
+  color: var(--ms-bubble-text);
   /* Размер текста сообщений подчиняется настройке «Размер текста». */
   font-size: calc(14.5px * var(--ms-text-scale, 1));
   line-height: 1.35;
@@ -1104,17 +1150,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 
 .msg-time {
   font-size: 11px;
-  color: #8a98a3;
+  color: var(--ms-bubble-time);
 }
 
 .msg-ticks {
   font-size: 12px;
-  color: #99a7b1;
+  color: var(--ms-bubble-time);
   letter-spacing: -4px; /* галки стоят плотнее друг к другу */
 }
 
 .msg-ticks.read {
-  color: #3aa6e0;
+  color: var(--ms-tick);
 }
 
 .msg-edited {
@@ -1132,8 +1178,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
   margin: -1px 0 4px;
   padding: 3px 7px;
   border-radius: 7px;
-  background: rgba(224, 160, 42, 0.14);
-  color: #a5741a;
+  background: var(--ms-warn-bg);
+  color: var(--ms-warn);
   font-size: 11.5px;
   font-weight: 600;
   line-height: 1.3;
@@ -1165,7 +1211,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--ms-on-accent);
   font-size: 8.5px;
   font-weight: 700;
   overflow: hidden;
@@ -1181,8 +1227,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 .reply-quote {
   display: flex;
   flex-direction: column;
-  background: rgba(0, 0, 0, 0.06);
-  border-left: 3px solid #3aa6e0;
+  background: color-mix(in srgb, var(--ms-icon) 8%, transparent);
+  border-left: 3px solid var(--ms-info);
   border-radius: 6px;
   padding: 5px 9px;
   margin-bottom: 5px;
@@ -1191,22 +1237,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 }
 
 .msg.out .reply-quote {
-  border-left-color: #3f9d56;
+  border-left-color: var(--ms-accent);
 }
 
 .quote-name {
   font-size: 12.5px;
   font-weight: 700;
-  color: #3aa6e0;
+  color: var(--ms-info);
 }
 
 .quote-name.mine {
-  color: #3f9d56;
+  color: var(--ms-accent);
 }
 
 .quote-text {
   font-size: 13px;
-  color: #5c6a75;
+  color: var(--ms-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1245,15 +1291,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #f4f6f8;
+  background: var(--ms-surface-2);
   border-radius: 8px;
   padding: 8px 12px;
-  color: #2f3b44;
+  color: var(--ms-text-strong);
 }
 
 .attachment-card i {
   font-size: 1.6rem;
-  color: #d4585e;
+  color: var(--ms-danger);
 }
 
 /* Зашифрованное вложение, которое ещё не расшифровано (или не читается) */
@@ -1261,10 +1307,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: #f4f6f8;
+  background: var(--ms-surface-2);
   border-radius: 8px;
   padding: 10px 14px;
-  color: #5c6a75;
+  color: var(--ms-muted);
   font-size: 13.5px;
 }
 
@@ -1277,7 +1323,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 .attachment-name {
   font-size: 13.5px;
   font-weight: 600;
-  color: #141d26;
+  color: var(--ms-text-strong);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1286,12 +1332,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 
 .attachment-meta {
   font-size: 12px;
-  color: #8a98a3;
+  color: var(--ms-muted-2);
 }
 
 /* Общие круглые кнопки (геометрия — в assets/appearance.css) */
 .round-btn.danger:hover {
-  color: #d64545;
+  color: var(--ms-danger);
 }
 
 /* Действия при наведении — панель прижата к НИЖНЕМУ краю сообщения.
@@ -1300,10 +1346,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 .msg-actions {
   position: absolute;
   top: 100%;
-  background: #ffffff;
+  background: var(--ms-surface);
   background-clip: padding-box;
   border-radius: 18px;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--ms-shadow-md);
   display: flex;
   gap: 2px;
   padding: 0 4px 1px;
@@ -1337,9 +1383,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 .emoji-picker {
   position: absolute;
   top: calc(100% + 6px);
-  background: #ffffff;
+  background: var(--ms-surface);
   border-radius: 14px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--ms-shadow-pop);
   display: grid;
   grid-template-columns: repeat(8, 32px);
   gap: 2px;
@@ -1366,9 +1412,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 .more-menu {
   position: absolute;
   top: calc(100% + 6px);
-  background: #ffffff;
+  background: var(--ms-surface);
   border-radius: 12px;
-  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--ms-shadow-pop);
   display: flex;
   flex-direction: column;
   padding: 4px;
@@ -1398,7 +1444,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
   width: 100%;
   border: none;
   background: transparent;
-  color: #2f3b44;
+  color: var(--ms-text);
   font-size: 13.5px;
   font-family: inherit;
   text-align: left;
@@ -1409,11 +1455,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 }
 
 .more-item:hover {
-  background: #f0f2f4;
+  background: var(--ms-hover);
 }
 
 .more-item.danger {
-  color: #d64545;
+  color: var(--ms-danger);
 }
 
 /* Реакции */
@@ -1425,9 +1471,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 }
 
 .reaction-chip {
-  border: 1px solid #e0e4e8;
-  background: #ffffff;
-  color: #43525d;
+  border: 1px solid var(--ms-border);
+  background: var(--ms-surface);
+  color: var(--ms-text);
   font-size: 13px;
   border-radius: 14px;
   padding: 2px 8px;
@@ -1438,8 +1484,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 }
 
 .reaction-chip.mine {
-  background: #d8efdd;
-  border-color: #7cc48c;
+  background: var(--ms-accent-soft);
+  border-color: var(--ms-accent-border);
 }
 
 .reaction-count {
@@ -1462,12 +1508,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 }
 
 .emoji-option:hover {
-  background: #f0f2f4;
+  background: var(--ms-hover);
   transform: scale(1.18);
 }
 
 .emoji-option.active {
-  background: #e3f2e5;
+  background: var(--ms-accent-soft);
 }
 
 /* Режим выделения сообщений (long-press) */
@@ -1513,7 +1559,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 .row-selector.on {
   background: var(--ms-accent, #2ea25e);
   border-color: var(--ms-accent, #2ea25e);
-  color: #ffffff;
+  color: var(--ms-on-accent);
 }
 
 .msg-select-hit {
@@ -1536,7 +1582,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 @keyframes msg-highlight-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(46, 162, 94, 0);
+    box-shadow: 0 0 0 0 transparent;
   }
   15% {
     box-shadow: 0 0 0 3px var(--ms-accent, #2ea25e);
@@ -1551,7 +1597,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
   position: fixed;
   inset: 0;
   z-index: 4200;
-  background: rgba(15, 23, 42, 0.16);
+  background: var(--ms-scrim-soft);
 }
 
 .ctx-menu {
@@ -1626,6 +1672,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 }
 
 .ctx-item.danger {
-  color: #e5484d;
+  color: var(--ms-danger);
 }
 </style>

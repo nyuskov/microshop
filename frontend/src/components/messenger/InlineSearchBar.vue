@@ -35,12 +35,12 @@ const emit = defineEmits<{
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  background: #ffffff;
-  border-bottom: 1px solid #e2e6ea;
+  background: var(--ms-surface);
+  border-bottom: 1px solid var(--ms-border);
 }
 
 .search-icon {
-  color: #8595a2;
+  color: var(--ms-muted-3);
   font-size: 0.9rem;
 }
 
@@ -50,12 +50,13 @@ const emit = defineEmits<{
   outline: none;
   font-size: 14px;
   background: transparent;
+  color: var(--ms-text);
 }
 
 .inline-search-count {
   flex: none;
   font-size: 12px;
-  color: #8a94a6;
+  color: var(--ms-muted-2);
   white-space: nowrap;
 }
 </style>

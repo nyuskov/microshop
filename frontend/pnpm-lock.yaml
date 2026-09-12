@@ -208,9 +208,6 @@ importers:
       vite:
         specifier: ^7.0.6
         version: 7.3.6(@types/node@22.20.1)(sass-embedded@1.103.1)(sass@1.103.1)
-      vite-plugin-eslint:
-        specifier: ^1.8.1
-        version: 1.8.1(eslint@10.9.1(supports-color@10.2.2))(vite@7.3.6(@types/node@22.20.1)(sass-embedded@1.103.1)(sass@1.103.1))
       vite-plugin-mkcert:
         specifier: ^1.17.8
         version: 1.17.12(supports-color@10.2.2)(vite@7.3.6(@types/node@22.20.1)(sass-embedded@1.103.1)(sass@1.103.1))
@@ -757,10 +754,6 @@ packages:
 
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
-
-  '@rollup/pluginutils@4.2.1':
-    resolution: {integrity: sha512-iKnFXr7NkdZAIHiIWE+BX5ULi/ucVFYWD6TbAV+rZctiRTY2PL6tsIKhoIOaoskiWAkgu+VsbXgUVDNLHf+InQ==}
-    engines: {node: '>= 8.0.0'}
 
   '@rollup/rollup-android-arm-eabi@4.63.1':
     resolution: {integrity: sha512-UZ8sUxPTiHWYX9QNdJedb1kDZSpS1t/VPWBWGSgqHNi9w3Cu6IXvu2mzbhiTiPvtrqgTQJ+zqiAq2iPIPilpaQ==}
@@ -2086,11 +2079,6 @@ packages:
   rfdc@1.4.1:
     resolution: {integrity: sha512-q1b3N5QkRUWUl7iyylaaj3kOpIT0N2i9MqIEQXP73GVsN9cw3fdx8X63cEmWhJGi2PPCF23Ijp7ktmd39rawIA==}
 
-  rollup@2.80.0:
-    resolution: {integrity: sha512-cIFJOD1DESzpjOBl763Kp1AH7UE/0fcdHe6rZXUdQ9c50uvgigvW97u3IcSeBwOkgqL/PXPBktBCh0KEu5L8XQ==}
-    engines: {node: '>=10.0.0'}
-    hasBin: true
-
   rollup@4.63.1:
     resolution: {integrity: sha512-3Df9jsstwhccuEfmAMi9l8XUh/GOkVObmFTU7CCVBysEbcOZLl84jCtaAZMcPiMz2EGKsATzQcU+Xr3n/wU6cg==}
     engines: {node: '>=18.0.0', npm: '>=8.0.0'}
@@ -2468,12 +2456,6 @@ packages:
         optional: true
       vue-tsc:
         optional: true
-
-  vite-plugin-eslint@1.8.1:
-    resolution: {integrity: sha512-PqdMf3Y2fLO9FsNPmMX+//2BF5SF8nEWspZdgl4kSt7UvHDRHVVfHvxsD7ULYzZrJDGRxR81Nq7TOFgwMnUang==}
-    peerDependencies:
-      eslint: '>=7'
-      vite: '>=2'
 
   vite-plugin-inspect@11.4.1:
     resolution: {integrity: sha512-ShOFe2PURXGvRS5OrgmOLZOCwDTD7dEBVt0tMpFPKb9AsvqXKCRGM8QgKrUbRbJYFXScHvDPpGRd28rYidC0tA==}
@@ -3168,11 +3150,6 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
-  '@rollup/pluginutils@4.2.1':
-    dependencies:
-      estree-walker: 2.0.2
-      picomatch: 2.3.2
-
   '@rollup/rollup-android-arm-eabi@4.63.1':
     optional: true
 
@@ -3263,6 +3240,7 @@ snapshots:
     dependencies:
       '@types/estree': 1.0.9
       '@types/json-schema': 7.0.15
+    optional: true
 
   '@types/esrecurse@4.3.1': {}
 
@@ -4479,10 +4457,6 @@ snapshots:
 
   rfdc@1.4.1: {}
 
-  rollup@2.80.0:
-    optionalDependencies:
-      fsevents: 2.3.3
-
   rollup@4.63.1:
     dependencies:
       '@types/estree': 1.0.9
@@ -4822,14 +4796,6 @@ snapshots:
       optionator: 0.9.4
       typescript: 5.8.3
       vue-tsc: 3.3.11(typescript@5.8.3)
-
-  vite-plugin-eslint@1.8.1(eslint@10.9.1(supports-color@10.2.2))(vite@7.3.6(@types/node@22.20.1)(sass-embedded@1.103.1)(sass@1.103.1)):
-    dependencies:
-      '@rollup/pluginutils': 4.2.1
-      '@types/eslint': 8.56.12
-      eslint: 10.9.1(supports-color@10.2.2)
-      rollup: 2.80.0
-      vite: 7.3.6(@types/node@22.20.1)(sass-embedded@1.103.1)(sass@1.103.1)
 
   vite-plugin-inspect@11.4.1(vite@7.3.6(@types/node@22.20.1)(sass-embedded@1.103.1)(sass@1.103.1)):
     dependencies:

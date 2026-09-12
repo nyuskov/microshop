@@ -125,21 +125,21 @@ const submit = async () => {
   margin: 0 0 10px;
   font-size: 14px;
   line-height: 1.5;
-  color: #d64545;
+  color: var(--ms-danger);
 }
 
 .mod-hint {
   margin: 0 0 16px;
   font-size: 13px;
   line-height: 1.45;
-  color: var(--ms-text-muted, #6b7784);
+  color: var(--ms-muted);
 }
 
 .mod-label {
   display: block;
   margin-bottom: 6px;
   font-size: 13px;
-  color: var(--ms-text-muted, #6b7784);
+  color: var(--ms-muted);
 }
 
 .mod-label.gap-top {
@@ -147,7 +147,7 @@ const submit = async () => {
 }
 
 .mod-label code {
-  background: rgba(127, 127, 127, 0.14);
+  background: var(--ms-surface-2);
   border-radius: 5px;
   padding: 1px 5px;
 }
@@ -186,7 +186,7 @@ const submit = async () => {
   border: none;
   border-radius: 9px;
   background: transparent;
-  color: var(--ms-text-muted, #8295a3);
+  color: var(--ms-muted-3);
   cursor: pointer;
 }
 
@@ -197,7 +197,7 @@ const submit = async () => {
 
 .mod-error {
   margin: 10px 0 0;
-  color: #d64545;
+  color: var(--ms-danger);
   font-size: 13px;
 }
 </style>

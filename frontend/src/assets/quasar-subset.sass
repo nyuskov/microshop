@@ -1,0 +1,75 @@
+// Стили Quasar — только для используемых компонентов.
+//
+// Раньше подключался `quasar/dist/quasar.css` целиком: 206 КБ (36 КБ gzip), из
+// которых наши полтора десятка компонентов занимают малую часть, а таблицы,
+// календарь, редактор, карусели и прочие ~150 компонентов в бандл не нужны.
+// Источник — sass-файлы пакета, порядок как в `quasar/src/css/index.sass`:
+// хелперы → переменные → normalize → компоненты → плагины → core.
+//
+// ВАЖНО: список обязателен к синхронизации с разметкой. Забытый импорт — это не
+// ошибка сборки, а компонент без стилей (кнопка без фона, поле без рамки).
+// От этого защищает `src/__tests__/quasarCss.spec.ts`: он сверяет импорты здесь
+// с `<q-*>` в шаблонах и падает, если чего-то не хватает.
+
+@import 'quasar/src/css/helpers/string.sass'
+@import 'quasar/src/css/helpers/math.sass'
+@import 'quasar/src/css/variables.sass'
+@import 'quasar/src/css/normalize.sass'
+
+// Общая механика всплывающих панелей: диалоги, меню, тултипы (см. QDialog).
+@import 'quasar/src/composables/private.use-panel/use-panel.sass'
+
+// ---------- Компоненты из src/quasar.ts ----------
+@import 'quasar/src/components/icon/QIcon.sass'
+@import 'quasar/src/components/btn/QBtn.sass'
+@import 'quasar/src/components/card/QCard.sass'
+@import 'quasar/src/components/dialog/QDialog.sass'
+@import 'quasar/src/components/field/QField.sass'
+@import 'quasar/src/components/input/QInput.sass'
+// QLayout.sass содержит и стили QDrawer/QPageContainer/QHeader/QFooter —
+// отдельных sass-файлов у них в пакете нет (см. quasar/src/components/*).
+@import 'quasar/src/components/layout/QLayout.sass'
+@import 'quasar/src/components/checkbox/QCheckbox.sass'
+@import 'quasar/src/components/radio/QRadio.sass'
+@import 'quasar/src/components/toggle/QToggle.sass'
+@import 'quasar/src/components/separator/QSeparator.sass'
+@import 'quasar/src/components/space/QSpace.sass'
+@import 'quasar/src/components/spinner/QSpinner.sass'
+
+// ---------- Директивы ----------
+// Ripple включён в конфиге Quasar (`config.ripple` в main.ts).
+@import 'quasar/src/directives/ripple/Ripple.sass'
+
+// ---------- Плагины (Dialog и Notify из main.ts) ----------
+@import 'quasar/src/plugins/dialog/component/DialogPluginComponent.sass'
+@import 'quasar/src/plugins/notify/Notify.sass'
+
+// ---------- Core-утилиты, которые встречаются в разметке ----------
+// `q-pa/q-py/q-mt` (helpers), `row`/`items-center` (flex), `ellipsis`/`hidden`
+// (visibility), `.absolute`/`.relative` (positioning) и т. п.
+@import 'quasar/src/css/core/animations.sass'
+@import 'quasar/src/css/core/elevation.sass'
+@import 'quasar/src/css/core/flex.sass'
+@import 'quasar/src/css/core/helpers.sass'
+@import 'quasar/src/css/core/mouse.sass'
+@import 'quasar/src/css/core/orientation.sass'
+@import 'quasar/src/css/core/positioning.sass'
+@import 'quasar/src/css/core/size.sass'
+@import 'quasar/src/css/core/touch.sass'
+@import 'quasar/src/css/core/transitions.sass'
+@import 'quasar/src/css/core/typography.sass'
+@import 'quasar/src/css/core/visibility.sass'
+// `core/colors.sass` (29 КБ всех оттенков Material) не подключаем — вместо него
+// мини-палитра ниже. `core/dark.sass` тоже не нужен: тема наша, через
+// `html[data-theme]` (см. appearance.css), Quasar'овский `.body--dark` не используется.
+
+// ---------- Мини-палитра ----------
+// Quasar вешает эти классы по пропам `color`/`text-color`
+// (см. components/btn/use-btn.js: `bg-${color} text-${textColor || 'white'}`),
+// поэтому нужны ровно цвета бренда — они приходят из `config.brand` в main.ts
+// в виде CSS-переменных `--q-*`.
+@each $name in 'primary', 'secondary', 'accent', 'positive', 'negative', 'info', 'warning', 'white'
+  .text-#{$name}
+    color: var(--q-#{$name}) !important
+  .bg-#{$name}
+    background: var(--q-#{$name}) !important

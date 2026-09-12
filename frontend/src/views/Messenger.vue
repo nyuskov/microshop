@@ -428,8 +428,8 @@
 
   <!-- Просмотр изображений (lightbox) -->
   <ImageLightbox
-    v-if="lightboxImages.length > 0 && lightboxIndex !== null"
-    :images="lightboxImages"
+    v-if="lightboxItems.length > 0 && lightboxIndex !== null"
+    :images="lightboxItems"
     :index="lightboxIndex"
     @close="closeLightbox"
     @prev="lightboxStep(-1)"
@@ -512,7 +512,9 @@ import { usernameFromProfilePath } from '@/utils/profileLink'
 import { shareTargetFromSearch, withoutShareTargetParams } from '@/utils/shareTarget'
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
-import { effectiveFile, isImageFile, messageSnippet, optimizeImageFile } from '@/utils/media'
+import { effectiveFile, messageSnippet, optimizeImageFile } from '@/utils/media'
+import { buildLightboxItems, neighborIndexes } from '@/utils/lightbox'
+import { decideBackStep, type Section } from '@/utils/mobileNav'
 import { mediaUrl } from '@/config'
 import { chatIdFromUrl, chatUrlWith, readStoredSection, storeSection } from '@/utils/chatUrl'
 import { haptic } from '@/utils/haptics'
@@ -758,66 +760,67 @@ const stepBackInApp = (): boolean => {
  * Закрываем ровно один слой интерфейса — от верхнего к нижнему.
  */
 const handleAppBack = (state: { pismoView?: Section } | null) => {
-  // Просмотр истории — «назад» закрывает просмотрщик.
-  if (openStoryId.value !== null) {
-    openStoryId.value = null
-    return
+  const step = decideBackStep({
+    storyOpen: openStoryId.value !== null,
+    lightboxOpen: lightboxIndex.value !== null,
+    profileOpen: showProfileModal.value,
+    profileInSection: profileRef.value?.isInSection() ?? false,
+    chatInfoOpen: showChatInfoModal.value,
+    groupInfoOpen: showGroupInfoModal.value,
+    createGroupOpen: showCreateGroupModal.value,
+    messageSelection: msgSelectionMode.value,
+    chatSelection: sidebarRef.value?.isSelecting() ?? false,
+    currentView: view.value,
+    previousView: state?.pismoView,
+    chatOpen: selectedChatId.value !== null,
+    drawerOpen: drawerOpen.value,
+    isDesktop: isDesktop.value
+  })
+
+  switch (step.kind) {
+    case 'story':
+      openStoryId.value = null
+      return
+    case 'lightbox':
+      lightboxIndex.value = null
+      return
+    case 'profile-section':
+      profileRef.value?.backToSections()
+      return
+    case 'overlays':
+      showProfileModal.value = false
+      showChatInfoModal.value = false
+      showGroupInfoModal.value = false
+      showCreateGroupModal.value = false
+      return
+    case 'message-selection':
+      exitMessageSelection()
+      return
+    case 'chat-selection':
+      sidebarRef.value?.exitSelection()
+      return
+    case 'section':
+      view.value = step.section
+      // На мобильном раздел живёт в списке (drawer), а не отдельным экраном:
+      // если открыта переписка — закрываем её и показываем список раздела
+      // (см. `showList` в utils/mobileNav.ts).
+      if (step.showList) {
+        if (selectedChatId.value !== null) closeOpenChat()
+        revealDrawer()
+      }
+      return
+    case 'list':
+      // Открытая нить (drawer скрыт) → список.
+      drawerOpenedByBack = true
+      drawerOpen.value = true
+      // На мобильном список и нить — один экран: показали список, значит и в
+      // адресе чата быть не должно.
+      syncChatUrl(null)
+      return
+    case 'exit':
+      // Корень — выходим (позволяем браузеру завершить).
+      return
   }
-  // Просмотр изображения (лайтбокс) — закрываем его.
-  if (lightboxIndex.value !== null) {
-    lightboxIndex.value = null
-    return
-  }
-  // Раздел настроек профиля — «назад» возвращает к списку разделов.
-  if (showProfileModal.value && profileRef.value?.isInSection()) {
-    profileRef.value.backToSections()
-    return
-  }
-  // Модалки поверх всего — закрываем.
-  if (
-    showProfileModal.value ||
-    showChatInfoModal.value ||
-    showGroupInfoModal.value ||
-    showCreateGroupModal.value
-  ) {
-    showProfileModal.value = false
-    showChatInfoModal.value = false
-    showGroupInfoModal.value = false
-    showCreateGroupModal.value = false
-    return
-  }
-  // Режим выделения (сообщения или чаты) — «назад» выходит из него, а не уводит
-  // из чата или из приложения.
-  if (msgSelectionMode.value) {
-    exitMessageSelection()
-    return
-  }
-  if (sidebarRef.value?.isSelecting()) {
-    sidebarRef.value.exitSelection()
-    return
-  }
-  // Возврат в предыдущий раздел: «назад» идёт по истории переходов
-  // (Чаты → Истории → Контакты и обратно), а не всегда в «Чаты».
-  const previousView = state?.pismoView
-  if (previousView && previousView !== view.value) {
-    view.value = previousView
-    return
-  }
-  // Ничей раздел (например корень истории) — считаем, что вернулись в «Чаты».
-  if (view.value !== 'chats') {
-    view.value = 'chats'
-    return
-  }
-  // Открытая нить (drawer скрыт) -> список.
-  if (selectedChatId.value !== null && !drawerOpen.value) {
-    drawerOpenedByBack = true
-    drawerOpen.value = true
-    // На мобильном список и нить — один экран: показали список, значит и в
-    // адресе чата быть не должно.
-    syncChatUrl(null)
-    return
-  }
-  // Корень — выходим (позволяем браузеру завершить).
 }
 
 const onAppPopState = (event: PopStateEvent) => {
@@ -836,8 +839,6 @@ const onAppPopState = (event: PopStateEvent) => {
 }
 
 // ---------- Данные ----------
-/** Раздел нижнего меню: Чаты / Истории / Контакты. */
-type Section = 'chats' | 'contacts' | 'stories'
 
 // Раздел помним между перезагрузками (кнопка «Обновить», pull-to-refresh):
 // иначе человек, читавший истории, после обновления оказывался на «Чатах».
@@ -1126,28 +1127,40 @@ const saveMessageToSelf = async (message: Message) => {
 }
 
 // ---------- Просмотр изображений (lightbox) ----------
-const lightboxImages = computed(() => {
-  const items: { id: number; url: string; name: string }[] = []
-  for (const m of messages.value) {
-    const attachment = effectiveFile(m)
-    if (!attachment || !isImageFile(attachment)) continue
-    // Зашифрованную картинку показываем только расшифрованной: ссылка на
-    // шифротекст дала бы «битую» картинку.
-    const local = m.e2ee_file ? decryptedMediaFor(m) : null
-    if (m.e2ee_file && local?.status !== 'ready') continue
-    items.push({
-      id: m.id,
-      url: local?.url ?? mediaUrl(attachment.url),
-      name: attachment.name || 'Изображение'
-    })
+/**
+ * Ссылка на кадр. Для зашифрованного вложения читаем только состояние кэша
+ * (`enabled: () => false` не запускает загрузку) — расшифровку запрашивает
+ * `watch` ниже, когда кадр реально показывают. Иначе при каждом рендере чата
+ * скачивались и расшифровывались ВСЕ изображения истории.
+ * Пока кадр не готов, ссылка пустая: лайтбокс показывает загрузку. Подставлять
+ * сюда ссылку на шифротекст нельзя — получится «битая» картинка.
+ */
+const lightboxUrlOf = (message: Message): string => {
+  if (!message.e2ee_file) {
+    const attachment = effectiveFile(message)
+    return attachment === null ? '' : mediaUrl(attachment.url)
   }
-  return items
-})
+  const local = decryptedMediaFor(message, { enabled: () => false })
+  return local?.status === 'ready' ? local.url : ''
+}
+
+const lightboxItems = computed(() => buildLightboxItems(messages.value, lightboxUrlOf))
 const lightboxIndex = ref<number | null>(null)
 
+/** Расшифровываем текущий кадр и соседей — листание без ожидания. */
+watch([lightboxIndex, lightboxItems], () => {
+  const index = lightboxIndex.value
+  if (index === null) return
+  const items = lightboxItems.value
+  for (const i of neighborIndexes(index, items.length)) {
+    const item = items[i]
+    if (item?.message.e2ee_file) decryptedMediaFor(item.message)
+  }
+})
+
 const openImageFromMessage = (message: Message) => {
-  if (lightboxImages.value.length === 0) return
-  const idx = lightboxImages.value.findIndex((item) => item.id === message.id)
+  if (lightboxItems.value.length === 0) return
+  const idx = lightboxItems.value.findIndex((item) => item.id === message.id)
   // Лайтбокс — полноэкранный слой: системная «назад» должна закрывать его
   // (см. `handleAppBack`), значит нужен маркер в истории.
   pushMobileNav()
@@ -1159,8 +1172,8 @@ const closeLightbox = () => {
 }
 
 const lightboxStep = (delta: number) => {
-  if (lightboxIndex.value === null || lightboxImages.value.length === 0) return
-  const length = lightboxImages.value.length
+  if (lightboxIndex.value === null || lightboxItems.value.length === 0) return
+  const length = lightboxItems.value.length
   lightboxIndex.value = (lightboxIndex.value + delta + length) % length
 }
 
@@ -3924,7 +3937,7 @@ watch(
   right: 0;
   height: var(--ms-vv-h, 100%);
   overflow: hidden;
-  background: #6d7c8c;
+  background: var(--ms-shell);
   font-family: var(--ms-font);
 }
 
@@ -3934,6 +3947,7 @@ watch(
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  background: var(--ms-body);
 }
 
 /* Чат восстанавливается из адреса (перезагрузка страницы, повторное открытие
@@ -3955,13 +3969,12 @@ watch(
   min-width: 0;
   min-height: 0;
   overflow: hidden; /* не даём контенту распирать панель и создавать скролл страницы */
-  background-image: radial-gradient(
-    circle at 1px 1px,
-    rgba(120, 144, 156, 0.12) 1px,
-    transparent 0
-  );
+  /* Точки фона — токеном: у него значения под светлую и тёмную тему
+     (раньше был литерал rgba(), который в тёмной теме приходилось перебивать
+     из appearance.css). */
+  background-image: var(--ms-chat-dots);
   background-size: 22px 22px;
-  background-color: #eef1f4;
+  background-color: var(--ms-chat-bg);
 }
 
 /* Drawer со списком чатов: тень и высота на весь экран. */
@@ -3977,7 +3990,7 @@ watch(
   max-width: calc(100vw - 32px);
   border-radius: var(--ms-radius-lg, 18px);
   border: 1px solid var(--ms-border, #e2e6ea);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--ms-shadow-pop);
 }
 
 /* Профиль — часть темы: внутри UserProfile цвета берутся из токенов
@@ -4059,7 +4072,7 @@ watch(
   padding: 8px 14px;
   background: var(--ms-surface, #ffffff);
   border-bottom: 1px solid var(--ms-border, #e2e6ea);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--ms-shadow-sm);
   z-index: 2;
   flex: none;
 }
@@ -4100,7 +4113,7 @@ watch(
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(9, 13, 18, 0.92);
+  background: var(--ms-call-bg);
 }
 
 .clw-card {
@@ -4114,7 +4127,7 @@ watch(
   width: 84px;
   height: 84px;
   border-radius: 50%;
-  border: 4px solid rgba(255, 255, 255, 0.15);
+  border: 4px solid var(--ms-call-ring);
   border-top-color: var(--ms-accent, #2ea25e);
   animation: clw-spin 1.1s linear infinite;
 }
@@ -4127,14 +4140,14 @@ watch(
 
 .clw-text {
   margin: 0;
-  color: #fff;
+  color: var(--ms-call-fg);
   font-size: 18px;
   font-weight: 600;
 }
 
 .clw-peer {
   margin: 0;
-  color: #fff;
+  color: var(--ms-call-fg);
   font-size: 22px;
   font-weight: 700;
   max-width: 78vw;
@@ -4151,8 +4164,8 @@ watch(
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #e5484d;
-  color: #fff;
+  background: var(--ms-call-danger);
+  color: var(--ms-call-fg);
   cursor: pointer;
   transition:
     transform 0.15s ease,
@@ -4160,12 +4173,13 @@ watch(
 }
 
 .clw-decline:hover {
-  background: #d6383d;
+  background: var(--ms-call-danger);
+  filter: brightness(0.9);
   transform: scale(1.06);
 }
 
 .call-launch-missed .clw-text {
   font-size: 16px;
-  color: rgba(255, 255, 255, 0.85);
+  color: color-mix(in srgb, var(--ms-call-fg) 85%, transparent);
 }
 </style>

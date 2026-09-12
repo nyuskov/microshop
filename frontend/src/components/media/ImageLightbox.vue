@@ -2,16 +2,19 @@
   <Teleport to="body">
     <div
       v-if="current"
+      ref="trapContainer"
       class="lb-overlay"
       role="dialog"
       aria-modal="true"
       aria-label="Просмотр изображения"
+      tabindex="-1"
       @click.self="emit('close')"
     >
       <div class="lb-topbar">
         <span class="lb-name" :title="current.name">{{ current.name }}</span>
         <span v-if="images.length > 1" class="lb-count">{{ index + 1 }} / {{ images.length }}</span>
         <a
+          v-if="current.url"
           class="lb-icon-btn lb-download"
           :href="current.url"
           :download="current.name"
@@ -37,7 +40,20 @@
         <q-icon :name="icon('chevron_left')" size="32px" />
       </button>
 
-      <img :key="current.id" :src="current.url" :alt="current.name" class="lb-image" @click.stop />
+      <img
+        v-if="current.url"
+        :key="current.id"
+        :src="current.url"
+        :alt="current.name"
+        class="lb-image"
+        @click.stop
+      />
+      <!-- Зашифрованное вложение расшифровывается по запросу (см. utils/lightbox):
+           пока ссылки нет, показываем ожидание, а не «битую» картинку. -->
+      <div v-else class="lb-loading" role="status" aria-live="polite">
+        <q-spinner size="34px" color="primary" />
+        <span class="lb-loading-text">Открываем изображение…</span>
+      </div>
 
       <button
         v-if="images.length > 1"
@@ -55,6 +71,7 @@
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
 import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { useFocusTrap } from '@/composables/useFocusTrap'
 
 export interface LightboxImage {
   id: number
@@ -74,6 +91,9 @@ const emit = defineEmits<{
 }>()
 
 const current = computed<LightboxImage | null>(() => props.images[props.index] ?? null)
+
+// Лайтбокс — свой оверлей: Tab не должен уходить на страницу под ним.
+const { container: trapContainer } = useFocusTrap(() => current.value !== null)
 
 const onKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Escape') emit('close')
@@ -177,5 +197,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 .lb-next {
   right: 16px;
+}
+
+/* Ожидание расшифровки E2EE-кадра: текст и спиннер в стиле верхней панели */
+.lb-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+}
+
+.lb-loading-text {
+  font-size: 13px;
+  opacity: 0.85;
 }
 </style>

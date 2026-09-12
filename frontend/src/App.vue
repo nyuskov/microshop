@@ -59,12 +59,12 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   max-width: calc(100vw - 24px);
-  background: #171e26;
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--ms-surface);
+  color: var(--ms-text);
+  border: 1px solid var(--ms-border);
   border-radius: 12px;
   padding: 8px 10px 8px 14px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--ms-shadow-pop);
   box-sizing: border-box;
 }
 
@@ -78,8 +78,8 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   border: none;
   border-radius: 9px;
-  background: #2ea25e;
-  color: #fff;
+  background: var(--ms-accent);
+  color: var(--ms-on-accent);
   font-size: 13px;
   font-weight: 700;
   padding: 7px 14px;
@@ -87,6 +87,6 @@ onBeforeUnmount(() => {
 }
 
 .pwa-update-btn:hover {
-  background: #39b56c;
+  background: var(--ms-accent-strong);
 }
 </style>

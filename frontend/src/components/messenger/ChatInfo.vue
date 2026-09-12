@@ -212,7 +212,7 @@ const files = computed(() =>
   width: 88px;
   height: 88px;
   border-radius: 50%;
-  color: #fff;
+  color: var(--ms-on-accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;

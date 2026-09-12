@@ -107,6 +107,23 @@ jobs:
       - name: Lint (eslint)
         run: pnpm --prefix frontend exec eslint --no-cache src
 
+      # Цвета интерфейса живут только в токенах --ms-*: проверяем, что в стилях
+      # компонентов не появилось новых литеральных цветов (светлых пятен в тёмной
+      # теме). База уже имеющихся — scripts/style-tokens-baseline.json.
+      - name: Styles (нет новых литеральных цветов)
+        run: node frontend/scripts/check-tokens.mjs
+
+      # Контраст токенов по WCAG AA: обычный текст 4.5:1, иконки 3:1.
+      - name: Styles (контраст токенов)
+        run: node frontend/scripts/check-contrast.mjs
+
+      # Слой `html .messenger-shell …` в appearance.css по специфичности сильнее
+      # scoped-стилей, поэтому его правило молча перебивает стиль компонента.
+      # Проверяем, что таких расхождений (одно свойство — разные значения) нет;
+      # база — scripts/style-duplicates-baseline.json.
+      - name: Styles (слой не перебивает компоненты)
+        run: node frontend/scripts/check-style-duplicates.mjs
+
       - name: Unit tests (vitest)
         run: pnpm --prefix frontend exec vitest run
 

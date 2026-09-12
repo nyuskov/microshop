@@ -303,7 +303,7 @@ const tryCreate = async () => {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #fff;
+  color: var(--ms-on-accent);
 }
 
 .grp-check.on {
@@ -320,7 +320,7 @@ const tryCreate = async () => {
 
 .grp-error {
   margin: 8px 0 0;
-  color: #e0533d;
+  color: var(--ms-danger);
   font-size: 13px;
 }
 
@@ -333,7 +333,7 @@ const tryCreate = async () => {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  color: #fff;
+  color: var(--ms-on-accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;

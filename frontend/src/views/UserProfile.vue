@@ -1714,14 +1714,14 @@ const onNotificationsToggle = async (val: boolean) => {
   width: 84px;
   height: 84px;
   border-radius: 28px;
-  color: #fff;
+  color: var(--ms-on-accent);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.9rem;
   font-weight: 700;
   flex-shrink: 0;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--ms-shadow-md);
   border: none;
   cursor: pointer;
   overflow: hidden;
@@ -1734,7 +1734,7 @@ const onNotificationsToggle = async (val: boolean) => {
 
 .hero-avatar:hover:not(:disabled) {
   filter: brightness(1.04);
-  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--ms-shadow-md);
 }
 
 .hero-avatar:disabled {
@@ -1761,8 +1761,8 @@ const onNotificationsToggle = async (val: boolean) => {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.45);
-  color: #fff;
+  background: var(--ms-backdrop);
+  color: var(--ms-on-accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1779,7 +1779,7 @@ const onNotificationsToggle = async (val: boolean) => {
   border-radius: 50%;
   border: 2px solid var(--ms-surface);
   background: var(--ms-danger);
-  color: #fff;
+  color: var(--ms-on-accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2102,7 +2102,7 @@ const onNotificationsToggle = async (val: boolean) => {
   margin-top: 8px;
   border: none;
   background: var(--ms-accent, var(--ms-accent));
-  color: #fff;
+  color: var(--ms-on-accent);
 }
 
 .revoke-btn {
@@ -2657,7 +2657,7 @@ const onNotificationsToggle = async (val: boolean) => {
     color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 86%, #ffffff) 0%,
     var(--ms-accent, var(--ms-accent)) 100%
   );
-  color: #fff;
+  color: var(--ms-on-accent);
   box-shadow: 0 8px 18px color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 28%, transparent);
 }
 
@@ -2705,8 +2705,8 @@ const onNotificationsToggle = async (val: boolean) => {
 }
 
 .spinner.light {
-  border-color: rgba(255, 255, 255, 0.4);
-  border-top-color: #fff;
+  border-color: color-mix(in srgb, var(--ms-on-accent) 40%, transparent);
+  border-top-color: var(--ms-on-accent);
 }
 
 @keyframes spin {

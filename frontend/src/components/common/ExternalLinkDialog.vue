@@ -1,7 +1,14 @@
 <template>
   <Teleport to="body">
     <div v-if="pending" class="el-overlay" @mousedown.self="answer(false)">
-      <div class="el-card" role="alertdialog" aria-modal="true" aria-labelledby="el-title">
+      <div
+        ref="trapContainer"
+        class="el-card"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="el-title"
+        tabindex="-1"
+      >
         <span class="el-icon">
           <q-icon :name="icon('warning')" size="22px" />
         </span>
@@ -27,9 +34,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { icon } from '@/utils/icons'
+import { useFocusTrap } from '@/composables/useFocusTrap'
 import { useExternalLinkDialog } from '@/composables/useExternalLinkGuard'
 
 const { pending, answer } = useExternalLinkDialog()
+
+// Спрашиваем подтверждение — значит удерживаем фокус: иначе Tab уводит на сайт
+// под окном, а ответ «Перейти/Отмена» требует осознанного выбора.
+const { container: trapContainer } = useFocusTrap(() => pending.value !== null)
 
 /** Полный адрес обрезаем: длинные ссылки ломали бы вёрстку. */
 const prettyUrl = computed<string>(() => {
@@ -67,7 +79,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(12, 16, 22, 0.55);
+  background: var(--ms-backdrop);
   font-family: var(--ms-font);
 }
 
@@ -165,7 +177,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 .el-btn.go {
   background: var(--ms-accent, #2ea25e);
-  color: #fff;
+  color: var(--ms-on-accent);
 }
 
 .el-btn.go:hover {

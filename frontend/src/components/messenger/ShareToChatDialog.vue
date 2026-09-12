@@ -7,7 +7,7 @@
       aria-label="Отправить в Pismo"
       @mousedown.self="emit('close')"
     >
-      <div class="shr-card">
+      <div ref="trapContainer" class="shr-card" tabindex="-1">
         <!-- Шапка -->
         <header class="shr-head">
           <div class="shr-title">
@@ -96,6 +96,7 @@
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
 import { computed, ref } from 'vue'
+import { useFocusTrap } from '@/composables/useFocusTrap'
 import type { Chat } from '@/types'
 import {
   avatarStyle,
@@ -125,6 +126,9 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'share', chatId: number): void
 }>()
+
+// Оверлей самодельный (не q-dialog) — фокус держим сами.
+const { container: trapContainer } = useFocusTrap()
 
 const query = ref('')
 const selectedId = ref<number | null>(null)
@@ -168,7 +172,7 @@ const confirmShare = () => {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(12, 16, 22, 0.55);
+  background: var(--ms-backdrop);
   font-family: var(--ms-font);
 }
 
@@ -332,7 +336,7 @@ const confirmShare = () => {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  color: #fff;
+  color: var(--ms-on-accent);
   font-weight: 600;
   font-size: 15px;
 }
@@ -377,7 +381,7 @@ const confirmShare = () => {
   flex-shrink: 0;
   border-radius: 50%;
   border: 2px solid var(--ms-border, #d4d9e0);
-  color: #fff;
+  color: var(--ms-on-accent);
 }
 
 .shr-item.selected .shr-check {
@@ -450,7 +454,7 @@ const confirmShare = () => {
 
 .shr-btn.send {
   background: var(--ms-accent, #2ea25e);
-  color: #fff;
+  color: var(--ms-on-accent);
 }
 
 .shr-btn.send:hover:not(:disabled) {

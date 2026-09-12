@@ -55,12 +55,12 @@ const emit = defineEmits<{
   align-items: flex-start;
   gap: 10px;
   padding: 8px 16px;
-  background: #fffdf4;
-  border-bottom: 1px solid #efe4c8;
+  background: var(--ms-pinned-bg);
+  border-bottom: 1px solid var(--ms-pinned-border);
 }
 
 .pinned-icon {
-  color: #c9a227;
+  color: var(--ms-pinned-icon);
   font-size: 1rem;
   margin-top: 3px;
 }
@@ -75,13 +75,13 @@ const emit = defineEmits<{
   align-items: center;
   gap: 6px;
   font-size: 12.5px;
-  color: #8a7320;
+  color: var(--ms-pinned-text);
   font-weight: 600;
 }
 
 .pinned-count {
-  background: #f3e6b8;
-  color: #8a7320;
+  background: var(--ms-pinned-chip-bg);
+  color: var(--ms-pinned-text);
   border-radius: 10px;
   padding: 0 6px;
   font-size: 11px;
@@ -89,7 +89,7 @@ const emit = defineEmits<{
 
 .pinned-item {
   font-size: 13.5px;
-  color: #4a4a3c;
+  color: var(--ms-pinned-item);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -100,12 +100,12 @@ const emit = defineEmits<{
 }
 
 .pinned-item:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: color-mix(in srgb, var(--ms-icon) 10%, transparent);
 }
 
 .pinned-sender {
   font-weight: 600;
-  color: #1e7a43;
+  color: var(--ms-accent);
   margin-right: 6px;
 }
 

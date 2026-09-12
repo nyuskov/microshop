@@ -37,5 +37,6 @@ const emit = defineEmits<{
   text-align: center;
   padding: 24px;
   background: transparent;
+  color: var(--ms-muted);
 }
 </style>

@@ -1146,7 +1146,7 @@ const leaveFrozen = () => {
     color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 86%, #ffffff) 0%,
     var(--ms-accent, var(--ms-accent)) 100%
   );
-  color: #fff;
+  color: var(--ms-on-accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1250,7 +1250,7 @@ const leaveFrozen = () => {
     color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 86%, #ffffff) 0%,
     var(--ms-accent, var(--ms-accent)) 100%
   );
-  color: #fff;
+  color: var(--ms-on-accent);
   box-shadow: 0 8px 18px color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 30%, transparent);
 }
 
@@ -1262,8 +1262,8 @@ const leaveFrozen = () => {
 .spinner {
   width: 15px;
   height: 15px;
-  border: 2px solid rgba(255, 255, 255, 0.45);
-  border-top-color: #fff;
+  border: 2px solid color-mix(in srgb, var(--ms-on-accent) 45%, transparent);
+  border-top-color: var(--ms-on-accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
   flex-shrink: 0;
@@ -1353,7 +1353,7 @@ const leaveFrozen = () => {
 
 .otp-box.filled {
   border-color: var(--ms-accent, var(--ms-accent));
-  background: color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 12%, #ffffff);
+  background: color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 12%, var(--ms-surface));
 }
 
 .otp-box:focus {

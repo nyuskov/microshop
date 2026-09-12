@@ -153,7 +153,7 @@ const formatBytes = (size: number | null | undefined): string => {
   border: none;
   cursor: pointer;
   background: var(--ms-accent, #2ea25e);
-  color: #fff;
+  color: var(--ms-on-accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -179,7 +179,7 @@ const formatBytes = (size: number | null | undefined): string => {
   flex: 1;
   height: 6px;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.16);
+  background: color-mix(in srgb, var(--ms-bubble-text) 16%, transparent);
   cursor: pointer;
   overflow: hidden;
 }

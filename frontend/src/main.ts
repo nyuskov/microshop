@@ -9,7 +9,9 @@ import { useAuthStore } from './stores/auth' // Import the auth store
 // стилей, чтобы переопределения из style.css/appearance.css имели приоритет.
 import { Quasar, Dialog, Notify } from 'quasar'
 import quasarRuLang from 'quasar/lang/ru'
-import 'quasar/dist/quasar.css'
+// Стили Quasar — только для используемых компонентов (см. файл):
+// вместо `quasar/dist/quasar.css` целиком (206 КБ) — 15 компонентов.
+import './assets/quasar-subset.sass'
 
 // Иконки: свой @font-face на урезанный Material Symbols Rounded
 // (полный набор 5 МБ — см. frontend/scripts/build-icons-font.py).
@@ -60,7 +62,11 @@ app.use(Quasar, {
       positive: '#2ea25e',
       negative: '#d64545',
       info: '#3aa6e0',
-      warning: '#ee7f1d'
+      warning: '#ee7f1d',
+      // Нужен для классов `text-white`/`bg-white`, которые Quasar вешает на
+      // заполненные кнопки (`bg-<color> text-white`). Мини-палитра стилей
+      // Quasar берёт цвета из этих же переменных — хардкода нет.
+      white: '#ffffff'
     },
     notify: {
       position: 'top',
@@ -70,20 +76,11 @@ app.use(Quasar, {
   }
 })
 
-// Quasar 2.30 (полный бандл) НЕ регистрирует компоненты/директивы через app.use —
-// регистрируем их глобально вручную из экспортов библиотеки (без @quasar/vite-plugin).
-import * as QuasarExports from 'quasar'
-for (const [, mod] of Object.entries(QuasarExports)) {
-  const value = mod as { name?: unknown; install?: unknown } | null | undefined
-  if (value === null || typeof value !== 'object' || typeof value.name !== 'string') continue
-  const compName = value.name
-  // Q* — компонент (q-btn, q-dialog...), иначе — директива (close-popup, ripple...).
-  if (compName.startsWith('Q')) {
-    app.component(compName, value as never)
-  } else {
-    app.directive(compName, value as never)
-  }
-}
+// Компоненты и директивы Quasar регистрируем точечно (см. src/quasar.ts):
+// полный `import * as …` тянул в бандл всю библиотеку — 553 КБ (177 КБ gzip)
+// ради полутора десятков компонентов.
+import { registerQuasar } from './quasar'
+registerQuasar(app)
 
 // Переносим данные прежнего названия приложения (microshop_* → pismo_*)
 // ДО обращения к настройкам/черновикам/ключам E2EE — иначе пользователь потерял бы их.

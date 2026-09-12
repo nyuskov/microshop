@@ -612,7 +612,7 @@ onMounted(() => {
 }
 
 .jump-down.has-new .jump-new {
-  background: #fff;
+  background: var(--ms-surface);
   border-color: var(--ms-accent, #2ea25e);
 }
 
@@ -624,30 +624,44 @@ onMounted(() => {
   flex-direction: column;
 }
 
-/* Дата «прилипает» к верху ленты, пока прокручиваешь её день. */
+/* Дата дня «прилипает» к верху ленты, пока прокручиваешь её день.
+   z-index: 1 — НИЖЕ шапки чата (`.chat-header` — z-index: 2). Иначе плашка
+   оказывалась в одном слое с шапкой и, идя позже в DOM, выигрывала у
+   выпадающего меню «⋯»: меню рисовалось под ней и выглядело закрытым.
+   Единицы достаточно: у `.msg` только `position: relative` (z-index: auto),
+   а всплывающие элементы строки (меню, палитра реакций) — с бо́льшим z-index. */
 .day-divider {
   position: sticky;
   top: 6px;
-  z-index: 2;
+  z-index: 1;
   display: flex;
   justify-content: center;
   margin: 10px 0;
   pointer-events: none;
 }
 
+/* Плашка полупрозрачная, а фон под ней размывается — как плавающая дата в
+   Telegram: сообщение за плашкой не «исчезает», а мягко уходит в размытие.
+   Тени нет: размытие уже отделяет плашку от ленты. */
+/* Плашка даты — как в Telegram: полупрозрачная, а фон под ней размывается,
+   поэтому сообщение за плашкой не исчезает, а уходит в мягкое размытие.
+   Фон берём из токена: прозрачность работает без `backdrop-filter` и без
+   `color-mix`, а блюр — добавка там, где браузер его умеет. */
 .day-divider span {
-  background: #ffffff;
-  color: #60707c;
+  background: var(--ms-date-pill);
+  color: var(--ms-muted);
   font-size: 12px;
+  font-weight: 500;
   padding: 4px 12px;
   border-radius: 12px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
 }
 
 .chat-status {
   padding: 12px;
   text-align: center;
-  color: #8a98a3;
+  color: var(--ms-muted-2);
   font-size: 13.5px;
 }
 
@@ -682,7 +696,7 @@ onMounted(() => {
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background: rgba(46, 162, 94, 0.12);
+  background: color-mix(in srgb, var(--ms-accent) 12%, transparent);
   color: var(--ms-accent, #2ea25e);
   flex-shrink: 0;
   display: inline-flex;
@@ -723,7 +737,7 @@ onMounted(() => {
   height: 3px;
   margin-top: 1px;
   border-radius: 2px;
-  background: rgba(46, 162, 94, 0.18);
+  background: color-mix(in srgb, var(--ms-accent) 18%, transparent);
   overflow: hidden;
 }
 

@@ -307,7 +307,7 @@ const onReset = () => {
 
 .bubble-check {
   font-size: 1rem;
-  color: #111;
+  color: var(--ms-bubble-text);
   opacity: 0;
 }
 
@@ -351,7 +351,7 @@ const onReset = () => {
   height: 36px;
   border-radius: 7px;
   display: block;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--ms-border);
 }
 
 .wallpaper-label {

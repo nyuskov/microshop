@@ -320,7 +320,7 @@ const restoreAuthorMessages = async (userId: number) => {
 .mod-tab {
   border: 1px solid var(--ms-border, #dfe5ea);
   background: transparent;
-  color: var(--ms-text-muted, #6b7784);
+  color: var(--ms-muted);
   border-radius: 999px;
   padding: 5px 12px;
   font-size: 13px;
@@ -343,7 +343,7 @@ const restoreAuthorMessages = async (userId: number) => {
   margin: 0 0 12px;
   font-size: 13px;
   line-height: 1.45;
-  color: var(--ms-text-muted, #6b7784);
+  color: var(--ms-muted);
 }
 
 .mod-count {
@@ -353,7 +353,7 @@ const restoreAuthorMessages = async (userId: number) => {
 .mod-empty {
   padding: 22px 0;
   text-align: center;
-  color: var(--ms-text-muted, #6b7784);
+  color: var(--ms-muted);
   font-size: 14px;
 }
 
@@ -380,27 +380,27 @@ const restoreAuthorMessages = async (userId: number) => {
   border-radius: 999px;
   padding: 2px 8px;
   background: var(--ms-surface-2, #eef1f4);
-  color: var(--ms-text-muted, #6b7784);
+  color: var(--ms-muted);
 }
 
 .mod-status.s-new {
-  color: #b26a00;
-  background: rgba(255, 168, 0, 0.16);
+  color: var(--ms-warn);
+  background: var(--ms-warn-bg);
 }
 
 .mod-status.s-resolved {
-  color: #1a7f45;
-  background: rgba(46, 162, 94, 0.16);
+  color: var(--ms-accent);
+  background: var(--ms-accent-soft);
 }
 
 .mod-status.s-rejected {
-  color: #b03030;
-  background: rgba(214, 69, 69, 0.16);
+  color: var(--ms-danger);
+  background: var(--ms-danger-bg);
 }
 
 .mod-date {
   font-size: 12px;
-  color: var(--ms-text-muted, #6b7784);
+  color: var(--ms-muted);
 }
 
 .mod-pair {
@@ -413,11 +413,11 @@ const restoreAuthorMessages = async (userId: number) => {
 }
 
 .mod-arrow {
-  color: var(--ms-text-muted, #6b7784);
+  color: var(--ms-muted-3);
 }
 
 .mod-muted {
-  color: var(--ms-text-muted, #6b7784);
+  color: var(--ms-muted);
   font-size: 12.5px;
   margin: 2px 0;
 }
@@ -458,7 +458,7 @@ const restoreAuthorMessages = async (userId: number) => {
 
 .mod-error {
   margin: 10px 0 0;
-  color: #d64545;
+  color: var(--ms-danger);
   font-size: 13px;
 }
 </style>

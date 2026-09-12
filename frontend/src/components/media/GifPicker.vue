@@ -135,10 +135,10 @@ onMounted(() => {
   bottom: 64px;
   right: 14px;
   width: min(344px, calc(100vw - 40px));
-  background: #ffffff;
-  border: 1px solid #e2e6ea;
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-border);
   border-radius: 14px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--ms-shadow-pop);
   z-index: 40;
   overflow: hidden;
 }
@@ -153,13 +153,13 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: #f1f3f5;
+  background: var(--ms-surface-2);
   border-radius: 10px;
   padding: 4px 8px;
 }
 
 .gif-search-icon {
-  color: #8595a2;
+  color: var(--ms-muted-3);
   font-size: 0.9rem;
 }
 
@@ -169,14 +169,14 @@ onMounted(() => {
   outline: none;
   background: transparent;
   font-size: 14px;
-  color: #1c2733;
+  color: var(--ms-text-strong);
   padding: 6px 2px;
 }
 
 .gif-search-btn {
   border: none;
   background: var(--ms-accent, #2ea25e);
-  color: #fff;
+  color: var(--ms-on-accent);
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -201,9 +201,9 @@ onMounted(() => {
 }
 
 .gif-chip {
-  border: 1px solid #e0e5ea;
-  background: #fff;
-  color: #43525d;
+  border: 1px solid var(--ms-border);
+  background: var(--ms-surface);
+  color: var(--ms-text);
   font-size: 12.5px;
   border-radius: 14px;
   padding: 3px 10px;
@@ -213,12 +213,12 @@ onMounted(() => {
 }
 
 .gif-chip:hover {
-  background: #f2f4f6;
+  background: var(--ms-hover);
 }
 
 .gif-chip.active {
-  background: #e3f2e5;
-  border-color: #7cc48c;
+  background: var(--ms-accent-soft);
+  border-color: var(--ms-accent-border);
 }
 
 .gif-status {
@@ -227,13 +227,13 @@ onMounted(() => {
   justify-content: center;
   gap: 8px;
   padding: 22px 10px;
-  color: #8a98a3;
+  color: var(--ms-muted-2);
   font-size: 13px;
   text-align: center;
 }
 
 .gif-status.error {
-  color: #d64545;
+  color: var(--ms-danger);
 }
 
 .gif-grid {
@@ -249,7 +249,7 @@ onMounted(() => {
   position: relative;
   border: none;
   padding: 0;
-  background: #eef1f4;
+  background: var(--ms-surface-2);
   aspect-ratio: 1 / 1;
   border-radius: 8px;
   overflow: hidden;
@@ -277,14 +277,14 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--ms-backdrop);
 }
 
 .gif-spinner {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2px solid rgba(0, 0, 0, 0.15);
+  border: 2px solid var(--ms-hairline);
   border-top-color: var(--ms-accent, #2ea25e);
   animation: gif-spin 0.8s linear infinite;
   display: inline-block;

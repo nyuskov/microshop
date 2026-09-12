@@ -13,20 +13,39 @@ export interface UseLinkPreviewResult {
   preview: Ref<LinkPreview | null>
 }
 
+export interface UseLinkPreviewOptions {
+  /**
+   * Можно ли уже запрашивать превью. По умолчанию — сразу.
+   *
+   * Обычно сюда передают «строка показалась на экране»
+   * (`useVisibleOnce`), иначе карточки запрашивались бы для всей загруженной
+   * истории: сервер по каждой ссылке ходит в интернет, а лимит — 30 запросов
+   * в минуту на пользователя.
+   */
+  enabled?: () => boolean
+}
+
 /**
  * Следит за текстом сообщения и подгружает карточку первой ссылки.
  *
  * @param getText текст сообщения (функция, а не значение: текст меняется —
  *   сообщения редактируются, приходят обновления из realtime)
+ * @param options `enabled` — разрешение на запрос (см. выше)
  */
-export function useLinkPreview(getText: () => string | null | undefined): UseLinkPreviewResult {
+export function useLinkPreview(
+  getText: () => string | null | undefined,
+  options: UseLinkPreviewOptions = {}
+): UseLinkPreviewResult {
   const preview = ref<LinkPreview | null>(null)
   // Номер последнего запроса: ответ на устаревший текст не должен перебивать
   // карточку актуального (сообщение могли отредактировать).
   let requestId = 0
 
   watch(
-    () => firstLinkInText(getText()),
+    () => {
+      if (options.enabled && !options.enabled()) return null
+      return firstLinkInText(getText())
+    },
     async (link) => {
       requestId += 1
       const currentRequest = requestId

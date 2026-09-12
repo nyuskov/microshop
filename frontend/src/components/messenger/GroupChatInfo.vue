@@ -582,7 +582,7 @@ const deleteGroup = async () => {
   width: 92px;
   height: 92px;
   border-radius: 50%;
-  color: #fff;
+  color: var(--ms-on-accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -609,8 +609,8 @@ const deleteGroup = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.35);
-  color: #fff;
+  background: var(--ms-backdrop);
+  color: var(--ms-on-accent);
   opacity: 0;
   transition: opacity 0.15s ease;
 }
@@ -633,8 +633,8 @@ const deleteGroup = async () => {
 }
 
 .gi-icon-btn.danger:hover {
-  color: #e0533d;
-  background: rgba(224, 83, 61, 0.1);
+  color: var(--ms-danger);
+  background: var(--ms-danger-bg);
 }
 
 .gi-name {
@@ -816,7 +816,7 @@ const deleteGroup = async () => {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #fff;
+  color: var(--ms-on-accent);
 }
 
 .gi-check.on {
@@ -848,7 +848,7 @@ const deleteGroup = async () => {
 
 .gi-btn.primary {
   background: var(--ms-accent, #2ea25e);
-  color: #fff;
+  color: var(--ms-on-accent);
 }
 
 .gi-btn.ghost {
@@ -912,8 +912,8 @@ const deleteGroup = async () => {
 }
 
 .gi-role.role-creator {
-  color: #e08e2e;
-  background: rgba(224, 142, 46, 0.12);
+  color: var(--ms-warn);
+  background: var(--ms-warn-bg);
 }
 
 .gi-role.role-admin {
@@ -949,8 +949,8 @@ const deleteGroup = async () => {
 }
 
 .gi-mini-btn.danger:hover {
-  color: #e0533d;
-  background: rgba(224, 83, 61, 0.12);
+  color: var(--ms-danger);
+  background: var(--ms-danger-bg);
 }
 
 .gi-danger-zone {
@@ -966,7 +966,7 @@ const deleteGroup = async () => {
   width: 100%;
   border: none;
   background: transparent;
-  color: #e0533d;
+  color: var(--ms-danger);
   border-radius: 10px;
   padding: 10px 12px;
   font-size: 14px;
@@ -977,12 +977,12 @@ const deleteGroup = async () => {
 }
 
 .gi-danger-btn:hover {
-  background: rgba(224, 83, 61, 0.08);
+  background: var(--ms-danger-bg);
 }
 
 .gi-error {
   margin: 10px 0 0;
-  color: #e0533d;
+  color: var(--ms-danger);
   font-size: 13px;
   text-align: center;
 }
@@ -992,7 +992,7 @@ const deleteGroup = async () => {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  color: #fff;
+  color: var(--ms-on-accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;

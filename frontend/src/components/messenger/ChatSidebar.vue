@@ -1443,8 +1443,8 @@ onBeforeUnmount(() => {
 .side-panel {
   width: 100%;
   height: 100%;
-  background: #ffffff;
-  border-right: 1px solid #e2e6ea;
+  background: var(--ms-surface);
+  border-right: 1px solid var(--ms-border);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1456,17 +1456,17 @@ onBeforeUnmount(() => {
 }
 
 .inline-error {
-  color: #d64545;
+  color: var(--ms-danger);
   font-size: 12px;
   padding: 6px 14px;
-  background: #fdecec;
+  background: var(--ms-danger-bg);
 }
 
 .avatar {
   width: 46px;
   height: 46px;
   border-radius: 50%;
-  color: #fff;
+  color: var(--ms-on-accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1503,7 +1503,7 @@ onBeforeUnmount(() => {
   border-radius: 50%;
   background: var(--ms-accent);
   border: 2px solid var(--ms-surface);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 0 0 1px var(--ms-hairline);
   z-index: 1;
 }
 
@@ -1519,7 +1519,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px 4px;
-  background: #ffffff;
+  background: var(--ms-surface);
 }
 
 /* Плавная смена разделов нижнего меню. */
@@ -1558,7 +1558,7 @@ onBeforeUnmount(() => {
   font-size: 19px;
   font-weight: 600;
   margin: 0;
-  color: #1c2733;
+  color: var(--ms-text);
 }
 
 .panel-header-left,
@@ -1598,12 +1598,12 @@ onBeforeUnmount(() => {
   gap: 8px;
   margin: 0 12px 8px;
   padding: 7px 12px;
-  background: #f1f3f5;
+  background: var(--ms-surface-2);
   border-radius: 10px;
 }
 
 .search-icon {
-  color: #8595a2;
+  color: var(--ms-muted-3);
   font-size: 0.9rem;
 }
 
@@ -1613,7 +1613,7 @@ onBeforeUnmount(() => {
   outline: none;
   background: transparent;
   font-size: 14px;
-  color: #1c2733;
+  color: var(--ms-text);
 }
 
 /* Глобальный поиск (открывается по значку вместо верхнего хидера) */
@@ -1669,7 +1669,7 @@ onBeforeUnmount(() => {
   font-weight: 600;
   letter-spacing: 0.6px;
   text-transform: uppercase;
-  color: #8295a3;
+  color: var(--ms-muted);
   user-select: none;
 }
 
@@ -1817,27 +1817,27 @@ onBeforeUnmount(() => {
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: #6b7883;
+  color: var(--ms-muted-3);
   cursor: pointer;
 }
 
 .contact-action:hover {
-  background: #eef1f4;
+  background: var(--ms-hover);
 }
 
 .cn-side-error {
   margin: 0;
   padding: 10px 14px;
-  color: #c0392b;
+  color: var(--ms-danger);
   font-size: 12.5px;
 }
 
 .row-item:hover {
-  background: #f2f4f6;
+  background: var(--ms-hover);
 }
 
 .row-item.active {
-  background: #e3f2e5;
+  background: var(--ms-accent-soft);
 }
 
 .row-text {
@@ -1859,7 +1859,7 @@ onBeforeUnmount(() => {
 .row-title {
   font-size: calc(15px * var(--ms-text-scale, 1));
   font-weight: 600;
-  color: #141d26;
+  color: var(--ms-text-strong);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1867,13 +1867,13 @@ onBeforeUnmount(() => {
 
 .row-time {
   font-size: 12px;
-  color: #97a5b0;
+  color: var(--ms-muted-2);
   flex-shrink: 0;
 }
 
 .row-sub {
   font-size: calc(13.5px * var(--ms-text-scale, 1));
-  color: #71808d;
+  color: var(--ms-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1888,13 +1888,13 @@ onBeforeUnmount(() => {
 
 .tick {
   font-size: 0.85rem;
-  color: #37aee2;
+  color: var(--ms-tick);
   flex-shrink: 0;
 }
 
 .unread-badge {
-  background: #43c56a;
-  color: #fff;
+  background: var(--ms-accent);
+  color: var(--ms-on-accent);
   font-size: 11px;
   font-weight: 700;
   min-width: 20px;
@@ -1908,18 +1908,18 @@ onBeforeUnmount(() => {
 }
 
 .row-arrow {
-  color: #9aa7b2;
+  color: var(--ms-icon-3);
   font-size: 0.95rem;
 }
 
 .people-results {
-  border-bottom: 1px solid #eef0f2;
+  border-bottom: 1px solid var(--ms-border);
 }
 
 .search-status,
 .empty-hint {
   padding: 14px;
-  color: #93a0ab;
+  color: var(--ms-muted-2);
   font-size: 13.5px;
   text-align: center;
 }
@@ -1935,10 +1935,10 @@ onBeforeUnmount(() => {
   top: calc(100% + 8px);
   right: 0;
   min-width: 200px;
-  background: #ffffff;
-  border: 1px solid #e2e6ea;
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-border);
   border-radius: 12px;
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.16);
+  box-shadow: var(--ms-shadow-pop);
   padding: 6px;
   z-index: 120;
   display: flex;
@@ -1958,25 +1958,25 @@ onBeforeUnmount(() => {
   text-align: left;
   font-size: 14px;
   font-family: inherit;
-  color: #1c2733;
+  color: var(--ms-text);
   white-space: nowrap;
 }
 
 .ms-dropdown-item:hover {
-  background: #f2f4f6;
+  background: var(--ms-hover);
 }
 
 .ms-dropdown-item i {
   width: 18px;
   text-align: center;
   font-size: 1rem;
-  color: #5b6b79;
+  color: var(--ms-icon-2);
 }
 
 .ms-dropdown-item .q-icon {
   width: 18px;
   text-align: center;
-  color: #5b6b79;
+  color: var(--ms-icon-2);
 }
 
 /* Нижний отступ до «плавающей» панели разделов (safe-area учтён в ней). */
@@ -2025,7 +2025,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
+  color: var(--ms-on-accent);
 }
 
 .row-selector.on {
@@ -2042,7 +2042,7 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   z-index: 4000;
-  background: rgba(15, 20, 26, 0.45);
+  background: var(--ms-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2058,7 +2058,7 @@ onBeforeUnmount(() => {
   background: var(--ms-surface, #ffffff);
   color: var(--ms-text, #1c2733);
   border-radius: 18px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--ms-shadow-pop);
   overflow: hidden;
 }
 
@@ -2119,7 +2119,7 @@ onBeforeUnmount(() => {
   font-weight: 600;
   cursor: pointer;
   background: var(--ms-accent, #2ea25e);
-  color: #fff;
+  color: var(--ms-on-accent);
 }
 
 .phone-primary:disabled {
@@ -2204,7 +2204,7 @@ onBeforeUnmount(() => {
 
 .phone-btn.primary {
   background: var(--ms-accent, #2ea25e);
-  color: #fff;
+  color: var(--ms-on-accent);
 }
 
 .phone-error {

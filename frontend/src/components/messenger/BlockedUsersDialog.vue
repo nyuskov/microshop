@@ -110,13 +110,13 @@ onMounted(load)
   margin: 0 0 12px;
   font-size: 13.5px;
   line-height: 1.45;
-  color: var(--ms-text-muted, #6b7784);
+  color: var(--ms-muted);
 }
 
 .mod-empty {
   padding: 18px 0;
   text-align: center;
-  color: var(--ms-text-muted, #6b7784);
+  color: var(--ms-muted);
   font-size: 14px;
 }
 
@@ -142,7 +142,7 @@ onMounted(load)
   height: 40px;
   border-radius: 50%;
   overflow: hidden;
-  color: #fff;
+  color: var(--ms-on-accent);
   font-size: 15px;
   font-weight: 600;
 }
@@ -166,12 +166,12 @@ onMounted(load)
 
 .mod-name-sub {
   font-size: 12.5px;
-  color: var(--ms-text-muted, #6b7784);
+  color: var(--ms-muted);
 }
 
 .mod-error {
   margin: 10px 0 0;
-  color: #d64545;
+  color: var(--ms-danger);
   font-size: 13px;
 }
 </style>

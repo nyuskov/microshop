@@ -170,7 +170,7 @@ const remove = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--ms-on-accent);
   font-weight: 600;
   overflow: hidden;
   flex-shrink: 0;
@@ -197,19 +197,19 @@ const remove = async () => {
 
 .cn-hero-sub {
   font-size: 12.5px;
-  color: #93a0ab;
+  color: var(--ms-muted-3);
 }
 
 .cn-hint {
   margin: 0;
   font-size: 12.5px;
-  color: #93a0ab;
+  color: var(--ms-muted-3);
 }
 
 .cn-error {
   margin: 0;
   font-size: 12.5px;
-  color: #c0392b;
+  color: var(--ms-danger);
 }
 
 .cn-actions {
