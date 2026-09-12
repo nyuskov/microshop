@@ -136,6 +136,24 @@ async def decline_call(
     # worker и при мёртвом WebSocket: он гасит уведомление и просит приложение
     # прекратить звонок (`finishIfRinging`).
     _notify_call_finished(payload.to_user_id, payload.call_id, "declined")
+    # А СВОИМ устройствам — ещё и по сигнальному каналу.
+    #
+    # У абонента окно звонка тоже должно закрыться сразу, а не по таймауту:
+    # он смахнул уведомление, но вызов ещё «звонит» в приложении. Раньше
+    # надеялись только на push (у него может не быть подписки, его может съесть
+    # Doze), и звонок оставался висеть. `call-end` — обычное завершение: стор
+    # гасит звонок и показывает «Звонок завершён» (см. `stores/call.ts`).
+    local_end = {
+        "type": "call-end",
+        "call_id": payload.call_id,
+        "to_user_id": payload.to_user_id,
+        "from_user_id": user.id,
+        "reason": "declined",
+    }
+    if not await call_manager.send_to_user(user.id, local_end):
+        await call_manager.queue_message(
+            user.id, local_end, CALL_OVER_QUEUE_TTL_SECONDS
+        )
     return {"ok": delivered}
 
 

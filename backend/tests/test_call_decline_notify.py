@@ -80,24 +80,63 @@ async def test_decline_queued_for_offline_caller(
     )
 
     assert result == {"ok": False}
-    assert manager.queued == [
-        (
-            7,
-            {
-                "type": "call-decline",
-                "call_id": "call-1",
-                "to_user_id": 7,
-                "from_user_id": 5,
-                "reason": "declined",
-            },
-            calls_views.CALL_OVER_QUEUE_TTL_SECONDS,
-        )
-    ]
+    assert (
+        7,
+        {
+            "type": "call-decline",
+            "call_id": "call-1",
+            "to_user_id": 7,
+            "from_user_id": 5,
+            "reason": "declined",
+        },
+        calls_views.CALL_OVER_QUEUE_TTL_SECONDS,
+    ) in manager.queued
     # И тихий push — он дойдёт даже с мёртвым сокетом.
     assert (7, "call-1", "declined") in pushes
     # Свои устройства и история — как раньше.
     assert (5, "call-1", "declined") in pushes
     assert ("call-decline", 5, 7) in tracked
+    # Своему устройству — завершение и по сигнальному каналу (сокет закрыт, уйдёт
+    # из очереди при подключении).
+    assert (
+        5,
+        {
+            "type": "call-end",
+            "call_id": "call-1",
+            "to_user_id": 7,
+            "from_user_id": 5,
+            "reason": "declined",
+        },
+        calls_views.CALL_OVER_QUEUE_TTL_SECONDS,
+    ) in manager.queued
+
+
+async def test_decline_closes_own_ringing_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """У абонента окно звонка закрывается сразу, а не по таймауту.
+
+    Смахивание убирает уведомление, но вызов в приложении продолжает «звонить»:
+    push может не дойти (нет подписки, Doze), поэтому завершение уходит и по
+    сигнальному каналу — как обычный `call-end`.
+    """
+    manager, _, _ = _setup(monkeypatch, delivered=True)
+
+    await calls_views.decline_call(
+        CallDeclineRequest(call_id="call-1", to_user_id=7),
+        user=type("U", (), {"id": 5})(),
+    )
+
+    sent_to_self = [payload for user_id, payload in manager.sent if user_id == 5]
+    assert sent_to_self == [
+        {
+            "type": "call-end",
+            "call_id": "call-1",
+            "to_user_id": 7,
+            "from_user_id": 5,
+            "reason": "declined",
+        }
+    ]
 
 
 async def test_decline_still_pushes_when_socket_looks_alive(
