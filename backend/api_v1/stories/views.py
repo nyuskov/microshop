@@ -24,13 +24,7 @@ from .reactions import (
     STORY_REACTIONS_PRIMARY,
     is_allowed_reaction,
 )
-from .schemas import (
-    StoryAudience,
-    StoryFeed,
-    StoryGroup,
-    StoryItem,
-    StoryReactionIn,
-)
+from .schemas import StoryAudience, StoryFeed, StoryGroup, StoryItem, StoryReactionIn
 
 router = APIRouter(prefix="/stories", tags=["Истории"])
 
