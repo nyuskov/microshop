@@ -78,6 +78,8 @@ async def decline_call(
         payload.to_user_id,
         {"call_id": payload.call_id, "reason": "declined"},
     )
+    # На других устройствах этого же человека звонок тоже должен замолчать.
+    _notify_call_finished(user.id, payload.call_id)
     delivered = await call_manager.send_to_user(
         payload.to_user_id,
         {
@@ -258,10 +260,16 @@ async def _relay_message(
                 "call_id": data.get("call_id"),
                 "to_user_id": to_user_id,
                 "from_user_id": from_user_id,
-                "reason": "answered" if message_type == "call-answer" else "declined",
+                "reason": _elsewhere_reason(message_type, data),
             },
             exclude=sender,
         )
+        # И тихий push: у устройств с ЗАКРЫТЫМ приложением сигналинга нет, а
+        # уведомление «Вам звонят» там висит до тапа. Пусть закроют.
+        _notify_call_finished(from_user_id, data.get("call_id"))
+    elif message_type == "call-cancel":
+        # Зовущий передумал: у абонента уведомление тоже должно исчезнуть.
+        _notify_call_finished(to_user_id, data.get("call_id"))
 
     # Заблокированная пара не звонит друг другу: сообщение не пересылаем, вызов не
     # паркуем и push не шлём. Зовущему отвечаем как при недоступности — о самом
@@ -340,6 +348,38 @@ def _call_push_expires_at() -> int:
     """Момент (мс UTC), после которого push о звонке показывать бессмысленно."""
     seconds = datetime.now(timezone.utc).timestamp() + CALL_PUSH_VALID_SECONDS
     return int(seconds * 1000)
+
+
+#: Почему звонок завершился на другом устройстве (см. `call-ended-elsewhere`).
+#: Отличать причины важно: человек пытался ответить, но не вышло (`failed`) или
+#: уже был занят (`busy`) — это не «отклонил», и показывать «звонок отклонён» на
+#: втором устройстве этого же человека нельзя.
+def _elsewhere_reason(message_type: str, data: dict[str, Any]) -> str:
+    """Причина для других устройств: answered / declined / failed / busy."""
+    if message_type == "call-answer":
+        return "answered"
+    reason = str(data.get("reason") or "declined")
+    return reason if reason in ("failed", "busy") else "declined"
+
+
+def _notify_call_finished(user_id: int, call_id: object) -> None:
+    """Просит устройства человека закрыть уведомление о звонке.
+
+    Тихий push (без текста): service worker по нему убирает уведомление вызова и
+    ничего не показывает. Нужен именно push, а не сигналинг: приложение на
+    устройстве может быть закрыто, а уведомление «Вам звонят» там висит
+    (`requireInteraction` сам его не убирает).
+    """
+    if not call_id:
+        return
+    try:
+        from core.celery_app import get_task
+
+        get_task("tasks.notifications.send_call_cancelled_push").delay(
+            user_id, str(call_id)
+        )
+    except Exception:  # noqa: BLE001 - push не должен ронять сигналинг
+        logger.exception("Не удалось поставить задачу закрытия уведомления о звонке")
 
 
 async def _enqueue_call_push_when_ringing(

@@ -84,3 +84,113 @@ async def test_persisted_state_for_failed_answer(
     )
 
     assert saved == [("missed", 0), ("missed", 0), ("declined", 0)]
+
+
+@pytest.mark.parametrize(
+    "message_type,data,expected",
+    [
+        ("call-answer", {}, "answered"),
+        ("call-decline", {}, "declined"),
+        ("call-decline", {"reason": "declined"}, "declined"),
+        ("call-decline", {"reason": "failed"}, "failed"),
+        ("call-decline", {"reason": "busy"}, "busy"),
+        # Незнакомую причину не показываем как есть: на другом устройстве
+        # подойдёт нейтральное «отклонён».
+        ("call-decline", {"reason": "что-то"}, "declined"),
+    ],
+)
+def test_elsewhere_reason(message_type: str, data: dict, expected: str) -> None:
+    """Другие устройства человека узнают настоящую причину, а не «отклонил»."""
+    from api_v1.calls.views import _elsewhere_reason
+
+    assert _elsewhere_reason(message_type, data) == expected
+
+
+async def test_other_devices_told_truth_and_notification_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Отказ «не смог ответить» уходит другим устройствам честно.
+
+    И одновременно ставится тихий push: у устройств с закрытым приложением
+    уведомление «Вам звонят» иначе висит до тапа, хотя звонок давно завершён.
+    """
+    from api_v1.calls import views as calls_views
+
+    delivered: list[dict] = []
+    finished: list[tuple[int, object]] = []
+
+    async def fake_other_devices(
+        user_id: int, payload: dict, exclude: object = None
+    ) -> None:
+        delivered.append(payload)
+
+    async def fake_send_to_user(user_id: int, payload: dict) -> bool:
+        return True
+
+    monkeypatch.setattr(
+        calls_views.call_manager, "send_to_other_devices", fake_other_devices
+    )
+    monkeypatch.setattr(calls_views.call_manager, "send_to_user", fake_send_to_user)
+    monkeypatch.setattr(
+        calls_views,
+        "_notify_call_finished",
+        lambda uid, call_id: finished.append((uid, call_id)),
+    )
+    monkeypatch.setattr(calls_views, "_track_call_event", _noop)
+    monkeypatch.setattr(calls_views, "_is_call_blocked", _never_blocked)
+
+    await calls_views._relay_message(
+        1,
+        {
+            "type": "call-decline",
+            "to_user_id": 2,
+            "call_id": "call-7",
+            "reason": "failed",
+        },
+    )
+
+    assert delivered[0]["type"] == "call-ended-elsewhere"
+    # Причина настоящая: человек пытался ответить, а не отклонил вызов.
+    assert delivered[0]["reason"] == "failed"
+    assert finished == [(1, "call-7")]
+
+
+async def test_cancelled_call_closes_ring_notification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Зовущий отменил вызов — у абонента уведомление тоже закрывается."""
+    from api_v1.calls import views as calls_views
+
+    finished: list[tuple[int, object]] = []
+
+    async def fake_send_to_user(user_id: int, payload: dict) -> bool:
+        return False
+
+    monkeypatch.setattr(calls_views.call_manager, "send_to_user", fake_send_to_user)
+    monkeypatch.setattr(calls_views.call_manager, "discard_pending_offer", _noop_two)
+    monkeypatch.setattr(
+        calls_views,
+        "_notify_call_finished",
+        lambda uid, call_id: finished.append((uid, call_id)),
+    )
+    monkeypatch.setattr(calls_views, "_track_call_event", _noop)
+    monkeypatch.setattr(calls_views, "_is_call_blocked", _never_blocked)
+
+    await calls_views._relay_message(
+        1, {"type": "call-cancel", "to_user_id": 2, "call_id": "call-8"}
+    )
+
+    # Именно абонент (2), а не зовущий: уведомление висит у него.
+    assert finished == [(2, "call-8")]
+
+
+async def _noop(*args: object, **kwargs: object) -> None:
+    return None
+
+
+async def _noop_two(*args: object, **kwargs: object) -> None:
+    return None
+
+
+async def _never_blocked(*args: object, **kwargs: object) -> bool:
+    return False

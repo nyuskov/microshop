@@ -27,6 +27,8 @@ interface Harness {
   posted: Record<string, unknown>[]
   opened: string[]
   apiPosts: { path: string; body: unknown }[]
+  /** Что сейчас «висит» на экране устройства (как в настоящем браузере). */
+  displayed: { tag: string; closed: boolean }[]
   token: string | null
 }
 
@@ -38,6 +40,7 @@ function loadServiceWorker(): Harness {
   const posted: Harness['posted'] = []
   const opened: string[] = []
   const apiPosts: Harness['apiPosts'] = []
+  const displayed: Harness['displayed'] = []
   const harness: Harness = {
     sw,
     calls,
@@ -45,6 +48,7 @@ function loadServiceWorker(): Harness {
     posted,
     opened,
     apiPosts,
+    displayed,
     token: 'test-token'
   }
 
@@ -70,9 +74,21 @@ function loadServiceWorker(): Harness {
     registration: {
       showNotification: async (title: string, options: Record<string, unknown>) => {
         notifications.push({ title, options })
+        // Показанное уведомление остаётся на экране, пока его не закроют: так
+        // же ведёт себя браузер (см. getNotifications ниже).
+        displayed.push({ tag: String(options.tag || ''), closed: false })
         calls.push('showNotification')
       },
-      getNotifications: async () => []
+      getNotifications: async () =>
+        displayed
+          .filter((item) => !item.closed)
+          .map((item) => ({
+            tag: item.tag,
+            close: () => {
+              item.closed = true
+              calls.push('notification.close')
+            }
+          }))
     },
     location: { origin: 'https://pismo.space' },
     navigator: {}
@@ -186,5 +202,74 @@ describe('service worker: кнопки уведомления о звонке', 
       { type: 'call-notification', action: 'decline', call_id: 'call-1', peer_id: 5 }
     ])
     expect(harness.opened).toEqual([])
+  })
+})
+
+describe('service worker: звонок больше не звонит', () => {
+  let harness: Harness
+
+  beforeEach(() => {
+    harness = loadServiceWorker()
+  })
+
+  /** Показывает уведомление о входящем звонке (приложение закрыто). */
+  async function ring(callId: string) {
+    const event = pushEvent({
+      type: 'call',
+      call_id: callId,
+      peer_id: 5,
+      expires_at: Date.now() + 60_000
+    })
+    harness.sw.push?.(event)
+    await Promise.all(event.waits)
+  }
+
+  it('уведомление вызова закрывается по тихому push и новое не показывается', async () => {
+    await ring('call-1')
+    expect(harness.displayed).toEqual([{ tag: 'call-call-1', closed: false }])
+
+    // Звонок приняли на другом устройстве / отклонили / отменили: приходит
+    // push без заголовка и текста.
+    const cancel = pushEvent({ type: 'call-cancelled', call_id: 'call-1' })
+    harness.sw.push?.(cancel)
+    await Promise.all(cancel.waits)
+
+    expect(harness.displayed[0].closed).toBe(true)
+    // И никакого «Pismo» без текста на экране не появилось.
+    expect(harness.notifications).toHaveLength(1)
+    expect(harness.notifications[0].title).toBe('Pismo')
+  })
+
+  it('закрывает чужой вызов, но не трогает уведомления переписки', async () => {
+    await ring('call-1')
+    // Уведомление чата: его закрывать нельзя — сообщение никто не отменял.
+    const message = pushEvent({ type: 'message', chat_id: 3 }, { title: 'Аня', body: 'привет' })
+    harness.sw.push?.(message)
+    await Promise.all(message.waits)
+    expect(harness.displayed.map((item) => item.tag)).toEqual(['call-call-1', 'chat-3'])
+
+    const cancel = pushEvent({ type: 'call-cancelled', call_id: 'call-9' })
+    harness.sw.push?.(cancel)
+    await Promise.all(cancel.waits)
+    // call_id не совпал — ничего не закрыто.
+    expect(harness.displayed.every((item) => !item.closed)).toBe(true)
+
+    const cancelOwn = pushEvent({ type: 'call-cancelled', call_id: 'call-1' })
+    harness.sw.push?.(cancelOwn)
+    await Promise.all(cancelOwn.waits)
+    expect(harness.displayed.find((item) => item.tag === 'call-call-1')?.closed).toBe(true)
+    expect(harness.displayed.find((item) => item.tag === 'chat-3')?.closed).toBe(false)
+  })
+
+  it('без call_id снимает все уведомления о звонках', async () => {
+    await ring('call-1')
+    await ring('call-2')
+
+    const cancel = pushEvent({ type: 'call-cancelled' })
+    harness.sw.push?.(cancel)
+    await Promise.all(cancel.waits)
+
+    expect(harness.displayed.every((item) => item.closed)).toBe(true)
+    expect(harness.notifications).toHaveLength(2)
   })
 })

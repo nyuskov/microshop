@@ -93,6 +93,15 @@ const WS_PATH = '/api/v1/ws/calls'
  * таймаут заметно больше обычных 30 секунд.
  */
 const RING_OUT_TIMEOUT_MS = 60_000
+/**
+ * Сколько ждём входящий звонок, если о его завершении нам так и не сообщили
+ * (приложение было закрыто, сигналинг обрывался, звонок приняли на другом
+ * устройстве). Чуть больше, чем зовущий ждёт ответа, — плюс запас на доставку:
+ * зовущий сам снимает вызов через `RING_OUT_TIMEOUT_MS`, и мы узнаём об этом.
+ * Без такого сторожа «входящий» висел бы вечно, а с ним следующий вызов
+ * автоматически отклонялся бы как «занят».
+ */
+const INCOMING_STALE_TIMEOUT_MS = 75_000
 
 /** Сколько ждём восстановления связи, прежде чем завершить звонок. */
 const LINK_RECOVERY_WINDOW_MS = 12_000
@@ -247,6 +256,8 @@ let renegotiateSeq = 0
 // имеет тип `number`. Через `ReturnType<typeof setTimeout>` сюда попадают типы
 // Node (`NodeJS.Timeout`), и проверка типов падает — а она в CI блокирует деплой.
 let ringTimer: number | undefined
+/** Сторож входящего звонка: вызов давно не звонит, а мы об этом не узнали. */
+let incomingTimer: number | undefined
 /** Отсчёт до «собеседник так и не вернулся» после перезагрузки страницы. */
 let rejoinTimer: number | undefined
 /* Восстановление связи при смене сети (Wi-Fi → LTE и обратно). */
@@ -1110,6 +1121,11 @@ export const useCallStore = defineStore('call', {
             peerAvatar: null
           })
           startRingtone('incoming')
+          // Страховка на случай, когда о завершении вызова нам не сообщили
+          // (например, приложение было закрыто, а звонок приняли на другом
+          // устройстве). Иначе «входящий» висел бы бесконечно и следующий
+          // звонок автоматически отклонялся бы как «занят».
+          this._armIncomingTimer()
           break
         }
         case 'call-answer': {
@@ -1205,10 +1221,15 @@ export const useCallStore = defineStore('call', {
           if (this.callId !== callId) return
           if (this.status !== 'incoming' && this.status !== 'outgoing') return
           this._cleanup()
-          this.notice =
-            message.reason === 'declined'
-              ? 'Звонок отклонён на другом устройстве'
-              : 'Звонок принят на другом устройстве'
+          // Причину передаёт сервер: «ответить не удалось» (нет микрофона или
+          // камеры) и «уже занят» — не «отклонил», и врать на втором устройстве
+          // этого же человека нельзя.
+          const elsewhere: Record<string, string> = {
+            answered: 'Звонок принят на другом устройстве',
+            failed: 'На другом устройстве не удалось ответить',
+            busy: 'На другом устройстве уже идёт звонок'
+          }
+          this.notice = elsewhere[String(message.reason)] ?? 'Звонок отклонён на другом устройстве'
           break
         }
         case 'call-media-state': {
@@ -1995,6 +2016,26 @@ export const useCallStore = defineStore('call', {
       }
     },
 
+    /** Сторож входящего звонка (см. `INCOMING_STALE_TIMEOUT_MS`). */
+    _armIncomingTimer() {
+      this._clearIncomingTimer()
+      incomingTimer = window.setTimeout(() => {
+        incomingTimer = undefined
+        if (this.status !== 'incoming') return
+        // Отказ не отправляем: вызов уже разобран на сервере, а «отклонил»
+        // записался бы в историю как реальный отказ.
+        this._cleanup()
+        this.notice = 'Звонок завершён'
+      }, INCOMING_STALE_TIMEOUT_MS)
+    },
+
+    _clearIncomingTimer() {
+      if (incomingTimer !== undefined) {
+        window.clearTimeout(incomingTimer)
+        incomingTimer = undefined
+      }
+    },
+
     /** Принудительно завершает звонок (обрыв соединения и т.п.). */
     _forceEnd(message: string) {
       this._cleanup()
@@ -2004,6 +2045,7 @@ export const useCallStore = defineStore('call', {
     _cleanup() {
       stopRingtone()
       this._clearRingOutTimer()
+      this._clearIncomingTimer()
       if (this.secondsTimer !== undefined) {
         window.clearInterval(this.secondsTimer)
         this.secondsTimer = undefined

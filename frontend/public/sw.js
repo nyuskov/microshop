@@ -18,7 +18,7 @@
  */
 
 const CACHE_PREFIX = 'pismo-v'
-const CACHE_VERSION = 17
+const CACHE_VERSION = 18
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 // Кэш медиа живёт отдельно: обновление версии приложения не сбрасывает картинки.
 const MEDIA_CACHE_PREFIX = 'pismo-media-v'
@@ -181,6 +181,26 @@ function notifyVisibleClients(data) {
   })
 }
 
+/**
+ * Убирает с экрана уведомление о звонке, который уже не звонит.
+ *
+ * Уведомление входящего вызова показывается с `requireInteraction` — само оно не
+ * исчезает. Если звонок приняли на другом устройстве, отклонили или зовущий его
+ * отменил, приложение ставит тихий push `call-cancelled` (см.
+ * `tasks/notifications.send_call_cancelled_push`), и уведомление нужно закрыть.
+ * Нового уведомления при этом не показываем: сообщать нечего.
+ */
+async function closeCallNotifications(callId) {
+  const notifications = await self.registration.getNotifications()
+  for (const notification of notifications) {
+    const tag = notification.tag || ''
+    if (!tag.startsWith('call-')) continue
+    // call_id известен — снимаем только его; иначе снимаем все «звонки».
+    if (callId && tag !== 'call-' + callId) continue
+    notification.close()
+  }
+}
+
 /** Абсолютный адрес картинки уведомления (аватар приходит путём `/media/...`). */
 function absoluteUrl(path) {
   try {
@@ -191,7 +211,8 @@ function absoluteUrl(path) {
 }
 
 async function handlePush(event) {
-  let payload = {}
+  // Значение по умолчанию: у push без данных ни заголовка, ни текста нет.
+  let payload
   try {
     payload = event.data ? event.data.json() : {}
   } catch {
@@ -200,6 +221,15 @@ async function handlePush(event) {
   const data = payload.data || {}
   const chatId = data.chat_id
   const callId = data.type === 'call' ? data.call_id : null
+  // «Звонок больше не звонит»: тихий push без заголовка и текста — закрываем
+  // уведомление вызова и ничего не показываем. Открытым окнам о нём не сообщаем
+  // намеренно: push уходит всем устройствам человека, включая то, которое только
+  // что ответило на звонок, — а ему гасить разговор нельзя. Состояние звонка
+  // приложение и так получает сигналингом.
+  if (data.type === 'call-cancelled') {
+    await closeCallNotifications(data.call_id || null)
+    return
+  }
   const title = payload.title || 'Pismo'
   const options = {
     body: payload.body || '',

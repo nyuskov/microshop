@@ -31,9 +31,13 @@ from tasks.base import make_engine, make_session, run_async
 
 logger = logging.getLogger(__name__)
 
+#: Тема push о звонке: уведомления одного вызова заменяют друг друга. Тот же
+#: topic использует «звонок завершён» — если вызов закончился раньше, чем push
+#: дошёл, человек не получит «Вам звонят» о прошедшем вызове.
+PUSH_CALL_TOPIC = "pismo-call"
 # RFC 8030: Urgency high будит устройство сразу; без него Android в Doze
 # придерживает push до следующего окна — уведомление о звонке приходит поздно.
-PUSH_HEADERS_CALL = {"Urgency": "high", "Topic": "pismo-call"}
+PUSH_HEADERS_CALL = {"Urgency": "high", "Topic": PUSH_CALL_TOPIC}
 PUSH_HEADERS_MESSAGE = {"Urgency": "high"}
 # Звонок живёт меньше минуты смысла; сообщение — сутки.
 PUSH_TTL_CALL = 60
@@ -502,6 +506,51 @@ async def _web_push_to_subscriptions(
         )
         await session.commit()
         logger.info("Удалено устаревших push-подписок: %s", len(stale_ids))
+
+
+@celery_app.task(
+    name="tasks.notifications.send_call_cancelled_push",
+    bind=True,
+    max_retries=1,
+    default_retry_delay=5,
+    soft_time_limit=20,
+)
+def send_call_cancelled_push(self, user_id: int, call_id: str | None) -> None:
+    """Тихий push «звонок уже не звонит»: закрывает уведомление о вызове.
+
+    Уведомление о входящем звонке показывается с `requireInteraction` — само оно
+    с экрана не исчезает. Если звонок приняли на другом устройстве, отклонили
+    или зовущий отменил вызов, у человека остаётся висеть «Вам звонят» о
+    прошедшем звонке. Здесь уходит push без заголовка и текста: service worker по
+    нему закрывает уведомления этого вызова и ничего не показывает
+    (см. `public/sw.js`).
+
+    RuStore Push (Android-приложение) не используем: уведомление там рисует SDK,
+    и закрыть его из веб-слоя нельзя.
+    """
+    if not _web_push_configured():
+        return
+    run_async(_send_call_cancelled_async(user_id, call_id))
+
+
+async def _send_call_cancelled_async(user_id: int, call_id: str | None) -> None:
+    engine = make_engine()
+    session = make_session(engine)
+    try:
+        stmt = select(PushSubscription).where(PushSubscription.user_id == user_id)
+        subscriptions = list((await session.execute(stmt)).scalars().all())
+        if not subscriptions:
+            return
+        payload = json.dumps(
+            {"data": {"type": "call-cancelled", "call_id": call_id}},
+            ensure_ascii=False,
+        )
+        await _web_push_to_subscriptions(
+            session, subscriptions, payload, PUSH_TTL_CALL, PUSH_HEADERS_CALL
+        )
+    finally:
+        await session.close()
+        await engine.dispose()
 
 
 @celery_app.task(

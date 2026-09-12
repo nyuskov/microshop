@@ -3911,6 +3911,9 @@ onMounted(async () => {
     showPeerKeyChanged.value = true
   })
   startOutboxTimer()
+  // Холодный старт: уведомления о звонках прошлых запусков («Вам звонят» о
+  // вызове, который давно принят/отклонён/отменён) на экране не оставляем.
+  if (callStore.status !== 'incoming') void closeCallRings()
   scrollToBottom()
 
   // Холодный старт по уведомлению.
