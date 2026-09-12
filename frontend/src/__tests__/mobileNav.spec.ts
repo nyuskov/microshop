@@ -20,6 +20,7 @@ const base: BackSnapshot = {
   chatInfoOpen: false,
   groupInfoOpen: false,
   createGroupOpen: false,
+  inviteOpen: false,
   messageSelection: false,
   chatSelection: false,
   currentView: 'chats',
@@ -39,6 +40,13 @@ describe('decideBackStep', () => {
     expect(step({ profileOpen: true, chatInfoOpen: true })).toEqual({ kind: 'overlays' })
     expect(step({ groupInfoOpen: true })).toEqual({ kind: 'overlays' })
     expect(step({ createGroupOpen: true })).toEqual({ kind: 'overlays' })
+  })
+
+  it('закрывает карточку приглашения в группу (пришёл по ссылке)', () => {
+    // Человек открыл `/j/<токен>`: карточка — верхний слой, «назад» закрывает
+    // её, а не выводит из приложения.
+    expect(step({ inviteOpen: true })).toEqual({ kind: 'invite' })
+    expect(step({ inviteOpen: true, chatOpen: true })).toEqual({ kind: 'invite' })
   })
 
   it('выходит из режимов выделения, а не уводит из чата', () => {

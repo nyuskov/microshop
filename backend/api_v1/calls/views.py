@@ -69,6 +69,15 @@ async def decline_call(
     """Отклоняет входящий звонок, не открывая приложение."""
     # Снимаем припаркованный offer получателя, если он ещё «висит».
     await call_manager.discard_pending_offer(user.id, payload.call_id)
+    # Отказ из уведомления идёт мимо релея (напрямую в сокет зовущего), поэтому
+    # исход звонка фиксируем здесь же — иначе в истории чата не оставалось бы
+    # следа: зовущий видел «отклонил», а записи о звонке нет.
+    await _track_call_event(
+        "call-decline",
+        user.id,
+        payload.to_user_id,
+        {"call_id": payload.call_id, "reason": "declined"},
+    )
     delivered = await call_manager.send_to_user(
         payload.to_user_id,
         {
@@ -145,9 +154,22 @@ async def _track_call_event(
         duration = max(0, int((datetime.now(timezone.utc) - started).total_seconds()))
         await _persist_call_record(meta, "completed", duration)
     elif message_type == "call-decline":
-        await _persist_call_record(meta, "declined", 0)
+        await _persist_call_record(meta, _decline_state(data), 0)
     elif message_type == "call-cancel":
         await _persist_call_record(meta, "missed", 0)
+
+
+def _decline_state(data: dict[str, Any]) -> str:
+    """Исход звонка по отказному сообщению (``call-decline``).
+
+    «Отклонить» — только осознанный отказ человека (``reason`` отсутствует или
+    ``declined``). Неудачная попытка принять (``failed``: нет доступа к камере или
+    микрофону) и «занят» (``busy``) — это не отказ: человек как раз пытался
+    ответить, поэтому в истории звонок записываем пропущенным. Иначе «принять»
+    выглядело бы как «отклонить» — и у собеседника, и в истории чата.
+    """
+    reason = str(data.get("reason") or "declined")
+    return "declined" if reason == "declined" else "missed"
 
 
 async def _persist_call_record(meta: dict[str, Any], state: str, duration: int) -> None:

@@ -19,6 +19,14 @@ const routes = [
     name: 'ProfileLink',
     component: Messenger
   },
+  // Ссылка-приглашение в группу: https://pismo.space/j/<токен>. Открывается тот
+  // же мессенджер: он показывает карточку группы и предлагает вступить
+  // (см. resolveInviteLink в Messenger.vue).
+  {
+    path: '/j/:token',
+    name: 'GroupInvite',
+    component: Messenger
+  },
   // {
   //   path: '/auth/registration/',
   //   name: 'Registration',
@@ -54,7 +62,7 @@ router.beforeEach((to, from, next) => {
   // Добавляем 'Messenger' в список публичных маршрутов.
   // 'ProfileLink' тоже публичный: по ссылке может прийти незарегистрированный
   // человек — мессенджер покажет ему экран входа, а после входа откроет чат.
-  const publicRoutes = ['Login', 'Messenger', 'ProfileLink', 'NotFound']
+  const publicRoutes = ['Login', 'Messenger', 'ProfileLink', 'GroupInvite', 'NotFound']
 
   // Check if the route requires authentication
   if (!publicRoutes.includes(to.name as string)) {

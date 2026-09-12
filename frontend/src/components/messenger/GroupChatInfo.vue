@@ -103,6 +103,58 @@
           </p>
         </div>
 
+        <!-- Ссылка-приглашение: создатель или админ зовёт по ссылке -->
+        <div v-if="canManage" class="gi-section">
+          <div class="gi-section-head">
+            <h4 class="gi-title">Пригласить по ссылке</h4>
+            <button
+              class="gi-add-btn"
+              :disabled="inviteBusy || !!activeInvite"
+              @click="createInviteLink"
+            >
+              <q-icon :name="icon('share')" size="16px" />
+              <span>{{ activeInvite ? 'Ссылка готова' : 'Создать' }}</span>
+            </button>
+          </div>
+          <p class="gi-invite-hint">
+            Ссылку можно отправить любому человеку: он увидит карточку группы и вступит сам.
+            <template v-if="!e2eeEnabled">Срок действия — пока не отзовёте.</template>
+            <template v-else>
+              В зашифрованной группе вход по ссылке закрыт: ключ выдаёт участник группы, поэтому
+              добавляйте людей вручную.
+            </template>
+          </p>
+
+          <div v-if="activeInvite" class="gi-invite-active">
+            <input
+              class="gi-input gi-invite-url"
+              type="text"
+              readonly
+              aria-label="Ссылка-приглашение"
+              :value="inviteLinkOf(activeInvite)"
+              @focus="($event.target as HTMLInputElement).select()"
+            />
+            <div class="gi-invite-actions">
+              <button class="gi-btn" :disabled="inviteBusy" @click="copyInviteLink">
+                {{ inviteCopied ? 'Скопировано' : 'Копировать' }}
+              </button>
+              <button
+                v-if="canShareInvite"
+                class="gi-btn"
+                :disabled="inviteBusy"
+                @click="shareInviteLink"
+              >
+                Поделиться
+              </button>
+              <button class="gi-btn danger" :disabled="inviteBusy" @click="revokeInviteLink">
+                Отозвать
+              </button>
+            </div>
+            <div v-if="inviteError" class="gi-error">{{ inviteError }}</div>
+          </div>
+          <div v-else-if="inviteError" class="gi-error">{{ inviteError }}</div>
+        </div>
+
         <!-- Участники -->
         <div class="gi-section">
           <div class="gi-section-head">
@@ -226,22 +278,26 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import {
   addGroupMembers,
+  createGroupInvite,
   deleteChat,
   fetchChatDetail,
+  fetchGroupInvites,
   removeGroupAvatar,
   removeGroupMember,
+  revokeGroupInvite,
   setGroupMemberRole,
   updateGroupInfo,
   uploadGroupAvatar,
   type SearchUserResult
 } from '@/services/chatService'
-import type { Chat, ChatDetail, ChatMember } from '@/types'
+import type { Chat, ChatDetail, ChatMember, GroupInvite } from '@/types'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import { optimizeAvatarFile } from '@/utils/media'
+import { inviteLinkFor } from '@/utils/groupInvite'
 import { mediaUrl } from '@/config'
 
 const props = defineProps<{
@@ -282,6 +338,95 @@ const descInput = ref('')
 const addPanelOpen = ref(false)
 const addQuery = ref('')
 const addSelected = ref<Set<number>>(new Set())
+
+// ---------- Ссылка-приглашение ----------
+// Создатель или админ делает ссылку и отправляет её другу; тот открывает
+// карточку группы и вступает сам (см. `resolveInviteLink` в Messenger.vue).
+const invites = ref<GroupInvite[]>([])
+const inviteBusy = ref(false)
+const inviteError = ref('')
+const inviteCopied = ref(false)
+let inviteCopiedTimer: ReturnType<typeof setTimeout> | undefined
+
+/** Действующая ссылка: в карточке достаточно одной, лишние создаются вручную. */
+const activeInvite = computed<GroupInvite | null>(
+  () => invites.value.find((invite) => invite.active) ?? null
+)
+
+/** Полная ссылка со СВОИМ origin: в разработке это localhost, в проде — домен. */
+const inviteLinkOf = (invite: GroupInvite): string =>
+  inviteLinkFor(invite.token, typeof window === 'undefined' ? '' : window.location.origin) ?? ''
+
+const canShareInvite = computed<boolean>(
+  () => typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+)
+
+const loadInvites = async () => {
+  try {
+    invites.value = await fetchGroupInvites(props.chat.id)
+    inviteError.value = ''
+  } catch (err) {
+    inviteError.value = getErrorMessage(err, 'Не удалось загрузить ссылки')
+  }
+}
+
+const createInviteLink = async () => {
+  if (inviteBusy.value || activeInvite.value) return
+  inviteBusy.value = true
+  inviteError.value = ''
+  try {
+    const invite = await createGroupInvite(props.chat.id)
+    invites.value = [invite, ...invites.value]
+  } catch (err) {
+    inviteError.value = getErrorMessage(err, 'Не удалось создать ссылку')
+  } finally {
+    inviteBusy.value = false
+  }
+}
+
+const copyInviteLink = async () => {
+  const invite = activeInvite.value
+  if (!invite) return
+  inviteError.value = ''
+  try {
+    await navigator.clipboard.writeText(inviteLinkOf(invite))
+    inviteCopied.value = true
+    if (inviteCopiedTimer !== undefined) window.clearTimeout(inviteCopiedTimer)
+    inviteCopiedTimer = window.setTimeout(() => {
+      inviteCopied.value = false
+    }, 2500)
+  } catch (err) {
+    inviteError.value = getErrorMessage(err, 'Не удалось скопировать ссылку')
+  }
+}
+
+/** Системное «Поделиться» (Android/десктоп) — там, где оно есть. */
+const shareInviteLink = async () => {
+  const invite = activeInvite.value
+  if (!invite || !canShareInvite.value) return
+  inviteError.value = ''
+  try {
+    await navigator.share({ text: inviteLinkOf(invite) })
+  } catch {
+    /* человек закрыл окно «Поделиться» — это не ошибка */
+  }
+}
+
+const revokeInviteLink = async () => {
+  const invite = activeInvite.value
+  if (!invite || inviteBusy.value) return
+  inviteBusy.value = true
+  inviteError.value = ''
+  try {
+    await revokeGroupInvite(props.chat.id, invite.id)
+    invites.value = invites.value.filter((item) => item.id !== invite.id)
+    inviteCopied.value = false
+  } catch (err) {
+    inviteError.value = getErrorMessage(err, 'Не удалось отозвать ссылку')
+  } finally {
+    inviteBusy.value = false
+  }
+}
 
 const myRole = computed<string>(() => props.chat.my_role || detail.value?.my_role || 'member')
 const isCreator = computed<boolean>(() => myRole.value === 'creator')
@@ -330,6 +475,7 @@ const load = async () => {
     detail.value = await fetchChatDetail(props.chat.id)
     nameInput.value = detail.value.name
     descInput.value = detail.value.description || ''
+    if (canManage.value) void loadInvites()
   } catch (err) {
     error.value = getErrorMessage(err, 'Не удалось загрузить информацию о группе')
   } finally {
@@ -347,6 +493,10 @@ watch(
 
 onMounted(() => {
   void load()
+})
+
+onBeforeUnmount(() => {
+  if (inviteCopiedTimer !== undefined) window.clearTimeout(inviteCopiedTimer)
 })
 
 const saveInfo = async () => {
@@ -759,6 +909,50 @@ const deleteGroup = async () => {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--ms-muted, #71808d);
+}
+
+/* Ссылка-приглашение в группу */
+.gi-invite-hint {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ms-muted, #71808d);
+}
+
+.gi-invite-active {
+  margin-top: 8px;
+  border: 1px solid var(--ms-border, #e2e6ea);
+  border-radius: 12px;
+  padding: 10px;
+  background: var(--ms-surface-2, #f6f8fa);
+}
+
+.gi-invite-url {
+  font-size: 12.5px;
+  color: var(--ms-muted, #5c6a75);
+  text-overflow: ellipsis;
+}
+
+.gi-invite-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.gi-invite-actions .gi-btn {
+  background: var(--ms-surface, #ffffff);
+  color: var(--ms-text, #1c2733);
+  border: 1px solid var(--ms-border, #dfe5ea);
+}
+
+.gi-invite-actions .gi-btn.danger {
+  color: var(--ms-danger, #d64545);
+}
+
+.gi-invite-actions .gi-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .gi-add-btn {

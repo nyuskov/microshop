@@ -7,6 +7,9 @@ import type {
   ChatDetail,
   ChatMediaItem,
   ChatMediaKind,
+  GroupInvite,
+  GroupInvitePreview,
+  GroupJoinResult,
   Message,
   CreateMessageRequest,
   CreateGroupRequest,
@@ -362,5 +365,49 @@ export const fetchUserByUsername = async (username: string): Promise<UserLinkPre
 /** Возвращает всех пользователей, кроме текущего (вкладка «Контакты»). */
 export const fetchContacts = async (): Promise<SearchUserResult[]> => {
   const response = await api.get<SearchUserResult[]>('/users/contacts/')
+  return response.data
+}
+
+// ---------- Ссылки-приглашения в группы ----------
+
+export interface CreateGroupInviteParams {
+  /** Срок годности в часах (нет — ссылка без срока). */
+  expiresInHours?: number | null
+  /** Сколько раз по ссылке можно войти (нет — без ограничения). */
+  maxUses?: number | null
+}
+
+/** Создаёт ссылку-приглашение в группу (создатель или админ). */
+export const createGroupInvite = async (
+  chatId: number,
+  params: CreateGroupInviteParams = {}
+): Promise<GroupInvite> => {
+  const response = await api.post<GroupInvite>(`/chats/${chatId}/invites/`, {
+    expires_in_hours: params.expiresInHours ?? null,
+    max_uses: params.maxUses ?? null
+  })
+  return response.data
+}
+
+/** Ссылки группы: сначала действующие, потом отозванные и истёкшие. */
+export const fetchGroupInvites = async (chatId: number): Promise<GroupInvite[]> => {
+  const response = await api.get<GroupInvite[]>(`/chats/${chatId}/invites/`)
+  return response.data
+}
+
+/** Отзывает ссылку — она сразу перестаёт работать. */
+export const revokeGroupInvite = async (chatId: number, inviteId: number): Promise<void> => {
+  await api.delete(`/chats/${chatId}/invites/${inviteId}/`)
+}
+
+/** Карточка группы по ссылке (до вступления). */
+export const fetchGroupInvitePreview = async (token: string): Promise<GroupInvitePreview> => {
+  const response = await api.get<GroupInvitePreview>(`/chats/invites/${token}/`)
+  return response.data
+}
+
+/** Вступает в группу по ссылке. */
+export const joinGroupByInvite = async (token: string): Promise<GroupJoinResult> => {
+  const response = await api.post<GroupJoinResult>(`/chats/invites/${token}/join/`)
   return response.data
 }

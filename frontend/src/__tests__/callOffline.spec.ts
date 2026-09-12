@@ -175,4 +175,28 @@ describe('запуск звонка из уведомления (приложе�
     expect(nativePush).toContain('openTargetInfo')
     expect(nativePush).toContain('readPendingOpenTarget')
   })
+
+  it('на экране ожидания есть кнопка «Ответить», а не только «Отклонить»', () => {
+    // Раньше единственной кнопкой была красная «Отклонить»: человек, открывший
+    // приложение кнопкой «Ответить» в уведомлении, видел один «сброс» — и
+    // принятие звонка выглядело как отказ.
+    const screen = messenger.slice(messenger.indexOf('call-launch-wait'))
+    expect(screen).toContain('clw-answer')
+    expect(screen).toContain('clw-decline')
+    expect(screen).toContain('@click="answerCallLaunch"')
+    // «Ответить» до прихода offer = ждать его и ответить самому.
+    expect(messenger).toContain('const answerCallLaunch = ()')
+    expect(messenger).toContain('autoAnswerPending = true')
+  })
+
+  it('действие из уведомления не теряется, если offer уже пришёл', () => {
+    // Экрана ожидания в этом случае нет, но и «выбросить» действие нельзя:
+    // иначе «Ответить» из push ничего не делал бы, а звонок у зовущего доходил
+    // до таймаута и записывался пропущенным.
+    const launch = messenger.slice(messenger.indexOf('const beginCallLaunch = ('))
+    const body = launch.slice(0, launch.indexOf('\n}'))
+    expect(body).toContain("callStore.status === 'incoming'")
+    expect(body).toContain('void callStore.acceptCall()')
+    expect(body).toContain('callStore.declineCall()')
+  })
 })

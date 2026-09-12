@@ -99,3 +99,51 @@ class GroupRoleUpdate(BaseModel):
     """Назначение/снятие админа (только создатель)."""
 
     role: Literal["admin", "member"]
+
+
+class GroupInviteCreate(BaseModel):
+    """Создание ссылки-приглашения в группу."""
+
+    #: Срок годности в часах (None — ссылка без срока).
+    expires_in_hours: int | None = Field(default=None, ge=1, le=24 * 365)
+    #: Сколько раз по ссылке можно войти (None — без ограничения).
+    max_uses: int | None = Field(default=None, ge=1, le=1000)
+
+
+class GroupInvite(BaseModel):
+    """Ссылка-приглашение (для создателя и админов группы)."""
+
+    id: int
+    token: str
+    #: Путь для ссылки: `/j/<token>`. Полный адрес собирает клиент, потому что
+    #: только он знает свой origin (в разработке это localhost, в проде — домен).
+    path: str
+    created_at: datetime
+    expires_at: datetime | None = None
+    max_uses: int | None = None
+    uses: int = 0
+    revoked: bool = False
+    #: Ссылка ещё работает (не отозвана, не истекла, не исчерпана).
+    active: bool = True
+
+
+class GroupInvitePreview(BaseModel):
+    """Что видит приглашённый до вступления (карточка группы)."""
+
+    chat_id: int
+    name: str
+    description: str | None = None
+    avatar_url: str | None = None
+    avatar_thumb_url: str | None = None
+    member_count: int = 0
+    #: Он уже в группе — вступать не нужно, просто открываем чат.
+    is_member: bool = False
+    #: Ссылка уже не работает (отозвана/истекла/исчерпана) — причина в detail.
+    expired: bool = False
+
+
+class GroupJoinResult(BaseModel):
+    """Результат входа по ссылке: карточку чата клиент берёт из списка чатов."""
+
+    chat_id: int
+    name: str

@@ -41,3 +41,17 @@ export function getErrorMessage(error: unknown, fallback = 'Произошла �
   }
   return fallback
 }
+
+/**
+ * Сервер ответил 404 «чат не найден».
+ *
+ * Бывает, когда чат удалили или вас исключили из группы, а приложение ещё
+ * держит его открытым: тогда фоновое обновление идёт в никуда и сыпет ошибками
+ * в консоль. По этому признаку интерфейс убирает такой чат из списка и
+ * возвращает человека к чатам.
+ */
+export function isChatGoneError(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false
+  if (error.response?.status !== 404) return false
+  return getErrorMessage(error).toLowerCase().includes('чат не найден')
+}

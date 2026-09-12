@@ -4,6 +4,7 @@ from .auth.jwt import router as jwt_router
 from .auth.views import router as auth_router
 from .calls.views import router as calls_router
 from .calls.views import router_rest as calls_rest_router
+from .chats.invites import router as chat_invites_router
 from .chats.views import router as chats_router
 from .contacts.views import router as contacts_router
 from .drafts.views import router as drafts_router
@@ -23,6 +24,7 @@ router_v1.include_router(auth_router)
 router_v1.include_router(health_router)
 router_v1.include_router(jwt_router)
 router_v1.include_router(users_router)
+router_v1.include_router(chat_invites_router)
 router_v1.include_router(chats_router)
 router_v1.include_router(contacts_router)
 router_v1.include_router(drafts_router)

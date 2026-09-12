@@ -8,6 +8,7 @@ from .base import Base
 from .mixins import IdIntPkMixin
 
 if TYPE_CHECKING:
+    from .chat_invite import ChatInvite
     from .message import Message
     from .user import User
 
@@ -56,6 +57,11 @@ class Chat(IdIntPkMixin, Base):
         primaryjoin="Chat.creator_id == User.id",
         foreign_keys="Chat.creator_id",
         viewonly=True,
+    )
+
+    # Ссылки-приглашения группы (см. `ChatInvite`).
+    invites: Mapped[list["ChatInvite"]] = relationship(
+        "ChatInvite", back_populates="chat", cascade="all, delete-orphan"
     )
 
     messages: Mapped[list["Message"]] = relationship(

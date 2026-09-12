@@ -397,21 +397,38 @@
     @accept="acceptChangedPeerKey"
   />
 
-  <!-- Промежуточный экран при запуске из уведомления о звонке -->
+  <!-- Промежуточный экран при запуске из уведомления о звонке.
+       Кнопки обе, как у настоящего входящего звонка: раньше здесь была только
+       красная кнопка, и человек, открывший приложение кнопкой «Ответить»,
+       видел один «сброс» — нажатие на него и выглядело как «принять =
+       отклонить». «Ответить» до прихода offer просто ждёт его и отвечает сам. -->
   <Teleport to="body">
     <div v-if="callLaunchScreen === 'ring' && callStore.status === 'idle'" class="call-launch-wait">
       <div class="clw-card">
         <span class="clw-ring" aria-hidden="true"></span>
         <p v-if="callLaunchPeerName" class="clw-peer">{{ callLaunchPeerName }}</p>
-        <p class="clw-text">Входящий звонок…</p>
-        <button
-          type="button"
-          class="clw-decline"
-          aria-label="Отклонить звонок"
-          @click="dismissCallLaunch"
-        >
-          <q-icon :name="icon('call_end')" size="26px" />
-        </button>
+        <p class="clw-text">
+          {{ callLaunchAnswering ? 'Отвечаем…' : 'Входящий звонок…' }}
+        </p>
+        <div class="clw-actions">
+          <button
+            type="button"
+            class="clw-answer"
+            :aria-label="callLaunchAnswering ? 'Принимаем звонок' : 'Ответить на звонок'"
+            :disabled="callLaunchAnswering"
+            @click="answerCallLaunch"
+          >
+            <q-icon :name="icon('call')" size="26px" />
+          </button>
+          <button
+            type="button"
+            class="clw-decline"
+            aria-label="Отклонить звонок"
+            @click="dismissCallLaunch"
+          >
+            <q-icon :name="icon('call_end')" size="26px" />
+          </button>
+        </div>
       </div>
     </div>
     <div v-else-if="callLaunchScreen === 'missed'" class="call-launch-wait call-launch-missed">
@@ -423,6 +440,18 @@
 
   <!-- Звонки -->
   <CallOverlay />
+
+  <!-- Приглашение в группу по ссылке (`/j/<токен>`): показываем, КУДА зовут,
+       и спрашиваем согласие — человек в этой группе ещё не состоит. Карточка в
+       отдельном чанке: она нужна только тем, кто открыл ссылку. -->
+  <GroupInviteDialog
+    v-model="inviteDialogOpen"
+    :preview="invitePreview"
+    :joining="inviteJoining"
+    :error="inviteJoinError"
+    @close="closeInviteDialog"
+    @join="confirmJoinInvite"
+  />
 
   <!-- Запись видеосообщения -->
   <VideoRecorderModal v-if="videoRecOpen" @close="onVideoCancel" @send="onVideoSend" />
@@ -463,7 +492,7 @@ import {
   removeOutboxItem,
   type OutboxItem
 } from '@/utils/outbox'
-import { getErrorMessage, isNetworkError } from '@/services/errors'
+import { getErrorMessage, isChatGoneError, isNetworkError } from '@/services/errors'
 import { blockUser } from '@/services/moderation'
 import {
   fetchMessages,
@@ -483,7 +512,9 @@ import {
   deleteMessage,
   deleteChat,
   setChatMuted,
-  setChatE2ee
+  setChatE2ee,
+  fetchGroupInvitePreview,
+  joinGroupByInvite
 } from '@/services/chatService'
 import {
   ENCRYPTED_FALLBACK,
@@ -507,10 +538,11 @@ import {
   releaseDecryptedMedia,
   releaseDecryptedMediaExcept
 } from '@/composables/useDecryptedMedia'
-import type { Chat, ChatUser, EncryptedFileMeta, Message } from '@/types'
+import type { Chat, ChatUser, EncryptedFileMeta, GroupInvitePreview, Message } from '@/types'
 import { avatarUrlOf, chatPeer, chatTitle, displayName, isGroupChat } from '@/utils/user'
 import { setAppBadge } from '@/utils/appBadge'
 import { usernameFromProfilePath } from '@/utils/profileLink'
+import { inviteTokenFromPath } from '@/utils/groupInvite'
 import { shareTargetFromSearch, withoutShareTargetParams } from '@/utils/shareTarget'
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
@@ -558,6 +590,10 @@ const VideoRecorderModal = defineAsyncComponent(
   () => import('@/components/media/VideoRecorderModal.vue')
 )
 const ImageLightbox = defineAsyncComponent(() => import('@/components/media/ImageLightbox.vue'))
+// Карточка приглашения нужна только по ссылке — отдельный чанк.
+const GroupInviteDialog = defineAsyncComponent(
+  () => import('@/components/messenger/GroupInviteDialog.vue')
+)
 // Диалоги модерации (требования RuStore): жалоба на контент и список блокировок.
 const ReportDialog = defineAsyncComponent(() => import('@/components/messenger/ReportDialog.vue'))
 const BlockedUsersDialog = defineAsyncComponent(
@@ -783,6 +819,7 @@ const handleAppBack = (state: { pismoView?: Section } | null) => {
     chatInfoOpen: showChatInfoModal.value,
     groupInfoOpen: showGroupInfoModal.value,
     createGroupOpen: showCreateGroupModal.value,
+    inviteOpen: inviteDialogOpen.value,
     messageSelection: msgSelectionMode.value,
     chatSelection: sidebarRef.value?.isSelecting() ?? false,
     currentView: view.value,
@@ -807,6 +844,9 @@ const handleAppBack = (state: { pismoView?: Section } | null) => {
       showChatInfoModal.value = false
       showGroupInfoModal.value = false
       showCreateGroupModal.value = false
+      return
+    case 'invite':
+      closeInviteDialog()
       return
     case 'message-selection':
       exitMessageSelection()
@@ -2969,8 +3009,20 @@ const refreshOpenThreadQuiet = async () => {
       pinnedMessages.value.map((item) => item.id).join(',')
     if (pinnedChanged) pinnedMessages.value = pinned
   } catch (error) {
+    if (isChatGoneError(error)) {
+      // Чат удалили или нас исключили из группы: дальше обновлять нечего, а
+      // «висящий» открытый чат с ошибками в консоли только путает.
+      dropChat(chatId)
+      return
+    }
     console.error('Не удалось обновить сообщения:', getErrorMessage(error))
   }
+}
+
+/** Убирает чат из локального списка и закрывает его, если он был открыт. */
+const dropChat = (chatId: number) => {
+  chats.value = chats.value.filter((chat) => chat.id !== chatId)
+  if (selectedChatId.value === chatId) closeOpenChat()
 }
 
 // Оркестрация (таймеры/события) вынесена в composable.
@@ -3147,6 +3199,8 @@ watch(
 type CallLaunchScreen = 'none' | 'ring' | 'missed'
 const callLaunch = ref<{ callId: string; peerId: number; action?: string } | null>(null)
 const callLaunchScreen = ref<CallLaunchScreen>('none')
+/** Нажали «Ответить» на экране ожидания — offer ещё не пришёл, ждём его. */
+const callLaunchAnswering = ref(false)
 let callLaunchTimer: ReturnType<typeof setTimeout> | undefined
 // Ждём припаркованный offer: собеседник мог открыть приложение из push,
 // для этого нужно время на загрузку и подключение WebSocket.
@@ -3172,6 +3226,7 @@ const callLaunchPeerName = computed<string>(() => {
 const stopCallLaunchScreen = () => {
   callStore.stopRinging()
   callLaunchScreen.value = 'none'
+  callLaunchAnswering.value = false
   if (callLaunchTimer !== undefined) {
     window.clearTimeout(callLaunchTimer)
     callLaunchTimer = undefined
@@ -3190,6 +3245,7 @@ const showCallLaunchRing = () => {
     callStore.stopRinging()
     autoAnswerPending = false
     autoDeclinePending = false
+    callLaunchAnswering.value = false
     callLaunchTimer = window.setTimeout(() => {
       callLaunchScreen.value = 'none'
       callLaunch.value = null
@@ -3204,8 +3260,24 @@ const dismissCallLaunch = () => {
   if (launch) callStore.declineCallTo(launch.peerId, launch.callId)
   autoAnswerPending = false
   autoDeclinePending = false
+  callLaunchAnswering.value = false
   callLaunch.value = null
   stopCallLaunchScreen()
+}
+
+/**
+ * Нажали «Ответить» на экране ожидания (offer ещё в пути).
+ *
+ * Отвечать пока нечем — SDP собеседника придёт с припаркованным offer'ом. Но
+ * желание человека уже известно: как только offer доставят, `acceptCall()`
+ * выполнится сам (см. watcher статуса). Иначе зовущий ждал бы таймаут, хотя
+ * «Ответить» уже нажали — и это выглядело бы как отказ.
+ */
+const answerCallLaunch = () => {
+  if (callLaunchAnswering.value) return
+  callLaunchAnswering.value = true
+  autoAnswerPending = true
+  autoDeclinePending = false
 }
 
 /**
@@ -3264,8 +3336,17 @@ const beginCallLaunch = (
   action: 'answer' | 'decline' | 'focus' = 'focus'
 ) => {
   if (!callId || !peerId) return
-  // Звонок уже идёт/звонит — стор разберётся сам, экран ожидания только мешал бы.
-  if (callStore.status !== 'idle') return
+  // Звонок уже идёт/звонит — экран ожидания только мешал бы, но действие из
+  // уведомления терять нельзя: иначе «Ответить» из push просто ничего не делал
+  // бы (звонок у зовущего дотелефонит до таймаута и запишется пропущенным).
+  if (callStore.status !== 'idle') {
+    if (action === 'answer' && callStore.status === 'incoming') {
+      void callStore.acceptCall()
+    } else if (action === 'decline' && callStore.status === 'incoming') {
+      callStore.declineCall()
+    }
+    return
+  }
   callLaunch.value = { callId, peerId, action }
   applyCallLaunch()
 }
@@ -3497,6 +3578,7 @@ watch(
       // Ссылка-профиль и отложенное «Поделиться» открываются уже после входа
       // и загрузки чатов: иначе некуда было бы открывать/отправлять.
       await resolveProfileLink()
+      await resolveInviteLink()
       if (pendingIncomingShare) {
         const held = pendingIncomingShare
         pendingIncomingShare = null
@@ -3592,6 +3674,95 @@ disposeNativePush = initNativePush({
     }
   }
 })
+
+// ---------- Ссылка-приглашение в группу: /j/<токен> ----------
+// Ссылку делает создатель или админ группы в карточке группы и отправляет
+// другу. Открывший её видит карточку группы и вступает — до этого он в группе
+// не состоит, поэтому показываем, КУДА его зовут, и спрашиваем согласие.
+const inviteToken = ref<string | null>(
+  typeof window === 'undefined' ? null : inviteTokenFromPath(window.location.pathname)
+)
+/** Токен подтверждённой ссылки: он нужен при нажатии «Войти». */
+const inviteJoinToken = ref<string | null>(null)
+const invitePreview = ref<GroupInvitePreview | null>(null)
+const inviteDialogOpen = ref(false)
+const inviteJoining = ref(false)
+const inviteJoinError = ref('')
+let inviteResolving = false
+
+/**
+ * Разбирает ссылку-приглашение (после входа и загрузки чатов).
+ *
+ * Адрес чистим сразу: `/j/<токен>` — одноразовый, а открытый чат в адресе держит
+ * `?chat=` (иначе после перезагрузки ссылка «открывалась» бы заново).
+ */
+const resolveInviteLink = async () => {
+  const token = inviteToken.value
+  if (!token || inviteResolving) return
+  inviteResolving = true
+  inviteToken.value = null
+  try {
+    window.history.replaceState(window.history.state, '', '/')
+  } catch {
+    /* история недоступна (iframe) — адрес просто останется как есть */
+  }
+  try {
+    const preview = await fetchGroupInvitePreview(token)
+    if (preview.is_member) {
+      // Уже в группе — просто открываем чат (ссылка при этом может быть старой).
+      if (!chats.value.some((chat) => chat.id === preview.chat_id)) await loadChats()
+      await openChatThread(preview.chat_id)
+      return
+    }
+    inviteJoinToken.value = token
+    invitePreview.value = preview
+    inviteDialogOpen.value = true
+    // Диалог — «слой»: системная кнопка «назад» на телефоне должна его закрыть.
+    pushMobileNav()
+  } catch (error) {
+    Notify.create({
+      type: 'negative',
+      message: 'Приглашение не открылось',
+      caption: getErrorMessage(error, 'Ссылка не действует — попросите новую'),
+      timeout: 4000
+    })
+  } finally {
+    inviteResolving = false
+  }
+}
+
+/** Закрывает карточку приглашения, ничего не делая. */
+const closeInviteDialog = () => {
+  inviteDialogOpen.value = false
+  inviteJoinError.value = ''
+  inviteJoinToken.value = null
+  invitePreview.value = null
+}
+
+/** Вступает в группу по подтверждённой ссылке и открывает чат. */
+const confirmJoinInvite = async () => {
+  const token = inviteJoinToken.value
+  if (!token || inviteJoining.value) return
+  inviteJoining.value = true
+  inviteJoinError.value = ''
+  try {
+    const result = await joinGroupByInvite(token)
+    await loadChats()
+    inviteDialogOpen.value = false
+    inviteJoinToken.value = null
+    invitePreview.value = null
+    view.value = 'chats'
+    await openChatThread(result.chat_id)
+    Notify.create({
+      message: `Вы в группе «${result.name}»`,
+      timeout: 3000
+    })
+  } catch (error) {
+    inviteJoinError.value = getErrorMessage(error, 'Не удалось войти в группу')
+  } finally {
+    inviteJoining.value = false
+  }
+}
 
 // ---------- Модерация: жалобы и блокировка (требования RuStore) ----------
 
@@ -4357,6 +4528,15 @@ watch(
   white-space: nowrap;
 }
 
+/* Кнопки экрана ожидания: зелёная «Ответить» слева, красная «Отклонить» справа
+   (как в оверлее звонка — чтобы «принять» было на привычном месте). */
+.clw-actions {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.clw-answer,
 .clw-decline {
   width: 58px;
   height: 58px;
@@ -4365,12 +4545,29 @@ watch(
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--ms-call-danger);
   color: var(--ms-call-fg);
   cursor: pointer;
   transition:
     transform 0.15s ease,
-    background 0.15s ease;
+    filter 0.15s ease;
+}
+
+.clw-answer {
+  background: var(--ms-accent, #2ea25e);
+}
+
+.clw-answer:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: scale(1.06);
+}
+
+.clw-answer:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.clw-decline {
+  background: var(--ms-call-danger);
 }
 
 .clw-decline:hover {

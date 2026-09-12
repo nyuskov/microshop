@@ -228,3 +228,38 @@ export interface Group {
   description?: string
   users?: User[]
 }
+
+/** Ссылка-приглашение в группу (создаёт создатель или админ). */
+export interface GroupInvite {
+  id: number
+  token: string
+  /** Путь ссылки (`/j/<токен>`); полный адрес собирает клиент (свой origin). */
+  path: string
+  created_at: string
+  expires_at: string | null
+  max_uses: number | null
+  uses: number
+  revoked: boolean
+  /** Ссылка ещё работает: не отозвана, не истекла, лимит входов не исчерпан. */
+  active: boolean
+}
+
+/** Карточка группы по ссылке — что видит приглашённый до вступления. */
+export interface GroupInvitePreview {
+  chat_id: number
+  name: string
+  description: string | null
+  avatar_url: string | null
+  avatar_thumb_url: string | null
+  member_count: number
+  /** Он уже в группе — вступать не нужно, просто открываем чат. */
+  is_member: boolean
+  /** Ссылка уже не работает (отозвана/истекла/исчерпана). */
+  expired: boolean
+}
+
+/** Результат входа по ссылке. */
+export interface GroupJoinResult {
+  chat_id: number
+  name: string
+}

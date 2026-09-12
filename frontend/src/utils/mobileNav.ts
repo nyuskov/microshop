@@ -19,6 +19,8 @@ export type MobileBackStep =
   | { kind: 'profile-section' }
   /** Закрыть модалки поверх всего. */
   | { kind: 'overlays' }
+  /** Закрыть карточку приглашения в группу (открыта по ссылке `/j/<токен>`). */
+  | { kind: 'invite' }
   /** Выйти из режима выбора сообщений. */
   | { kind: 'message-selection' }
   /** Выйти из режима выбора чатов. */
@@ -43,6 +45,8 @@ export interface BackSnapshot {
   chatInfoOpen: boolean
   groupInfoOpen: boolean
   createGroupOpen: boolean
+  /** Открыта карточка приглашения в группу (ссылка `/j/<токен>`). */
+  inviteOpen: boolean
   messageSelection: boolean
   chatSelection: boolean
   currentView: Section
@@ -67,6 +71,9 @@ export function decideBackStep(snapshot: BackSnapshot): MobileBackStep {
 
   if (snapshot.storyOpen) return { kind: 'story' }
   if (snapshot.lightboxOpen) return { kind: 'lightbox' }
+  // Приглашение — верхний слой: человек пришёл по ссылке и ещё ничего не
+  // открывал, «назад» должно закрыть карточку, а не вывести из приложения.
+  if (snapshot.inviteOpen) return { kind: 'invite' }
   if (snapshot.profileOpen && snapshot.profileInSection) return { kind: 'profile-section' }
   if (
     snapshot.profileOpen ||
