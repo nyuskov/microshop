@@ -15,7 +15,14 @@ export const CHAT_PARAM = 'chat'
  * Одноразовый параметр «пометить чат прочитанным» (его ставят push-уведомления).
  * В адресе его не держим: после перезагрузки он уже не нужен.
  */
-const EPHEMERAL_PARAMS = ['markread']
+const EPHEMERAL_PARAMS = ['markread', 'reply']
+
+/**
+ * Одноразовый параметр «открыть чат готовым к вводу» (его ставит кнопка
+ * «Ответить» в уведомлении). После открытия чат набирается сам — см.
+ * `focusComposerOnLaunch`.
+ */
+const REPLY_PARAM = 'reply'
 
 /** Доступ к localStorage (в приватном режиме его может не быть). */
 function safeStorage(): Storage | null {
@@ -50,6 +57,15 @@ export function chatIdFromUrl(search: string): number | null {
   if (!raw || !/^\d+$/.test(raw)) return null
   const id = Number(raw)
   return Number.isSafeInteger(id) && id > 0 ? id : null
+}
+
+/**
+ * Запуск по кнопке «Ответить» в уведомлении: нужно сразу поставить курсор в
+ * поле ввода (сам браузер печатать в уведомлении не даёт — это ближайший
+ * аналог быстрого ответа).
+ */
+export function isReplyLaunch(search: string): boolean {
+  return new URLSearchParams(search).get(REPLY_PARAM) === '1'
 }
 
 /**

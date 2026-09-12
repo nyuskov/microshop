@@ -201,6 +201,7 @@
 
           <!-- Панель ввода (композер) -->
           <MessageComposer
+            ref="composerRef"
             :chat-id="selectedChat.id"
             v-model:new-message="newMessage"
             :sending="sending"
@@ -518,7 +519,13 @@ import { deleteDraft, fetchDrafts, putDraft } from '@/services/drafts'
 import { buildLightboxItems, neighborIndexes } from '@/utils/lightbox'
 import { decideBackStep, type Section } from '@/utils/mobileNav'
 import { mediaUrl } from '@/config'
-import { chatIdFromUrl, chatUrlWith, readStoredSection, storeSection } from '@/utils/chatUrl'
+import {
+  chatIdFromUrl,
+  chatUrlWith,
+  isReplyLaunch,
+  readStoredSection,
+  storeSection
+} from '@/utils/chatUrl'
 import { haptic } from '@/utils/haptics'
 import { usePeerActivity } from '@/composables/usePeerActivity'
 import { useRealtimeSync } from '@/composables/useRealtimeSync'
@@ -648,6 +655,12 @@ const isDesktop = computed(() => $q.screen.gt.sm)
  */
 const initialSearch = typeof window === 'undefined' ? '' : window.location.search
 const initialChatFromUrl = chatIdFromUrl(initialSearch)
+/**
+ * Запуск по кнопке «Ответить» в уведомлении: после открытия чата нужно
+ * поставить курсор в поле ввода. Читаем флаг СРАЗУ: адрес тут же
+ * переписывается (`?reply=1` — одноразовый параметр).
+ */
+const replyLaunchRequested = isReplyLaunch(initialSearch)
 const initialChatId =
   new URLSearchParams(initialSearch).get('markread') === '1' ? null : initialChatFromUrl
 
@@ -917,6 +930,8 @@ let highlightTimer: number | undefined
 
 /** Ссылка на ленту сообщений (MessageThread) для управления прокруткой. */
 const threadRef = ref<InstanceType<typeof MessageThread> | null>(null)
+/** Панель ввода: нужна, чтобы поставить курсор после «Ответить» из уведомления. */
+const composerRef = ref<InstanceType<typeof MessageComposer> | null>(null)
 /** Список чатов: нужен доступ к режиму выделения (жест «назад» из него выходит). */
 const sidebarRef = ref<InstanceType<typeof ChatSidebar> | null>(null)
 
@@ -3752,7 +3767,10 @@ onMounted(async () => {
     if (chatParam !== null && markReadParam === '1') {
       void markChatReadQuietly(chatParam)
     } else if (initialChatId !== null) {
-      void openChatFromPush(initialChatId, { pushNav: false })
+      void openChatFromPush(initialChatId, { pushNav: false }).then(() => {
+        // Холодный старт по кнопке «Ответить»: чат открыт — ставим курсор в ввод.
+        if (replyLaunchRequested) void focusComposer()
+      })
     }
   }
 
@@ -3821,6 +3839,18 @@ const openChatFromPush = async (chatId: number, options: { pushNav?: boolean } =
 }
 
 /**
+ * Ставит курсор в поле ввода (кнопка «Ответить» в уведомлении).
+ *
+ * Печатать текст прямо в уведомлении веб-приложению нельзя (такого API нет),
+ * поэтому «быстрый ответ» — это открытый чат с уже готовым к вводу полем:
+ * человек сразу набирает текст, без лишних тапов.
+ */
+const focusComposer = async () => {
+  await nextTick()
+  composerRef.value?.focusInput()
+}
+
+/**
  * Тихо помечает чат прочитанным (кнопка push «Пометить как прочитанное»),
  * не открывая сам чат.
  */
@@ -3841,6 +3871,8 @@ const handleWindowMessage = (event: MessageEvent) => {
   const data = event.data as {
     type?: string
     chat_id?: number
+    /** Кнопка «Ответить» в уведомлении — открыть чат готовым к вводу. */
+    reply?: boolean
     action?: string
     call_id?: string | null
     peer_id?: number | null
@@ -3851,7 +3883,10 @@ const handleWindowMessage = (event: MessageEvent) => {
     return
   }
   if (data.type === 'open-chat' && typeof data.chat_id === 'number') {
-    void openChatFromPush(data.chat_id)
+    void openChatFromPush(data.chat_id).then(() => {
+      // Кнопка «Ответить»: после открытия чата сразу ставим курсор в поле ввода.
+      if (data.reply === true) void focusComposer()
+    })
     return
   }
   if (data.type === 'call-push') {

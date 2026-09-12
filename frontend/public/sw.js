@@ -18,7 +18,7 @@
  */
 
 const CACHE_PREFIX = 'pismo-v'
-const CACHE_VERSION = 16
+const CACHE_VERSION = 17
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 // Кэш медиа живёт отдельно: обновление версии приложения не сбрасывает картинки.
 const MEDIA_CACHE_PREFIX = 'pismo-media-v'
@@ -236,9 +236,13 @@ async function handlePush(event) {
       { action: 'decline', title: 'Отклонить' }
     ]
   } else if (data.type === 'message' && chatId) {
-    // Уведомление о сообщении: нейтральная кнопка «Пометить как прочитанное»
-    // (тап по телу уведомления открывает чат).
-    options.actions = [{ action: 'mark-read', title: 'Пометить как прочитанное' }]
+    // Кнопка «Ответить» открывает чат и ставит курсор в поле ввода: в вебе
+    // набрать текст прямо в уведомлении нельзя (такого API нет), поэтому
+    // «ответ» — это чат, готовый к вводу, без лишних тапов.
+    options.actions = [
+      { action: 'reply', title: 'Ответить' },
+      { action: 'mark-read', title: 'Пометить как прочитанное' }
+    ]
     // И «точка» на иконке приложения: непрочитанное напоминает о себе даже
     // после того, как уведомление убрали. Открытое приложение ставит бейдж
     // само и точным числом — ему «точку» не навязываем.
@@ -442,7 +446,8 @@ self.addEventListener('notificationclick', (event) => {
         }
         return
       }
-      // Тап по телу уведомления — открываем/фокусируем чат.
+      // Тап по телу уведомления или «Ответить» — открываем/фокусируем чат.
+      const wantReply = action === 'reply'
       for (const client of windows) {
         if ('focus' in client) {
           client.focus()
@@ -450,21 +455,25 @@ self.addEventListener('notificationclick', (event) => {
             client.postMessage({
               type: 'open-chat',
               chat_id: data.chat_id,
-              message_id: data.message_id || null
+              message_id: data.message_id || null,
+              reply: wantReply
             })
           }
           return
         }
       }
-      // Приложение закрыто — открываем чат.
+      // Приложение закрыто — открываем чат (для «Ответить» — сразу к вводу).
       const url =
-        data.type === 'message' && data.chat_id ? '/?chat=' + encodeURIComponent(data.chat_id) : '/'
+        data.type === 'message' && data.chat_id
+          ? '/?chat=' + encodeURIComponent(data.chat_id) + (wantReply ? '&reply=1' : '')
+          : '/'
       const win = await self.clients.openWindow(url)
       if (win && data.type === 'message' && data.chat_id) {
         win.postMessage({
           type: 'open-chat',
           chat_id: data.chat_id,
-          message_id: data.message_id || null
+          message_id: data.message_id || null,
+          reply: wantReply
         })
       }
     })()

@@ -395,6 +395,18 @@ const textInputRef = ref<HTMLTextAreaElement | null>(null)
 /** Максимальная высота поля ввода (пикселей) — примерно 6 строк. */
 const TEXTAREA_MAX_HEIGHT = 140
 
+/**
+ * Поставить курсор в поле ввода.
+ *
+ * Нужно родителю: кнопка «Ответить» в уведомлении открывает чат уже готовым к
+ * вводу (в вебе нельзя печатать текст прямо в уведомлении).
+ */
+const focusInput = () => {
+  textInputRef.value?.focus()
+}
+
+defineExpose({ focusInput })
+
 const autoGrow = () => {
   const el = textInputRef.value
   if (!el) return

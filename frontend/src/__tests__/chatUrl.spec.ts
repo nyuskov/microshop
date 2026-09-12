@@ -3,6 +3,7 @@ import {
   chatIdFromUrl,
   chatUrlWith,
   isPageReload,
+  isReplyLaunch,
   readStoredSection,
   storeSection
 } from '@/utils/chatUrl'
@@ -51,6 +52,10 @@ describe('chatUrlWith', () => {
 
   it('не держит в адресе одноразовую пометку «прочитано»', () => {
     expect(chatUrlWith('/?chat=15&markread=1', 15)).toBe('/?chat=15')
+  })
+
+  it('не держит в адресе одноразовый запрос «ответить» из уведомления', () => {
+    expect(chatUrlWith('/?chat=15&reply=1', 15)).toBe('/?chat=15')
   })
 
   it('сохраняет переход по «#»-ссылке', () => {
@@ -114,5 +119,17 @@ describe('перезагрузка против запуска приложен�
     stubNavigation('reload')
     localStorage.setItem('pismo_view', 'что-то не то')
     expect(readStoredSection()).toBe('chats')
+  })
+})
+
+describe('isReplyLaunch', () => {
+  it('запуск по кнопке «Ответить» в уведомлении', () => {
+    expect(isReplyLaunch('?chat=15&reply=1')).toBe(true)
+  })
+
+  it('обычный запуск и открытие чата — без фокуса ввода', () => {
+    expect(isReplyLaunch('?chat=15')).toBe(false)
+    expect(isReplyLaunch('')).toBe(false)
+    expect(isReplyLaunch('?chat=15&reply=0')).toBe(false)
   })
 })
