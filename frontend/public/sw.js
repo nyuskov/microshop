@@ -8,7 +8,9 @@
  * Стратегии:
  *  - навигация (HTML/SPA): network-first, офлайн — из кэша;
  *  - /assets/* (хешированные js/css): stale-while-revalidate;
- *  - /api, /media, /ws и кросс-доменные запросы — не перехватываем.
+ *  - /media/* для картинок (аватары, превью): отдельный кэш с обновлением в
+ *    фоне — без него каждый вход в чат заново тянет те же картинки;
+ *  - /api, /ws и кросс-доменные запросы — не перехватываем.
  *
  * Обновление: при новом деплое страница находит нового worker'а, показывает
  * баннер «Обновить» и отправляет SKIP_WAITING → новая версия активируется,
@@ -16,8 +18,13 @@
  */
 
 const CACHE_PREFIX = 'pismo-v'
-const CACHE_VERSION = 14
+const CACHE_VERSION = 15
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
+// Кэш медиа живёт отдельно: обновление версии приложения не сбрасывает картинки.
+const MEDIA_CACHE_PREFIX = 'pismo-media-v'
+const MEDIA_CACHE_NAME = MEDIA_CACHE_PREFIX + 1
+/** Сколько картинок держим: старое вытесняем по порядку вставки. */
+const MEDIA_CACHE_LIMIT = 150
 // Кэши прежнего названия приложения (microshop → Pismo): чистим один раз при активации.
 const LEGACY_CACHE_PREFIXES = ['microshop-v', 'microshop-auth']
 
@@ -41,6 +48,7 @@ self.addEventListener('activate', (event) => {
             .filter(
               (key) =>
                 (key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME) ||
+                (key.startsWith(MEDIA_CACHE_PREFIX) && key !== MEDIA_CACHE_NAME) ||
                 LEGACY_CACHE_PREFIXES.some((prefix) => key.startsWith(prefix))
             )
             .map((key) => caches.delete(key))
@@ -73,8 +81,8 @@ async function networkFirst(request) {
   }
 }
 
-async function staleWhileRevalidate(request) {
-  const cache = await caches.open(CACHE_NAME)
+async function staleWhileRevalidate(request, cacheName = CACHE_NAME) {
+  const cache = await caches.open(cacheName)
   const cached = await cache.match(request)
   const network = fetch(request)
     .then((response) => {
@@ -87,12 +95,49 @@ async function staleWhileRevalidate(request) {
   return cached || network
 }
 
+/**
+ * Медиа: отдаём из кэша сразу и обновляем в фоне.
+ *
+ * В кэш кладём только картинки из собственного `/media/` (то, что рисует
+ * `<img>`): видео и аудио не кэшируем (тяжёлые, часто с Range-запросами), а
+ * зашифрованные вложения грузятся через fetch — они сюда не попадают и
+ * расшифровываются на клиенте.
+ */
+async function mediaCacheFirst(request) {
+  const cache = await caches.open(MEDIA_CACHE_NAME)
+  const cached = await cache.match(request)
+  const network = fetch(request)
+    .then(async (response) => {
+      if (response && response.ok && response.type === 'basic') {
+        await cache.put(request, response.clone())
+        await trimMediaCache(cache)
+      }
+      return response
+    })
+    .catch(() => cached)
+  return cached || network
+}
+
+/** Cache API хранит записи в порядке вставки — вытесняем самые старые. */
+async function trimMediaCache(cache) {
+  const keys = await cache.keys()
+  if (keys.length <= MEDIA_CACHE_LIMIT) return
+  const extra = keys.slice(0, keys.length - MEDIA_CACHE_LIMIT)
+  await Promise.all(extra.map((key) => cache.delete(key)))
+}
+
 self.addEventListener('fetch', (event) => {
   const request = event.request
   if (request.method !== 'GET') return
 
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
+  // Картинки из /media/ кэшируем: без этого аватары и превью грузятся заново
+  // при каждом открытии чата. Только GET и только то, что рисует <img>.
+  if (url.pathname.startsWith('/media/') && request.destination === 'image') {
+    event.respondWith(mediaCacheFirst(request))
+    return
+  }
   if (
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/media/') ||

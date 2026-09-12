@@ -1808,6 +1808,12 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   width: 100%;
+  /* Длинный список (сотни чатов и контактов): строки за экраном браузер не
+     раскладывает. За границы строки здесь ничего не вылезает — меню списка
+     живёт в шапке, диалоги телепортируются, — поэтому сдерживание безопасно
+     (те же грабли, что с лентой: см. docs/feed-performance.md). */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px auto 76px;
   padding: 10px 14px;
   border: none;
   background: transparent;
