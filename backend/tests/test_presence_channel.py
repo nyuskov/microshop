@@ -1,13 +1,17 @@
-"""Присутствие: сервер должен быстро узнавать об уходе.
+"""Присутствие: сервер должен точно знать, «в сети» человек или ушёл.
 
-Симптом из жизни: собеседник уже закрыл приложение, а у нас он ещё «в сети».
-Причина — молчащий сокет: если приложение убили или телефон уснул, соединение не
-закрывается чисто, и сервер узнаёт об уходе только по таймауту прокси (минуты).
+Симптомы из жизни:
 
-Теперь клиент шлёт `ping` раз в 25 секунд (см. `stores/realtime.ts`), а сервер
-закрывает канал, который молчит дольше `WS_IDLE_TIMEOUT_SECONDS`, после чего
-участникам общих чатов уходит `presence offline`. Плюс `bye` — мгновенный уход
-при закрытии страницы.
+1. собеседник уже закрыл приложение, а у нас он ещё «в сети» — раньше об уходе
+   узнавали только по таймауту прокси (минуты);
+2. статус сначала переключался на «был(а) только что», а потом сразу обратно на
+   «в сети»: приложение в фоне переподключалось, и одно подключение считалось
+   присутствием.
+
+Теперь: подключение != «в сети». Клиент сразу присылает `activity` (у экрана или
+свёрнуто), раз в 25 секунд шлёт `ping` (сервер закрывает молчащий канал через
+`WS_IDLE_TIMEOUT_SECONDS`), при уходе со страницы — `bye`. Старым клиентам, не
+умеющим `activity`, есть короткая страховка `WS_ACTIVITY_FALLBACK_SECONDS`.
 """
 
 from __future__ import annotations
@@ -18,28 +22,36 @@ from typing import Any
 import pytest
 
 from api_v1.events import views as events_views
+from api_v1.events.manager import EventsConnectionManager
 
 
 class FakeWebSocket:
     """Сокет, который «молчит», пока в очереди нет сообщений от клиента."""
 
-    def __init__(self, messages: list[Any] | None = None) -> None:
+    def __init__(self, messages: list[Any] | None = None, delay: float = 0.0) -> None:
         self._messages = list(messages or [])
+        #: Пауза перед выдачей сообщения — чтобы проверить отложенные ветки.
+        self.delay = delay
         self.closed_with: int | None = None
 
     async def receive_json(self) -> Any:
         if self._messages:
+            if self.delay:
+                await asyncio.sleep(self.delay)
             return self._messages.pop(0)
         # Молчание: ждём бесконечно — ровно то, что видит сервер от уснувшего
         # телефона.
         await asyncio.sleep(3600)
+
+    async def accept(self) -> None:
+        return None
 
     async def close(self, code: int = 1000) -> None:
         self.closed_with = code
 
 
 class FakeSession:
-    """Сессия-заглушка: в офлайн-ветке сервер коммитит `last_seen` сам."""
+    """Сессия-заглушка: сервер коммитит `last_seen` при уходе."""
 
     async def commit(self) -> None:
         return None
@@ -51,14 +63,25 @@ class FakeSession:
         return None
 
 
+class Presence:
+    """Собирает рассылки присутствия; менеджер соединений — настоящий."""
+
+    def __init__(self) -> None:
+        self.broadcasts: list[tuple[int, bool]] = []
+        self.manager = EventsConnectionManager()
+
+
 @pytest.fixture
-def presence(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[tuple[int, bool]]]:
-    """Заглушки БД, менеджера соединений и рассылки присутствия."""
-    broadcasts: dict[str, list[tuple[int, bool]]] = {"offline": []}
-    online = {"value": True}
-    monkeypatch.setattr(
-        events_views, "_broadcast_presence", _record_broadcast(broadcasts)
-    )
+def presence(monkeypatch: pytest.MonkeyPatch) -> Presence:
+    """Заглушки БД и рассылки; состояние соединений — как в бою."""
+    state = Presence()
+
+    async def fake_broadcast(
+        peer_ids: list[int], user_id: int, *, online: bool, last_seen: object
+    ) -> None:
+        state.broadcasts.append((user_id, online))
+
+    monkeypatch.setattr(events_views, "_broadcast_presence", fake_broadcast)
     monkeypatch.setattr(
         events_views,
         "db_helper",
@@ -82,74 +105,91 @@ def presence(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[tuple[int, bool]
         return type("U", (), {"id": 7})()
 
     monkeypatch.setattr(events_views, "resolve_user_from_websocket", fake_resolve)
+    monkeypatch.setattr(events_views, "events_manager", state.manager)
+    return state
 
-    connected: list[object] = []
 
-    async def fake_connect(user_id: int, websocket: object) -> None:
-        connected.append(websocket)
-
-    async def fake_disconnect(user_id: int, websocket: object) -> None:
-        online["value"] = False
-
-    monkeypatch.setattr(events_views.events_manager, "connect", fake_connect)
-    monkeypatch.setattr(events_views.events_manager, "disconnect", fake_disconnect)
-    monkeypatch.setattr(
-        events_views.events_manager, "is_online", lambda _user_id: online["value"]
+async def _run(websocket: FakeWebSocket) -> None:
+    """Прогоняет канал до конца (тест не должен висеть на реальных таймаутах)."""
+    await asyncio.wait_for(
+        events_views.websocket_events(websocket),  # type: ignore[arg-type]
+        timeout=2,
     )
-    return broadcasts
-
-
-def _record_broadcast(store: dict[str, list[tuple[int, bool]]]):
-    async def _broadcast(
-        peer_ids: list[int], user_id: int, *, online: bool, last_seen: object
-    ) -> None:
-        if not online:
-            store["offline"].append((user_id, online))
-
-    return _broadcast
 
 
 async def test_idle_channel_closes_and_reports_offline(
-    presence: dict[str, list[tuple[int, bool]]],
-    monkeypatch: pytest.MonkeyPatch,
+    presence: Presence, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Молчащий канал (уснувший телефон) закрывается и даёт `presence offline`."""
     # Таймаут уменьшаем, чтобы тест не ждал минуту в реальном времени.
     monkeypatch.setattr(events_views, "WS_IDLE_TIMEOUT_SECONDS", 0.05)
     websocket = FakeWebSocket()
 
-    await events_views.websocket_events(websocket)  # type: ignore[arg-type]
+    await _run(websocket)
 
     assert websocket.closed_with == 1000
-    assert presence["offline"] == [(7, False)]
-
-
-async def test_ping_keeps_channel_alive(
-    presence: dict[str, list[tuple[int, bool]]],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`ping` — признак жизни: с ним канал не закрывается по таймауту."""
-    monkeypatch.setattr(events_views, "WS_IDLE_TIMEOUT_SECONDS", 0.2)
-    websocket = FakeWebSocket([{"type": "ping"}, {"type": "bye"}])
-
-    await events_views.websocket_events(websocket)  # type: ignore[arg-type]
-
-    # Закрыли только из-за `bye`, а не по таймауту (то есть ping сработал).
-    assert websocket.closed_with is None
-    assert presence["offline"] == [(7, False)]
+    assert (7, False) in presence.broadcasts
 
 
 async def test_bye_reports_offline_before_timeout(
-    presence: dict[str, list[tuple[int, bool]]],
-    monkeypatch: pytest.MonkeyPatch,
+    presence: Presence, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Уход со страницы (`bye`) — «не в сети» сразу, без ожидания таймаута."""
     monkeypatch.setattr(events_views, "WS_IDLE_TIMEOUT_SECONDS", 30)
     websocket = FakeWebSocket([{"type": "bye"}])
 
-    await asyncio.wait_for(
-        events_views.websocket_events(websocket),  # type: ignore[arg-type]
-        timeout=1,
+    await _run(websocket)
+
+    assert presence.broadcasts.count((7, False)) == 1
+
+
+async def test_backgrounded_app_is_not_online(
+    presence: Presence, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Свёрнутое приложение — «не в сети», даже если канал ещё открыт."""
+    monkeypatch.setattr(events_views, "WS_IDLE_TIMEOUT_SECONDS", 30)
+    monkeypatch.setattr(events_views, "WS_ACTIVITY_FALLBACK_SECONDS", 30)
+    websocket = FakeWebSocket(
+        [
+            {"type": "activity", "active": True},
+            {"type": "activity", "active": False},
+            {"type": "bye"},
+        ]
     )
 
-    assert presence["offline"] == [(7, False)]
+    await _run(websocket)
+
+    # Сначала человек был у экрана, потом свернул приложение — и собеседники
+    # получают оба события.
+    assert presence.broadcasts[:2] == [(7, True), (7, False)]
+
+
+async def test_reconnect_while_hidden_does_not_turn_online(
+    presence: Presence, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Переподключение свёрнутого приложения НЕ «включает» онлайн.
+
+    Иначе у собеседника статус дёргается: «был(а) только что» -> «в сети».
+    """
+    monkeypatch.setattr(events_views, "WS_IDLE_TIMEOUT_SECONDS", 30)
+    monkeypatch.setattr(events_views, "WS_ACTIVITY_FALLBACK_SECONDS", 30)
+    websocket = FakeWebSocket([{"type": "activity", "active": False}, {"type": "bye"}])
+
+    await _run(websocket)
+
+    assert (7, True) not in presence.broadcasts
+
+
+async def test_old_client_without_activity_shows_online(
+    presence: Presence, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Старый клиент (без `activity`) считается «в сети» — как раньше."""
+    monkeypatch.setattr(events_views, "WS_IDLE_TIMEOUT_SECONDS", 30)
+    monkeypatch.setattr(events_views, "WS_ACTIVITY_FALLBACK_SECONDS", 0.05)
+    # Сообщения приходят с паузой: старый клиент просто сидит на канале, и
+    # страховка успевает сработать.
+    websocket = FakeWebSocket([{"type": "typing"}, {"type": "bye"}], delay=0.15)
+
+    await _run(websocket)
+
+    assert (7, True) in presence.broadcasts

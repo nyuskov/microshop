@@ -145,14 +145,15 @@ class CallConnectionManager:
             return False
 
     async def park_offer(
-        self, callee_id: int, offer: dict[str, Any], ttl_seconds: float = 75.0
+        self, callee_id: int, offer: dict[str, Any], ttl_seconds: float = 90.0
     ) -> None:
         """Паркует входящий вызов для офлайн-абонента (до его подключения).
 
-        Срок жизни должен быть не меньше, чем зовущий ждёт ответа
-        (``RING_OUT_TIMEOUT_MS`` = 60 с на клиенте): push, холодный старт и вход
+        Срок жизни должен быть БОЛЬШЕ, чем зовущий ждёт ответа
+        (``RING_OUT_TIMEOUT_MS`` = 75 с на клиенте): push, холодный старт и вход
         в аккаунт занимают время, и вызов обязан дождаться, пока человек откроет
-        приложение.
+        приложение. Если парковка истечёт раньше окна зовущего, абонент будет
+        отвечать на уже завершённый вызов.
         """
         async with self._lock:
             parked = dict(offer)

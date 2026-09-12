@@ -2,6 +2,11 @@
 
 В отличие от сигналинга звонков здесь поддерживается несколько соединений
 на пользователя (несколько вкладок): событие доставляется во все активные.
+
+Отдельно различаем «канал открыт» и «человек у экрана»: свёрнутое/свёрнутое в
+фон приложение соединение не рвёт (сообщения должны доходить), но человеком оно
+не считается — собеседник не должен видеть «в сети» у того, кто ушёл в другое
+приложение.
 """
 
 import asyncio
@@ -18,6 +23,8 @@ class EventsConnectionManager:
 
     def __init__(self) -> None:
         self._connections: dict[int, set[WebSocket]] = {}
+        #: Соединения, владелец которых сейчас смотрит в приложение (не свёрнуто).
+        self._active: dict[int, set[WebSocket]] = {}
         self._lock = asyncio.Lock()
 
     async def connect(self, user_id: int, websocket: WebSocket) -> None:
@@ -33,10 +40,40 @@ class EventsConnectionManager:
             sockets.discard(websocket)
             if not sockets:
                 self._connections.pop(user_id, None)
+            active = self._active.get(user_id)
+            if active is not None:
+                active.discard(websocket)
+                if not active:
+                    self._active.pop(user_id, None)
 
     def is_online(self, user_id: int) -> bool:
-        """Есть ли у пользователя хотя бы одно активное соединение."""
+        """Есть ли вообще открытый канал (даже если приложение свёрнуто)."""
         return user_id in self._connections
+
+    def is_present(self, user_id: int) -> bool:
+        """Смотрит ли человек в приложение прямо сейчас."""
+        return bool(self._active.get(user_id))
+
+    async def set_active(
+        self, user_id: int, websocket: WebSocket, active: bool
+    ) -> bool:
+        """Помечает соединение «человек у экрана»/«свёрнуто».
+
+        Возвращает ``True``, если присутствие пользователя от этого изменилось
+        (только тогда надо рассылать `presence`): поставили «свёрнуто», а других
+        активных соединений нет — или наоборот.
+        """
+        async with self._lock:
+            was = bool(self._active.get(user_id))
+            sockets = self._active.setdefault(user_id, set())
+            if active:
+                sockets.add(websocket)
+            else:
+                sockets.discard(websocket)
+            if not sockets:
+                self._active.pop(user_id, None)
+            now = bool(self._active.get(user_id))
+        return was != now
 
     async def send_to_user(self, user_id: int, payload: dict[str, Any]) -> bool:
         """Отправляет событие во все соединения пользователя.

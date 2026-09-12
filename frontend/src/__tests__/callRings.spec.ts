@@ -59,10 +59,11 @@ describe('входящий звонок, о завершении которог�
     call._handleMessage(callOffer('call-1', 7))
     expect(call.status).toBe('incoming')
 
-    // Через минуту с небольшим вызов уже точно не звонит (зовущий снимает его
-    // через 60 с), но сообщение об этом до нас не дошло — например, приложение
-    // было закрыто, а звонок приняли на другом устройстве.
-    vi.advanceTimersByTime(75_000)
+    // Через полторы минуты вызов уже точно не звонит: зовущий ждёт ответа 75 с
+    // (`RING_OUT_TIMEOUT_MS`), сторож абонента — 95 с
+    // (`INCOMING_STALE_TIMEOUT_MS`). Сообщение о завершении до нас не дошло:
+    // приложение было закрыто, а звонок приняли на другом устройстве.
+    vi.advanceTimersByTime(96_000)
 
     expect(call.status).toBe('idle')
     expect(call.notice).toBe('Звонок завершён')
@@ -141,6 +142,39 @@ describe('звонок завершился на другом устройств
 
     expect(call.status).toBe('idle')
     expect(call.notice).toBe('Звонок принят на другом устройстве')
+  })
+})
+
+describe('звонок завершился, пока мы его не видели', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('гасит «звонит» по тихому push (канал отвалился — сигналинг не дошёл)', () => {
+    const call = useCallStore()
+    call.$patch({ status: 'incoming', callId: 'call-1', peerId: 7 })
+
+    call.finishIfRinging('call-1')
+
+    expect(call.status).toBe('idle')
+    expect(call.notice).toBe('Звонок завершён')
+  })
+
+  it('идущий разговор не трогает: это наш вызов, гасить нельзя', () => {
+    const call = useCallStore()
+    call.$patch({ status: 'active', callId: 'call-1', peerId: 7 })
+
+    call.finishIfRinging('call-1')
+
+    expect(call.status).toBe('active')
+    expect(call.notice).toBe('')
+  })
+
+  it('чужой (уже не актуальный) вызов не трогает', () => {
+    const call = useCallStore()
+    call.$patch({ status: 'incoming', callId: 'call-2', peerId: 7 })
+
+    call.finishIfRinging('call-1')
+
+    expect(call.status).toBe('incoming')
   })
 })
 

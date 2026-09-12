@@ -5,6 +5,7 @@
 ссылкой, иначе уведомление остаётся вообще без иконки).
 """
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -122,3 +123,59 @@ def test_group_by_title_uses_personal_contact_name() -> None:
 def test_group_by_title_without_personal_names() -> None:
     """Нет личных имён — все получатели в одной группе (один запрос в RuStore)."""
     assert notifications._group_by_title([4, 5], {}, "Иван") == {"Иван": [4, 5]}
+
+
+async def test_call_cancelled_push_carries_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Тихий push о завершении звонка несёт причину.
+
+    По ней приложение решает, гасить ли у себя «звонит»: канал мог отвалиться, и
+    тогда экран звонил бы вечно, хотя вызов уже приняли/отклонили/сняли.
+    """
+    captured: dict[str, object] = {}
+
+    class FakeSession:
+        async def execute(self, _statement: object) -> object:
+            subscription = SimpleNamespace(
+                id=1, endpoint="https://push.example/1", p256dh="k", auth="a"
+            )
+            return SimpleNamespace(
+                scalars=lambda: SimpleNamespace(all=lambda: [subscription])
+            )
+
+        async def close(self) -> None:
+            return None
+
+    class FakeEngine:
+        async def dispose(self) -> None:
+            return None
+
+    async def fake_send(
+        session: object,
+        subscriptions: object,
+        payload: str,
+        ttl: object,
+        headers: object,
+    ) -> None:
+        captured["payload"] = payload
+        captured["ttl"] = ttl
+
+    monkeypatch.setattr(notifications, "make_engine", lambda: FakeEngine())
+    monkeypatch.setattr(notifications, "make_session", lambda _engine: FakeSession())
+    monkeypatch.setattr(notifications, "_web_push_to_subscriptions", fake_send)
+    monkeypatch.setattr(
+        notifications, "_web_push_configured", lambda: True, raising=False
+    )
+
+    await notifications._send_call_cancelled_async(7, "call-1", "declined")
+
+    payload = json.loads(str(captured["payload"]))
+    assert payload["data"] == {
+        "type": "call-cancelled",
+        "call_id": "call-1",
+        "reason": "declined",
+    }
+    # Ни заголовка, ни текста: уведомление не показываем, только закрываем.
+    assert "title" not in payload
+    assert "body" not in payload

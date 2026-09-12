@@ -245,6 +245,18 @@ describe('service worker: звонок больше не звонит', () => {
     expect(harness.notifications[0].title).toBe('Pismo')
   })
 
+  it('сообщает открытым окнам, что звонок завершился (экран не должен звонить вечно)', async () => {
+    const cancel = pushEvent({ type: 'call-cancelled', call_id: 'call-1', reason: 'cancelled' })
+    harness.sw.push?.(cancel)
+    await Promise.all(cancel.waits)
+    // Сообщение тихое: уведомления не показываем...
+    expect(harness.notifications).toHaveLength(0)
+    // ...но окно получает причину и само решает, гасить ли звонок.
+    expect(harness.posted).toEqual([
+      { type: 'call-cancelled', call_id: 'call-1', reason: 'cancelled' }
+    ])
+  })
+
   it('закрывает чужой вызов, но не трогает уведомления переписки', async () => {
     await ring('call-1')
     // Уведомление чата: его закрывать нельзя — сообщение никто не отменял.

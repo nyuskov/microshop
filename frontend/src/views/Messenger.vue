@@ -2655,6 +2655,18 @@ const handleVisibilityForDrafts = () => {
   if (document.hidden) flushDraftPushes()
 }
 
+/**
+ * Присутствие: «в сети» — это когда человек смотрит в приложение.
+ *
+ * Свёрнутое приложение остаётся на связи (сообщения приходят), но собеседник не
+ * должен видеть «в сети» у того, кто ушёл в другое приложение или закрыл
+ * телефон — иначе получается «он вышел, а он всё ещё онлайн».
+ */
+const handleVisibilityForPresence = () => {
+  if (document.hidden) realtimeStore.scheduleAway()
+  else realtimeStore.reportPresence()
+}
+
 /** Название чата для модалки удаления. */
 const chatDeleteLabel = (chat: Chat): string => {
   const peer = otherUserOfChat(chat)
@@ -3940,6 +3952,7 @@ onMounted(async () => {
   window.addEventListener('message', handleWindowMessage)
   window.addEventListener('visibilitychange', handleCallVisibility)
   window.addEventListener('visibilitychange', handleVisibilityForDrafts)
+  window.addEventListener('visibilitychange', handleVisibilityForPresence)
   window.addEventListener('popstate', onAppPopState)
   // Связь вернулась — досылаем то, что застряло без сети.
   window.addEventListener('online', onNetworkOnline)
@@ -4088,6 +4101,8 @@ const handleWindowMessage = (event: MessageEvent) => {
     action?: string
     call_id?: string | null
     peer_id?: number | null
+    /** Причина завершения звонка (для `call-cancelled`). */
+    reason?: string | null
   } | null
   if (!data) return
   if (data.type === 'mark-chat-read' && typeof data.chat_id === 'number') {
@@ -4099,6 +4114,19 @@ const handleWindowMessage = (event: MessageEvent) => {
       // Кнопка «Ответить»: после открытия чата сразу ставим курсор в поле ввода.
       if (data.reply === true) void focusComposer()
     })
+    return
+  }
+  if (data.type === 'call-cancelled') {
+    // Звонок завершился там, где мы его не видели (приняли на другом устройстве,
+    // отклонили, зовущий снял вызов), а сигнальный канал у нас в этот момент не
+    // работал. Гасим экран ожидания и «звонит», если это наш вызов — но НЕ
+    // трогаем идущий разговор.
+    const finishedId = String(data.call_id ?? '')
+    if (callLaunch.value?.callId && callLaunch.value.callId === finishedId) {
+      callLaunch.value = null
+      stopCallLaunchScreen()
+    }
+    callStore.finishIfRinging(finishedId)
     return
   }
   if (data.type === 'call-push') {
@@ -4147,6 +4175,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('message', handleWindowMessage)
   window.removeEventListener('visibilitychange', handleCallVisibility)
   window.removeEventListener('visibilitychange', handleVisibilityForDrafts)
+  window.removeEventListener('visibilitychange', handleVisibilityForPresence)
   window.removeEventListener('popstate', onAppPopState)
   window.removeEventListener('online', onNetworkOnline)
   unsubscribePeerKey?.()

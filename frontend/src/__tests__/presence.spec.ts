@@ -65,45 +65,99 @@ describe('событийный канал сообщает о том, что м�
   beforeEach(() => {
     vi.useFakeTimers()
     setActivePinia(createPinia())
+    // Сокет и таймеры живут в модуле стора и переживают тесты: закрываем старый
+    // канал, иначе `connect()` переиспользует его и нового сокета не появится.
+    useRealtimeStore().disconnect()
     FakeWebSocket.instances = []
     Object.defineProperty(globalThis, 'WebSocket', {
       configurable: true,
       value: FakeWebSocket
     })
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false })
   })
 
-  it('держится на heartbeat: раз в 25 секунд уходит ping', async () => {
+  /** Подключается и отдаёт сокет: `connect()` ждёт готовности таймерами. */
+  async function open(): Promise<{
+    realtime: ReturnType<typeof useRealtimeStore>
+    socket: FakeWebSocket
+  }> {
     const realtime = useRealtimeStore()
     useAuthStore().$patch({ accessToken: 'test-token' })
-
-    // `connect()` поднимает опрос готовности через таймеры — с фейковыми
-    // таймерами его нельзя `await`-ить, поэтому просто двигаем время.
     void realtime.connect()
     await vi.advanceTimersByTimeAsync(200)
     const socket = FakeWebSocket.instances[0]
     expect(socket?.readyState).toBe(FakeWebSocket.OPEN)
+    return { realtime, socket }
+  }
+
+  it('сразу говорит, что человек у экрана, и держится на heartbeat', async () => {
+    const { realtime, socket } = await open()
+
+    // Подключение само по себе не значит «в сети»: сообщаем состояние экрана.
+    expect(socket.messages).toEqual([{ type: 'activity', active: true }])
 
     await vi.advanceTimersByTimeAsync(25_000)
-    expect(socket.messages).toEqual([{ type: 'ping' }])
+    expect(socket.messages).toEqual([{ type: 'activity', active: true }, { type: 'ping' }])
 
-    // Дальше — с той же частотой, без дублей.
     await vi.advanceTimersByTimeAsync(25_000)
-    expect(socket.messages).toEqual([{ type: 'ping' }, { type: 'ping' }])
+    expect(socket.messages).toEqual([
+      { type: 'activity', active: true },
+      { type: 'ping' },
+      { type: 'ping' }
+    ])
 
     realtime.disconnect()
   })
 
-  it('прощается перед уходом со страницы — собеседник сразу видит «не в сети»', async () => {
+  it('свёрнутое приложение сообщает «не в сети», развёрнутое — «в сети»', async () => {
+    const { realtime, socket } = await open()
+
+    // Свернули: не сразу, чтобы статус не мигал на быстрых переключениях окна.
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+    realtime.scheduleAway()
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(socket.messages).toEqual([{ type: 'activity', active: true }])
+
+    await vi.advanceTimersByTimeAsync(16_000)
+    expect(socket.messages.at(-1)).toEqual({ type: 'activity', active: false })
+
+    // Вернулись — сразу «в сети» и без отложенного «не в сети».
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+    realtime.reportPresence()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(socket.messages.at(-1)).not.toEqual({ type: 'activity', active: false })
+    expect(socket.messages.filter((m) => m.type === 'activity')).toEqual([
+      { type: 'activity', active: true },
+      { type: 'activity', active: false },
+      { type: 'activity', active: true }
+    ])
+
+    realtime.disconnect()
+  })
+
+  it('переподключение в свёрнутом приложении не «включает» онлайн', async () => {
     const realtime = useRealtimeStore()
     useAuthStore().$patch({ accessToken: 'test-token' })
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
 
     void realtime.connect()
     await vi.advanceTimersByTimeAsync(200)
     const socket = FakeWebSocket.instances[0]
 
+    // Главное: сервер не должен увидеть «в сети» — иначе у собеседника статус
+    // перекидывается с «был(а) только что» обратно на «в сети».
+    expect(socket.messages).toEqual([{ type: 'activity', active: false }])
+
+    realtime.disconnect()
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+  })
+
+  it('прощается перед уходом со страницы — собеседник сразу видит «не в сети»', async () => {
+    const { realtime, socket } = await open()
+
     realtime.sayGoodbye()
 
-    expect(socket.messages).toEqual([{ type: 'bye' }])
+    expect(socket.messages).toEqual([{ type: 'activity', active: true }, { type: 'bye' }])
     realtime.disconnect()
   })
 })

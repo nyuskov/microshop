@@ -97,7 +97,7 @@ async def decline_call(
         {"call_id": payload.call_id, "reason": "declined"},
     )
     # На других устройствах этого же человека звонок тоже должен замолчать.
-    _notify_call_finished(user.id, payload.call_id)
+    _notify_call_finished(user.id, payload.call_id, "declined")
     delivered = await call_manager.send_to_user(
         payload.to_user_id,
         {
@@ -283,11 +283,15 @@ async def _relay_message(
             exclude=sender,
         )
         # И тихий push: у устройств с ЗАКРЫТЫМ приложением сигналинга нет, а
-        # уведомление «Вам звонят» там висит до тапа. Пусть закроют.
-        _notify_call_finished(from_user_id, data.get("call_id"))
+        # уведомление «Вам звонят» там висит до тапа. Пусть закроют и перестанут
+        # «звонить», если этот вызов у них ещё входящий.
+        _notify_call_finished(
+            from_user_id, data.get("call_id"), _elsewhere_reason(message_type, data)
+        )
     elif message_type == "call-cancel":
-        # Зовущий передумал: у абонента уведомление тоже должно исчезнуть.
-        _notify_call_finished(to_user_id, data.get("call_id"))
+        # Зовущий передумал: у абонента уведомление тоже должно исчезнуть, а
+        # экран звонка — закрыться, даже если его канал уже отвалился.
+        _notify_call_finished(to_user_id, data.get("call_id"), "cancelled")
 
     # Заблокированная пара не звонит друг другу: сообщение не пересылаем, вызов не
     # паркуем и push не шлём. Зовущему отвечаем как при недоступности — о самом
@@ -349,7 +353,7 @@ CALL_PUSH_DELAY_SECONDS = 2.0
 #: уведомление, пришедшее в этом окне, ещё актуально — человек может успеть
 #: ответить. Дольше держать нельзя: иначе «Вам звонят» появляется, когда звонок
 #: уже снят (то же правило, что в ``sw.js``).
-CALL_PUSH_VALID_SECONDS = 55.0
+CALL_PUSH_VALID_SECONDS = 85.0
 
 #: Фоновые задачи веб-процесса: держим ссылки, иначе сборщик мусора их съест.
 _background_tasks: set[asyncio.Task[None]] = set()
@@ -380,13 +384,20 @@ def _elsewhere_reason(message_type: str, data: dict[str, Any]) -> str:
     return reason if reason in ("failed", "busy") else "declined"
 
 
-def _notify_call_finished(user_id: int, call_id: object) -> None:
-    """Просит устройства человека закрыть уведомление о звонке.
+def _notify_call_finished(
+    user_id: int, call_id: object, reason: str = "cancelled"
+) -> None:
+    """Просит устройства человека закрыть уведомление о звонке и прекратить его.
 
     Тихий push (без текста): service worker по нему убирает уведомление вызова и
-    ничего не показывает. Нужен именно push, а не сигналинг: приложение на
-    устройстве может быть закрыто, а уведомление «Вам звонят» там висит
-    (`requireInteraction` сам его не убирает).
+    ничего не показывает, а открытое приложение гасит «звонит», если этот вызов
+    у него ещё входящий (см. `callStore.finishIfRinging`). Нужен именно push, а
+    не сигналинг: приложение на устройстве может быть закрыто или его канал
+    отвалился — а уведомление «Вам звонят» там висит (`requireInteraction` сам
+    его не убирает) и звонок продолжает «идти».
+
+    ``reason``: ``cancelled`` (зовущий снял вызов), ``answered``/``declined``/
+    ``failed``/``busy`` — исход на другом устройстве.
     """
     if not call_id:
         return
@@ -394,7 +405,7 @@ def _notify_call_finished(user_id: int, call_id: object) -> None:
         from core.celery_app import get_task
 
         get_task("tasks.notifications.send_call_cancelled_push").delay(
-            user_id, str(call_id)
+            user_id, str(call_id), reason
         )
     except Exception:  # noqa: BLE001 - push не должен ронять сигналинг
         logger.exception("Не удалось поставить задачу закрытия уведомления о звонке")

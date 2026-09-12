@@ -40,7 +40,7 @@ PUSH_CALL_TOPIC = "pismo-call"
 PUSH_HEADERS_CALL = {"Urgency": "high", "Topic": PUSH_CALL_TOPIC}
 PUSH_HEADERS_MESSAGE = {"Urgency": "high"}
 # Звонок живёт меньше минуты смысла; сообщение — сутки.
-PUSH_TTL_CALL = 60
+PUSH_TTL_CALL = 90
 PUSH_TTL_MESSAGE = 86_400
 
 # ID каналов уведомлений Android-приложения (совпадают с PushChannels.java в android/).
@@ -515,7 +515,9 @@ async def _web_push_to_subscriptions(
     default_retry_delay=5,
     soft_time_limit=20,
 )
-def send_call_cancelled_push(self, user_id: int, call_id: str | None) -> None:
+def send_call_cancelled_push(
+    self, user_id: int, call_id: str | None, reason: str = "cancelled"
+) -> None:
     """Тихий push «звонок уже не звонит»: закрывает уведомление о вызове.
 
     Уведомление о входящем звонке показывается с `requireInteraction` — само оно
@@ -530,10 +532,12 @@ def send_call_cancelled_push(self, user_id: int, call_id: str | None) -> None:
     """
     if not _web_push_configured():
         return
-    run_async(_send_call_cancelled_async(user_id, call_id))
+    run_async(_send_call_cancelled_async(user_id, call_id, reason))
 
 
-async def _send_call_cancelled_async(user_id: int, call_id: str | None) -> None:
+async def _send_call_cancelled_async(
+    user_id: int, call_id: str | None, reason: str = "cancelled"
+) -> None:
     engine = make_engine()
     session = make_session(engine)
     try:
@@ -542,7 +546,15 @@ async def _send_call_cancelled_async(user_id: int, call_id: str | None) -> None:
         if not subscriptions:
             return
         payload = json.dumps(
-            {"data": {"type": "call-cancelled", "call_id": call_id}},
+            {
+                "data": {
+                    "type": "call-cancelled",
+                    "call_id": call_id,
+                    # Причина нужна приложению: «answered»/«declined» на другом
+                    # устройстве или «cancelled» — зовущий снял вызов.
+                    "reason": reason,
+                }
+            },
             ensure_ascii=False,
         )
         await _web_push_to_subscriptions(

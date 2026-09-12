@@ -42,6 +42,7 @@ let socket: WebSocket | null = null
 let eventHandler: ((event: RealtimeEvent) => void) | null = null
 let reconnectTimer: number | null = null
 let heartbeatTimer: number | null = null
+let awayTimer: number | null = null
 let manualClose = false
 
 /**
@@ -52,6 +53,15 @@ let manualClose = false
  * (минуты). Сервер закрывает молчащий канал сам (см. `WS_IDLE_TIMEOUT_SECONDS`).
  */
 const HEARTBEAT_MS = 25_000
+
+/**
+ * Через сколько после ухода в фон говорим «не в сети».
+ *
+ * Свёрнутое приложение — это «человек ушёл» (иначе собеседник видит «в сети» у
+ * того, кто вообще закрыл мессенджер и ушёл в другие приложения), но небольшой
+ * запас нужен, чтобы статус не мигал при каждом переключении окна.
+ */
+const AWAY_GRACE_MS = 20_000
 
 function socketUrl(token: string): string {
   return `${WS_ORIGIN}${WS_PATH}?token=${encodeURIComponent(token)}`
@@ -84,6 +94,10 @@ export const useRealtimeStore = defineStore('realtime', {
       socket.onopen = () => {
         this.connected = true
         this.startHeartbeat()
+        // Сразу говорим, у экрана человек или приложение свёрнуто: по одному
+        // факту подключения «в сети» определять нельзя — приложение могло
+        // переподключиться в фоне.
+        this.reportPresence()
       }
       socket.onmessage = (event) => {
         try {
@@ -120,6 +134,31 @@ export const useRealtimeStore = defineStore('realtime', {
       }
     },
 
+    /** Сейчас же сообщаем, у экрана человек или нет (подключение/возврат). */
+    reportPresence() {
+      if (awayTimer !== null) {
+        window.clearTimeout(awayTimer)
+        awayTimer = null
+      }
+      this.send({ type: 'activity', active: !document.hidden })
+    },
+
+    /**
+     * Приложение свернули.
+     *
+     * Сообщаем «не в сети» с небольшой задержкой: так собеседник не видит
+     * «в сети» у того, кто ушёл в другое приложение, но и быстрые переключения
+     * окна статус не мигают.
+     */
+    scheduleAway() {
+      if (awayTimer !== null) return
+      awayTimer = window.setTimeout(() => {
+        awayTimer = null
+        if (!document.hidden) return
+        this.send({ type: 'activity', active: false })
+      }, AWAY_GRACE_MS)
+    },
+
     /**
      * Прощается с сервером перед уходом со страницы.
      *
@@ -136,6 +175,10 @@ export const useRealtimeStore = defineStore('realtime', {
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer)
         reconnectTimer = null
+      }
+      if (awayTimer !== null) {
+        window.clearTimeout(awayTimer)
+        awayTimer = null
       }
       this.stopHeartbeat()
       if (socket) {

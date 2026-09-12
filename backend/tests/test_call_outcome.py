@@ -134,7 +134,7 @@ async def test_other_devices_told_truth_and_notification_closed(
     monkeypatch.setattr(
         calls_views,
         "_notify_call_finished",
-        lambda uid, call_id: finished.append((uid, call_id)),
+        lambda uid, call_id, *reason: finished.append((uid, call_id, *reason)),
     )
     monkeypatch.setattr(calls_views, "_track_call_event", _noop)
     monkeypatch.setattr(calls_views, "_is_call_blocked", _never_blocked)
@@ -152,7 +152,9 @@ async def test_other_devices_told_truth_and_notification_closed(
     assert delivered[0]["type"] == "call-ended-elsewhere"
     # Причина настоящая: человек пытался ответить, а не отклонил вызов.
     assert delivered[0]["reason"] == "failed"
-    assert finished == [(1, "call-7")]
+    # Та же причина уходит в тихий push: приложение гасит «звонит» только тогда,
+    # когда вызов действительно завершён.
+    assert finished == [(1, "call-7", "failed")]
 
 
 async def test_cancelled_call_closes_ring_notification(
@@ -171,7 +173,7 @@ async def test_cancelled_call_closes_ring_notification(
     monkeypatch.setattr(
         calls_views,
         "_notify_call_finished",
-        lambda uid, call_id: finished.append((uid, call_id)),
+        lambda uid, call_id, *reason: finished.append((uid, call_id, *reason)),
     )
     monkeypatch.setattr(calls_views, "_track_call_event", _noop)
     monkeypatch.setattr(calls_views, "_is_call_blocked", _never_blocked)
@@ -180,8 +182,9 @@ async def test_cancelled_call_closes_ring_notification(
         1, {"type": "call-cancel", "to_user_id": 2, "call_id": "call-8"}
     )
 
-    # Именно абонент (2), а не зовущий: уведомление висит у него.
-    assert finished == [(2, "call-8")]
+    # Именно абонент (2), а не зовущий: уведомление и «звонит» — у него.
+    # Причина «cancelled»: приложение погасит вызов, если он ещё входящий.
+    assert finished == [(2, "call-8", "cancelled")]
 
 
 async def _noop(*args: object, **kwargs: object) -> None:

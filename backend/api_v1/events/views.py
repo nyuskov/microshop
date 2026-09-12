@@ -41,6 +41,9 @@ router = APIRouter(prefix="/ws", tags=["Realtime"])
 #: уснул, сокет не закрывается чисто и сервер узнаёт об уходе только по таймауту
 #: прокси — а это минуты, и всё это время собеседник видит «в сети».
 WS_IDLE_TIMEOUT_SECONDS = 90
+#: Сколько ждём `activity` от нового соединения, прежде чем считать, что клиент
+#: старый и не умеет сообщать о свёрнутом окне (тогда — как раньше, «в сети»).
+WS_ACTIVITY_FALLBACK_SECONDS = 2.0
 #: Как часто обновлять ``last_seen`` по heartbeat (реже самого ping — в БД
 #: писать каждые 25 секунд незачем).
 WS_LAST_SEEN_TOUCH_SECONDS = 60
@@ -89,6 +92,31 @@ async def _handle_client_event(user_id: int, data: Any) -> None:
     )
 
 
+async def _presence_last_seen(user_id: int) -> tuple[datetime | None, list[int]]:
+    """Время ухода и участники общих чатов (для рассылки `presence`)."""
+    async with db_helper.session_factory() as session:
+        current = await get_user_by_id(session, user_id)
+        if current is None:
+            return None, []
+        current.last_seen = datetime.now(timezone.utc)
+        await session.commit()
+        peers = await presence_peer_ids(session, user_id)
+        return current.last_seen, peers
+
+
+async def _report_presence(user_id: int, *, online: bool) -> None:
+    """Сообщает участникам общих чатов, что человек у экрана/ушёл.
+
+    «Ушёл» всегда с обновлённым `last_seen`: собеседник видит «был(а) только что»,
+    а не старое время (например, когда приложение было свёрнуто).
+    """
+    try:
+        last_seen, peers = await _presence_last_seen(user_id)
+        await _broadcast_presence(peers, user_id, online=online, last_seen=last_seen)
+    except Exception:  # noqa: BLE001 - статус присутствия некритичен
+        logger.exception("Не удалось отправить presence для %s", user_id)
+
+
 @router.websocket("/events")
 async def websocket_events(websocket: WebSocket) -> None:
     """Событийный канал мессенджера для текущего авторизованного пользователя."""
@@ -98,21 +126,24 @@ async def websocket_events(websocket: WebSocket) -> None:
 
     await events_manager.connect(user.id, websocket)
 
-    # Подключение = признак присутствия: обновляем last_seen и сообщаем
-    # участникам общих чатов, что пользователь «в сети».
-    peers: list[int] = []
-    current_last_seen: datetime | None = None
-    async with db_helper.session_factory() as session:
-        current = await get_user_by_id(session, user.id)
-        if current is not None:
-            await touch_last_seen(current, session)
-            current_last_seen = current.last_seen
-            peers = await presence_peer_ids(session, user.id)
-    await _broadcast_presence(peers, user.id, online=True, last_seen=current_last_seen)
+    # Подключение НЕ значит «в сети»: приложение могло переподключиться в фоне
+    # (свёрнутое/закрытое). Клиент сразу присылает `activity`, и только тогда
+    # рассылаем статус. Для старых клиентов, которые такого сообщения не шлют,
+    # есть короткая страховка — иначе человек никогда не показывался бы «в сети».
+    last_seen_confirmed = False
+
+    async def auto_present() -> None:
+        await asyncio.sleep(WS_ACTIVITY_FALLBACK_SECONDS)
+        if last_seen_confirmed:
+            return
+        if await events_manager.set_active(user.id, websocket, True):
+            await _report_presence(user.id, online=True)
+
+    fallback_task = asyncio.create_task(auto_present())
 
     try:
         # Сервер в основном пушит события; от клиента принимаем typing/typing-stop,
-        # а также heartbeat (`ping`) и прощание (`bye`).
+        # а также heartbeat (`ping`), активность (`activity`) и прощание (`bye`).
         last_touch = 0.0
         while True:
             try:
@@ -125,6 +156,13 @@ async def websocket_events(websocket: WebSocket) -> None:
                 logger.info("Событийный канал %s молчит — закрываем", user.id)
                 await websocket.close(code=1000)
                 break
+            if isinstance(data, dict) and data.get("type") == "activity":
+                # Свёрнутое приложение — это «не в сети»: человек в другом окне.
+                active = data.get("active") is not False
+                last_seen_confirmed = True
+                if await events_manager.set_active(user.id, websocket, active):
+                    await _report_presence(user.id, online=active)
+                continue
             if isinstance(data, dict) and data.get("type") in ("ping", "pong"):
                 # Заодно освежаем время последней активности (собеседники видят
                 # его по `last_seen`, когда пользователь не в сети).
@@ -143,23 +181,11 @@ async def websocket_events(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         logger.debug("Пользователь %s отключился от событийного канала", user.id)
     finally:
+        fallback_task.cancel()
         await events_manager.disconnect(user.id, websocket)
         # «Не в сети» — только если это было последнее соединение пользователя
         # (иначе новое соединение/другая вкладка уже сообщили «в сети»).
         if events_manager.is_online(user.id):
             return
 
-        try:
-            offline_last_seen: datetime | None = None
-            async with db_helper.session_factory() as session:
-                current = await get_user_by_id(session, user.id)
-                if current is not None:
-                    current.last_seen = datetime.now(timezone.utc)
-                    await session.commit()
-                    offline_last_seen = current.last_seen
-                    peers = await presence_peer_ids(session, user.id)
-            await _broadcast_presence(
-                peers, user.id, online=False, last_seen=offline_last_seen
-            )
-        except Exception:  # noqa: BLE001 - офлайн-статус некритичен
-            logger.exception("Не удалось отправить presence offline для %s", user.id)
+        await _report_presence(user.id, online=False)
