@@ -12,6 +12,16 @@ export const messageTextMatch = (message: Message, query: string): boolean => {
   return haystack.includes(query)
 }
 
+/**
+ * Пора ли снять отметки непрочитанного: человек дочитал ленту до конца.
+ *
+ * `distance` — сколько пикселей осталось до низа ленты. Без этого разделитель
+ * «Непрочитанные сообщения» и отметки оставались до перезагрузки страницы, хотя
+ * человек всё уже прочитал.
+ */
+export const unreadSeenAtBottom = (distance: number, unreadCount: number): boolean =>
+  unreadCount > 0 && distance < 60
+
 /** Строит список строк ленты: разделители дней + сами сообщения (по возрастанию id). */
 export const buildMessageRows = (messages: Message[], filterText = ''): MessageRow[] => {
   const query = filterText.trim().toLowerCase()

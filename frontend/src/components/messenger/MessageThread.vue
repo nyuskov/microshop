@@ -147,6 +147,7 @@ import { parseServerTime } from '@/utils/format'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { ChatUser, Message } from '@/types'
 import type { MessageRow as ThreadRow } from '@/utils/thread'
+import { unreadSeenAtBottom } from '@/utils/thread'
 import { displayName } from '@/utils/user'
 import MessageRow from '@/components/messenger/MessageRow.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -199,6 +200,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'background-click'): void
   (e: 'reach-top'): void
+  /** Лента дочитана до конца — непрочитанных больше нет. */
+  (e: 'unread-seen'): void
   (e: 'quote-click', message: Message): void
   (e: 'select-start', message: Message): void
   (e: 'toggle-select', message: Message): void
@@ -270,6 +273,10 @@ const updateScrollState = () => {
   if (distance < 60) {
     hasNewBelow.value = false
     newBelowCount.value = 0
+    // Дочитали до конца — сообщаем родителю, что непрочитанных больше нет:
+    // разделитель «Непрочитанные сообщения» и любые отметки должны уйти сразу,
+    // а не после перезагрузки страницы.
+    if (unreadSeenAtBottom(distance, props.unreadCount ?? 0)) emit('unread-seen')
   }
 }
 

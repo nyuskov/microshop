@@ -172,6 +172,7 @@
             :is-group-chat="isGroupChat(selectedChat)"
             :members="selectedChat.users"
             :unread-count="unreadAtOpen"
+            @unread-seen="unreadAtOpen = 0"
             @retry-pending="retryOutboxItem"
             @drop-pending="dropOutboxItem"
             @background-click="closePopups"
