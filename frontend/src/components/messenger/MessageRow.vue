@@ -11,7 +11,7 @@
     class="msg"
     :class="[
       isOwn ? 'out' : 'in',
-      { 'msg-highlight': highlighted, selection: selectionMode, selected }
+      { 'msg-highlight': highlighted, selection: selectionMode, selected, 'msg-media': !!file }
     ]"
     :data-message-id="message.id"
     :style="swipeStyle"
@@ -210,8 +210,13 @@
       </button>
     </div>
 
-    <!-- Действия при наведении (появляются ПОД сообщением) -->
-    <div ref="barRef" class="msg-actions" @click.stop @pointerdown.stop>
+    <!-- Действия при наведении (появляются ПОД сообщением).
+         Рисуем только у строк, которые уже доходили до экрана: 4 иконки Quasar
+         на КАЖДУЮ строку истории — самая дорогая часть раскладки длинной ленты
+         (замер: 86 мс → 29 мс на 2 000 строк, см. docs/feed-performance.md).
+         До наведения строка всё равно должна быть на экране, так что панель
+         успевает появиться. -->
+    <div v-if="rowVisible" ref="barRef" class="msg-actions" @click.stop @pointerdown.stop>
       <button
         class="round-btn"
         :class="{ active: emojiPickerOpen }"
@@ -1016,12 +1021,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
   flex-direction: column;
   margin: 3px 0;
   max-width: 60%;
-  /* Длинная лента: строки за экраном браузер не раскладывает и не рисует.
-     DOM и логика не меняются, поэтому позиция скролла и разделители целы.
-     `auto` в contain-intrinsic-size запоминает реальную высоту уже показанных
-     строк, а 60px — только оценка для тех, что ещё ни разу не попадали в кадр. */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 60px;
 }
 
 .msg-call {
@@ -1051,12 +1050,31 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
   align-items: flex-start;
 }
 
+/* Строка с вложением: картинка/видео шире текстового пузыря (до 300–320px), а
+   у текстовых строк предел 60% — вложение выходило за строку и край ленты. */
+.msg-media {
+  max-width: 100%;
+}
+
 .msg-bubble {
   position: relative;
   padding: 7px 11px 6px;
   border-radius: 12px;
   box-shadow: var(--ms-shadow-sm);
   min-width: 70px;
+  /* Длинная лента: содержимое пузыря за экраном браузер не раскладывает и не
+     рисует. DOM и логика не меняются, поэтому позиция скролла и разделители целы.
+
+     Важно: сдерживание стоит ИМЕННО на пузыре, а не на строке `.msg`.
+     content-visibility добавляет `contain: paint`, а за границы строки выходят
+     вложение (картинка до 300px при строке max-width: 60%) и всплывающие панели
+     строки (пикер реакций, меню «⋯») — на строке они обрезались. Пузырь растит
+     размер под своё содержимое, поэтому ничего своего он не режет. */
+  content-visibility: auto;
+  /* `auto` запоминает реальный размер уже показанных пузырей, а числа — оценка
+     для тех, что ещё не попадали в кадр. Ширина тоже нужна: без неё браузер
+     считает пузырь 60px шириной и запоминает высоту узкой колонки. */
+  contain-intrinsic-size: auto 260px auto 60px;
 }
 
 .msg.out .msg-bubble {
@@ -1343,14 +1361,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 }
 
 .attachment-image {
-  max-width: 300px;
+  /* На узком экране (320–360px) запасной предел 300px всё ещё больше ленты —
+     берём минимум из него и ширины окна, иначе лента обрежет картинку. */
+  max-width: min(300px, calc(100vw - 60px));
   max-height: 260px;
   border-radius: 8px;
   display: block;
 }
 
 .attachment-video {
-  max-width: 320px;
+  max-width: min(320px, calc(100vw - 60px));
   max-height: 300px;
   border-radius: 8px;
   display: block;
