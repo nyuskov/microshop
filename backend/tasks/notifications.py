@@ -18,12 +18,14 @@ import time
 
 from pywebpush import WebPushException, webpush
 from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.contacts.crud import contact_names_for
 from core import mailer, rustore_push
 from core.amqp import publish_realtime_event
 from core.celery_app import celery_app
 from core.config import settings
+from core.mentions import mentioned_logins
 from core.models import Message, PushSubscription, RuStorePushToken, User
 from tasks.base import make_engine, make_session, run_async
 
@@ -58,6 +60,31 @@ def _web_push_configured() -> bool:
     return bool(
         settings.web_push_vapid_public_key and settings.web_push_vapid_private_key
     )
+
+
+def _mention_title(base: str, mentioned: bool) -> str:
+    """Заголовок уведомления: получателя упомянули — говорим прямо."""
+    return f"{base}: вас упомянули" if mentioned else base
+
+
+async def _mentioned_recipient_ids(
+    session: AsyncSession, recipient_ids: list[int], message: Message | None
+) -> set[int]:
+    """Кто из получателей упомянут в тексте сообщения.
+
+    Зашифрованный текст сервер прочитать не может — там упоминаний не ищем
+    (получатель всё равно увидит текст в приложении).
+    """
+    if message is None or message.encrypted:
+        return set()
+    logins = mentioned_logins(message.text)
+    if not logins:
+        return set()
+    stmt = select(User.id, User.username).where(User.id.in_(recipient_ids))
+    rows = (await session.execute(stmt)).all()
+    return {
+        user_id for user_id, username in rows if username and username.lower() in logins
+    }
 
 
 def _group_by_title(
@@ -243,10 +270,20 @@ async def _send_message_push_async(
                 elif message.file_name:
                     body = f"Вложение: {message.file_name}"
 
+        # Кого упомянули в тексте: обращение к человеку помечаем в уведомлении
+        # отдельно, чтобы его не потеряли среди остальных сообщений чата.
+        mentioned_ids = await _mentioned_recipient_ids(session, recipient_ids, message)
+        push_titles = {
+            user_id: _mention_title(
+                titles.get(user_id, title), user_id in mentioned_ids
+            )
+            for user_id in recipient_ids
+        }
+
         # Заголовок у каждого получателя может быть свой (личное имя контакта),
         # поэтому шлём группами по одинаковому заголовку.
         for group_title, group_ids in _group_by_title(
-            recipient_ids, titles, title
+            recipient_ids, push_titles, title
         ).items():
             await _send_rustore_push(
                 session,
@@ -283,7 +320,7 @@ async def _send_message_push_async(
             # личное имя отправителя («Мама») — см. titles выше.
             payload = json.dumps(
                 {
-                    "title": titles.get(sub.user_id, title),
+                    "title": push_titles.get(sub.user_id, title),
                     "body": body,
                     # Крупная иконка — аватар отправителя (как в мессенджерах).
                     "icon": _push_icon(sender),
@@ -293,6 +330,7 @@ async def _send_message_push_async(
                         "chat_id": chat_id,
                         "message_id": message_id,
                         "peer_id": sender_id,
+                        "mention": sub.user_id in mentioned_ids,
                     },
                 },
                 ensure_ascii=False,
