@@ -3293,12 +3293,6 @@ const callLaunchPeerName = computed<string>(() => {
   return peer ? displayName(peer) : ''
 })
 
-//: Сколько ждём перед отказом по кнопке «Отклонить» из уведомления.
-//: На Android нажатие кнопки приходит в service worker как СОСЕДНЕЕ действие,
-//: поэтому «Отклонить» может быть нажатием на «Ответить»: за паузу человек
-//: успевает ответить на экране звонка и отказ не выполняется.
-const CALL_NOTIFICATION_DECLINE_MS = 6000
-
 const stopCallLaunchScreen = () => {
   callStore.stopRinging()
   callLaunchScreen.value = 'none'
@@ -4220,19 +4214,12 @@ const handleWindowMessage = (event: MessageEvent) => {
         beginCallLaunch(callId, peerId, 'answer')
       }
     } else if (data.action === 'decline') {
-      // Кнопка «Отклонить» из уведомления (или swipe-отказ, если воркер прислал
-      // действие). Не выполняем сразу: на Android «Ответить» может прийти как
-      // «Отклонить», и молчаливый отказ убил бы звонок, который человек хотел
-      // принять. Даём время ответить — тогда отказ не срабатывает.
-      if (callStore.status === 'incoming' && callStore.callId) {
-        const ringingCallId = callStore.callId
-        window.setTimeout(() => {
-          if (callStore.status === 'incoming' && callStore.callId === ringingCallId) {
-            callStore.declineCall()
-          }
-        }, CALL_NOTIFICATION_DECLINE_MS)
-      } else if (callId && Number.isFinite(peerId) && peerId > 0) {
-        beginCallLaunch(callId, peerId, 'decline')
+      // «Отклонить» из уведомления (старые уведомления, ссылка из буфера) НЕ
+      // выполняем: на Android нажатие кнопки приходит как СОСЕДНЕЕ действие, и
+      // «Ответить» могло прийти как «Отклонить» — звонок обрывался у обоих.
+      // Показываем экран звонка: отказать можно на нём или смахиванием push.
+      if (callId && Number.isFinite(peerId) && peerId > 0) {
+        beginCallLaunch(callId, peerId, 'focus')
       }
     } else if (callId && Number.isFinite(peerId) && peerId > 0 && callStore.status === 'idle') {
       // Тап по телу уведомления (не по кнопке): показываем экран звонка.

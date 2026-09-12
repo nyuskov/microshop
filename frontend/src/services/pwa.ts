@@ -245,12 +245,13 @@ export async function isPushSubscribed(): Promise<boolean> {
 
 /**
  * Показывает системное уведомление о входящем звонке (когда приложение
- * свёрнуто/в фоне): тап открывает приложение к экрану звонка, кнопки
- * «Ответить»/«Отклонить» обрабатывает service worker.
+ * свёрнуто/в фоне): тап открывает приложение к экрану звонка, кнопка «Ответить»
+ * работает через service worker.
  *
- * Раскладка кнопок должна совпадать с той, что ставит sw.js для push — иначе
- * уведомления с разным набором кнопок ведут себя по-разному (было так: здесь
- * висела пара кнопок, а отказ выполнялся при нажатии на «Ответить»).
+ * Кнопка ТОЛЬКО ОДНА («Ответить») — и та же раскладка в `public/sw.js` для push.
+ * Кнопку отказа добавляли и убирали дважды: на Android нажатие на кнопку приходит
+ * в service worker как действие СОСЕДНЕЙ кнопки, и «Ответить» превращалось в
+ * отказ — звонок обрывался у обоих. Отказать можно смахиванием уведомления.
  */
 export async function showIncomingCallRing(opts: {
   title: string
@@ -272,10 +273,7 @@ export async function showIncomingCallRing(opts: {
       silent: false,
       vibrate: [250, 120, 250, 120, 250, 120, 250],
       // actions/renotify/vibrate нет в старых типах NotificationOptions — приводим.
-      actions: [
-        { action: 'answer', title: 'Ответить' },
-        { action: 'decline', title: 'Отклонить' }
-      ],
+      actions: [{ action: 'answer', title: 'Ответить' }],
       data: { type: 'call', call_id: opts.callId, peer_id: opts.peerId }
     }
     await reg.showNotification(opts.title, options as unknown as NotificationOptions)

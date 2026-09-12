@@ -18,7 +18,7 @@
  */
 
 const CACHE_PREFIX = 'pismo-v'
-const CACHE_VERSION = 25
+const CACHE_VERSION = 26
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 // Кэш медиа живёт отдельно: обновление версии приложения не сбрасывает картинки.
 const MEDIA_CACHE_PREFIX = 'pismo-media-v'
@@ -301,15 +301,15 @@ async function handlePush(event) {
     // Вибрация — два спокойных толчка с длинной паузой. Частый «дребезг»
     // (7 коротких импульсов подряд) сильно бил по нервам при каждом звонке.
     options.vibrate = [220, 700, 220]
-    // Кнопок две: «Ответить» и «Отклонить». Отказ выполняется осторожно (см.
-    // `notificationclick`): на части устройств (Android) система отдаёт нажатие
-    // кнопки как действие СОСЕДНЕЙ кнопки, поэтому человека сначала ведут на
-    // экран звонка, и только если он не ответил — вызов отклоняется сам.
-    // Отклонить можно ещё и смахиванием уведомления (см. `notificationclose`).
-    options.actions = [
-      { action: 'answer', title: 'Ответить' },
-      { action: 'decline', title: 'Отклонить' }
-    ]
+    // Кнопка только одна — «Ответить».
+    //
+    // Кнопку отказа убрали ПОСЛЕ ПРОВЕРКИ НА ЖИВОМ УСТРОЙСТВЕ: на Android
+    // нажатие на кнопку приходит в service worker как действие СОСЕДНЕЙ кнопки,
+    // поэтому человек жал «Ответить», а уходил `POST /calls/decline/` — звонок
+    // обрывался у обоих (в логах прод: `pending` + `decline` из sw.js при каждом
+    // нажатии при закрытом приложении). Отказать можно смахиванием уведомления
+    // (см. `notificationclose`) или кнопкой в приложении.
+    options.actions = [{ action: 'answer', title: 'Ответить' }]
     // Прошлые звонки уже не звонят: их уведомления с экрана убираем, иначе они
     // копятся, а кнопки в них ничего не делают.
     await closeOtherCallNotifications(options.tag)
@@ -495,17 +495,24 @@ self.addEventListener('notificationclick', (event) => {
     (async () => {
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
 
-      // Входящий звонок: кнопки уведомления и тап по нему.
+      // Входящий звонок: кнопка «Ответить» и тап по уведомлению.
       if (data.type === 'call') {
         const peerId = data.peer_id === undefined ? null : data.peer_id
-        const wanted = action === 'answer' ? 'answer' : action === 'decline' ? 'decline' : 'focus'
+        // Кнопка одна, и ОТКАЗ ИЗ НАЖАТИЯ НЕ ВЫПОЛНЯЕТСЯ НИКОГДА: на Android
+        // система может отдать нажатие «Ответить» как действие соседней кнопки
+        // (см. `options.actions` выше), и звонок зря обрывался бы. Любое
+        // действие, кроме `answer`, означает «показать человеку звонок» — и
+        // отказать он сможет смахиванием уведомления или кнопкой в приложении.
+        const wanted = action === 'answer' ? 'answer' : 'focus'
         // Приложение открыто (пусть и свёрнуто) — отдаём действие ЕМУ сообщением.
         // Открывать адрес нельзя: `openWindow` перезагружает страницу, а вызов уже
         // пришёл именно в это окно — после перезагрузки звонок терялся, и человек
         // видел только список чатов.
         const live = windows.find((client) => 'focus' in client)
         if (live) {
-          live.focus()
+          // Приложение поднимаем только когда человек ответил или сам тапнул по
+          // уведомлению: просто «посмотреть, кто звонит» экран ему не дёргает.
+          if (wanted === 'answer' || action === 'focus') live.focus()
           live.postMessage({
             type: 'call-notification',
             action: wanted,
@@ -514,15 +521,9 @@ self.addEventListener('notificationclick', (event) => {
           })
           return
         }
-        // Приложение закрыто: ответ — открываем его к экрану звонка (вызов ждёт в
-        // парковке и дойдёт сам), отказ — молча на сервер.
-        if (wanted === 'decline') {
-          const state = await swCallState(callId)
-          if (!(state.asked && !state.ringing)) {
-            await declineCallEverywhere(callId, peerId)
-          }
-          return
-        }
+        // Приложение закрыто: открываем его к экрану звонка. Вызов ждёт в
+        // парковке и дойдёт сам, а действие `answer` ответит без лишних тапов
+        // (см. `beginCallLaunch`).
         await self.clients.openWindow(
           '/?call=' +
             encodeURIComponent(callId) +

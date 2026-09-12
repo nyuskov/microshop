@@ -124,7 +124,7 @@ describe('уведомление о звонке из приложения (пр
     return shown
   }
 
-  it('раскладка кнопок совпадает с push-уведомлением', async () => {
+  it('раскладка кнопок совпадает с push-уведомлением (одна — «Ответить»)', async () => {
     const shown = stubNotifications()
 
     await showIncomingCallRing({
@@ -135,12 +135,9 @@ describe('уведомление о звонке из приложения (пр
     })
 
     expect(shown).toHaveLength(1)
-    // Две кнопки, как в sw.js: разная раскладка в двух местах ломала звонки
+    // Одна кнопка, как в sw.js: разная раскладка в двух местах ломала звонки
     // (отказ выполнялся при нажатии на «Ответить»).
-    expect(shown[0].options.actions).toEqual([
-      { action: 'answer', title: 'Ответить' },
-      { action: 'decline', title: 'Отклонить' }
-    ])
+    expect(shown[0].options.actions).toEqual([{ action: 'answer', title: 'Ответить' }])
     // Уведомление держится на экране и относится к конкретному вызову — по тегу
     // его закрывает service worker, когда звонок перестал звонить.
     expect(shown[0].options.tag).toBe('call-call-1')
