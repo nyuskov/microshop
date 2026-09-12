@@ -513,6 +513,7 @@ import { shareTargetFromSearch, withoutShareTargetParams } from '@/utils/shareTa
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import { effectiveFile, messageSnippet, optimizeImageFile } from '@/utils/media'
+import { deleteDraft, fetchDrafts, putDraft } from '@/services/drafts'
 import { buildLightboxItems, neighborIndexes } from '@/utils/lightbox'
 import { decideBackStep, type Section } from '@/utils/mobileNav'
 import { mediaUrl } from '@/config'
@@ -2418,6 +2419,7 @@ const saveDraftFor = (chatId: number | null) => {
     if (chatId !== null) delete draftsByChatId[chatId]
   }
   writeDrafts(drafts)
+  scheduleDraftPush(chatId, text)
 }
 
 /** Черновик чата (пустая строка, если его нет). */
@@ -2437,6 +2439,88 @@ const clearDraftFor = (chatId: number | null) => {
     writeDrafts(drafts)
   }
   if (chatId !== null) delete draftsByChatId[chatId]
+  scheduleDraftPush(chatId, '')
+}
+
+// ---------- Черновики на сервере ----------
+// Черновик в localStorage живёт только на этом устройстве и теряется при
+// переустановке. Дублируем его на сервере: тогда он виден с другого устройства.
+// Пишем не на каждую букву, а с задержкой — API не должен дёргаться на каждый
+// символ.
+const DRAFT_PUSH_DELAY_MS = 1500
+
+/** Отложенные отправки черновиков: id чата → таймер. */
+const draftPushTimers = new Map<number, number>()
+
+/** Что уходит на сервер: в зашифрованном чате — шифротекст (сервер его не читает). */
+const pushDraftToServer = async (chatId: number, text: string) => {
+  try {
+    if (!text.trim()) {
+      await deleteDraft(chatId)
+      return
+    }
+    const chat = chats.value.find((item) => item.id === chatId) ?? null
+    const wire = chat?.e2ee_enabled ? await buildWireText(chatId, text) : null
+    await putDraft(chatId, wire ? wire.wireText : text)
+  } catch (error) {
+    // Сеть пропала — черновик остался в localStorage и уйдёт при следующем наборе.
+    console.error('Не удалось сохранить черновик:', getErrorMessage(error))
+  }
+}
+
+/** Отложить отправку черновика чата (повторный вызов сдвигает таймер). */
+const scheduleDraftPush = (chatId: number | null, text: string) => {
+  if (chatId === null || currentUserId.value === null) return
+  const existing = draftPushTimers.get(chatId)
+  if (existing !== undefined) window.clearTimeout(existing)
+  draftPushTimers.set(
+    chatId,
+    window.setTimeout(() => {
+      draftPushTimers.delete(chatId)
+      void pushDraftToServer(chatId, text)
+    }, DRAFT_PUSH_DELAY_MS)
+  )
+}
+
+/** Отправить всё отложенное сейчас (уход со страницы, смена чата). */
+const flushDraftPushes = () => {
+  for (const [chatId, timer] of draftPushTimers) {
+    window.clearTimeout(timer)
+    const text = draftsByChatId[chatId] ?? ''
+    void pushDraftToServer(chatId, text)
+  }
+  draftPushTimers.clear()
+}
+
+/**
+ * Подтянуть черновики с сервера.
+ *
+ * Сервер — источник правды (черновик мог быть набран на другом устройстве), но
+ * локальные черновики чатов, которых на сервере нет, не трогаем: они могли не
+ * успеть уйти. Черновик зашифрованного чата без ключа просто пропускаем.
+ */
+const syncDraftsFromServer = async () => {
+  const uid = currentUserId.value
+  if (uid === null) return
+  try {
+    const list = await fetchDrafts()
+    const local = readDrafts()
+    for (const item of list) {
+      let text = item.text
+      if (isEncryptedPayload(text)) {
+        const chat = chats.value.find((entry) => entry.id === item.chat_id) ?? null
+        const key = await chatKeyOf(chat)
+        const plain = key ? await decryptText(key, text) : null
+        if (plain === null) continue
+        text = plain
+      }
+      draftsByChatId[item.chat_id] = text
+      local[`${uid}:${item.chat_id}`] = text
+    }
+    writeDrafts(local)
+  } catch (error) {
+    console.error('Не удалось загрузить черновики:', getErrorMessage(error))
+  }
 }
 
 /** Программно ставит текст поля — не считается «набором текста» для собеседника. */
@@ -2448,9 +2532,19 @@ const setComposerText = (text: string) => {
 /** Сохраняет черновик текущего чата (вызывается при перезагрузке/закрытии). */
 const handleBeforeUnload = () => {
   saveDraftFor(selectedChatId.value)
+  // Черновик пишется на сервер с задержкой — на уходе отправляем сразу.
+  flushDraftPushes()
   // Сигнальный канал звонка закрываем сразу: у человека может быть несколько
   // устройств, и уходящая страница не должна получать сигналинг за него.
   callStore.detachSignaling()
+}
+
+/**
+ * Свёрнутое/закрытое приложение — тоже момент ухода: черновик успевает уйти
+ * на сервер, пока страница ещё жива.
+ */
+const handleVisibilityForDrafts = () => {
+  if (document.hidden) flushDraftPushes()
 }
 
 /** Название чата для модалки удаления. */
@@ -2966,6 +3060,18 @@ const onLoginModalClose = () => {
 
 // ---------- Жизненный цикл ----------
 const ready = computed(() => authStore.isAuthenticated && currentUserId.value !== null)
+
+/** Черновики тянем один раз за сессию — когда чаты загружены (нужны ключи E2EE). */
+const draftsSynced = ref(false)
+watch(
+  [ready, () => chats.value.length],
+  ([isReady, chatCount]) => {
+    if (!isReady || chatCount === 0 || draftsSynced.value) return
+    draftsSynced.value = true
+    void syncDraftsFromServer()
+  },
+  { immediate: true }
+)
 
 // ---------- Запуск из уведомления о звонке ----------
 // Приложение открыли тапом по push «Вам звонят…» (?call=<id>&peer=<uid>).
@@ -3558,6 +3664,7 @@ onMounted(async () => {
   window.addEventListener('beforeunload', handleBeforeUnload)
   window.addEventListener('message', handleWindowMessage)
   window.addEventListener('visibilitychange', handleCallVisibility)
+  window.addEventListener('visibilitychange', handleVisibilityForDrafts)
   window.addEventListener('popstate', onAppPopState)
   // Связь вернулась — досылаем то, что застряло без сети.
   window.addEventListener('online', onNetworkOnline)
@@ -3736,6 +3843,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload)
   window.removeEventListener('message', handleWindowMessage)
   window.removeEventListener('visibilitychange', handleCallVisibility)
+  window.removeEventListener('visibilitychange', handleVisibilityForDrafts)
   window.removeEventListener('popstate', onAppPopState)
   window.removeEventListener('online', onNetworkOnline)
   unsubscribePeerKey?.()
@@ -3900,6 +4008,8 @@ watch(
     if (oldId != null && oldId !== newId) {
       sendTypingStop(oldId)
       saveDraftFor(oldId)
+      // Ушли из чата — черновик отправляем сразу, не ждём задержки.
+      flushDraftPushes()
     }
     exitMessageSelection()
     closePopups()

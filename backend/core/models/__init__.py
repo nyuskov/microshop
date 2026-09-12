@@ -11,6 +11,7 @@ __all__ = [
     "LinkPreview",
     "LoginDevice",
     "Message",
+    "MessageDraft",
     "MessageReaction",
     "ModerationAction",
     "OtpCode",
@@ -41,6 +42,7 @@ from .email_code import EmailCode  # noqa: F401
 from .link_preview import LinkPreview  # noqa: F401
 from .login_device import LoginDevice  # noqa: F401
 from .message import Message  # noqa: F401
+from .message_draft import MessageDraft  # noqa: F401
 from .message_reaction import MessageReaction  # noqa: F401
 from .moderation_action import ModerationAction  # noqa: F401
 from .otp_code import OtpCode  # noqa: F401
