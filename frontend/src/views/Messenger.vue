@@ -4260,8 +4260,14 @@ const syncCallRings = () => {
 
 /** Приложение свернули во время входящего звонка — будим и «звоним». */
 const handleCallVisibility = () => {
-  if (document.hidden) ringIncomingCallWhenHidden()
-  else syncCallRings()
+  if (document.hidden) {
+    ringIncomingCallWhenHidden()
+    return
+  }
+  // В фоне таймеры душатся: звонок, о завершении которого нам не сообщили,
+  // дожидается возврата на экран — иначе окно вызова со звуком висит вечно.
+  callStore.dropStaleRinging()
+  syncCallRings()
 }
 
 // Звонок ушёл из состояния «входящий» (принят/отменён/завершён) — убираем уведомление.

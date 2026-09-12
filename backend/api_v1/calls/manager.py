@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 #: Сколько держим недоставленное сигнальное сообщение (обычно абонент успевает
 #: переподключиться за это время: мобильная сеть, перезапуск страницы).
 QUEUED_MESSAGE_TTL_SECONDS = 45.0
+#: «Звонок закончился» держим дольше: абонент мог заглянуть в приложение позже,
+#: и до этого момента он продолжал «звонить» со звуком и окном вызова. Такое
+#: сообщение безопасно даже устаревшим: приложение сверяет номер вызова и гасит
+#: только свой, ещё не принятый вызов.
+CALL_OVER_QUEUE_TTL_SECONDS = 900.0
 #: Предел очереди на пользователя: «мёртвый» сокет не должен копить сообщения.
 MAX_QUEUED_MESSAGES = 64
 
@@ -196,18 +201,27 @@ class CallConnectionManager:
             if offer is not None and offer.get("call_id") == call_id:
                 self._pending_offers.pop(callee_id, None)
 
-    async def queue_message(self, user_id: int, payload: dict[str, Any]) -> None:
+    async def queue_message(
+        self,
+        user_id: int,
+        payload: dict[str, Any],
+        ttl_seconds: float | None = None,
+    ) -> None:
         """Придерживает сигнальное сообщение до следующего подключения абонента.
 
         Короткий обрыв сигнального канала (смена сети, перезапуск страницы,
         повторное подключение) не должен «терять» ответ на звонок: иначе у
         зовущего звонок продолжает звонить, хотя собеседник уже нажал «Ответить».
+
+        ``ttl_seconds`` — свой срок жизни для сообщения (см.
+        ``CALL_OVER_QUEUE_TTL_SECONDS``).
         """
+        ttl = QUEUED_MESSAGE_TTL_SECONDS if ttl_seconds is None else ttl_seconds
         async with self._lock:
             self._prune_queued_locked()
             queue = self._queued_messages.setdefault(user_id, [])
             entry = dict(payload)
-            entry["_expires_at"] = time.monotonic() + QUEUED_MESSAGE_TTL_SECONDS
+            entry["_expires_at"] = time.monotonic() + ttl
             queue.append(entry)
             if len(queue) > MAX_QUEUED_MESSAGES:
                 del queue[0 : len(queue) - MAX_QUEUED_MESSAGES]

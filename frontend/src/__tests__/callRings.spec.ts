@@ -70,6 +70,29 @@ describe('входящий звонок, о завершении которог�
     expect(call.ringTimer).toBeUndefined()
   })
 
+  it('при возврате на экран гасит звонок, который звонит слишком долго', () => {
+    const call = useCallStore()
+    call._handleMessage(callOffer('call-1', 7))
+    expect(call.status).toBe('incoming')
+
+    // В свёрнутой вкладке таймеры душатся: время прошло, а сторож не сработал.
+    // Тогда проверка при возврате на экран должна погасить залипший вызов —
+    // иначе окно звонка со звуком висит бесконечно.
+    vi.setSystemTime(Date.now() + 120_000)
+
+    expect(call.dropStaleRinging()).toBe(true)
+    expect(call.status).toBe('idle')
+    expect(call.notice).toBe('Звонок завершён')
+  })
+
+  it('свежий звонок при возврате на экран не трогает', () => {
+    const call = useCallStore()
+    call._handleMessage(callOffer('call-1', 7))
+
+    expect(call.dropStaleRinging()).toBe(false)
+    expect(call.status).toBe('incoming')
+  })
+
   it('отвеченный звонок сторож не трогает', () => {
     const call = useCallStore()
     call._handleMessage(callOffer('call-1', 7))
@@ -193,6 +216,12 @@ describe('service worker', () => {
   it('обработчик push дожидается асинхронной проверки окна', () => {
     expect(sw).toContain('event.waitUntil(handlePush(event))')
     expect(sw).toContain('async function handlePush(event)')
+  })
+
+  it('возврат в приложение гасит залипший звонок', () => {
+    const view = readFileSync('src/views/Messenger.vue', 'utf8')
+    const handler = view.slice(view.indexOf('const handleCallVisibility = () => {'))
+    expect(handler).toContain('callStore.dropStaleRinging()')
   })
 
   it('тап по телу уведомления показывает экран звонка', () => {

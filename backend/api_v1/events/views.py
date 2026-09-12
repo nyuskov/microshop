@@ -136,6 +136,15 @@ async def websocket_events(websocket: WebSocket) -> None:
         await asyncio.sleep(WS_ACTIVITY_FALLBACK_SECONDS)
         if last_seen_confirmed:
             return
+        # Клиент не прислал `activity` — старая сборка. Считаем «в сети», как
+        # раньше, но пишем это в лог: по нему видно, у кого именно статус может
+        # «переключаться» (старый клиент сообщает о себе одним фактом соединения,
+        # поэтому каждый переподключённый сокет в фоне выглядит как «в сети»).
+        logger.info(
+            "Пользователь %s: клиент без `activity` — считаем «в сети» "
+            "(старая версия клиента?)",
+            user.id,
+        )
         if await events_manager.set_active(user.id, websocket, True):
             await _report_presence(user.id, online=True)
 

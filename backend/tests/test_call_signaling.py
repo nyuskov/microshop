@@ -590,3 +590,60 @@ async def test_offline_call_with_push_subscription_is_notified(
     close = getattr(spawned[0], "close", None)
     if callable(close):
         close()
+
+
+async def test_call_over_is_queued_for_offline_peer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """«Звонок закончился» придерживается для абонента без канала.
+
+    Канал у абонента мог отвалиться прямо во время вызова (телефон в фоне):
+    тогда он продолжает «звонить» — со звуком и окном вызова — и узнаёт о
+    завершении только по своему таймауту, а если вкладку заморозили, то и
+    никогда. Придержанное сообщение доставится при подключении, и приложение
+    сразу погасит вызов.
+    """
+    from api_v1.calls import views as calls_views
+
+    queued: list[tuple[int, dict]] = []
+    discarded: list[tuple[int, str | None]] = []
+
+    async def fake_queue(
+        user_id: int, payload: dict, ttl_seconds: float | None = None
+    ) -> None:
+        queued.append((user_id, payload, ttl_seconds))
+
+    async def fake_discard(callee_id: int, call_id: str | None) -> None:
+        discarded.append((callee_id, call_id))
+
+    async def fake_send_to_user(user_id: int, payload: dict) -> bool:
+        return False  # абонент офлайн
+
+    monkeypatch.setattr(calls_views, "_is_call_blocked", _never_blocked)
+    monkeypatch.setattr(calls_views, "_track_call_event", _noop)
+    monkeypatch.setattr(calls_views.call_manager, "send_to_user", fake_send_to_user)
+    monkeypatch.setattr(calls_views.call_manager, "queue_message", fake_queue)
+    monkeypatch.setattr(calls_views.call_manager, "discard_pending_offer", fake_discard)
+    monkeypatch.setattr(calls_views, "_notify_call_finished", lambda *a, **kw: None)
+
+    await calls_views._relay_message(
+        1501, {"type": "call-cancel", "to_user_id": 1502, "call_id": "call-gone"}
+    )
+
+    assert discarded == [(1502, "call-gone")]
+    assert len(queued) == 1
+    user_id, payload, ttl = queued[0]
+    assert user_id == 1502
+    assert payload["type"] == "call-cancel"
+    assert payload["call_id"] == "call-gone"
+    # Срок жизни с запасом: человек может открыть приложение через пару минут,
+    # и до этого момента он не должен «звонить».
+    assert ttl is not None and ttl >= 300
+
+
+async def _never_blocked(*args: object, **kwargs: object) -> bool:
+    return False
+
+
+async def _noop(*args: object, **kwargs: object) -> None:
+    return None

@@ -36,7 +36,7 @@ from core.config import settings
 from core.models import Message, User, db_helper
 
 from ..auth.utils import get_current_user, resolve_user_from_websocket
-from .manager import call_manager
+from .manager import CALL_OVER_QUEUE_TTL_SECONDS, call_manager
 from .turn import ice_servers, turn_configured
 
 logger = logging.getLogger(__name__)
@@ -331,8 +331,19 @@ async def _relay_message(
             offer=envelope,
         )
     elif message_type in ("call-cancel", "call-decline", "call-end"):
-        # Отменяем/снимаем «висящий» вызов у офлайн-абонента.
+        # Отменяем/снимаем «висящий» вызов у офлайн-абонента...
         await call_manager.discard_pending_offer(to_user_id, data.get("call_id"))
+        # ...и ПРИДЕРЖИВАЕМ само сообщение. Канал у абонента мог отвалиться
+        # прямо во время вызова (телефон в фоне, смена сети): тогда он до сих
+        # пор «звонит» — со звуком и окном вызова — и узнает о завершении
+        # только по собственному таймауту, а если вкладку заморозили, то и
+        # никогда. Придержанное сообщение доставится при подключении (см.
+        # `queue_message`/`connect`), и приложение сразу погасит вызов.
+        # Срок жизни — с запасом (человек может открыть приложение через
+        # несколько минут): сообщение безопасно, приложение сверяет номер вызова.
+        await call_manager.queue_message(
+            to_user_id, envelope, CALL_OVER_QUEUE_TTL_SECONDS
+        )
     else:
         # Ответ на звонок и ICE-кандидаты: абонент мог отвалиться на секунду
         # (смена сети, перезапуск страницы). Если просто выбросить сообщение,

@@ -263,6 +263,8 @@ let renegotiateSeq = 0
 let ringTimer: number | undefined
 /** Сторож входящего звонка: вызов давно не звонит, а мы об этом не узнали. */
 let incomingTimer: number | undefined
+/** До какого момента входящий звонок ещё имеет смысл ждать (см. сторож). */
+let incomingDeadline = 0
 /** Отсчёт до «собеседник так и не вернулся» после перезагрузки страницы. */
 let rejoinTimer: number | undefined
 /* Восстановление связи при смене сети (Wi-Fi → LTE и обратно). */
@@ -2039,21 +2041,38 @@ export const useCallStore = defineStore('call', {
     /** Сторож входящего звонка (см. `INCOMING_STALE_TIMEOUT_MS`). */
     _armIncomingTimer() {
       this._clearIncomingTimer()
+      incomingDeadline = Date.now() + INCOMING_STALE_TIMEOUT_MS
       incomingTimer = window.setTimeout(() => {
         incomingTimer = undefined
-        if (this.status !== 'incoming') return
-        // Отказ не отправляем: вызов уже разобран на сервере, а «отклонил»
-        // записался бы в историю как реальный отказ.
-        this._cleanup()
-        this.notice = 'Звонок завершён'
+        this.dropStaleRinging()
       }, INCOMING_STALE_TIMEOUT_MS)
     },
 
     _clearIncomingTimer() {
+      incomingDeadline = 0
       if (incomingTimer !== undefined) {
         window.clearTimeout(incomingTimer)
         incomingTimer = undefined
       }
+    },
+
+    /**
+     * Погасить «звонок», который звонит слишком долго.
+     *
+     * О завершении вызова нам могли не сообщить (канал отвалился, приложение
+     * было в фоне), и тогда окно вызова со звуком висит бесконечно. Помимо
+     * таймера проверяем это и при возврате на экран: в свёрнутой вкладке
+     * браузер душит таймеры, и до «просыпания» сторож просто не срабатывает.
+     *
+     * Отказ не отправляем: вызов на сервере уже разобран, а «отклонил»
+     * записался бы в историю как реальный отказ.
+     */
+    dropStaleRinging(): boolean {
+      if (this.status !== 'incoming') return false
+      if (!incomingDeadline || Date.now() < incomingDeadline) return false
+      this._cleanup()
+      this.notice = 'Звонок завершён'
+      return true
     },
 
     /** Принудительно завершает звонок (обрыв соединения и т.п.). */
