@@ -124,7 +124,7 @@ describe('уведомление о звонке из приложения (пр
     return shown
   }
 
-  it('показывает ТОЛЬКО «Ответить»: кнопка отказа превращалась в отказ при нажатии на «Ответить»', async () => {
+  it('раскладка кнопок совпадает с push-уведомлением', async () => {
     const shown = stubNotifications()
 
     await showIncomingCallRing({
@@ -135,10 +135,12 @@ describe('уведомление о звонке из приложения (пр
     })
 
     expect(shown).toHaveLength(1)
-    // Кнопка отказа раньше была здесь — и на Android нажатие на «Ответить»
-    // приходило в service worker как «Отклонить», звонок рвался у отвечавшего и
-    // продолжал играть у зовущего.
-    expect(shown[0].options.actions).toEqual([{ action: 'answer', title: 'Ответить' }])
+    // Две кнопки, как в sw.js: разная раскладка в двух местах ломала звонки
+    // (отказ выполнялся при нажатии на «Ответить»).
+    expect(shown[0].options.actions).toEqual([
+      { action: 'answer', title: 'Ответить' },
+      { action: 'decline', title: 'Отклонить' }
+    ])
     // Уведомление держится на экране и относится к конкретному вызову — по тегу
     // его закрывает service worker, когда звонок перестал звонить.
     expect(shown[0].options.tag).toBe('call-call-1')

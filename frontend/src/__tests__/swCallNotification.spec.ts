@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
 
 /**
  * Проверки service worker ЗАПУСКОМ его кода (а не чтением исходника).
@@ -17,6 +17,7 @@ import { describe, expect, it, beforeEach } from 'vitest'
 interface Captured {
   push?: (event: unknown) => void
   notificationclick?: (event: unknown) => void
+  notificationclose?: (event: unknown) => void
   message?: (event: unknown) => void
 }
 
@@ -34,6 +35,8 @@ interface Harness {
   hideClient: () => void
   /** Сделать окно видимым (приложение открыто перед человеком). */
   showClient: () => void
+  /** Что отвечает сервер на `GET /calls/pending/` (ждёт ли ещё вызов). */
+  callPending: boolean
 }
 
 function loadServiceWorker(): Harness {
@@ -62,7 +65,8 @@ function loadServiceWorker(): Harness {
     },
     showClient: () => {
       clientState.visibilityState = 'visible'
-    }
+    },
+    callPending: true
   }
 
   const client = {
@@ -127,7 +131,13 @@ function loadServiceWorker(): Harness {
       if ((init?.method || 'GET') === 'POST') {
         apiPosts.push({ path, body: init?.body ? JSON.parse(init.body) : null })
       }
-      return { ok: true, status: 200, json: async () => ({}), clone: () => ({}) }
+      return {
+        ok: true,
+        status: 200,
+        json: async () =>
+          String(path).includes('/calls/pending/') ? { pending: harness.callPending } : {},
+        clone: () => ({})
+      }
     },
     Response: { error: () => ({ ok: false }) },
     URL,
@@ -162,10 +172,20 @@ function clickEvent(action: string, data: Record<string, unknown>, openWindows =
   const waits: Promise<unknown>[] = []
   return {
     action,
-    notification: { data, close: () => undefined },
+    notification: { tag: data.tag || '', data, close: () => undefined },
     waitUntil: (promise: Promise<unknown>) => waits.push(promise),
     waits,
     openWindows
+  }
+}
+
+/** Событие закрытия уведомления (в том числе смахивание человеком). */
+function closeEvent(tag: string, data: Record<string, unknown>) {
+  const waits: Promise<unknown>[] = []
+  return {
+    notification: { tag, data, close: () => undefined },
+    waitUntil: (promise: Promise<unknown>) => waits.push(promise),
+    waits
   }
 }
 
@@ -176,7 +196,7 @@ describe('service worker: кнопки уведомления о звонке', 
     harness = loadServiceWorker()
   })
 
-  it('в уведомлении о звонке одна кнопка — «Ответить», отказа нет', async () => {
+  it('в уведомлении о звонке две кнопки: «Ответить» и «Отклонить»', async () => {
     const event = pushEvent({
       type: 'call',
       call_id: 'call-1',
@@ -188,11 +208,9 @@ describe('service worker: кнопки уведомления о звонке', 
 
     expect(harness.notifications).toHaveLength(1)
     expect(harness.notifications[0].options.actions).toEqual([
-      { action: 'answer', title: 'Ответить' }
+      { action: 'answer', title: 'Ответить' },
+      { action: 'decline', title: 'Отклонить' }
     ])
-    // Кнопки отказа нет: на Android нажатие на кнопку уведомления приходит как
-    // действие СОСЕДНЕЙ кнопки, и «Ответить» превращалось в отказ.
-    expect(JSON.stringify(harness.notifications[0].options.actions)).not.toContain('decline')
     expect(harness.notifications[0].options.requireInteraction).toBe(true)
   })
 
@@ -210,19 +228,53 @@ describe('service worker: кнопки уведомления о звонке', 
     expect(harness.opened).toEqual([])
   })
 
-  it('«Отклонить» из СТАРОГО уведомления НЕ отклоняет звонок', async () => {
-    // Такую кнопку мы больше не показываем, но на экранах людей висят старые
-    // уведомления с двумя кнопками. Их «отказ» выполнять нельзя: на Android он
-    // приходит и когда человек жал «Ответить». Показываем экран звонка.
+  it('«Отклонить»: показывает экран звонка и отклоняет вызов, если не ответили', async () => {
+    vi.useFakeTimers()
     harness.showClient()
+    const event = clickEvent('decline', { type: 'call', call_id: 'call-1', peer_id: 5 })
+    harness.sw.notificationclick?.(event)
+    await vi.advanceTimersByTimeAsync(100)
+
+    // Сначала человек видит звонок: на Android «Отклонить» может прийти от нажатия
+    // на «Ответить», и молчаливый отказ убил бы звонок, который хотели принять.
+    expect(harness.posted).toEqual([
+      { type: 'call-notification', action: 'focus', call_id: 'call-1', peer_id: 5 }
+    ])
+    expect(harness.apiPosts).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(7000)
+    await Promise.all(event.waits)
+
+    expect(harness.apiPosts).toEqual([
+      { path: '/api/v1/calls/decline/', body: { call_id: 'call-1', to_user_id: 5 } }
+    ])
+    vi.useRealTimers()
+  })
+
+  it('«Отклонить» не отклоняет звонок, если человек успел ответить', async () => {
+    vi.useFakeTimers()
+    harness.showClient()
+    const event = clickEvent('decline', { type: 'call', call_id: 'call-1', peer_id: 5 })
+    harness.sw.notificationclick?.(event)
+    await vi.advanceTimersByTimeAsync(100)
+
+    // Кнопку «Ответить» система отдала как «Отклонить», человек ответил на
+    // открывшемся экране — сервер больше этот вызов не ждёт.
+    harness.callPending = false
+    await vi.advanceTimersByTimeAsync(7000)
+    await Promise.all(event.waits)
+
+    expect(harness.apiPosts).toEqual([])
+    vi.useRealTimers()
+  })
+
+  it('«Отклонить» по уже завершённому звонку ничего не делает', async () => {
+    harness.callPending = false
     const event = clickEvent('decline', { type: 'call', call_id: 'call-1', peer_id: 5 })
     harness.sw.notificationclick?.(event)
     await Promise.all(event.waits)
 
-    expect(harness.apiPosts.map((post) => post.path)).not.toContain('/api/v1/calls/decline/')
-    expect(harness.posted).toEqual([
-      { type: 'call-notification', action: 'focus', call_id: 'call-1', peer_id: 5 }
-    ])
+    expect(harness.apiPosts).toEqual([])
     expect(harness.opened).toEqual([])
   })
 
@@ -236,6 +288,52 @@ describe('service worker: кнопки уведомления о звонке', 
     // (или фокусируем) окно с адресом звонка: экран появится после загрузки.
     expect(harness.opened).toEqual(['/?call=call-1&peer=5&action=answer'])
     expect(harness.apiPosts.map((post) => post.path)).not.toContain('/api/v1/calls/decline/')
+  })
+
+  it('смахивание уведомления отклоняет звонок', async () => {
+    vi.useFakeTimers()
+    const event = closeEvent('call-call-1', { type: 'call', call_id: 'call-1', peer_id: 5 })
+    harness.sw.notificationclose?.(event)
+    // Смахивание закрывает уведомление без клика: другого способа отказать, не
+    // открывая приложение, у человека нет.
+    await vi.advanceTimersByTimeAsync(4000)
+    await Promise.all(event.waits)
+
+    expect(harness.apiPosts).toEqual([
+      { path: '/api/v1/calls/decline/', body: { call_id: 'call-1', to_user_id: 5 } }
+    ])
+    // И окнам — тихий сигнал, иначе рингтон продолжит играть.
+    expect(harness.posted).toEqual([
+      { type: 'call-cancelled', call_id: 'call-1', reason: 'declined' }
+    ])
+    vi.useRealTimers()
+  })
+
+  it('смахивание уведомления уже принятого звонка ничего не отклоняет', async () => {
+    harness.callPending = false
+    const event = closeEvent('call-call-1', { type: 'call', call_id: 'call-1', peer_id: 5 })
+    harness.sw.notificationclose?.(event)
+    await Promise.all(event.waits)
+
+    // Сервер уже не ждёт этот вызов (приняли в приложении, отменили, ответили на
+    // другом устройстве) — отказ отправлять нечего.
+    expect(harness.apiPosts).toEqual([])
+    expect(harness.posted).toEqual([])
+  })
+
+  it('тап по уведомлению (и по кнопке «Ответить») не считается отказом', async () => {
+    // Система сама убирает уведомление после тапа — закрытие не значит отказ.
+    harness.showClient()
+    const click = clickEvent('answer', { type: 'call', call_id: 'call-1', peer_id: 5 })
+    harness.sw.notificationclick?.(click)
+    const close = closeEvent('call-call-1', { type: 'call', call_id: 'call-1', peer_id: 5 })
+    harness.sw.notificationclose?.(close)
+    await Promise.all([...click.waits, ...close.waits])
+
+    expect(harness.apiPosts.map((post) => post.path)).not.toContain('/api/v1/calls/decline/')
+    expect(harness.posted).toEqual([
+      { type: 'call-notification', action: 'answer', call_id: 'call-1', peer_id: 5 }
+    ])
   })
 })
 

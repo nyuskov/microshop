@@ -18,7 +18,7 @@
  */
 
 const CACHE_PREFIX = 'pismo-v'
-const CACHE_VERSION = 24
+const CACHE_VERSION = 25
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 // Кэш медиа живёт отдельно: обновление версии приложения не сбрасывает картинки.
 const MEDIA_CACHE_PREFIX = 'pismo-media-v'
@@ -250,6 +250,16 @@ function absoluteUrl(path) {
   }
 }
 
+//: Сколько ждём перед отказом по смахиванию уведомления.
+//: Тап/кнопка «Ответить» тоже закрывают уведомление, и за это время приложение
+//: успевает принять звонок — тогда отказ не уйдёт.
+const CALL_DISMISS_GRACE_MS = 3000
+//: Пауза перед отказом по кнопке «Отклонить».
+//: На части устройств (Android) система отдаёт нажатие кнопки как СОСЕДНЕЕ
+//: действие, поэтому «Отклонить» может прийти от человека, который жал
+//: «Ответить». За паузу он успевает ответить на открывшемся экране звонка.
+const CALL_DECLINE_CONFIRM_MS = 6000
+
 async function handlePush(event) {
   // Значение по умолчанию: у push без данных ни заголовка, ни текста нет.
   let payload
@@ -301,15 +311,15 @@ async function handlePush(event) {
     // Вибрация — два спокойных толчка с длинной паузой. Частый «дребезг»
     // (7 коротких импульсов подряд) сильно бил по нервам при каждом звонке.
     options.vibrate = [220, 700, 220]
-    // Кнопка только одна — «Ответить». Кнопку отказа убрали намеренно: на части
-    // устройств (Android) нажатие на кнопку доходит до service worker как
-    // действие СОСЕДНЕЙ кнопки, и «Ответить» превращалось в отказ — зовущий
-    // слышал «Абонент отклонил звонок», хотя человек собирался ответить. Плюс
-    // обработчик клика ниже теперь НИКОГДА не выполняет отказ: даже если такое
-    // действие придёт из старого уведомления, откроется экран звонка и решение
-    // примет человек. Ответить можно кнопкой, отклонить — в приложении, а
-    // проигнорированное уведомление — обычный пропущенный звонок.
-    options.actions = [{ action: 'answer', title: 'Ответить' }]
+    // Кнопок две: «Ответить» и «Отклонить». Отказ выполняется осторожно (см.
+    // `notificationclick`): на части устройств (Android) система отдаёт нажатие
+    // кнопки как действие СОСЕДНЕЙ кнопки, поэтому человека сначала ведут на
+    // экран звонка, и только если он не ответил — вызов отклоняется сам.
+    // Отклонить можно ещё и смахиванием уведомления (см. `notificationclose`).
+    options.actions = [
+      { action: 'answer', title: 'Ответить' },
+      { action: 'decline', title: 'Отклонить' }
+    ]
     // Прошлые звонки уже не звонят: их уведомления с экрана убираем, иначе они
     // копятся, а кнопки в них ничего не делают.
     await closeOtherCallNotifications(options.tag)
@@ -410,49 +420,148 @@ async function swPanic(panicToken) {
   }
 }
 
+/** GET с Bearer-токеном: возвращает JSON или null, если спросить не удалось. */
+async function swApiGet(path) {
+  const token = await swReadToken()
+  if (!token) return null
+  try {
+    const resp = await fetch(path, { headers: { Authorization: 'Bearer ' + token } })
+    if (!resp.ok) return null
+    return await resp.json()
+  } catch {
+    return null
+  }
+}
+
+/** Ждёт ли звонок ответа (`GET /calls/pending/`). */
+async function swCallStillPending(callId) {
+  if (!callId) return false
+  const data = await swApiGet('/api/v1/calls/pending/?call_id=' + encodeURIComponent(callId))
+  return Boolean(data && data.pending)
+}
+
+/**
+ * Id звонков, уведомления о которых человек ОТКРЫЛ (тап или кнопка).
+ *
+ * Их закрытие — не «отклонить»: нажатие само убирает уведомление с экрана.
+ * Набор живёт в памяти воркера; для страховки ниже есть ещё пауза и вопрос
+ * серверу, ждёт ли вызов.
+ */
+const openedCallIds = new Set()
+
+/**
+ * Смахнули уведомление о звонке — значит отказались от вызова.
+ *
+ * Это единственный способ отказать, не открывая приложение. Отказ отправляем
+ * только если вызов всё ещё ждёт: к этому моменту приложение по «Ответить» уже
+ * могло принять звонок, а принятый/отменённый/просроченный вызов трогать нельзя.
+ */
+async function declineCallAfterDismiss(callId, peerId) {
+  if (openedCallIds.has(callId)) {
+    openedCallIds.delete(callId)
+    return
+  }
+  if (!(await swCallStillPending(callId))) return
+  await new Promise((resolve) => setTimeout(resolve, CALL_DISMISS_GRACE_MS))
+  if (openedCallIds.has(callId)) {
+    openedCallIds.delete(callId)
+    return
+  }
+  if (!(await swCallStillPending(callId))) return
+  await declineCallEverywhere(callId, peerId)
+}
+
+/**
+ * Отказ на сервере + тихий сигнал открытым окнам (их канал мог отвалиться, а
+ * рингтон должен замолчать — см. `store/call.finishIfRinging`).
+ */
+async function declineCallEverywhere(callId, peerId) {
+  await swApiPost('/api/v1/calls/decline/', { call_id: callId, to_user_id: peerId })
+  notifyCallFinished({ call_id: callId, reason: 'declined' })
+}
+
+/**
+ * Кнопка «Отклонить»: показываем экран звонка и отклоняем вызов, если человек
+ * так и не ответил.
+ *
+ * Почему не отказ сразу: на Android нажатие кнопки приходит в service worker как
+ * СОСЕДНЕЕ действие, поэтому «Отклонить» может на самом деле быть нажатием на
+ * «Ответить». Тогда человек видит экран звонка и успевает ответить, а через
+ * `CALL_DECLINE_CONFIRM_MS` вызов уже принят и отказ не уходит. Если это был
+ * настоящий отказ — вызов отклонится сам, звонить после этого уже некому.
+ */
+async function declineCallFromButton(callId, peerId, windows) {
+  if (!(await swCallStillPending(callId))) return
+  await showCallScreen(callId, peerId, 'focus', windows)
+  await new Promise((resolve) => setTimeout(resolve, CALL_DECLINE_CONFIRM_MS))
+  if (openedCallIds.has(callId)) {
+    openedCallIds.delete(callId)
+    return
+  }
+  if (!(await swCallStillPending(callId))) return
+  await declineCallEverywhere(callId, peerId)
+}
+
+self.addEventListener('notificationclose', (event) => {
+  const data = event.notification.data || {}
+  if (data.type !== 'call') return
+  const callId = String(data.call_id || '')
+  if (!callId) return
+  event.waitUntil(declineCallAfterDismiss(callId, data.peer_id || null))
+})
+
+/**
+ * Показывает человеку экран звонка (то же, что нажатие по уведомлению).
+ *
+ * Видимое окно будим сообщением (экран появится без перезагрузки), а закрытое или
+ * свёрнутое открываем адресом: замороженной странице сообщение может не дойти.
+ */
+async function showCallScreen(callId, peerId, wanted, windows) {
+  const visible = windows.find(
+    (client) => 'focus' in client && client.visibilityState === 'visible'
+  )
+  if (visible) {
+    visible.focus()
+    visible.postMessage({
+      type: 'call-notification',
+      action: wanted,
+      call_id: callId || null,
+      peer_id: peerId
+    })
+    return
+  }
+  await self.clients.openWindow(
+    '/?call=' +
+      encodeURIComponent(callId) +
+      '&peer=' +
+      encodeURIComponent(peerId === null ? '' : peerId) +
+      '&action=' +
+      wanted
+  )
+}
+
 self.addEventListener('notificationclick', (event) => {
-  event.notification.close()
   const data = event.notification.data || {}
   const action = event.action || 'focus'
+  // Запоминаем ДО закрытия: тап/кнопка по уведомлению о звонке — это «открыть
+  // звонок», а не смахивание, и отказом закрытие быть не должно.
+  const callId = String(data.call_id || '')
+  if (data.type === 'call' && callId && action !== 'decline') openedCallIds.add(callId)
+  event.notification.close()
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
 
-      // Входящий звонок: любой тап (или кнопка из старого уведомления) открывает
-      // приложение к экрану звонка.
+      // Входящий звонок: кнопки и тап открывают приложение к экрану звонка.
       if (data.type === 'call') {
-        // ВАЖНО: service worker НИКОГДА не отправляет отказ. Раньше кнопка
-        // «Ответить»/«Отклонить» обрабатывалась здесь, и на Android нажатие на
-        // кнопку приходило как действие СОСЕДНЕЙ кнопки: «Ответить» превращалось
-        // в отказ, звонок обрывался у обоих, а у зовущего продолжал играть (его
-        // канал в фоне мог быть мёртв). Теперь решение принимает только человек —
-        // в приложении, на экране звонка.
-        //
-        // Кнопку «Ответить» из старых уведомлений уважаем: приложение сразу
-        // примет звонок. Любое другое действие (в том числе legacy «Отклонить»)
-        // приводится к «показать экран звонка».
-        const wanted = action === 'answer' ? 'answer' : 'focus'
-        const callId = encodeURIComponent(data.call_id || '')
-        const peerId = encodeURIComponent(data.peer_id || '')
-        const callUrl = '/?call=' + callId + '&peer=' + peerId + '&action=' + wanted
-        // Окно видно пользователю — будим его без перезагрузки: экран звонка
-        // появится мгновенно.
-        const visible = windows.find(
-          (client) => 'focus' in client && client.visibilityState === 'visible'
-        )
-        if (visible) {
-          visible.focus()
-          visible.postMessage({
-            type: 'call-notification',
-            action: wanted,
-            call_id: data.call_id || null,
-            peer_id: data.peer_id || null
-          })
+        const peerId = data.peer_id || null
+        // «Отклонить» — не отказ сразу: см. `declineCallFromButton`.
+        if (action === 'decline') {
+          await declineCallFromButton(callId, peerId, windows)
           return
         }
-        // Приложение закрыто или свёрнуто: переданное в фоне сообщение может
-        // потеряться (страница заморожена), поэтому открываем адрес со звонком.
-        await self.clients.openWindow(callUrl)
+        // «Ответить»/тап — показываем звонок (и принимаем, если просили ответ).
+        await showCallScreen(callId, peerId, action === 'answer' ? 'answer' : 'focus', windows)
         return
       }
 
