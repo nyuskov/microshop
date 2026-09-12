@@ -139,6 +139,10 @@ celerybeat.pid
 # Environments
 .env
 .envrc
+# Локальные self-signed сертификаты для HTTPS в разработке (лежат в
+# backend/certs и копируются сюда): приватный ключ в репозитории не храним.
+frontend/certs_from_backend/
+
 # Все локальные env-файлы игнорируем, кроме примеров (.env.example)
 .env.*
 !.env.example

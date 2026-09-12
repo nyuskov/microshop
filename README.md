@@ -269,7 +269,12 @@ crontab -l | grep -v '# pismo-monitor' | crontab -   # удалить задач
 ### Локально без Docker (отладка кода/тулинга)
 
 - Backend: `cd backend && poetry install && poetry run uvicorn main:app --reload` (нужна доступная БД по `DATABASE_URL`).
-- Frontend: `cd frontend && pnpm install && pnpm dev` (Vite требует сертификаты в `/app/certs_from_backend` — при запуске на хосте смонтируйте/укажите путь в `vite.config.ts`).
+- Frontend: `cd frontend && pnpm install && pnpm dev` (Vite берёт сертификаты из
+  `/app/certs_from_backend` — при запуске на хосте укажите путь в `vite.config.ts`
+  или положите пару в `frontend/certs_from_backend/`). Сертификаты в репозитории не
+  хранятся (приватный ключ в git — плохая идея): возьмите их из `backend/certs` или
+  сделайте self-signed для localhost:
+  `openssl req -x509 -newkey rsa:2048 -nodes -keyout server.key -out server.crt -days 825 -subj "/CN=localhost"`.)
 
 ### Переменные окружения
 
