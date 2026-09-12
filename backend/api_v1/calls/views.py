@@ -113,16 +113,29 @@ async def decline_call(
     )
     # На других устройствах этого же человека звонок тоже должен замолчать.
     _notify_call_finished(user.id, payload.call_id, "declined")
-    delivered = await call_manager.send_to_user(
-        payload.to_user_id,
-        {
-            "type": "call-decline",
-            "call_id": payload.call_id,
-            "to_user_id": payload.to_user_id,
-            "from_user_id": user.id,
-            "reason": "declined",
-        },
-    )
+    envelope = {
+        "type": "call-decline",
+        "call_id": payload.call_id,
+        "to_user_id": payload.to_user_id,
+        "from_user_id": user.id,
+        "reason": "declined",
+    }
+    delivered = await call_manager.send_to_user(payload.to_user_id, envelope)
+    if not delivered:
+        # Канал зовущего молчит (приложение в фоне, смена сети): придержим отказ
+        # до подключения.
+        await call_manager.queue_message(
+            payload.to_user_id, envelope, CALL_OVER_QUEUE_TTL_SECONDS
+        )
+    # И ТИХИЙ PUSH ЗОВУЩЕМУ — независимо от того, нашёлся ли живой сокет.
+    #
+    # Симптом из жизни: абонент смахивает уведомление (отказ уходит сюда, запись
+    # в истории появляется), а у зовущего вызов продолжает звонить. Причина:
+    # `send_to_user` мог найти устаревший сокет и вернуть «доставлено», хотя
+    # окно, которое звенит, сообщение не обработало. Push приходит в service
+    # worker и при мёртвом WebSocket: он гасит уведомление и просит приложение
+    # прекратить звонок (`finishIfRinging`).
+    _notify_call_finished(payload.to_user_id, payload.call_id, "declined")
     return {"ok": delivered}
 
 
@@ -359,6 +372,16 @@ async def _relay_message(
         await call_manager.queue_message(
             to_user_id, envelope, CALL_OVER_QUEUE_TTL_SECONDS
         )
+        # Плюс тихий push: сообщение из очереди дойдёт только при подключении, а
+        # звонок «звонит» прямо сейчас. Своё уведомление для `call-cancel` уже
+        # отправлено выше; здесь — отказ и завершение, где получатель это
+        # зовущий: без сигнала его вызов звенит до собственного таймаута.
+        if message_type in ("call-decline", "call-end"):
+            _notify_call_finished(
+                to_user_id,
+                data.get("call_id"),
+                "declined" if message_type == "call-decline" else "ended",
+            )
     else:
         # Ответ на звонок и ICE-кандидаты: абонент мог отвалиться на секунду
         # (смена сети, перезапуск страницы). Если просто выбросить сообщение,
