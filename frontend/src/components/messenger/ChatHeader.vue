@@ -14,7 +14,7 @@
         :style="props.chat.is_self ? savedAvatarStyle : avatarStyle(title)"
       >
         <q-icon v-if="props.chat.is_self" :name="icon('bookmark')" size="22px" aria-hidden="true" />
-        <img v-else-if="avatarUrl" :src="avatarUrl" class="avatar-img" alt="" />
+        <img v-else-if="avatarUrl" :src="avatarUrl" class="avatar-img" alt="" decoding="async" />
         <template v-else>{{ initials(title) }}</template>
       </span>
     </span>

@@ -21,7 +21,13 @@
         <ul v-else class="mod-list">
           <li v-for="user in users" :key="user.id" class="mod-row">
             <span class="mod-avatar" :style="avatarStyle(displayName(user))">
-              <img v-if="avatarUrlOf(user)" :src="avatarUrlOf(user)" alt="" />
+              <img
+                v-if="avatarUrlOf(user)"
+                :src="avatarUrlOf(user)"
+                alt=""
+                loading="lazy"
+                decoding="async"
+              />
               <template v-else>{{ initials(displayName(user)) }}</template>
             </span>
             <span class="mod-name">

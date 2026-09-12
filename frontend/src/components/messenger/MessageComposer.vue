@@ -120,6 +120,8 @@
               :src="avatarUrlOf(member)"
               class="mention-avatar-img"
               alt=""
+              loading="lazy"
+              decoding="async"
             />
             <template v-else>{{ initials(displayName(member)) }}</template>
           </span>

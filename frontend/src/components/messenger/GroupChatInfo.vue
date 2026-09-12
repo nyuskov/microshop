@@ -18,6 +18,7 @@
                 :src="groupAvatar"
                 class="gi-avatar-img"
                 alt="Аватар группы"
+                decoding="async"
               />
               <template v-else>{{ initials(titleText) }}</template>
               <input
@@ -141,6 +142,8 @@
                     :src="avatarUrlOf(contact)"
                     class="avatar-img"
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                   />
                   <template v-else>{{ initials(displayName(contact)) }}</template>
                 </span>
@@ -173,6 +176,8 @@
                   :src="avatarUrlOf(member)"
                   class="avatar-img"
                   alt=""
+                  loading="lazy"
+                  decoding="async"
                 />
                 <template v-else>{{ initials(displayName(member)) }}</template>
               </span>

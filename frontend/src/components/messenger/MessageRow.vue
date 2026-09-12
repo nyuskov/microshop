@@ -67,6 +67,8 @@
             :src="forwarderAvatarUrl"
             class="forward-sender-avatar-img"
             alt=""
+            loading="lazy"
+            decoding="async"
           />
           <template v-else>{{ forwarderInitials }}</template>
         </span>
@@ -98,6 +100,7 @@
             :alt="file.name"
             class="attachment-image"
             loading="lazy"
+            decoding="async"
           />
           <span v-else class="attachment-locked">
             <q-icon :name="icon('lock')" size="20px" />
@@ -162,6 +165,20 @@
             rel="noopener noreferrer"
             @click.stop.prevent="followMessageLink(part.href)"
             >{{ part.value }}</a
+          >
+          <!-- Оформление: *жирный*, _курсив_, `код`, ~~зачёркнутый~~ -->
+          <strong v-else-if="part.type === 'bold'" class="msg-bold">{{ part.value }}</strong>
+          <em v-else-if="part.type === 'italic'" class="msg-italic">{{ part.value }}</em>
+          <s v-else-if="part.type === 'strike'" class="msg-strike">{{ part.value }}</s>
+          <code v-else-if="part.type === 'code'" class="msg-code">{{ part.value }}</code>
+          <!-- Спойлер скрыт, пока по нему не нажмут -->
+          <span
+            v-else-if="part.type === 'spoiler'"
+            class="msg-spoiler"
+            :class="{ on: revealedSpoilers.has(index) }"
+            :title="revealedSpoilers.has(index) ? undefined : 'Нажмите, чтобы показать'"
+            @click.stop="revealSpoiler(index)"
+            >{{ part.value }}</span
           >
           <template v-else>{{ part.value }}</template>
         </template>
@@ -406,6 +423,14 @@ let swipeFeedback = false
 const LONG_TEXT_LIMIT = 600
 
 const textParts = computed(() => splitMessageText(props.message.text ?? ''))
+
+/** Спойлеры, которые пользователь уже раскрыл нажатием (по индексу фрагмента). */
+const revealedSpoilers = ref<Set<number>>(new Set())
+
+function revealSpoiler(index: number) {
+  if (revealedSpoilers.value.has(index)) return
+  revealedSpoilers.value = new Set(revealedSpoilers.value).add(index)
+}
 
 /**
  * Переход по ссылке из текста.
@@ -991,6 +1016,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
   flex-direction: column;
   margin: 3px 0;
   max-width: 60%;
+  /* Длинная лента: строки за экраном браузер не раскладывает и не рисует.
+     DOM и логика не меняются, поэтому позиция скролла и разделители целы.
+     `auto` в contain-intrinsic-size запоминает реальную высоту уже показанных
+     строк, а 60px — только оценка для тех, что ещё ни разу не попадали в кадр. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 60px;
 }
 
 .msg-call {
@@ -1109,6 +1140,45 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCtxKeydown))
 .msg-mention {
   color: var(--ms-accent, #2ea25e);
   font-weight: 600;
+}
+
+/* Оформление текста (*жирный*, _курсив_, `код`, ~~зачёркнутый~~, ||спойлер||).
+   Цвет берём от пузыря: он бывает и своим (зелёным), и чужим (белым). */
+.msg-bold {
+  font-weight: 700;
+}
+
+.msg-italic {
+  font-style: italic;
+}
+
+.msg-strike {
+  text-decoration: line-through;
+}
+
+.msg-code {
+  font-family: var(--ms-font-mono);
+  font-size: 0.92em;
+  background: var(--ms-mark-bg);
+  border-radius: 5px;
+  padding: 0 4px;
+}
+
+.msg-spoiler {
+  background: var(--ms-mark-bg);
+  border-radius: 5px;
+  padding: 0 3px;
+  /* Размытие скрывает текст, но не ломает высоту строки, как display: none. */
+  filter: blur(3.5px);
+  cursor: pointer;
+  user-select: none;
+}
+
+.msg-spoiler.on {
+  background: transparent;
+  padding: 0;
+  filter: none;
+  user-select: text;
 }
 
 /* Ссылка в тексте: подчёркнутая, цвет — как у текста (читается в любом пузыре) */

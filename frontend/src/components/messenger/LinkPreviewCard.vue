@@ -14,6 +14,7 @@
       :src="imageSrc"
       :alt="preview.title || domain"
       loading="lazy"
+      decoding="async"
       @error="imageFailed = true"
     />
     <span class="lp-body">

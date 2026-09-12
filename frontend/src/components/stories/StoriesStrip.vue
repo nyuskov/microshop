@@ -8,7 +8,7 @@
           :class="{ empty: !mine }"
           :style="mine ? avatarStyle(myName) : undefined"
         >
-          <img v-if="myAvatar" :src="myAvatar" alt="" />
+          <img v-if="myAvatar" :src="myAvatar" alt="" loading="lazy" decoding="async" />
           <template v-else>{{ myInitials }}</template>
         </span>
       </button>
@@ -38,7 +38,13 @@
         :class="{ unseen: group.has_unseen }"
         :style="avatarStyle(authorName(group))"
       >
-        <img v-if="authorAvatar(group)" :src="authorAvatar(group)" alt="" />
+        <img
+          v-if="authorAvatar(group)"
+          :src="authorAvatar(group)"
+          alt=""
+          loading="lazy"
+          decoding="async"
+        />
         <template v-else>{{ authorInitials(group) }}</template>
       </span>
       <span class="story-name">{{ authorName(group) }}</span>

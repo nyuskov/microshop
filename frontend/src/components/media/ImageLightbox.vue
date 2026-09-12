@@ -46,6 +46,7 @@
         :src="current.url"
         :alt="current.name"
         class="lb-image"
+        decoding="async"
         @click.stop
       />
       <!-- Зашифрованное вложение расшифровывается по запросу (см. utils/lightbox):

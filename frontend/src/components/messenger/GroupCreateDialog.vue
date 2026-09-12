@@ -64,6 +64,8 @@
               :src="avatarUrlOf(contact)"
               class="avatar-img"
               alt=""
+              loading="lazy"
+              decoding="async"
             />
             <template v-else>{{ initials(displayName(contact)) }}</template>
           </span>

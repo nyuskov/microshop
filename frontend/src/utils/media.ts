@@ -2,6 +2,7 @@
 
 import type { Message, MessageFile } from '@/types'
 import { isEncryptedPayload } from '@/services/e2ee'
+import { plainMessageText } from '@/utils/mentions'
 
 export const isImageFile = (file: MessageFile): boolean => file.mime?.startsWith('image/') ?? false
 
@@ -85,7 +86,9 @@ export const messageSnippet = (message: Message): string => {
     return `${lock}📎 ${file.name}`
   }
   if (message.encrypted && isEncryptedPayload(message.text)) return '🔒 Сообщение'
-  return message.text || ''
+  // Служебные символы разметки в цитате/превью не показываем: `*жирный*`
+  // читается как звёздочки, а не как текст сообщения.
+  return plainMessageText(message.text || '')
 }
 
 /** Отметка о звонке: текст для списка чатов и системной строки в чате. */

@@ -55,6 +55,8 @@
                 :src="avatarUrlOf(chatPeerOf(chat))"
                 class="avatar-img"
                 alt=""
+                loading="lazy"
+                decoding="async"
               />
               <template v-else>{{ initials(chatTitleOf(chat)) }}</template>
             </span>

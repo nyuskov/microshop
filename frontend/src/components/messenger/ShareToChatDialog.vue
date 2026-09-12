@@ -21,7 +21,13 @@
 
         <!-- Что именно отправим (текст/ссылка и картинка, если она есть) -->
         <div class="shr-preview">
-          <img v-if="previewUrl" :src="previewUrl" class="shr-preview-img" alt="" />
+          <img
+            v-if="previewUrl"
+            :src="previewUrl"
+            class="shr-preview-img"
+            alt=""
+            decoding="async"
+          />
           <div class="shr-preview-body">
             <span class="shr-preview-label">Содержимое из другого приложения</span>
             <span class="shr-preview-text">{{
@@ -52,7 +58,14 @@
             @click="selectedId = chat.id"
           >
             <span class="avatar" :style="avatarStyle(titleOf(chat))">
-              <img v-if="avatarOf(chat)" :src="avatarOf(chat)" class="avatar-img" alt="" />
+              <img
+                v-if="avatarOf(chat)"
+                :src="avatarOf(chat)"
+                class="avatar-img"
+                alt=""
+                loading="lazy"
+                decoding="async"
+              />
               <template v-else>{{ initials(titleOf(chat)) }}</template>
             </span>
             <span class="shr-item-text">

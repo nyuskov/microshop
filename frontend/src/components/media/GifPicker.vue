@@ -46,7 +46,7 @@
           title="Отправить GIF"
           @click="sendGif(gif)"
         >
-          <img :src="gif.preview" :alt="gif.title || 'GIF'" loading="lazy" />
+          <img :src="gif.preview" :alt="gif.title || 'GIF'" loading="lazy" decoding="async" />
           <span v-if="sendingId === gif.id" class="gif-tile-loading">
             <span class="gif-spinner"></span>
           </span>

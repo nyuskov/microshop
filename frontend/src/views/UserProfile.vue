@@ -762,7 +762,13 @@ const onNotificationsToggle = async (val: boolean) => {
             :disabled="avatarUploading"
             @click="avatarInput?.click()"
           >
-            <img v-if="avatarSrc" :src="avatarSrc" class="avatar-photo" alt="Аватар" />
+            <img
+              v-if="avatarSrc"
+              :src="avatarSrc"
+              class="avatar-photo"
+              alt="Аватар"
+              decoding="async"
+            />
             <template v-else>{{ heroInitials }}</template>
             <span class="avatar-camera"><q-icon :name="icon('photo_camera')" size="15px" /></span>
           </button>

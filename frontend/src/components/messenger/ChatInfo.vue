@@ -10,7 +10,13 @@
       <template v-if="peer">
         <div class="ci-hero">
           <span class="ci-avatar" :style="avatarStyle(peerName)">
-            <img v-if="peerAvatar" :src="peerAvatar" class="ci-avatar-img" alt="" />
+            <img
+              v-if="peerAvatar"
+              :src="peerAvatar"
+              class="ci-avatar-img"
+              alt=""
+              decoding="async"
+            />
             <template v-else>{{ initials(peerName) }}</template>
           </span>
           <div class="ci-hero-name">{{ peerName }}</div>
@@ -78,7 +84,7 @@
             :title="image.name"
             @click="emit('open-image', image.id)"
           >
-            <img :src="image.url" :alt="image.name" loading="lazy" />
+            <img :src="image.url" :alt="image.name" loading="lazy" decoding="async" />
           </button>
         </div>
       </div>

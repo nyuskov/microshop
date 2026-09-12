@@ -112,15 +112,15 @@ describe('MessageComposer: упоминания', () => {
   })
 })
 
-describe('MessageRow: подсветка упоминаний', () => {
-  it('оборачивает @логин в отдельный элемент, остальной текст не меняется', async () => {
-    const wrapper = mount(MessageRow, {
+describe('MessageRow: разметка и подсветка текста', () => {
+  function mountRow(text: string) {
+    return mount(MessageRow, {
       props: {
         message: {
           id: 1,
           chat_id: 7,
           user_id: 2,
-          text: 'привет @ivan, посмотри',
+          text,
           timestamp: '2026-09-11T00:00:00Z',
           reply_to_id: null,
           is_read: true,
@@ -141,12 +141,41 @@ describe('MessageRow: подсветка упоминаний', () => {
       },
       global: { stubs: { 'q-icon': true } }
     })
+  }
+
+  it('оборачивает @логин в отдельный элемент, остальной текст не меняется', async () => {
+    const wrapper = mountRow('привет @ivan, посмотри')
     await wrapper.vm.$nextTick()
 
     const mention = wrapper.find('.msg-mention')
     expect(mention.exists()).toBe(true)
     expect(mention.text()).toBe('@ivan')
     expect(wrapper.find('.msg-text').text()).toBe('привет @ivan, посмотри')
+    wrapper.unmount()
+  })
+
+  it('оформление отрисовывается своими тегами, обрамление не показывается', async () => {
+    const wrapper = mountRow('это *жирный* и `код`')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('strong.msg-bold').text()).toBe('жирный')
+    expect(wrapper.find('code.msg-code').text()).toBe('код')
+    // Обрамление ушло в разметку, а не в текст
+    expect(wrapper.find('.msg-text').text()).toBe('это жирный и код')
+    wrapper.unmount()
+  })
+
+  it('спойлер скрыт до нажатия', async () => {
+    const wrapper = mountRow('там ||секрет|| внутри')
+    await wrapper.vm.$nextTick()
+
+    const spoiler = wrapper.find('.msg-spoiler')
+    expect(spoiler.exists()).toBe(true)
+    expect(spoiler.classes()).not.toContain('on')
+
+    await spoiler.trigger('click')
+    expect(wrapper.find('.msg-spoiler').classes()).toContain('on')
+    expect(wrapper.find('.msg-spoiler').text()).toBe('секрет')
     wrapper.unmount()
   })
 })

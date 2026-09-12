@@ -24,7 +24,13 @@
           :class="{ unseen: group.has_unseen && !group.is_mine }"
           :style="avatarStyle(authorName(group))"
         >
-          <img v-if="authorAvatar(group)" :src="authorAvatar(group)" alt="" />
+          <img
+            v-if="authorAvatar(group)"
+            :src="authorAvatar(group)"
+            alt=""
+            loading="lazy"
+            decoding="async"
+          />
           <template v-else>{{ authorInitials(group) }}</template>
           <span v-if="group.has_unseen && !group.is_mine" class="feed-dot"></span>
         </span>

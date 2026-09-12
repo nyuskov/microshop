@@ -16,7 +16,7 @@
     <!-- Автор и управление -->
     <header class="viewer-head">
       <span class="viewer-avatar" :style="avatarStyle(authorName)">
-        <img v-if="authorAvatar" :src="authorAvatar" alt="" />
+        <img v-if="authorAvatar" :src="authorAvatar" alt="" decoding="async" />
         <template v-else>{{ authorInitials }}</template>
       </span>
       <span class="viewer-text">
@@ -65,6 +65,7 @@
         :src="mediaUrl(current.story.media_url)"
         class="viewer-media"
         alt=""
+        decoding="async"
         @load="startTimer"
       />
       <video
@@ -179,7 +180,13 @@
                   class="audience-avatar"
                   :style="avatarStyle(displayName(user) || user.username)"
                 >
-                  <img v-if="avatarOf(user)" :src="avatarOf(user)" alt="" />
+                  <img
+                    v-if="avatarOf(user)"
+                    :src="avatarOf(user)"
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                  />
                   <template v-else>{{ initials(displayName(user) || user.username) }}</template>
                 </span>
                 <span class="audience-name">{{ displayName(user) || `@${user.username}` }}</span>

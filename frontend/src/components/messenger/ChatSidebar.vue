@@ -101,7 +101,14 @@
           @click="emit('open-profile')"
         >
           <span class="avatar self-avatar" :style="avatarStyle(selfName)">
-            <img v-if="selfAvatarUrl" :src="selfAvatarUrl" class="avatar-img" alt="" />
+            <img
+              v-if="selfAvatarUrl"
+              :src="selfAvatarUrl"
+              class="avatar-img"
+              alt=""
+              loading="lazy"
+              decoding="async"
+            />
             <template v-else>{{ selfName ? initials(selfName) : 'U' }}</template>
           </span>
         </button>
@@ -192,6 +199,8 @@
                     :src="avatarUrlOf(user)"
                     class="avatar-img"
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                   />
                   <template v-else>{{ initials(displayName(user)) }}</template>
                 </span>
@@ -230,6 +239,8 @@
                     :src="messageChatAvatar(msg)"
                     class="avatar-img"
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                   />
                   <template v-else>{{ initials(messageChatTitle(msg)) }}</template>
                 </span>
@@ -332,6 +343,8 @@
                         :src="chatAvatarOf(chat)"
                         class="avatar-img"
                         alt=""
+                        loading="lazy"
+                        decoding="async"
                       />
                       <template v-else>{{ initials(chatTitleOf(chat)) }}</template>
                     </span>
@@ -431,6 +444,8 @@
                     :src="avatarUrlOf(user)"
                     class="avatar-img"
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                   />
                   <template v-else>{{ initials(displayName(user)) }}</template>
                 </span>
@@ -475,6 +490,8 @@
                           :src="avatarUrlOf(user)"
                           class="avatar-img"
                           alt=""
+                          loading="lazy"
+                          decoding="async"
                         />
                         <template v-else>{{ initials(displayName(user)) }}</template>
                       </span>
@@ -514,6 +531,8 @@
                         :src="avatarUrlOf(contact)"
                         class="avatar-img"
                         alt=""
+                        loading="lazy"
+                        decoding="async"
                       />
                       <template v-else>{{ initials(displayName(contact)) }}</template>
                     </span>
@@ -661,6 +680,8 @@
                     :src="avatarUrlOf(user)"
                     class="avatar-img"
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                   />
                   <template v-else>{{ initials(displayName(user)) }}</template>
                 </span>
@@ -713,6 +734,7 @@ import {
   parseServerTime
 } from '@/utils/format'
 import { isLockedFile, lockedFileLabel, mediaTypeLabel } from '@/utils/media'
+import { plainMessageText } from '@/utils/mentions'
 
 const props = defineProps<{
   view: 'chats' | 'contacts' | 'stories'
@@ -1171,7 +1193,7 @@ const previewText = (chat: Chat): string => {
     const author = chat.users.find((user) => user.id === last.user_id)
     if (author) prefix = `${displayName(author)}: `
   }
-  const body = last.file ? mediaTypeLabel(last.file) : last.text
+  const body = last.file ? mediaTypeLabel(last.file) : plainMessageText(last.text)
   if (last.forwarded_from) return `${prefix}↪ Переслано: ${body}`
   return `${prefix}${body}`
 }
@@ -1253,7 +1275,7 @@ const messageSnippetText = (message: Message): string => {
   if (message.hidden) return 'Скрыто до проверки модератором'
   if (isLockedFile(message)) return lockedFileLabel(message)
   if (message.encrypted && isEncryptedPayload(message.text)) return '🔒 Сообщение'
-  if (message.text) return message.text
+  if (message.text) return plainMessageText(message.text)
   return message.file ? mediaTypeLabel(message.file) : ''
 }
 
