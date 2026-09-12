@@ -150,7 +150,7 @@ export default defineConfig({
           ) {
             return 'vue-vendor'
           }
-          if (id.includes('/axios/') || id.includes('/zod/')) return 'http-vendor'
+          if (id.includes('/axios/')) return 'http-vendor'
           return undefined
         }
       }

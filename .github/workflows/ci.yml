@@ -133,6 +133,12 @@ jobs:
           VITE_API_ORIGIN: https://pismo.space
         run: pnpm --prefix frontend exec vite build
 
+      # Вес приложения — тоже бюджет: остальные проверки стилей вид не трогают,
+      # а новый импорт тихо добавляет килобайты. База —
+      # scripts/bundle-size-baseline.json, запускать после сборки.
+      - name: Bundle size (бюджет gzip)
+        run: node frontend/scripts/check-bundle-size.mjs
+
 
       - name: Upload frontend build artifact
         uses: actions/upload-artifact@v4
