@@ -9,16 +9,20 @@ import { api } from '@/services/api'
  * устройстве или зовущий его отменил. Тогда парковки уже нет, и показывать
  * «Входящий звонок…» до таймаута нельзя: человек ждёт звонка, которого нет.
  *
+ * Ждём, если звонок ЕЩЁ ЗВОНИТ (`ringing`), даже когда парковки нет: она бывает
+ * только у закрытого приложения, а у свёрнутого offer уже доставлен в открытую
+ * страницу — раньше мы принимали это за «звонка нет» и гасили экран.
+ *
  * `null` означает «не знаем» (нет сети или ошибка сервера): в этом случае экран
  * не трогаем — пусть работает обычное ожидание.
  */
 export async function isCallStillPending(callId: string): Promise<boolean | null> {
   if (!callId) return false
   try {
-    const { data } = await api.get<{ pending: boolean }>('/calls/pending/', {
+    const { data } = await api.get<{ pending: boolean; ringing?: boolean }>('/calls/pending/', {
       params: { call_id: callId }
     })
-    return data?.pending === true
+    return data?.pending === true || data?.ringing === true
   } catch {
     return null
   }

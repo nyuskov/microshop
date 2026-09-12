@@ -66,17 +66,32 @@ async def pending_call(
     call_id: str = "",
     user: User = Depends(get_current_user),
 ) -> dict[str, bool]:
-    """Ждёт ли ещё этого человека входящий вызов (он в парковке).
+    """Ждёт ли ещё этого человека входящий вызов.
 
     Нужно экрану «Входящий звонок…», который открывается из уведомления, пока
     сигнальный канал ещё не поднялся (см. ``park_offer``). Уведомление может быть
     устаревшим: звонок давно отклонили, приняли на другом устройстве или зовущий
     отменил вызов — тогда ждать ответа нечего, и экран должен закрыться сразу, а
     не показывать «Входящий звонок…» до таймаута.
+
+    ``ringing`` — звонок ещё звонит и не принят (offer ушёл, ответа не было). Это
+    ответ на другой вопрос: в парковке вызов лежит только когда приложение
+    закрыто, а если оно просто свёрнуто — offer доставлен и парковки нет.
+    Кнопкам уведомления (отказ, смахивание) нужно именно ``ringing``: иначе отказ
+    не работал бы у того, кто свернул приложение.
     """
     if not call_id:
-        return {"pending": False}
-    return {"pending": await call_manager.has_pending_offer(user.id, call_id)}
+        return {"pending": False, "ringing": False}
+    pending = await call_manager.has_pending_offer(user.id, call_id)
+    return {"pending": pending, "ringing": _is_call_ringing(call_id, user.id)}
+
+
+def _is_call_ringing(call_id: str, callee_id: int) -> bool:
+    """Звонит ли ещё вызов этому человеку (offer доставлен, ответа не было)."""
+    meta = _active_calls.get(call_id)
+    if meta is None or meta.get("callee") != callee_id:
+        return False
+    return meta.get("started") is None
 
 
 @router_rest.post("/decline/")
