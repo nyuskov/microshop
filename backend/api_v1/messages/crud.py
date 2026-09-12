@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api_v1.chats.crud import is_group_chat, is_user_chat_member, mark_group_chat_read
-from api_v1.events.service import notify_chat
+from api_v1.events.service import notify_chat, notify_chat_read_elsewhere
 from api_v1.moderation import crud as moderation_crud
 from core.models import (
     Chat,
@@ -525,6 +525,9 @@ async def list_chat_messages(
             },
             exclude_user_id=user_id,
         )
+    # Свои другие устройства тоже должны погасить значок непрочитанного.
+    if marked_read:
+        await notify_chat_read_elsewhere(user_id, chat_id)
     return items
 
 
@@ -559,6 +562,9 @@ async def mark_chat_read(session: AsyncSession, *, chat_id: int, user_id: int) -
             },
             exclude_user_id=user_id,
         )
+    # Свои другие устройства тоже должны погасить значок непрочитанного.
+    if marked_read:
+        await notify_chat_read_elsewhere(user_id, chat_id)
     return marked_read
 
 

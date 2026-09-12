@@ -67,6 +67,19 @@ async def presence_snapshot(
     ]
 
 
+async def notify_chat_read_elsewhere(user_id: int, chat_id: int) -> None:
+    """Сообщает ДРУГИМ устройствам человека, что он прочитал этот чат.
+
+    Событие ``chat.read`` уходит собеседнику (галочки у отправителя), а своим
+    же сессиям ничего не приходило — из-за этого на телефоне значок
+    непрочитанного висел, пока не перезагрузишь страницу, хотя чат уже прочитан
+    на компьютере.
+    """
+    await events_manager.send_to_user(
+        user_id, {"type": "chat.read-self", "chat_id": chat_id}
+    )
+
+
 async def muted_user_ids(session: AsyncSession, chat_id: int) -> set[int]:
     """Возвращает id участников, замьютивших этот чат (им не шлём push)."""
     stmt = select(ChatMute.user_id).where(ChatMute.chat_id == chat_id)

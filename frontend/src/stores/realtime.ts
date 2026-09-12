@@ -34,6 +34,7 @@ export type RealtimeEvent =
       role?: string
     }
   | { type: 'chat.read'; chat_id: number; reader_id: number }
+  | { type: 'chat.read-self'; chat_id: number }
   | { type: 'presence'; user_id: number; online: boolean; last_seen: string | null }
   | {
       type: 'presence.snapshot'

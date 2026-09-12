@@ -1514,6 +1514,17 @@ const syncPresenceFromChats = (list: Chat[]) => {
   }
 }
 
+/**
+ * Чат прочитан на другом моём устройстве — здесь значок непрочитанного гаснет.
+ *
+ * Без этого события телефон показывал «непрочитано» до перезагрузки, хотя чат
+ * уже прочитан на компьютере: сервер сообщал о прочтении только собеседнику.
+ */
+const onChatReadElsewhere = (chatId: number) => {
+  const chat = chats.value.find((item) => item.id === chatId)
+  if (chat) chat.unread_count = 0
+}
+
 /** «В сети» ли собеседник открытого личного чата (точка на аватаре в шапке). */
 const selectedChatPeerOnline = computed<boolean>(() => {
   const chat = selectedChat.value
@@ -1650,12 +1661,38 @@ const toggleReaction = async (message: Message, emoji: string) => {
 }
 
 // ---------- Загрузка данных ----------
+
+/**
+ * Применяет список чатов с сервера, но НЕ воскрешает непрочитанные у открытого
+ * чата.
+ *
+ * Симптом: прочитал чат, а значок непрочитанного возвращался и держался до
+ * перезагрузки. Причина — гонка: список чатов обновляется по WS-событию (и по
+ * страховочному таймеру) быстрее, чем сервер успевает записать прочтение от
+ * запроса истории, и ответ перетирал локальный ноль.
+ */
+const applyChatsFromServer = (list: Chat[]) => {
+  const openId = selectedChatId.value
+  // Чат не показываем, если окно свёрнуто: человек его не читает.
+  const reading = openId !== null && !document.hidden
+  chats.value = reading
+    ? list.map((chat) => (chat.id === openId ? { ...chat, unread_count: 0 } : chat))
+    : list
+  syncPresenceFromChats(chats.value)
+}
+
+/** Открытый чат прочитан: гасим значок и в уже загруженном списке. */
+const clearUnreadOfOpenChat = () => {
+  const openId = selectedChatId.value
+  if (openId === null) return
+  const chat = chats.value.find((item) => item.id === openId)
+  if (chat && chat.unread_count !== 0) chat.unread_count = 0
+}
+
 const loadChats = async () => {
   loadingChats.value = true
   try {
-    const fresh = await fetchMyChats()
-    chats.value = fresh
-    syncPresenceFromChats(fresh)
+    applyChatsFromServer(await fetchMyChats())
   } catch (error) {
     console.error('Не удалось загрузить чаты:', getErrorMessage(error))
   } finally {
@@ -1804,8 +1841,7 @@ const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {
   // Blob-ссылки расшифрованных вложений других чатов больше не нужны.
   releaseDecryptedMediaExcept(messages.value.map((message) => message.id))
   // Мы читаем чат — непрочитанные обнуляем сразу (не дожидаясь синхронизации).
-  const opened = chats.value.find((item) => item.id === chatId)
-  if (opened) opened.unread_count = 0
+  clearUnreadOfOpenChat()
   // Ждём отрисовки сообщений + два кадра, иначе scrollTop посчитается по ещё
   // не размеченной ленте и чат откроется не внизу (нужно докручивать).
   await nextTick()
@@ -2666,6 +2702,21 @@ const handleVisibilityForPresence = () => {
   else realtimeStore.reportPresence()
 }
 
+/**
+ * Вернулись в приложение: открытый чат считаем прочитанным.
+ *
+ * Пока окно было свёрнуто, сообщения копились непрочитанными; значок должен
+ * погаснуть сразу при возврате, а не после перезагрузки страницы. Запрос истории
+ * заодно отмечает прочтение на сервере.
+ */
+const handleVisibilityForUnread = () => {
+  if (document.hidden) return
+  const chatId = selectedChatId.value
+  if (chatId === null) return
+  clearUnreadOfOpenChat()
+  void refreshOpenThreadQuiet()
+}
+
 /** Название чата для модалки удаления. */
 const chatDeleteLabel = (chat: Chat): string => {
   const peer = otherUserOfChat(chat)
@@ -3005,9 +3056,7 @@ const onGifSent = () => {
 const refreshChatsQuiet = async () => {
   if (!authStore.isAuthenticated) return
   try {
-    const fresh = await fetchMyChats()
-    chats.value = fresh
-    syncPresenceFromChats(fresh)
+    applyChatsFromServer(await fetchMyChats())
   } catch (error) {
     console.error('Не удалось обновить чаты:', getErrorMessage(error))
   }
@@ -3094,6 +3143,7 @@ const { start: startRealtime, stop: stopRealtime } = useRealtimeSync({
   getSelectedChatId: () => selectedChatId.value,
   onPresence: applyPresence,
   onPresenceSnapshot: applyPresenceSnapshot,
+  onChatReadElsewhere,
   onTyping: markPeerTyping,
   onTypingStop: clearPeerTyping,
   onChatsSync: refreshChatsQuiet,
@@ -3962,6 +4012,7 @@ onMounted(async () => {
   window.addEventListener('visibilitychange', handleCallVisibility)
   window.addEventListener('visibilitychange', handleVisibilityForDrafts)
   window.addEventListener('visibilitychange', handleVisibilityForPresence)
+  window.addEventListener('visibilitychange', handleVisibilityForUnread)
   window.addEventListener('popstate', onAppPopState)
   // Связь вернулась — досылаем то, что застряло без сети.
   window.addEventListener('online', onNetworkOnline)
@@ -4199,6 +4250,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('visibilitychange', handleCallVisibility)
   window.removeEventListener('visibilitychange', handleVisibilityForDrafts)
   window.removeEventListener('visibilitychange', handleVisibilityForPresence)
+  window.removeEventListener('visibilitychange', handleVisibilityForUnread)
   window.removeEventListener('popstate', onAppPopState)
   window.removeEventListener('online', onNetworkOnline)
   unsubscribePeerKey?.()

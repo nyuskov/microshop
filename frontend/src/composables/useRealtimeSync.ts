@@ -30,6 +30,8 @@ export interface RealtimeSyncOptions {
   onMessageNew?: (chatId: number) => void
   /** Меня удалили/я вышел из чата (убрать его из локального списка). */
   onChatRemoved?: (chatId: number) => void
+  /** Я сам прочитал этот чат на другом устройстве — погасить значок. */
+  onChatReadElsewhere?: (chatId: number) => void
 }
 
 export function useRealtimeSync(options: RealtimeSyncOptions) {
@@ -103,6 +105,10 @@ export function useRealtimeSync(options: RealtimeSyncOptions) {
         if (event.chat_id === options.getSelectedChatId()) {
           void options.onThreadSync()
         }
+        return
+      case 'chat.read-self':
+        // Я прочитал этот чат на другом устройстве — убираем непрочитанное здесь.
+        options.onChatReadElsewhere?.(event.chat_id)
         return
     }
   }

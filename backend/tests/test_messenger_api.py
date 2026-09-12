@@ -20,6 +20,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from api_v1.events import service as events_service
 from core.config import settings
 from core.models import User, db_helper
 
@@ -972,6 +973,72 @@ async def test_chats_last_message_and_unread_count(api: _ApiCtx) -> None:
     item2b = next(c for c in list2b if c["id"] == chat["id"])
     assert item2b["unread_count"] == 0
     assert item2b["last_message"]["is_read"] is True
+
+
+async def test_reading_chat_notifies_own_other_devices(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Прочтение чата уходит и на другие устройства самого человека.
+
+    Симптом из жизни: чат прочитан на компьютере, а на телефоне значок
+    непрочитанного висел, пока не перезагрузишь страницу — своим же сессиям
+    событие не отправлялось, только собеседнику (для галочек ✓✓).
+    """
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    t1, t2 = await api.token_for(u1), await api.token_for(u2)
+    chat = await api.private_chat(t1, u2.id)
+    await api.send(t1, chat["id"], "привет")
+
+    self_events: list[dict] = []
+    peer_events: list[dict] = []
+
+    class Recorder:
+        async def send_to_user(self, user_id: int, payload: dict) -> bool:
+            self_events.append({"user_id": user_id, **payload})
+            return True
+
+        async def broadcast(self, user_ids: list[int], payload: dict) -> None:
+            peer_events.append({"user_ids": list(user_ids), **payload})
+
+    monkeypatch.setattr(events_service, "events_manager", Recorder())
+
+    # Собеседник открыл чат: прочитано.
+    await api.list_messages(t2, chat["id"])
+
+    assert {
+        "user_id": u2.id,
+        "type": "chat.read-self",
+        "chat_id": chat["id"],
+    } in self_events
+    # И собеседнику — про чтение (галочки у отправителя), как и раньше.
+    assert any(event.get("type") == "chat.read" for event in peer_events)
+
+
+async def test_reading_empty_chat_sends_no_self_event(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Нечего помечать прочитанным — лишних событий не шлём."""
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    t1, t2 = await api.token_for(u1), await api.token_for(u2)
+    chat = await api.private_chat(t1, u2.id)
+
+    self_events: list[dict] = []
+
+    class Recorder:
+        async def send_to_user(self, user_id: int, payload: dict) -> bool:
+            self_events.append({"user_id": user_id, **payload})
+            return True
+
+        async def broadcast(self, user_ids: list[int], payload: dict) -> None:
+            return None
+
+    monkeypatch.setattr(events_service, "events_manager", Recorder())
+
+    await api.list_messages(t2, chat["id"])
+
+    assert self_events == []
 
 
 # --- Привязка Telegram (резервный канал доставки OTP) ---------------------
