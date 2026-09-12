@@ -204,7 +204,7 @@ describe('service worker: кнопки уведомления о звонке', 
     harness = loadServiceWorker()
   })
 
-  it('в уведомлении о звонке одна кнопка — «Ответить»', async () => {
+  it('в уведомлении о звонке одна кнопка — «Открыть»', async () => {
     const event = pushEvent({
       type: 'call',
       call_id: 'call-1',
@@ -215,35 +215,17 @@ describe('service worker: кнопки уведомления о звонке', 
     await Promise.all(event.waits)
 
     expect(harness.notifications).toHaveLength(1)
-    // Кнопка отказа только одна в уведомлении — «Ответить»: на Android нажатие
-    // на кнопку приходит в service worker как действие СОСЕДНЕЙ кнопки, и
-    // «Ответить» превращалось в отказ — звонок обрывался у обоих.
-    expect(harness.notifications[0].options.actions).toEqual([
-      { action: 'answer', title: 'Ответить' }
-    ])
+    // Кнопка одна и она ничего не решает за человека: на Android нажатие на
+    // кнопку приходит в service worker как действие СОСЕДНЕЙ кнопки — пара
+    // «Ответить»/«Отклонить» превращала ответ в отказ.
+    expect(harness.notifications[0].options.actions).toEqual([{ action: 'open', title: 'Открыть' }])
     expect(harness.notifications[0].options.requireInteraction).toBe(true)
   })
 
-  it('«Ответить» отдаёт действие живому приложению — без перезагрузки страницы', async () => {
+  it('«Открыть» показывает звонок живому приложению — без перезагрузки страницы', async () => {
     // Приложение свёрнуто, но живо: вызов уже пришёл именно в это окно, поэтому
     // открывать адрес нельзя — перезагрузка потеряла бы звонок.
-    const event = clickEvent('answer', { type: 'call', call_id: 'call-1', peer_id: 5 })
-    harness.sw.notificationclick?.(event)
-    await Promise.all(event.waits)
-
-    expect(harness.posted).toEqual([
-      { type: 'call-notification', action: 'answer', call_id: 'call-1', peer_id: 5 }
-    ])
-    expect(harness.opened).toEqual([])
-    expect(harness.apiPosts).toEqual([])
-    expect(harness.calls).toContain('client.focus')
-  })
-
-  it('действие «Отклонить» из старого уведомления НЕ отклоняет звонок', async () => {
-    // На экранах людей висят старые уведомления с двумя кнопками, и на Android
-    // их «отказ» приходит и когда человек жал «Ответить». Поэтому отказ из
-    // нажатия не выполняется никогда — показываем звонок.
-    const event = clickEvent('decline', { type: 'call', call_id: 'call-1', peer_id: 5 })
+    const event = clickEvent('open', { type: 'call', call_id: 'call-1', peer_id: 5 })
     harness.sw.notificationclick?.(event)
     await Promise.all(event.waits)
 
@@ -252,19 +234,33 @@ describe('service worker: кнопки уведомления о звонке', 
     ])
     expect(harness.opened).toEqual([])
     expect(harness.apiPosts).toEqual([])
+    expect(harness.calls).toContain('client.focus')
   })
 
-  it('приложение закрыто: «Ответить» открывает экран звонка (вызов ждёт в парковке)', async () => {
-    harness.noWindows = true
+  it('«Ответить» из старого уведомления всё ещё отвечает', async () => {
     const event = clickEvent('answer', { type: 'call', call_id: 'call-1', peer_id: 5 })
     harness.sw.notificationclick?.(event)
     await Promise.all(event.waits)
 
-    expect(harness.opened).toEqual(['/?call=call-1&peer=5&action=answer'])
-    expect(harness.apiPosts.map((post) => post.path)).not.toContain('/api/v1/calls/decline/')
+    expect(harness.posted).toEqual([
+      { type: 'call-notification', action: 'answer', call_id: 'call-1', peer_id: 5 }
+    ])
+    expect(harness.apiPosts).toEqual([])
   })
 
-  it('приложение закрыто: старое «Отклонить» тоже только открывает звонок', async () => {
+  it('приложение закрыто: «Открыть» открывает экран звонка', async () => {
+    harness.noWindows = true
+    const event = clickEvent('open', { type: 'call', call_id: 'call-1', peer_id: 5 })
+    harness.sw.notificationclick?.(event)
+    await Promise.all(event.waits)
+
+    expect(harness.opened).toEqual(['/?call=call-1&peer=5&action=focus'])
+    expect(harness.apiPosts).toEqual([])
+  })
+
+  it('приложение закрыто: неизвестное действие тоже только открывает звонок', async () => {
+    // Что бы ни прислала система (в том числе «Отклонить» из старого уведомления),
+    // звонок не обрывается.
     harness.noWindows = true
     const event = clickEvent('decline', { type: 'call', call_id: 'call-1', peer_id: 5 })
     harness.sw.notificationclick?.(event)
