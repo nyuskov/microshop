@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Message, MessageFile } from '@/types'
-import { fileIcon, isImageFile, isRecordedVideoMessage, messageSnippet } from '@/utils/media'
+import {
+  fileIcon,
+  isImageFile,
+  isRecordedVideoMessage,
+  mediaKindOf,
+  messageSnippet
+} from '@/utils/media'
 
 const makeFile = (overrides: Partial<MessageFile>): MessageFile => ({
   name: 'file.bin',
@@ -71,5 +77,22 @@ describe('fileIcon', () => {
     expect(fileIcon(makeFile({ mime: 'audio/mpeg' }))).toBe('volume_up')
     expect(fileIcon(makeFile({ mime: 'text/plain' }))).toBe('description')
     expect(fileIcon(makeFile({ mime: 'application/zip' }))).toBe('insert_drive_file')
+  })
+})
+
+describe('mediaKindOf', () => {
+  it('тип определяет mime, если он есть', () => {
+    expect(mediaKindOf({ mime: 'image/png', name: 'photo.bin' })).toBe('image')
+    expect(mediaKindOf({ mime: 'video/mp4', name: 'clip.bin' })).toBe('video')
+    // Голосовое: расширение .webm то же, что у видео — решает mime.
+    expect(mediaKindOf({ mime: 'audio/webm', name: 'voice.webm' })).toBe('audio')
+  })
+
+  it('без mime тип берётся из расширения (как на сервере)', () => {
+    expect(mediaKindOf({ mime: null, name: 'photo.png' })).toBe('image')
+    expect(mediaKindOf({ mime: null, name: 'clip.mp4' })).toBe('video')
+    expect(mediaKindOf({ mime: null, name: 'doc.txt' })).toBe('file')
+    expect(mediaKindOf({ mime: null, name: 'archive' })).toBe('file')
+    expect(mediaKindOf({})).toBe('file')
   })
 })

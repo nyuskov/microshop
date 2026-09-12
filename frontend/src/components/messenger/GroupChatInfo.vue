@@ -241,6 +241,7 @@ import {
 } from '@/services/chatService'
 import type { Chat, ChatDetail, ChatMember } from '@/types'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
+import { optimizeAvatarFile } from '@/utils/media'
 import { mediaUrl } from '@/config'
 
 const props = defineProps<{
@@ -292,7 +293,12 @@ const onToggleE2ee = (value: boolean | string | null) => {
 }
 
 const groupAvatar = computed<string | undefined>(() => {
-  const url = detail.value?.avatar_url ?? props.chat.avatar_url
+  // Аватар группы в шапке — кружок 56px: миниатюры хватает с запасом.
+  const url =
+    detail.value?.avatar_thumb_url ??
+    detail.value?.avatar_url ??
+    props.chat.avatar_thumb_url ??
+    props.chat.avatar_url
   return url ? mediaUrl(url) : undefined
 })
 
@@ -369,8 +375,13 @@ const onAvatarPick = async (event: Event) => {
   busy.value = true
   error.value = ''
   try {
-    const updated = await uploadGroupAvatar(props.chat.id, file)
-    detail.value = { ...detail.value!, avatar_url: updated.avatar_url }
+    // Сжимаем перед отправкой: с телефона фото может быть в мегабайты.
+    const updated = await uploadGroupAvatar(props.chat.id, await optimizeAvatarFile(file))
+    detail.value = {
+      ...detail.value!,
+      avatar_url: updated.avatar_url,
+      avatar_thumb_url: updated.avatar_thumb_url
+    }
     emit('updated')
   } catch (err) {
     error.value = getErrorMessage(err, 'Не удалось загрузить аватар')
@@ -385,7 +396,11 @@ const onAvatarRemove = async () => {
   error.value = ''
   try {
     const updated = await removeGroupAvatar(props.chat.id)
-    detail.value = { ...detail.value!, avatar_url: updated.avatar_url }
+    detail.value = {
+      ...detail.value!,
+      avatar_url: updated.avatar_url,
+      avatar_thumb_url: updated.avatar_thumb_url
+    }
     emit('updated')
   } catch (err) {
     error.value = getErrorMessage(err, 'Не удалось удалить аватар')

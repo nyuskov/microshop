@@ -122,6 +122,12 @@ const IMAGE_MAX_EDGE = 1600
 /** Порог размера, с которого фото считаем «крупным» и пережимаем. */
 const IMAGE_LARGE_BYTES = 900 * 1024
 const IMAGE_JPEG_QUALITY = 0.82
+/**
+ * Максимальная сторона аватара. Аватар показывается кружком 40–120px, поэтому
+ * 512px хватает с запасом на retina, а на сервер уходит вместо мегабайт
+ * десятки килобайт (сервер ещё сожмёт его в миниатюру 128px).
+ */
+export const AVATAR_MAX_EDGE = 512
 
 const readFileAsDataUrl = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -141,18 +147,21 @@ const loadHtmlImage = (src: string): Promise<HTMLImageElement> =>
 
 /**
  * Пережимает фото на клиенте перед отправкой (камера/галерея): если фото
- * крупное (>~0.9 МБ или сторона больше 1600px), оно уменьшается и сжимается
+ * крупное (>~0.9 МБ или сторона больше `maxEdge`), оно уменьшается и сжимается
  * в JPEG/PNG — загрузка становится заметно быстрее. GIF и мелкие файлы
  * возвращаются без изменений.
  */
-export async function optimizeImageFile(file: File): Promise<File> {
+export async function optimizeImageFile(
+  file: File,
+  maxEdge: number = IMAGE_MAX_EDGE
+): Promise<File> {
   if (!file.type.startsWith('image/') || file.type === 'image/gif') return file
   const isBig = file.size > IMAGE_LARGE_BYTES
   try {
     const img = await loadHtmlImage(await readFileAsDataUrl(file))
-    const isLarge = Math.max(img.width, img.height) > IMAGE_MAX_EDGE
+    const isLarge = Math.max(img.width, img.height) > maxEdge
     if (!isBig && !isLarge) return file
-    const scale = Math.min(1, IMAGE_MAX_EDGE / Math.max(img.width, img.height))
+    const scale = Math.min(1, maxEdge / Math.max(img.width, img.height))
     const width = Math.max(1, Math.round(img.width * scale))
     const height = Math.max(1, Math.round(img.height * scale))
     const canvas = document.createElement('canvas')
@@ -173,4 +182,45 @@ export async function optimizeImageFile(file: File): Promise<File> {
   } catch {
     return file
   }
+}
+
+/**
+ * Готовит аватар к загрузке: уменьшает фото до `AVATAR_MAX_EDGE` перед отправкой.
+ *
+ * Нужен именно для аватаров (личных и групповых): с телефона приходит снимок
+ * 4000×3000, и без сжатия в мобильной сети загрузка заметна.
+ */
+export const optimizeAvatarFile = (file: File): Promise<File> =>
+  optimizeImageFile(file, AVATAR_MAX_EDGE)
+
+// ---------- Тип вложения для галереи ----------
+/** Вкладка галереи медиа: изображения / видео / аудио / остальные файлы. */
+export type MediaKind = 'image' | 'video' | 'audio' | 'file'
+
+const MEDIA_KINDS: MediaKind[] = ['image', 'video', 'audio']
+
+/**
+ * Расширения, по которым узнаём тип, если сервер не отдал mime. Правило то же,
+ * что на сервере (`api_v1/messages/crud.py`), иначе фильтр вкладки и подпись
+ * элемента разошлись бы. `.webm` тут — видео: голосовые приходят с mime
+ * `audio/webm` и определяются по mime.
+ */
+const MEDIA_EXTENSIONS: Record<string, string[]> = {
+  image: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'avif'],
+  video: ['mp4', 'mov', 'mkv', 'm4v', 'avi', 'webm'],
+  audio: ['mp3', 'm4a', 'ogg', 'wav', 'aac', 'opus']
+}
+
+/** Тип вложения: сначала по mime, затем по расширению имени файла. */
+export const mediaKindOf = (file: { mime?: string | null; name?: string | null }): MediaKind => {
+  const mime = (file.mime ?? '').toLowerCase()
+  for (const kind of MEDIA_KINDS) {
+    if (mime.startsWith(`${kind}/`)) return kind
+  }
+  const name = (file.name ?? '').toLowerCase()
+  const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : ''
+  for (const kind of MEDIA_KINDS) {
+    if (MEDIA_EXTENSIONS[kind].includes(ext)) return kind
+  }
+  return 'file'
 }

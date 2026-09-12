@@ -5,6 +5,8 @@ import { uploadPercent } from '@/utils/upload'
 import type {
   Chat,
   ChatDetail,
+  ChatMediaItem,
+  ChatMediaKind,
   Message,
   CreateMessageRequest,
   CreateGroupRequest,
@@ -128,6 +130,36 @@ export const fetchMessages = async (
 ): Promise<Message[]> => {
   const response = await api.get<Message[]>(`/messages/${chatId}/`, {
     params: {
+      ...(params.limit !== undefined ? { limit: params.limit } : {}),
+      ...(params.beforeId !== undefined ? { before_id: params.beforeId } : {})
+    }
+  })
+  return response.data
+}
+
+export interface FetchChatMediaParams {
+  /** Тип вложения: image / video / audio / file (без параметра — все). */
+  kind?: ChatMediaKind
+  limit?: number
+  /** Вернуть вложения, более старые, чем сообщение с этим id. */
+  beforeId?: number
+}
+
+/**
+ * Вложения чата для галереи «Медиа/Файлы».
+ *
+ * Лента отдаёт историю страницами, поэтому галерея из загруженных сообщений
+ * показывала бы только последние ~100 сообщений. Сервер выбирает вложения сам
+ * и умеет листать в старые (before_id). В зашифрованном чате возвращает пустой
+ * список — там галерея строится из расшифрованной истории.
+ */
+export const fetchChatMedia = async (
+  chatId: number,
+  params: FetchChatMediaParams = {}
+): Promise<ChatMediaItem[]> => {
+  const response = await api.get<ChatMediaItem[]>(`/messages/${chatId}/media/`, {
+    params: {
+      ...(params.kind !== undefined ? { kind: params.kind } : {}),
       ...(params.limit !== undefined ? { limit: params.limit } : {}),
       ...(params.beforeId !== undefined ? { before_id: params.beforeId } : {})
     }

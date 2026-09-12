@@ -32,6 +32,23 @@
     <meta name="twitter:image" content="https://pismo.space/og.png" />
     <!-- Шрифт Roboto подключён локально (src/assets/fonts.css): внешние запросы
          к Google Fonts не нужны — и быстрее, и работает без них. -->
+    <!-- Иконочные шрифты объявлены с `font-display: block`: до их загрузки
+         иконки невидимы. Предзагрузка убирает этот провал — файлы всё равно
+         нужны для первого экрана (список чатов, панель ввода). -->
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="/src/assets/fonts/material-symbols-rounded-subset.woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="/src/assets/fonts/lucide-subset.woff2"
+      crossorigin
+    />
     <!-- Тема применяется до первого кадра, чтобы не мигала светлая.
          Вынесено из index.html: строгий CSP (script-src 'self') запрещает
          inline-скрипты, а хешировать их руками — лишняя хрупкость. -->

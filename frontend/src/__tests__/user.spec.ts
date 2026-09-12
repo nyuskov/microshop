@@ -1,13 +1,89 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
+  avatarFullUrlOf,
   avatarStyle,
+  avatarUrlOf,
   contactNameOf,
   displayName,
   fullName,
+  groupAvatarUrl,
   initials,
   setContactNames
 } from '@/utils/user'
+import type { Chat } from '@/types'
+
+describe('avatarUrlOf', () => {
+  it('берёт миниатюру: в интерфейсе аватар — кружок 40–56px', () => {
+    expect(
+      avatarUrlOf({
+        avatar_url: '/media/avatars/user_1_full.png',
+        avatar_thumb_url: '/media/avatars/user_1_t128.jpg'
+      })
+    ).toContain('/media/avatars/user_1_t128.jpg')
+  })
+
+  it('без миниатюры (старый аватар) показывает оригинал', () => {
+    expect(avatarUrlOf({ avatar_url: '/media/avatars/user_1_full.png' })).toContain(
+      'user_1_full.png'
+    )
+    expect(avatarUrlOf({ avatar_url: null, avatar_thumb_url: null })).toBeUndefined()
+    expect(avatarUrlOf(null)).toBeUndefined()
+  })
+
+  it('avatarFullUrlOf всегда даёт оригинал — для крупного показа', () => {
+    const user = {
+      avatar_url: '/media/avatars/user_1_full.png',
+      avatar_thumb_url: '/media/avatars/user_1_t128.jpg'
+    }
+    expect(avatarFullUrlOf(user)).toContain('user_1_full.png')
+    expect(avatarFullUrlOf({ avatar_url: null })).toBeUndefined()
+  })
+})
+
+describe('groupAvatarUrl', () => {
+  const group = (extra: Partial<Chat>): Chat =>
+    ({
+      id: 1,
+      name: 'Группа',
+      is_group: true,
+      users: [
+        {
+          id: 1,
+          username: 'a',
+          first_name: null,
+          last_name: null,
+          phone_number: null,
+          avatar_url: null
+        },
+        {
+          id: 2,
+          username: 'b',
+          first_name: null,
+          last_name: null,
+          phone_number: null,
+          avatar_url: null
+        }
+      ],
+      ...extra
+    }) as Chat
+
+  it('предпочитает миниатюру группы', () => {
+    const chat = group({
+      avatar_url: '/media/avatars/chat_1_full.png',
+      avatar_thumb_url: '/media/avatars/chat_1_t128.jpg'
+    })
+    expect(groupAvatarUrl(chat)).toContain('chat_1_t128.jpg')
+  })
+
+  it('без миниатюры — оригинал; у личного чата аватара группы нет', () => {
+    expect(groupAvatarUrl(group({ avatar_url: '/media/avatars/chat_1_full.png' }))).toContain(
+      'chat_1_full.png'
+    )
+    const privateChat = group({ is_group: false, avatar_url: '/media/avatars/chat_1_full.png' })
+    expect(groupAvatarUrl(privateChat)).toBeUndefined()
+  })
+})
 
 describe('displayName', () => {
   it('собирает имя из first_name + last_name или username', () => {

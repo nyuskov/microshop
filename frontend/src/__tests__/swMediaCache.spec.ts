@@ -42,3 +42,23 @@ describe('service worker: кэш медиа', () => {
     expect(branch).toContain('staleWhileRevalidate(request)')
   })
 })
+
+describe('service worker: бейдж приложения', () => {
+  const sw = readFileSync('public/sw.js', 'utf8')
+
+  it('при push о сообщении ставит «точку» на иконке, если приложение не на экране', () => {
+    expect(sw).toContain('async function markAppBadge()')
+    const branch = sw.slice(sw.indexOf("data.type === 'message' && chatId"))
+    const until = branch.slice(0, branch.indexOf("data.type === 'security'"))
+    expect(until).toContain('hasVisibleClient()')
+    expect(until).toContain('await markAppBadge()')
+  })
+
+  it('точное число непрочитанных ставит приложение, а не service worker', () => {
+    const badge = readFileSync('src/utils/appBadge.ts', 'utf8')
+    expect(badge).toContain('setAppBadge')
+    expect(badge).toContain('clearAppBadge')
+    const messenger = readFileSync('src/views/Messenger.vue', 'utf8')
+    expect(messenger).toContain('setAppBadge(count)')
+  })
+})

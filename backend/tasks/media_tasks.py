@@ -225,9 +225,22 @@ async def _cleanup_async(*, delete: bool) -> dict[str, int]:
         used |= _collect_names([row[0] for row in result.all()])
 
         result = await session.execute(
-            select(User.avatar_url).where(User.avatar_url.is_not(None))
+            select(User.avatar_url, User.avatar_thumb_url).where(
+                User.avatar_url.is_not(None)
+            )
         )
         used |= _collect_names([row[0] for row in result.all()])
+        used |= _collect_names([row[1] for row in result.all()])
+
+        # Аватары групп лежат рядом с пользовательскими: без этой выборки
+        # очистка удаляла бы файлы живых групп как неиспользуемые.
+        result = await session.execute(
+            select(Chat.avatar_url, Chat.avatar_thumb_url).where(
+                Chat.avatar_url.is_not(None)
+            )
+        )
+        used |= _collect_names([row[0] for row in result.all()])
+        used |= _collect_names([row[1] for row in result.all()])
 
         # Медиа историй: файл живёт, пока есть запись (история — максимум сутки).
         result = await session.execute(

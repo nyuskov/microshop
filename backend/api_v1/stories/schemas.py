@@ -34,6 +34,8 @@ class StoryAuthor(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     avatar_url: str | None = None
+    # Миниатюра для кольца истории (56px): оригинал тяжёлый, а нужен кружок.
+    avatar_thumb_url: str | None = None
 
 
 class StoryItem(BaseModel):

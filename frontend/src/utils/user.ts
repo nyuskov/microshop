@@ -71,8 +71,22 @@ export const avatarStyle = (name: string): Record<string, string> => {
   return { background: AVATAR_COLORS[hash % AVATAR_COLORS.length] }
 }
 
-/** Абсолютный URL аватара пользователя (если он задан). */
+/**
+ * Абсолютный URL аватара для кружка 40–56px (списки, шапки, участники).
+ *
+ * Сервер рядом с оригиналом хранит миниатюру 128px: оригинал с телефона может
+ * весить мегабайты, а на экране разница не видна. Миниатюры нет — показываем
+ * оригинал (аватары, загруженные до её появления).
+ */
 export const avatarUrlOf = (
+  user: { avatar_url?: string | null; avatar_thumb_url?: string | null } | null | undefined
+): string | undefined => {
+  const path = user?.avatar_thumb_url || user?.avatar_url
+  return path ? mediaUrl(path) : undefined
+}
+
+/** Оригинал аватара — для экранов, где фото показывается крупно. */
+export const avatarFullUrlOf = (
   user: { avatar_url?: string | null } | null | undefined
 ): string | undefined => (user?.avatar_url ? mediaUrl(user.avatar_url) : undefined)
 
@@ -112,8 +126,11 @@ export const chatTitle = (chat: Chat, currentUserId: number | null): string => {
 }
 
 /** Аватар группы (None — группы нет/нет фото; нужен initials-фолбэк). */
-export const groupAvatarUrl = (chat: Chat): string | undefined =>
-  isGroupChat(chat) && chat.avatar_url ? mediaUrl(chat.avatar_url) : undefined
+export const groupAvatarUrl = (chat: Chat): string | undefined => {
+  if (!isGroupChat(chat)) return undefined
+  const path = chat.avatar_thumb_url || chat.avatar_url
+  return path ? mediaUrl(path) : undefined
+}
 
 /** Находит участника группы по id (для имён авторов в ленте). */
 export const chatMemberOf = (chat: Chat | undefined, userId: number): ChatUser | undefined =>

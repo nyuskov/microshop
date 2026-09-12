@@ -33,6 +33,20 @@ class MessageFile(BaseModel):
     size: int | None = None
 
 
+class ChatMediaItem(BaseModel):
+    """Вложение чата для галереи медиа (без загрузки всей истории)."""
+
+    #: id сообщения — по нему клиент открывает вложение в ленте.
+    id: int
+    timestamp: datetime
+    url: str
+    name: str
+    mime: str | None = None
+    size: int | None = None
+    #: image / video / audio / file — группировка в интерфейсе.
+    kind: str
+
+
 class ReactionSummary(BaseModel):
     emoji: str
     count: int

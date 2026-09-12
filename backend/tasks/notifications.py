@@ -299,7 +299,12 @@ async def _send_message_push_async(
                         "peer_id": sender_id,
                         # Аватар отправителя — приложение может показать его
                         # крупной иконкой (картинку по URL тянет уже устройство).
-                        "peer_avatar": sender.avatar_url if sender else None,
+                        # Берём миниатюру: она в десятки раз меньше оригинала.
+                        "peer_avatar": (
+                            (sender.avatar_thumb_url or sender.avatar_url)
+                            if sender
+                            else None
+                        ),
                     },
                 ),
             )
@@ -393,7 +398,7 @@ def _push_icon(user: User | None) -> str:
     поэтому знать публичный адрес приложения серверу не нужно. Ссылка на
     аватар не секрет — она и так видна в интерфейсе.
     """
-    avatar = (user.avatar_url or "").strip() if user else ""
+    avatar = (user.avatar_thumb_url or user.avatar_url or "").strip() if user else ""
     return avatar or PUSH_ICON_DEFAULT
 
 

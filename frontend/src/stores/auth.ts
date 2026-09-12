@@ -32,6 +32,8 @@ export interface ApiUser {
   password_set?: boolean
   password_weak?: boolean
   avatar_url?: string | null
+  /** Миниатюра аватара 128px: кружки в интерфейсе берут её вместо оригинала. */
+  avatar_thumb_url?: string | null
   status?: string | null
   last_seen?: string | null
   profile?: ApiUserProfile | null

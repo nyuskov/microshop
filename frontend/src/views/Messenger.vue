@@ -508,6 +508,7 @@ import {
 } from '@/composables/useDecryptedMedia'
 import type { Chat, ChatUser, EncryptedFileMeta, Message } from '@/types'
 import { avatarUrlOf, chatPeer, chatTitle, displayName, isGroupChat } from '@/utils/user'
+import { setAppBadge } from '@/utils/appBadge'
 import { usernameFromProfilePath } from '@/utils/profileLink'
 import { shareTargetFromSearch, withoutShareTargetParams } from '@/utils/shareTarget'
 import { lastSeenLabel } from '@/utils/format'
@@ -1190,9 +1191,45 @@ const openChatInfo = () => {
 }
 
 /** Открыть изображение из «Информации о чате» в лайтбоксе. */
-const openChatInfoImage = (messageId: number) => {
-  const message = messages.value.find((m) => m.id === messageId)
+const openChatInfoImage = async (messageId: number) => {
+  // Галерея показывает вложения всей истории, а в ленте загружены только
+  // последние страницы: нужную подгружаем перед открытием лайтбокса.
+  const message = await ensureMessageLoaded(messageId)
   if (message) openImageFromMessage(message)
+}
+
+/**
+ * Гарантирует, что сообщение есть в ленте (для перехода к нему/просмотра).
+ *
+ * Если его нет в загруженных страницах, догружает страницу, в которую оно
+ * попадает, вставляет в ленту и возвращает позицию прокрутки на место — иначе
+ * лента «прыгнула» бы вверх у пользователя.
+ */
+const ensureMessageLoaded = async (messageId: number): Promise<Message | undefined> => {
+  const known = messages.value.find((m) => m.id === messageId)
+  if (known) return known
+  const chatId = selectedChatId.value
+  if (chatId === null) return undefined
+  const saved = threadRef.value?.capture()
+  try {
+    const raw = await fetchMessages(chatId, {
+      limit: MESSAGES_PAGE_SIZE,
+      beforeId: messageId + 1
+    })
+    const page = await applyDecryptMessages(chatId, raw)
+    if (!page.some((m) => m.id === messageId)) return undefined
+    const existingIds = new Set(messages.value.map((m) => m.id))
+    const toAdd = page.filter((m) => !existingIds.has(m.id))
+    if (toAdd.length > 0) {
+      messages.value = [...toAdd, ...messages.value].sort((a, b) => a.id - b.id)
+      await nextTick()
+      if (saved) threadRef.value?.restoreScroll(saved.top, saved.height)
+    }
+    return messages.value.find((m) => m.id === messageId)
+  } catch (error) {
+    console.error('Не удалось загрузить сообщение с вложением:', getErrorMessage(error))
+    return undefined
+  }
 }
 
 // ---------- Создание группы ----------
@@ -1228,6 +1265,8 @@ const findPeerUser = (
       first_name?: string | null
       last_name?: string | null
       avatar_url?: string | null
+      /** Миниатюра 128px: экран звонка показывает аватар кружком. */
+      avatar_thumb_url?: string | null
     }
   | undefined => {
   for (const chat of chats.value) {
@@ -1339,7 +1378,12 @@ const startVoiceCall = () => {
   const peer = otherUserOfChat(chat as Chat)
   if (!peer) return
   void callStore.startCall(
-    { id: peer.id, name: displayName(peer), avatarUrl: peer.avatar_url ?? null },
+    {
+      id: peer.id,
+      name: displayName(peer),
+      // В экране звонка аватар — кружок: берём миниатюру, если она есть.
+      avatarUrl: peer.avatar_thumb_url ?? peer.avatar_url ?? null
+    },
     'audio'
   )
 }
@@ -1350,7 +1394,12 @@ const startVideoCall = () => {
   const peer = otherUserOfChat(chat as Chat)
   if (!peer) return
   void callStore.startCall(
-    { id: peer.id, name: displayName(peer), avatarUrl: peer.avatar_url ?? null },
+    {
+      id: peer.id,
+      name: displayName(peer),
+      // В экране звонка аватар — кружок: берём миниатюру, если она есть.
+      avatarUrl: peer.avatar_thumb_url ?? peer.avatar_url ?? null
+    },
     'video'
   )
 }
@@ -2921,6 +2970,8 @@ watch(
   totalUnread,
   (count) => {
     document.title = count > 0 ? `(${count}) ${BASE_DOC_TITLE}` : BASE_DOC_TITLE
+    // То же число — на иконке установленного приложения (Badging API).
+    void setAppBadge(count)
   },
   { immediate: true }
 )
@@ -3993,7 +4044,7 @@ watch(
     if (peer) {
       callStore.setPeerInfo({
         name: displayName(peer),
-        avatarUrl: peer.avatar_url ?? null
+        avatarUrl: peer.avatar_thumb_url ?? peer.avatar_url ?? null
       })
     }
     // Если приложение свёрнуто — показываем системное уведомление о звонке.

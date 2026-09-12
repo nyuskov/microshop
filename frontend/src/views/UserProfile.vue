@@ -6,6 +6,7 @@ import { getErrorMessage } from '@/services/errors'
 import { parseServerTime } from '@/utils/format'
 import { removeAvatar, uploadAvatar } from '@/services/api'
 import { mediaUrl } from '@/services/chatService'
+import { optimizeAvatarFile } from '@/utils/media'
 import { formatPhoneForBackend, localPhoneDigits, maskPhoneLocal } from '@/utils/phone'
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
 import { profileLinkFor } from '@/utils/profileLink'
@@ -246,7 +247,8 @@ const avatarUploading = ref(false)
 const avatarError = ref('')
 
 const avatarSrc = computed<string | null>(() => {
-  const url = authStore.current_user?.avatar_url
+  // В профиле аватар — кружок ~100px, поэтому берём миниатюру 128px.
+  const url = authStore.current_user?.avatar_thumb_url || authStore.current_user?.avatar_url
   return url ? mediaUrl(url) : null
 })
 
@@ -266,9 +268,14 @@ const onAvatarSelected = async (event: Event) => {
   avatarUploading.value = true
   avatarError.value = ''
   try {
-    const url = await uploadAvatar(file)
+    // Сжимаем на клиенте до 512px: с телефона приходит снимок в мегабайты.
+    const urls = await uploadAvatar(await optimizeAvatarFile(file))
     if (authStore.current_user) {
-      authStore.current_user = { ...authStore.current_user, avatar_url: url }
+      authStore.current_user = {
+        ...authStore.current_user,
+        avatar_url: urls.avatar_url,
+        avatar_thumb_url: urls.avatar_thumb_url
+      }
     }
     await authStore.fetchUser()
   } catch (error) {
@@ -284,7 +291,11 @@ const removeAvatarClick = async () => {
   try {
     await removeAvatar()
     if (authStore.current_user) {
-      authStore.current_user = { ...authStore.current_user, avatar_url: null }
+      authStore.current_user = {
+        ...authStore.current_user,
+        avatar_url: null,
+        avatar_thumb_url: null
+      }
     }
     await authStore.fetchUser()
   } catch (error) {

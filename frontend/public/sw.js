@@ -18,7 +18,7 @@
  */
 
 const CACHE_PREFIX = 'pismo-v'
-const CACHE_VERSION = 15
+const CACHE_VERSION = 16
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 // Кэш медиа живёт отдельно: обновление версии приложения не сбрасывает картинки.
 const MEDIA_CACHE_PREFIX = 'pismo-media-v'
@@ -239,6 +239,10 @@ async function handlePush(event) {
     // Уведомление о сообщении: нейтральная кнопка «Пометить как прочитанное»
     // (тап по телу уведомления открывает чат).
     options.actions = [{ action: 'mark-read', title: 'Пометить как прочитанное' }]
+    // И «точка» на иконке приложения: непрочитанное напоминает о себе даже
+    // после того, как уведомление убрали. Открытое приложение ставит бейдж
+    // само и точным числом — ему «точку» не навязываем.
+    if (!(await hasVisibleClient())) await markAppBadge()
   } else if (data.type === 'security') {
     // Событие безопасности (новый вход в аккаунт, заморозка). Держим уведомление
     // на экране и даём кнопку «Это не я»: она завершает все сессии одним
@@ -252,6 +256,24 @@ async function handlePush(event) {
     }
   }
   await self.registration.showNotification(title, options)
+}
+
+/**
+ * Бейдж на иконке приложения (Badging API).
+ *
+ * Точное число непрочитанных знает только открытое приложение (оно ставит его
+ * само — см. `src/utils/appBadge.ts`). Здесь, когда приложение закрыто, ставим
+ * «точку»: посчитать непрочитанные в service worker нечем, а без бейджа о новом
+ * сообщении напоминает только само уведомление.
+ */
+async function markAppBadge() {
+  try {
+    if (self.navigator && typeof self.navigator.setAppBadge === 'function') {
+      await self.navigator.setAppBadge()
+    }
+  } catch {
+    /* нет API или нет разрешения — просто без бейджа */
+  }
 }
 
 self.addEventListener('push', (event) => {

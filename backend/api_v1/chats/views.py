@@ -1,11 +1,10 @@
-import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user, touch_last_seen
+from api_v1.avatar_store import remove_avatar_files, store_avatar
 from api_v1.chats import crud
 from api_v1.chats.schemas import Chat as ChatSchema
 from api_v1.chats.schemas import (
@@ -33,21 +32,14 @@ router = APIRouter(
 
 # Аватары групповых чатов храним в том же каталоге, что и аватары пользователей
 # (его раздаёт StaticFiles на /media). Лимит — как у пользовательских аватаров.
-AVATAR_DIR = Path(__file__).resolve().parent.parent.parent / "media" / "avatars"
 MAX_AVATAR_SIZE = settings.max_avatar_size_bytes
 MAX_AVATAR_MB = MAX_AVATAR_SIZE // (1024 * 1024)
 ALLOWED_AVATAR_EXTS = {"png", "jpg", "jpeg", "gif", "webp"}
 
 
-def _remove_chat_avatar_file(avatar_url: str | None) -> None:
-    """Удаляет файл аватара группы (best-effort)."""
-    if not avatar_url or not avatar_url.startswith("/media/avatars/"):
-        return
-    path = AVATAR_DIR / Path(avatar_url).name
-    try:
-        path.unlink(missing_ok=True)
-    except OSError:
-        pass
+def _remove_chat_avatar_files(chat: Chat) -> None:
+    """Удаляет файлы аватара группы и его миниатюры (best-effort)."""
+    remove_avatar_files(chat.avatar_url, chat.avatar_thumb_url)
 
 
 def _serialize_chat(
@@ -70,6 +62,7 @@ def _serialize_chat(
         "is_self": chat.is_self,
         "is_group": chat.is_group,
         "avatar_url": chat.avatar_url,
+        "avatar_thumb_url": chat.avatar_thumb_url,
         "description": chat.description,
         "member_count": len(chat.users) if chat.is_group else 0,
         "my_role": my_role,
@@ -452,11 +445,12 @@ async def upload_group_avatar(
         )
     validate_image_upload(f"avatar.{ext}", content)
 
-    _remove_chat_avatar_file(chat.avatar_url)
-    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
-    stored_name = f"chat_{chat.id}_{uuid.uuid4().hex}.{ext}"
-    (AVATAR_DIR / stored_name).write_bytes(content)
-    chat.avatar_url = f"/media/avatars/{stored_name}"
+    _remove_chat_avatar_files(chat)
+    avatar_url, avatar_thumb_url = store_avatar(
+        content, prefix=f"chat_{chat.id}", extension=ext
+    )
+    chat.avatar_url = avatar_url
+    chat.avatar_thumb_url = avatar_thumb_url
     await session.commit()
 
     await notify_chat(
@@ -490,8 +484,9 @@ async def delete_group_avatar(
             detail="Менять аватар могут только создатель и админы",
         )
 
-    _remove_chat_avatar_file(chat.avatar_url)
+    _remove_chat_avatar_files(chat)
     chat.avatar_url = None
+    chat.avatar_thumb_url = None
     await session.commit()
     await notify_chat(
         session,

@@ -35,9 +35,20 @@
       </span>
     </div>
 
-    <!-- Управление звуком (только во время воспроизведения) -->
+    <!-- Скорость воспроизведения (круговая: 1× → 1.5× → 2×), общая для всех
+         голосовых и видеосообщений -->
     <button
       v-else
+      class="rvm-chip rvm-speed"
+      :title="`Скорость ${speedLabel(playbackSpeed)} — нажмите, чтобы изменить`"
+      @click.stop="onCycleSpeed"
+    >
+      <span class="rvm-speed-label">{{ speedLabel(playbackSpeed) }}</span>
+    </button>
+
+    <!-- Управление звуком (только во время воспроизведения) -->
+    <button
+      v-if="isPlaying"
       class="rvm-chip rvm-sound"
       :title="muted ? 'Включить звук' : 'Выключить звук'"
       @click.stop="toggleMute"
@@ -87,7 +98,8 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { cyclePlaybackSpeed, playbackSpeed, speedLabel } from '@/utils/playbackSpeed'
 
 defineProps<{
   src: string
@@ -137,6 +149,20 @@ const togglePlay = async () => {
 
 const toggleMute = () => {
   muted.value = !muted.value
+}
+
+/** Скорость задаётся на самом элементе `<video>`: держим её в актуальном виде. */
+const applySpeed = () => {
+  const video = videoRef.value
+  if (video) video.playbackRate = playbackSpeed.value
+}
+
+onMounted(applySpeed)
+watch(playbackSpeed, applySpeed)
+
+const onCycleSpeed = () => {
+  cyclePlaybackSpeed()
+  applySpeed()
 }
 
 const openPreview = () => {
@@ -257,6 +283,25 @@ const closePreview = () => {
 .rvm-sound {
   top: 8px;
   right: 8px;
+}
+
+/* Скорость: пилюля слева сверху, чтобы не перекрывать звук (справа сверху)
+   и разворот на весь экран (справа снизу). */
+.rvm-speed {
+  top: 8px;
+  left: 8px;
+  width: auto;
+  min-width: 34px;
+  height: 22px;
+  border-radius: 11px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.rvm-speed-label {
+  line-height: 1;
 }
 
 .rvm-expand {

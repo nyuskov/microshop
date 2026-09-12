@@ -41,6 +41,8 @@ class ProfileUpdateSchema(BaseModel):
 
 class UserAvatarResponse(BaseModel):
     avatar_url: str | None = None
+    # Маленькая копия для списков и шапки (нет — показываем оригинал).
+    avatar_thumb_url: str | None = None
 
 
 class UserStorageResponse(BaseModel):
@@ -84,6 +86,8 @@ class UserSearchResultSchema(BaseModel):
     last_name: str | None
     phone_number: str | None = None
     avatar_url: str | None = None
+    # Маленькая копия для списков и шапки (нет — показываем оригинал).
+    avatar_thumb_url: str | None = None
     status: str | None = None
     last_seen: datetime | None = None
 
@@ -104,6 +108,8 @@ class UserLinkPreviewSchema(BaseModel):
     first_name: str | None
     last_name: str | None
     avatar_url: str | None = None
+    # Маленькая копия для списков и шапки (нет — показываем оригинал).
+    avatar_thumb_url: str | None = None
     status: str | None = None
 
 
@@ -138,6 +144,8 @@ class UserWithDetailsSchema(BaseModel):
     # использовать для входа без пароля и восстановления доступа.
     email_verified: bool = False
     avatar_url: str | None = None
+    # Маленькая копия для списков и шапки (нет — показываем оригинал).
+    avatar_thumb_url: str | None = None
     status: str | None = None
     last_seen: datetime | None = None
     # Признак администратора: фронт показывает таким пользователям разбор жалоб

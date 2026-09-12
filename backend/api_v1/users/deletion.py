@@ -91,6 +91,7 @@ async def delete_user_account(session: AsyncSession, user: User) -> None:
     for file_url in file_urls:
         _remove_media_file(file_url)
     _remove_avatar(user.avatar_url)
+    _remove_avatar(user.avatar_thumb_url)
 
     # 2. Данные, ссылающиеся на пользователя.
     await session.execute(

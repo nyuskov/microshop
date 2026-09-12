@@ -141,14 +141,23 @@ api.interceptors.response.use(
 // --- Конец interceptor'ов ---
 
 // --- Функции для аватара текущего пользователя ---
-export const uploadAvatar = async (file: File): Promise<string | null> => {
+/** Ссылки на аватар после загрузки: оригинал и миниатюра 128px. */
+export interface AvatarUrls {
+  avatar_url: string | null
+  avatar_thumb_url: string | null
+}
+
+export const uploadAvatar = async (file: File): Promise<AvatarUrls> => {
   const extMatch = file.name.split('.').pop()
   const ext = (extMatch || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png'
   const response = await api.put('/users/me/avatar/', file, {
     params: { ext },
     headers: { 'Content-Type': file.type || 'application/octet-stream' }
   })
-  return response.data?.avatar_url ?? null
+  return {
+    avatar_url: response.data?.avatar_url ?? null,
+    avatar_thumb_url: response.data?.avatar_thumb_url ?? null
+  }
 }
 
 export const removeAvatar = async (): Promise<void> => {

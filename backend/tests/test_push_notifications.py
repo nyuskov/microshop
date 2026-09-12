@@ -12,9 +12,20 @@ import pytest
 from tasks import notifications
 
 
+def test_push_icon_prefers_thumb() -> None:
+    """Есть миниатюра — берём её: устройство тянет картинку на маленькую иконку."""
+    user = SimpleNamespace(
+        avatar_url="/media/avatars/user_7_ab12cd.png",
+        avatar_thumb_url="/media/avatars/user_7_ab12cd_t128.jpg",
+    )
+    assert notifications._push_icon(user) == "/media/avatars/user_7_ab12cd_t128.jpg"
+
+
 def test_push_icon_uses_sender_avatar() -> None:
-    """Есть аватар — показываем его вместо иконки приложения."""
-    user = SimpleNamespace(avatar_url="/media/avatars/user_7_ab12cd.png")
+    """Миниатюры нет (старый аватар) — показываем оригинал, а не иконку приложения."""
+    user = SimpleNamespace(
+        avatar_url="/media/avatars/user_7_ab12cd.png", avatar_thumb_url=None
+    )
     assert notifications._push_icon(user) == "/media/avatars/user_7_ab12cd.png"
 
 
@@ -22,9 +33,9 @@ def test_push_icon_falls_back_to_app_icon() -> None:
     """Нет отправителя/аватара — иконка Pismo (и никаких пробелов в поле)."""
     default = notifications.PUSH_ICON_DEFAULT
     assert notifications._push_icon(None) == default
-    assert notifications._push_icon(SimpleNamespace(avatar_url=None)) == default
-    assert notifications._push_icon(SimpleNamespace(avatar_url="")) == default
-    assert notifications._push_icon(SimpleNamespace(avatar_url="   ")) == default
+    for avatar_url in (None, "", "   "):
+        user = SimpleNamespace(avatar_url=avatar_url, avatar_thumb_url=None)
+        assert notifications._push_icon(user) == default
 
 
 def test_rustore_message_carries_avatar_in_data() -> None:

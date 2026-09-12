@@ -21,6 +21,8 @@ class ChatUserSchema(BaseModel):
     last_name: str | None = None
     phone_number: str | None = None
     avatar_url: str | None = None
+    # Маленькая копия аватара для списков (None — показываем оригинал).
+    avatar_thumb_url: str | None = None
     status: str | None = None
     last_seen: datetime | None = None
 
@@ -48,6 +50,8 @@ class Chat(BaseModel):
     is_group: bool = False
     # Аватар группового чата (путь /media/...).
     avatar_url: str | None = None
+    # Маленькая копия аватара группы для списков (None — показываем оригинал).
+    avatar_thumb_url: str | None = None
     # Описание группы.
     description: str | None = None
     # Количество участников (для групп).

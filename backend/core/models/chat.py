@@ -30,6 +30,11 @@ class Chat(IdIntPkMixin, Base):
     is_group: Mapped[bool] = mapped_column(default=False, server_default=func.false())
     # Аватар группового чата (путь /media/...); у личных чатов не заполняется.
     avatar_url: Mapped[str | None] = mapped_column(nullable=True, server_default=None)
+    # Маленькая копия аватара для списков и шапок (128px).
+    # None — показываем оригинал (старые аватары).
+    avatar_thumb_url: Mapped[str | None] = mapped_column(
+        nullable=True, server_default=None
+    )
     # Описание группы (видно в карточке чата).
     description: Mapped[str | None] = mapped_column(nullable=True)
     # Создатель группового чата (не null для групп). Удаляется (SET NULL), если

@@ -9,6 +9,8 @@ export interface StoryAuthor {
   first_name: string | null
   last_name: string | null
   avatar_url: string | null
+  /** Миниатюра 128px для кольца истории (оригинал может весить мегабайты). */
+  avatar_thumb_url?: string | null
 }
 
 /** Сводка по одному эмодзи: сколько человек поставили и моя ли это реакция. */

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import HTTPException, status
-from sqlalchemy import or_, select, update
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -29,6 +29,10 @@ _BLOCKED_DETAIL = "Нельзя отправить сообщение: поль�
 # клиент идёт через ``before_id`` (см. list_chat_messages).
 DEFAULT_MESSAGE_PAGE_SIZE = 100
 
+# Размер «страницы» галереи медиа (вложения чата). Меньше истории: галерея
+# рисуется сеткой по 3 в ряд, и первые экраны должны появляться сразу.
+DEFAULT_MEDIA_PAGE_SIZE = 60
+
 # Каталог вложений сообщений (файлы сообщений, не аватары).
 MEDIA_DIR = Path(__file__).resolve().parent.parent.parent / "media"
 
@@ -43,6 +47,74 @@ def _file_payload(message: Message) -> dict | None:
         "mime": message.mime_type,
         "size": message.file_size,
     }
+
+
+#: Типы вложений для галереи и расширения, по которым их узнаём, если клиент не
+#: прислал mime. Порядок важен: сначала mime, потом расширение.
+MEDIA_KINDS = ("image", "video", "audio")
+MEDIA_EXTENSIONS = {
+    "image": ("jpg", "jpeg", "png", "gif", "webp", "bmp", "avif"),
+    # webm здесь — видеозапись: голосовые приходят с mime audio/webm и
+    # определяются по mime (см. ниже).
+    "video": ("mp4", "mov", "mkv", "m4v", "avi", "webm"),
+    "audio": ("mp3", "m4a", "ogg", "wav", "aac", "opus"),
+}
+
+
+def _media_kind_of(message: Message) -> str:
+    """Тип вложения для галереи: image / video / audio / file.
+
+    Сначала смотрим mime (его присылает клиент), затем расширение файла — оно
+    проверено белым списком при загрузке. Правило одно и то же с SQL-выражением
+    ``_media_kind_expr``, иначе фильтр вкладки и подпись элемента разошлись бы.
+    """
+    mime = (message.mime_type or "").lower()
+    for kind in MEDIA_KINDS:
+        if mime.startswith(f"{kind}/"):
+            return kind
+    name = (message.file_name or "").lower()
+    ext = name.rsplit(".", 1)[-1] if "." in name else ""
+    for kind in MEDIA_KINDS:
+        if ext in MEDIA_EXTENSIONS[kind]:
+            return kind
+    return "file"
+
+
+def _media_kind_expr():
+    """SQL-выражение типа вложения (то же правило, что в ``_media_kind_of``)."""
+    mime = func.coalesce(func.lower(Message.mime_type), "")
+    ext = func.coalesce(func.lower(Message.file_name), "")
+    extension_cases = [
+        (
+            or_(*[ext.like(f"%.{suffix}") for suffix in MEDIA_EXTENSIONS[kind]]),
+            kind,
+        )
+        for kind in MEDIA_KINDS
+    ]
+    return case(
+        *[(mime.like(f"{kind}/%"), kind) for kind in MEDIA_KINDS],
+        *extension_cases,
+        else_="file",
+    )
+
+
+def _media_payload(message: Message) -> dict:
+    """Элемент галереи «Медиа»: без реакций и текста — только вложение."""
+    return {
+        "id": message.id,
+        "timestamp": as_utc(message.timestamp),
+        "url": message.file_url,
+        "name": message.file_name or "Файл",
+        "mime": message.mime_type,
+        "size": message.file_size,
+        "kind": _media_kind_of(message),
+    }
+
+
+async def _chat_is_e2ee(session: AsyncSession, chat_id: int) -> bool:
+    """Включено ли в чате сквозное шифрование."""
+    result = await session.execute(select(Chat.e2ee_enabled).where(Chat.id == chat_id))
+    return bool(result.scalar_one_or_none())
 
 
 def _reactions_payload(reactions: list[MessageReaction], user_id: int) -> list[dict]:
@@ -507,6 +579,49 @@ async def list_pinned_messages(
     )
     result = await session.execute(stmt)
     return [message_to_dict(message, user_id) for message in result.scalars().all()]
+
+
+async def list_chat_media(
+    session: AsyncSession,
+    *,
+    chat_id: int,
+    user_id: int,
+    kind: str | None = None,
+    limit: int | None = None,
+    before_id: int | None = None,
+) -> list[dict]:
+    """Вложения чата для галереи «Медиа» (без выгрузки всей истории).
+
+    Лента отдаёт сообщения страницами, поэтому галерея из загруженной истории
+    показывала только последние ~100 сообщений. Здесь сервер сам выбирает
+    сообщения с вложением: ``kind`` (image/video/audio/file) фильтрует по типу,
+    ``before_id`` — пагинация «в старые».
+
+    Зашифрованные чаты пропускаем: содержимое вложений зашифровано ключом чата,
+    сервер не может ни показать картинку, ни определить её тип, а клиенту для
+    расшифровки нужны сами сообщения — там галерея строится из загруженной
+    истории.
+    """
+    await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
+    if await _chat_is_e2ee(session, chat_id):
+        return []
+
+    stmt = select(Message).where(
+        Message.chat_id == chat_id,
+        Message.file_name.is_not(None),
+        Message.file_url.is_not(None),
+        _hide_filter(user_id),
+    )
+    if before_id is not None:
+        stmt = stmt.where(Message.id < before_id)
+    if kind is not None:
+        stmt = stmt.where(_media_kind_expr() == kind)
+
+    page_size = limit if limit is not None else DEFAULT_MEDIA_PAGE_SIZE
+    stmt = stmt.order_by(Message.id.desc()).limit(page_size)
+    result = await session.execute(stmt)
+    # Отдаём от новых к старым (как лента галереи в мессенджерах).
+    return [_media_payload(message) for message in result.scalars().all()]
 
 
 async def delete_message(

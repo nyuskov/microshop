@@ -442,10 +442,19 @@ crontab -l | grep -v '# pismo-monitor' | crontab -   # удалить задач
 
 ### Профиль и аватар
 
-- `GET/PATCH /api/v1/jwt/users/me/` — профиль (схема `UserWithDetailsSchema`, включает `id`, `username`, `avatar_url`, `profile`, `chats`).
-- `PUT /api/v1/users/me/avatar/?ext=png` — загрузка фото аватара. Тело запроса = **сырые байты** файла (без multipart), `ext` из белого списка `png/jpg/jpeg/gif/webp`, лимит 8 МБ. Возвращает `{avatar_url}` (`/media/avatars/…`).
-- `DELETE /api/v1/users/me/avatar/` — удаление аватара (и файла). Возвращает `{avatar_url: null}`.
-- `avatar_url` отдаётся в профиле, поиске/контактах и участниках чатов.
+- `GET/PATCH /api/v1/jwt/users/me/` — профиль (схема `UserWithDetailsSchema`, включает `id`, `username`, `avatar_url`, `avatar_thumb_url`, `profile`, `chats`).
+- `PUT /api/v1/users/me/avatar/?ext=png` — загрузка фото аватара. Тело запроса = **сырые байты** файла (без multipart), `ext` из белого списка `png/jpg/jpeg/gif/webp`, лимит 8 МБ. Возвращает `{avatar_url, avatar_thumb_url}` (оба — `/media/avatars/…`).
+- `DELETE /api/v1/users/me/avatar/` — удаление аватара (и файлов). Возвращает `{avatar_url: null, avatar_thumb_url: null}`.
+- `avatar_url` — оригинал того, что загрузили; `avatar_thumb_url` — миниатюра
+  128px (Pillow), которую клиент показывает в списках, шапках, историях и
+  пушах: оригинал с телефона может весить мегабайты, а на экране это кружок
+  40–56px. Миниатюра сохраняет прозрачность (PNG), иначе — JPEG q85;
+  если файл не читается как изображение, `avatar_thumb_url = null` и клиент
+  показывает оригинал (`avatar_url`).
+- `avatar_url`/`avatar_thumb_url` отдаются в профиле, поиске/контактах,
+  участниках чатов, аватаре группы и авторе истории (см. `api_v1/avatar_store.py`).
+- Для уже загруженных аватаров миниатюры досоздаёт скрипт:
+  `poetry run python -m scripts.make_avatar_thumbs --apply` (без `--apply` — dry-run).
 
 ### Медиафайлы
 
@@ -504,6 +513,7 @@ crontab -l | grep -v '# pismo-monitor' | crontab -   # удалить задач
 | POST | `/messages/gif/` | GIF: URL → очередь (Celery скачивает и создаёт сообщение, 202) | токен |
 | GET | `/messages/{chat_id}/` | история (входящие помечаются прочитанными). Без параметров — последние **100**; `limit`/`before_id` — пагинация «вверх» | токен |
 | GET | `/messages/{chat_id}/pinned/` | закреплённые | токен |
+| GET | `/messages/{chat_id}/media/` | вложения чата для галереи: `kind=image\|video\|audio\|file`, `limit`/`before_id` — пагинация «в старые». В зашифрованном чате — пустой список | токен |
 | PATCH | `/messages/{message_id}/pin/` | закрепить/открепить `{is_pinned}` | токен |
 | PUT | `/messages/{message_id}/reaction/` | поставить реакцию `{emoji}` | токен |
 | DELETE | `/messages/{message_id}/reaction/` | снять свою реакцию | токен |
@@ -547,7 +557,7 @@ crontab -l | grep -v '# pismo-monitor' | crontab -   # удалить задач
 
 ### Модель данных (основное)
 
-- `user` — `id`, `username` (уник.), `phone_number` (уник., null), `first_name`, `last_name`, `email` (nullable), `hashed_password`, `avatar_url`, `status` (текст-статус), `last_seen` (присутствие); профиль (1:1), чаты (m2m), сообщения.
+- `user` — `id`, `username` (уник.), `phone_number` (уник., null), `first_name`, `last_name`, `email` (nullable), `hashed_password`, `avatar_url`, `avatar_thumb_url` (миниатюра 128px), `status` (текст-статус), `last_seen` (присутствие); профиль (1:1), чаты (m2m), сообщения.
 - `profile` — 1:1 к `user`: `bio`, `birth_date`, `language`, `country`, `notifications_enabled`, `privacy_mode`.
 - `chats` — `id`, `name`; участники через m2m `chat_user_association`. **Личный чат = ровно 2 участника**.
 - `messages` — `id`, `text`, `timestamp` (default now()), `user_id`, `chat_id`, `reply_to_id` (self FK), `is_read`, `is_pinned`, `edited_at`, `file_name/file_url/mime_type/file_size`, поля пересылки `forwarded_from_id`/`forwarded_sender_id`/`forwarded_sender_name`/`forwarded_chat_id` (снимок «от кого»). Индекс `(chat_id, timestamp)`.
@@ -606,7 +616,8 @@ crontab -l | grep -v '# pismo-monitor' | crontab -   # удалить задач
 43. `2026_09_11_1500-d3e4f5a6b7c8` — контакты пользователя («записная книжка») и псевдонимы
 44. `2026_09_11_1800-e4f5a6b7c8d9` — «эпоха» access-токенов: мгновенный отзыв доступа
 45. `2026_09_12_1000-f8b9c0d1e2f3` — реакции на истории (`story_reactions`)
-46. `2026_09_12_1400-c7d8e9f0a1b2` — черновики сообщений (`message_drafts`) — **голова**
+46. `2026_09_12_1400-c7d8e9f0a1b2` — черновики сообщений (`message_drafts`)
+47. `2026_09_12_1600-d8e9f0a1b2c3` — миниатюры аватаров (`user.avatar_thumb_url`, `chats.avatar_thumb_url`) — **голова**
 
 Применение: `cd backend && poetry run alembic upgrade head`. В docker-стеке миграции выполняются автоматически при старте контейнера `web`.
 
@@ -818,6 +829,11 @@ docker exec -it microshop-db-1 psql -U postgres -d microshop
 ### Присутствие и БД
 - `last_seen` больше не обновляется в `get_current_user` (не было лишних commit на каждый read-only запрос); теперь присутствие обновляется в poll-эндпоинте `GET /chats/`.
 - При удалении сообщения его файл удаляется с диска (best-effort).
+- `GET /messages/{chat_id}/media/` — вложения чата для галереи «Медиа/Файлы»:
+  `kind=image|video|audio|file` и `before_id` листают вложения без выгрузки
+  истории (по умолчанию **60**). В зашифрованном чате возвращается пустой
+  список: содержимое зашифровано ключом чата, галерея строится из расшифрованной
+  ленты (сервер не может показать картинку и определить тип).
 - `GET /messages/{chat_id}/` всегда отдаёт страницу: по умолчанию последние **100** (`DEFAULT_MESSAGE_PAGE_SIZE`); `?limit=`/`?before_id=` — пагинация «вверх». Добавлен индекс `(chat_id, timestamp)`.
 
 ### Docker
@@ -851,3 +867,28 @@ docker exec -it microshop-db-1 psql -U postgres -d microshop
 - `CORS_ORIGINS` можно задать в `.env` (JSON-список), см. `.env.example`.
 
 > Осталось (по состоянию на 2026-09-08): TURN для WebRTC-звонков, Web Push/PWA-уведомления, Sentry/метрики, Redis/общий стор для rate-limit и WS при масштабировании на несколько `web`, e2e-смоук (Playwright). Real-time-канал, декомпозиция `Messenger.vue`, подгрузка старых сообщений, индикатор «печатает», refresh-токены и расширение тестов — сделано.
+
+### Итерация (2026-09-12): аватары-миниатюры, галерея медиа, скорость голосовых, бейдж
+
+- **Аватары**: сервер рядом с оригиналом кладёт миниатюру 128px
+  (`api_v1/avatar_store.py`, Pillow) и отдаёт `avatar_thumb_url`; клиент перед
+  загрузкой сжимает фото до 512px (`optimizeAvatarFile`); интерфейс берёт
+  миниатюру (`avatarUrlOf`/`groupAvatarUrl`), оригинал — только для крупного
+  показа (`avatarFullUrlOf`). На каждый кружок в списке чатов уходит 1–2 КБ вместо
+  мегабайтов (замеры — в `docs/feed-performance.md`). Для уже загруженных
+  аватаров миниатюры досоздаёт `python -m scripts.make_avatar_thumbs --apply`.
+- **Галерея медиа**: `GET /messages/{chat_id}/media/` отдаёт вложения всей истории
+  чата (фильтр `kind=image|video|audio|file`, пагинация `before_id`), а не только
+  загруженные ~100 сообщений; в «Информации о чате» появилась кнопка «Показать
+  ещё», а картинка вне загруженной ленты подгружает свою страницу и открывается в
+  лайтбоксе. В зашифрованном чате список пуст (галерея — из расшифрованной ленты).
+- **Скорость голосовых и видеосообщений**: кнопка `1×/1.5×/2×`
+  (`utils/playbackSpeed.ts`), выбор общий для всех сообщений.
+- **Бейдж приложения**: число непрочитанных ставится на иконку установленного PWA
+  (`utils/appBadge.ts`); при push в закрытое приложение service worker ставит
+  «точку».
+- **Мелочи**: убраны мёртвый CSS `.gif-btn` (вес 800 в шрифте, которого нет) и
+  неиспользуемые импорты; предзагрузка иконочных шрифтов в `index.html`; скрипты
+  очистки медиа (`cleanup_orphan_media`, `tasks/media_tasks`) больше не считают
+  «сиротами» миниатюры аватаров и аватары групп (раньше удалили бы их как
+  неиспользуемые).

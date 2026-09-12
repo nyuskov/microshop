@@ -428,22 +428,6 @@ watch(newMessage, () => {
   margin-bottom: 6px;
 }
 
-/* Кнопка открытия панели GIF */
-.gif-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.3px;
-  color: var(--ms-accent, #2ea25e);
-}
-
-.gif-btn.active {
-  background: var(--ms-accent-soft);
-  color: var(--ms-accent);
-}
-
 /* Кнопка записи голосового/видеосообщения (удержание 2 c — переключение режима) */
 .mic-wrap {
   position: relative;

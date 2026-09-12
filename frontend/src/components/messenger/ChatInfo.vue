@@ -74,9 +74,9 @@
         </div>
       </div>
 
-      <div v-if="images.length" class="ci-section">
+      <div v-if="images.length || mediaHasMore" class="ci-section">
         <h4 class="ci-title">Изображения</h4>
-        <div class="ci-grid">
+        <div v-if="images.length" class="ci-grid">
           <button
             v-for="image in images"
             :key="image.id"
@@ -87,9 +87,10 @@
             <img :src="image.url" :alt="image.name" loading="lazy" decoding="async" />
           </button>
         </div>
+        <div v-else class="ci-empty">Изображений пока нет</div>
       </div>
 
-      <div v-if="files.length" class="ci-section">
+      <div v-if="files.length || mediaHasMore" class="ci-section">
         <h4 class="ci-title">Файлы</h4>
         <a
           v-for="file in files"
@@ -108,7 +109,25 @@
         <div v-if="!files.length" class="ci-empty">Файлов пока нет</div>
       </div>
 
-      <div v-if="!images.length && !files.length" class="ci-empty">
+      <!-- Галерея показывает вложения всей истории, а не только загруженные
+           сообщения: лента подгружается страницами по ~100 штук. -->
+      <div v-if="mediaHasMore" class="ci-more">
+        <q-btn
+          flat
+          no-caps
+          dense
+          color="primary"
+          :loading="mediaLoading"
+          label="Показать ещё"
+          @click="loadMoreMedia"
+        />
+      </div>
+      <div v-if="mediaError" class="ci-error">{{ mediaError }}</div>
+      <div v-if="mediaLocalOnly" class="ci-hint">
+        Чат зашифрован — показаны загруженные вложения.
+      </div>
+
+      <div v-if="!images.length && !files.length && !mediaHasMore" class="ci-empty">
         В этом чате пока нет общих вложений
       </div>
     </q-card-section>
@@ -120,14 +139,16 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
-import { computed, ref } from 'vue'
-import type { Chat, ChatUser, Message } from '@/types'
+import { computed, onMounted, ref, watch } from 'vue'
+import type { Chat, ChatMediaItem, ChatUser, Message } from '@/types'
 import { mediaUrl } from '@/config'
+import { fetchChatMedia } from '@/services/chatService'
+import { getErrorMessage } from '@/services/errors'
 import ContactNameDialog from '@/components/messenger/ContactNameDialog.vue'
 import { useContactsStore } from '@/stores/contacts'
 import { avatarStyle, avatarUrlOf, chatPeer, chatPeerTitle, initials } from '@/utils/user'
 import { formatBytes, formatMsgTime } from '@/utils/format'
-import { fileIcon, isImageFile } from '@/utils/media'
+import { fileIcon, mediaKindOf } from '@/utils/media'
 
 const props = defineProps<{
   chat: Chat
@@ -167,24 +188,99 @@ const peerName = computed<string>(() => {
 })
 const peerAvatar = computed<string | undefined>(() => avatarUrlOf(peer.value))
 
-/** Изображения/гифки из загруженной истории чата. */
+/** Изображения/гифки чата (в порядке «от новых к старым»). */
 const images = computed(() =>
-  props.messages
-    .filter((m) => m.file !== null && isImageFile(m.file))
-    .map((m) => ({ id: m.id, url: mediaUrl(m.file!.url), name: m.file!.name || 'Изображение' }))
+  mediaItems.value
+    .filter((item) => item.kind === 'image')
+    .map((item) => ({ id: item.id, url: mediaUrl(item.url), name: item.name }))
 )
 
 /** Прочие вложения (видео/аудио/документы). */
 const files = computed(() =>
-  props.messages
-    .filter((m) => m.file !== null && !isImageFile(m.file))
-    .map((m) => ({
-      id: m.id,
-      url: mediaUrl(m.file!.url),
-      name: m.file!.name || 'Файл',
-      icon: fileIcon(m.file!),
-      meta: `${formatBytes(m.file!.size)} · ${formatMsgTime(m.timestamp)}`
+  mediaItems.value
+    .filter((item) => item.kind !== 'image')
+    .map((item) => ({
+      id: item.id,
+      url: mediaUrl(item.url),
+      name: item.name,
+      icon: fileIcon({ name: item.name, url: item.url, mime: item.mime, size: item.size }),
+      meta: `${formatBytes(item.size)} · ${formatMsgTime(item.timestamp)}`
     }))
+)
+
+// ---------- Галерея медиа ----------
+/**
+ * Сколько вложений запрашиваем за раз. Лента отдаёт историю страницами по ~100
+ * сообщений, поэтому галерея «из ленты» показывала только свежую часть чата —
+ * здесь вложения выбирает сервер (`/messages/{id}/media/`), и видна вся история.
+ */
+const MEDIA_PAGE_SIZE = 60
+
+/** Вложения из ответа сервера (обычный чат). */
+const serverMedia = ref<ChatMediaItem[]>([])
+const mediaLoading = ref(false)
+const mediaHasMore = ref(false)
+const mediaError = ref('')
+
+/**
+ * Зашифрованный чат: сервер содержимое вложений не читает (ключ чата у клиента),
+ * поэтому галерея строится из уже расшифрованной ленты.
+ */
+const mediaLocalOnly = computed<boolean>(() => props.e2eeEnabled === true)
+
+/** Вложения из загруженной ленты — фолбэк для зашифрованного чата. */
+const localMedia = computed<ChatMediaItem[]>(() =>
+  props.messages
+    .filter((message) => message.file !== null)
+    .map((message) => ({
+      id: message.id,
+      timestamp: message.timestamp,
+      url: message.file!.url,
+      name: message.file!.name || 'Файл',
+      mime: message.file!.mime,
+      size: message.file!.size,
+      kind: mediaKindOf({ mime: message.file!.mime, name: message.file!.name })
+    }))
+)
+
+const mediaItems = computed<ChatMediaItem[]>(() =>
+  mediaLocalOnly.value ? localMedia.value : serverMedia.value
+)
+
+/** Загружает страницу вложений: сначала свежие, затем — более старые. */
+const loadMedia = async (reset: boolean) => {
+  if (mediaLocalOnly.value || mediaLoading.value) return
+  if (reset) {
+    serverMedia.value = []
+    mediaError.value = ''
+  }
+  mediaLoading.value = true
+  try {
+    const last = serverMedia.value[serverMedia.value.length - 1]
+    const oldestId = last?.id
+    const page = await fetchChatMedia(props.chat.id, {
+      limit: MEDIA_PAGE_SIZE,
+      ...(oldestId !== undefined ? { beforeId: oldestId } : {})
+    })
+    const known = new Set(serverMedia.value.map((item) => item.id))
+    serverMedia.value = [...serverMedia.value, ...page.filter((item) => !known.has(item.id))]
+    mediaHasMore.value = page.length === MEDIA_PAGE_SIZE
+  } catch (error) {
+    mediaError.value = getErrorMessage(error, 'Не удалось загрузить вложения')
+    mediaHasMore.value = false
+  } finally {
+    mediaLoading.value = false
+  }
+}
+
+const loadMoreMedia = () => void loadMedia(false)
+
+onMounted(() => void loadMedia(true))
+
+// Смена чата или включение шифрования — другая история вложений.
+watch(
+  () => [props.chat.id, props.e2eeEnabled],
+  () => void loadMedia(true)
 )
 </script>
 
@@ -342,6 +438,27 @@ const files = computed(() =>
   color: var(--ms-muted, #71808d);
   padding: 10px 0;
   text-align: center;
+}
+
+/* Подгрузка галереи «Показать ещё» */
+.ci-more {
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
+}
+
+.ci-error {
+  font-size: 13px;
+  color: var(--ms-danger, #c0392b);
+  text-align: center;
+  padding-top: 6px;
+}
+
+.ci-hint {
+  font-size: 12px;
+  color: var(--ms-muted, #71808d);
+  text-align: center;
+  padding-top: 6px;
 }
 
 /* Тип чата: обычный / зашифрованный (E2EE) */

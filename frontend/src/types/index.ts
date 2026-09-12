@@ -5,6 +5,8 @@ export interface ChatUser {
   last_name: string | null
   phone_number: string | null
   avatar_url: string | null
+  /** Миниатюра 128px для списков и шапок (нет — показываем оригинал). */
+  avatar_thumb_url?: string | null
   status?: string | null
   last_seen?: string | null
 }
@@ -14,6 +16,25 @@ export interface MessageFile {
   url: string
   mime: string | null
   size: number | null
+}
+
+/** Вкладка галереи медиа чата. */
+export type ChatMediaKind = 'image' | 'video' | 'audio' | 'file'
+
+/**
+ * Вложение чата в галерее «Медиа/Файлы» (ответ `/messages/{id}/media/`).
+ *
+ * Лента отдаёт историю страницами, поэтому галерею строит сервер: элемент
+ * ссылается на сообщение (`id`) и содержит данные вложения.
+ */
+export interface ChatMediaItem {
+  id: number
+  timestamp: string
+  url: string
+  name: string
+  mime: string | null
+  size: number | null
+  kind: ChatMediaKind
 }
 
 /**
@@ -97,6 +118,8 @@ export interface Chat {
   is_group?: boolean
   /** Аватар группы (путь /media/...). */
   avatar_url?: string | null
+  /** Миниатюра аватара группы для списков (путь /media/...). */
+  avatar_thumb_url?: string | null
   /** Описание группы. */
   description?: string | null
   /** Количество участников группы. */
@@ -191,6 +214,8 @@ export interface User {
   email?: string | null
   is_superuser?: boolean
   avatar_url?: string | null
+  /** Миниатюра аватара 128px: списки и шапки берут её вместо оригинала. */
+  avatar_thumb_url?: string | null
   status?: string | null
   profile?: Profile | null
   chats?: Chat[]

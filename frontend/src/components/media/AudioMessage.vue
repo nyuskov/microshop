@@ -37,14 +37,23 @@
         {{ name }}
       </span>
       <span v-if="!durationKnown && size" class="am-size">{{ formatBytes(size) }}</span>
+      <!-- Скорость: 1× → 1.5× → 2×. Общая для всех голосовых (см. utils/playbackSpeed). -->
+      <button
+        class="am-speed"
+        :title="`Скорость ${speedLabel(playbackSpeed)} — нажмите, чтобы изменить`"
+        @click="onCycleSpeed"
+      >
+        {{ speedLabel(playbackSpeed) }}
+      </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { formatClock } from '@/services/recorder'
+import { cyclePlaybackSpeed, playbackSpeed, speedLabel } from '@/utils/playbackSpeed'
 
 defineProps<{
   src: string
@@ -126,6 +135,20 @@ const formatBytes = (size: number | null | undefined): string => {
   if (size < 1024) return `${size} Б`
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} КБ`
   return `${(size / (1024 * 1024)).toFixed(1)} МБ`
+}
+
+/** Скорость задаётся на самом элементе `<audio>` — держим её в актуальном виде. */
+const applySpeed = () => {
+  const audio = audioRef.value
+  if (audio) audio.playbackRate = playbackSpeed.value
+}
+
+onMounted(applySpeed)
+watch(playbackSpeed, applySpeed)
+
+const onCycleSpeed = () => {
+  cyclePlaybackSpeed()
+  applySpeed()
 }
 </script>
 
@@ -227,5 +250,24 @@ const formatBytes = (size: number | null | undefined): string => {
 
 .am-error {
   color: var(--ms-danger, #d64545);
+}
+
+/* Кнопка скорости воспроизведения (1×/1.5×/2×) */
+.am-speed {
+  margin-left: auto;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--ms-accent, #2ea25e);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.am-speed:hover {
+  background: var(--ms-accent-soft, rgba(46, 162, 94, 0.12));
 }
 </style>

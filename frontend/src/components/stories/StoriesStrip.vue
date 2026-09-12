@@ -122,7 +122,8 @@ const publishing = computed(() => stories.publishing)
 const mine = computed(() => stories.mine)
 
 const myAvatar = computed(() => {
-  const path = authStore.current_user?.avatar_url
+  const me = authStore.current_user
+  const path = me?.avatar_thumb_url || me?.avatar_url
   return path ? mediaUrl(path) : ''
 })
 

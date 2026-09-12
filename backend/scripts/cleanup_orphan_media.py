@@ -20,7 +20,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from core.models import LinkPreview, Message, Story, User, db_helper
+from core.models import Chat, LinkPreview, Message, Story, User, db_helper
 
 MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
 
@@ -45,9 +45,22 @@ async def _collect_used(session) -> set[str]:
     used |= _collect_names([row[0] for row in result.all()])
 
     result = await session.execute(
-        select(User.avatar_url).where(User.avatar_url.is_not(None))
+        select(User.avatar_url, User.avatar_thumb_url).where(
+            User.avatar_url.is_not(None)
+        )
     )
     used |= _collect_names([row[0] for row in result.all()])
+    used |= _collect_names([row[1] for row in result.all()])
+
+    # Аватары групп лежат в том же каталоге, что и аватары пользователей, — без
+    # них скрипт удалял бы файлы живых групп как «сироты».
+    result = await session.execute(
+        select(Chat.avatar_url, Chat.avatar_thumb_url).where(
+            Chat.avatar_url.is_not(None)
+        )
+    )
+    used |= _collect_names([row[0] for row in result.all()])
+    used |= _collect_names([row[1] for row in result.all()])
 
     result = await session.execute(
         select(Story.media_url).where(Story.media_url.is_not(None))

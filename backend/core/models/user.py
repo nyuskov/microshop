@@ -56,6 +56,9 @@ class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
         nullable=False,
     )
     avatar_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Маленькая копия аватара для списков и шапок (128px);
+    # None — показываем оригинал (старые аватары или файл не читается).
+    avatar_thumb_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Текст-статус пользователя (например «в работе», «🚀»), задаётся в профиле.
     status: Mapped[str | None] = mapped_column(String(140), nullable=True)
     # Время последней активности — для присутствия («в сети» / «был(а) N назад»).

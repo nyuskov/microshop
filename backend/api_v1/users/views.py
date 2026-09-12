@@ -1,13 +1,11 @@
 """Эндпоинты для управления пользователями."""
 
-import uuid
-from pathlib import Path
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth import audit
 from api_v1.auth.utils import get_current_user
+from api_v1.avatar_store import remove_avatar_files, store_avatar
 from api_v1.media_quota import media_usage
 from api_v1.rate_limit import enforce_limit
 from api_v1.upload_guard import validate_image_upload
@@ -39,22 +37,15 @@ async def get_my_storage(
     }
 
 
-AVATAR_DIR = Path(__file__).resolve().parent.parent.parent / "media" / "avatars"
 # Лимит размера аватара настраивается через env (Settings.max_avatar_size_bytes).
 MAX_AVATAR_SIZE = settings.max_avatar_size_bytes
 MAX_AVATAR_MB = MAX_AVATAR_SIZE // (1024 * 1024)
 ALLOWED_AVATAR_EXTS = {"png", "jpg", "jpeg", "gif", "webp"}
 
 
-def _remove_avatar_file(avatar_url: str | None) -> None:
-    """Удаляет файл аватара (best-effort)."""
-    if not avatar_url or not avatar_url.startswith("/media/avatars/"):
-        return
-    path = AVATAR_DIR / Path(avatar_url).name
-    try:
-        path.unlink(missing_ok=True)
-    except OSError:
-        pass
+def _remove_my_avatar_files(db_user: User) -> None:
+    """Удаляет файлы аватара и миниатюры (best-effort)."""
+    remove_avatar_files(db_user.avatar_url, db_user.avatar_thumb_url)
 
 
 @router.get("/search/", response_model=list[schemas.UserSearchResultSchema])
@@ -172,14 +163,19 @@ async def upload_my_avatar(
             detail="Пользователь не найден",
         )
 
-    _remove_avatar_file(db_user.avatar_url)
-    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
-    stored_name = f"user_{db_user.id}_{uuid.uuid4().hex}.{ext}"
-    (AVATAR_DIR / stored_name).write_bytes(content)
+    _remove_my_avatar_files(db_user)
+    # Оригинал и миниатюра для списков через одну точку входа — см. avatar_store.
+    avatar_url, avatar_thumb_url = store_avatar(
+        content, prefix=f"user_{db_user.id}", extension=ext
+    )
 
-    db_user.avatar_url = f"/media/avatars/{stored_name}"
+    db_user.avatar_url = avatar_url
+    db_user.avatar_thumb_url = avatar_thumb_url
     await session.commit()
-    return {"avatar_url": db_user.avatar_url}
+    return {
+        "avatar_url": db_user.avatar_url,
+        "avatar_thumb_url": db_user.avatar_thumb_url,
+    }
 
 
 @router.delete("/me/avatar/", response_model=schemas.UserAvatarResponse)
@@ -194,10 +190,11 @@ async def delete_my_avatar(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Пользователь не найден",
         )
-    _remove_avatar_file(db_user.avatar_url)
+    _remove_my_avatar_files(db_user)
     db_user.avatar_url = None
+    db_user.avatar_thumb_url = None
     await session.commit()
-    return {"avatar_url": None}
+    return {"avatar_url": None, "avatar_thumb_url": None}
 
 
 @router.post(

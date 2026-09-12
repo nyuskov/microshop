@@ -9,7 +9,11 @@ from api_v1.auth.utils import get_current_user
 from api_v1.media_quota import enforce_media_quota, media_usage
 from api_v1.media_store import store_media
 from api_v1.messages import crud
-from api_v1.messages.schemas import EditMessageRequest, ForwardMessageRequest
+from api_v1.messages.schemas import (
+    ChatMediaItem,
+    EditMessageRequest,
+    ForwardMessageRequest,
+)
 from api_v1.messages.schemas import Message as MessageSchema
 from api_v1.messages.schemas import MessageCreate
 from api_v1.rate_limit import enforce_limit
@@ -312,6 +316,35 @@ async def get_messages_for_chat(
         session=session,
         chat_id=chat_id,
         user_id=user.id,
+        limit=limit,
+        before_id=before_id,
+    )
+
+
+@router.get("/{chat_id}/media/", response_model=list[ChatMediaItem])
+async def get_chat_media(
+    chat_id: int,
+    # image/video/audio/file — вкладки галереи; без параметра отдаём все вложения.
+    kind: str | None = Query(default=None, pattern="^(image|video|audio|file)$"),
+    limit: int = Query(default=60, ge=1, le=200),
+    before_id: int | None = Query(default=None, ge=1),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Вложения чата для галереи «Медиа/Файлы».
+
+    Галерея не должна зависеть от того, какие страницы истории уже загружены в
+    ленте: сервер сам выбирает сообщения с вложением. Пагинация — ``before_id``
+    (вложения старее указанного сообщения), порядок — от новых к старым.
+
+    В зашифрованном чате возвращается пустой список: содержимое вложений
+    зашифровано ключом чата, и галерея строится из загруженной истории.
+    """
+    return await crud.list_chat_media(
+        session=session,
+        chat_id=chat_id,
+        user_id=user.id,
+        kind=kind,
         limit=limit,
         before_id=before_id,
     )
