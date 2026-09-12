@@ -1,13 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import type { StoryGroup, StoryItem } from '@/services/stories'
+import type {
+  StoryAudience,
+  StoryAuthor,
+  StoryGroup,
+  StoryItem,
+  StoryReactionSummary
+} from '@/services/stories'
 import {
+  audienceSections,
+  audienceViewsHint,
   findStoryIndex,
   flattenStories,
   formatStoryAge,
   groupProgress,
   isVideoStory,
   nextStory,
-  previousStory
+  previousStory,
+  quickReactions,
+  reactionTotal,
+  toggleReaction
 } from '@/utils/stories'
 
 const story = (id: number, viewed = false, views = 0): StoryItem => ({
@@ -19,7 +30,8 @@ const story = (id: number, viewed = false, views = 0): StoryItem => ({
   created_at: '2026-09-10T10:00:00Z',
   expires_at: '2026-09-11T10:00:00Z',
   viewed,
-  views
+  views,
+  reactions: []
 })
 
 const group = (userId: number, ids: number[], isMine = false): StoryGroup => ({
@@ -111,5 +123,133 @@ describe('isVideoStory', () => {
     expect(isVideoStory('video/mp4')).toBe(true)
     expect(isVideoStory('image/jpeg')).toBe(false)
     expect(isVideoStory(null)).toBe(false)
+  })
+})
+
+const KINDS = ['❤️', '🔥', '😂', '👏', '👍']
+const summary = (emoji: string, count: number, mine = false): StoryReactionSummary => ({
+  emoji,
+  count,
+  mine
+})
+
+describe('toggleReaction', () => {
+  it('ставит новую реакцию', () => {
+    expect(toggleReaction([], '🔥', KINDS)).toEqual([summary('🔥', 1, true)])
+  })
+
+  it('добавляет свою к чужой такой же', () => {
+    const result = toggleReaction([summary('🔥', 2)], '🔥', KINDS)
+    expect(result).toEqual([summary('🔥', 3, true)])
+  })
+
+  it('снимает свою реакцию и уменьшает счётчик', () => {
+    const result = toggleReaction([summary('🔥', 3, true)], '🔥', KINDS)
+    expect(result).toEqual([summary('🔥', 2, false)])
+  })
+
+  it('убирает эмодзи целиком, если реакция была только своя', () => {
+    expect(toggleReaction([summary('😂', 1, true)], '😂', KINDS)).toEqual([])
+  })
+
+  it('держит порядок как у сервера: популярные выше', () => {
+    const result = toggleReaction([summary('👏', 1), summary('🔥', 2)], '👏', KINDS)
+    // Счётчики сравнялись (2 и 2), а при равенстве порядок задаёт набор сервера —
+    // поэтому первым остаётся 🔥, хотя своя реакция стоит на 👏.
+    expect(result.map((item) => item.emoji)).toEqual(['🔥', '👏'])
+    const second = toggleReaction(result, '❤️', KINDS)
+    expect(second.map((item) => item.emoji)).toEqual(['🔥', '👏', '❤️'])
+  })
+
+  it('не трогает исходный массив (состояние стора неизменно до ответа)', () => {
+    const original = [summary('🔥', 1, true)]
+    toggleReaction(original, '🔥', KINDS)
+    expect(original).toEqual([summary('🔥', 1, true)])
+  })
+})
+
+describe('reactionTotal', () => {
+  it('складывает все реакции, а не число эмодзи', () => {
+    expect(reactionTotal([summary('❤️', 2), summary('🔥', 3)])).toBe(5)
+    expect(reactionTotal([])).toBe(0)
+  })
+})
+
+describe('quickReactions', () => {
+  it('берёт первые N из набора сервера', () => {
+    expect(quickReactions(KINDS, [], 2)).toEqual(['❤️', '🔥'])
+  })
+
+  it('добавляет эмодзи, которые уже стоят, даже вне быстрого ряда', () => {
+    const result = quickReactions(KINDS, [summary('👍', 1, true)], 2)
+    expect(result).toEqual(['❤️', '🔥', '👍'])
+  })
+
+  it('не дублирует эмодзи, если он уже в быстром ряду', () => {
+    expect(quickReactions(KINDS, [summary('❤️', 1, true)], 2)).toEqual(['❤️', '🔥'])
+  })
+})
+
+const author = (id: number, username = `u${id}`): StoryAuthor => ({
+  id,
+  username,
+  first_name: null,
+  last_name: null,
+  avatar_url: null
+})
+
+/** Аудитория истории: по умолчанию «все просмотры влезли в список».
+ *  Третий аргумент нужен, чтобы проверить случай «зрителей больше, чем имён». */
+const audienceOf = (
+  views: StoryAuthor[],
+  reactions: { emoji: string; users: StoryAuthor[] }[],
+  viewsTotal = views.length
+): StoryAudience => ({ views, views_total: viewsTotal, reactions })
+
+describe('audienceSections', () => {
+  it('сначала реакции, просмотры — последней секцией', () => {
+    const sections = audienceSections(
+      audienceOf([author(1)], [{ emoji: '🔥', users: [author(2), author(3)] }])
+    )
+    expect(sections.map((section) => section.key)).toEqual(['reaction:🔥', 'views'])
+    expect(sections[0].users).toHaveLength(2)
+    expect(sections[1].emoji).toBeNull()
+  })
+
+  it('не показывает пустые секции', () => {
+    const sections = audienceSections(
+      audienceOf(
+        [],
+        [
+          { emoji: '🔥', users: [] },
+          { emoji: '❤️', users: [author(2)] }
+        ]
+      )
+    )
+    expect(sections.map((section) => section.key)).toEqual(['reaction:❤️'])
+  })
+
+  it('пустая аудитория — пустой список', () => {
+    expect(audienceSections(audienceOf([], []))).toEqual([])
+  })
+})
+
+describe('audienceViewsHint', () => {
+  it('все просмотры влезли в список', () => {
+    expect(audienceViewsHint(3, 3)).toBe('Всего: 3 просмотра')
+  })
+
+  it('склоняет число просмотров', () => {
+    expect(audienceViewsHint(1, 1)).toBe('Всего: 1 просмотр')
+    expect(audienceViewsHint(5, 5)).toBe('Всего: 5 просмотров')
+    expect(audienceViewsHint(2, 2)).toBe('Всего: 2 просмотра')
+  })
+
+  it('честно говорит, что список неполный', () => {
+    expect(audienceViewsHint(100, 250)).toBe('Всего: 250 просмотров · показаны последние 100')
+  })
+
+  it('без просмотров', () => {
+    expect(audienceViewsHint(0, 0)).toBe('Всего: 0 просмотров')
   })
 })

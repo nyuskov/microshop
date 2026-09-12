@@ -182,6 +182,11 @@ class Settings(BaseSettings):
 
     # Истории (статусы): сколько часов живёт публикация до исчезновения.
     story_ttl_hours: int = 24
+    # Реакции и просмотры историй: каждый тап — запись в БД, поэтому лимит на
+    # аккаунт (без него реакции можно молотить скриптом). Просмотр — листание
+    # ленты, поэтому лимит выше реакции.
+    story_react_limit_per_minute: int = 60
+    story_view_limit_per_minute: int = 240
     max_avatar_size_bytes: int = 8 * 1024 * 1024
     # Как часто обновлять last_seen пользователя при активности (секунды).
     last_seen_update_seconds: int = 10

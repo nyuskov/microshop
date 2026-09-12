@@ -351,7 +351,7 @@ const publish = async () => {
 .mini-spinner {
   width: 12px;
   height: 12px;
-  border: 2px solid rgba(255, 255, 255, 0.5);
+  border: 2px solid color-mix(in srgb, var(--ms-on-accent) 50%, transparent);
   border-top-color: var(--ms-on-accent);
   border-radius: 50%;
   animation: story-spin 0.8s linear infinite;

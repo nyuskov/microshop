@@ -4,12 +4,16 @@ import { defineStore } from 'pinia'
 
 import {
   deleteStory,
+  FALLBACK_STORY_REACTIONS,
+  FALLBACK_STORY_REACTIONS_PRIMARY,
   fetchStories,
   publishStory,
+  reactToStory,
   viewStory,
   type StoryGroup
 } from '@/services/stories'
 import { getErrorMessage } from '@/services/errors'
+import { toggleReaction } from '@/utils/stories'
 
 interface StoriesState {
   groups: StoryGroup[]
@@ -18,6 +22,10 @@ interface StoriesState {
   loaded: boolean
   error: string
   publishing: boolean
+  /** Допустимые реакции: приходят с сервером, чтобы панель и API не разъезжались. */
+  reactionKinds: string[]
+  /** Сколько кнопок реакций показывать сразу. */
+  reactionsPrimary: number
 }
 
 export const useStoriesStore = defineStore('stories', {
@@ -26,7 +34,9 @@ export const useStoriesStore = defineStore('stories', {
     loading: false,
     loaded: false,
     error: '',
-    publishing: false
+    publishing: false,
+    reactionKinds: [...FALLBACK_STORY_REACTIONS],
+    reactionsPrimary: FALLBACK_STORY_REACTIONS_PRIMARY
   }),
 
   getters: {
@@ -46,7 +56,10 @@ export const useStoriesStore = defineStore('stories', {
       if (this.loading) return
       this.loading = true
       try {
-        this.groups = await fetchStories()
+        const feed = await fetchStories()
+        this.groups = feed.groups
+        this.reactionKinds = feed.reactionKinds
+        this.reactionsPrimary = feed.reactionsPrimary
         this.error = ''
         this.loaded = true
       } catch (error) {
@@ -84,6 +97,30 @@ export const useStoriesStore = defineStore('stories', {
         group.has_unseen = group.items.some((item) => !item.viewed)
       } catch {
         /* просмотр — не критично: при следующей загрузке ленты состояние уточнится */
+      }
+    },
+
+    /**
+     * Ставит или снимает реакцию на историю.
+     *
+     * Сначала меняем состояние локально (панель обязана отвечать мгновенно),
+     * затем уточняем сводку по ответу сервера; при ошибке возвращаем как было —
+     * так расхождение с сервером не залипает.
+     */
+    async react(storyId: number, emoji: string): Promise<void> {
+      const group = this.groups.find((item) => item.items.some((story) => story.id === storyId))
+      const story = group?.items.find((item) => item.id === storyId)
+      // На свою историю реакций не бывает (сервер её всё равно отклонит).
+      if (!story || group?.is_mine) return
+
+      const previous = story.reactions.map((item) => ({ ...item }))
+      story.reactions = toggleReaction(story.reactions, emoji, this.reactionKinds)
+      try {
+        const updated = await reactToStory(storyId, emoji)
+        story.reactions = updated.reactions
+      } catch (error) {
+        story.reactions = previous
+        this.error = getErrorMessage(error, 'Не удалось поставить реакцию')
       }
     },
 

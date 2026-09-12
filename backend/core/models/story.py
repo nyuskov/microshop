@@ -56,6 +56,44 @@ class Story(IdIntPkMixin, Base):
         back_populates="story",
         cascade="all, delete-orphan",
     )
+    reactions: Mapped[list["StoryReaction"]] = relationship(
+        back_populates="story",
+        cascade="all, delete-orphan",
+    )
+
+
+class StoryReaction(Base):
+    """Реакция зрителя на историю.
+
+    Один пользователь может поставить несколько *разных* эмодзи (как в Telegram),
+    а повторный тап по тому же эмодзи снимает его — за это отвечает уникальность
+    пары (story, user, emoji): дубля в БД не будет даже при повторе запроса.
+    Реакции удаляются вместе с историей (CASCADE).
+    """
+
+    __tablename__ = "story_reactions"
+    __table_args__ = (
+        UniqueConstraint(
+            "story_id",
+            "user_id",
+            "emoji",
+            name="uq_story_reactions_story_user_emoji",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    story_id: Mapped[int] = mapped_column(
+        ForeignKey("stories.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), index=True
+    )
+    emoji: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    story: Mapped["Story"] = relationship(back_populates="reactions")
 
 
 class StoryView(Base):

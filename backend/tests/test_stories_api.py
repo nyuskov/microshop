@@ -283,3 +283,264 @@ async def test_cleanup_removes_expired(api: _ApiCtx) -> None:
         await session.commit()
         assert await session.scalar(text("SELECT count(*) FROM stories")) == 0
         assert await session.scalar(text("SELECT count(*) FROM story_views")) == 0
+
+
+@pytest.mark.asyncio
+async def test_react_toggles_and_counts(api: _ApiCtx) -> None:
+    """Реакция ставится, а повторный вызов тем же эмодзи её снимает."""
+    author = await api.make_user()
+    viewer = await api.make_user()
+    story = (await api.publish(await api.token_for(author))).json()
+    viewer_token = await api.token_for(viewer)
+
+    first = await api.client.post(
+        f"/api/v1/stories/{story['id']}/react/",
+        json={"emoji": "🔥"},
+        headers=api.auth(viewer_token),
+    )
+    assert first.status_code == 200, first.text
+    reactions = first.json()["reactions"]
+    assert reactions == [{"emoji": "🔥", "count": 1, "mine": True}]
+
+    # Второй тап тем же эмодзи снимает реакцию и не оставляет мусора.
+    second = await api.client.post(
+        f"/api/v1/stories/{story['id']}/react/",
+        json={"emoji": "🔥"},
+        headers=api.auth(viewer_token),
+    )
+    assert second.status_code == 200, second.text
+    assert second.json()["reactions"] == []
+
+    async with api.factory() as session:
+        total = await session.scalar(text("SELECT count(*) FROM story_reactions"))
+    assert total == 0
+
+
+@pytest.mark.asyncio
+async def test_react_aggregates_for_author(api: _ApiCtx) -> None:
+    """Автор видит счётчики реакций, а `mine` — только у собственной реакции."""
+    author = await api.make_user()
+    first = await api.make_user()
+    second = await api.make_user()
+    story = (await api.publish(await api.token_for(author))).json()
+
+    for user, emoji in ((first, "❤️"), (second, "❤️"), (first, "😂")):
+        response = await api.client.post(
+            f"/api/v1/stories/{story['id']}/react/",
+            json={"emoji": emoji},
+            headers=api.auth(await api.token_for(user)),
+        )
+        assert response.status_code == 200, response.text
+
+    author_feed = await api.feed(await api.token_for(author))
+    reactions = author_feed[0]["items"][0]["reactions"]
+    # Сначала популярные эмодзи, внутри одинаковых счётчиков — порядок набора.
+    assert reactions == [
+        {"emoji": "❤️", "count": 2, "mine": False},
+        {"emoji": "😂", "count": 1, "mine": False},
+    ]
+
+    first_feed = await api.feed(await api.token_for(first))
+    mine = {
+        item["emoji"]: item["mine"] for item in first_feed[0]["items"][0]["reactions"]
+    }
+    assert mine == {"❤️": True, "😂": True}
+
+
+@pytest.mark.asyncio
+async def test_react_rules(api: _ApiCtx) -> None:
+    """Чужая история обязательна: мусор, свои истории и несуществующие — отказ."""
+    author = await api.make_user()
+    viewer = await api.make_user()
+    story = (await api.publish(await api.token_for(author))).json()
+    viewer_token = await api.token_for(viewer)
+
+    # Реакции вне набора отклоняем — в БД не должно попасть произвольной строки.
+    alien = await api.client.post(
+        f"/api/v1/stories/{story['id']}/react/",
+        json={"emoji": "🦄"},
+        headers=api.auth(viewer_token),
+    )
+    assert alien.status_code == 400
+
+    # На свою историю реагировать нельзя.
+    own = await api.client.post(
+        f"/api/v1/stories/{story['id']}/react/",
+        json={"emoji": "🔥"},
+        headers=api.auth(await api.token_for(author)),
+    )
+    assert own.status_code == 400
+
+    # Несуществующая история — 404.
+    missing = await api.client.post(
+        "/api/v1/stories/999999/react/",
+        json={"emoji": "🔥"},
+        headers=api.auth(viewer_token),
+    )
+    assert missing.status_code == 404
+
+    async with api.factory() as session:
+        total = await session.scalar(text("SELECT count(*) FROM story_reactions"))
+    assert total == 0
+
+
+@pytest.mark.asyncio
+async def test_feed_returns_reaction_kinds(api: _ApiCtx) -> None:
+    """Набор эмодзи отдаёт сервер — клиент рисует панель по его данным."""
+    viewer = await api.make_user()
+    response = await api.client.get(
+        "/api/v1/stories/", headers=api.auth(await api.token_for(viewer))
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+
+    from api_v1.stories.reactions import STORY_REACTION_KINDS, STORY_REACTIONS_PRIMARY
+
+    assert payload["reaction_kinds"] == list(STORY_REACTION_KINDS)
+    assert payload["reactions_primary"] == STORY_REACTIONS_PRIMARY
+    assert len(payload["reaction_kinds"]) > payload["reactions_primary"]
+
+
+@pytest.mark.asyncio
+async def test_reactions_removed_with_story(api: _ApiCtx) -> None:
+    """Реакции уходят вместе с историей (CASCADE), а не остаются сиротами."""
+    author = await api.make_user()
+    viewer = await api.make_user()
+    story = (await api.publish(await api.token_for(author))).json()
+
+    reacted = await api.client.post(
+        f"/api/v1/stories/{story['id']}/react/",
+        json={"emoji": "👍"},
+        headers=api.auth(await api.token_for(viewer)),
+    )
+    assert reacted.status_code == 200, reacted.text
+
+    removed = await api.client.delete(
+        f"/api/v1/stories/{story['id']}/", headers=api.auth(await api.token_for(author))
+    )
+    assert removed.status_code == 204
+
+    async with api.factory() as session:
+        assert await session.scalar(text("SELECT count(*) FROM story_reactions")) == 0
+
+
+@pytest.mark.asyncio
+async def test_audience_lists_viewers_and_reactions(api: _ApiCtx) -> None:
+    """Автор видит, кто смотрел и кто как отреагировал."""
+    author = await api.make_user()
+    viewer = await api.make_user()
+    story = (await api.publish(await api.token_for(author))).json()
+    viewer_token = await api.token_for(viewer)
+
+    await api.client.post(
+        f"/api/v1/stories/{story['id']}/view/", headers=api.auth(viewer_token)
+    )
+    await api.client.post(
+        f"/api/v1/stories/{story['id']}/react/",
+        json={"emoji": "🔥"},
+        headers=api.auth(viewer_token),
+    )
+
+    response = await api.client.get(
+        f"/api/v1/stories/{story['id']}/audience/",
+        headers=api.auth(await api.token_for(author)),
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+
+    assert payload["views_total"] == 1
+    assert [user["username"] for user in payload["views"]] == [viewer.username]
+    [group] = payload["reactions"]
+    assert group["emoji"] == "🔥"
+    assert [user["username"] for user in group["users"]] == [viewer.username]
+
+
+@pytest.mark.asyncio
+async def test_audience_private_to_author(api: _ApiCtx) -> None:
+    """Чужую аудиторию смотреть нельзя: список зрителей — персональные данные."""
+    author = await api.make_user()
+    viewer = await api.make_user()
+    story = (await api.publish(await api.token_for(author))).json()
+
+    alien = await api.client.get(
+        f"/api/v1/stories/{story['id']}/audience/",
+        headers=api.auth(await api.token_for(viewer)),
+    )
+    assert alien.status_code == 403
+
+    missing = await api.client.get(
+        "/api/v1/stories/999999/audience/",
+        headers=api.auth(await api.token_for(author)),
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_audience_counts_group_several_reactors(api: _ApiCtx) -> None:
+    """Один эмодзи от разных людей — одна группа со всеми именами."""
+    author = await api.make_user()
+    first = await api.make_user()
+    second = await api.make_user()
+    story = (await api.publish(await api.token_for(author))).json()
+
+    for user in (first, second):
+        await api.client.post(
+            f"/api/v1/stories/{story['id']}/react/",
+            json={"emoji": "❤️"},
+            headers=api.auth(await api.token_for(user)),
+        )
+
+    response = await api.client.get(
+        f"/api/v1/stories/{story['id']}/audience/",
+        headers=api.auth(await api.token_for(author)),
+    )
+    assert response.status_code == 200, response.text
+    [group] = response.json()["reactions"]
+    assert group["emoji"] == "❤️"
+    assert {user["username"] for user in group["users"]} == {
+        first.username,
+        second.username,
+    }
+
+
+@pytest.mark.asyncio
+async def test_stories_rate_limits(api: _ApiCtx) -> None:
+    """Реакции и просмотры ограничены по частоте (как остальные эндпоинты)."""
+    from api_v1.rate_limit import rate_limiter
+    from core.config import settings
+
+    author = await api.make_user()
+    viewer = await api.make_user()
+    story = (await api.publish(await api.token_for(author))).json()
+    viewer_token = await api.token_for(viewer)
+
+    # Лимит реакций: исчерпываем окно и проверяем, что дальше приходит 429.
+    rate_limiter.reset()
+    for _ in range(settings.story_react_limit_per_minute):
+        response = await api.client.post(
+            f"/api/v1/stories/{story['id']}/react/",
+            json={"emoji": "🔥"},
+            headers=api.auth(viewer_token),
+        )
+        assert response.status_code == 200, response.text
+
+    blocked = await api.client.post(
+        f"/api/v1/stories/{story['id']}/react/",
+        json={"emoji": "🔥"},
+        headers=api.auth(viewer_token),
+    )
+    assert blocked.status_code == 429
+
+    # Лимит просмотров — отдельный счётчик, реакция его не исчерпала.
+    rate_limiter.reset()
+    for _ in range(settings.story_view_limit_per_minute):
+        response = await api.client.post(
+            f"/api/v1/stories/{story['id']}/view/", headers=api.auth(viewer_token)
+        )
+        assert response.status_code == 200, response.text
+
+    blocked_view = await api.client.post(
+        f"/api/v1/stories/{story['id']}/view/", headers=api.auth(viewer_token)
+    )
+    assert blocked_view.status_code == 429
+    rate_limiter.reset()

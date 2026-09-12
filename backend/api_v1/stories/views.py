@@ -1,4 +1,4 @@
-"""API историй: лента, публикация, просмотр, удаление."""
+"""API историй: лента, публикация, просмотр, реакции, удаление."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api_v1.auth.utils import get_current_user
 from api_v1.media_quota import enforce_media_quota
 from api_v1.media_store import store_media
+from api_v1.rate_limit import enforce_limit
 from api_v1.upload_guard import (
     SAFE_IMAGE_EXTS,
     SAFE_MEDIA_EXTS,
@@ -18,7 +19,18 @@ from core.config import settings
 from core.models import User, db_helper
 
 from . import crud
-from .schemas import StoryFeed, StoryGroup, StoryItem
+from .reactions import (
+    STORY_REACTION_KINDS,
+    STORY_REACTIONS_PRIMARY,
+    is_allowed_reaction,
+)
+from .schemas import (
+    StoryAudience,
+    StoryFeed,
+    StoryGroup,
+    StoryItem,
+    StoryReactionIn,
+)
 
 router = APIRouter(prefix="/stories", tags=["Истории"])
 
@@ -35,7 +47,13 @@ async def get_feed(
 ) -> StoryFeed:
     """Лента историй: свои сверху, затем чужие (непросроченные)."""
     groups = await crud.feed(session, viewer_id=user.id)
-    return StoryFeed(groups=groups)
+    return StoryFeed(
+        groups=groups,
+        # Набор реакций отдаём вместе с лентой: панель на клиенте рисуется по
+        # данным сервера, поэтому списки эмодзи не могут разъехаться.
+        reaction_kinds=list(STORY_REACTION_KINDS),
+        reactions_primary=STORY_REACTIONS_PRIMARY,
+    )
 
 
 @router.post("/", response_model=StoryItem, status_code=status.HTTP_201_CREATED)
@@ -93,17 +111,55 @@ async def create_story(
         caption=caption.strip()[:255] or None,
     )
     await session.commit()
-    return StoryItem(
-        id=story.id,
-        media_url=story.media_url,
-        media_name=story.media_name,
-        mime_type=story.mime_type,
-        caption=story.caption,
-        created_at=story.created_at,
-        expires_at=story.expires_at,
-        viewed=False,
-        views=0,
+    return crud.build_item(story, viewed=False, views=0)
+
+
+@router.post("/{story_id}/react/", response_model=StoryItem)
+async def react_to_story(
+    story_id: int,
+    payload: StoryReactionIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> StoryItem:
+    """Ставит или снимает реакцию на чужую историю.
+
+    Один вызов — одно переключение: повторный тап тем же эмодзи снимает реакцию.
+    Состояние всегда возвращает сервер, поэтому клиенту не нужно угадывать
+    результат и не нужен отдельный «удалить реакцию».
+    """
+    if not is_allowed_reaction(payload.emoji):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Такой реакции нет в наборе",
+        )
+
+    # Каждый тап — запись в БД: без лимита реакции можно молотить скриптом.
+    await enforce_limit(
+        scope="stories:react",
+        value=str(user.id),
+        limit=settings.story_react_limit_per_minute,
+        window_seconds=60,
+        detail="Слишком много реакций за минуту. Попробуйте позже.",
     )
+
+    story = await crud.get_active_story(session, story_id)
+    if story is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="История не найдена"
+        )
+    if story.user_id == user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="На свою историю реагировать нельзя",
+        )
+
+    await crud.toggle_reaction(
+        session, story_id=story_id, user_id=user.id, emoji=payload.emoji
+    )
+    await session.commit()
+    # Сессии проекта живут с expire_on_commit=False, поэтому `story` не нужно
+    # перечитывать — но состояния (просмотры, реакции) считаем уже после коммита.
+    return await crud.story_item(session, story=story, viewer_id=user.id)
 
 
 @router.post("/{story_id}/view/", response_model=StoryGroup | None)
@@ -113,6 +169,13 @@ async def view_story(
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> StoryGroup | None:
     """Отмечает историю просмотренной и возвращает обновлённую группу автора."""
+    await enforce_limit(
+        scope="stories:view",
+        value=str(user.id),
+        limit=settings.story_view_limit_per_minute,
+        window_seconds=60,
+        detail="Слишком много просмотров за минуту. Попробуйте позже.",
+    )
     story = await crud.get_story(session, story_id)
     if story is None:
         raise HTTPException(
@@ -123,6 +186,30 @@ async def view_story(
         await session.commit()
     groups = await crud.feed(session, viewer_id=user.id)
     return next((group for group in groups if group.user.id == story.user_id), None)
+
+
+@router.get("/{story_id}/audience/", response_model=StoryAudience)
+async def story_audience(
+    story_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> StoryAudience:
+    """Кто смотрел историю и кто как отреагировал — видит только автор.
+
+    Список просмотревших — персональные данные зрителей, поэтому чужой истории
+    аудиторию не отдаём (403), а несуществующей/удалённой — 404.
+    """
+    story = await crud.get_story(session, story_id)
+    if story is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="История не найдена"
+        )
+    if story.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Аудитория видна только автору истории",
+        )
+    return await crud.audience(session, story=story)
 
 
 @router.delete("/{story_id}/", status_code=status.HTTP_204_NO_CONTENT)
