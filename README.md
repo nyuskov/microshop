@@ -874,8 +874,10 @@ docker exec -it microshop-db-1 psql -U postgres -d microshop
   (`api_v1/avatar_store.py`, Pillow) и отдаёт `avatar_thumb_url`; клиент перед
   загрузкой сжимает фото до 512px (`optimizeAvatarFile`); интерфейс берёт
   миниатюру (`avatarUrlOf`/`groupAvatarUrl`), оригинал — только для крупного
-  показа (`avatarFullUrlOf`). На каждый кружок в списке чатов уходит 1–2 КБ вместо
-  мегабайтов (замеры — в `docs/feed-performance.md`). Для уже загруженных
+  показа (`avatarFullUrlOf`). На кружок в списке чатов уходит миниатюра
+  вместо оригинала: на реальных аватарах прод-сервера 58–60 КБ → 2–5 КБ, на
+  лабораторном снимке 3000×2000 — 1.2 МБ → 1–2 КБ (замеры — в
+  `docs/feed-performance.md`). Для уже загруженных
   аватаров миниатюры досоздаёт `python -m scripts.make_avatar_thumbs --apply`.
 - **Галерея медиа**: `GET /messages/{chat_id}/media/` отдаёт вложения всей истории
   чата (фильтр `kind=image|video|audio|file`, пагинация `before_id`), а не только
