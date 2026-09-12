@@ -4046,6 +4046,11 @@ watch(
   left: 0;
   right: 0;
   height: var(--ms-vv-h, 100%);
+  /* Quasar (QLayout) вешает на этот же элемент ИНЛАЙНОВЫЙ
+     `min-height: window.innerHeight` — он про клавиатуру не знает и перебивал
+     высоту из --ms-vv-h: каркас оставался во весь экран, и поле ввода
+     оказывалось под клавиатурой. Высота задана явно, минимум не нужен. */
+  min-height: 0 !important;
   overflow: hidden;
   background: var(--ms-shell);
   font-family: var(--ms-font);
