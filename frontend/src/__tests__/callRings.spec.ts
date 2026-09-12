@@ -146,7 +146,6 @@ describe('звонок завершился на другом устройств
 
 describe('service worker', () => {
   const sw = readFileSync('public/sw.js', 'utf8')
-
   it('при открытом приложении не показывает системный «будильник» для звонка', () => {
     // Иначе во время уже идущего разговора телефон «звонит» второй раз.
     expect(sw).toContain('async function hasVisibleClient()')
@@ -160,5 +159,14 @@ describe('service worker', () => {
   it('обработчик push дожидается асинхронной проверки окна', () => {
     expect(sw).toContain('event.waitUntil(handlePush(event))')
     expect(sw).toContain('async function handlePush(event)')
+  })
+
+  it('тап по телу уведомления показывает экран звонка', () => {
+    // Приложение могло висеть в фоне так долго, что сигнальный канал отвалился:
+    // offer ждёт в парковке, и без экрана ожидания человек видел просто список
+    // чатов — звонок пропадал.
+    const view = readFileSync('src/views/Messenger.vue', 'utf8')
+    const handler = view.slice(view.indexOf("if (data.type === 'call-notification')"))
+    expect(handler).toContain("beginCallLaunch(callId, peerId, 'focus')")
   })
 })

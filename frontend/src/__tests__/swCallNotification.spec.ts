@@ -160,7 +160,7 @@ describe('service worker: кнопки уведомления о звонке', 
     harness = loadServiceWorker()
   })
 
-  it('в уведомлении о звонке две кнопки: «Ответить» и «Отклонить»', async () => {
+  it('в уведомлении о звонке одна кнопка — «Ответить»', async () => {
     const event = pushEvent({
       type: 'call',
       call_id: 'call-1',
@@ -172,9 +172,12 @@ describe('service worker: кнопки уведомления о звонке', 
 
     expect(harness.notifications).toHaveLength(1)
     expect(harness.notifications[0].options.actions).toEqual([
-      { action: 'answer', title: 'Ответить' },
-      { action: 'decline', title: 'Отклонить' }
+      { action: 'answer', title: 'Ответить' }
     ])
+    // Кнопки отказа намеренно нет: на Android нажатие на кнопку уведомления
+    // приходит как действие СОСЕДНЕЙ кнопки, и «Ответить» превращалось в отказ.
+    expect(JSON.stringify(harness.notifications[0].options.actions)).not.toContain('decline')
+    expect(harness.notifications[0].options.requireInteraction).toBe(true)
   })
 
   it('«Ответить» не отклоняет звонок, а отдаёт действие странице', async () => {
@@ -190,7 +193,9 @@ describe('service worker: кнопки уведомления о звонке', 
     expect(harness.opened).toEqual([])
   })
 
-  it('«Отклонить» отклоняет звонок и на сервере, и в приложении', async () => {
+  it('«Отклонить» из СТАРОГО уведомления (две кнопки) отклоняет звонок', async () => {
+    // Такую кнопку мы больше не показываем, но старые уведомления у людей на
+    // экранах ещё висят — их кнопка должна работать.
     const event = clickEvent('decline', { type: 'call', call_id: 'call-1', peer_id: 5 })
     harness.sw.notificationclick?.(event)
     await Promise.all(event.waits)

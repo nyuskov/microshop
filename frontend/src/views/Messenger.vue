@@ -4094,8 +4094,13 @@ const handleWindowMessage = (event: MessageEvent) => {
       } else if (callId && Number.isFinite(peerId) && peerId > 0) {
         callStore.declineCallTo(peerId, callId)
       }
+    } else if (callId && Number.isFinite(peerId) && peerId > 0 && callStore.status === 'idle') {
+      // Тап по телу уведомления (не по кнопке): показываем экран звонка.
+      // Приложение могло стоять в фоне так долго, что сигнальный канал отвалился
+      // и offer ждёт в парковке на сервере — без этого человек видел просто
+      // список чатов, а звонок пропадал.
+      beginCallLaunch(callId, peerId, 'focus')
     }
-    // data.action === 'focus' — окно просто вернули в фокус, оверлей звонка виден.
   }
 }
 
