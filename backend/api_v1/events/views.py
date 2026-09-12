@@ -14,7 +14,9 @@
 с обновлённым ``last_seen``.
 """
 
+import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -30,6 +32,18 @@ from .service import chat_member_ids, presence_peer_ids
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ws", tags=["Realtime"])
+
+#: Сколько ждём от клиента хоть какой-нибудь активности, прежде чем считать канал
+#: мёртвым. Браузер шлёт ``ping`` раз в 25 секунд (см. `stores/realtime.ts`), но в
+#: фоновой вкладке таймеры Chrome троттлятся до раза в минуту — поэтому запас.
+#:
+#: Без этого «человек вышел, а он ещё в сети»: если приложение убили или телефон
+#: уснул, сокет не закрывается чисто и сервер узнаёт об уходе только по таймауту
+#: прокси — а это минуты, и всё это время собеседник видит «в сети».
+WS_IDLE_TIMEOUT_SECONDS = 90
+#: Как часто обновлять ``last_seen`` по heartbeat (реже самого ping — в БД
+#: писать каждые 25 секунд незачем).
+WS_LAST_SEEN_TOUCH_SECONDS = 60
 
 
 async def _broadcast_presence(
@@ -97,9 +111,34 @@ async def websocket_events(websocket: WebSocket) -> None:
     await _broadcast_presence(peers, user.id, online=True, last_seen=current_last_seen)
 
     try:
-        # Сервер в основном пушит события; от клиента принимаем typing/typing-stop.
+        # Сервер в основном пушит события; от клиента принимаем typing/typing-stop,
+        # а также heartbeat (`ping`) и прощание (`bye`).
+        last_touch = 0.0
         while True:
-            data = await websocket.receive_json()
+            try:
+                data = await asyncio.wait_for(
+                    websocket.receive_json(), timeout=WS_IDLE_TIMEOUT_SECONDS
+                )
+            except asyncio.TimeoutError:
+                # Канал молчит: приложение закрыли/убили, сеть пропала или телефон
+                # уснул. Закрываем — дальше сработает блок «не в сети».
+                logger.info("Событийный канал %s молчит — закрываем", user.id)
+                await websocket.close(code=1000)
+                break
+            if isinstance(data, dict) and data.get("type") in ("ping", "pong"):
+                # Заодно освежаем время последней активности (собеседники видят
+                # его по `last_seen`, когда пользователь не в сети).
+                now = time.monotonic()
+                if now - last_touch >= WS_LAST_SEEN_TOUCH_SECONDS:
+                    last_touch = now
+                    async with db_helper.session_factory() as session:
+                        current = await get_user_by_id(session, user.id)
+                        if current is not None:
+                            await touch_last_seen(current, session)
+                continue
+            if isinstance(data, dict) and data.get("type") == "bye":
+                # Человек уходит со страницы: не ждём таймаута, сообщаем сразу.
+                break
             await _handle_client_event(user.id, data)
     except WebSocketDisconnect:
         logger.debug("Пользователь %s отключился от событийного канала", user.id)

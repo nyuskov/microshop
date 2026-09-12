@@ -493,6 +493,7 @@ import {
   type OutboxItem
 } from '@/utils/outbox'
 import { getErrorMessage, isChatGoneError, isNetworkError } from '@/services/errors'
+import { isCallStillPending } from '@/services/pendingCall'
 import { blockUser } from '@/services/moderation'
 import {
   fetchMessages,
@@ -2641,6 +2642,9 @@ const handleBeforeUnload = () => {
   // Сигнальный канал звонка закрываем сразу: у человека может быть несколько
   // устройств, и уходящая страница не должна получать сигналинг за него.
   callStore.detachSignaling()
+  // Сразу сообщаем, что уходим: иначе собеседник ещё минуту видит «в сети»,
+  // пока сервер не решит, что канал молчит (см. heartbeat в realtime-сторе).
+  realtimeStore.sayGoodbye()
 }
 
 /**
@@ -3202,9 +3206,13 @@ const callLaunchScreen = ref<CallLaunchScreen>('none')
 /** Нажали «Ответить» на экране ожидания — offer ещё не пришёл, ждём его. */
 const callLaunchAnswering = ref(false)
 let callLaunchTimer: ReturnType<typeof setTimeout> | undefined
+let callLaunchVerifyTimer: ReturnType<typeof setTimeout> | undefined
 // Ждём припаркованный offer: собеседник мог открыть приложение из push,
 // для этого нужно время на загрузку и подключение WebSocket.
 const CALL_LAUNCH_WAIT_MS = 25_000
+// Через сколько проверить у сервера, ждёт ли вызов ещё (см. verifyPendingCall).
+// Даём сигнальному каналу время подключиться и забрать offer из парковки.
+const CALL_LAUNCH_VERIFY_MS = 3000
 // Действие из push-уведомления, ожидающее доставки offer (см. watcher'ы ниже).
 let autoAnswerPending = false
 let autoDeclinePending = false
@@ -3231,13 +3239,43 @@ const stopCallLaunchScreen = () => {
     window.clearTimeout(callLaunchTimer)
     callLaunchTimer = undefined
   }
+  if (callLaunchVerifyTimer !== undefined) {
+    window.clearTimeout(callLaunchVerifyTimer)
+    callLaunchVerifyTimer = undefined
+  }
+}
+
+/**
+ * Проверяет, ждёт ли этот звонок ещё ответа.
+ *
+ * Экран «Входящий звонок…» открывается по уведомлению, пока вызов лежит в
+ * парковке на сервере. Уведомление может быть устаревшим: звонок давно
+ * отклонили, ответили на другом устройстве или зовущий его отменил. Тогда
+ * парковки уже нет — закрываем экран сразу, а не через 25 секунд ожидания.
+ */
+const verifyPendingCall = async (callId: string) => {
+  const pending = await isCallStillPending(callId)
+  // null — не знаем (нет сети): не мешаем человеку, работает обычное ожидание.
+  if (pending !== false) return
+  // Пока спрашивали, вызов мог дойти своим ходом — тогда экран уже не наш.
+  if (callStore.status !== 'idle') return
+  if (callLaunch.value?.callId !== callId) return
+  callLaunch.value = null
+  stopCallLaunchScreen()
+  callStore.notice = 'Звонок завершён'
 }
 
 const showCallLaunchRing = () => {
   if (!callLaunch.value) return
+  const launch = callLaunch.value
   callLaunchScreen.value = 'ring'
   // Звук с самого открытия, пока WS не доставит offer (дальше стор сам звонит).
   callStore.ringIncoming()
+  if (callLaunchVerifyTimer !== undefined) window.clearTimeout(callLaunchVerifyTimer)
+  callLaunchVerifyTimer = window.setTimeout(() => {
+    callLaunchVerifyTimer = undefined
+    void verifyPendingCall(launch.callId)
+  }, CALL_LAUNCH_VERIFY_MS)
   if (callLaunchTimer !== undefined) window.clearTimeout(callLaunchTimer)
   callLaunchTimer = window.setTimeout(() => {
     if (callLaunchScreen.value !== 'ring') return

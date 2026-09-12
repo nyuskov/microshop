@@ -18,7 +18,7 @@
  */
 
 const CACHE_PREFIX = 'pismo-v'
-const CACHE_VERSION = 19
+const CACHE_VERSION = 20
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 // Кэш медиа живёт отдельно: обновление версии приложения не сбрасывает картинки.
 const MEDIA_CACHE_PREFIX = 'pismo-media-v'
@@ -201,6 +201,25 @@ async function closeCallNotifications(callId) {
   }
 }
 
+/**
+ * Закрывает уведомления о ДРУГИХ звонках, оставляя текущий.
+ *
+ * Каждый звонок показывает своё уведомление (`tag` = `call-<id>`), а уведомление
+ * входящего вызова само с экрана не уходит (`requireInteraction`). За несколько
+ * звонков на экране копилась стопка: кнопки в старых уведомлениях относились к
+ * уже завершённым вызовам — «нажимаю, а ничего не работает». Новый звонок делает
+ * прошлые бессмысленными, поэтому закрываем их.
+ */
+async function closeOtherCallNotifications(keepTag) {
+  const notifications = await self.registration.getNotifications()
+  for (const notification of notifications) {
+    const tag = notification.tag || ''
+    if (!tag.startsWith('call-')) continue
+    if (keepTag && tag === keepTag) continue
+    notification.close()
+  }
+}
+
 /** Абсолютный адрес картинки уведомления (аватар приходит путём `/media/...`). */
 function absoluteUrl(path) {
   try {
@@ -268,6 +287,9 @@ async function handlePush(event) {
     // ответить. Ответить можно отсюда, отклонить — в приложении, а
     // проигнорированное уведомление — обычный пропущенный звонок.
     options.actions = [{ action: 'answer', title: 'Ответить' }]
+    // Прошлые звонки уже не звонят: их уведомления с экрана убираем, иначе они
+    // копятся, а кнопки в них ничего не делают.
+    await closeOtherCallNotifications(options.tag)
   } else if (data.type === 'message' && chatId) {
     // Кнопка «Ответить» открывает чат и ставит курсор в поле ввода: в вебе
     // набрать текст прямо в уведомлении нельзя (такого API нет), поэтому

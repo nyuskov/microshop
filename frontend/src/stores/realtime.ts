@@ -41,7 +41,17 @@ export type RealtimeEvent =
 let socket: WebSocket | null = null
 let eventHandler: ((event: RealtimeEvent) => void) | null = null
 let reconnectTimer: number | null = null
+let heartbeatTimer: number | null = null
 let manualClose = false
+
+/**
+ * Как часто напоминаем серверу, что мы живы.
+ *
+ * Без этого «вышел, а он ещё в сети»: если приложение убили или телефон уснул,
+ * сокет не закрывается чисто, и сервер считает человека онлайн до таймаута прокси
+ * (минуты). Сервер закрывает молчащий канал сам (см. `WS_IDLE_TIMEOUT_SECONDS`).
+ */
+const HEARTBEAT_MS = 25_000
 
 function socketUrl(token: string): string {
   return `${WS_ORIGIN}${WS_PATH}?token=${encodeURIComponent(token)}`
@@ -73,6 +83,7 @@ export const useRealtimeStore = defineStore('realtime', {
       socket = new WebSocket(socketUrl(token))
       socket.onopen = () => {
         this.connected = true
+        this.startHeartbeat()
       }
       socket.onmessage = (event) => {
         try {
@@ -88,9 +99,36 @@ export const useRealtimeStore = defineStore('realtime', {
       socket.onclose = () => {
         this.connected = false
         socket = null
+        this.stopHeartbeat()
         if (!manualClose) this.scheduleReconnect()
       }
       return this.waitForOpen()
+    },
+
+    /** Пока канал открыт — шлём `ping`, чтобы сервер видел нас живыми. */
+    startHeartbeat() {
+      this.stopHeartbeat()
+      heartbeatTimer = window.setInterval(() => {
+        this.send({ type: 'ping' })
+      }, HEARTBEAT_MS)
+    },
+
+    stopHeartbeat() {
+      if (heartbeatTimer !== null) {
+        window.clearInterval(heartbeatTimer)
+        heartbeatTimer = null
+      }
+    },
+
+    /**
+     * Прощается с сервером перед уходом со страницы.
+     *
+     * Закрытие вкладки и так даёт разрыв сокета, но при сворачивании/убийстве
+     * приложения браузер об этом не сообщает: собеседник видел бы «в сети»,
+     * пока не сработает heartbeat-таймаут.
+     */
+    sayGoodbye() {
+      this.send({ type: 'bye' })
     },
 
     disconnect() {
@@ -99,6 +137,7 @@ export const useRealtimeStore = defineStore('realtime', {
         window.clearTimeout(reconnectTimer)
         reconnectTimer = null
       }
+      this.stopHeartbeat()
       if (socket) {
         socket.onclose = null
         socket.close()

@@ -61,6 +61,24 @@ class CallDeclineRequest(BaseModel):
     to_user_id: int
 
 
+@router_rest.get("/pending/")
+async def pending_call(
+    call_id: str = "",
+    user: User = Depends(get_current_user),
+) -> dict[str, bool]:
+    """Ждёт ли ещё этого человека входящий вызов (он в парковке).
+
+    Нужно экрану «Входящий звонок…», который открывается из уведомления, пока
+    сигнальный канал ещё не поднялся (см. ``park_offer``). Уведомление может быть
+    устаревшим: звонок давно отклонили, приняли на другом устройстве или зовущий
+    отменил вызов — тогда ждать ответа нечего, и экран должен закрыться сразу, а
+    не показывать «Входящий звонок…» до таймаута.
+    """
+    if not call_id:
+        return {"pending": False}
+    return {"pending": await call_manager.has_pending_offer(user.id, call_id)}
+
+
 @router_rest.post("/decline/")
 async def decline_call(
     payload: CallDeclineRequest,
