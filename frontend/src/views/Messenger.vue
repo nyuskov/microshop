@@ -527,6 +527,7 @@ import { useRealtimeSync } from '@/composables/useRealtimeSync'
 import { useRecordButton } from '@/composables/useRecordButton'
 import { useCallSession } from '@/composables/useCallSession'
 import { useChatNavigation } from '@/composables/useChatNavigation'
+import { useForward } from '@/composables/useForward'
 import { useLightbox } from '@/composables/useLightbox'
 import ChatSidebar from '@/components/messenger/ChatSidebar.vue'
 import ChatHeader from '@/components/messenger/ChatHeader.vue'
@@ -2339,9 +2340,7 @@ const bulkForwardMessages = () => {
   const sources = selectedMessagesOf().filter((m) => m.kind !== 'call')
   if (sources.length === 0) return
   exitMessageSelection()
-  cancelEditing()
-  closePopups()
-  forwardSource.value = sources
+  openForward(sources)
 }
 
 /** Сохранить все выбранные в «Сохранённые сообщения» (self-чат). */
@@ -2407,10 +2406,6 @@ const openForwarderChat = async (message: Message) => {
 
 // ---------- Редактирование / пересылка ----------
 const editingMessage = ref<Message | null>(null)
-/** Пересылаемое сообщение (одно) или список; пока не null — открыт диалог. */
-const forwardSource = ref<Message | Message[] | null>(null)
-/** Идёт ли отправка пересылок (блокирует кнопки диалога). */
-const forwardBusy = ref(false)
 
 // ---------- Черновики сообщений (автосохранение текста при смене чата) ----------
 // Ключ `userId:chatId` — черновики не «перетекают» между аккаунтами устройства.
@@ -2715,47 +2710,26 @@ const cancelEditing = () => {
   newMessage.value = ''
 }
 
-/** Открывает диалог «Переслать»: пользователь сам выбирает чаты списком. */
-const openForward = (message: Message) => {
-  cancelEditing()
-  closePopups()
-  forwardSource.value = message
-}
-
-const cancelForward = () => {
-  forwardSource.value = null
-  forwardBusy.value = false
-}
-
-/** Пересылает одно/несколько сообщений в выбранные чаты. */
-const sendForward = async (chatIds: number[]) => {
-  const value = forwardSource.value
-  const sources = value ? (Array.isArray(value) ? value : [value]) : []
-  if (sources.length === 0 || chatIds.length === 0) return
-  forwardBusy.value = true
-  try {
-    for (const targetChatId of chatIds) {
-      for (const source of sources) {
-        const sent = await forwardMessage(source.id, targetChatId)
-        if (selectedChatId.value === targetChatId) {
-          messages.value = appendMessage(messages.value, sent)
-        }
-      }
-      sendTypingStop(targetChatId)
-      if (selectedChatId.value === targetChatId) {
-        await loadPinned(targetChatId)
-      }
-    }
-    // Обновляем список: пересланные чаты поднимутся наверх с новым превью.
-    await loadChats()
-    cancelForward()
-  } catch (error) {
-    console.error('Не удалось переслать сообщения:', getErrorMessage(error))
-    cancelForward()
-  } finally {
-    forwardBusy.value = false
+// Пересылка: выбор чатов, отправка и состояние диалога — в useForward.
+const {
+  source: forwardSource,
+  busy: forwardBusy,
+  open: openForward,
+  cancel: cancelForward,
+  send: sendForward
+} = useForward({
+  selectedChatId: () => selectedChatId.value,
+  appendToThread: (message) => {
+    messages.value = appendMessage(messages.value, message)
+  },
+  loadPinned: (chatId) => loadPinned(chatId),
+  refreshChats: () => loadChats(),
+  stopTyping: (chatId) => sendTypingStop(chatId),
+  prepare: () => {
+    cancelEditing()
+    closePopups()
   }
-}
+})
 
 const deleteMessageOf = async (message: Message) => {
   if (!window.confirm('Удалить это сообщение?')) return
