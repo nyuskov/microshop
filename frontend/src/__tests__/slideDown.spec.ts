@@ -128,6 +128,7 @@ describe('раскрытие слайдом вниз', () => {
 
 describe('панели списка чатов', () => {
   const sidebar = readFileSync('src/components/messenger/ChatSidebar.vue', 'utf8')
+  const header = readFileSync('src/components/messenger/SidebarHeader.vue', 'utf8')
 
   it('поиск и истории раскрываются переходами на общих хуках', () => {
     // Поиск — обычный слайд, истории — усиленный (они раскрываются вторым шагом).
@@ -190,8 +191,10 @@ describe('панели списка чатов', () => {
   })
 
   it('панель открывается и закрывается значком в шапке, стрелки «назад» нет', () => {
-    expect(sidebar).toContain('@click="toggleSearch"')
+    expect(sidebar).toContain('@toggle-search="toggleSearch"')
+    expect(header).toContain('@click="emit(\'toggle-search\')"')
     expect(sidebar).not.toContain('search-back')
+    expect(header).not.toContain('search-back')
   })
 
   it('протяжка списка вниз раскрывает и поиск, и истории', () => {

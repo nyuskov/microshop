@@ -1,134 +1,33 @@
 <template>
-  <aside ref="rootEl" class="side-panel ms-rows">
-    <!-- Разделы переключаются нижним меню, поэтому шапка одна на все вкладки:
-         сверху остаются только действия, которых в нижнем меню нет. -->
-    <!-- Режим выделения чатов (вход по удержанию) -->
-    <div v-if="selectionMode" class="selection-bar">
-      <button class="icon-btn" title="Отмена" @click="exitSelection">
-        <q-icon :name="icon('close')" size="20px" />
-      </button>
-      <span class="selection-count">{{ selectedIds.length }}</span>
-      <div class="selection-actions">
-        <button
-          class="icon-btn"
-          :class="{ on: selectionAllMuted }"
-          :title="selectionAllMuted ? 'Включить уведомления' : 'Замьютить выбранные'"
-          aria-label="Мьют/анмьют выбранных"
-          @click="onBulkMute"
-        >
-          <q-icon
-            :name="icon(selectionAllMuted ? 'notifications' : 'notifications_off')"
-            size="20px"
-          />
-        </button>
-        <button
-          class="icon-btn"
-          :class="{ on: selectionAllPinned }"
-          :title="selectionAllPinned ? 'Открепить выбранные' : 'Закрепить выбранные'"
-          aria-label="Пин/анпин выбранных"
-          @click="onBulkPin"
-        >
-          <q-icon :name="icon('push_pin')" size="20px" />
-        </button>
-        <button
-          class="icon-btn danger"
-          title="Удалить выбранные"
-          aria-label="Удалить выбранные"
-          @click="onBulkDelete"
-        >
-          <q-icon :name="icon('delete')" size="20px" />
-        </button>
-        <button
-          class="icon-btn"
-          :class="{ on: allVisibleSelected }"
-          title="Выбрать все"
-          aria-label="Выбрать все"
-          @click="toggleSelectAll"
-        >
-          <q-icon :name="icon('done_all')" size="20px" />
-        </button>
-      </div>
-    </div>
-
-    <div v-else class="panel-header">
-      <!-- Значок приложения в углу шапки (как иконка мессенджера). -->
-      <!-- <span class="app-mark" aria-hidden="true">
-        <img src="/favicon.svg" alt="" width="34" height="34" />
-      </span> -->
-
-      <!-- Истории: сжатый ряд кружков рядом со значком приложения. Кликабельность
-           видна по зелёному ореолу, нажатие раскрывает полосу под шапкой;
-           в раскрытом состоянии кружок подсвечен. -->
-      <StoriesStrip
-        v-if="view === 'chats'"
-        mini
-        :expanded="storiesExpanded"
-        @toggle-expand="toggleStoriesExpand"
-        @open-story="emit('open-story', $event)"
-      />
-
-      <div class="panel-header-right">
-        <button
-          v-if="view === 'chats'"
-          class="icon-btn"
-          :class="{ open: searchOpen }"
-          :title="searchOpen ? 'Закрыть поиск' : 'Поиск'"
-          :aria-label="searchOpen ? 'Закрыть поиск' : 'Поиск'"
-          @click="toggleSearch"
-        >
-          <q-icon :name="icon('search')" size="20px" />
-        </button>
-        <button
-          v-if="view === 'contacts'"
-          class="icon-btn"
-          title="Добавить из контактов телефона"
-          aria-label="Добавить из контактов телефона"
-          @click="onAddFromPhone"
-        >
-          <q-icon :name="icon('contacts')" size="20px" />
-        </button>
-        <span ref="menuWrapEl" class="ms-dropdown-wrap" @click.stop>
-          <button
-            class="icon-btn"
-            :class="{ open: settingsMenuOpen }"
-            title="Ещё"
-            aria-label="Ещё"
-            @click="toggleSettingsMenu"
-          >
-            <q-icon :name="icon('more_vert')" size="20px" />
-          </button>
-          <div v-if="settingsMenuOpen" class="ms-dropdown">
-            <button
-              v-for="action in SETTINGS_ACTIONS"
-              :key="action.key"
-              class="ms-dropdown-item"
-              @click="runSettingsAction(action)"
-            >
-              <q-icon :name="icon(action.icon)" size="19px" />
-              <span>{{ action.label }}</span>
-            </button>
-          </div>
-        </span>
-        <button
-          class="self-profile-btn"
-          title="Настройки профиля"
-          aria-label="Настройки профиля"
-          @click="emit('open-profile')"
-        >
-          <span class="avatar self-avatar" :style="avatarStyle(selfName)">
-            <img
-              v-if="selfAvatarUrl"
-              :src="selfAvatarUrl"
-              class="avatar-img"
-              alt=""
-              loading="lazy"
-              decoding="async"
-            />
-            <template v-else>{{ selfName ? initials(selfName) : 'U' }}</template>
-          </span>
-        </button>
-      </div>
-    </div>
+  <aside class="side-panel ms-rows">
+    <!-- Шапка панели (обычный режим и режим выделения чатов — в SidebarHeader.vue) -->
+    <SidebarHeader
+      :selection-mode="selectionMode"
+      :selected-count="selectedIds.length"
+      :selection-all-muted="selectionAllMuted"
+      :selection-all-pinned="selectionAllPinned"
+      :all-visible-selected="allVisibleSelected"
+      :view="view"
+      :expanded="storiesExpanded"
+      :search-open="searchOpen"
+      :self-name="selfName"
+      :self-avatar-url="selfAvatarUrl"
+      :is-admin="isAdmin"
+      @exit-selection="exitSelection"
+      @bulk-mute="onBulkMute"
+      @bulk-pin="onBulkPin"
+      @bulk-delete="onBulkDelete"
+      @toggle-select-all="toggleSelectAll"
+      @toggle-stories-expand="toggleStoriesExpand"
+      @open-story="emit('open-story', $event)"
+      @toggle-search="toggleSearch"
+      @add-from-phone="onAddFromPhone"
+      @open-profile="emit('open-profile')"
+      @create-group="emit('create-group')"
+      @create-channel="emit('create-channel')"
+      @open-blocked="emit('open-blocked')"
+      @open-reports="emit('open-reports')"
+    />
 
     <!-- Истории и поиск под шапкой. Порядок как в Telegram: первой выезжает
          полоса историй (она раскрывается «сильнее» — вторым шагом), ниже неё
@@ -246,40 +145,15 @@
       </div>
     </Transition>
 
-    <!-- Нижняя навигация: основные разделы приложения -->
-    <nav class="bottom-nav" aria-label="Разделы">
-      <button
-        class="bottom-nav-btn"
-        :class="{ active: view === 'chats' }"
-        type="button"
-        @click="emit('to-chats')"
-      >
-        <q-icon :name="icon('forum')" size="22px" />
-        <span>Чаты</span>
-        <span v-if="unreadCount" class="bottom-nav-badge">{{
-          unreadCount > 99 ? '99+' : unreadCount
-        }}</span>
-      </button>
-      <button
-        class="bottom-nav-btn"
-        :class="{ active: view === 'stories' }"
-        type="button"
-        @click="emit('to-stories')"
-      >
-        <q-icon :name="icon('auto_stories')" size="22px" />
-        <span>Истории</span>
-        <span v-if="storiesStore.hasUnseen" class="bottom-nav-dot"></span>
-      </button>
-      <button
-        class="bottom-nav-btn"
-        :class="{ active: view === 'contacts' }"
-        type="button"
-        @click="emit('to-contacts')"
-      >
-        <q-icon :name="icon('group')" size="22px" />
-        <span>Контакты</span>
-      </button>
-    </nav>
+    <!-- Нижняя навигация: основные разделы приложения (в SidebarBottomNav.vue) -->
+    <SidebarBottomNav
+      :view="view"
+      :unread-count="unreadCount"
+      :has-unseen-stories="storiesStore.hasUnseen"
+      @to-chats="emit('to-chats')"
+      @to-stories="emit('to-stories')"
+      @to-contacts="emit('to-contacts')"
+    />
 
     <!-- Личное имя контакта: добавление / переименование / удаление -->
     <ContactNameDialog
@@ -309,6 +183,8 @@ import { icon } from '@/utils/icons'
 import { useStoriesStore } from '@/stores/stories'
 import StoriesFeed from '@/components/stories/StoriesFeed.vue'
 import StoriesStrip from '@/components/stories/StoriesStrip.vue'
+import SidebarHeader from '@/components/messenger/SidebarHeader.vue'
+import SidebarBottomNav from '@/components/messenger/SidebarBottomNav.vue'
 import ContactNameDialog from '@/components/messenger/ContactNameDialog.vue'
 import PhoneImportDialog from '@/components/messenger/PhoneImportDialog.vue'
 import ChatList from '@/components/messenger/ChatList.vue'
@@ -316,7 +192,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch 
 import { getErrorMessage } from '@/services/errors'
 import { openPrivateChat, type SearchUserResult } from '@/services/chatService'
 import type { Chat, ChatUser, Message } from '@/types'
-import { avatarStyle, initials, isGroupChat } from '@/utils/user'
+import { isGroupChat } from '@/utils/user'
 import { useChatSelection } from '@/composables/useChatSelection'
 import { usePhoneImport } from '@/composables/usePhoneImport'
 import { useSlideDown } from '@/composables/useSlideDown'
@@ -389,24 +265,6 @@ const emit = defineEmits<{
   /** Открыть разбор жалоб (только администраторы). */
   (e: 'open-reports'): void
 }>()
-
-/** Пункт меню «⋯»: иконка Material + подпись. */
-interface SettingsAction {
-  key: 'group' | 'channel' | 'blocked' | 'reports'
-  label: string
-  icon: string
-}
-
-// Пункты верхнего меню «⋯»; «Жалобы» видят только администраторы.
-const SETTINGS_ACTIONS = computed<SettingsAction[]>(() => {
-  const items: SettingsAction[] = [
-    { key: 'group', label: 'Новая группа', icon: 'group_add' },
-    { key: 'channel', label: 'Новый канал', icon: 'campaign' },
-    { key: 'blocked', label: 'Заблокированные', icon: 'block' }
-  ]
-  if (props.isAdmin) items.push({ key: 'reports', label: 'Жалобы', icon: 'flag' })
-  return items
-})
 
 /**
  * Истории: в шапке лежат сжатые кружки, а сама полоса раскрывается под шапкой.
@@ -514,29 +372,6 @@ const onListTouchMove = (event: TouchEvent, el: HTMLElement) => {
 // узнаём по смене раздела/режима поиска). Объявление — ниже, рядом с поиском.
 onBeforeUnmount(() => {
   if (storiesRaf) cancelAnimationFrame(storiesRaf)
-})
-const rootEl = ref<HTMLElement | null>(null)
-/** Обёртка меню «⋯» (кнопка + выпадающий список) — по ней считаем «клик мимо». */
-const menuWrapEl = ref<HTMLElement | null>(null)
-const settingsMenuOpen = ref(false)
-// Тап/клик мимо меню закрывает «⋯».
-//
-// ВАЖНО: «мимо» считаем относительно самого меню, а не всей панели: на телефоне
-// панель занимает весь экран, и тап «в сторону» попадал ВНУТРЬ панели — меню
-// не закрывалось (выглядело как «залипло»).
-let outsideHandler: ((event: PointerEvent) => void) | null = null
-watch(settingsMenuOpen, (open) => {
-  if (outsideHandler) {
-    document.removeEventListener('pointerdown', outsideHandler)
-    outsideHandler = null
-  }
-  if (open) {
-    outsideHandler = (event: PointerEvent) => {
-      const wrap = menuWrapEl.value
-      if (wrap && !wrap.contains(event.target as Node)) settingsMenuOpen.value = false
-    }
-    document.addEventListener('pointerdown', outsideHandler)
-  }
 })
 
 // Поиск живёт в своём композабле (запрос, режим, результаты, задержка, ошибка) —
@@ -687,18 +522,6 @@ const orderedChats = computed<Chat[]>(() => {
   return [...self, ...top, ...rest]
 })
 
-const toggleSettingsMenu = () => {
-  settingsMenuOpen.value = !settingsMenuOpen.value
-}
-
-const runSettingsAction = (action: SettingsAction) => {
-  settingsMenuOpen.value = false
-  if (action.key === 'group') emit('create-group')
-  if (action.key === 'channel') emit('create-channel')
-  if (action.key === 'blocked') emit('open-blocked')
-  if (action.key === 'reports') emit('open-reports')
-}
-
 const searchOpen = ref(false)
 
 /**
@@ -720,7 +543,6 @@ watch([() => props.view, searchActive], () => {
 
 /** Показать поле поиска, не забирая фокус (протяжка списка вниз, как истории). */
 const revealSearch = () => {
-  settingsMenuOpen.value = false
   searchOpen.value = true
 }
 
@@ -748,7 +570,6 @@ const closeSearch = () => {
 }
 
 const selectChat = (chatId: number) => {
-  settingsMenuOpen.value = false
   emit('select-chat', chatId)
 }
 
@@ -758,7 +579,6 @@ const openChatWithUser = async (user: SearchUserResult) => {
   try {
     const chat = await openPrivateChat(user.id)
     closeSearch()
-    settingsMenuOpen.value = false
     emit('chat-opened', chat)
   } catch (error) {
     setSearchError(getErrorMessage(error, 'Не удалось начать переписку'))
@@ -768,7 +588,6 @@ const openChatWithUser = async (user: SearchUserResult) => {
 /** Переход к найденному сообщению в его чате. */
 const openMessageResult = (message: Message) => {
   closeSearch()
-  settingsMenuOpen.value = false
   emit('open-message', message.chat_id, message.id)
 }
 
@@ -777,7 +596,6 @@ const openChatWithContact = async (contact: SearchUserResult) => {
   setSearchError('')
   try {
     const chat = await openPrivateChat(contact.id)
-    settingsMenuOpen.value = false
     emit('chat-opened', chat)
   } catch (error) {
     // Ошибку показывает разметка вкладки «Чаты» (как в исходном Messenger).
@@ -802,17 +620,9 @@ const {
   openPhoneMatch
 } = usePhoneImport({ openChat: (user) => openChatWithContact(user) })
 
-// Закрываем «⋯» и глобальный поиск при смене вкладки или выбранного чата извне.
+// Закрываем глобальный поиск при смене вкладки или выбранного чата извне.
 watch([() => props.view, () => props.selectedChatId], () => {
-  settingsMenuOpen.value = false
   if (searchOpen.value) closeSearch()
-})
-
-onBeforeUnmount(() => {
-  if (outsideHandler) {
-    document.removeEventListener('pointerdown', outsideHandler)
-    outsideHandler = null
-  }
 })
 </script>
 
@@ -837,34 +647,6 @@ onBeforeUnmount(() => {
   font-size: 12px;
   padding: 6px 14px;
   background: var(--ms-danger-bg);
-}
-
-/* ---------- Заголовки панелей ---------- */
-.panel-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px 4px;
-  background: var(--ms-surface);
-}
-
-/* Значок приложения в углу шапки: тот же размер, что у аватара профиля. */
-.app-mark {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-}
-
-.app-mark img {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  /* Круг гарантирован: clip-path не зависит от overflow у родителя. */
-  clip-path: circle(50%);
 }
 
 /* Плавная смена разделов нижнего меню. */
@@ -897,48 +679,6 @@ onBeforeUnmount(() => {
   .section-leave-active {
     transition: none;
   }
-}
-
-.panel-header-right {
-  display: flex;
-  gap: 2px;
-  /* Правая группа иконок прижата к краю: слева — значок приложения и истории. */
-  margin-left: auto;
-}
-
-/* Кнопка «Профиль»: вместо иконки показываем мини-аватар пользователя.
-   Размер — как у иконки «Информация о чате» в шапке чата (40px). */
-.self-profile-btn {
-  background: none;
-  border: none;
-  padding: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.self-profile-btn:hover {
-  background: var(--ms-hover, #f2f4f6);
-}
-
-/* Размер задаём через родителя: собственное правило `.self-avatar` имеет ту же
-   специфичность, что и `.ms-rows .avatar` из assets/rows.css, и при переносе
-   общих стилей проиграло бы ему по порядку подключения — значок профиля
-   раздувался до размера аватара строки чата (46px).
-   padding-top — оптическая центровка: прописные инициалы без строчных букв
-   сидят выше центра, потому что строка центрируется с запасом под выносные
-   элементы. Сдвиг равен отступу (box-sizing — чтобы круг остался 40px). */
-.self-profile-btn .self-avatar {
-  box-sizing: border-box;
-  width: 40px;
-  height: 40px;
-  padding-top: 2px;
-  font-size: 0.9rem;
 }
 
 /* Поле поиска под шапкой: боковые отступы как у обычного поля, высоту задаёт
@@ -1079,178 +819,5 @@ onBeforeUnmount(() => {
   font-size: 0.85rem;
   color: var(--ms-tick);
   flex-shrink: 0;
-}
-
-/* Заглушка списка: «Контактов пока нет» и т. п.
-   (`.search-status` и `.people-results` - в assets/rows.css: их делят список чатов,
-   поиск и контакты.) */
-/* Dropdown-меню «⋯» */
-.ms-dropdown-wrap {
-  position: relative;
-  display: inline-flex;
-}
-
-.ms-dropdown {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  min-width: 200px;
-  background: var(--ms-surface);
-  border: 1px solid var(--ms-border);
-  border-radius: 12px;
-  box-shadow: var(--ms-shadow-pop);
-  padding: 6px;
-  z-index: 120;
-  display: flex;
-  flex-direction: column;
-}
-
-.ms-dropdown-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  border: none;
-  background: transparent;
-  padding: 9px 12px;
-  border-radius: 9px;
-  cursor: pointer;
-  text-align: left;
-  font-size: 14px;
-  font-family: inherit;
-  color: var(--ms-text);
-  white-space: nowrap;
-}
-
-.ms-dropdown-item:hover {
-  background: var(--ms-hover);
-}
-
-.ms-dropdown-item i {
-  width: 18px;
-  text-align: center;
-  font-size: 1rem;
-  color: var(--ms-icon-2);
-}
-
-.ms-dropdown-item .q-icon {
-  width: 18px;
-  text-align: center;
-  color: var(--ms-icon-2);
-}
-
-/* Нижний отступ до «плавающей» панели разделов (safe-area учтён в ней). */
-
-/* ---------- Режим выделения чатов (вход по удержанию) ---------- */
-.selection-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--ms-border, #e2e6ea);
-  background: var(--ms-surface, #ffffff);
-}
-
-.selection-count {
-  flex: 1;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--ms-text, #141d26);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.selection-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.selection-actions .icon-btn.danger {
-  color: var(--ms-danger, #d64545);
-}
-/* ---------- Нижняя навигация (чаты / истории / контакты) ---------- */
-/* «Плавающая» панель разделов: отступ от краёв экрана, радиус, рамка и мягкая
-   тень. Тон панели отличается от полотна, рамка полноцветная (не полупрозрачная),
-   тень даёт «подъём» — иначе панель выглядит бледной и непонятно, где границы. */
-.bottom-nav {
-  display: flex;
-  align-items: stretch;
-  margin: 0 8px calc(8px + env(safe-area-inset-bottom, 0px));
-  border-radius: 18px;
-  border: 1px solid var(--ms-border);
-  background: var(--ms-surface-2);
-  box-shadow: var(--ms-shadow-float);
-  overflow: hidden;
-}
-
-.bottom-nav-btn {
-  position: relative;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 7px 0 8px;
-  border: none;
-  background: transparent;
-  color: var(--ms-muted);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.2px;
-  cursor: pointer;
-  transition: color 0.16s ease;
-}
-
-/* Активная вкладка — только цветом: фон/подложка здесь лишние. */
-.bottom-nav-btn.active {
-  color: var(--ms-accent);
-  font-weight: 600;
-}
-
-.bottom-nav-btn:hover {
-  color: var(--ms-text-strong, var(--ms-text));
-}
-
-.bottom-nav-btn.active:hover {
-  color: var(--ms-accent);
-}
-
-/* Точка «есть новое»: прижата к «пилюле» иконки, а не к краю кнопки. */
-.bottom-nav-badge {
-  position: absolute;
-  top: 3px;
-  right: calc(50% - 26px);
-  min-width: 19px;
-  height: 19px;
-  padding: 0 5px;
-  border-radius: 10px;
-  background: var(--ms-accent);
-  color: var(--ms-on-accent);
-  font-size: 10.5px;
-  font-weight: 600;
-  line-height: 19px;
-  text-align: center;
-  box-shadow: 0 0 0 2px var(--ms-surface-2);
-}
-
-.bottom-nav-dot {
-  position: absolute;
-  top: 5px;
-  right: calc(50% - 17px);
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--ms-accent);
-  box-shadow: 0 0 0 2px var(--ms-surface);
-}
-
-@media (max-width: 380px) {
-  .bottom-nav-btn {
-    font-size: 10.5px;
-    padding: 6px 0 7px;
-  }
 }
 </style>

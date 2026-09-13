@@ -1987,7 +1987,7 @@ const {
   loadPinned,
   refreshChats: loadChats,
   clearReply: () => clearReply(),
-  stopTyping: sendTypingStop,
+  stopTyping: (chatId) => sendTypingStop(chatId),
   scrollToBottom,
   nextTick: (callback) => void nextTick(callback),
   setSendingFile: (value) => {
