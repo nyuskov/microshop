@@ -236,3 +236,42 @@
 .ms-rows .row-item.selected {
   background: var(--ms-accent-soft, #e3f2e5);
 }
+
+/* ---------- Результаты поиска: заголовки групп, подсветка, статусы ---------- */
+/* Заголовок группы строк («Найти людей», «Недавние», «Найдены в мессенджере»). */
+.ms-rows .section-label {
+  padding: 8px 14px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--ms-muted);
+  user-select: none;
+}
+
+/* Совпадение с запросом внутри строки. */
+.ms-rows .search-hit {
+  padding: 0 1px;
+  border-radius: 4px;
+  background: var(--ms-accent-soft);
+  color: var(--ms-accent);
+  font-weight: 600;
+}
+
+/* Область результатов: прокручивается сама, занимая остаток высоты (шапка
+   панели и поле поиска остаются на месте). Нужна и вкладке «Чаты», и
+   «Контактам» (блок «Найдены в мессенджере»). */
+.ms-rows .people-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--ms-border);
+}
+
+/* «Поиск…», «Никого не найдено» — место результатов, пока их нет. */
+.ms-rows .search-status {
+  padding: 14px;
+  color: var(--ms-muted-2);
+  font-size: 13.5px;
+  text-align: center;
+}
