@@ -124,7 +124,7 @@ ssh user1@176.108.249.9 "cd ~/microshop && docker compose -p microshop-test \
 
 ## Что дополнительно уже есть на сервере
 
-- `dump_db.sh` / `cron_dump_db.sh` + `install_cron_backup.sh` — дамп БД и media
+- `scripts/db/dump_db.sh` / `scripts/backup/cron_dump_db.sh` + `scripts/backup/install_server_cron.sh` — дамп БД и media
   **на самом сервере** (`~/microshop/db_dump`), ротация 30 копий.
 - `docs/offsite-backup.md` — вывоз копий на внешнее хранилище + **шифрование**
   файлов перед отправкой (файл-пароль `BACKUP_PASSPHRASE_FILE`, AES-256 + PBKDF2).

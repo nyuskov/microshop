@@ -171,7 +171,8 @@ services:
         - postgres_data:/var/lib/postgresql/
         # Дамп/восстановление: когда volume БД создаётся заново (после down -v),
         # postgres автоматически выполнит ./db_dump/*.sql (восстановление из дампа).
-        # Свежий дамп снимите скриптом ./dump_db.sh (или он вызывается в entry.sh).
+        # Свежий дамп снимите скриптом ./scripts/db/dump_db.sh (или он вызывается в
+        # scripts/dev/entry.sh).
         - ./db_dump:/docker-entrypoint-initdb.d:ro
     environment:
         - POSTGRES_URL=postgres

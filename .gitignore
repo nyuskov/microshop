@@ -229,9 +229,12 @@ backend/media/
 # (создаётся root'ом, в репозитории не нужна).
 /microshop/
 
-# Локальные дампы БД (dump_db.sh / restore_db.sh, auto-restore в /docker-entrypoint-initdb.d)
+# Локальные дампы БД (scripts/db/dump_db.sh / restore_db.sh, auto-restore в /docker-entrypoint-initdb.d)
 db_dump/*
 !db_dump/.gitkeep
 !db_dump/archive/
 db_dump/archive/*
 !db_dump/archive/.gitkeep
+
+# Свой offsite-скрипт выгрузки в облако (образец — scripts/backup/backup_offsite.example.sh)
+scripts/backup/backup_offsite.sh

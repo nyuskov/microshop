@@ -4,11 +4,13 @@
 # 2) down -v --rmi all (volume БД удаляется).
 # 3) build + up. Так как volume БД теперь пуст, контейнер db при инициализации
 #    автоматически восстановит данные из ./db_dump/microshop_latest.sql.
+#
+# Запуск из корня репозитория:  ./scripts/dev/entry.sh
 set -euo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/../.."
 
 echo "=== 1/4. Сохраняю дамп текущей БД ==="
-./dump_db.sh
+./scripts/db/dump_db.sh
 
 echo "=== 2/4. Полный сброс стека (down -v --rmi all) ==="
 docker compose down -v --rmi all

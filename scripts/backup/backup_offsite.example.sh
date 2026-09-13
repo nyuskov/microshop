@@ -4,7 +4,7 @@
 #
 # Использование:
 #   1. rclone config  — создать remote (пример remote-имени в RCLONE_REMOTE ниже)
-#   2. cp backup_offsite.example.sh backup_offsite.sh && chmod +x backup_offsite.sh
+#   2. cp scripts/backup/backup_offsite.example.sh scripts/backup/backup_offsite.sh && chmod +x scripts/backup/backup_offsite.sh
 #   3. Отредактируйте переменные в начале файла.
 #   4. Добавьте в crontab (см. docs/offsite-backup.md).
 #
@@ -12,8 +12,8 @@ set -euo pipefail
 
 # Удалённое хранилище rclone, напр. "backup:bucket/microshop" (без завершающего /)
 RCLONE_REMOTE="${RCLONE_REMOTE:-backup:bucket/microshop}"
-# Директория с локальными дампами
-LOCAL_DUMP_DIR="${LOCAL_DUMP_DIR:-$(cd "$(dirname "$0")" && pwd)/db_dump}"
+# Директория с локальными дампами (каталог db_dump в корне репозитория)
+LOCAL_DUMP_DIR="${LOCAL_DUMP_DIR:-$(cd "$(dirname "$0")/../.." && pwd)/db_dump}"
 # Поддиректория с архивами локальных дампов
 ARCHIVE_SUBDIR="${ARCHIVE_SUBDIR:-archive}"
 # Сколько последних архивных копий выгружать (0 = все)
@@ -23,7 +23,7 @@ LOG_FILE="${LOG_FILE:-${LOCAL_DUMP_DIR}/logs/offsite.log}"
 
 # Шифрование перед отправкой (файл-пароль, см. scripts/lib/backup_crypto.sh).
 # Без файла-пароля работает как раньше (выгрузка открытых файлов + предупреждение).
-. "$(cd "$(dirname "$0")" && pwd)/scripts/lib/backup_crypto.sh"
+. "$(cd "$(dirname "$0")/../lib" && pwd)/backup_crypto.sh"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >>"$LOG_FILE"; }
 
@@ -54,7 +54,7 @@ if [ "${ARCHIVE_KEEP_OFFSITE}" -gt 0 ] && [ -d "${LOCAL_DUMP_DIR}/${ARCHIVE_SUBD
     done
 fi
 
-# 3. Медиафайлы (вложения/аватары) — снимок из ./backup_media.sh, если есть.
+# 3. Медиафайлы (вложения/аватары) — снимок из scripts/backup/backup_media.sh, если есть.
 if [ -f "${LOCAL_DUMP_DIR}/media_latest.tar.gz" ]; then
     rclone copy "$(encrypt_backup "${LOCAL_DUMP_DIR}/media_latest.tar.gz")" "${RCLONE_REMOTE}/" \
         --log-file="$LOG_FILE" 2>>"$LOG_FILE" || log "ошибка выгрузки media_latest"

@@ -16,6 +16,12 @@
   `docker-compose.test.yaml`; имя проекта внутри по-прежнему `microshop-test` — от
   него зависят тома), шаблон одиночного стека — `docker-compose.prod-template.yaml`.
   Обновлены CI, 6 скриптов, документы.
+- **Скрипты собраны в `scripts/`**: дамп/восстановление — `scripts/db/`, бэкап БД+media и
+  cron — `scripts/backup/`, перезапуск стека — `scripts/dev/entry.sh`. Установщик
+  `scripts/backup/install_server_cron.sh` переписан под новый путь, получил флаг
+  `CRON_SCRIPT` (его обещала документация, но не было в коде) и ставит строку cron
+  с абсолютными путями в кавычках. Проверено запуском: дамп, media-архив, ротация и
+  `cron_dump_db.sh` целиком; установщик — с подставным `crontab` (настоящий не тронут).
 - **README разгружен**: 936 → ~390 строк; детали ушли в `docs/backend.md`,
   `docs/frontend.md`, `docs/gotchas.md`, журнал — в `docs/changelog.md`; появились
   индекс `docs/README.md` и карта проверок `docs/checks.md`.
@@ -92,36 +98,14 @@
 фикстуры уже в `conftest.py`. Проверка: `make test-backend` — число тестов не должно
 измениться.
 
-### 7. Корневые shell-скрипты → `scripts/`
-
-В корне лежат 7 скриптов бэкапа/дампа плюс `entry.sh` и `queries.sql`, при живой
-структуре `scripts/{backup,ci,lib,monitoring,rustore,smtp}`. Сейчас НЕ сделано
-осознанно: пути зашиты в cron-установщики — `install_cron_backup.sh` пишет в crontab
-`cd '<каталог скрипта>' && ./cron_dump_db.sh`, а `cron_dump_db.sh` зовёт
-`./dump_db.sh` и `./backup_media.sh` и пишет логи/архивы в `<корень>/db_dump`. Плюс
-~30 ссылок в README и документах.
-
-На проде crontab сейчас пуст (проверено 13.09) — то есть перенос безопасен, но это
-отдельная работа на один коммит:
-
-1. в перенесённых скриптах считать корень репозитория (`ROOT="$(dirname)/../.."`), а
-   не «каталог скрипта»;
-2. обновить пути внутри установщиков и в `docs/local-backup.md`,
-   `docs/offsite-backup.md`, README;
-3. после выкатки — заново установить cron на сервере (он там не стоит, см. выше).
-
-Предлагаемая раскладка: `scripts/db/{dump_db.sh,restore_db.sh,queries.sql}`,
-`scripts/backup/{backup_media.sh,cron_dump_db.sh,install_server_cron.sh,backup_offsite.example.sh}`,
-`scripts/dev/entry.sh`.
-
-### 8. Тесты фронтенда — разложить по подпапкам
+### 7. Тесты фронтенда — разложить по подпапкам
 
 61 файл в `src/__tests__` лежит плоско. Переезд безопасен (тесты читают исходники по
 cwd-относительным путям, `vitest` собирает `**/*.spec.ts`), но группировка
 субъективная: предлагаю `calls/`, `messenger/`, `stories/`, `infra/` (pwa, sw,
 storage, upload), `ui/`, `utils/`.
 
-### 9. CI: разделить `ci.yml` на `ci.yml` и `deploy.yml`
+### 8. CI: разделить `ci.yml` на `ci.yml` и `deploy.yml`
 
 Сейчас в одном файле 220 строк: проверки, деплой и смоук. Аккуратнее было бы
 разделить, но `concurrency` и `needs: [backend, frontend, secrets]` придётся

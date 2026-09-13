@@ -104,18 +104,14 @@ microshop/
 ├── docker-compose.prod-template.yaml # шаблон одиночного прод-стека (в CI не используется)
 ├── Makefile                  # make check — проверки перед пушем (см. docs/checks.md)
 ├── nginx/                    # dev-прокси (dev.conf и пр.)
-├── entry.sh                  # dump_db.sh && docker compose down -v && build && up
-├── dump_db.sh / restore_db.sh              # дамп/восстановление БД
-├── backup_media.sh           # снимок media-файлов в db_dump (зовёт cron_dump_db.sh)
-├── cron_dump_db.sh / install_cron_backup.sh # ежедневный бэкап (БД + media) по cron
-├── backup_offsite.example.sh # пример выгрузки бэкапов в облако (rclone)
-├── scripts/backup/           # бэкап прода → ~/Документы/pismo_backup (см. docs/local-backup.md)
+├── scripts/db/               # dump_db.sh / restore_db.sh / queries.sql — дамп и восстановление БД
+├── scripts/backup/           # бэкап БД+media по cron, offsite (rclone), бэкап прода → локально
+├── scripts/dev/entry.sh      # полный перезапуск стека с дампом перед сбросом
 ├── scripts/monitoring/       # проверка прода + оповещения по e-mail (см. docs/monitoring.md)
 ├── scripts/ci/               # деплой на сервере + смоук-тест прода после деплоя
 ├── db_dump/                  # дампы БД + media: latest + archive/ + logs/ (в .gitignore)
 ├── docs/                     # все документы; индекс — docs/README.md, карта проверок — docs/checks.md
 ├── .github/workflows/ci.yml  # backend (lint+mypy+pytest c Postgres) + frontend + deploy + smoke
-└── queries.sql
 ```
 
 > Модули `posts`/`products`/`telegram`/`groups` и их таблицы **удалены** из кода/БД
@@ -129,7 +125,7 @@ microshop/
 Контейнеры: `web` (FastAPI :8000 HTTPS + авто-миграции), `db` (Postgres), `rabbitmq` (брокер Celery/mост realtime, management UI :15672), `worker` (фоновые задачи Celery), `beat` (планировщик периодических задач), `frontend` (Vite :5173 HTTPS), `nginx` (:8080 HTTP, dev-прокси к frontend и API).
 
 ```bash
-./entry.sh                 # = dump_db.sh && docker compose down -v --rmi all && build && up
+./scripts/dev/entry.sh    # = dump_db.sh && docker compose down -v --rmi all && build && up
 # или вручную (данные в volume сохранятся):
 docker compose up --build  # из корня microshop
 ```
@@ -140,19 +136,19 @@ docker compose up --build  # из корня microshop
 - **Frontend (HTTPS)**: https://localhost:5173 (нужно принять самоподписанный сертификат).
 - **Nginx (HTTP, отладка)**: http://localhost:8080.
 
-`entry.sh` делает полный сброс (`down -v --rmi all`), но **перед этим снимает дамп БД**, а при старте на пустом volume база **автоматически восстанавливается из дампа** — данные не теряются.
+`scripts/dev/entry.sh` делает полный сброс (`down -v --rmi all`), но **перед этим снимает дамп БД**, а при старте на пустом volume база **автоматически восстанавливается из дампа** — данные не теряются.
 
 ### Резервное копирование БД (дамп/восстановление)
 
 | Что | Команда | Когда срабатывает |
 |---|---|---|
-| Автодамп перед сбросом | `./entry.sh` | дамп в `./db_dump/microshop_latest.sql`, затем `down -v` |
-| Ручной дамп | `./dump_db.sh` | в любой момент (сервис `db` поднимет сам, если нужно) |
-| Ручной бэкап media | `./backup_media.sh` | в любой момент — файлы вложений/аватаров в `db_dump/` |
+| Автодамп перед сбросом | `./scripts/dev/entry.sh` | дамп в `./db_dump/microshop_latest.sql`, затем `down -v` |
+| Ручной дамп | `./scripts/db/dump_db.sh` | в любой момент (сервис `db` поднимет сам, если нужно) |
+| Ручной бэкап media | `./scripts/backup/backup_media.sh` | в любой момент — файлы вложений/аватаров в `db_dump/` |
 | **Бэкап прода на локальную машину** | `./scripts/backup/pull_prod_backup.sh` | БД + media + `.env` в `~/Документы/pismo_backup`, см. `docs/local-backup.md` |
-| **Автодамп по cron** | `./install_cron_backup.sh` (однократно) | ежедневно в 03:00 — БД **и** media, см. ниже |
+| **Автодамп по cron** | `./scripts/backup/install_server_cron.sh` (однократно) | ежедневно в 03:00 — БД **и** media, см. ниже |
 | Авто-restore | `docker compose up` | только когда volume БД создан заново/пуст (после `down -v`): postgres сам выполняет `./db_dump/*.sql` из `/docker-entrypoint-initdb.d` |
-| Ручной restore | `./restore_db.sh [файл.sql]` | перезаписывает данные в запущенной БД (осторожно!) |
+| Ручной restore | `./scripts/db/restore_db.sh [файл.sql]` | перезаписывает данные в запущенной БД (осторожно!) |
 
 - Актуальный дамп БД: `db_dump/microshop_latest.sql`; актуальный снимок media:
   `db_dump/media_latest.tar.gz`; архивные копии по датам — `db_dump/archive/`
@@ -164,15 +160,15 @@ docker compose up --build  # из корня microshop
 Задача ставится в **crontab пользователя** на хосте (там, где запускается `docker compose`) и ежедневно снимает дамп БД:
 
 ```bash
-./install_cron_backup.sh            # ежедневно в 03:00
+./scripts/backup/install_server_cron.sh            # ежедневно в 03:00
 # при необходимости другое расписание, например каждые 6 часов:
-CRON_SCHEDULE='0 */6 * * *' ./install_cron_backup.sh
+CRON_SCHEDULE='0 */6 * * *' ./scripts/backup/install_server_cron.sh
 ```
 
-Что происходит по расписанию (скрипт `./cron_dump_db.sh`):
+Что происходит по расписанию (скрипт `scripts/backup/cron_dump_db.sh`):
 
-- запускается `./dump_db.sh` — обновляется `db_dump/microshop_latest.sql` и создаётся архивная копия `db_dump/archive/microshop_<дата>.sql`;
-- запускается `./backup_media.sh` — обновляется `db_dump/media_latest.tar.gz` (вложения/аватары из `backend/media` либо docker-тома `*_media_data`) и создаётся архив `db_dump/archive/media_<дата>.tar.gz`;
+- запускается `scripts/db/dump_db.sh` — обновляется `db_dump/microshop_latest.sql` и создаётся архивная копия `db_dump/archive/microshop_<дата>.sql`;
+- запускается `scripts/backup/backup_media.sh` — обновляется `db_dump/media_latest.tar.gz` (вложения/аватары из `backend/media` либо docker-тома `*_media_data`) и создаётся архив `db_dump/archive/media_<дата>.tar.gz`;
 - пишется лог в `db_dump/logs/cron.log`;
 - хранится только последние **30** архивных копий каждого типа (лимит задаётся переменной `ARCHIVE_KEEP`, лог — `DUMP_LOG_FILE`).
 
@@ -357,8 +353,8 @@ make check
 docker exec microshop-web-1 poetry run alembic upgrade head
 
 # Дамп / восстановление БД (см. раздел 4)
-./dump_db.sh                 # сохранить дамп в ./db_dump
-./restore_db.sh              # восстановить из ./db_dump/microshop_latest.sql
+./scripts/db/dump_db.sh                 # сохранить дамп в ./db_dump
+./scripts/db/restore_db.sh              # восстановить из ./db_dump/microshop_latest.sql
 
 # Backend: автоформат + линт (на хосте)
 cd backend && poetry run isort . && poetry run black . && poetry run flake8 . --exclude=.mypy_cache,__pycache__ && poetry run mypy --cache-dir=/tmp/ms-mypy main.py core api_v1 tasks

@@ -8,14 +8,14 @@
 # - db_dump/archive/microshop_<дата>.sql  — архивированные копии (по одной на запуск).
 #
 # Использование:
-#   ./dump_db.sh           # снять дамп текущей БД (при необходимости поднимет сервис db)
+#   ./scripts/db/dump_db.sh    # снять дамп текущей БД (при необходимости поднимет сервис db)
 #
 # Переменные окружения (необязательно):
 #   DB_NAME, DB_USER, DUMP_DIR
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 DB_NAME="${DB_NAME:-microshop}"

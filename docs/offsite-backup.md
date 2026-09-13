@@ -1,8 +1,8 @@
 # Off-site резервное копирование (БД + media)
 
-Локальный cron-бэкап (`./cron_dump_db.sh`) пишет в `db_dump/` на том же хосте:
+Локальный cron-бэкап (`scripts/backup/cron_dump_db.sh`) пишет в `db_dump/` на том же хосте:
 дамп БД (`microshop_latest.sql` + архив) и снимок медиафайлов
-(`media_latest.tar.gz` + архив, см. `backup_media.sh`). Это защита от потери
+(`media_latest.tar.gz` + архив, см. `scripts/backup/backup_media.sh`). Это защита от потери
 данных при `down -v`, но **не** от отказа диска/хоста. Для устойчивости
 копируйте дампы в удалённое хранилище.
 
@@ -14,18 +14,18 @@
    ```
 2. Скопируйте пример и отредактируйте переменные:
    ```bash
-   cp backup_offsite.example.sh backup_offsite.sh
-   chmod +x backup_offsite.sh
+   cp scripts/backup/backup_offsite.example.sh scripts/backup/backup_offsite.sh
+   chmod +x scripts/backup/backup_offsite.sh
    # в файле: RCLONE_REMOTE="backup:bucket/microshop", LOCAL_DUMP_DIR, ARCHIVE_SUBDIR
    ```
 3. Добавьте в crontab (в дополнение к локальному дампу), например после локального:
    ```bash
    # локальный дамп ежедневно 03:00 (уже есть) + выгрузка в 03:30
-   30 3 * * * /path/to/microshop/backup_offsite.sh >> /path/to/microshop/db_dump/logs/offsite.log 2>&1
+   30 3 * * * /path/to/microshop/scripts/backup/backup_offsite.sh >> /path/to/microshop/db_dump/logs/offsite.log 2>&1
    ```
-   Установка одной командой с `install_cron_backup.sh`-стилем:
+   Установка одной командой через установщик cron (флаг `CRON_SCRIPT`):
    ```bash
-   CRON_SCHEDULE='30 3 * * *' CRON_SCRIPT='/path/to/microshop/backup_offsite.sh' ./install_cron_backup.sh
+   CRON_SCHEDULE='30 3 * * *' CRON_SCRIPT='/path/to/microshop/scripts/backup/backup_offsite.sh' ./scripts/backup/install_server_cron.sh
    ```
    (или добавьте строку вручную через `crontab -e`).
 
@@ -54,7 +54,7 @@
 
 Проверить вручную:
 ```bash
-BACKUP_PASSPHRASE_FILE=~/.pismo-backup-passphrase ./backup_offsite.sh
+BACKUP_PASSPHRASE_FILE=~/.pismo-backup-passphrase ./scripts/backup/backup_offsite.sh
 tail -3 db_dump/logs/offsite.log        # должно быть «Шифрование включено»
 ```
 

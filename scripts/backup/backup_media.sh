@@ -3,7 +3,7 @@
 #
 # БД уже дампится скриптами dump_db.sh / cron_dump_db.sh, но сами файлы в
 # backend/media (или docker-томе media_data) в них не попадают — этот скрипт
-# закрывает пробел. Вызывается из ./cron_dump_db.sh после дампа БД; можно
+# закрывает пробел. Вызывается из scripts/backup/cron_dump_db.sh после дампа БД; можно
 # запускать и отдельно.
 #
 # Источник определяется так (по первому совпадению):
@@ -18,7 +18,7 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 DUMP_DIR="${DUMP_DIR:-$ROOT/db_dump}"

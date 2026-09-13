@@ -3,15 +3,15 @@
 # (дамп сделан с ключом --clean, т.е. объекты сначала удаляются).
 #
 # Использование:
-#   ./restore_db.sh                          # из db_dump/microshop_latest.sql
-#   ./restore_db.sh <путь_к_дампу.sql>       # из конкретного файла
+#   ./scripts/db/restore_db.sh                          # из db_dump/microshop_latest.sql
+#   ./scripts/db/restore_db.sh <путь_к_дампу.sql>       # из конкретного файла
 #
 # Обычно отдельный restore не нужен: контейнер db сам восстанавливает
 # db_dump/microshop_latest.sql при создании нового volume БД (после `down -v`).
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 DB_NAME="${DB_NAME:-microshop}"
@@ -20,7 +20,7 @@ DUMP_FILE="${1:-$ROOT/db_dump/microshop_latest.sql}"
 
 if [[ ! -f "$DUMP_FILE" ]]; then
     echo "!!! Не найден файл дампа: $DUMP_FILE" >&2
-    echo "    Сначала создайте дамп: ./dump_db.sh" >&2
+    echo "    Сначала создайте дамп: ./scripts/db/dump_db.sh" >&2
     exit 1
 fi
 

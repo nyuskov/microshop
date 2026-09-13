@@ -2,7 +2,8 @@
 # Запуск дампа БД по расписанию (cron).
 #
 # Вызывается из crontab пользователя (устанавливается скриптом
-# ./install_cron_backup.sh) и делает то же самое, что ./dump_db.sh, но:
+# ./scripts/backup/install_server_cron.sh) и делает то же самое, что
+# scripts/db/dump_db.sh, но:
 #   * пишет лог в db_dump/logs/cron.log (не в stdout, т.к. cron собирает вывод сам);
 #   * ограничивает число архивных копий (по умолчанию хранятся последние 30).
 #
@@ -15,7 +16,9 @@ set -euo pipefail
 # cron запускается с урезанным PATH — дополняем его, чтобы найти docker.
 export PATH="$PATH:/usr/local/bin:/usr/bin:/bin"
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Корень репозитория: в нём лежат compose-файлы и каталог db_dump с логами/архивами.
+ROOT="$(cd "$HERE/../.." && pwd)"
 cd "$ROOT"
 
 ARCHIVE_KEEP="${ARCHIVE_KEEP:-30}"
@@ -29,7 +32,7 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 {
     log "=== Запуск дампа БД (cron) ==="
 
-    if ./dump_db.sh; then
+    if "$HERE/../db/dump_db.sh"; then
         log "Дамп БД успешно снят."
     else
         log "!!! Дамп БД завершился с ошибкой (код $?)."
@@ -37,7 +40,7 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
     fi
 
     # Медиафайлы (вложения/аватары) — отдельный архив; ошибка не роняет дамп БД.
-    if ./backup_media.sh; then
+    if "$HERE/backup_media.sh"; then
         log "Бэкап media успешно снят."
     else
         log "!!! Бэкап media завершился с ошибкой (код $?)."
