@@ -1372,13 +1372,14 @@ onBeforeUnmount(() => {
   margin-left: auto;
 }
 
-/* Кнопка «Профиль»: вместо иконки показываем мини-аватар пользователя. */
+/* Кнопка «Профиль»: вместо иконки показываем мини-аватар пользователя.
+   Размер — как у иконки «Информация о чате» в шапке чата (40px). */
 .self-profile-btn {
   background: none;
   border: none;
   padding: 0;
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
@@ -1391,10 +1392,14 @@ onBeforeUnmount(() => {
   background: var(--ms-hover, #f2f4f6);
 }
 
-.self-avatar {
-  width: 34px;
-  height: 34px;
-  font-size: 0.8rem;
+/* Размер задаём через родителя: собственное правило `.self-avatar` имеет ту же
+   специфичность, что и `.ms-rows .avatar` из assets/rows.css, и при переносе
+   общих стилей проиграло бы ему по порядку подключения — значок профиля
+   раздувался до размера аватара строки чата (46px). */
+.self-profile-btn .self-avatar {
+  width: 40px;
+  height: 40px;
+  font-size: 0.9rem;
 }
 
 .panel-search {
