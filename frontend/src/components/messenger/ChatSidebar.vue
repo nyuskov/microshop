@@ -130,10 +130,22 @@
       </div>
     </div>
 
-    <!-- Глобальный поиск: раскрывается слайдом вниз прямо из-под шапки — так же,
-         как полоса историй, и так же сжимается (значок в шапке или прокрутка
-         списка вверх). Главная страница при этом остаётся на месте: список
-         чатов виден и с открытым полем поиска, пока запрос пуст. -->
+    <!-- Истории и поиск под шапкой. Порядок как в Telegram: первой выезжает
+         полоса историй (она раскрывается «сильнее» — вторым шагом), ниже неё
+         поле поиска. Обе сжимаются прокруткой списка вверх. -->
+    <Transition name="slide-strong" v-bind="slideDownStories">
+      <div
+        v-if="view === 'chats' && !selectionMode && storiesExpanded && !searchActive"
+        class="stories-collapse"
+      >
+        <StoriesStrip @open-story="emit('open-story', $event)" />
+      </div>
+    </Transition>
+
+    <!-- Глобальный поиск: раскрывается слайдом вниз прямо из-под шапки и
+         сжимается значком в шапке или прокруткой списка вверх. Главная страница
+         при этом остаётся на месте: список чатов виден и с открытым полем
+         поиска, пока запрос пуст. -->
     <Transition name="slide-down" v-bind="slideDown">
       <div v-if="view === 'chats' && !selectionMode && searchOpen" class="search-collapse">
         <div class="panel-search search-head">
@@ -190,13 +202,6 @@
 
           <!-- Список чатов: фильтры, скелетоны, строки (в ChatList.vue) -->
           <template v-else>
-            <!-- Истории: раскрытая полоса под шапкой. Появляется по нажатию на
-                 кружки в шапке или по протяжке списка вниз у самого верха. -->
-            <Transition name="slide-down" v-bind="slideDown">
-              <div v-if="storiesExpanded" class="stories-collapse">
-                <StoriesStrip @open-story="emit('open-story', $event)" />
-              </div>
-            </Transition>
             <ChatList
               :chats="orderedChats"
               :loading="loadingChats"
@@ -325,8 +330,12 @@ import { useGlobalSearch } from '@/composables/useGlobalSearch'
 const SearchResults = defineAsyncComponent(() => import('@/components/messenger/SearchResults.vue'))
 const ContactsPanel = defineAsyncComponent(() => import('@/components/messenger/ContactsPanel.vue'))
 
-/** Общие хуки раскрытия для поиска и полосы историй (см. composables/useSlideDown). */
+/**
+ * Хуки раскрытия (см. composables/useSlideDown): у поиска — обычный слайд,
+ * у полосы историй — усиленный (она раскрывается вторым шагом и живёт выше).
+ */
 const slideDown = useSlideDown()
+const slideDownStories = useSlideDown()
 
 const props = defineProps<{
   view: 'chats' | 'contacts' | 'stories'
@@ -459,19 +468,26 @@ const onChatsScroll = (el: HTMLElement) => {
     storiesScrollAcc = Math.max(-step, Math.min(step, storiesScrollAcc + delta))
     if (storiesScrollAcc >= step) {
       storiesScrollAcc = 0
-      setStoriesExpanded(false)
-      // Поле поиска уезжает вверх вместе с полосой историй: обе панели
-      // раскрываются протяжкой вниз и сжимаются прокруткой списка.
+      // Слои сжимаются в обратном порядке раскрытия: сначала истории (они
+      // раскрываются вторым шагом), потом поле поиска.
+      if (storiesExpanded.value) {
+        setStoriesExpanded(false)
+        return
+      }
       if (searchOpen.value) closeSearch()
     }
   })
 }
 
 /**
- * Протяжка списка вниз у самого верха раскрывает панели под шапкой — поле
- * поиска и истории, как в Telegram. Срабатывает один раз на касание.
+ * Протяжка списка вниз у самого верха раскрывает панели под шапкой — как в
+ * Telegram, по шагам: первое движение открывает поле поиска, следующее (уже
+ * сильнее) — полосу историй над ним. За одно касание делаем только один шаг,
+ * поэтому «второй» требует отдельной протяжки.
  */
 const PULL_EXPAND_PX = 48
+/** Порог для историй выше: они раскрываются вторым, более сильным движением. */
+const PULL_STORIES_PX = 96
 let pullStartY = 0
 let pullUsed = false
 const onListTouchStart = (event: TouchEvent) => {
@@ -481,10 +497,16 @@ const onListTouchStart = (event: TouchEvent) => {
 const onListTouchMove = (event: TouchEvent, el: HTMLElement) => {
   if (pullUsed || el.scrollTop > 0) return
   const y = event.touches[0]?.clientY ?? 0
-  if (y - pullStartY < PULL_EXPAND_PX) return
+  const distance = y - pullStartY
+  if (!searchOpen.value) {
+    if (distance < PULL_EXPAND_PX) return
+    pullUsed = true
+    revealSearch()
+    return
+  }
+  if (storiesExpanded.value || distance < PULL_STORIES_PX) return
   pullUsed = true
   setStoriesExpanded(true)
-  revealSearch()
 }
 
 // Список пересоздаётся при смене раздела и при открытии поиска — отсчёт заново
@@ -1003,6 +1025,33 @@ onBeforeUnmount(() => {
   transition:
     height 0.28s cubic-bezier(0.22, 1, 0.36, 1),
     opacity 0.2s ease;
+}
+
+/**
+ * Полоса историй раскрывается вторым шагом и живёт выше поля поиска — движение
+ * делаем заметнее: содержимое уезжает дальше (с лёгким уменьшением), а время
+ * чуть больше, чем у поиска. Длительность согласована с useSlideDown.
+ */
+.slide-strong-enter-active,
+.slide-strong-leave-active {
+  overflow: hidden;
+  will-change: height, opacity;
+  transition:
+    height 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s ease;
+}
+
+.slide-strong-enter-active > *,
+.slide-strong-leave-active > * {
+  transition:
+    transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.24s ease;
+}
+
+.slide-strong-enter-from > *,
+.slide-strong-leave-to > * {
+  transform: translateY(-160%) scale(0.96);
+  opacity: 0;
 }
 
 /* Содержимое «доезжает» от шапки вниз при открытии и уезжает обратно вверх при

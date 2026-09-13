@@ -129,10 +129,35 @@ describe('раскрытие слайдом вниз', () => {
 describe('панели списка чатов', () => {
   const sidebar = readFileSync('src/components/messenger/ChatSidebar.vue', 'utf8')
 
-  it('поиск и истории раскрываются одним переходом', () => {
-    expect(sidebar.match(/name="slide-down"/g)).toHaveLength(2)
+  it('поиск и истории раскрываются переходами на общих хуках', () => {
+    // Поиск — обычный слайд, истории — усиленный (они раскрываются вторым шагом).
+    expect(sidebar.match(/name="slide-down"/g)).toHaveLength(1)
+    expect(sidebar.match(/name="slide-strong"/g)).toHaveLength(1)
     expect(sidebar).toContain('v-bind="slideDown"')
+    expect(sidebar).toContain('v-bind="slideDownStories"')
     expect(sidebar).toContain("import { useSlideDown } from '@/composables/useSlideDown'")
+  })
+
+  it('полоса историй стоит выше поля поиска, как в Telegram', () => {
+    // Раскрытые истории находятся НАД открытым поиском: в разметке полоса
+    // историй идёт раньше поля поиска.
+    const storiesAt = sidebar.indexOf('class="stories-collapse"')
+    const searchAt = sidebar.indexOf('class="search-collapse"')
+
+    expect(storiesAt).toBeGreaterThan(-1)
+    expect(searchAt).toBeGreaterThan(-1)
+    expect(storiesAt).toBeLessThan(searchAt)
+  })
+
+  it('панели раскрываются по шагам: поиск первым, истории — сильнее', () => {
+    expect(sidebar).toContain('PULL_STORIES_PX')
+    // Сравниваем пороги: для историй нужно протянуть дальше.
+    const search = Number(sidebar.match(/PULL_EXPAND_PX = (\d+)/)?.[1] ?? '0')
+    const stories = Number(sidebar.match(/PULL_STORIES_PX = (\d+)/)?.[1] ?? '0')
+
+    expect(stories).toBeGreaterThan(search)
+    // За одно касание делаем только один шаг, иначе истории раскрывались бы сразу.
+    expect(sidebar).toContain('pullUsed = true')
   })
 
   it('переходы через max-height не вернулись', () => {

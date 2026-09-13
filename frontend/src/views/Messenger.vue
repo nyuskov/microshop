@@ -512,7 +512,6 @@ import { setAppBadge } from '@/utils/appBadge'
 import { usernameFromProfilePath } from '@/utils/profileLink'
 import { channelUsernameFromPath } from '@/utils/channelLink'
 import { inviteTokenFromPath } from '@/utils/groupInvite'
-import { shareTargetFromSearch, withoutShareTargetParams } from '@/utils/shareTarget'
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import { effectiveFile, messageSnippet, optimizeImageFile } from '@/utils/media'
@@ -529,6 +528,7 @@ import { useCallSession } from '@/composables/useCallSession'
 import { useChatNavigation } from '@/composables/useChatNavigation'
 import { useForward } from '@/composables/useForward'
 import { useLightbox } from '@/composables/useLightbox'
+import { useNativeShare } from '@/composables/useNativeShare'
 import ChatSidebar from '@/components/messenger/ChatSidebar.vue'
 import ChatHeader from '@/components/messenger/ChatHeader.vue'
 import ChatPlaceholder from '@/components/messenger/ChatPlaceholder.vue'
@@ -580,13 +580,6 @@ import {
   initNativePush,
   isNativeApp
 } from '@/services/nativePush'
-import {
-  MAX_SHARE_FILE_BYTES,
-  clearNativeShare,
-  initNativeShare,
-  readNativeShareFile,
-  type NativeShareDescriptor
-} from '@/services/nativeShare'
 
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
@@ -3185,68 +3178,43 @@ const resolveProfileLink = async () => {
 }
 
 // ---------- «Поделиться» (Android-приложение и PWA) ----------
-// Два источника, один путь обработки:
-//  * приложение Android — нативная оболочка присылает содержимое событием
-//    pismo:share (текст/ссылка/картинка, см. services/nativeShare.ts);
-//  * установленная PWA — Chrome открывает страницу с параметрами
-//    title/text/url (share_target в манифесте, см. utils/shareTarget.ts).
-// Дальше одинаково: выбираем чат в диалоге и отправляем.
-const nativeShare = ref<NativeShareDescriptor | null>(null)
-const nativeShareFile = ref<File | null>(null)
-const nativeSharePreviewUrl = ref<string | null>(null)
-const nativeShareBusy = ref(false)
-/** «Поделиться» нажали до входа — придержим, пока человек не войдёт. */
-let pendingIncomingShare: NativeShareDescriptor | null = null
-
-/** Сбрасывает состояние диалога (нативную часть не трогает). */
-const resetNativeShareState = () => {
-  if (nativeSharePreviewUrl.value) URL.revokeObjectURL(nativeSharePreviewUrl.value)
-  nativeSharePreviewUrl.value = null
-  nativeShareFile.value = null
-  nativeShare.value = null
-}
-
-/** Закрывает диалог и освобождает содержимое в нативной части. */
-const discardNativeShare = () => {
-  resetNativeShareState()
-  clearNativeShare()
-}
-
-const cancelNativeShare = () => {
-  if (nativeShareBusy.value) return
-  discardNativeShare()
-}
-
-/** Принимает содержимое «поделиться» и готовит превью. */
-const acceptIncomingShare = async (descriptor: NativeShareDescriptor) => {
-  if (!authStore.isAuthenticated) {
-    pendingIncomingShare = descriptor
-    return
+// Приём содержимого, превью и отправка — в composables/useNativeShare.ts.
+// Источников два: событие `pismo:share` из Android-оболочки и параметры
+// share_target у установленной PWA. Лента отдаёт только отправку.
+const {
+  descriptor: nativeShare,
+  previewUrl: nativeSharePreviewUrl,
+  busy: nativeShareBusy,
+  releasePending: releaseIncomingShare,
+  cancel: cancelNativeShare,
+  send: sendIncomingShare
+} = useNativeShare({
+  isAuthenticated: () => authStore.isAuthenticated,
+  chats: () => chats.value,
+  currentUserId: () => currentUserId.value,
+  selectedChatId: () => selectedChatId.value,
+  refreshChats: () => loadChats(),
+  refreshThread: () => refreshThread(),
+  sendText: async (chatId, text) => {
+    const wire = await encryptSharedText(chatId, text)
+    await sendNewMessage(chatId, wire.text, undefined, wire.encrypted)
+  },
+  sendFile: async (chatId, file, caption) => {
+    // Фото сжимаем на клиенте — как при обычной отправке вложения.
+    const upload = file.type.startsWith('image/') ? await optimizeImageFile(file) : file
+    const aes = await chatKeyOf(chats.value.find((item) => item.id === chatId) ?? null)
+    const payload = aes ? await encryptFileForChat(aes, upload, caption) : null
+    const message = await sendAttachmentMessage(
+      chatId,
+      payload ? payload.blob : upload,
+      payload ? payload.text : caption,
+      undefined,
+      undefined,
+      !!payload
+    )
+    if (payload) applyLocalFileEnvelope(message, payload.meta)
   }
-  resetNativeShareState()
-  nativeShare.value = descriptor
-  if (!descriptor.hasFile) return
-  if (descriptor.size > MAX_SHARE_FILE_BYTES) {
-    Notify.create({
-      type: 'warning',
-      message: 'Файл слишком большой',
-      caption: 'Отправим только текст',
-      timeout: 4000
-    })
-    nativeShare.value = { ...descriptor, hasFile: false, size: 0 }
-    return
-  }
-  try {
-    const file = await readNativeShareFile(descriptor)
-    if (!file) return
-    nativeShareFile.value = file
-    if (file.type.startsWith('image/')) {
-      nativeSharePreviewUrl.value = URL.createObjectURL(file)
-    }
-  } catch (error) {
-    console.error('Не удалось прочитать присланный файл:', getErrorMessage(error))
-  }
-}
+})
 
 /**
  * Текст для отправки: в «зашифрованном» чате — шифротекст, если ключи готовы
@@ -3263,87 +3231,6 @@ const encryptSharedText = async (
   return { text: await encryptText(aes, text), encrypted: true }
 }
 
-/** Отправляет принятое содержимое в выбранный чат. */
-const sendIncomingShare = async (chatId: number) => {
-  const target = nativeShare.value
-  if (!target || nativeShareBusy.value) return
-  const text = target.text.trim()
-  const file = nativeShareFile.value
-  if (!text && !file) {
-    discardNativeShare()
-    return
-  }
-  nativeShareBusy.value = true
-  try {
-    if (file) {
-      // Фото сжимаем на клиенте — как при обычной отправке вложения.
-      const upload = file.type.startsWith('image/') ? await optimizeImageFile(file) : file
-      const aes = await chatKeyOf(chats.value.find((item) => item.id === chatId) ?? null)
-      const payload = aes ? await encryptFileForChat(aes, upload, text) : null
-      const message = await sendAttachmentMessage(
-        chatId,
-        payload ? payload.blob : upload,
-        payload ? payload.text : text,
-        undefined,
-        undefined,
-        !!payload
-      )
-      if (payload) applyLocalFileEnvelope(message, payload.meta)
-    } else {
-      const wire = await encryptSharedText(chatId, text)
-      await sendNewMessage(chatId, wire.text, undefined, wire.encrypted)
-    }
-    const chat = chats.value.find((item) => item.id === chatId)
-    Notify.create({
-      message: 'Отправлено',
-      caption: chat ? `В чат «${chatTitle(chat, currentUserId.value)}»` : '',
-      timeout: 2500
-    })
-    await loadChats()
-    if (selectedChatId.value === chatId) await refreshThread()
-    discardNativeShare()
-  } catch (error) {
-    Notify.create({
-      type: 'negative',
-      message: 'Не удалось отправить',
-      caption: getErrorMessage(error),
-      timeout: 4000
-    })
-  } finally {
-    nativeShareBusy.value = false
-  }
-}
-
-const disposeNativeShare = initNativeShare((descriptor) => {
-  void acceptIncomingShare(descriptor)
-})
-
-// «Поделиться» из установленной PWA: Chrome дописал параметры в адрес.
-// Забираем их до первой отрисовки и сразу чистим адрес (они длинные и не должны
-// попасть в историю); если человек ещё не вошёл — диалог откроется после входа.
-const shareTargetPayload = shareTargetFromSearch(
-  typeof window === 'undefined' ? '' : window.location.search
-)
-if (shareTargetPayload) {
-  try {
-    window.history.replaceState(
-      window.history.state,
-      '',
-      withoutShareTargetParams(window.location.href)
-    )
-  } catch {
-    /* история недоступна — адрес просто останется как есть */
-  }
-  void acceptIncomingShare({
-    text: shareTargetPayload.text,
-    subject: '',
-    mime: '',
-    name: '',
-    size: 0,
-    hasFile: false
-  })
-}
-
 watch(
   ready,
   async (isReady) => {
@@ -3356,11 +3243,7 @@ watch(
       await resolveProfileLink()
       openChannelLink()
       await resolveInviteLink()
-      if (pendingIncomingShare) {
-        const held = pendingIncomingShare
-        pendingIncomingShare = null
-        await acceptIncomingShare(held)
-      }
+      await releaseIncomingShare()
       startRealtime()
       void callStore.connect()
       // Звонок из уведомления: показать экран ожидания и выполнить действие.
@@ -3878,7 +3761,6 @@ onBeforeUnmount(() => {
     outboxTimer = undefined
   }
   disposeNativePush()
-  disposeNativeShare()
   stopRealtime()
   realtimeStore.setHandler(null)
   if (highlightTimer !== undefined) {
