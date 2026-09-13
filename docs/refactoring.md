@@ -34,6 +34,10 @@
 - **README разгружен**: 936 → ~390 строк; детали ушли в `docs/backend.md`,
   `docs/frontend.md`, `docs/gotchas.md`, журнал — в `docs/changelog.md`; появились
   индекс `docs/README.md` и карта проверок `docs/checks.md`.
+- **Бюджет бандла**: панели результатов поиска и раздела «Контакты» стали
+  ленивыми чанками (`defineAsyncComponent` в `ChatSidebar`) — основной `index.js`
+  остался в допуске (+2.4 КБ к прежней базе), новые чанки зафиксированы в
+  `scripts/bundle-size-baseline.json`.
 - **`make check`** — проверки перед пушем одной командой (то же, что CI, без
   docker-образов) + `make test-backend` на одноразовой БД; правки только документов
   больше не гоняют пайплайн (`paths-ignore` в CI).

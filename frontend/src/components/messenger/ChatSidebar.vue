@@ -304,10 +304,8 @@ import StoriesFeed from '@/components/stories/StoriesFeed.vue'
 import StoriesStrip from '@/components/stories/StoriesStrip.vue'
 import ContactNameDialog from '@/components/messenger/ContactNameDialog.vue'
 import PhoneImportDialog from '@/components/messenger/PhoneImportDialog.vue'
-import SearchResults from '@/components/messenger/SearchResults.vue'
-import ContactsPanel from '@/components/messenger/ContactsPanel.vue'
 import ChatList from '@/components/messenger/ChatList.vue'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import { openPrivateChat, type SearchUserResult } from '@/services/chatService'
 import type { Chat, ChatUser, Message } from '@/types'
@@ -316,6 +314,14 @@ import { useChatSelection } from '@/composables/useChatSelection'
 import { usePhoneImport } from '@/composables/usePhoneImport'
 import { useSlideDown } from '@/composables/useSlideDown'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
+
+/**
+ * Панель результатов поиска и раздел «Контакты» нужны не при старте (вкладка
+ * «Контакты» и запрос в поиске) — грузим их отдельными чанками, чтобы основной
+ * бандл оставался компактным. Список чатов, наоборот, нужен сразу.
+ */
+const SearchResults = defineAsyncComponent(() => import('@/components/messenger/SearchResults.vue'))
+const ContactsPanel = defineAsyncComponent(() => import('@/components/messenger/ContactsPanel.vue'))
 
 /** Общие хуки раскрытия для поиска и полосы историй (см. composables/useSlideDown). */
 const slideDown = useSlideDown()
