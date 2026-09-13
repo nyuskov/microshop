@@ -211,7 +211,9 @@ async def verify_otp_endpoint(
             detail="Регистрация новых пользователей временно отключена.",
         )
 
-    user = existing_user or await get_or_create_user_by_phone_number(session, phone_number)
+    user = existing_user or await get_or_create_user_by_phone_number(
+        session, phone_number
+    )
     await _require_device_verification(session, request, user)
     await audit.log_security_event(
         session,
