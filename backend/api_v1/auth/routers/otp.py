@@ -60,6 +60,7 @@ async def auth_channels(request: Request) -> AuthChannelsResponse:
     return AuthChannelsResponse(
         otp_available=otp_delivery_available(None),
         email_otp_available=views.email_otp_available(),
+        registration_enabled=settings.registration_enabled,
     )
 
 
@@ -203,7 +204,14 @@ async def verify_otp_endpoint(
             detail="Неверный или истёкший код OTP.",
         )
 
-    user = await get_or_create_user_by_phone_number(session, phone_number)
+    existing_user = await get_user_by_phone_number(session, phone_number)
+    if existing_user is None and not settings.registration_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Регистрация новых пользователей временно отключена.",
+        )
+
+    user = existing_user or await get_or_create_user_by_phone_number(session, phone_number)
     await _require_device_verification(session, request, user)
     await audit.log_security_event(
         session,

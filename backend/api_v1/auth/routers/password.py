@@ -154,6 +154,12 @@ async def register_with_password(
             detail="У этого номера уже есть пароль. Войдите с ним.",
         )
 
+    if user is None and not settings.registration_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Регистрация новых пользователей временно отключена.",
+        )
+
     hashed = get_password_hash(password)
     if user is None:
         user = await create_user_by_phone_number(session, phone_number, hashed)

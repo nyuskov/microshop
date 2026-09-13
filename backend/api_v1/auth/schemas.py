@@ -51,6 +51,7 @@ class AuthChannelsResponse(BaseModel):
 
     otp_available: bool = False
     email_otp_available: bool = False
+    registration_enabled: bool = True
 
 
 class EmailAddressRequest(BaseModel):

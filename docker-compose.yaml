@@ -27,6 +27,7 @@ services:
       # остановится с понятной ошибкой, а не подставит захардкоженный пароль.
       - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
+      - REGISTRATION_ENABLED=${REGISTRATION_ENABLED:-true}
       - RABBITMQ_URL=amqp://${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}@rabbitmq:5672/
       # Доставка OTP: SMS Aero (осн., значения из .env) + Telegram (опционально).
       - SMS_AERO_EMAIL=${SMS_AERO_EMAIL:-}

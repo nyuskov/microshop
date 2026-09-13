@@ -248,9 +248,14 @@ export const useAuthStore = defineStore('auth', {
     async fetchAuthChannels(): Promise<{
       otp_available: boolean
       email_otp_available: boolean
+      registration_enabled: boolean
     }> {
       const response = await api.get('/auth/channels/')
-      return response.data as { otp_available: boolean; email_otp_available: boolean }
+      return response.data as {
+        otp_available: boolean
+        email_otp_available: boolean
+        registration_enabled: boolean
+      }
     },
 
     /** Письмо с кодом на адрес — чтобы подтвердить его в текущем аккаунте. */

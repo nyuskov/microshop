@@ -31,6 +31,7 @@ x-web-slot: &web-slot
   environment:
     DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/microshop
     JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+    REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-false}
     RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672/
     UVICORN_RELOAD: "0"
     # Доставка OTP: SMS Aero (осн. канал); Telegram Gateway/бот — опционально.

@@ -158,6 +158,13 @@ class Settings(BaseSettings):
     auth_otp_verify_limit_per_minute: int = 10
     auth_token_login_limit_per_minute: int = 20
 
+    # Временный рубильник регистрации новых пользователей. Вход существующих
+    # аккаунтов (пароль/OTP/email) при этом продолжает работать как обычно.
+    registration_enabled: bool = Field(
+        default=True,
+        validation_alias="REGISTRATION_ENABLED",
+    )
+
     # Rate limiting «дорогих»/«писательских» АВТОРИЗОВАННЫХ эндпоинтов.
     # Ключ — пользователь (а не IP): защита от злоупотребления/случайного
     # runaway на уровне аккаунта (спам сообщениями, тяжёлый поиск, загрузки).

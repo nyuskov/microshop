@@ -46,6 +46,7 @@ onMounted(() => {
     .fetchAuthChannels()
     .then((channels) => {
       emailChannelAvailable.value = channels.email_otp_available
+      registrationEnabled.value = channels.registration_enabled
     })
     .catch(() => {
       emailChannelAvailable.value = false
@@ -80,6 +81,8 @@ const emailMode = ref<'login' | 'reset'>('login')
 const emailCodeSent = ref(false)
 /** Включён ли на сервере канал писем (SMTP). */
 const emailChannelAvailable = ref(false)
+/** Разрешена ли на сервере регистрация новых аккаунтов (временный рубильник). */
+const registrationEnabled = ref(true)
 const resetPassword = ref('')
 const resetPasswordConfirm = ref('')
 const showEmailCode = ref(false)
@@ -123,6 +126,12 @@ async function continueWithPhone() {
     resetPasswordFields()
     otpCode.value = ''
     afterOtp.value = false
+
+    if (!status.registered && !registrationEnabled.value) {
+      result.value = 'Регистрация новых пользователей временно отключена. Попробуйте позже.'
+      severity.value = 'error'
+      return
+    }
 
     if (status.has_password) {
       state.value = 'password'
