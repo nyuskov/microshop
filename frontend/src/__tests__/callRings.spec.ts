@@ -219,8 +219,8 @@ describe('service worker', () => {
   })
 
   it('возврат в приложение гасит залипший звонок', () => {
-    const view = readFileSync('src/views/Messenger.vue', 'utf8')
-    const handler = view.slice(view.indexOf('const handleCallVisibility = () => {'))
+    const session = readFileSync('src/composables/useCallSession.ts', 'utf8')
+    const handler = session.slice(session.indexOf('const handleCallVisibility = () => {'))
     expect(handler).toContain('callStore.dropStaleRinging()')
   })
 

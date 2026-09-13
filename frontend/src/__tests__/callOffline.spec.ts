@@ -195,13 +195,16 @@ describe('Web Push-подписка под старый ключ', () => {
  */
 describe('запуск звонка из уведомления (приложение закрыто)', () => {
   const messenger = readFileSync('src/views/Messenger.vue', 'utf8')
+  // Логика запуска (экран ожидания, флаги «Ответить»/«Отклонить») живёт в
+  // отдельном composable — проверяем её там, а разметку и разбор адреса — в SFC.
+  const callSession = readFileSync('src/composables/useCallSession.ts', 'utf8')
   const nativePush = readFileSync('src/services/nativePush.ts', 'utf8')
 
   it('действие «Ответить» применяется и при холодном старте', () => {
     // Сессия восстанавливается из localStorage сразу, поэтому watcher готовности
     // (immediate) отрабатывает ДО разбора адреса: одного его мало — запуск
     // применяется ещё раз сразу после разбора `?call=…`.
-    expect(messenger).toContain('const applyCallLaunch = ()')
+    expect(callSession).toContain('const applyCallLaunch = ()')
     expect(messenger).toContain('beginCallLaunch(callIdParam, Number(peerIdParam), launchAction)')
     expect(messenger).toContain('applyCallLaunch()')
   })
@@ -231,15 +234,15 @@ describe('запуск звонка из уведомления (приложе�
     expect(screen).toContain('clw-decline')
     expect(screen).toContain('@click="answerCallLaunch"')
     // «Ответить» до прихода offer = ждать его и ответить самому.
-    expect(messenger).toContain('const answerCallLaunch = ()')
-    expect(messenger).toContain('autoAnswerPending = true')
+    expect(callSession).toContain('const answerCallLaunch = ()')
+    expect(callSession).toContain('autoAnswerPending = true')
   })
 
   it('действие из уведомления не теряется, если offer уже пришёл', () => {
     // Экрана ожидания в этом случае нет, но и «выбросить» действие нельзя:
     // иначе «Ответить» из push ничего не делал бы, а звонок у зовущего доходил
     // до таймаута и записывался пропущенным.
-    const launch = messenger.slice(messenger.indexOf('const beginCallLaunch = ('))
+    const launch = callSession.slice(callSession.indexOf('const beginCallLaunch = ('))
     const body = launch.slice(0, launch.indexOf('\n}'))
     expect(body).toContain("callStore.status === 'incoming'")
     expect(body).toContain('void callStore.acceptCall()')
