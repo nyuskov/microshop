@@ -158,4 +158,29 @@ describe('панели списка чатов', () => {
   it('фокус в поле поиска не дёргает прокрутку списка', () => {
     expect(sidebar).toContain('focus({ preventScroll: true })')
   })
+
+  it('панель открывается и закрывается значком в шапке, стрелки «назад» нет', () => {
+    expect(sidebar).toContain('@click="toggleSearch"')
+    expect(sidebar).not.toContain('search-back')
+  })
+
+  it('протяжка списка вниз раскрывает и поиск, и истории', () => {
+    const pull = sidebar.slice(sidebar.indexOf('const onListTouchMove'))
+    const body = pull.slice(0, pull.indexOf('\n}'))
+    expect(body).toContain('setStoriesExpanded(true)')
+    expect(body).toContain('revealSearch()')
+    // Протяжка не должна забирать фокус: клавиатура на жест не выезжает.
+    expect(body).not.toContain('openSearch()')
+  })
+
+  it('прокрутка списка вверх сжимает обе панели', () => {
+    const scroll = sidebar.slice(sidebar.indexOf('const onChatsScroll'))
+    const body = scroll.slice(0, scroll.indexOf('const PULL_EXPAND_PX'))
+    expect(body).toContain('setStoriesExpanded(false)')
+    expect(body).toContain('closeSearch()')
+  })
+
+  it('содержимое панелей едет от шапки вниз и обратно вверх', () => {
+    expect(sidebar).toContain('transform: translateY(-100%)')
+  })
 })

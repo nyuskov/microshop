@@ -69,9 +69,10 @@
         <button
           v-if="view === 'chats'"
           class="icon-btn"
-          title="Поиск"
-          aria-label="Поиск"
-          @click="openSearch"
+          :class="{ open: searchOpen }"
+          :title="searchOpen ? 'Закрыть поиск' : 'Поиск'"
+          :aria-label="searchOpen ? 'Закрыть поиск' : 'Поиск'"
+          @click="toggleSearch"
         >
           <q-icon :name="icon('search')" size="20px" />
         </button>
@@ -128,19 +129,13 @@
     </div>
 
     <!-- Глобальный поиск: раскрывается слайдом вниз прямо из-под шапки — так же,
-         как полоса историй. Главная страница при этом остаётся на месте: список
+         как полоса историй, и так же сжимается (значок в шапке или прокрутка
+         списка вверх). Главная страница при этом остаётся на месте: список
          чатов виден и с открытым полем поиска, пока запрос пуст. -->
     <Transition name="slide-down" v-bind="slideDown">
       <div v-if="view === 'chats' && !selectionMode && searchOpen" class="search-collapse">
         <div class="panel-search search-head">
-          <button
-            class="icon-btn search-back"
-            title="Закрыть поиск"
-            aria-label="Закрыть поиск"
-            @click="closeSearch"
-          >
-            <q-icon :name="icon('arrow_back')" size="20px" />
-          </button>
+          <q-icon :name="icon('search')" class="search-icon" size="17px" />
           <input
             ref="searchInputRef"
             v-model="searchQuery"
@@ -840,8 +835,9 @@ const SETTINGS_ACTIONS = computed<SettingsAction[]>(() => {
  * Истории: в шапке лежат сжатые кружки, а сама полоса раскрывается под шапкой.
  *
  * Раскрыть можно нажатием на кружки в шапке или протяжкой списка вниз у самого
- * верха; прокрутка списка вниз — снова сжимает (как в Telegram). Выбор
- * запоминаем, чтобы после перезапуска всё осталось как у человека было.
+ * верха (вместе с полосой открывается и поле поиска); прокрутка списка вверх —
+ * снова сжимает обе панели (как в Telegram). Выбор запоминаем, чтобы после
+ * перезапуска всё осталось как у человека было.
  */
 const STORIES_EXPANDED_KEY = 'pismo_stories_expanded'
 const readStoriesExpanded = (): boolean => {
@@ -891,13 +887,16 @@ const onChatsScroll = () => {
     if (storiesScrollAcc >= step) {
       storiesScrollAcc = 0
       setStoriesExpanded(false)
+      // Поле поиска уезжает вверх вместе с полосой историй: обе панели
+      // раскрываются протяжкой вниз и сжимаются прокруткой списка.
+      if (searchOpen.value) closeSearch()
     }
   })
 }
 
 /**
- * Протяжка списка вниз у самого верха раскрывает истории — жест «потянуть»,
- * как в Telegram. Срабатывает один раз на касание.
+ * Протяжка списка вниз у самого верха раскрывает панели под шапкой — поле
+ * поиска и истории, как в Telegram. Срабатывает один раз на касание.
  */
 const PULL_EXPAND_PX = 48
 let pullStartY = 0
@@ -908,11 +907,12 @@ const onListTouchStart = (event: TouchEvent) => {
 }
 const onListTouchMove = (event: TouchEvent) => {
   const el = chatsScrollEl.value
-  if (!el || pullUsed || storiesExpanded.value || el.scrollTop > 0) return
+  if (!el || pullUsed || el.scrollTop > 0) return
   const y = event.touches[0]?.clientY ?? 0
   if (y - pullStartY < PULL_EXPAND_PX) return
   pullUsed = true
   setStoriesExpanded(true)
+  revealSearch()
 }
 
 // Список пересоздаётся при смене раздела и при открытии поиска — отсчёт заново.
@@ -1324,13 +1324,27 @@ const searchOpen = ref(false)
  */
 const searchActive = computed(() => searchOpen.value && searchQuery.value.trim().length > 0)
 
-/** Открыть глобальный поиск (поле раскрывается под шапкой, фокус в поле). */
-const openSearch = () => {
+/** Показать поле поиска, не забирая фокус (протяжка списка вниз, как истории). */
+const revealSearch = () => {
   settingsMenuOpen.value = false
   searchOpen.value = true
+}
+
+/** Открыть глобальный поиск по значку в шапке: панель раскрывается, фокус в поле. */
+const openSearch = () => {
+  revealSearch()
   // preventScroll: панель в этот момент ещё свёрнута (высота 0, клип) — без этого
   // браузер «докручивает» список к нулевому полю и прокрутка прыгает.
   requestAnimationFrame(() => searchInputRef.value?.focus({ preventScroll: true }))
+}
+
+/**
+ * Значок поиска в шапке — переключатель: открывает панель и им же закрывается.
+ * Отдельной стрелки «назад» в самой панели нет.
+ */
+const toggleSearch = () => {
+  if (searchOpen.value) closeSearch()
+  else openSearch()
 }
 
 /** Закрыть глобальный поиск и сбросить запрос. */
@@ -1766,14 +1780,12 @@ onBeforeUnmount(() => {
   color: var(--ms-text);
 }
 
-/* Глобальный поиск (открывается по значку вместо верхнего хидера) */
+/* Поле поиска под шапкой: боковые отступы как у обычного поля, высоту задаёт
+   содержимое (стрелки «назад» в панели нет — закрывает значок в шапке). */
 .search-head {
   margin: 8px 10px 10px;
-  padding: 3px 6px;
-  gap: 6px;
 }
 
-.search-back,
 .search-clear {
   flex-shrink: 0;
   width: 30px;
@@ -1807,6 +1819,12 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 6px;
   padding: 2px 14px 8px;
+  /* Переключатель «Люди/Сообщения» остаётся на месте, пока прокручиваются сами
+     результаты: список длинный, а область результатов — свой скролл-контейнер. */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--ms-surface);
 }
 
 .search-mode-tab {
@@ -1936,8 +1954,8 @@ onBeforeUnmount(() => {
     opacity 0.2s ease;
 }
 
-/* Содержимое чуть «доезжает» за клипом — движение читается как слайд,
-   а не как мгновенная подмена высоты. */
+/* Содержимое «доезжает» от шапки вниз при открытии и уезжает обратно вверх при
+   закрытии — движение читается как слайд, а не как схлопывание высоты на месте. */
 .slide-down-enter-active > *,
 .slide-down-leave-active > * {
   transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
@@ -1945,7 +1963,7 @@ onBeforeUnmount(() => {
 
 .slide-down-enter-from > *,
 .slide-down-leave-to > * {
-  transform: translateY(-14px);
+  transform: translateY(-100%);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2102,6 +2120,12 @@ onBeforeUnmount(() => {
 }
 
 .people-results {
+  /* Результаты прокручиваются сами, занимая остаток высоты: шапка панели должна
+     оставаться на месте. Без этого длинный список (16+ строк) растягивал панель,
+     и вместе с ним из кадра уезжали шапка, поле поиска и фильтры. */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   border-bottom: 1px solid var(--ms-border);
 }
 
