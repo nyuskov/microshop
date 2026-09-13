@@ -91,19 +91,23 @@ describe('перезагрузка против запуска приложен�
 
   it('при перезагрузке возвращает в тот же раздел', () => {
     stubNavigation('reload')
-    storeSection('stories')
-    expect(readStoredSection()).toBe('stories')
     storeSection('contacts')
     expect(readStoredSection()).toBe('contacts')
   })
 
   it('при запуске приложения заново всегда открывает главную — чаты', () => {
     stubNavigation('navigate')
-    storeSection('stories')
+    storeSection('contacts')
     expect(readStoredSection()).toBe('chats')
     // Память тоже приведена в порядок: следующая перезагрузка вернёт в «Чаты»,
     // а не в раздел, из которого человек уходил до закрытия приложения.
     expect(localStorage.getItem('pismo_view')).toBe('chats')
+  })
+
+  it('старое сохранённое значение stories мягко приводит к чатам', () => {
+    stubNavigation('reload')
+    localStorage.setItem('pismo_view', 'stories')
+    expect(readStoredSection()).toBe('chats')
   })
 
   it('без Navigation Timing считает, что приложение запустили заново', () => {

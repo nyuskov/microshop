@@ -33,7 +33,6 @@
         :self-name="selfName"
         :self-avatar-url="selfAvatarUrl"
         :is-admin="authStore.isAdmin"
-        :unread-count="totalUnread"
         @open-message="openGlobalMessage"
         @toggle-pin="toggleChatPinned"
         @toggle-mute="toggleChatMuted"
@@ -41,7 +40,6 @@
         @bulk-pin="bulkSetPinned"
         @bulk-delete="chatOverlaysRef?.openBulkDelete($event)"
         @to-contacts="openContacts"
-        @to-stories="openStories"
         @open-story="openStory"
         @to-chats="goToChats"
         @open-profile="goToProfile"
@@ -2981,9 +2979,6 @@ watch(newMessage, (value) => {
 })
 
 // ---------- Навигация ----------
-/** Открывает раздел историй (статусов). */
-const openStories = () => switchSection('stories')
-
 /** Открывает полноэкранный просмотр истории. */
 const openStory = (storyId: number) => {
   pushMobileNav()
@@ -3000,13 +2995,13 @@ const closeOpenChat = () => {
   syncChatUrl(null)
 }
 
-/** Переключение раздела по нижнему меню — всегда прямой переход. */
+/** Переключение между списками в шапке — всегда прямой переход. */
 const switchSection = (section: Section) => {
   if (isDesktop.value) {
     if (view.value === section) return
     view.value = section
   } else {
-    // На мобильном разделы (Чаты/Истории/Контакты) живут в drawer'е. Если он
+    // На мобильном разделы (Чаты/Контакты) живут в drawer'е. Если он
     // закрыт (человек на заглушке «Выберите, кому хотели бы написать») и мы
     // просто меняем `view`, переход происходит «невидимо» — кнопка «Открыть
     // контакты» как будто не работает. Поэтому всегда показываем список.
@@ -3021,7 +3016,6 @@ const switchSection = (section: Section) => {
     closeOpenChat()
     revealDrawer()
   }
-  if (section === 'stories') void storiesStore.load()
 }
 
 // Любая смена раздела (в т. ч. прямой вызов view.value) сразу запоминается.

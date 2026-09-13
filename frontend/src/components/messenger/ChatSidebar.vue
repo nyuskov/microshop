@@ -22,6 +22,8 @@
       @open-story="emit('open-story', $event)"
       @toggle-search="toggleSearch"
       @add-from-phone="onAddFromPhone"
+      @to-contacts="emit('to-contacts')"
+      @to-chats="emit('to-chats')"
       @open-profile="emit('open-profile')"
       @create-group="emit('create-group')"
       @create-channel="emit('create-channel')"
@@ -74,14 +76,7 @@
     <!-- Разделы меняются плавно: короткий сдвиг + затухание. -->
     <Transition name="section" mode="out-in">
       <div :key="view" class="section-body">
-        <!-- Диалоги -->
-        <template v-if="view === 'stories'">
-          <div class="chat-scroll">
-            <StoriesFeed @open-story="emit('open-story', $event)" />
-          </div>
-        </template>
-
-        <template v-else-if="view === 'chats'">
+        <template v-if="view === 'chats'">
           <div v-if="searchError" class="inline-error">{{ searchError }}</div>
 
           <!-- Результаты поиска: люди / сообщения (в SearchResults.vue) -->
@@ -145,16 +140,6 @@
       </div>
     </Transition>
 
-    <!-- Нижняя навигация: основные разделы приложения (в SidebarBottomNav.vue) -->
-    <SidebarBottomNav
-      :view="view"
-      :unread-count="unreadCount"
-      :has-unseen-stories="storiesStore.hasUnseen"
-      @to-chats="emit('to-chats')"
-      @to-stories="emit('to-stories')"
-      @to-contacts="emit('to-contacts')"
-    />
-
     <!-- Личное имя контакта: добавление / переименование / удаление -->
     <ContactNameDialog
       v-if="contactDialogUser"
@@ -180,11 +165,8 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
-import { useStoriesStore } from '@/stores/stories'
-import StoriesFeed from '@/components/stories/StoriesFeed.vue'
 import StoriesStrip from '@/components/stories/StoriesStrip.vue'
 import SidebarHeader from '@/components/messenger/SidebarHeader.vue'
-import SidebarBottomNav from '@/components/messenger/SidebarBottomNav.vue'
 import ContactNameDialog from '@/components/messenger/ContactNameDialog.vue'
 import PhoneImportDialog from '@/components/messenger/PhoneImportDialog.vue'
 import ChatList from '@/components/messenger/ChatList.vue'
@@ -214,7 +196,7 @@ const slideDown = useSlideDown()
 const slideDownStories = useSlideDown()
 
 const props = defineProps<{
-  view: 'chats' | 'contacts' | 'stories'
+  view: 'chats' | 'contacts'
   currentUserId: number | null
   chats: Chat[]
   contacts: ChatUser[]
@@ -236,15 +218,10 @@ const props = defineProps<{
   selfAvatarUrl: string | undefined
   /** Администратор: показывает в «⋯» разбор жалоб. */
   isAdmin?: boolean
-  /** Всего непрочитанных сообщений (бейдж на вкладке «Чаты»). */
-  unreadCount?: number
 }>()
-
-const storiesStore = useStoriesStore()
 
 const emit = defineEmits<{
   (e: 'to-contacts'): void
-  (e: 'to-stories'): void
   (e: 'open-story', storyId: number): void
   (e: 'to-chats'): void
   (e: 'open-profile'): void

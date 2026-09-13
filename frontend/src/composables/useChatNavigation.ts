@@ -38,7 +38,7 @@ export interface NavigationHooks {
 export interface ChatNavigationDeps {
   /** Десктоп: там список и нить — два экрана, история приложения не нужна. */
   isDesktop: ComputedRef<boolean>
-  /** Открытый раздел (Чаты/Истории/Контакты). */
+  /** Открытый раздел списка (Чаты/Контакты). */
   view: Ref<Section>
   /** Открыт ли drawer со списком чатов (значим в мобильном режиме). */
   drawerOpen: Ref<boolean>

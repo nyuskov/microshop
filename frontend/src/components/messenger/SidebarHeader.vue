@@ -1,6 +1,5 @@
 <template>
-  <!-- Разделы переключаются нижним меню, поэтому шапка одна на все вкладки:
-       сверху остаются только действия, которых в нижнем меню нет. -->
+  <!-- Шапка держит переключение между основными списками и быстрые действия. -->
   <!-- Режим выделения чатов (вход по удержанию) -->
   <div v-if="selectionMode" class="selection-bar">
     <button class="icon-btn" title="Отмена" @click="emit('exit-selection')">
@@ -62,6 +61,24 @@
     />
 
     <div class="panel-header-right">
+      <button
+        v-if="view === 'chats'"
+        class="icon-btn"
+        title="Контакты"
+        aria-label="Открыть контакты"
+        @click="emit('to-contacts')"
+      >
+        <q-icon :name="icon('group')" size="20px" />
+      </button>
+      <button
+        v-else
+        class="icon-btn"
+        title="Чаты"
+        aria-label="Открыть чаты"
+        @click="emit('to-chats')"
+      >
+        <q-icon :name="icon('forum')" size="20px" />
+      </button>
       <button
         v-if="view === 'chats'"
         class="icon-btn"
@@ -143,7 +160,7 @@ const props = defineProps<{
   selectionAllMuted: boolean
   selectionAllPinned: boolean
   allVisibleSelected: boolean
-  view: 'chats' | 'contacts' | 'stories'
+  view: 'chats' | 'contacts'
   expanded: boolean
   searchOpen: boolean
   selfName: string
@@ -161,6 +178,8 @@ const emit = defineEmits<{
   (e: 'open-story', storyId: number): void
   (e: 'toggle-search'): void
   (e: 'add-from-phone'): void
+  (e: 'to-contacts'): void
+  (e: 'to-chats'): void
   (e: 'open-profile'): void
   (e: 'create-group'): void
   (e: 'create-channel'): void

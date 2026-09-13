@@ -7,8 +7,8 @@
  * шага, без побочных эффектов — их применяет вызывающий.
  */
 
-/** Раздел нижнего меню: Чаты / Истории / Контакты. */
-export type Section = 'chats' | 'contacts' | 'stories'
+/** Основные списки drawer'а: Чаты и Контакты. */
+export type Section = 'chats' | 'contacts'
 
 export type MobileBackStep =
   /** Закрыть просмотр истории. */

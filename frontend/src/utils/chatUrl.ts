@@ -83,23 +83,22 @@ export function chatUrlWith(currentUrl: string, chatId: number | null): string {
 }
 
 /**
- * Ключ, под которым помним раздел приложения (`chats`/`stories`/`contacts`).
+ * Ключ, под которым помним раздел приложения (`chats`/`contacts`).
  *
  * Нужен только для перезагрузки — см. `readStoredSection`.
  */
 export const SECTION_STORAGE_KEY = 'pismo_view'
 
 /** Допустимые разделы: всё прочее (мусор в хранилище) игнорируем. */
-const SECTIONS = ['chats', 'stories', 'contacts'] as const
+const SECTIONS = ['chats', 'contacts'] as const
 
 export type StoredSection = (typeof SECTIONS)[number]
 
 /**
- * Раздел приложения, в котором был пользователь (`chats` / `stories` /
- * `contacts`).
+ * Раздел приложения, в котором был пользователь (`chats` / `contacts`).
  *
  * Помним его только для перезагрузки: кнопка «Обновить» и pull-to-refresh не
- * должны выкидывать человека из историй или контактов на «Чаты». Запуск
+ * должны выкидывать человека из контактов на «Чаты». Запуск
  * приложения заново всегда открывает главную, поэтому та память не читается.
  */
 export function readStoredSection(storage: Storage | null = safeStorage()): StoredSection {
@@ -111,6 +110,7 @@ export function readStoredSection(storage: Storage | null = safeStorage()): Stor
   }
   try {
     const raw = storage?.getItem(SECTION_STORAGE_KEY)
+    if (raw === 'stories') return 'chats'
     return SECTIONS.includes(raw as StoredSection) ? (raw as StoredSection) : 'chats'
   } catch {
     return 'chats'
