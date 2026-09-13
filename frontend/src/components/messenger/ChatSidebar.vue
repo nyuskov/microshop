@@ -750,6 +750,7 @@ import {
   isGroupChat
 } from '@/utils/user'
 import { splitByQuery } from '@/utils/search'
+import { useChatSelection } from '@/composables/useChatSelection'
 import { formatChatTime, formatMsgTime } from '@/utils/format'
 import { isLockedFile, lockedFileLabel, mediaTypeLabel } from '@/utils/media'
 import { plainMessageText } from '@/utils/mentions'
@@ -1069,20 +1070,34 @@ const isMutedOf = (chatId: number): boolean => props.mutedChatIds?.includes(chat
 // ---------- Режим выделения чатов (long-press; как в Telegram) ----------
 // Вход: удержание на чате (~0,5 с). В режиме выделения клик по чату —
 // отметить/снять; сверху появляется панель действий (мьют/удалить/выбрать все).
-const selectionMode = ref(false)
-const selectedIds = ref<number[]>([])
+// Логика живёт в composables/useChatSelection.ts (и покрыта тестами).
+const {
+  selectionMode,
+  selectedIds,
+  isSelected,
+  isSelecting,
+  exitSelection,
+  allVisibleSelected,
+  selectionAllMuted,
+  selectionAllPinned,
+  toggleSelectAll,
+  onBulkMute,
+  onBulkPin,
+  onBulkDelete,
+  onRowPointerDown,
+  onRowPointerUp,
+  onRowPointerCancel,
+  onRowClick
+} = useChatSelection({
+  visibleChatIds: () => orderedChats.value.map((chat) => chat.id),
+  isMuted: (chatId) => isMutedOf(chatId),
+  isPinned: (chatId) => isPinnedOf(chatId),
+  openChat: (chatId) => selectChat(chatId),
+  onBulkMute: (ids, muted) => emit('bulk-mute', ids, muted),
+  onBulkPin: (ids, pinned) => emit('bulk-pin', ids, pinned),
+  onBulkDelete: (ids) => emit('bulk-delete', ids)
+})
 
-const isSelected = (chatId: number): boolean => selectedIds.value.includes(chatId)
-
-const exitSelection = () => {
-  selectionMode.value = false
-  selectedIds.value = []
-}
-
-// Родителю нужен режим выделения: системная «назад» должна выходить из него
-// (см. `onAppPopState` в Messenger.vue). Отдаём функции — так не важно, как Vue
-// разворачивает ref'ы при доступе к дочернему компоненту.
-const isSelecting = () => selectionMode.value
 /**
  * Горячие клавиши на десктопе: ↑/↓ — соседний чат, Ctrl/⌘+F — поиск.
  * В полях ввода клавиши не перехватываем.
@@ -1118,108 +1133,10 @@ const onHotkeys = (event: KeyboardEvent) => {
 onMounted(() => window.addEventListener('keydown', onHotkeys))
 onBeforeUnmount(() => window.removeEventListener('keydown', onHotkeys))
 
+// Родителю нужен режим выделения: системная «назад» должна выходить из него
+// (см. `onAppPopState` в Messenger.vue). Отдаём функции — так не важно, как Vue
+// разворачивает ref'ы при доступе к дочернему компоненту.
 defineExpose({ exitSelection, isSelecting, selectionMode })
-
-const toggleSelect = (chatId: number) => {
-  const next = new Set(selectedIds.value)
-  if (next.has(chatId)) {
-    next.delete(chatId)
-  } else {
-    next.add(chatId)
-  }
-  selectedIds.value = Array.from(next)
-  if (selectedIds.value.length === 0) selectionMode.value = false
-}
-
-let holdTimer: number | null = null
-let suppressClick = false
-
-const cancelHold = () => {
-  if (holdTimer !== null) {
-    window.clearTimeout(holdTimer)
-    holdTimer = null
-  }
-}
-
-const onRowPointerDown = (chatId: number) => {
-  if (selectionMode.value) return
-  cancelHold()
-  suppressClick = false
-  holdTimer = window.setTimeout(() => {
-    holdTimer = null
-    selectionMode.value = true
-    selectedIds.value = [chatId]
-    suppressClick = true // клик, которым завершилось удержание, чат не открывает
-  }, 480)
-}
-
-const onRowPointerUp = () => {
-  cancelHold()
-}
-
-const onRowPointerCancel = () => {
-  cancelHold()
-  suppressClick = false
-}
-
-const onRowClick = (chatId: number) => {
-  if (suppressClick) {
-    suppressClick = false
-    return
-  }
-  if (selectionMode.value) {
-    toggleSelect(chatId)
-    return
-  }
-  selectChat(chatId)
-}
-
-const allVisibleSelected = computed<boolean>(() => {
-  const visible = orderedChats.value.map((chat) => chat.id)
-  return visible.length > 0 && visible.every((id) => selectedIds.value.includes(id))
-})
-
-const selectionAllMuted = computed<boolean>(() => {
-  if (selectedIds.value.length === 0) return false
-  return selectedIds.value.every((id) => isMutedOf(id))
-})
-
-const selectionAllPinned = computed<boolean>(() => {
-  if (selectedIds.value.length === 0) return false
-  return selectedIds.value.every((id) => isPinnedOf(id))
-})
-
-const toggleSelectAll = () => {
-  if (allVisibleSelected.value) {
-    exitSelection()
-  } else {
-    selectedIds.value = orderedChats.value.map((chat) => chat.id)
-    if (selectedIds.value.length === 0) selectionMode.value = false
-  }
-}
-
-const onBulkMute = () => {
-  const ids = [...selectedIds.value]
-  if (ids.length === 0) return
-  const muted = !selectionAllMuted.value
-  exitSelection()
-  emit('bulk-mute', ids, muted)
-}
-
-const onBulkPin = () => {
-  const ids = [...selectedIds.value]
-  if (ids.length === 0) return
-  const pinned = !selectionAllPinned.value
-  exitSelection()
-  emit('bulk-pin', ids, pinned)
-}
-
-const onBulkDelete = () => {
-  const ids = [...selectedIds.value]
-  if (ids.length === 0) return
-  exitSelection()
-  emit('bulk-delete', ids)
-}
 
 // Выход из режима выделения при внешних изменениях (смена вкладки/чата).
 watch([() => props.view, () => props.selectedChatId], () => {
