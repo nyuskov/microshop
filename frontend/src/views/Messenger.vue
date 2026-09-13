@@ -49,8 +49,8 @@
         @chat-opened="onChatOpened"
         @create-group="openCreateGroup"
         @create-channel="openCreateChannel"
-        @open-blocked="showBlockedUsers = true"
-        @open-reports="showReports = true"
+        @open-blocked="moderationOverlaysRef?.openBlocked()"
+        @open-reports="moderationOverlaysRef?.openReports()"
       />
     </q-drawer>
 
@@ -351,24 +351,14 @@
   <!-- Login Modal -->
   <LoginModal :visible="showLoginModal" @close-modal="onLoginModalClose" />
 
-  <!-- Модерация: жалоба на контент и список заблокированных (требования RuStore) -->
-  <ReportDialog
-    v-if="reportTarget"
-    :user-id="reportTarget.userId"
-    :user-name="reportTarget.userName"
-    :chat-id="reportTarget.chatId"
-    :message-id="reportTarget.messageId"
-    :message-preview="reportTarget.messagePreview"
-    @close="reportTarget = null"
+  <!-- Модерация: жалоба, список блокировок и разбор жалоб — состояние диалогов
+       живёт в MessengerModerationOverlays.vue. -->
+  <MessengerModerationOverlays
+    ref="moderationOverlaysRef"
+    :is-admin="authStore.isAdmin"
     @sent="onReportSent"
+    @blocked-changed="onBlockedUsersChanged"
   />
-  <BlockedUsersDialog
-    v-if="showBlockedUsers"
-    @close="showBlockedUsers = false"
-    @unblocked="onBlockedUsersChanged"
-  />
-  <!-- Разбор жалоб — только у администраторов (пункт «⋯» появляется им одним) -->
-  <ModerationReportsDialog v-if="showReports && authStore.isAdmin" @close="showReports = false" />
 
   <!-- Новый вход в аккаунт (из push «Это не я» / ?security=1) -->
   <SecurityAlertDialog v-model="showSecurityAlert" />
@@ -559,6 +549,7 @@ import type { PendingRow } from '@/components/messenger/MessageThread.vue'
 import MessageComposer from '@/components/messenger/MessageComposer.vue'
 import MessengerChannelOverlays from '@/views/MessengerChannelOverlays.vue'
 import MessengerChatOverlays from '@/views/MessengerChatOverlays.vue'
+import MessengerModerationOverlays from '@/views/MessengerModerationOverlays.vue'
 
 // Тяжёлые модалки/оверлеи подгружаем асинхронно — они нужны только после
 // действия пользователя (профиль/оформление/инфо о чате, звонок, лайтбокс,
@@ -578,15 +569,7 @@ const ImageLightbox = defineAsyncComponent(() => import('@/components/media/Imag
 const GroupInviteDialog = defineAsyncComponent(
   () => import('@/components/messenger/GroupInviteDialog.vue')
 )
-// Диалоги модерации (требования RuStore): жалоба на контент и список блокировок.
-const ReportDialog = defineAsyncComponent(() => import('@/components/messenger/ReportDialog.vue'))
-const BlockedUsersDialog = defineAsyncComponent(
-  () => import('@/components/messenger/BlockedUsersDialog.vue')
-)
-// Разбор жалоб — служебный экран только для администраторов.
-const ModerationReportsDialog = defineAsyncComponent(
-  () => import('@/components/messenger/ModerationReportsDialog.vue')
-)
+// Диалоги модерации (требования RuStore) — в MessengerModerationOverlays.vue.
 // Просмотрщик историй — открывается по клику на историю.
 const StoryViewer = defineAsyncComponent(() => import('@/components/stories/StoryViewer.vue'))
 import { useCallStore } from '@/stores/call'
@@ -648,16 +631,8 @@ const channelOverlaysRef = ref<InstanceType<typeof MessengerChannelOverlays> | n
 /** Оверлеи «чат и группа»: методы openDelete / openBulkDelete. */
 const chatOverlaysRef = ref<InstanceType<typeof MessengerChatOverlays> | null>(null)
 const showLoginModal = ref(true)
-// Модерация: жалоба на пользователя/сообщение и список заблокированных.
-const reportTarget = ref<{
-  userId: number
-  userName: string
-  chatId?: number
-  messageId?: number
-  messagePreview?: string
-} | null>(null)
-const showBlockedUsers = ref(false)
-const showReports = ref(false)
+/** Диалоги модерации: методы openReport / openBlocked / openReports. */
+const moderationOverlaysRef = ref<InstanceType<typeof MessengerModerationOverlays> | null>(null)
 const voiceRecOpen = ref(false)
 const videoRecOpen = ref(false)
 
@@ -3637,7 +3612,11 @@ const openReportForPeer = () => {
   if (!chat) return
   const peer = chatPeer(chat, currentUserId.value)
   if (!peer) return
-  reportTarget.value = { userId: peer.id, userName: displayName(peer), chatId: chat.id }
+  moderationOverlaysRef.value?.openReport({
+    userId: peer.id,
+    userName: displayName(peer),
+    chatId: chat.id
+  })
 }
 
 /** Жалоба на конкретное сообщение (из действий сообщения, работает и в группах). */
@@ -3645,13 +3624,13 @@ const openReportForMessage = (message: Message) => {
   const chat = selectedChat.value
   if (!chat || message.user_id === currentUserId.value) return
   const author = chat.users.find((item) => item.id === message.user_id)
-  reportTarget.value = {
+  moderationOverlaysRef.value?.openReport({
     userId: message.user_id,
     userName: author ? displayName(author) : 'Пользователь',
     chatId: chat.id,
     messageId: message.id,
     messagePreview: (message.text ?? '').trim().slice(0, 80)
-  }
+  })
 }
 
 /** Блокировка пользователя: диалог скрывается, переписка не доставляется. */
