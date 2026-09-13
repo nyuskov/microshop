@@ -2,7 +2,7 @@
 # который раздаёт SPA и проксирует /api и /media на backend (web:8000).
 
 # Этап 1 — сборка
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 RUN corepack enable
 ENV CI=true
