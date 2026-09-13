@@ -19,6 +19,15 @@ const routes = [
     name: 'ProfileLink',
     component: Messenger
   },
+  // Ссылка-канал: https://pismo.space/c/<адрес>. Открывается тот же мессенджер:
+  // он показывает экран подписки на канал, а не сразу ленту — человек мог ещё не
+  // подписаться (см. openChannelLink в Messenger.vue). Без этого маршрута адрес
+  // попадал в `/:pathMatch(.*)*` и открывалась «Страница не найдена».
+  {
+    path: '/c/:username',
+    name: 'ChannelLink',
+    component: Messenger
+  },
   // Ссылка-приглашение в группу: https://pismo.space/j/<токен>. Открывается тот
   // же мессенджер: он показывает карточку группы и предлагает вступить
   // (см. resolveInviteLink в Messenger.vue).
@@ -62,7 +71,14 @@ router.beforeEach((to, from, next) => {
   // Добавляем 'Messenger' в список публичных маршрутов.
   // 'ProfileLink' тоже публичный: по ссылке может прийти незарегистрированный
   // человек — мессенджер покажет ему экран входа, а после входа откроет чат.
-  const publicRoutes = ['Login', 'Messenger', 'ProfileLink', 'GroupInvite', 'NotFound']
+  const publicRoutes = [
+    'Login',
+    'Messenger',
+    'ProfileLink',
+    'ChannelLink',
+    'GroupInvite',
+    'NotFound'
+  ]
 
   // Check if the route requires authentication
   if (!publicRoutes.includes(to.name as string)) {

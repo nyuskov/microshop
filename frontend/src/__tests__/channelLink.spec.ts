@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   channelLinkFor,
@@ -59,5 +60,25 @@ describe('channelUsernameFromPath', () => {
     expect(channelUsernameFromPath('/c/ab')).toBeNull()
     expect(channelUsernameFromPath('/c/%D0%9D')).toBeNull()
     expect(channelUsernameFromPath('/c/')).toBeNull()
+  })
+})
+
+/**
+ * Ссылка `/c/<адрес>` разбирается в `Messenger.vue`, но чтобы он вообще
+ * смонтировался, маршрут должен быть объявлен в роутере: иначе адрес попадает в
+ * `/:pathMatch(.*)*` и человек видит «Страница не найдена» вместо экрана подписки.
+ */
+describe('маршрут ссылки на канал', () => {
+  const router = readFileSync('src/router/index.ts', 'utf8')
+
+  it('объявлен как путь /c/:username', () => {
+    expect(router).toContain("path: '/c/:username'")
+    expect(router).toContain("name: 'ChannelLink'")
+  })
+
+  it('открыт без входа: незарегистрированный человек увидит экран входа', () => {
+    const publicBlock = router.slice(router.indexOf('const publicRoutes = ['))
+    const list = publicBlock.slice(0, publicBlock.indexOf(']') + 1)
+    expect(list).toContain("'ChannelLink'")
   })
 })
