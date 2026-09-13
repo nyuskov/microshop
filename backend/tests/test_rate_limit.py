@@ -2,7 +2,7 @@
 
 import asyncio
 
-from api_v1.rate_limit import SlidingWindowLimiter
+from core.rate_limit import SlidingWindowLimiter
 
 
 async def test_limiter_allows_up_to_limit_then_blocks() -> None:

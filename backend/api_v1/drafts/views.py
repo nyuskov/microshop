@@ -16,9 +16,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api_v1.rate_limit import enforce_limit
 from core.config import settings
 from core.models import User, db_helper
+from core.rate_limit import enforce_limit
 
 from ..auth.utils import get_current_user
 from ..chats.crud import is_user_chat_member

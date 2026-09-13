@@ -734,7 +734,6 @@ import { getErrorMessage } from '@/services/errors'
 import {
   matchUsersByPhone,
   openPrivateChat,
-  searchMessages,
   searchUsers,
   type SearchUserResult
 } from '@/services/chatService'
@@ -755,6 +754,7 @@ import { formatChatTime, formatMsgTime } from '@/utils/format'
 import { isLockedFile, lockedFileLabel, mediaTypeLabel } from '@/utils/media'
 import { plainMessageText } from '@/utils/mentions'
 import { useSlideDown } from '@/composables/useSlideDown'
+import { useGlobalSearch } from '@/composables/useGlobalSearch'
 
 /** Общие хуки раскрытия для поиска и полосы историй (см. composables/useSlideDown). */
 const slideDown = useSlideDown()
@@ -947,12 +947,21 @@ watch(settingsMenuOpen, (open) => {
   }
 })
 
-const searchQuery = ref('')
-const searching = ref(false)
-const searchMode = ref<'people' | 'messages'>('people')
-const userResults = ref<SearchUserResult[]>([])
-const messageResults = ref<Message[]>([])
-const searchError = ref('')
+// Поиск живёт в своём композабле (запрос, режим, результаты, задержка, ошибка) —
+// здесь остаётся только «открыт/закрыт»: панель, значок в шапке и жесты.
+// Имена через двоеточие — чтобы разметка не менялась при переезде состояния.
+const {
+  query: searchQuery,
+  mode: searchMode,
+  users: userResults,
+  messages: messageResults,
+  loading: searching,
+  error: searchError,
+  hasQuery: searchHasQuery,
+  setMode: setSearchMode,
+  setError: setSearchError,
+  reset: resetSearch
+} = useGlobalSearch()
 const contactsQuery = ref('')
 // Поиск по всему мессенджеру в разделе «Контакты»: найденных показываем
 // отдельным блоком с кнопкой «добавить в контакты» (как в Telegram).
@@ -1322,7 +1331,7 @@ const searchOpen = ref(false)
  * месте, а поле лишь раскрывается над ним. По этому признаку разметка и
  * выбирает: результаты (`people-results`) или обычный список с фильтрами.
  */
-const searchActive = computed(() => searchOpen.value && searchQuery.value.trim().length > 0)
+const searchActive = computed(() => searchOpen.value && searchHasQuery.value)
 
 /** Показать поле поиска, не забирая фокус (протяжка списка вниз, как истории). */
 const revealSearch = () => {
@@ -1347,14 +1356,10 @@ const toggleSearch = () => {
   else openSearch()
 }
 
-/** Закрыть глобальный поиск и сбросить запрос. */
+/** Закрыть глобальный поиск и сбросить запрос с результатами. */
 const closeSearch = () => {
   searchOpen.value = false
-  searchQuery.value = ''
-  userResults.value = []
-  messageResults.value = []
-  searching.value = false
-  searchError.value = ''
+  resetSearch()
 }
 
 const selectChat = (chatId: number) => {
@@ -1364,19 +1369,15 @@ const selectChat = (chatId: number) => {
 
 /** Открытие приватного чата с найденным по поиску пользователем. */
 const openChatWithUser = async (user: SearchUserResult) => {
-  searchError.value = ''
+  setSearchError('')
   try {
     const chat = await openPrivateChat(user.id)
     closeSearch()
     settingsMenuOpen.value = false
     emit('chat-opened', chat)
   } catch (error) {
-    searchError.value = getErrorMessage(error, 'Не удалось начать переписку')
+    setSearchError(getErrorMessage(error, 'Не удалось начать переписку'))
   }
-}
-
-const setSearchMode = (mode: 'people' | 'messages') => {
-  searchMode.value = mode
 }
 
 /** Чат, в котором лежит найденное сообщение. */
@@ -1417,14 +1418,14 @@ const openMessageResult = (message: Message) => {
 
 /** Открытие приватного чата из вкладки «Контакты». */
 const openChatWithContact = async (contact: SearchUserResult) => {
-  searchError.value = ''
+  setSearchError('')
   try {
     const chat = await openPrivateChat(contact.id)
     settingsMenuOpen.value = false
     emit('chat-opened', chat)
   } catch (error) {
-    // Ошибка показывается только на вкладке «Чаты» (как в исходном Messenger).
-    searchError.value = getErrorMessage(error, 'Не удалось начать переписку')
+    // Ошибку показывает разметка вкладки «Чаты» (как в исходном Messenger).
+    setSearchError(getErrorMessage(error, 'Не удалось начать переписку'))
   }
 }
 
@@ -1546,43 +1547,7 @@ watch([() => props.view, () => props.selectedChatId], () => {
   if (searchOpen.value) closeSearch()
 })
 
-let searchTimer: number | null = null
-watch([searchQuery, searchMode], ([value, mode]) => {
-  if (searchTimer !== null) {
-    window.clearTimeout(searchTimer)
-    searchTimer = null
-  }
-  searchError.value = ''
-  const query = value.trim()
-  if (!query) {
-    userResults.value = []
-    messageResults.value = []
-    searching.value = false
-    return
-  }
-  searching.value = true
-  searchTimer = window.setTimeout(async () => {
-    try {
-      if (mode === 'messages') {
-        messageResults.value = await searchMessages(query)
-        userResults.value = []
-      } else {
-        userResults.value = await searchUsers(query)
-        messageResults.value = []
-      }
-    } catch (error) {
-      searchError.value = getErrorMessage(error, 'Не удалось выполнить поиск')
-    } finally {
-      searching.value = false
-    }
-  }, 350)
-})
-
 onBeforeUnmount(() => {
-  if (searchTimer !== null) {
-    window.clearTimeout(searchTimer)
-    searchTimer = null
-  }
   if (outsideHandler) {
     document.removeEventListener('pointerdown', outsideHandler)
     outsideHandler = null

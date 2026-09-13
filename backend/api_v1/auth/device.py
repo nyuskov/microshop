@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 from fastapi import Request
 
-from api_v1.rate_limit import client_ip
+from core.rate_limit import client_ip
 
 # Длина User-Agent, которую вообще имеет смысл хранить (в БД колонка String(255)).
 MAX_USER_AGENT_LENGTH = 255

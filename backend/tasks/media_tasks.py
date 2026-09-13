@@ -21,9 +21,9 @@ from urllib.request import build_opener
 
 from sqlalchemy import select
 
-from api_v1.media_store import store_media
 from core.celery_app import celery_app
 from core.config import settings
+from core.media_store import store_media
 from core.models import Chat, Message, Story, User, user_chat_association_table
 from tasks.base import make_engine, make_session, run_async
 from tasks.notifications import publish_realtime_new_message
@@ -136,7 +136,7 @@ async def _download_gif_message_async(
     try:
         # Квота: GIF качается воркером асинхронно, поэтому проверяем и здесь —
         # иначе накопить файлы можно было бы в обход ограничения (см. media_quota).
-        from api_v1.media_quota import enforce_media_quota
+        from core.media_quota import enforce_media_quota
 
         await enforce_media_quota(session, user_id=user_id, incoming_bytes=len(content))
 

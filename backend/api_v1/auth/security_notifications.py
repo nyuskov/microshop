@@ -36,10 +36,10 @@ from fastapi import Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api_v1.rate_limit import rate_limit_key, rate_limiter
 from core import mailer
 from core.celery_app import get_task
 from core.models import LoginDevice, User
+from core.rate_limit import rate_limit_key, rate_limiter
 
 from .device import device_info
 

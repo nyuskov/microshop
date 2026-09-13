@@ -3,7 +3,7 @@
 import pytest
 from fastapi import HTTPException
 
-from api_v1.upload_guard import (
+from core.upload_guard import (
     detect_image_magic,
     validate_attachment_upload,
     validate_image_upload,

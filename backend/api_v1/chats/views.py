@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user, touch_last_seen
-from api_v1.avatar_store import remove_avatar_files, store_avatar
 from api_v1.chats import crud
 from api_v1.chats.schemas import Chat as ChatSchema
 from api_v1.chats.schemas import (
@@ -20,10 +19,11 @@ from api_v1.chats.schemas import (
 )
 from api_v1.events.service import notify_chat, notify_user
 from api_v1.messages.crud import message_basic_to_dict
-from api_v1.rate_limit import enforce_limit
-from api_v1.upload_guard import validate_image_upload
+from core.avatar_store import remove_avatar_files, store_avatar
 from core.config import settings
 from core.models import Chat, Message, User, db_helper
+from core.rate_limit import enforce_limit
+from core.upload_guard import validate_image_upload
 
 router = APIRouter(
     prefix="/chats",

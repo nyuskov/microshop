@@ -5,14 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth import audit
 from api_v1.auth.utils import get_current_user
-from api_v1.avatar_store import remove_avatar_files, store_avatar
-from api_v1.media_quota import media_usage
-from api_v1.rate_limit import enforce_limit
-from api_v1.upload_guard import validate_image_upload
 from api_v1.users import crud, deletion, schemas
+from core.avatar_store import remove_avatar_files, store_avatar
 from core.config import settings
+from core.media_quota import media_usage
 from core.models import User, db_helper
+from core.rate_limit import enforce_limit
 from core.security import get_password_hash, verify_password
+from core.upload_guard import validate_image_upload
 
 router = APIRouter(prefix="/users", tags=["Users"])
 

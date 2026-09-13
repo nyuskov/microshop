@@ -17,7 +17,7 @@ import asyncio
 
 from sqlalchemy import select
 
-from api_v1.avatar_store import (
+from core.avatar_store import (
     AVATAR_DIR,
     AVATAR_URL_PREFIX,
     make_avatar_thumb,

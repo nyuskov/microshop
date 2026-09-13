@@ -17,12 +17,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user
-from api_v1.media_store import store_media
-from api_v1.rate_limit import enforce_limit
-from api_v1.upload_guard import detect_image_magic
 from core.config import settings
 from core.link_preview import fetch_preview, fetch_preview_image, normalize_url
+from core.media_store import store_media
 from core.models import LinkPreview, User, db_helper
+from core.rate_limit import enforce_limit
+from core.upload_guard import detect_image_magic
 
 from . import crud
 from .schemas import LinkPreviewRequest, LinkPreviewSchema, preview_to_schema

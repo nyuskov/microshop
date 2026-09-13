@@ -6,8 +6,6 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user
-from api_v1.media_quota import enforce_media_quota, media_usage
-from api_v1.media_store import store_media
 from api_v1.messages import crud
 from api_v1.messages.schemas import (
     ChatMediaItem,
@@ -16,11 +14,13 @@ from api_v1.messages.schemas import (
 )
 from api_v1.messages.schemas import Message as MessageSchema
 from api_v1.messages.schemas import MessageCreate
-from api_v1.rate_limit import enforce_limit
-from api_v1.upload_guard import validate_attachment_upload
 from core.celery_app import get_task
 from core.config import settings
+from core.media_quota import enforce_media_quota, media_usage
+from core.media_store import store_media
 from core.models import User, db_helper
+from core.rate_limit import enforce_limit
+from core.upload_guard import validate_attachment_upload
 
 router = APIRouter(
     prefix="/messages",

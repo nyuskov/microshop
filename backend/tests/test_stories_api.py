@@ -245,7 +245,7 @@ async def test_upload_validation_and_quota(api: _ApiCtx) -> None:
 
     assert (await api.publish(token)).status_code == 201
 
-    from api_v1.media_quota import media_usage
+    from core.media_quota import media_usage
 
     async with api.factory() as session:
         usage = await media_usage(session, user_id=author.id)
@@ -506,8 +506,8 @@ async def test_audience_counts_group_several_reactors(api: _ApiCtx) -> None:
 @pytest.mark.asyncio
 async def test_stories_rate_limits(api: _ApiCtx) -> None:
     """Реакции и просмотры ограничены по частоте (как остальные эндпоинты)."""
-    from api_v1.rate_limit import rate_limiter
     from core.config import settings
+    from core.rate_limit import rate_limiter
 
     author = await api.make_user()
     viewer = await api.make_user()

@@ -10,11 +10,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api_v1.rate_limit import client_ip, enforce_limit, rate_limit_key, rate_limiter
 from core import mailer, passwords
 from core.celery_app import get_task
 from core.config import settings
 from core.models import TelegramBindLink, User, db_helper
+from core.rate_limit import client_ip, enforce_limit, rate_limit_key, rate_limiter
 from core.security import get_password_hash, verify_password
 
 from ..tokens.schemas import Token

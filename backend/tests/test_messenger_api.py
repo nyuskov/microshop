@@ -142,7 +142,7 @@ async def api() -> _ApiCtx:
             # limiter и «замки» OTP-номеров живут в процессе и иначе «протекали»
             # бы между тестами (лимиты/блокировки из одного теста — в другой).
             from api_v1.auth import otp_storage
-            from api_v1.rate_limit import rate_limiter
+            from core.rate_limit import rate_limiter
 
             rate_limiter._windows.clear()
             otp_storage._verify_lockouts.clear()

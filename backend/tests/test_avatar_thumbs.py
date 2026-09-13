@@ -21,8 +21,8 @@ import pytest
 import pytest_asyncio
 from PIL import Image
 
-from api_v1 import avatar_store
-from api_v1.avatar_store import (
+from core import avatar_store
+from core.avatar_store import (
     AVATAR_THUMB_SIZE,
     make_avatar_thumb,
     remove_avatar_files,

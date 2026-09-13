@@ -253,8 +253,6 @@ const publish = async () => {
   padding: 8px 14px 12px;
   overflow-x: hidden;
   overflow-y: auto;
-  /* Совсем тонкая граница: полосу отделяет от списка чуть заметная линия. */
-  border-bottom: 1px solid color-mix(in srgb, var(--ms-border) 35%, transparent);
   scrollbar-width: none;
 }
 

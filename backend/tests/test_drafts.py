@@ -117,7 +117,7 @@ async def api() -> _ApiCtx:
         finally:
             app.dependency_overrides.clear()
             from api_v1.auth import otp_storage
-            from api_v1.rate_limit import rate_limiter
+            from core.rate_limit import rate_limiter
 
             rate_limiter._windows.clear()
             otp_storage._verify_lockouts.clear()

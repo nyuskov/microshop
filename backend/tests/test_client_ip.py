@@ -1,4 +1,4 @@
-"""Тесты определения IP клиента для rate-лимитов (``api_v1.rate_limit.client_ip``).
+"""Тесты определения IP клиента для rate-лимитов (``core.rate_limit.client_ip``).
 
 Лимиты «на IP» ломаются ровно в двух случаях, и оба здесь проверяются:
   1) за nginx приложение видит IP прокси — тогда лимит «на IP» превращается в
@@ -32,7 +32,7 @@ def _request(peer: str | None, forwarded: str | None = None) -> Request:
 
 def test_uses_forwarded_ip_from_private_peer() -> None:
     """За собственным nginx (приватный peer) берём IP из X-Forwarded-For."""
-    from api_v1.rate_limit import client_ip
+    from core.rate_limit import client_ip
 
     request = _request("172.20.0.4", "8.8.8.8")
 
@@ -41,7 +41,7 @@ def test_uses_forwarded_ip_from_private_peer() -> None:
 
 def test_ignores_forwarded_header_from_public_peer() -> None:
     """Публичный peer — заголовку не верим (иначе лимит легко обойти)."""
-    from api_v1.rate_limit import client_ip
+    from core.rate_limit import client_ip
 
     request = _request("8.8.4.4", "10.0.0.1")
 
@@ -50,7 +50,7 @@ def test_ignores_forwarded_header_from_public_peer() -> None:
 
 def test_takes_first_hop_of_forwarded_chain() -> None:
     """В цепочке берём первый адрес — это исходный клиент (nginx перезаписывает)."""
-    from api_v1.rate_limit import client_ip
+    from core.rate_limit import client_ip
 
     request = _request("172.20.0.4", "8.8.8.8, 172.20.0.4")
 
@@ -59,7 +59,7 @@ def test_takes_first_hop_of_forwarded_chain() -> None:
 
 def test_falls_back_when_forwarded_is_garbage() -> None:
     """Не-IP в заголовке не должен попадать в ключ лимита."""
-    from api_v1.rate_limit import client_ip
+    from core.rate_limit import client_ip
 
     request = _request("172.20.0.4", "not-an-ip")
 
@@ -68,6 +68,6 @@ def test_falls_back_when_forwarded_is_garbage() -> None:
 
 def test_without_client_returns_unknown() -> None:
     """Если адрес соединения неизвестен — не падаем (лимит на общий ключ)."""
-    from api_v1.rate_limit import client_ip
+    from core.rate_limit import client_ip
 
     assert client_ip(_request(None)) == "unknown"

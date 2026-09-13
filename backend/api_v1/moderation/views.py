@@ -15,7 +15,6 @@ from api_v1.auth import audit, security_notifications
 from api_v1.auth.refresh_sessions import revoke_all_sessions
 from api_v1.auth.utils import get_current_superuser, get_current_user
 from api_v1.chats.crud import is_user_chat_member
-from api_v1.rate_limit import enforce_limit
 from api_v1.users.schemas import UserSearchResultSchema
 from core.config import settings
 from core.models import Message, User, UserReport, db_helper
@@ -26,6 +25,7 @@ from core.models.moderation_action import (
     ACTION_REPORT_CREATED,
     ACTION_SESSIONS_REVOKED,
 )
+from core.rate_limit import enforce_limit
 
 from . import crud, schemas, service
 
