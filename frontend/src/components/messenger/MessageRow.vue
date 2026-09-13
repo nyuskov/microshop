@@ -85,72 +85,12 @@
         <span class="quote-text">{{ quote.text }}</span>
       </div>
 
-      <!-- Вложение -->
-      <template v-if="file">
-        <button
-          v-if="isImageFile(file)"
-          class="attachment attachment-image-btn"
-          type="button"
-          :title="`Открыть изображение «${file.name}»`"
-          @click.stop="emit('open-image')"
-        >
-          <img
-            v-if="fileUrl"
-            :src="fileUrl"
-            :alt="file.name"
-            class="attachment-image"
-            loading="lazy"
-            decoding="async"
-          />
-          <span v-else class="attachment-locked">
-            <q-icon :name="icon('lock')" size="20px" />
-            <span>{{ lockedLabel }}</span>
-          </span>
-        </button>
-        <template v-else-if="fileUrl">
-          <RoundVideoMessage
-            v-if="isRecordedVideoMessage(file)"
-            :src="fileUrl"
-            :name="file.name"
-            :size="file.size"
-          />
-          <video
-            v-else-if="isVideoFile(file)"
-            class="attachment-video"
-            :src="fileUrl"
-            controls
-            preload="metadata"
-            @click.stop
-          ></video>
-          <AudioMessage
-            v-else-if="isAudioFile(file)"
-            :src="fileUrl"
-            :name="file.name"
-            :size="file.size"
-          />
-          <a
-            v-else
-            class="attachment"
-            :href="fileUrl"
-            :download="file.name"
-            target="_blank"
-            rel="noopener"
-          >
-            <span class="attachment-card">
-              <q-icon :name="icon(fileIcon(file))" size="26px" />
-              <span class="attachment-info">
-                <span class="attachment-name">{{ file.name }}</span>
-                <span class="attachment-meta">{{ formatBytes(file.size) }}</span>
-              </span>
-            </span>
-          </a>
-        </template>
-        <!-- Зашифрованный файл: пока не расшифрован, вместо содержимого — замок. -->
-        <span v-else class="attachment attachment-locked">
-          <q-icon :name="icon('lock')" size="20px" />
-          <span>{{ lockedLabel }}</span>
-        </span>
-      </template>
+      <!-- Вложение — в MessageAttachment.vue (там же расшифровка E2EE). -->
+      <MessageAttachment
+        :message="message"
+        :row-visible="rowVisible"
+        @open-image="emit('open-image')"
+      />
 
       <!-- Очень длинные тексты показываем свёрнутыми: иначе одна «простыня»
            растягивает ленту на несколько экранов. -->
@@ -267,28 +207,16 @@ import type { Message } from '@/types'
 import { mediaUrl } from '@/config'
 import { lastQuickReaction } from '@/utils/reactions'
 import { haptic, HAPTIC_HOLD } from '@/utils/haptics'
+import { formatMsgTime } from '@/utils/format'
 import { avatarStyle, initials } from '@/utils/user'
-import { formatBytes, formatMsgTime } from '@/utils/format'
 import { splitMessageText } from '@/utils/mentions'
 import { followLink } from '@/composables/useExternalLinkGuard'
 import { useVisibleOnce } from '@/composables/useVisibleOnce'
-import {
-  callMessageIcon,
-  callMessageText,
-  effectiveFile,
-  fileIcon,
-  isAudioFile,
-  isImageFile,
-  isRecordedVideoMessage,
-  isRoundVideoOnly,
-  isVideoFile
-} from '@/utils/media'
-import { decryptedMediaFor } from '@/composables/useDecryptedMedia'
-import AudioMessage from '@/components/media/AudioMessage.vue'
-import RoundVideoMessage from '@/components/media/RoundVideoMessage.vue'
+import { callMessageIcon, callMessageText, effectiveFile, isRoundVideoOnly } from '@/utils/media'
 import LinkPreviewCard from '@/components/messenger/LinkPreviewCard.vue'
 import MessageActionSheet from '@/components/messenger/MessageActionSheet.vue'
 import MessageActionsBar from '@/components/messenger/MessageActionsBar.vue'
+import MessageAttachment from '@/components/messenger/MessageAttachment.vue'
 import { useLinkPreview } from '@/composables/useLinkPreview'
 
 export interface MessageQuote {
@@ -435,28 +363,6 @@ const mediaAbsolute = (path: string): string => mediaUrl(path)
 const file = computed(() => effectiveFile(props.message))
 
 /** Расшифрованное вложение (blob-ссылка) — только для зашифрованных файлов. */
-const decrypted = computed(() =>
-  // Расшифровку начинаем, когда строка дошла до экрана: иначе на открытие чата
-  // скачивались бы вложения всей истории.
-  decryptedMediaFor(props.message, { enabled: () => rowVisible.value })
-)
-
-/**
- * URL вложения: у зашифрованного файла — расшифрованная blob-ссылка (пока её
- * нет, показываем «замок», а не шифротекст), у обычного — прямая ссылка.
- */
-const fileUrl = computed<string>(() => {
-  const attachment = file.value
-  if (!attachment) return ''
-  const local = decrypted.value
-  if (local) return local.status === 'ready' ? local.url : ''
-  return mediaAbsolute(attachment.url)
-})
-
-const lockedLabel = computed<string>(() =>
-  decrypted.value?.status === 'failed' ? '🔒 Не удалось расшифровать' : '🔒 Расшифровываем…'
-)
-
 /** Текст и иконка системной отметки о звонке. */
 const callText = computed<string>(() => callMessageText(props.message) ?? 'Звонок')
 const callIcon = computed<string>(() => callMessageIcon(props.message))
@@ -956,84 +862,7 @@ const onDoubleTap = (): void => {
   text-overflow: ellipsis;
 }
 
-/* Вложения */
-.attachment {
-  display: block;
-  margin-bottom: 4px;
-  text-decoration: none;
-}
-
-.attachment-image-btn {
-  padding: 0;
-  border: none;
-  background: transparent;
-  cursor: zoom-in;
-}
-
-.attachment-image {
-  /* На узком экране (320–360px) запасной предел 300px всё ещё больше ленты —
-     берём минимум из него и ширины окна, иначе лента обрежет картинку. */
-  max-width: min(300px, calc(100vw - 60px));
-  max-height: 260px;
-  border-radius: 8px;
-  display: block;
-}
-
-.attachment-video {
-  max-width: min(320px, calc(100vw - 60px));
-  max-height: 300px;
-  border-radius: 8px;
-  display: block;
-  margin-bottom: 4px;
-}
-
-.attachment-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--ms-surface-2);
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: var(--ms-text-strong);
-}
-
-.attachment-card i {
-  font-size: 1.6rem;
-  color: var(--ms-danger);
-}
-
-/* Зашифрованное вложение, которое ещё не расшифровано (или не читается) */
-.attachment-locked {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--ms-surface-2);
-  border-radius: 8px;
-  padding: 10px 14px;
-  color: var(--ms-muted);
-  font-size: 13.5px;
-}
-
-.attachment-info {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.attachment-name {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--ms-text-strong);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 220px;
-}
-
-.attachment-meta {
-  font-size: 12px;
-  color: var(--ms-muted-2);
-}
+/* Вложения переехали в MessageAttachment.vue вместе с разметкой и стилями. */
 
 /* Общие круглые кнопки (геометрия — в assets/appearance.css) */
 .round-btn.danger:hover {
