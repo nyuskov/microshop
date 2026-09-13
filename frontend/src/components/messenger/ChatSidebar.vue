@@ -177,7 +177,7 @@
           <div v-if="searchError" class="inline-error">{{ searchError }}</div>
 
           <!-- Результаты поиска: люди / сообщения -->
-          <div v-if="searchOpen && searchQuery.trim()" class="people-results">
+          <div v-if="searchActive" class="people-results">
             <div class="search-mode-tabs" role="tablist" aria-label="Область поиска">
               <button
                 class="search-mode-tab"
@@ -281,7 +281,7 @@
           </div>
 
           <!-- Скелетоны: показываем структуру списка вместо текста «Загрузка…» -->
-          <div v-if="!searchQuery.trim() && loadingChats" class="sk-list" aria-busy="true">
+          <div v-if="!searchActive && loadingChats" class="sk-list" aria-busy="true">
             <span class="sr-only">Загрузка диалогов…</span>
             <div v-for="n in 6" :key="n" class="sk-row">
               <span class="sk-avatar"></span>
@@ -292,8 +292,8 @@
             </div>
           </div>
 
-          <!-- Недавние диалоги: место результатов поиска, если запрос не пуст -->
-          <template v-else-if="!searchQuery.trim()">
+          <!-- Недавние диалоги: место результатов поиска, если он что-то ищет -->
+          <template v-else-if="!searchActive">
             <!-- Истории: раскрытая полоса под шапкой. Появляется по нажатию на
                  кружки в шапке или по протяжке списка вниз у самого верха. -->
             <Transition name="slide-down" v-bind="slideDown">
@@ -1242,9 +1242,9 @@ const unreadChatCount = computed(
   () => props.chats.filter((chat) => (chat.unread_count ?? 0) > 0).length
 )
 
-/** Чаты после фильтра и поиска по названию. */
-const filteredChats = computed<Chat[]>(() => {
-  const byFilter = props.chats.filter((chat) => {
+/** Чаты после фильтра по чипам («Все», «Непрочитанные», «Личные» и т. д.). */
+const filteredChats = computed<Chat[]>(() =>
+  props.chats.filter((chat) => {
     if (chatFilter.value === 'unread') return (chat.unread_count ?? 0) > 0
     // Канал — тоже групповой чат, поэтому в «Группах» его не показываем.
     if (chatFilter.value === 'groups') return isGroupChat(chat) && !chat.is_channel
@@ -1252,19 +1252,7 @@ const filteredChats = computed<Chat[]>(() => {
     if (chatFilter.value === 'private') return !isGroupChat(chat)
     return true
   })
-  const query = searchQuery.value.trim().toLowerCase()
-  if (!query) return byFilter
-  return byFilter.filter((chat) => {
-    const title = chatTitleOf(chat)
-    const peer = chatPeerOf(chat)
-    const phone = peer?.phone_number ?? ''
-    return (
-      title.toLowerCase().includes(query) ||
-      chat.name.toLowerCase().includes(query) ||
-      phone.toLowerCase().includes(query)
-    )
-  })
-})
+)
 
 /** Чаты для показа: «Сохранённые сообщения», затем закреплённые, затем остальные. */
 const orderedChats = computed<Chat[]>(() => {
@@ -1327,11 +1315,22 @@ const runSettingsAction = (action: SettingsAction) => {
 
 const searchOpen = ref(false)
 
-/** Открыть глобальный поиск (прячет верхний хидер, фокус в поле). */
+/**
+ * Поиск что-то ищет: панель открыта И запрос непустой.
+ *
+ * Пока запроса нет, поиск ничего не подменяет — список чатов остаётся на
+ * месте, а поле лишь раскрывается над ним. По этому признаку разметка и
+ * выбирает: результаты (`people-results`) или обычный список с фильтрами.
+ */
+const searchActive = computed(() => searchOpen.value && searchQuery.value.trim().length > 0)
+
+/** Открыть глобальный поиск (поле раскрывается под шапкой, фокус в поле). */
 const openSearch = () => {
   settingsMenuOpen.value = false
   searchOpen.value = true
-  requestAnimationFrame(() => searchInputRef.value?.focus())
+  // preventScroll: панель в этот момент ещё свёрнута (высота 0, клип) — без этого
+  // браузер «докручивает» список к нулевому полю и прокрутка прыгает.
+  requestAnimationFrame(() => searchInputRef.value?.focus({ preventScroll: true }))
 }
 
 /** Закрыть глобальный поиск и сбросить запрос. */
@@ -1711,14 +1710,10 @@ onBeforeUnmount(() => {
   }
 }
 
-.panel-header-left,
 .panel-header-right {
   display: flex;
   gap: 2px;
-}
-
-/* Правая группа иконок прижата к краю: слева — значок приложения и истории. */
-.panel-header-right {
+  /* Правая группа иконок прижата к краю: слева — значок приложения и истории. */
   margin-left: auto;
 }
 
@@ -1795,26 +1790,6 @@ onBeforeUnmount(() => {
   background: var(--ms-accent-soft);
   color: var(--ms-accent);
   font-weight: 600;
-}
-
-.search-hint {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  margin: 48px 24px;
-  text-align: center;
-  color: var(--ms-muted-2, #93a0ab);
-}
-
-.search-hint-icon {
-  color: var(--ms-icon-3, #c3cdd4);
-}
-
-.search-hint p {
-  margin: 0;
-  font-size: 13.5px;
-  line-height: 1.5;
 }
 
 /* ---------- Списки ---------- */

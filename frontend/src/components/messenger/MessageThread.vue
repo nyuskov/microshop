@@ -735,22 +735,6 @@ onBeforeUnmount(() => {
   border-color: transparent;
 }
 
-.jump-new {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--ms-info, #3aa6e0);
-  border: 2px solid var(--ms-surface, #fff);
-}
-
-.jump-down.has-new .jump-new {
-  background: var(--ms-surface);
-  border-color: var(--ms-accent, #2ea25e);
-}
-
 /* Группа одного дня: разделитель «липнет» только в её пределах, поэтому даты
    соседних дней не накладываются друг на друга. Flex обязателен: пузыри
    выравниваются через `align-self` (свои — вправо, чужие — влево). */

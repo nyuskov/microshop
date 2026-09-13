@@ -141,8 +141,21 @@ describe('панели списка чатов', () => {
   })
 
   it('список чатов остаётся на месте, пока запрос поиска пуст', () => {
+    // Список подменяют только результаты поиска — и только когда он что-то ищет.
+    expect(sidebar).toContain('v-if="searchActive"')
+    expect(sidebar).toContain('v-else-if="!searchActive"')
     // Раньше при открытом поиске прятался и список: `v-else-if="!searchOpen"`.
     expect(sidebar).not.toContain('v-else-if="!searchOpen"')
-    expect(sidebar).toContain('v-else-if="!searchQuery.trim()"')
+    expect(sidebar).not.toContain('searchOpen && searchQuery.trim()')
+  })
+
+  it('фильтр чипов не зависит от запроса поиска', () => {
+    // Запрос уходит на сервер (поиск людей и сообщений), а не фильтрует список:
+    // локальная фильтрация по нему была мертва — список виден только с пустым.
+    expect(sidebar).not.toContain('searchQuery.value.trim().toLowerCase()')
+  })
+
+  it('фокус в поле поиска не дёргает прокрутку списка', () => {
+    expect(sidebar).toContain('focus({ preventScroll: true })')
   })
 })

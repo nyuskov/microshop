@@ -1326,43 +1326,6 @@ const leaveFrozen = () => {
   width: 100%;
 }
 
-.otp-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 8px;
-  margin-bottom: 2px;
-}
-
-.otp-box {
-  width: 100%;
-  aspect-ratio: 1;
-  text-align: center;
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--ms-text);
-  background: var(--ms-surface-2);
-  border: 1.5px solid var(--ms-border);
-  border-radius: 12px;
-  outline: none;
-  transition:
-    border-color 0.15s,
-    box-shadow 0.15s,
-    background 0.15s,
-    transform 0.1s;
-}
-
-.otp-box.filled {
-  border-color: var(--ms-accent, var(--ms-accent));
-  background: color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 12%, var(--ms-surface));
-}
-
-.otp-box:focus {
-  border-color: var(--ms-accent, var(--ms-accent));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 16%, transparent);
-  transform: scale(1.05);
-  background: var(--ms-surface);
-}
-
 .link-btn {
   margin-top: 16px;
   background: none;
