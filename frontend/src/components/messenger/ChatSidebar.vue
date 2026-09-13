@@ -667,6 +667,12 @@ import {
   isGroupChat
 } from '@/utils/user'
 import { splitByQuery } from '@/utils/search'
+import {
+  messageChatAvatar as searchMessageChatAvatar,
+  messageChatTitle as searchMessageChatTitle,
+  messageSenderPrefix as searchMessageSenderPrefix,
+  messageSnippetText
+} from '@/utils/messageSearch'
 import { useChatSelection } from '@/composables/useChatSelection'
 import { usePhoneImport } from '@/composables/usePhoneImport'
 import { formatChatTime, formatMsgTime } from '@/utils/format'
@@ -1215,33 +1221,15 @@ const openChatWithUser = async (user: SearchUserResult) => {
 }
 
 /** Чат, в котором лежит найденное сообщение. */
-const chatOfMessage = (message: Message): Chat | undefined =>
-  props.chats.find((chat) => chat.id === message.chat_id)
+/** Подписи результата поиска по сообщениям — в utils/messageSearch.ts. */
+const messageChatTitle = (message: Message): string =>
+  searchMessageChatTitle(props.chats, message, props.currentUserId)
 
-/** Название чата для результата поиска по сообщениям. */
-const messageChatTitle = (message: Message): string => {
-  const chat = chatOfMessage(message)
-  return chat ? chatTitle(chat, props.currentUserId) : `#${message.chat_id}`
-}
+const messageChatAvatar = (message: Message): string | undefined =>
+  searchMessageChatAvatar(props.chats, message, props.currentUserId)
 
-/** Аватар чата (собеседника) для результата поиска. */
-const messageChatAvatar = (message: Message): string | undefined => {
-  const chat = chatOfMessage(message)
-  return chat ? chatAvatarOf(chat) : undefined
-}
-
-/** Префикс «Вы: » для своих сообщений в результате поиска. */
 const messageSenderPrefix = (message: Message): string =>
-  props.currentUserId !== null && message.user_id === props.currentUserId ? 'Вы: ' : ''
-
-/** Текст сниппета сообщения (текст или тип вложения). */
-const messageSnippetText = (message: Message): string => {
-  if (message.hidden) return 'Скрыто до проверки модератором'
-  if (isLockedFile(message)) return lockedFileLabel(message)
-  if (message.encrypted && isEncryptedPayload(message.text)) return '🔒 Сообщение'
-  if (message.text) return plainMessageText(message.text)
-  return message.file ? mediaTypeLabel(message.file) : ''
-}
+  searchMessageSenderPrefix(message, props.currentUserId)
 
 /** Переход к найденному сообщению в его чате. */
 const openMessageResult = (message: Message) => {
