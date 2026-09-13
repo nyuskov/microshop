@@ -171,109 +171,20 @@
         <template v-else-if="view === 'chats'">
           <div v-if="searchError" class="inline-error">{{ searchError }}</div>
 
-          <!-- Результаты поиска: люди / сообщения -->
-          <div v-if="searchActive" class="people-results">
-            <div class="search-mode-tabs" role="tablist" aria-label="Область поиска">
-              <button
-                class="search-mode-tab"
-                :class="{ active: searchMode === 'people' }"
-                role="tab"
-                :aria-selected="searchMode === 'people'"
-                @click="setSearchMode('people')"
-              >
-                Люди
-              </button>
-              <button
-                class="search-mode-tab"
-                :class="{ active: searchMode === 'messages' }"
-                role="tab"
-                :aria-selected="searchMode === 'messages'"
-                @click="setSearchMode('messages')"
-              >
-                Сообщения
-              </button>
-            </div>
-
-            <div v-if="searching" class="search-status">Поиск…</div>
-
-            <!-- Люди -->
-            <template v-else-if="searchMode === 'people' && userResults.length">
-              <div class="section-label">Найти людей</div>
-              <button
-                v-for="user in userResults"
-                :key="user.id"
-                class="row-item"
-                @click="openChatWithUser(user)"
-              >
-                <span class="avatar" :style="avatarStyle(displayName(user))">
-                  <img
-                    v-if="avatarUrlOf(user)"
-                    :src="avatarUrlOf(user)"
-                    class="avatar-img"
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                  />
-                  <template v-else>{{ initials(displayName(user)) }}</template>
-                </span>
-                <span class="row-text">
-                  <span class="row-title">
-                    <template v-for="(part, i) in parts(displayName(user))" :key="'n' + i">
-                      <mark v-if="part.hit" class="search-hit">{{ part.text }}</mark>
-                      <template v-else>{{ part.text }}</template>
-                    </template>
-                  </span>
-                  <span class="row-sub">
-                    <template v-for="(part, i) in parts('@' + user.username)" :key="'u' + i">
-                      <mark v-if="part.hit" class="search-hit">{{ part.text }}</mark>
-                      <template v-else>{{ part.text }}</template>
-                    </template>
-                    <template v-if="user.phone_number"> · {{ user.phone_number }}</template>
-                  </span>
-                </span>
-                <q-icon :name="icon('chevron_right')" class="row-arrow" size="20px" />
-              </button>
-            </template>
-            <div v-else-if="searchMode === 'people'" class="search-status">Никого не найдено</div>
-
-            <!-- Сообщения (по всем диалогам) -->
-            <template v-else-if="searchMode === 'messages' && messageResults.length">
-              <div class="section-label">Найдено в чатах</div>
-              <button
-                v-for="msg in messageResults"
-                :key="msg.id"
-                class="row-item"
-                @click="openMessageResult(msg)"
-              >
-                <span class="avatar" :style="avatarStyle(messageChatTitle(msg))">
-                  <img
-                    v-if="messageChatAvatar(msg)"
-                    :src="messageChatAvatar(msg)"
-                    class="avatar-img"
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                  />
-                  <template v-else>{{ initials(messageChatTitle(msg)) }}</template>
-                </span>
-                <span class="row-text">
-                  <span class="row-line">
-                    <span class="row-title msg-result-chat">{{ messageChatTitle(msg) }}</span>
-                    <span class="row-time">{{ formatMsgTime(msg.timestamp) }}</span>
-                  </span>
-                  <span class="row-sub msg-result-snippet">
-                    {{ messageSenderPrefix(msg)
-                    }}<template v-for="(part, i) in parts(messageSnippetText(msg))" :key="'s' + i">
-                      <mark v-if="part.hit" class="search-hit">{{ part.text }}</mark>
-                      <template v-else>{{ part.text }}</template>
-                    </template>
-                  </span>
-                </span>
-                <q-icon :name="icon('chevron_right')" class="row-arrow" size="20px" />
-              </button>
-            </template>
-            <div v-else-if="searchMode === 'messages'" class="search-status">Ничего не найдено</div>
-          </div>
+          <!-- Результаты поиска: люди / сообщения (в SearchResults.vue) -->
+          <SearchResults
+            v-if="searchActive"
+            :query="searchQuery"
+            :mode="searchMode"
+            :users="userResults"
+            :messages="messageResults"
+            :loading="searching"
+            :chats="chats"
+            :current-user-id="currentUserId"
+            @set-mode="setSearchMode"
+            @pick-user="openChatWithUser"
+            @pick-message="openMessageResult"
+          />
 
           <!-- Скелетоны: показываем структуру списка вместо текста «Загрузка…» -->
           <div v-if="!searchActive && loadingChats" class="sk-list" aria-busy="true">
@@ -651,6 +562,7 @@ import StoriesFeed from '@/components/stories/StoriesFeed.vue'
 import StoriesStrip from '@/components/stories/StoriesStrip.vue'
 import ContactNameDialog from '@/components/messenger/ContactNameDialog.vue'
 import PhoneImportDialog from '@/components/messenger/PhoneImportDialog.vue'
+import SearchResults from '@/components/messenger/SearchResults.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import { openPrivateChat, searchUsers, type SearchUserResult } from '@/services/chatService'
@@ -666,16 +578,9 @@ import {
   initials,
   isGroupChat
 } from '@/utils/user'
-import { splitByQuery } from '@/utils/search'
-import {
-  messageChatAvatar as searchMessageChatAvatar,
-  messageChatTitle as searchMessageChatTitle,
-  messageSenderPrefix as searchMessageSenderPrefix,
-  messageSnippetText
-} from '@/utils/messageSearch'
 import { useChatSelection } from '@/composables/useChatSelection'
 import { usePhoneImport } from '@/composables/usePhoneImport'
-import { formatChatTime, formatMsgTime } from '@/utils/format'
+import { formatChatTime } from '@/utils/format'
 import { isLockedFile, lockedFileLabel, mediaTypeLabel } from '@/utils/media'
 import { plainMessageText } from '@/utils/mentions'
 import { useSlideDown } from '@/composables/useSlideDown'
@@ -952,9 +857,6 @@ onBeforeUnmount(() => {
 
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
-/** Части текста с подсветкой совпадений по текущему запросу. */
-const parts = (text: string) => splitByQuery(text, searchQuery.value)
-
 const chatPeerOf = (chat: Chat) => chatPeer(chat, props.currentUserId)
 const chatTitleOf = (chat: Chat): string => chatTitle(chat, props.currentUserId)
 /** Аватар чата: у группы — своё фото, у личного — аватар собеседника. */
@@ -1220,17 +1122,6 @@ const openChatWithUser = async (user: SearchUserResult) => {
   }
 }
 
-/** Чат, в котором лежит найденное сообщение. */
-/** Подписи результата поиска по сообщениям — в utils/messageSearch.ts. */
-const messageChatTitle = (message: Message): string =>
-  searchMessageChatTitle(props.chats, message, props.currentUserId)
-
-const messageChatAvatar = (message: Message): string | undefined =>
-  searchMessageChatAvatar(props.chats, message, props.currentUserId)
-
-const messageSenderPrefix = (message: Message): string =>
-  searchMessageSenderPrefix(message, props.currentUserId)
-
 /** Переход к найденному сообщению в его чате. */
 const openMessageResult = (message: Message) => {
   closeSearch()
@@ -1447,71 +1338,6 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.search-hit {
-  padding: 0 1px;
-  border-radius: 4px;
-  background: var(--ms-accent-soft);
-  color: var(--ms-accent);
-  font-weight: 600;
-}
-
-/* ---------- Списки ---------- */
-.section-label {
-  padding: 8px 14px 4px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  color: var(--ms-muted);
-  user-select: none;
-}
-
-.search-mode-tabs {
-  display: flex;
-  gap: 6px;
-  padding: 2px 14px 8px;
-  /* Переключатель «Люди/Сообщения» остаётся на месте, пока прокручиваются сами
-     результаты: список длинный, а область результатов — свой скролл-контейнер. */
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--ms-surface);
-}
-
-.search-mode-tab {
-  flex: 1;
-  border: 1px solid var(--ms-border, #e2e6ea);
-  background: var(--ms-surface, #fff);
-  color: var(--ms-muted, #71808d);
-  border-radius: 10px;
-  padding: 6px 8px;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: 0.12s;
-}
-
-.search-mode-tab:hover {
-  background: var(--ms-hover, #f2f4f6);
-}
-
-.search-mode-tab.active {
-  border-color: var(--ms-accent, #2ea25e);
-  color: var(--ms-accent, #2ea25e);
-  background: var(--ms-accent-soft, #e3f2e5);
-}
-
-.msg-result-chat {
-  color: var(--ms-accent, #2ea25e);
-}
-
-.msg-result-snippet {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* Фильтры списка чатов. */
 .chat-filters {
   display: flex;
@@ -1622,17 +1448,9 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-.people-results {
-  /* Результаты прокручиваются сами, занимая остаток высоты: шапка панели должна
-     оставаться на месте. Без этого длинный список (16+ строк) растягивал панель,
-     и вместе с ним из кадра уезжали шапка, поле поиска и фильтры. */
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  border-bottom: 1px solid var(--ms-border);
-}
-
-.search-status,
+/* Заглушка списка: «Контактов пока нет» и т. п.
+   (`.search-status` и `.people-results` - в assets/rows.css: их делят список чатов,
+   поиск и контакты.) */
 .empty-hint {
   padding: 14px;
   color: var(--ms-muted-2);
