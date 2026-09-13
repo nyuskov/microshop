@@ -348,8 +348,9 @@
     @comments-count="onChannelCommentsCount"
   />
 
-  <!-- Login Modal -->
-  <LoginModal :visible="showLoginModal" @close-modal="onLoginModalClose" />
+  <!-- Вход, тревога «новый вход» и смена ключа собеседника — состояние этих
+       диалогов живёт в MessengerAccountOverlays.vue. -->
+  <MessengerAccountOverlays ref="accountOverlaysRef" :peer-name-for="peerKeyNameFor" />
 
   <!-- Модерация: жалоба, список блокировок и разбор жалоб — состояние диалогов
        живёт в MessengerModerationOverlays.vue. -->
@@ -358,14 +359,6 @@
     :is-admin="authStore.isAdmin"
     @sent="onReportSent"
     @blocked-changed="onBlockedUsersChanged"
-  />
-
-  <!-- Новый вход в аккаунт (из push «Это не я» / ?security=1) -->
-  <SecurityAlertDialog v-model="showSecurityAlert" />
-  <PeerKeyChangedDialog
-    v-model="showPeerKeyChanged"
-    :peer-name="peerKeyChangedName"
-    @accept="acceptChangedPeerKey"
   />
 
   <!-- Промежуточный экран при запуске из уведомления о звонке.
@@ -451,8 +444,6 @@ import {
   defineAsyncComponent
 } from 'vue'
 import { Notify, useQuasar } from 'quasar'
-import { useRouter } from 'vue-router'
-import LoginModal from '@/components/LoginModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import {
@@ -490,7 +481,6 @@ import {
 } from '@/services/chatService'
 import {
   ENCRYPTED_FALLBACK,
-  acceptPeerKey,
   bootstrapE2ee,
   chatAesKeyFor,
   decryptText,
@@ -500,8 +490,7 @@ import {
   isE2eeAvailable,
   isEncryptedPayload,
   onPeerKeyChanged,
-  resetE2eeSession,
-  type PeerKeyChange
+  resetE2eeSession
 } from '@/services/e2ee'
 import { encryptFileForChat, parseFileMeta } from '@/services/e2eeFiles'
 import {
@@ -550,6 +539,7 @@ import MessageComposer from '@/components/messenger/MessageComposer.vue'
 import MessengerChannelOverlays from '@/views/MessengerChannelOverlays.vue'
 import MessengerChatOverlays from '@/views/MessengerChatOverlays.vue'
 import MessengerModerationOverlays from '@/views/MessengerModerationOverlays.vue'
+import MessengerAccountOverlays from '@/views/MessengerAccountOverlays.vue'
 
 // Тяжёлые модалки/оверлеи подгружаем асинхронно — они нужны только после
 // действия пользователя (профиль/оформление/инфо о чате, звонок, лайтбокс,
@@ -576,8 +566,6 @@ import { useCallStore } from '@/stores/call'
 import { useContactsStore } from '@/stores/contacts'
 import { useRealtimeStore } from '@/stores/realtime'
 import { useStoriesStore } from '@/stores/stories'
-import SecurityAlertDialog from '@/components/messenger/SecurityAlertDialog.vue'
-import PeerKeyChangedDialog from '@/components/messenger/PeerKeyChangedDialog.vue'
 import { mediaFileName, type RecordedMedia } from '@/services/recorder'
 import {
   disablePushNotifications,
@@ -630,7 +618,8 @@ const channelPostMeta = ref<Record<number, { views: number; comments: number }>>
 const channelOverlaysRef = ref<InstanceType<typeof MessengerChannelOverlays> | null>(null)
 /** Оверлеи «чат и группа»: методы openDelete / openBulkDelete. */
 const chatOverlaysRef = ref<InstanceType<typeof MessengerChatOverlays> | null>(null)
-const showLoginModal = ref(true)
+/** Оверлеи входа и безопасности: методы setLoginVisible / openSecurityAlert / openPeerKeyChanged. */
+const accountOverlaysRef = ref<InstanceType<typeof MessengerAccountOverlays> | null>(null)
 /** Диалоги модерации: методы openReport / openBlocked / openReports. */
 const moderationOverlaysRef = ref<InstanceType<typeof MessengerModerationOverlays> | null>(null)
 const voiceRecOpen = ref(false)
@@ -638,8 +627,6 @@ const videoRecOpen = ref(false)
 
 // ---------- Quasar: адаптивный layout (drawer на мобильном) ----------
 const $q = useQuasar()
-// История роутера — единственный «писатель» адреса и истории (см. syncChatUrl).
-const router = useRouter()
 /** «Десктоп» = ширина окна ≥ 1024px (md и выше). Ниже — мобильный режим. */
 const isDesktop = computed(() => $q.screen.gt.sm)
 
@@ -3142,12 +3129,6 @@ const onProfileHidden = () => {
   profileRef.value?.backToSections()
 }
 
-/** Из профиля перешли в «Внешний вид» (это отдельный диалог). */
-const onLoginModalClose = () => {
-  console.log('Login modal close event received. Closing modal.')
-  showLoginModal.value = false
-}
-
 // ---------- Жизненный цикл ----------
 const ready = computed(() => authStore.isAuthenticated && currentUserId.value !== null)
 
@@ -3683,60 +3664,15 @@ const onBlockedUsersChanged = () => {
 }
 
 /**
- * Диалог «Новый вход в аккаунт».
- *
- * Показывается, если приложение открыли из push о новом входе (`?security=1`)
- * или пришло сообщение от service worker: у владельца должно быть действие в
- * один тап — завершить чужие сессии или заморозить аккаунт.
+ * Кто сменил ключ шифрования — имя для предупреждения (ищем в чатах и контактах).
  */
-const showSecurityAlert = ref(new URLSearchParams(initialSearch).get('security') === '1')
+const peerKeyNameFor = (userId: number): string => {
+  const peer = findPeerUser(userId)
+  return peer ? displayName(peer) : ''
+}
 
-/**
- * Предупреждение о смене ключа шифрования собеседника.
- *
- * Ключ E2EE привязан к устройству: он меняется, когда человек заходит с нового
- * телефона (нормально) — и ровно так же выглядит подмена ключа тем, кто угнал
- * аккаунт и хочет читать чужую переписку. Сервер эти случаи не различает, а
- * человек — да, поэтому спрашиваем его, а не шифруем молча.
- */
-const showPeerKeyChanged = ref(false)
-const peerKeyChanged = ref<PeerKeyChange | null>(null)
 /** Отписка от события E2EE (снимается при уходе с экрана). */
 let unsubscribePeerKey: (() => void) | null = null
-
-/** Имя собеседника для текста предупреждения (с учётом моего имени контакта). */
-const peerKeyChangedName = computed<string>(() => {
-  const change = peerKeyChanged.value
-  if (!change) return ''
-  const peer = findPeerUser(change.userId)
-  return peer ? displayName(peer) : ''
-})
-
-/** «Понятно, это его устройство»: запоминаем новый ключ и больше не спрашиваем. */
-const acceptChangedPeerKey = () => {
-  const change = peerKeyChanged.value
-  if (change) acceptPeerKey(change.userId, change.current)
-  peerKeyChanged.value = null
-}
-
-/** Убираем `?security=1` из адреса, чтобы перезагрузка не открывала диалог снова. */
-const clearSecurityParam = () => {
-  try {
-    const url = new URL(window.location.href)
-    if (!url.searchParams.has('security')) return
-    url.searchParams.delete('security')
-    router.options.history.replace(
-      `${url.pathname}${url.search}${url.hash}`,
-      window.history.state ?? {}
-    )
-  } catch {
-    /* адрес недоступен — не критично */
-  }
-}
-
-watch(showSecurityAlert, (open) => {
-  if (!open) clearSecurityParam()
-})
 
 onMounted(async () => {
   await authStore.initializeApp()
@@ -3753,8 +3689,7 @@ onMounted(async () => {
   window.addEventListener('online', onNetworkOnline)
   // Собеседник сменил ключ шифрования — предупреждаем один раз на каждый ключ.
   unsubscribePeerKey = onPeerKeyChanged((change) => {
-    peerKeyChanged.value = change
-    showPeerKeyChanged.value = true
+    accountOverlaysRef.value?.openPeerKeyChanged(change)
   })
   startOutboxTimer()
   // Холодный старт: уведомления о звонках прошлых запусков («Вам звонят» о
@@ -3934,7 +3869,7 @@ const handleWindowMessage = (event: MessageEvent) => {
   if (data.type === 'security-alert') {
     // Service worker получил тап по уведомлению о новом входе — разбираемся
     // в приложении (завершить чужие сессии или заморозить аккаунт).
-    showSecurityAlert.value = true
+    accountOverlaysRef.value?.openSecurityAlert()
     pushMobileNav()
     return
   }
@@ -4001,7 +3936,7 @@ onBeforeUnmount(() => {
 watch(
   () => authStore.isAuthenticated,
   (isAuthenticated) => {
-    showLoginModal.value = !isAuthenticated
+    accountOverlaysRef.value?.setLoginVisible(!isAuthenticated)
     // Запуск из уведомления, пока сессия была недействительна: после входа
     // открываем запрошенный чат (память только этого сеанса).
     if (isAuthenticated && pendingChatAfterLogin !== null) {
