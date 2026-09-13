@@ -24,7 +24,7 @@
 set -eu
 
 PROJECT="${PROJECT:-microshop-test}"
-COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.test.yaml}"
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yaml}"
 COMPOSE="docker compose -p $PROJECT -f $COMPOSE_FILE"
 
 # Сколько секунд держать прежний слот живым после того, как новый уже готов.

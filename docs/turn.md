@@ -56,7 +56,7 @@ TURN_TTL_SECONDS=3600
 сервере, если там были `turn:...` с логином и паролем: переменные Vite
 подставляются в бандл на этапе сборки, то есть секрет попал бы в JS-файл.
 
-## Сервис coturn в проде (`docker-compose.test.yaml`)
+## Сервис coturn в проде (`docker-compose.prod.yaml`)
 
 ```yaml
   coturn:
@@ -91,7 +91,7 @@ TLS. Плата — нагрузка и трафик на наш сервер, �
 как станет ясно, что такие сети встречаются.
 
 1. В security group открыть **5349/tcp** (сейчас порт закрыт снаружи — проверено).
-2. В команде coturn в `docker-compose.test.yaml` раскомментировать:
+2. В команде coturn в `docker-compose.prod.yaml` раскомментировать:
 
    ```yaml
       - --tls-listening-port=5349

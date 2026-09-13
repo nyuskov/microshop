@@ -25,7 +25,7 @@ PROD_SSH="${PROD_SSH:-user1@176.108.249.9}"
 PROD_KEY="${PROD_KEY:-$HOME/.ssh/id_rsa1}"
 PROD_DIR="${PROD_DIR:-~/microshop}"
 PROD_PROJECT="${PROD_PROJECT:-microshop-test}"
-PROD_COMPOSE_FILE="${PROD_COMPOSE_FILE:-docker-compose.test.yaml}"
+PROD_COMPOSE_FILE="${PROD_COMPOSE_FILE:-docker-compose.prod.yaml}"
 
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1

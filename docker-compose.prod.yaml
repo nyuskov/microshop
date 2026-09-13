@@ -1,3 +1,10 @@
+# Прод-стек: то, что крутится на сервере. Выкатывается CI (.github/workflows/ci.yml →
+# scripts/ci/deploy_remote.sh), вручную поднимать не нужно.
+#
+# ВАЖНО: `name: microshop-test` оставлен намеренно и исторически — от него зависят
+# имена контейнеров и ТОМОВ (БД, media, сертификаты). Переименование проекта создаст
+# новые пустые тома, и данные «пропадут». Файл переименован в prod только чтобы имя
+# отражало среду.
 name: microshop-test
 
 # Общая ротация docker-логов (важно, чтобы диск не переполнился).
@@ -247,7 +254,7 @@ services:
 
   # Одноразовый сервис: собирает статику и копирует её в том frontend_html.
   # Запускается во время деплоя явно (--profile dist), в обычном `up` не поднимается:
-  #   docker compose -p microshop-test -f docker-compose.test.yaml --profile dist \
+  #   docker compose -p microshop-test -f docker-compose.prod.yaml --profile dist \
   #     run --rm --no-deps frontend-dist
   frontend-dist:
     profiles: ["dist"]

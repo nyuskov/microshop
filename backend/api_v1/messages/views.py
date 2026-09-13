@@ -170,7 +170,7 @@ async def create_attachment_message(
 
     if not encrypted:
         validate_attachment_upload(filename, content)
-    # Квота проверяется до записи на диск (см. api_v1/media_quota.py).
+    # Квота проверяется до записи на диск (см. core/media_quota.py).
     await enforce_media_quota(session, user_id=user.id, incoming_bytes=len(content))
 
     file_url = store_media(content, Path(filename).suffix)

@@ -4,7 +4,7 @@
 # содержимое в том, из которого читает рабочий nginx (сервис frontend), поэтому
 # обновление интерфейса не требует пересоздания nginx — деплой идёт без простоя.
 #
-# Смотри: frontend/copy-static.sh, docker-compose.test.yaml (frontend-dist),
+# Смотри: frontend/copy-static.sh, docker-compose.prod.yaml (frontend-dist),
 # scripts/ci/deploy_remote.sh.
 
 # Этап 1 — сборка vite.

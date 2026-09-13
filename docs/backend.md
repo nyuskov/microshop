@@ -1,0 +1,335 @@
+# Backend: детали
+
+Вынесено из README, чтобы он оставался обзорным. Общая картина и запуск — в
+[../README.md](../README.md), список остальных документов — в [README.md](README.md).
+
+
+
+### Аутентификация (важно)
+
+Порядок шагов на экране входа (он же — бэкенд-контракт):
+
+1. `POST /api/v1/auth/password/status/` с `{phone_number}` →
+   `{registered, has_password, otp_available}`:
+   - `has_password=true` → шаг «введите пароль» (`/auth/password/login/`);
+   - `has_password=false` и `otp_available=true` → сначала код на номер
+     (`/auth/request-otp/` → `/auth/verify-otp/`), затем `POST /auth/password/set/` —
+     чтобы дальше входить по паролю и не платить за SMS каждый раз;
+   - `otp_available=false` (не настроен ни один канал доставки) → сразу создание
+     пароля (`/auth/password/register/`), иначе регистрация была бы невозможна.
+     В этом режиме номер при регистрации НЕ подтверждается (§ ограничения).
+2. `otp_available` считается true, если заданы `SMS_AERO_*` (шлюз шлёт код на
+   номер) или `TELEGRAM_GATEWAY_TOKEN`; обычный Telegram-бот учитывается только
+   для аккаунтов с уже привязанным чатом (`tg_chat_id`).
+3. Аккаунт, созданный кодом, помечается `password_set=false` (внутри — случайный
+   пароль), поэтому `/auth/password/set/` для него не требует `current_password`,
+   а для аккаунта с паролем — требует (несовпадение → 400).
+4. Телефон — логин аккаунта: `PATCH /jwt/users/me/` с `phone_number` → 422
+   (`UserUpdateWithProfileSchema._reject_phone_number_change`), в профиле поле
+   только для чтения.
+5. Также работает OAuth2 form `username`/`password` (`POST /auth/token/`).
+
+**Политика паролей и защита входа:**
+
+- Правила пароля — `core/passwords.py` (зеркало на фронте — `utils/passwordPolicy.ts`):
+  минимум **10** символов, чёрный список частых паролей, запрет пароля из данных
+  аккаунта (номер, e-mail, логин), 4+ одинаковых символа подряд и простых
+  последовательностей. Композиционные требования («заглавная+цифра») сознательно
+  не используются — NIST SP 800-63B их не рекомендует.
+- **Перебор пароля** ограничен на уровне аккаунта: `password_login_attempts`
+  (`auth/login_guard.py`) считает неудачи по номеру/логину; после
+  `auth_login_max_failures=5` вход блокируется на 1 мин, затем задержка удваивается
+  до `auth_login_lockout_max_seconds=1800`. Лимиты «по IP» обходятся сменой адреса.
+- **Смена пароля отзывает все refresh-сессии** и возвращает новую пару токенов
+  (текущее устройство остаётся, остальные вылетают); есть отдельный
+  `POST /auth/sessions/revoke-all/`. Повторное использование уже отозванного
+  refresh-токена тоже отзывает все сессии — семейный отзыв (защита от кражи).
+- Флаги `password_set` и `password_weak` отдаются в `GET /jwt/users/me/`.
+  `password_weak` ставится при входе (только там пароль виден в открытом виде),
+  поэтому профиль показывает предложение сменить старый слабый пароль.
+**E-mail-канал (второй после номера):** включён, когда заданы `SMTP_*` (см. `.env.example`).
+Пока SMTP не задан — канал выключен: профиль пишет «отправка писем на сервере выключена»,
+а на экране входа нет входа по e-mail. Как включить (пароль приложения у Gmail/Яндекса
+и разовая настройка продового `.env` скриптом) — `docs/email-smtp.md`;
+быстрая проверка состояния: `curl -s https://pismo.space/api/v1/auth/channels/`.
+
+- Адрес подтверждается кодом из письма (`POST /auth/email/request-verification/` →
+  `.../confirm-verification/`) — только после этого он годится для входа без пароля и
+  восстановления доступа; при смене адреса через профиль `email_verified` сбрасывается.
+- Вход по коду из письма (`/auth/email/login/request|confirm/`) и сброс пароля
+  (`/auth/password/reset/request|confirm/`). Ответ на «запрос кода» одинаковый
+  независимо от того, есть ли такой адрес (защита от перебора базы), а код живёт
+  `auth_otp_expire_seconds`, одноразовый, с лимитом попыток и cooldown отправки.
+- Сброс пароля отзывает все refresh-сессии и сразу выдаёт токены этому устройству.
+- Ошибки валидации пароля проверяются ДО расхода кода, чтобы неудачная попытка не
+  сжигала код из письма.
+- Коды писем хранятся в `email_codes` (хеш, попытки, срок), письма отправляет воркер
+  (задача `tasks.otp_tasks.send_email_code`), при незаданном SMTP код пишется в лог.
+- `GET /auth/channels/` сообщает клиенту, включён ли e-mail-канал, чтобы экран входа
+  не показывал недоступные кнопки.
+
+**Уведомления о критичных действиях (`api_v1/auth/security_notifications.py`):**
+письмо уходит на **подтверждённый** e-mail аккаунта при смене пароля, сбросе пароля,
+выходе на всех устройствах, смене адреса (письмо идёт на **прежний** адрес — так
+владелец узнаёт о подмене) и при **входе с нового устройства**.
+
+- Канал — только e-mail: Telegram недоступен из РФ-сетей, SMS Aero без договора
+  отклоняет SMS, а у владельца нет других рабочих каналов.
+- Если подтверждённого адреса нет, письмо не отправляется (чужой/ошибочный ящик не
+  должен получать сведения об аккаунте) — в лог идёт запись; поэтому в профиле
+  («Безопасность») и есть просьба подтвердить адрес.
+- «Вход с нового устройства»: отпечаток браузера/приложения (`login_devices`,
+  sha256 от User-Agent) + последний IP и время; **первый** вход аккаунта молчит
+  (это регистрация), повторный вход с того же устройства — тоже.
+- Суточный лимит: не более 20 писем на пользователя (защита от рассылки-спама).
+- Задача `tasks.notifications.send_email`; при незаданном SMTP текст пишется в лог
+  воркера (dev).
+
+**2FA на новом устройстве + список активных входов
+(`api_v1/auth/device_guard.py`, `device.py`, `refresh_sessions.py`):**
+
+- Вход с устройства, которого у аккаунта не было, **не выдаёт токены**: сервер
+  отправляет код на подтверждённый e-mail и отвечает `428` с телом
+  `{detail, code_sent_to, challenge_token, expires_in}`. Клиент показывает шаг
+  «Новое устройство» и зовёт `POST /auth/login/verify-device/` с challenge и кодом.
+- `challenge_token` — короткоживущий JWT (отдельные `aud`/`type`, по умолчанию 10 мин),
+  привязанный к подписи устройства: подтвердить вход можно только с того же браузера или
+  приложения. Как access/refresh он непригоден.
+- Первое устройство аккаунта (регистрация) и повторный вход с известного устройства —
+  без кода. Если подтвердить нечем (нет подтверждённого e-mail или выключен SMTP),
+  вход не блокируется: устройство запоминается, а владельцу уходит письмо-предупреждение
+  (запирать человека вне собственного аккаунта нельзя).
+- Вход по коду из письма (`/auth/email/login/confirm/`) и сброс пароля кодом
+  (`/auth/password/reset/confirm/`) 2FA не требуют — владелец ящика уже доказал доступ;
+  устройство при этом запоминается без лишнего письма.
+- `GET /auth/sessions/` — активные входы (устройство, IP, время, «текущий» по подписи
+  User-Agent); `DELETE /auth/sessions/{id}/` — завершить один вход (чужая сессия → 404).
+  В профиле это блок «Безопасность» → «Активные входы», рядом «Выйти на всех устройствах».
+- Данные устройства живут в `refresh_sessions` (подпись, User-Agent, IP) и переносятся
+  при ротации refresh-токена, поэтому список показывает и «старые» входы.
+
+**Журнал безопасности аккаунта (`api_v1/auth/audit.py`, таблица `security_events`):**
+входы (успешные и неудачные — с привязкой к аккаунту, если номер зарегистрирован),
+блокировка перебора, запросы кодов, запрос/подтверждение кода для нового устройства,
+смена и сброс пароля, смена и подтверждение e-mail, отзыв сессий, удаление аккаунта.
+
+- `GET /auth/security-log/` — история владельцу (только свои записи), профиль
+  показывает блок «Безопасность» → «Последние действия»;
+- хранится 180 дней (`audit.RETENTION_DAYS`), старые записи подчищает еженедельная
+  задача `tasks.security_tasks.prune_security_events`;
+- запись события никогда не ломает вход/смену пароля: ошибки логируются и гасятся
+  (журнал важнее для разбора, а не для доступа);
+- при удалении аккаунта записи остаются (`user_id` → NULL): сам факт «входили»
+  полезен при разборе инцидентов.
+
+- Все «личные» эндпоинты требуют заголовок `Authorization: Bearer <access_token>`.
+- `/jwt/*` — fastapi-users: `POST /jwt/auth/login|logout`, `GET/PATCH /jwt/users/me/`.
+- Custom-эндпоинты (`chats`, `messages`, `users/…`) используют `get_current_user` (`api_v1/auth/utils.py`), который принимает **те же** JWT от fastapi-users (в `decode_jwt` отключена проверка `aud`, субъект сверяется с БД). Защищённые от собственных токенов.
+
+### Профиль и аватар
+
+- `GET/PATCH /api/v1/jwt/users/me/` — профиль (схема `UserWithDetailsSchema`, включает `id`, `username`, `avatar_url`, `avatar_thumb_url`, `profile`, `chats`).
+- `PUT /api/v1/users/me/avatar/?ext=png` — загрузка фото аватара. Тело запроса = **сырые байты** файла (без multipart), `ext` из белого списка `png/jpg/jpeg/gif/webp`, лимит 8 МБ. Возвращает `{avatar_url, avatar_thumb_url}` (оба — `/media/avatars/…`).
+- `DELETE /api/v1/users/me/avatar/` — удаление аватара (и файлов). Возвращает `{avatar_url: null, avatar_thumb_url: null}`.
+- `avatar_url` — оригинал того, что загрузили; `avatar_thumb_url` — миниатюра
+  128px (Pillow), которую клиент показывает в списках, шапках, историях и
+  пушах: оригинал с телефона может весить мегабайты, а на экране это кружок
+  40–56px. Миниатюра сохраняет прозрачность (PNG), иначе — JPEG q85;
+  если файл не читается как изображение, `avatar_thumb_url = null` и клиент
+  показывает оригинал (`avatar_url`).
+- `avatar_url`/`avatar_thumb_url` отдаются в профиле, поиске/контактах,
+  участниках чатов, аватаре группы и авторе истории (см. `core/avatar_store.py`).
+- Для уже загруженных аватаров миниатюры досоздаёт скрипт:
+  `poetry run python -m scripts.make_avatar_thumbs --apply` (без `--apply` — dry-run).
+
+### Медиафайлы
+
+- Каталог `backend/media/`, раздаётся приложением: `/media/...` (FastAPI `StaticFiles`, см. `main.py`).
+- Файлы сообщений кладутся в `backend/media/` корень, аватары — в `backend/media/avatars/`.
+- `backend/media/` добавлен в `.gitignore`.
+- Загрузка файла-сообщения идёт **без python-multipart**: `POST /api/v1/messages/attachment/`, тело = байты, метаданные в query (см. ниже).
+
+### Полный список эндпоинтов (актуально)
+
+> Префикс всех маршрутов ниже: `/api/v1`.
+
+| Метод | Путь | Описание | Доступ |
+|---|---|---|---|
+| GET | `/` | корень: «Hello World» | — |
+| GET | `/health` | liveness (healthcheck docker) | — |
+| GET | `/api/v1/health` | то же, но по пути, который проксируется наружу | — |
+| GET | `/health/ready` | readiness (проверка БД, 503 при недоступности) | — |
+| GET | `/api/v1/health/ready` | то же по проксируемому пути (мониторинг, CI) | — |
+| POST | `/auth/password/status/` | есть ли аккаунт/пароль у номера и доступна ли доставка кода | — |
+| POST | `/auth/password/register/` | создать аккаунт/пароль → токен (без подтверждения номера) | — |
+| POST | `/auth/password/login/` | вход по номеру+паролю → токен | — |
+| POST | `/auth/password/set/` | задать/сменить пароль → `{detail, access_token, refresh_token}` (смена требует `current_password`, отзывает прочие сессии) | токен |
+| POST | `/auth/sessions/revoke-all/` | выйти на всех устройствах (отзыв всех refresh-сессий, письмо владельцу) | токен |
+| GET | `/auth/sessions/` | активные входы: устройство, IP, время, «текущий» | токен |
+| DELETE | `/auth/sessions/{id}/` | завершить один вход (чужой → 404) | токен |
+| POST | `/auth/login/verify-device/` | 2FA нового устройства: challenge + код из письма → токены | — |
+| GET | `/auth/security-log/?limit=` | журнал безопасности аккаунта (входы, смены, отзывы) | токен |
+| GET | `/auth/channels/` | какие каналы входа доступны (`otp_available`, `email_otp_available`) | — |
+| POST | `/auth/email/request-verification/` | письмо с кодом на адрес (привязать к аккаунту) | токен |
+| POST | `/auth/email/confirm-verification/` | подтвердить адрес кодом (`email_verified`) | токен |
+| POST | `/auth/email/login/request/` | вход без пароля: код на подтверждённый e-mail | — |
+| POST | `/auth/email/login/confirm/` | код из письма → токены | — |
+| POST | `/auth/password/reset/request/` | код для восстановления пароля | — |
+| POST | `/auth/password/reset/confirm/` | код + новый пароль → токены (прочие сессии отозваны) | — |
+| POST | `/auth/token/` | вход по логину+паролю (OAuth2 form) | — |
+| POST | `/auth/request-otp/` | запросить код на номер (SMS/Telegram) | — |
+| POST | `/auth/verify-otp/` | проверить код → токен (пароль ещё не задан) | — |
+| POST | `/jwt/auth/login`, `/jwt/auth/logout` | fastapi-users | — |
+| POST | `/jwt/auth/refresh` | ротация refresh-токена → новая пара access+refresh | токен (refresh) |
+| GET | `/jwt/users/me/` | мой профиль | токен |
+| PATCH | `/jwt/users/me/` | обновить профиль | токен |
+| GET | `/messages/search/?q=&chat_id=` | поиск по тексту/имени файла (без chat_id — по всем чатам) | токен |
+| WS | `/ws/events?token=` | realtime-события (message/chat.read/presence/typing) | токен |
+| WS | `/ws/calls?token=` | сигналинг WebRTC-звонков | токен |
+| GET | `/chats/` | мои чаты + `unread_count` + `last_message` | токен |
+| POST | `/chats/private/` | найти/создать личный чат `{user_id}` | токен |
+| DELETE | `/chats/{chat_id}/?for_all=` | удалить чат: `for_all=true` — у всех, иначе только у меня (204) | токен |
+| POST | `/chats/{chat_id}/invites/` | ссылка-приглашение в группу `{expires_in_hours?, max_uses?}` (создатель/админ) | токен |
+| GET | `/chats/{chat_id}/invites/` | ссылки группы: сначала действующие, потом отозванные | токен |
+| DELETE | `/chats/{chat_id}/invites/{invite_id}/` | отозвать ссылку (204) | токен |
+| GET | `/chats/invites/{token}/` | карточка группы по ссылке (до вступления) | токен |
+| POST | `/chats/invites/{token}/join/` | вступить в группу по ссылке | токен |
+| PUT | `/drafts/{chat_id}/` | сохранить черновик `{text}` (пустой текст — удалить) | токен |
+| GET | `/drafts/` | мои черновики (`chat_id`, `text`, `updated_at`) | токен |
+| DELETE | `/drafts/{chat_id}/` | убрать черновик чата (204) | токен |
+| POST | `/messages/` | текст `{chat_id, text, reply_to_id?}` | токен |
+| POST | `/messages/forward/` | переслать в другой чат `{message_id, chat_id, reply_to_id?}` | токен |
+| PATCH | `/messages/{message_id}/` | отредактировать текст `{text}` (только автор) | токен |
+| POST | `/messages/attachment/` | файл (query: chat_id, filename, caption?, reply_to_id?, mime?) | токен |
+| POST | `/messages/gif/` | GIF: URL → очередь (Celery скачивает и создаёт сообщение, 202) | токен |
+| GET | `/messages/{chat_id}/` | история (входящие помечаются прочитанными). Без параметров — последние **100**; `limit`/`before_id` — пагинация «вверх» | токен |
+| GET | `/messages/{chat_id}/pinned/` | закреплённые | токен |
+| GET | `/messages/{chat_id}/media/` | вложения чата для галереи: `kind=image\|video\|audio\|file`, `limit`/`before_id` — пагинация «в старые». В зашифрованном чате — пустой список | токен |
+| PATCH | `/messages/{message_id}/pin/` | закрепить/открепить `{is_pinned}` | токен |
+| PUT | `/messages/{message_id}/reaction/` | поставить реакцию `{emoji}` | токен |
+| DELETE | `/messages/{message_id}/reaction/` | снять свою реакцию | токен |
+| DELETE | `/messages/{message_id}/` | удалить (только своё) | токен |
+| GET | `/users/search/?q=` | поиск по логину/телефону (исключает себя) | токен |
+| GET | `/users/by-username/{логин}` | пользователь по ссылке-профилю `pismo.space/u/<логин>` (без номера телефона; 404) | токен |
+| POST | `/link-preview/` | карточка внешней ссылки: `{url}` → `{ok,title,description,site_name,image_url,domain}` (кэш в БД, защита от SSRF) | токен |
+| GET | `/users/contacts/` | все, кроме меня (для «Контактов») | токен |
+| POST | `/users/` | создать пользователя (для тестов/отладки) | — |
+| PUT | `/users/me/avatar/` | загрузить аватар (raw bytes) | токен |
+| GET | `/users/me/storage/` | занятое место и квота на медиа (для профиля) | токен |
+| DELETE | `/users/me/avatar/` | удалить аватар | токен |
+| DELETE | `/users/me/` | удалить аккаунт `{password?, confirm:"УДАЛИТЬ"}` → 204 (204/400/403) | токен |
+| POST | `/moderation/reports/` | жалоба на пользователя/сообщение `{user_id, reason, comment?, chat_id?, message_id?}` (причины: `spam/abuse/fraud/violence/other`) | токен |
+| GET | `/moderation/blocks/` | список заблокированных мной | токен |
+| PUT | `/moderation/blocks/{user_id}/` | заблокировать (диалог скрыт, сообщения в обе стороны — 403) | токен |
+| DELETE | `/moderation/blocks/{user_id}/` | снять блокировку | токен |
+| GET | `/moderation/reports/?status=&reason=&limit=&offset=` | **админ**: список жалоб (`total` + `items`) | токен, `is_superuser` |
+| PATCH | `/moderation/reports/{report_id}/` | **админ**: статус разбора `{status: new/in_review/resolved/rejected, note?}`; `resolved` скрывает контент, `rejected` возвращает | токен, `is_superuser` |
+| GET | `/moderation/journal/?limit=&offset=` | **админ**: журнал модерации (`total`, `hidden_messages`, `items`) | токен, `is_superuser` |
+| POST | `/moderation/users/{user_id}/unhide/` | **админ**: снять скрытие со всех сообщений автора | токен, `is_superuser` |
+
+Проверка доступа к чату/сообщениям: только участник чата (иначе `403`); чат с самим собой — `400`; чужие сообщения удалять — `403`.
+
+> Публичные «читающие» эндпоинты `users` (`GET /users/`, `GET /users/{user_id}/`,
+> `GET /users/{user_id}/chats/`) и legacy `products`/`posts`/`telegram` **удалены**
+> (не использовались мессенджером и открывали чужие данные).
+>
+> На «дорогие»/«писательские» эндпоинты действует **per-user rate limit**
+> (в минуту, ключ — `user.id`): отправка/пересылка/загрузка/GIF и поиск по
+> сообщениям и людям; лимиты задаются в `core/config.py` (`*_limit_per_minute`).
+>
+> **Модерация (требование RuStore к UGC):** жалоба, блокировка и удаление
+> аккаунта есть в интерфейсе приложения («Пожаловаться»/«Заблокировать» —
+> в шапке чата и в меню сообщения, «Заблокированные» — в «⋯» списка чатов,
+> «Удалить аккаунт» — в профиле). Разбор жалоб — служебный экран «Жалобы»
+> в меню «⋯», видимый только пользователю с `user.is_superuser = true`
+> (назначение и инструкция для модератора — `docs/rustore.md`, §9.1).
+> Жалобы лежат в `user_reports` (статусы `new → in_review → resolved/rejected`),
+> автоблокировки по жалобе нет — решение принимает модератор вручную.
+
+### Модель данных (основное)
+
+- `user` — `id`, `username` (уник.), `phone_number` (уник., null), `first_name`, `last_name`, `email` (nullable), `hashed_password`, `avatar_url`, `avatar_thumb_url` (миниатюра 128px), `status` (текст-статус), `last_seen` (присутствие); профиль (1:1), чаты (m2m), сообщения.
+- `profile` — 1:1 к `user`: `bio`, `birth_date`, `language`, `country`, `notifications_enabled`, `privacy_mode`.
+- `chats` — `id`, `name`; участники через m2m `chat_user_association`. **Личный чат = ровно 2 участника**.
+- `messages` — `id`, `text`, `timestamp` (default now()), `user_id`, `chat_id`, `reply_to_id` (self FK), `is_read`, `is_pinned`, `edited_at`, `file_name/file_url/mime_type/file_size`, поля пересылки `forwarded_from_id`/`forwarded_sender_id`/`forwarded_sender_name`/`forwarded_chat_id` (снимок «от кого»). Индекс `(chat_id, timestamp)`.
+- `message_reactions` — PK `(message_id, user_id)`, `emoji` (по одной реакции на пользователя).
+- `otp_codes` — OTP-коды телефонов (хеш кода, попытки, срок); `refresh_sessions` — refresh-токены с отзывом/ротацией.
+- `chat_invites` — ссылки-приглашения в группы (токен, срок годности, лимит
+  входов, отзыв);
+- `device_keys` — публичный ключ E2EE на устройство; `chat_group_keys` — обёртки ключа группы (по строке на участника: ключ группы, зашифрованный на общем секрете с `wrapped_by`); `push_subscriptions` — Web Push-подписки; `rustore_push_tokens` — токены RuStore Push; `chat_mutes` — «без уведомлений» (PK `user_id+chat_id`); `telegram_bind_links` — коды привязки Telegram; `message_drafts` — черновики сообщений (PK `user_id+chat_id`, текст в том же виде, что в сообщении: в E2EE-чате это шифротекст).
+- `user_blocks` — блокировки 1-1 (уникальная пара `blocker_id+blocked_id`); `user_reports` — жалобы (`reporter_id`, `reported_id`, `reason`, `comment`, контекст `chat_id`/`message_id`, `status`, `note`, `created_at`, `reviewed_at`).
+- Legacy-таблицы `post`/`product`/`order`/`group` — **удалены** (миграция `f6a7b8c9d0e1`); моделей нет.
+
+### Миграции (Alembic, история)
+
+Порядок применения соответствует алфавитному списку файлов в `backend/alembic/versions/`:
+
+1. `2025_09_26_1500-af1092652727` — create_product_table
+2. `2025_09_26_1535-0cc3c27eafd7` — create_user_table
+3. `2025_09_26_1543-53f8b30a4eeb` — create_post_table
+4. `2025_09_27_0020-34fafed7eb55` — create_profile_table
+5. `2025_10_05_2010-62dfe3e7b819` — create_order_table
+6. `2025_10_07_1324-06563a2a8e6e` — add_users_api_to_user_model
+7. `2026_05_14_1200_a1b2c3d4e5f6` — change_hashed_password_type_to_varchar
+8. `2026_05_15_1200_create_group_and_user_group_tables` — (потом удалено, фича групп убрана)
+9. `2026_09_03_1400_add_chat_message_and_association_tables` — чаты/сообщения/ассоциации, удаление старых group/post
+10. `2026_09_05_1200_add_fields_to_profile_model` — поля профиля
+11. `2026_09_05_1530-ee0f5b7a9c21` — расширение messages (reply/read/pin/file) + `message_reactions`
+12. `2026_09_05_1700-9f3a2b6c4d01` — `user.avatar_url`
+13. `2026_09_06_1200-c9e8f7a6b5c4` — `user.status`
+14. `2026_09_06_1300-d5e6f7a8b9c0` — `user.last_seen`
+15. `2026_09_07_1200-c3d4e5f6a7b8` — pg_trgm + GIN-индексы (поиск users)
+16. `2026_09_07_1500-a1f2e3d4b5c6` — `otp_codes`
+17. `2026_09_07_1540-d4e5f6a7b8c9` — `refresh_sessions`
+18. `2026_09_07_1600-b2c3d4e5f6a7` — индекс `messages (chat_id, timestamp)`
+19. `2026_09_07_1620-e5f6a7b8c9d0` — `messages.edited_at`
+20. `2026_09_07_1650-f6a7b8c9d0e1` — DROP legacy-таблиц (`product`/`post`/`order`/`group`)
+21. `2026_09_07_1800-f0e1d2c3b4a5` — пересылка: forward-поля в `messages`
+22. `2026_09_08_1000-a7b8c9d0e1f2` — Telegram-привязка (`user.tg_chat_id` + `telegram_bind_links`)
+23. `2026_09_08_1800-b4c5d6e7f8a9` — `user.password_set`
+24. `2026_09_08_2000-b5c6d7e8f9a0` — `push_subscriptions` (Web Push)
+25. `2026_09_09_1000-c6d7e8f9a0b1` — `chat_mutes`
+26. `2026_09_09_1100-e2ee01c0de5a` — E2EE (`device_keys`, `messages.encrypted`)
+27. `2026_09_09_1200-c8d9e0f1a2b3` — `chats.e2ee_enabled` (обычные/зашифрованные чаты)
+28. `2026_09_09_1400-d0e1f2a3b4c5` — записи о звонках в `messages` (тип/исход)
+29. `2026_09_09_1500-e1f2a3b4c5d6` — `chats.is_self` (чат «Сохранённые сообщения»)
+30. `2026_09_09_1600-f2a3b4c5d6e7` — аватар автора в снимке пересылки
+31. `2026_09_10_1000-f3a4b5c6d7e8` — групповые чаты (роли, аватар, курсор чтения)
+32. `2026_09_10_1200-a9b0c1d2e3f4` — `rustore_push_tokens`
+33. `2026_09_10_1400-b0c1d2e3f4a5` — модерация: `user_blocks`, `user_reports`
+34. `2026_09_10_1600-c1d2e3f4a5b6` — разбор жалоб: `user_reports.note`/`reviewed_at` + индекс
+35. `2026_09_10_1640-e1a2b3c4d5e6` — информация об устройстве в `refresh_sessions`
+36. `2026_09_10_1710-f2b3c4d5e6a7` — журнал модерации и скрытие сообщений
+37. `2026_09_10_1740-a3c4d5e6f7b8` — аудит-журнал событий безопасности
+38. `2026_09_10_1800-d2e3f4a5b6c7` — попытки входа по паролю
+39. `2026_09_10_2000-e3f4a5b6c7d8` — подтверждение e-mail и коды
+40. `2026_09_10_2100-f7a8b9c0d1e2` — истории/статусы (`stories`, `story_views`)
+41. `2026_09_11_1200-b1c2d3e4f5a6` — кэш карточек внешних ссылок (`link_previews`)
+42. `2026_09_11_1300-c2d3e4f5a6b7` — E2EE для групп: обёртки ключа группы (`chat_group_keys`)
+43. `2026_09_11_1500-d3e4f5a6b7c8` — контакты пользователя («записная книжка») и псевдонимы
+44. `2026_09_11_1800-e4f5a6b7c8d9` — «эпоха» access-токенов: мгновенный отзыв доступа
+45. `2026_09_12_1000-f8b9c0d1e2f3` — реакции на истории (`story_reactions`)
+46. `2026_09_12_1400-c7d8e9f0a1b2` — черновики сообщений (`message_drafts`)
+47. `2026_09_12_1600-d8e9f0a1b2c3` — миниатюры аватаров (`user.avatar_thumb_url`, `chats.avatar_thumb_url`)
+48. `2026_09_12_1800-e9f0a1b2c3d4` — ссылки-приглашения в группы (`chat_invites`) — **голова**
+
+Применение: `cd backend && poetry run alembic upgrade head`. В docker-стеке миграции выполняются автоматически при старте контейнера `web`.
+
+### Проверки backend (должны проходить)
+
+```bash
+cd backend
+poetry run flake8 . --exclude=.mypy_cache,__pycache__
+poetry run isort .
+poetry run black .
+poetry run mypy main.py core api_v1 tasks
+```
+
+Замечания:
+
+- Poetry env живёт в `~/.cache/pypoetry/virtualenvs/backend-*` (можно использовать и на хосте, и в контейнере).
+- `mypy` лучше запускать с `--cache-dir=/tmp/<xxx>`, чтобы не плодить `root`-овые `.mypy_cache` в репозитории.
+- `api_v1/users/schemas.py` **исключён из Black** (`tool.black.exclude`) — форматируйте вручную.
+- В alembic-версиях допустимы строки длиннее 88 (per-file-ignore E501).
+- Тесты: `poetry run pytest -q` (unit-тесты идут всегда; БД/API-интеграция — только при заданном `TEST_DATABASE_URL`, см. `backend/tests/`; для HTTP-тестов нужен `httpx` из dev-зависимостей). mypy по тестам не гоняется (`main.py core api_v1`).
+

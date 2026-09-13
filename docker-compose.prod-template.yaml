@@ -6,8 +6,12 @@
 #   - фронтенд собирается (vite build) в образ с nginx (статик + прокси /api, /media);
 #   - restart-политики и healthcheck'и.
 #
+# Это ШАБЛОН одиночного прод-стека (без blue/green, certbot и coturn) — «starting point»
+# для своего сервера: домены и секреты в примерах. В CI НЕ используется: актуальная
+# выкатка — docker-compose.prod.yaml.
+#
 # Запуск:
-#   docker compose -f docker-compose.prod.yaml up -d --build
+#   docker compose -f docker-compose.prod-template.yaml up -d --build
 #
 # Переменные окружения: POSTGRES_PASSWORD, JWT_SECRET_KEY обязательны (см. .env.example).
 # VITE_API_ORIGIN — публичный origin, на котором отдаётся фронтенд (тот же origin,

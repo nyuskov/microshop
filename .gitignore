@@ -225,6 +225,10 @@ certs/
 # Загруженные пользователями файлы сообщений
 backend/media/
 
+# Пустая папка-артефакт: появлялась от docker-запусков с путём ./microshop/frontend
+# (создаётся root'ом, в репозитории не нужна).
+/microshop/
+
 # Локальные дампы БД (dump_db.sh / restore_db.sh, auto-restore в /docker-entrypoint-initdb.d)
 db_dump/*
 !db_dump/.gitkeep

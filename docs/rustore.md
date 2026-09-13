@@ -60,7 +60,7 @@ Google-сервисов), PWA — обычный Web Push. Настраивае�
    RUSTORE_PUSH_SERVICE_TOKEN=<сервисный токен>
    ```
 
-   и перезапустите бэкенд и воркер: `docker compose -f docker-compose.test.yaml
+   и перезапустите бэкенд и воркер: `docker compose -f docker-compose.prod.yaml
    up -d --no-deps $(sh scripts/lib/web_slot.sh) worker` (имя слота бэкенда:
    `web-blue`/`web-green`, помогает `scripts/lib/web_slot.sh`).
    Эти же переменные уже проброшены в compose-файлах.

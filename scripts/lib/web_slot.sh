@@ -11,7 +11,7 @@
 #
 # Использование:
 #   slot="$(sh scripts/lib/web_slot.sh)"
-#   docker compose -p microshop-test -f docker-compose.test.yaml exec -T "$slot" ...
+#   docker compose -p microshop-test -f docker-compose.prod.yaml exec -T "$slot" ...
 #
 # ВАЖНО: файл запускают через `sh` (и локально, и по ssh на сервере, где /bin/sh
 # — это dash), поэтому здесь только POSIX-синтаксис: `set -o pipefail` в dash

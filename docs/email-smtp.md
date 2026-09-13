@@ -61,7 +61,7 @@ curl -s https://pismo.space/api/v1/auth/channels/
 
 ```bash
 ssh -i ~/.ssh/id_rsa1 user1@176.108.249.9 "cd ~/microshop && docker compose -p microshop-test \
-  -f docker-compose.test.yaml logs --tail=50 worker"
+  -f docker-compose.prod.yaml logs --tail=50 worker"
 ```
 
 ## Про доставляемость (важно для прода)

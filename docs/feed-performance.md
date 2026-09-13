@@ -116,7 +116,7 @@ google-chrome --headless=new --window-size=430,900 --virtual-time-budget=15000 \
 Что сделано:
 
 - сервер при загрузке кладёт рядом с оригиналом миниатюру 128px (Pillow,
-  `api_v1/avatar_store.py`) и возвращает ссылки
+  `core/avatar_store.py`) и возвращает ссылки
   `{avatar_url, avatar_thumb_url}`; прозрачность сохраняется как PNG, остальное —
   JPEG q85 (на глаз не отличить, вес в разы меньше);
 - клиент перед отправкой сжимает фото до 512px (`optimizeAvatarFile`), так что

@@ -1,13 +1,16 @@
-# Продакшен-развёртывание (starting point)
+# Продакшен-развёртывание
 
-> Это отправная точка: реальный прод потребует домен, TLS-сертификаты, правильные
-> секреты и (желательно) off-site бэкапы (см. docs/offsite-backup.md).
+> Боевой прод (pismo.space) выкатывается автоматически: пуш в `main` → GitHub Actions
+> → `scripts/ci/deploy_remote.sh` на сервере. Вручную поднимать ничего не нужно.
+> Ниже — что где лежит и как устроена выкатка; отдельно — как поднять свой сервер
+> «с нуля» по шаблону (`docker-compose.prod-template.yaml`).
 
 ## Файлы
 
 | Файл | Назначение |
 |---|---|
-| `docker-compose.prod.yaml` | прод-стек: `db`, одноразовый `migrate`, `web` (без reload/bind), `rabbitmq`, `worker` (Celery), `beat` (периодика), `frontend` (nginx) |
+| `docker-compose.prod.yaml` | боевой прод-стек: слоты `web-blue`/`web-green`, одноразовый `migrate`, `db`, `rabbitmq`, `worker` (Celery), `beat`, `frontend` (nginx), `certbot`, `coturn`. Имя проекта внутри — `microshop-test` (историческое): от него зависят имена томов, менять нельзя |
+| `docker-compose.prod-template.yaml` | шаблон одиночного прод-стека (`db`, `migrate`, `web`, `rabbitmq`, `worker`, `beat`, `frontend`) — «starting point» для своего сервера; в CI не используется |
 | `frontend/Dockerfile.dist` | сборка статики (`vite build`) — «поставщик» файлов для тома |
 | `frontend/Dockerfile.nginx` | nginx-раздача (конфиг без статики: она в томе) |
 | `frontend/nginx-prod/default.conf` | SPA + прокси `/api` (включая WebSocket) и `/media` на слоты `web-blue`/`web-green`; монтируется в контейнер, поэтому правки применяются `reload`'ом |
@@ -116,7 +119,7 @@ IP.
 
 ## Что ещё можно улучшить
 
-## Запуск
+## Запуск (свой сервер по шаблону)
 
 ```bash
 # 1. Секреты (корневой .env): POSTGRES_PASSWORD, JWT_SECRET_KEY,
@@ -124,7 +127,7 @@ IP.
 # 2. Публичный origin фронтенда (тот же, что отдаёт nginx)
 export VITE_API_ORIGIN=http://localhost   # или https://chat.example.com после TLS
 
-docker compose -f docker-compose.prod.yaml up -d --build
+docker compose -f docker-compose.prod-template.yaml up -d --build
 ```
 
 Проверки: `curl http://localhost/api/v1/health` → `{"status":"ok"}`;

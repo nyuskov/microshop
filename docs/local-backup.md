@@ -102,21 +102,21 @@ docker compose -f docker-compose.yaml exec -T db psql -U postgres -d backup_chec
 ```bash
 # 1) на сервере остановить web/worker, чтобы никто не писал в БД
 ssh user1@176.108.249.9 "cd ~/microshop && docker compose -p microshop-test \
-  -f docker-compose.test.yaml stop $(sh scripts/lib/web_slot.sh) worker beat"
+  -f docker-compose.prod.yaml stop $(sh scripts/lib/web_slot.sh) worker beat"
 
 # 2) залить дамп в БД (перезапись): DROP SCHEMA + восстановление
 gunzip -c db/microshop_….sql.gz | ssh user1@176.108.249.9 \
-  "cd ~/microshop && docker compose -p microshop-test -f docker-compose.test.yaml \
+  "cd ~/microshop && docker compose -p microshop-test -f docker-compose.prod.yaml \
    exec -T db psql -U postgres -d microshop -v ON_ERROR_STOP=1"
 
 # 3) media: распаковать в volume media_data
 gunzip -c media/media_….tar.gz | ssh user1@176.108.249.9 \
-  "cd ~/microshop && docker compose -p microshop-test -f docker-compose.test.yaml \
+  "cd ~/microshop && docker compose -p microshop-test -f docker-compose.prod.yaml \
    exec -T $(sh scripts/lib/web_slot.sh) tar xzf - -C /app/media"
 
 # 4) поднять сервисы обратно
 ssh user1@176.108.249.9 "cd ~/microshop && docker compose -p microshop-test \
-  -f docker-compose.test.yaml up -d"
+  -f docker-compose.prod.yaml up -d"
 ```
 
 `.env` из `misc/` нужен, если восстанавливается машина целиком: положить его в

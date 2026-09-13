@@ -20,7 +20,7 @@
 #   PROD_KEY          — путь к приватному ключу (по умолчанию ~/.ssh/id_rsa1)
 #   PROD_DIR          — каталог проекта на сервере (по умолчанию ~/microshop)
 #   PROD_PROJECT      — имя compose-проекта (по умолчанию microshop-test)
-#   PROD_COMPOSE_FILE — файл compose (по умолчанию docker-compose.test.yaml)
+#   PROD_COMPOSE_FILE — файл compose (по умолчанию docker-compose.prod.yaml)
 #   REMOTE_MEDIA_PATH — путь к media на сервере; если задан, берётся он,
 #                       иначе media читается из контейнера web (/app/media)
 #   KEEP_DB / KEEP_MEDIA / KEEP_MISC — сколько копий хранить
@@ -37,7 +37,7 @@ PROD_SSH="${PROD_SSH:-user1@176.108.249.9}"
 PROD_KEY="${PROD_KEY:-$HOME/.ssh/id_rsa1}"
 PROD_DIR="${PROD_DIR:-~/microshop}"
 PROD_PROJECT="${PROD_PROJECT:-microshop-test}"
-PROD_COMPOSE_FILE="${PROD_COMPOSE_FILE:-docker-compose.test.yaml}"
+PROD_COMPOSE_FILE="${PROD_COMPOSE_FILE:-docker-compose.prod.yaml}"
 DB_NAME="${DB_NAME:-microshop}"
 DB_USER="${DB_USER:-postgres}"
 REMOTE_MEDIA_PATH="${REMOTE_MEDIA_PATH:-}"
