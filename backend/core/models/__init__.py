@@ -6,6 +6,9 @@ __all__ = [
     "ChatGroupKey",
     "ChatInvite",
     "ChatMute",
+    "ChannelComment",
+    "ChannelPostView",
+    "ChannelSuggestion",
     "Contact",
     "DeviceKey",
     "EmailCode",
@@ -33,6 +36,7 @@ __all__ = [
 ]
 
 from .base import Base  # noqa: F401
+from .channel import ChannelComment, ChannelPostView, ChannelSuggestion  # noqa: F401
 from .chat import Chat, user_chat_association_table  # noqa: F401
 from .chat_group_key import ChatGroupKey  # noqa: F401
 from .chat_invite import ChatInvite  # noqa: F401

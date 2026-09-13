@@ -51,8 +51,20 @@
     </div>
 
     <div v-else class="panel-header">
-      <div class="panel-header-left"></div>
-      <h2 class="panel-title">{{ panelTitle }}</h2>
+      <!-- Значок приложения в углу шапки (как иконка мессенджера). -->
+      <span class="app-mark" aria-hidden="true">
+        <img src="/favicon.svg" alt="" width="34" height="34" />
+      </span>
+
+      <!-- Истории: сжатый ряд кружков рядом со значком приложения. Кликабельность
+           видна по зелёному ореолу, нажатие раскрывает полосу под шапкой. -->
+      <StoriesStrip
+        v-if="view === 'chats'"
+        mini
+        @toggle-expand="toggleStoriesExpand"
+        @open-story="emit('open-story', $event)"
+      />
+
       <div class="panel-header-right">
         <button
           v-if="view === 'chats'"
@@ -126,36 +138,38 @@
         </template>
 
         <template v-else-if="view === 'chats'">
-          <!-- Глобальный поиск: открывается по значку и прячет верхний хидер,
-           как панель действий при выделении чатов удержанием. -->
-          <div v-if="!selectionMode && searchOpen" class="panel-search search-head">
-            <button
-              class="icon-btn search-back"
-              title="Назад"
-              aria-label="Назад"
-              @click="closeSearch"
-            >
-              <q-icon :name="icon('arrow_back')" size="20px" />
-            </button>
-            <input
-              ref="searchInputRef"
-              v-model="searchQuery"
-              class="panel-search-input"
-              type="text"
-              placeholder="Поиск людей и сообщений"
-              aria-label="Глобальный поиск"
-              @keydown.esc="closeSearch"
-            />
-            <button
-              v-if="searchQuery.trim()"
-              class="icon-btn search-clear"
-              title="Очистить"
-              aria-label="Очистить"
-              @click="searchQuery = ''"
-            >
-              <q-icon :name="icon('close')" size="18px" />
-            </button>
-          </div>
+          <!-- Глобальный поиск: раскрывается на месте шапки (как в Telegram),
+           плавно — поэтому обёрнут в Transition и держит высоту сам. -->
+          <Transition name="search-expand">
+            <div v-if="!selectionMode && searchOpen" class="panel-search search-head">
+              <button
+                class="icon-btn search-back"
+                title="Назад"
+                aria-label="Назад"
+                @click="closeSearch"
+              >
+                <q-icon :name="icon('arrow_back')" size="20px" />
+              </button>
+              <input
+                ref="searchInputRef"
+                v-model="searchQuery"
+                class="panel-search-input"
+                type="text"
+                placeholder="Поиск людей и сообщений"
+                aria-label="Глобальный поиск"
+                @keydown.esc="closeSearch"
+              />
+              <button
+                v-if="searchQuery.trim()"
+                class="icon-btn search-clear"
+                title="Очистить"
+                aria-label="Очистить"
+                @click="searchQuery = ''"
+              >
+                <q-icon :name="icon('close')" size="18px" />
+              </button>
+            </div>
+          </Transition>
 
           <div v-if="searchError" class="inline-error">{{ searchError }}</div>
 
@@ -277,8 +291,13 @@
 
           <!-- Недавние диалоги (скрыты, пока открыт глобальный поиск) -->
           <template v-else-if="!searchOpen">
-            <!-- Истории: свои и друзей (живут 24 часа) -->
-            <StoriesStrip @open-story="emit('open-story', $event)" />
+            <!-- Истории: раскрытая полоса под шапкой. Появляется по нажатию на
+                 кружки в шапке или по протяжке списка вниз у самого верха. -->
+            <Transition name="stories-drop">
+              <div v-if="storiesExpanded" class="stories-collapse">
+                <StoriesStrip @open-story="emit('open-story', $event)" />
+              </div>
+            </Transition>
             <!-- Фильтры списка: быстро отсечь непрочитанное, личные или группы -->
             <div
               v-if="!selectionMode"
@@ -306,7 +325,13 @@
             <div v-if="!orderedChats.length" class="empty-hint">
               Найдите пользователя по логину или телефону и начните переписку
             </div>
-            <div class="chat-scroll">
+            <div
+              ref="chatsScrollEl"
+              class="chat-scroll"
+              @scroll.passive="onChatsScroll"
+              @touchstart.passive="onListTouchStart"
+              @touchmove.passive="onListTouchMove"
+            >
               <div v-for="chat in orderedChats" :key="chat.id" class="chat-row">
                 <button
                   class="row-item"
@@ -351,7 +376,16 @@
                   </span>
                   <span class="row-text">
                     <span class="row-line">
-                      <span class="row-title">{{ chatTitleOf(chat) }}</span>
+                      <span class="row-title">
+                        <q-icon
+                          v-if="chat.is_channel"
+                          :name="icon('campaign')"
+                          size="15px"
+                          class="row-channel"
+                          aria-hidden="true"
+                        />
+                        {{ chatTitleOf(chat) }}
+                      </span>
                       <span class="row-time">
                         <q-icon
                           v-if="isMutedOf(chat.id)"
@@ -777,6 +811,8 @@ const emit = defineEmits<{
   (e: 'bulk-delete', chatIds: number[]): void
   /** Открыть диалог «Новая группа». */
   (e: 'create-group'): void
+  /** Открыть диалог «Новый канал». */
+  (e: 'create-channel'): void
   /** Открыть список заблокированных пользователей. */
   (e: 'open-blocked'): void
   /** Открыть разбор жалоб (только администраторы). */
@@ -785,7 +821,7 @@ const emit = defineEmits<{
 
 /** Пункт меню «⋯»: иконка Material + подпись. */
 interface SettingsAction {
-  key: 'group' | 'blocked' | 'reports'
+  key: 'group' | 'channel' | 'blocked' | 'reports'
   label: string
   icon: string
 }
@@ -794,17 +830,99 @@ interface SettingsAction {
 const SETTINGS_ACTIONS = computed<SettingsAction[]>(() => {
   const items: SettingsAction[] = [
     { key: 'group', label: 'Новая группа', icon: 'group_add' },
+    { key: 'channel', label: 'Новый канал', icon: 'campaign' },
     { key: 'blocked', label: 'Заблокированные', icon: 'block' }
   ]
   if (props.isAdmin) items.push({ key: 'reports', label: 'Жалобы', icon: 'flag' })
   return items
 })
 
-/** Заголовок панели: он же название текущего раздела нижнего меню. */
-const panelTitle = computed<string>(() => {
-  if (props.view === 'stories') return 'Истории'
-  if (props.view === 'contacts') return 'Контакты'
-  return 'Чаты'
+/**
+ * Истории: в шапке лежат сжатые кружки, а сама полоса раскрывается под шапкой.
+ *
+ * Раскрыть можно нажатием на кружки в шапке или протяжкой списка вниз у самого
+ * верха; прокрутка списка вниз — снова сжимает (как в Telegram). Выбор
+ * запоминаем, чтобы после перезапуска всё осталось как у человека было.
+ */
+const STORIES_EXPANDED_KEY = 'pismo_stories_expanded'
+const readStoriesExpanded = (): boolean => {
+  try {
+    return localStorage.getItem(STORIES_EXPANDED_KEY) === '1'
+  } catch {
+    /* localStorage недоступен — считаем, что полоса сжата */
+    return false
+  }
+}
+const storiesExpanded = ref(readStoriesExpanded())
+
+const setStoriesExpanded = (value: boolean) => {
+  if (storiesExpanded.value === value) return
+  storiesExpanded.value = value
+  try {
+    localStorage.setItem(STORIES_EXPANDED_KEY, value ? '1' : '0')
+  } catch {
+    /* приватный режим — выбор запомнится только до перезагрузки */
+  }
+}
+
+const toggleStoriesExpand = () => setStoriesExpanded(!storiesExpanded.value)
+
+const chatsScrollEl = ref<HTMLElement | null>(null)
+// Копим движение в пределах шага: без этого микро-дрожание скролла мигало бы полосой.
+const STORIES_SCROLL_STEP = 24
+let storiesScrollAcc = 0
+let storiesLastTop = 0
+let storiesRaf = 0
+const onChatsScroll = () => {
+  if (storiesRaf) return
+  storiesRaf = requestAnimationFrame(() => {
+    storiesRaf = 0
+    const el = chatsScrollEl.value
+    if (!el) return
+    const top = el.scrollTop
+    const delta = top - storiesLastTop
+    storiesLastTop = top
+    // У самого верха списка ничего не сжимаем: там работает протяжка вниз.
+    if (top <= 8) {
+      storiesScrollAcc = 0
+      return
+    }
+    const step = STORIES_SCROLL_STEP
+    storiesScrollAcc = Math.max(-step, Math.min(step, storiesScrollAcc + delta))
+    if (storiesScrollAcc >= step) {
+      storiesScrollAcc = 0
+      setStoriesExpanded(false)
+    }
+  })
+}
+
+/**
+ * Протяжка списка вниз у самого верха раскрывает истории — жест «потянуть»,
+ * как в Telegram. Срабатывает один раз на касание.
+ */
+const PULL_EXPAND_PX = 48
+let pullStartY = 0
+let pullUsed = false
+const onListTouchStart = (event: TouchEvent) => {
+  pullStartY = event.touches[0]?.clientY ?? 0
+  pullUsed = false
+}
+const onListTouchMove = (event: TouchEvent) => {
+  const el = chatsScrollEl.value
+  if (!el || pullUsed || storiesExpanded.value || el.scrollTop > 0) return
+  const y = event.touches[0]?.clientY ?? 0
+  if (y - pullStartY < PULL_EXPAND_PX) return
+  pullUsed = true
+  setStoriesExpanded(true)
+}
+
+// Список пересоздаётся при смене раздела и при открытии поиска — отсчёт заново.
+watch(chatsScrollEl, (el) => {
+  storiesLastTop = el?.scrollTop ?? 0
+  storiesScrollAcc = 0
+})
+onBeforeUnmount(() => {
+  if (storiesRaf) cancelAnimationFrame(storiesRaf)
 })
 const rootEl = ref<HTMLElement | null>(null)
 /** Обёртка меню «⋯» (кнопка + выпадающий список) — по ней считаем «клик мимо». */
@@ -1107,14 +1225,15 @@ const draftOf = (chat: Chat): string | null => {
   return text && text.trim() ? text : null
 }
 
-/** Фильтры списка чатов: все / непрочитанные / личные / группы. */
-type ChatFilterKey = 'all' | 'unread' | 'private' | 'groups'
+/** Фильтры списка чатов: все / непрочитанные / личные / группы / каналы. */
+type ChatFilterKey = 'all' | 'unread' | 'private' | 'groups' | 'channels'
 
 const CHAT_FILTERS: { key: ChatFilterKey; title: string }[] = [
   { key: 'all', title: 'Все' },
   { key: 'unread', title: 'Непрочитанные' },
   { key: 'private', title: 'Личные' },
-  { key: 'groups', title: 'Группы' }
+  { key: 'groups', title: 'Группы' },
+  { key: 'channels', title: 'Каналы' }
 ]
 
 const chatFilter = ref<ChatFilterKey>('all')
@@ -1128,7 +1247,9 @@ const unreadChatCount = computed(
 const filteredChats = computed<Chat[]>(() => {
   const byFilter = props.chats.filter((chat) => {
     if (chatFilter.value === 'unread') return (chat.unread_count ?? 0) > 0
-    if (chatFilter.value === 'groups') return isGroupChat(chat)
+    // Канал — тоже групповой чат, поэтому в «Группах» его не показываем.
+    if (chatFilter.value === 'groups') return isGroupChat(chat) && !chat.is_channel
+    if (chatFilter.value === 'channels') return !!chat.is_channel
     if (chatFilter.value === 'private') return !isGroupChat(chat)
     return true
   })
@@ -1200,6 +1321,7 @@ const toggleSettingsMenu = () => {
 const runSettingsAction = (action: SettingsAction) => {
   settingsMenuOpen.value = false
   if (action.key === 'group') emit('create-group')
+  if (action.key === 'channel') emit('create-channel')
   if (action.key === 'blocked') emit('open-blocked')
   if (action.key === 'reports') emit('open-reports')
 }
@@ -1534,9 +1656,28 @@ onBeforeUnmount(() => {
 .panel-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   padding: 8px 12px 4px;
   background: var(--ms-surface);
+}
+
+/* Значок приложения в углу шапки: тот же размер, что у аватара профиля. */
+.app-mark {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+}
+
+.app-mark img {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  /* Круг гарантирован: clip-path не зависит от overflow у родителя. */
+  clip-path: circle(50%);
 }
 
 /* Плавная смена разделов нижнего меню. */
@@ -1571,17 +1712,15 @@ onBeforeUnmount(() => {
   }
 }
 
-.panel-title {
-  font-size: 19px;
-  font-weight: 600;
-  margin: 0;
-  color: var(--ms-text);
-}
-
 .panel-header-left,
 .panel-header-right {
   display: flex;
   gap: 2px;
+}
+
+/* Правая группа иконок прижата к краю: слева — значок приложения и истории. */
+.panel-header-right {
+  margin-left: auto;
 }
 
 /* Кнопка «Профиль»: вместо иконки показываем мини-аватар пользователя. */
@@ -1604,9 +1743,9 @@ onBeforeUnmount(() => {
 }
 
 .self-avatar {
-  width: 30px;
-  height: 30px;
-  font-size: 0.72rem;
+  width: 34px;
+  height: 34px;
+  font-size: 0.8rem;
 }
 
 .panel-search {
@@ -1750,10 +1889,14 @@ onBeforeUnmount(() => {
 /* Фильтры списка чатов. */
 .chat-filters {
   display: flex;
-  gap: 6px;
-  padding: 8px 14px 4px;
+  gap: 5px;
+  padding: 8px 12px 4px;
   overflow-x: auto;
   scrollbar-width: none;
+  /* Затухание у правого края: подсказка, что ряд фильтров можно прокрутить
+     (на узких экранах чипы не влезают целиком). Ширина затухания — в пределах
+     бокового отступа, поэтому влезающий ряд не подтемняется. */
+  mask-image: linear-gradient(to right, black calc(100% - 10px), transparent);
 }
 
 .chat-filters::-webkit-scrollbar {
@@ -1765,7 +1908,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 10px;
+  padding: 4px 9px;
   border: none;
   border-radius: 11px;
   background: var(--ms-surface-2);
@@ -1796,6 +1939,54 @@ onBeforeUnmount(() => {
   flex: 1;
   overflow-y: auto;
   padding-bottom: 6px;
+}
+
+/* Обёртка раскрытой полосы историй: «опускается» из-под шапки. */
+.stories-collapse {
+  overflow: hidden;
+}
+
+.stories-drop-enter-active,
+.stories-drop-leave-active {
+  overflow: hidden;
+  transition:
+    max-height 0.24s ease,
+    opacity 0.18s ease,
+    transform 0.24s ease;
+}
+
+.stories-drop-enter-from,
+.stories-drop-leave-to {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.stories-drop-enter-to,
+.stories-drop-leave-from {
+  max-height: 360px;
+}
+
+/* Поиск раскрывается на месте шапки, а не появляется рывком (как в Telegram). */
+.search-expand-enter-active,
+.search-expand-leave-active {
+  overflow: hidden;
+  transition:
+    max-height 0.2s ease,
+    opacity 0.14s ease,
+    transform 0.2s ease;
+}
+
+.search-expand-enter-from,
+.search-expand-leave-to {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.search-expand-enter-to,
+.search-expand-leave-from {
+  max-height: 64px;
 }
 
 .row-item {
@@ -1886,6 +2077,13 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Метка канала («рупор») перед названием в списке чатов. */
+.row-channel {
+  margin-right: 5px;
+  color: var(--ms-muted-2);
+  vertical-align: -2px;
 }
 
 .row-time {

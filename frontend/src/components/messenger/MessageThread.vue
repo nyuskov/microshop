@@ -58,6 +58,29 @@
               @report="emit('report', item.row.message)"
               @open-image="emit('open-image', item.row.message)"
             />
+            <!-- Пост канала: просмотры и переход к комментариям (как в Telegram). -->
+            <div
+              v-if="channelPosts && item.row.message.kind !== 'call'"
+              :key="`meta-${item.row.message.id}`"
+              class="post-meta"
+              :data-post-id="item.row.message.id"
+            >
+              <span class="post-views">
+                <q-icon :name="icon('visibility')" size="15px" aria-hidden="true" />
+                {{ postMetaOf(item.row.message.id).views }}
+              </span>
+              <button
+                class="post-comments"
+                type="button"
+                @click="emit('open-comments', item.row.message)"
+              >
+                <q-icon :name="icon('chat_bubble')" size="15px" aria-hidden="true" />
+                <template v-if="postMetaOf(item.row.message.id).comments">
+                  {{ postMetaOf(item.row.message.id).comments }}
+                </template>
+                <template v-else>Комментировать</template>
+              </button>
+            </div>
           </template>
         </div>
         <div v-for="p in pending ?? []" :key="p.localId" class="pending-row">
@@ -144,7 +167,7 @@
 import { icon } from '@/utils/icons'
 import { uploadStatusText } from '@/utils/upload'
 import { parseServerTime } from '@/utils/format'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ChatUser, Message } from '@/types'
 import type { MessageRow as ThreadRow } from '@/utils/thread'
 import { unreadSeenAtBottom } from '@/utils/thread'
@@ -195,7 +218,23 @@ const props = defineProps<{
   members?: ChatUser[]
   /** Сколько сообщений было непрочитано в момент открытия чата (для разделителя). */
   unreadCount?: number
+  /** Открыт канал: под постами показываем просмотры и комментарии. */
+  channelPosts?: boolean
+  /** Счётчики постов канала по id сообщения. */
+  postMeta?: Record<number, ChannelPostCounters>
 }>()
+
+/** Счётчики поста канала (просмотры и комментарии). */
+export interface ChannelPostCounters {
+  views: number
+  comments: number
+}
+
+const EMPTY_COUNTERS: ChannelPostCounters = { views: 0, comments: 0 }
+
+/** Счётчики поста: без данных считаем нулями, чтобы шаблон был простым. */
+const postMetaOf = (messageId: number): ChannelPostCounters =>
+  props.postMeta?.[messageId] ?? EMPTY_COUNTERS
 
 const emit = defineEmits<{
   (e: 'background-click'): void
@@ -221,6 +260,10 @@ const emit = defineEmits<{
   (e: 'drop-pending', localId: number): void
   (e: 'report', message: Message): void
   (e: 'open-image', message: Message): void
+  /** Пост канала просмотрен (счётчик просмотров растёт один раз). */
+  (e: 'post-viewed', message: Message): void
+  /** Открыть комментарии к посту канала. */
+  (e: 'open-comments', message: Message): void
 }>()
 
 const containerRef = ref<HTMLElement | null>(null)
@@ -472,8 +515,60 @@ watch(
   { flush: 'post' }
 )
 
+// ---------- Просмотры постов канала ----------
+// Просмотр отмечаем, когда строка счётчиков реально попала на экран (как в
+// Telegram): повторно об одном и том же посте не сообщаем.
+const viewedPostIds = new Set<number>()
+let postObserver: IntersectionObserver | null = null
+/** Посты текущей ленты по id — чтобы по элементу счётчиков найти сообщение. */
+const postMessageById = computed(() => {
+  const map = new Map<number, Message>()
+  for (const row of props.rows) {
+    if (row.kind === 'message') map.set(row.message.id, row.message)
+  }
+  return map
+})
+
+/** Появившиеся в ленте строки счётчиков отдаём наблюдателю. */
+const observePosts = () => {
+  if (!props.channelPosts || typeof IntersectionObserver === 'undefined') return
+  postObserver ??= new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue
+        const id = Number((entry.target as HTMLElement).dataset.postId)
+        if (!id || viewedPostIds.has(id)) continue
+        const post = postMessageById.value.get(id)
+        if (!post) continue
+        viewedPostIds.add(id)
+        emit('post-viewed', post)
+      }
+    },
+    { root: containerRef.value, threshold: 0.6 }
+  )
+  const nodes = containerRef.value?.querySelectorAll<HTMLElement>('[data-post-id]')
+  nodes?.forEach((node) => postObserver?.observe(node))
+}
+
+watch(
+  () => [props.channelPosts, props.rows.length] as const,
+  () => {
+    viewedPostIds.clear()
+    postObserver?.disconnect()
+    postObserver = null
+    void nextTick(observePosts)
+  },
+  { flush: 'post' }
+)
+
 onMounted(() => {
   if (props.rows.length > 0) void scrollInitialToBottom()
+  void nextTick(observePosts)
+})
+
+onBeforeUnmount(() => {
+  postObserver?.disconnect()
+  postObserver = null
 })
 </script>
 
@@ -509,6 +604,39 @@ onMounted(() => {
   padding: 12px 16px;
   display: flex;
   flex-direction: column;
+}
+
+/* ---------- Счётчики поста канала (просмотры · комментарии) ---------- */
+.post-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 2px 4px 6px;
+  color: var(--ms-muted, #71808d);
+  font-size: 12.5px;
+}
+
+.post-views,
+.post-comments {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.post-comments {
+  border: none;
+  padding: 2px 4px;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.post-comments:hover {
+  background: var(--ms-hover, #eef2f6);
+  color: var(--ms-accent, #2ea25e);
 }
 
 /* ---------- Скелетоны загрузки ---------- */

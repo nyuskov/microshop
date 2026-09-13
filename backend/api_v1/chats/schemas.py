@@ -48,6 +48,12 @@ class Chat(BaseModel):
     is_self: bool = False
     # Групповой ли это чат.
     is_group: bool = False
+    # Канал: читают подписчики, публикуют владелец и админы (см. api_v1/channels).
+    is_channel: bool = False
+    # Публичный адрес канала (`/c/<channel_username>`); None — приватный.
+    channel_username: str | None = None
+    # Публичный канал: виден в поиске и открывается по адресу.
+    is_public: bool = False
     # Аватар группового чата (путь /media/...).
     avatar_url: str | None = None
     # Маленькая копия аватара группы для списков (None — показываем оригинал).

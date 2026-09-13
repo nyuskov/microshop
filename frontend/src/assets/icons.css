@@ -241,6 +241,10 @@
   content: '\E112 ';
 }
 
+.icon-megaphone::before {
+  content: '\E235 ';
+}
+
 .icon-menu::before {
   content: '\E115 ';
 }

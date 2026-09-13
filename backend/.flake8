@@ -3,3 +3,6 @@ max-line-length = 88
 extend-ignore = E203, W503
 per-file-ignores =
     alembic/versions/*.py:E501
+    ; Фикстура `api` импортируется из тестов мессенджера, а параметры тестов
+    ; называются так же — это ложное срабатывание F811 (переопределение).
+    tests/test_channels_api.py:F811

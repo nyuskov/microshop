@@ -42,6 +42,18 @@ export type RealtimeEvent =
     }
   | { type: 'typing'; chat_id: number; user_id: number }
   | { type: 'typing-stop'; chat_id: number; user_id: number }
+  // Каналы: состав и роли, комментарии под постом, предложенные посты.
+  | { type: 'channel.subscribers'; chat_id: number }
+  | { type: 'channel.role'; chat_id: number; user_id?: number; role?: string }
+  | { type: 'channel.comment'; chat_id: number; message_id: number; comment_id: number }
+  | { type: 'channel.suggestion'; chat_id: number; suggestion_id: number }
+  | {
+      type: 'channel.suggestion-reviewed'
+      chat_id: number
+      suggestion_id: number
+      status: string
+      message_id?: number | null
+    }
 
 let socket: WebSocket | null = null
 let eventHandler: ((event: RealtimeEvent) => void) | null = null

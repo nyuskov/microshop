@@ -110,6 +110,8 @@ export const ICON_MAP: Record<string, string> = {
   group_add: 'user-plus',
   contacts: 'book-user',
   verified_user: 'shield',
+  // Каналы: «рупор» — метка канала в списке и пункт «Новый канал».
+  campaign: 'megaphone',
   // Роли участника группы: выдать / снять админку (см. GroupChatInfo.vue).
   admin_panel_settings: 'shield-user',
   shield_person: 'shield-minus',

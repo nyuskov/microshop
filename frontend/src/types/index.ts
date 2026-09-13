@@ -116,6 +116,12 @@ export interface Chat {
   is_self?: boolean
   /** Групповой чат (общий для многих участников). */
   is_group?: boolean
+  /** Канал: читают подписчики, публикуют владелец и админы. */
+  is_channel?: boolean
+  /** Публичный адрес канала (`/c/<channel_username>`); нет — приватный. */
+  channel_username?: string | null
+  /** Публичный канал: виден в поиске и по ссылке. */
+  is_public?: boolean
   /** Аватар группы (путь /media/...). */
   avatar_url?: string | null
   /** Миниатюра аватара группы для списков (путь /media/...). */
@@ -133,6 +139,59 @@ export interface Chat {
 /** Участник чата с ролью (для карточки группы). */
 export interface ChatMember extends ChatUser {
   role: 'creator' | 'admin' | 'member' | string
+}
+
+/** Карточка канала (GET /channels/{id}/, поиск, превью по ссылке). */
+export interface ChannelCard {
+  id: number
+  title: string
+  description?: string | null
+  /** Публичный адрес (`/c/<username>`); null — приватный канал. */
+  username?: string | null
+  is_public?: boolean
+  avatar_url?: string | null
+  avatar_thumb_url?: string | null
+  /** Сколько подписчиков (включая владельца и админов). */
+  subscribers: number
+  /** Сколько постов опубликовано. */
+  posts: number
+  /** Моя роль: creator/admin/member или null (не подписан). */
+  role?: string | null
+  /** Имя владельца канала. */
+  owner_name?: string | null
+}
+
+/** Комментарий под постом канала. */
+export interface ChannelComment {
+  id: number
+  message_id: number
+  user_id: number
+  name: string
+  username: string
+  avatar_url?: string | null
+  text: string
+  created_at: string
+  /** Можно ли удалить (свой или я владелец/админ канала). */
+  can_delete?: boolean
+}
+
+/** Счётчики поста: просмотры и комментарии. */
+export interface ChannelPostMeta {
+  message_id: number
+  views: number
+  comments: number
+}
+
+/** Пост, предложенный подписчиком (ждёт решения владельца/админа). */
+export interface ChannelSuggestion {
+  id: number
+  chat_id: number
+  author_id: number
+  author_name: string
+  text: string
+  status: 'pending' | 'approved' | 'rejected' | string
+  message_id?: number | null
+  created_at: string
 }
 
 /** Карточка чата вместе с участниками и их ролями (GET /chats/{id}/). */

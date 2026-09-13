@@ -110,6 +110,16 @@ export function useRealtimeSync(options: RealtimeSyncOptions) {
         // Я прочитал этот чат на другом устройстве — убираем непрочитанное здесь.
         options.onChatReadElsewhere?.(event.chat_id)
         return
+      // Каналы: подписка/роли, комментарии и предложки. Все события тихие —
+      // достаточно перечитать список чатов и открытый тред (счётчики постов).
+      case 'channel.subscribers':
+      case 'channel.role':
+      case 'channel.comment':
+      case 'channel.suggestion':
+      case 'channel.suggestion-reviewed':
+        scheduleChatsSync()
+        if (event.chat_id === options.getSelectedChatId()) scheduleThreadSync()
+        return
     }
   }
 

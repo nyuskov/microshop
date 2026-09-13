@@ -8,6 +8,7 @@ from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from api_v1.channels.crud import ensure_can_post
 from api_v1.chats.crud import is_group_chat, is_user_chat_member, mark_group_chat_read
 from api_v1.events.service import notify_chat, notify_chat_read_elsewhere
 from api_v1.moderation import crud as moderation_crud
@@ -347,6 +348,8 @@ async def send_text_message(
 ) -> dict:
     """Отправляет текстовое сообщение (опционально — E2EE-шифротекст)."""
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
+    # В канале писать в ленту могут только владелец и админы.
+    await ensure_can_post(session, chat_id, user_id)
     await _ensure_not_blocked(session, chat_id=chat_id, user_id=user_id)
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)

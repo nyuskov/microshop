@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, func
+from sqlalchemy import ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .associations import user_chat_association_table
@@ -29,6 +29,17 @@ class Chat(IdIntPkMixin, Base):
     # Групповой чат: True — общий чат многих участников (роли, добавление/
     # исключение участников); False — личный (парный) чат или «Сохранённые».
     is_group: Mapped[bool] = mapped_column(default=False, server_default=func.false())
+    # Канал: подписчики читают посты одного автора и не могут писать в ленту
+    # (см. `api_v1/channels`). Канал — это тот же чат: роли, приглашения,
+    # непрочитанные, вложения и push переиспользуются. Посты — обычные сообщения.
+    is_channel: Mapped[bool] = mapped_column(default=False, server_default=func.false())
+    # Публичный адрес канала: `https://pismo.space/c/<channel_username>`.
+    # None — приватный канал (вход только по ссылке-приглашению).
+    channel_username: Mapped[str | None] = mapped_column(
+        String(length=32), nullable=True, unique=True, server_default=None
+    )
+    # Публичный канал виден в поиске и открывается по адресу выше.
+    is_public: Mapped[bool] = mapped_column(default=False, server_default=func.false())
     # Аватар группового чата (путь /media/...); у личных чатов не заполняется.
     avatar_url: Mapped[str | None] = mapped_column(nullable=True, server_default=None)
     # Маленькая копия аватара для списков и шапок (128px).

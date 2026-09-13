@@ -49,6 +49,7 @@
         @select-chat="selectChat"
         @chat-opened="onChatOpened"
         @create-group="openCreateGroup"
+        @create-channel="openCreateChannel"
         @open-blocked="showBlockedUsers = true"
         @open-reports="showReports = true"
       />
@@ -172,7 +173,11 @@
             :is-group-chat="isGroupChat(selectedChat)"
             :members="selectedChat.users"
             :unread-count="unreadAtOpen"
+            :channel-posts="selectedIsChannel"
+            :post-meta="channelPostMeta"
             @unread-seen="unreadAtOpen = 0"
+            @post-viewed="onPostViewed"
+            @open-comments="openChannelComments"
             @retry-pending="retryOutboxItem"
             @drop-pending="dropOutboxItem"
             @background-click="closePopups"
@@ -200,8 +205,24 @@
             <span>Сообщения защищены сквозным шифрованием</span>
           </div>
 
+          <!-- Канал: подписчику писать нельзя — вместо композера предложка. -->
+          <div v-if="selectedIsChannel && !canPostInChannel" class="channel-write-bar">
+            <span class="channel-write-hint">
+              <q-icon :name="icon('campaign')" size="17px" aria-hidden="true" />
+              Публикуют владелец и админы канала
+            </span>
+            <q-btn
+              unelevated
+              no-caps
+              color="primary"
+              label="Предложить пост"
+              @click="channelSuggestOpen = true"
+            />
+          </div>
+
           <!-- Панель ввода (композер) -->
           <MessageComposer
+            v-else
             ref="composerRef"
             :chat-id="selectedChat.id"
             v-model:new-message="newMessage"
@@ -332,6 +353,84 @@
       @close="showCreateGroupModal = false"
       @created="onGroupCreated"
     />
+  </q-dialog>
+
+  <!-- Создание канала -->
+  <q-dialog v-model="showCreateChannelModal">
+    <ChannelCreateDialog @close="showCreateChannelModal = false" @created="onChannelCreated" />
+  </q-dialog>
+
+  <!-- Подписка на канал по ссылке `/c/<адрес>` -->
+  <q-dialog v-model="channelJoinOpen">
+    <ChannelJoinDialog
+      v-if="channelJoinUsername"
+      :username="channelJoinUsername"
+      :open="channelJoinOpen"
+      @joined="onChannelJoined"
+      @left="channelJoinUsername = null"
+    />
+  </q-dialog>
+
+  <!-- Комментарии к посту канала -->
+  <q-dialog v-model="channelCommentsOpen">
+    <ChannelCommentsDialog
+      v-if="channelCommentsFor && selectedChatId !== null"
+      :chat-id="selectedChatId"
+      :message-id="channelCommentsFor.id"
+      :post-author="channelPostAuthor"
+      :post-preview="channelCommentsFor.text"
+      :can-comment="true"
+      :open="channelCommentsOpen"
+      @count="onChannelCommentsCount"
+    />
+  </q-dialog>
+
+  <!-- Настройки канала: название, подписчики, предложки -->
+  <q-dialog v-model="showChannelInfoModal">
+    <ChannelInfoDialog
+      v-if="selectedChat && selectedIsChannel"
+      :chat-id="selectedChat.id"
+      :role="selectedChat.my_role ?? 'member'"
+      :open="showChannelInfoModal"
+      @updated="onChannelUpdated"
+      @left="onChannelLeft"
+    />
+  </q-dialog>
+
+  <!-- Предложить пост в канал (подписчик) -->
+  <q-dialog v-model="channelSuggestOpen">
+    <q-card class="ch-suggest-card">
+      <q-card-section class="row no-wrap items-center ch-suggest-head">
+        <div class="text-subtitle1 text-weight-medium ellipsis">Предложить пост</div>
+        <q-space />
+        <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
+      </q-card-section>
+      <q-separator />
+      <q-card-section>
+        <textarea
+          v-model="channelSuggestText"
+          class="ch-suggest-input"
+          rows="4"
+          maxlength="2000"
+          placeholder="Текст поста — его увидит владелец канала"
+        ></textarea>
+        <p class="ch-suggest-hint">
+          Публикуют владелец и админы: они увидят предложку в настройках канала.
+        </p>
+      </q-card-section>
+      <q-separator />
+      <q-card-actions align="right">
+        <q-btn flat label="Отмена" v-close-popup />
+        <q-btn
+          unelevated
+          color="primary"
+          label="Отправить"
+          :loading="channelSuggestBusy"
+          :disable="!channelSuggestText.trim()"
+          @click="submitChannelSuggestion"
+        />
+      </q-card-actions>
+    </q-card>
   </q-dialog>
 
   <!-- Удаление чата (для себя / для всех) -->
@@ -541,16 +640,30 @@ import {
   releaseDecryptedMedia,
   releaseDecryptedMediaExcept
 } from '@/composables/useDecryptedMedia'
-import type { Chat, ChatUser, EncryptedFileMeta, GroupInvitePreview, Message } from '@/types'
+import type {
+  Chat,
+  ChatUser,
+  ChannelCard,
+  EncryptedFileMeta,
+  GroupInvitePreview,
+  Message
+} from '@/types'
 import { avatarUrlOf, chatPeer, chatTitle, displayName, isGroupChat } from '@/utils/user'
 import { setAppBadge } from '@/utils/appBadge'
 import { usernameFromProfilePath } from '@/utils/profileLink'
+import { channelUsernameFromPath } from '@/utils/channelLink'
 import { inviteTokenFromPath } from '@/utils/groupInvite'
 import { shareTargetFromSearch, withoutShareTargetParams } from '@/utils/shareTarget'
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import { effectiveFile, messageSnippet, optimizeImageFile } from '@/utils/media'
 import { deleteDraft, fetchDrafts, putDraft } from '@/services/drafts'
+import {
+  fetchChannel,
+  fetchPostsMeta,
+  markPostViewed,
+  suggestPost
+} from '@/services/channelService'
 import { buildLightboxItems, neighborIndexes } from '@/utils/lightbox'
 import { decideBackStep, type Section } from '@/utils/mobileNav'
 import { mediaUrl } from '@/config'
@@ -608,6 +721,19 @@ const ModerationReportsDialog = defineAsyncComponent(
 )
 // Просмотрщик историй — открывается по клику на историю.
 const StoryViewer = defineAsyncComponent(() => import('@/components/stories/StoryViewer.vue'))
+// Каналы: создание, подписка по ссылке, комментарии под постом и настройки.
+const ChannelCreateDialog = defineAsyncComponent(
+  () => import('@/components/channels/ChannelCreateDialog.vue')
+)
+const ChannelJoinDialog = defineAsyncComponent(
+  () => import('@/components/channels/ChannelJoinDialog.vue')
+)
+const ChannelCommentsDialog = defineAsyncComponent(
+  () => import('@/components/channels/ChannelCommentsDialog.vue')
+)
+const ChannelInfoDialog = defineAsyncComponent(
+  () => import('@/components/channels/ChannelInfoDialog.vue')
+)
 import { useCallStore } from '@/stores/call'
 import { useContactsStore } from '@/stores/contacts'
 import { useRealtimeStore } from '@/stores/realtime'
@@ -657,6 +783,19 @@ const profileRef = ref<ProfileHandle | null>(null)
 const showChatInfoModal = ref(false)
 const showGroupInfoModal = ref(false)
 const showCreateGroupModal = ref(false)
+// Каналы: создание, карточка настроек, комментарии к посту, «предложить пост».
+const showCreateChannelModal = ref(false)
+const showChannelInfoModal = ref(false)
+const channelCommentsFor = ref<Message | null>(null)
+/** Адрес канала из ссылки `/c/<адрес>` — пока не null, показываем экран подписки. */
+const channelJoinUsername = ref<string | null>(null)
+/** Карточка открытого канала (шапка: число подписчиков, роль, настройки). */
+const channelCard = ref<ChannelCard | null>(null)
+/** Счётчики постов открытого канала по id сообщения. */
+const channelPostMeta = ref<Record<number, { views: number; comments: number }>>({})
+const channelSuggestOpen = ref(false)
+const channelSuggestText = ref('')
+const channelSuggestBusy = ref(false)
 const showLoginModal = ref(true)
 // Модерация: жалоба на пользователя/сообщение и список заблокированных.
 const reportTarget = ref<{
@@ -1241,11 +1380,20 @@ const lightboxStep = (delta: number) => {
 const openChatInfo = () => {
   pushMobileNav()
   const chat = selectedChat.value
-  if (chat && isGroupChat(chat)) {
+  if (chat?.is_channel) {
+    showChannelInfoModal.value = true
+    void refreshChannelCard()
+  } else if (chat && isGroupChat(chat)) {
     showGroupInfoModal.value = true
   } else {
     showChatInfoModal.value = true
   }
+}
+
+/** Открыть диалог «Новый канал» из меню «⋯» в списке чатов. */
+const openCreateChannel = () => {
+  pushMobileNav()
+  showCreateChannelModal.value = true
 }
 
 /** Открыть изображение из «Информации о чате» в лайтбоксе. */
@@ -1551,9 +1699,221 @@ const presenceText = (chat: Chat): string => {
 
 const chatSubtitle = (chat: Chat): string => {
   if (isPeerTyping(chat.id)) return 'печатает…'
+  if (chat.is_channel) return channelSubtitle(chat)
   if (isGroupChat(chat)) return groupSubtitle(chat)
   return presenceText(chat)
 }
+
+/** Канал ли чат (по флагу сервера). */
+const isChannelChat = (chat: Chat | null | undefined): boolean => !!chat?.is_channel
+
+/** Открыт канал. */
+const selectedIsChannel = computed<boolean>(() => isChannelChat(selectedChat.value))
+
+/**
+ * Может ли текущий человек публиковать в открытом канале.
+ *
+ * В канале пишут только владелец и админы; подписчики могут лишь
+ * предлагать посты (см. кнопку «Предложить пост» у композера).
+ */
+const canPostInChannel = computed<boolean>(() => {
+  if (!selectedIsChannel.value) return true
+  const role = selectedChat.value?.my_role
+  return role === 'creator' || role === 'admin'
+})
+
+/** Склонение слова «подписчик» по числу. */
+const subscribersNoun = (count: number): string => {
+  const last = count % 10
+  const lastTwo = count % 100
+  if (lastTwo >= 11 && lastTwo <= 14) return 'подписчиков'
+  if (last === 1) return 'подписчик'
+  if (last >= 2 && last <= 4) return 'подписчика'
+  return 'подписчиков'
+}
+
+/** Подпись шапки канала: «канал · N подписчиков». */
+const channelSubtitle = (chat: Chat): string => {
+  const card = channelCard.value
+  if (!card || card.id !== chat.id) return 'канал'
+  return `канал · ${card.subscribers} ${subscribersNoun(card.subscribers)}`
+}
+
+// ---------- Ссылка на канал: https://pismo.space/c/<адрес> ----------
+// Разбирается после входа и загрузки чатов: показываем экран подписки, а не
+// сразу ленту (человек может быть ещё не подписан). Адрес из пути убираем —
+// иначе после перезагрузки окно подписки открывалось бы заново.
+const channelLinkUsername = ref<string | null>(
+  typeof window === 'undefined' ? null : channelUsernameFromPath(window.location.pathname)
+)
+
+const openChannelLink = () => {
+  const alias = channelLinkUsername.value
+  if (!alias) return
+  channelLinkUsername.value = null
+  try {
+    window.history.replaceState(window.history.state, '', '/')
+  } catch {
+    /* история недоступна (iframe) — адрес просто останется как есть */
+  }
+  channelJoinUsername.value = alias
+}
+
+/** Открыт экран подписки на канал (адрес из ссылки). */
+const channelJoinOpen = computed<boolean>(() => channelJoinUsername.value !== null)
+
+/** Открыт диалог комментариев к посту. */
+const channelCommentsOpen = computed<boolean>(() => channelCommentsFor.value !== null)
+
+/** Автор поста, который комментируют (имя для шапки диалога). */
+const channelPostAuthor = computed<string | undefined>(() => {
+  const message = channelCommentsFor.value
+  if (!message) return undefined
+  const chat = chats.value.find((item) => item.id === message.chat_id)
+  const author = chat?.users.find((user) => user.id === message.user_id)
+  return author ? displayName(author) : undefined
+})
+
+/** Подписка по ссылке удалась: открываем канал. */
+const onChannelJoined = async (channel: ChannelCard) => {
+  channelJoinUsername.value = null
+  await loadChats()
+  const chat = chats.value.find((item) => item.id === channel.id)
+  if (chat) {
+    view.value = 'chats'
+    await openChatThread(chat.id)
+  }
+}
+
+// ---------- Каналы: карточка, счётчики постов, предложки ----------/** Карточка канала (шапка, настройки, число подписчиков). */
+const loadChannelCard = async (chatId: number) => {
+  if (!isChannelChat(chats.value.find((item) => item.id === chatId))) {
+    channelCard.value = null
+    return
+  }
+  try {
+    channelCard.value = await fetchChannel(chatId)
+  } catch (error) {
+    console.error('Не удалось загрузить канал:', getErrorMessage(error))
+  }
+}
+
+/** Счётчики загруженных постов канала (просмотры и комментарии). */
+const loadChannelMeta = async (chatId: number) => {
+  const ids = messages.value.map((message) => message.id)
+  if (ids.length === 0) {
+    channelPostMeta.value = {}
+    return
+  }
+  try {
+    const meta = await fetchPostsMeta(chatId, ids)
+    const next: Record<number, { views: number; comments: number }> = {}
+    for (const item of meta) {
+      next[item.message_id] = { views: item.views, comments: item.comments }
+    }
+    channelPostMeta.value = next
+  } catch (error) {
+    console.error('Не удалось загрузить счётчики постов:', getErrorMessage(error))
+  }
+}
+
+/** Пост канала доехал до экрана — считаем просмотр (один раз за показ ленты). */
+const onPostViewed = async (message: Message) => {
+  const chatId = selectedChatId.value
+  if (chatId === null || !selectedIsChannel.value) return
+  const current = channelPostMeta.value[message.id] ?? { views: 0, comments: 0 }
+  // Счётчик поднимаем сразу, чтобы число менялось без ожидания ответа сервера.
+  channelPostMeta.value = {
+    ...channelPostMeta.value,
+    [message.id]: { ...current, views: current.views + 1 }
+  }
+  try {
+    await markPostViewed(chatId, message.id)
+  } catch (error) {
+    console.error('Не удалось отметить просмотр поста:', getErrorMessage(error))
+  }
+}
+
+/** Открыть комментарии к посту канала. */
+const openChannelComments = (message: Message) => {
+  channelCommentsFor.value = message
+}
+
+/** Диалог комментариев сообщил новое число комментариев под постом. */
+const onChannelCommentsCount = (payload: { messageId: number; count: number }) => {
+  const current = channelPostMeta.value[payload.messageId] ?? { views: 0, comments: 0 }
+  channelPostMeta.value = {
+    ...channelPostMeta.value,
+    [payload.messageId]: { ...current, comments: payload.count }
+  }
+}
+
+/** «Предложить пост»: подписчик отправляет текст на одобрение админам. */
+const submitChannelSuggestion = async () => {
+  const chatId = selectedChatId.value
+  const text = channelSuggestText.value.trim()
+  if (chatId === null || !text || channelSuggestBusy.value) return
+  channelSuggestBusy.value = true
+  try {
+    await suggestPost(chatId, text)
+    channelSuggestOpen.value = false
+    channelSuggestText.value = ''
+    Notify.create({
+      type: 'positive',
+      message: 'Пост предложен',
+      caption: 'Владелец или админ канала увидит его в «Предложках»',
+      timeout: 4000
+    })
+  } catch (error) {
+    Notify.create({ type: 'negative', message: getErrorMessage(error), timeout: 4000 })
+  } finally {
+    channelSuggestBusy.value = false
+  }
+}
+
+/** Канал создан: список чатов обновляем и сразу открываем новый канал. */
+const onChannelCreated = async (channel: ChannelCard) => {
+  showCreateChannelModal.value = false
+  applyChatsFromServer(await fetchMyChats().catch(() => chats.value))
+  const chat = chats.value.find((item) => item.id === channel.id)
+  if (chat) {
+    view.value = 'chats'
+    await openChatThread(chat.id)
+  }
+}
+
+/** Настройки канала изменились (название, описание, адрес) — обновляем список. */
+const onChannelUpdated = async () => {
+  await loadChats()
+  const chatId = selectedChatId.value
+  if (chatId !== null) await loadChannelCard(chatId)
+}
+
+/** Канал покинут/удалён — убираем его из списка и закрываем открытую ленту. */
+const onChannelLeft = () => {
+  const chat = selectedChat.value
+  showChannelInfoModal.value = false
+  if (chat) removeDeletedChat(chat)
+}
+
+/** Карточка канала обновилась (в ней же счётчик подписчиков) — перечитываем. */
+const refreshChannelCard = () => {
+  const chatId = selectedChatId.value
+  if (chatId !== null) void loadChannelCard(chatId)
+}
+
+// Лента канала изменилась (новый пост, подгрузка истории) — обновляем счётчики,
+// иначе под свежими постами не было бы ни просмотров, ни числа комментариев.
+watch(
+  () => [selectedChatId.value, messages.value.length] as const,
+  () => {
+    const chatId = selectedChatId.value
+    if (chatId === null || messages.value.length === 0) return
+    if (!isChannelChat(chats.value.find((item) => item.id === chatId))) return
+    void loadChannelMeta(chatId)
+  },
+  { flush: 'post' }
+)
 
 /** Подпись шапки группы: число участников и сколько из них сейчас в сети. */
 const groupSubtitle = (chat: Chat): string => {
@@ -1838,7 +2198,17 @@ const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {
   closeLightbox()
   showChatInfoModal.value = false
   showGroupInfoModal.value = false
+  // Канал: состояние прошлого канала больше не нужно.
+  showChannelInfoModal.value = false
+  channelCommentsFor.value = null
+  channelCard.value = null
+  channelPostMeta.value = {}
   await Promise.all([loadThreadLatest(chatId), loadPinned(chatId)])
+  // Канал: карточка для шапки и счётчики постов для загруженной части ленты.
+  if (isChannelChat(chats.value.find((item) => item.id === chatId))) {
+    void loadChannelCard(chatId)
+    void loadChannelMeta(chatId)
+  }
   // Blob-ссылки расшифрованных вложений других чатов больше не нужны.
   releaseDecryptedMediaExcept(messages.value.map((message) => message.id))
   // Мы читаем чат — непрочитанные обнуляем сразу (не дожидаясь синхронизации).
@@ -3068,6 +3438,10 @@ const refreshOpenThreadQuiet = async () => {
   if (chatId === null) return
   try {
     await mergeThreadLatest(chatId)
+    // Канал: вместе с лентой обновляем счётчики постов (просмотры, комментарии).
+    if (isChannelChat(chats.value.find((item) => item.id === chatId))) {
+      void loadChannelMeta(chatId)
+    }
     const pinned = await fetchPinnedMessages(chatId)
     const pinnedChanged =
       pinned.map((item) => item.id).join(',') !==
@@ -3679,6 +4053,7 @@ watch(
       // Ссылка-профиль и отложенное «Поделиться» открываются уже после входа
       // и загрузки чатов: иначе некуда было бы открывать/отправлять.
       await resolveProfileLink()
+      openChannelLink()
       await resolveInviteLink()
       if (pendingIncomingShare) {
         const held = pendingIncomingShare
@@ -4557,6 +4932,63 @@ watch(
 
 .chat-e2ee-note .q-icon {
   color: var(--ms-accent, #2ea25e);
+}
+
+/* Канал: подписчику писать нельзя — вместо композера предложка поста. */
+.channel-write-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--ms-border, #e2e6ea);
+  background: var(--ms-surface, #ffffff);
+}
+
+.channel-write-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ms-muted, #7b8a96);
+  font-size: 12.5px;
+}
+
+/* «Предложить пост»: карточка диалога в стиле остальных модалок. */
+.ch-suggest-card {
+  width: min(460px, 92vw);
+  border-radius: 16px;
+  background: var(--ms-surface, #ffffff);
+  color: var(--ms-text, #141d26);
+}
+
+.ch-suggest-head {
+  padding: 12px 14px;
+}
+
+.ch-suggest-input {
+  width: 100%;
+  border: 1px solid var(--ms-border, #dfe5ea);
+  border-radius: 11px;
+  background: var(--ms-surface-2, #f6f8fa);
+  color: var(--ms-text, #1c2733);
+  padding: 9px 12px;
+  font-family: var(--ms-font), sans-serif;
+  font-size: 14px;
+  line-height: 1.35;
+  resize: none;
+}
+
+.ch-suggest-input:focus {
+  outline: none;
+  border-color: var(--ms-accent, #2ea25e);
+}
+
+.ch-suggest-hint {
+  margin: 8px 0 0;
+  color: var(--ms-muted, #7b8a96);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 /* Панель выбора сообщений — вместо шапки чата (как в списке чатов) */
