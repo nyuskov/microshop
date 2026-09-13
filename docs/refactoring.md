@@ -13,7 +13,7 @@
   (запрос, режим, результаты, задержка 350 мс, ошибка, сброс) — появился юнит-тест
   без DOM: `__tests__/globalSearch.spec.ts`.
 - **Строки списка, результаты поиска, контакты и список чатов вынесены из
-  `ChatSidebar.vue`** (2600 → 1185 строк): общий вид строк — `assets/rows.css`
+  `ChatSidebar.vue`** (2600 → 1199 строк): общий вид строк — `assets/rows.css`
   (область `.ms-rows`), подписи результатов — `utils/messageSearch.ts`, панель
   результатов — `components/messenger/SearchResults.vue`, контакты —
   `components/messenger/ContactsPanel.vue` + `composables/useContactSearch.ts`,
@@ -74,7 +74,7 @@
 тревога о новом входе; настройки канала из шапки, «Новый канал» и «Новая группа» из
 меню сайдбара, модалка удаления из режима выделения.
 
-### 2. `frontend/src/components/messenger/ChatSidebar.vue` — 2600 → 1185 строк (идёт)
+### 2. `frontend/src/components/messenger/ChatSidebar.vue` — 2600 → 1199 строк (идёт)
 
 ПРЕПЯТСТВИЕ, из-за которого нельзя было просто «вынести разметку»: строки списка и
 аватары описаны scoped-стилями самого сайдбара (`.row-item`, `.avatar`, `.row-text`,
