@@ -63,36 +63,28 @@ const router = createRouter({
   routes: routes
 })
 
-// Global navigation guard
+// До авторизации приложение должно быть только формой входа: даже
+// профильные, канальные и invite-ссылки не открывают Messenger напрямую.
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
 
-  // Define routes that do not require authentication
-  // Добавляем 'Messenger' в список публичных маршрутов.
-  // 'ProfileLink' тоже публичный: по ссылке может прийти незарегистрированный
-  // человек — мессенджер покажет ему экран входа, а после входа откроет чат.
-  const publicRoutes = [
-    'Login',
-    'Messenger',
-    'ProfileLink',
-    'ChannelLink',
-    'GroupInvite',
-    'NotFound'
-  ]
-
-  // Check if the route requires authentication
-  if (!publicRoutes.includes(to.name as string)) {
-    // If the user is not authenticated, redirect to login
-    if (!authStore.isAuthenticated) {
-      next({ name: 'Login' })
+  if (to.name === 'Login') {
+    // Авторизованный пользователь не должен видеть форму входа при прямом
+    // переходе на /auth/login/.
+    if (authStore.isAuthenticated) {
+      next({ name: 'Messenger' })
     } else {
-      // If authenticated, proceed to the route
       next()
     }
-  } else {
-    // If the route is public, proceed
-    next()
+    return
   }
+
+  if (!authStore.isAuthenticated) {
+    next({ name: 'Login' })
+    return
+  }
+
+  next()
 })
 
 export default router
