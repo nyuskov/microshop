@@ -1,5 +1,5 @@
 <template>
-  <div class="stories-wrap" :class="{ mini }">
+  <div class="stories-wrap" :class="{ mini, expanded: mini && expanded }">
     <!-- В шапке (mini) — сжатый ряд кружков размером с аватар профиля;
          в раскрытой полосе — крупные кружки с подписями. -->
     <div class="stories-strip">
@@ -131,8 +131,10 @@ const props = withDefaults(
   defineProps<{
     /** Сжатый вид для шапки: мелкие кружки без подписей и без выбора файла. */
     mini?: boolean
+    /** Полоса историй раскрыта — кружок в шапке подсвечен (для mini). */
+    expanded?: boolean
   }>(),
-  { mini: false }
+  { mini: false, expanded: false }
 )
 
 /**
@@ -362,6 +364,13 @@ const publish = async () => {
    ореол постоянный, как на образце. */
 .mini .story-cell:has(.story-avatar.unseen)::after {
   border-color: var(--ms-accent);
+}
+
+/* Полоса историй раскрыта: кружок в шапке подсвечен — как значок поиска в
+   открытом состоянии. Тот же ореол, но толще: состояние читается сразу. */
+.mini.expanded .story-cell::after {
+  border-color: var(--ms-accent);
+  border-width: 2px;
 }
 
 /* Теней-ореолов у аватара в шапке нет: они складывались с линией. */
