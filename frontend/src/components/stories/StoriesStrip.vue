@@ -4,7 +4,7 @@
          в раскрытой полосе — крупные кружки с подписями. -->
     <div class="stories-strip">
       <!-- Моя история: без своей — сразу выбор файла, со своей — открыть/добавить -->
-      <div class="story-cell">
+      <div class="story-cell" :style="mini ? { zIndex: 100 } : undefined">
         <button
           class="story-avatar-btn"
           type="button"
@@ -33,12 +33,15 @@
         <span class="story-name">Моя история</span>
       </div>
 
-      <!-- Истории других: точка-кольцо, если есть непросмотренные -->
+      <!-- Истории других: точка-кольцо, если есть непросмотренные.
+           В шапке кружки находят друг на друга: следующий уходит ПОД предыдущий,
+           поэтому z-index убывает слева направо (как в Telegram). -->
       <button
-        v-for="group in stories.others"
+        v-for="(group, index) in stories.others"
         :key="group.user.id"
         class="story-cell"
         type="button"
+        :style="mini ? { zIndex: 99 - index } : undefined"
         @click="onGroupClick(group)"
       >
         <span
@@ -282,11 +285,21 @@ const publish = async () => {
 .mini .stories-strip {
   flex-wrap: nowrap;
   justify-content: flex-start;
-  gap: 10px;
+  gap: 0;
   padding: 2px;
   border-bottom: none;
   overflow-x: auto;
   overflow-y: hidden;
+}
+
+/* Наложение кружков друг на друга, как в Telegram: каждый следующий сдвинут
+   влево на треть кружка и уходит под предыдущий (z-index задан в разметке). */
+.mini .story-cell {
+  position: relative;
+}
+
+.mini .story-cell + .story-cell {
+  margin-left: -11px;
 }
 
 /* Ячейка — 34 px (как значки в шапке): внутри кружок 28 px по центру, а линия
