@@ -76,9 +76,8 @@ describe('маршрут ссылки на канал', () => {
     expect(router).toContain("name: 'ChannelLink'")
   })
 
-  it('открыт без входа: незарегистрированный человек увидит экран входа', () => {
-    const publicBlock = router.slice(router.indexOf('const publicRoutes = ['))
-    const list = publicBlock.slice(0, publicBlock.indexOf(']') + 1)
-    expect(list).toContain("'ChannelLink'")
+  it('до входа защищён глобальным auth-gate', () => {
+    expect(router).toContain("if (!authStore.isAuthenticated)")
+    expect(router).toContain("next({ name: 'Login' })")
   })
 })
