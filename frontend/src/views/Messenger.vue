@@ -518,7 +518,6 @@ import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import { effectiveFile, messageSnippet, optimizeImageFile } from '@/utils/media'
 import { deleteDraft, fetchDrafts, putDraft } from '@/services/drafts'
 import { fetchChannel, fetchPostsMeta, markPostViewed } from '@/services/channelService'
-import { buildLightboxItems, neighborIndexes } from '@/utils/lightbox'
 import { type Section } from '@/utils/mobileNav'
 import { mediaUrl } from '@/config'
 import { chatIdFromUrl, isReplyLaunch, readStoredSection, storeSection } from '@/utils/chatUrl'
@@ -528,6 +527,7 @@ import { useRealtimeSync } from '@/composables/useRealtimeSync'
 import { useRecordButton } from '@/composables/useRecordButton'
 import { useCallSession } from '@/composables/useCallSession'
 import { useChatNavigation } from '@/composables/useChatNavigation'
+import { useLightbox } from '@/composables/useLightbox'
 import ChatSidebar from '@/components/messenger/ChatSidebar.vue'
 import ChatHeader from '@/components/messenger/ChatHeader.vue'
 import ChatPlaceholder from '@/components/messenger/ChatPlaceholder.vue'
@@ -960,7 +960,7 @@ const saveMessageToSelf = async (message: Message) => {
 /**
  * Ссылка на кадр. Для зашифрованного вложения читаем только состояние кэша
  * (`enabled: () => false` не запускает загрузку) — расшифровку запрашивает
- * `watch` ниже, когда кадр реально показывают. Иначе при каждом рендере чата
+ * `useLightbox`, когда кадр реально показывают. Иначе при каждом рендере чата
  * скачивались и расшифровывались ВСЕ изображения истории.
  * Пока кадр не готов, ссылка пустая: лайтбокс показывает загрузку. Подставлять
  * сюда ссылку на шифротекст нельзя — получится «битая» картинка.
@@ -974,38 +974,23 @@ const lightboxUrlOf = (message: Message): string => {
   return local?.status === 'ready' ? local.url : ''
 }
 
-const lightboxItems = computed(() => buildLightboxItems(messages.value, lightboxUrlOf))
-const lightboxIndex = ref<number | null>(null)
-
-/** Расшифровываем текущий кадр и соседей — листание без ожидания. */
-watch([lightboxIndex, lightboxItems], () => {
-  const index = lightboxIndex.value
-  if (index === null) return
-  const items = lightboxItems.value
-  for (const i of neighborIndexes(index, items.length)) {
-    const item = items[i]
-    if (item?.message.e2ee_file) decryptedMediaFor(item.message)
-  }
+// Кадры, текущий индекс и листание — в composables/useLightbox.ts. Открытие
+// помечаем в истории приложения: лайтбокс закрывает системная «назад».
+const {
+  items: lightboxItems,
+  index: lightboxIndex,
+  open: openImageFromMessage,
+  close: closeLightbox,
+  step: lightboxStep
+} = useLightbox({
+  messages: () => messages.value,
+  urlOf: lightboxUrlOf,
+  needsPrepare: (message) => !!message.e2ee_file,
+  prepare: (message) => {
+    decryptedMediaFor(message)
+  },
+  onOpen: () => pushMobileNav()
 })
-
-const openImageFromMessage = (message: Message) => {
-  if (lightboxItems.value.length === 0) return
-  const idx = lightboxItems.value.findIndex((item) => item.id === message.id)
-  // Лайтбокс — полноэкранный слой: системная «назад» должна закрывать его
-  // (см. `handleAppBack`), значит нужен маркер в истории.
-  pushMobileNav()
-  lightboxIndex.value = idx >= 0 ? idx : 0
-}
-
-const closeLightbox = () => {
-  lightboxIndex.value = null
-}
-
-const lightboxStep = (delta: number) => {
-  if (lightboxIndex.value === null || lightboxItems.value.length === 0) return
-  const length = lightboxItems.value.length
-  lightboxIndex.value = (lightboxIndex.value + delta + length) % length
-}
 
 // ---------- Информация о чате / группе ----------
 const openChatInfo = () => {
