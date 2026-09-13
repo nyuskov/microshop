@@ -1,0 +1,238 @@
+/**
+ * Общий вид «списков строк»: диалоги, результаты поиска, контакты.
+ *
+ * Раньше эти стили лежали в scoped-блоке ChatSidebar.vue, поэтому вынести
+ * панель поиска или список контактов в отдельный компонент было нельзя без
+ * копирования ~120 строк CSS: scoped-стили родителя не применяются к элементам
+ * внутри дочернего компонента.
+ *
+ * Теперь это отдельный файл, а область задана явно — классом `.ms-rows` на
+ * контейнере списка. Так стили могут переиспользовать разные панели и оверлеи
+ * (в том числе телепортированные в body, куда класс родителя не долетает), и
+ * при этом они не разъезжаются по всему приложению: класс `avatar` объявлен и
+ * в других компонентах, глобальное правило молча меняло бы их вид.
+ *
+ * Подключён в main.ts после appearance.css (токены --ms-* уже определены).
+ */
+
+.ms-rows .avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  color: var(--ms-on-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1rem;
+  flex-shrink: 0;
+  user-select: none;
+  overflow: hidden;
+  position: relative;
+}
+
+.ms-rows .avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ---------- Индикатор «в сети» (точка на аватаре личного чата) ---------- */
+.ms-rows .avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.ms-rows .avatar-wrap.online::after {
+  content: '';
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--ms-accent);
+  border: 2px solid var(--ms-surface);
+  box-shadow: 0 0 0 1px var(--ms-hairline);
+  z-index: 1;
+}
+
+/* Индикатор «печатает…» в превью диалога */
+.ms-rows .row-sub.typing {
+  color: var(--ms-accent);
+  font-style: italic;
+}
+
+.ms-rows .row-sub.draft {
+  color: var(--ms-accent, #2ea25e);
+  font-style: italic;
+}
+
+/* Действия над чатом теперь только через режим выделения (удержание). */
+.ms-rows .chat-row {
+  position: relative;
+}
+
+/* Индикатор «чат замьючен» рядом со временем */
+.ms-rows .row-muted {
+  color: var(--ms-muted, #71808d);
+  margin-right: 2px;
+  vertical-align: -2px;
+}
+
+.ms-rows .row-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  /* Длинный список (сотни чатов и контактов): строки за экраном браузер не
+     раскладывает. За границы строки здесь ничего не вылезает — меню списка
+     живёт в шапке, диалоги телепортируются, — поэтому сдерживание безопасно
+     (те же грабли, что с лентой: см. docs/feed-performance.md). */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px auto 76px;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+
+/* Строка контакта: тап по строке открывает чат, а кнопка справа заводит имя. */
+.ms-rows .contact-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 6px;
+}
+
+.ms-rows .contact-row .row-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.ms-rows .contact-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ms-muted-3);
+  cursor: pointer;
+}
+
+.ms-rows .contact-action:hover {
+  background: var(--ms-hover);
+}
+
+.ms-rows .row-item:hover {
+  background: var(--ms-hover);
+}
+
+.ms-rows .row-item.active {
+  background: var(--ms-accent-soft);
+}
+
+.ms-rows .row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ms-rows .row-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ms-rows .row-title {
+  font-size: calc(15px * var(--ms-text-scale, 1));
+  font-weight: 600;
+  color: var(--ms-text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Метка канала («рупор») перед названием в списке чатов. */
+.ms-rows .row-channel {
+  margin-right: 5px;
+  color: var(--ms-muted-2);
+  vertical-align: -2px;
+}
+
+.ms-rows .row-time {
+  font-size: 12px;
+  color: var(--ms-muted-2);
+  flex-shrink: 0;
+}
+
+.ms-rows .row-sub {
+  font-size: calc(13.5px * var(--ms-text-scale, 1));
+  color: var(--ms-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ms-rows .row-sub.preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ms-rows .unread-badge {
+  background: var(--ms-accent);
+  color: var(--ms-on-accent);
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  flex-shrink: 0;
+}
+
+.ms-rows .row-arrow {
+  color: var(--ms-icon-3);
+  font-size: 0.95rem;
+}
+
+/* Кружок-чекбокс слева в строке чата при выделении. */
+.ms-rows .row-selector {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--ms-muted, #93a0ab);
+  border-radius: 50%;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ms-on-accent);
+}
+
+.ms-rows .row-selector.on {
+  background: var(--ms-accent, #2ea25e);
+  border-color: var(--ms-accent, #2ea25e);
+}
+
+.ms-rows .row-item.selected {
+  background: var(--ms-accent-soft, #e3f2e5);
+}

@@ -24,6 +24,8 @@ import './assets/fonts.css'
 // Import global styles
 import './assets/style.css'
 import './assets/appearance.css'
+// Общий вид «списков строк» (список чатов, поиск, контакты): область — .ms-rows.
+import './assets/rows.css'
 import './assets/quasar.css'
 import './assets/a11y.css'
 // Import the new theme store
