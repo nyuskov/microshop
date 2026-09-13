@@ -527,6 +527,7 @@ import { useRecordButton } from '@/composables/useRecordButton'
 import { useCallSession } from '@/composables/useCallSession'
 import { useChatNavigation } from '@/composables/useChatNavigation'
 import { useForward } from '@/composables/useForward'
+import { useMediaRecording } from '@/composables/useMediaRecording'
 import { useLightbox } from '@/composables/useLightbox'
 import { useNativeShare } from '@/composables/useNativeShare'
 import ChatSidebar from '@/components/messenger/ChatSidebar.vue'
@@ -567,7 +568,6 @@ import { useCallStore } from '@/stores/call'
 import { useContactsStore } from '@/stores/contacts'
 import { useRealtimeStore } from '@/stores/realtime'
 import { useStoriesStore } from '@/stores/stories'
-import { mediaFileName, type RecordedMedia } from '@/services/recorder'
 import {
   disablePushNotifications,
   enablePushNotifications,
@@ -616,8 +616,6 @@ const chatOverlaysRef = ref<InstanceType<typeof MessengerChatOverlays> | null>(n
 const accountOverlaysRef = ref<InstanceType<typeof MessengerAccountOverlays> | null>(null)
 /** Диалоги модерации: методы openReport / openBlocked / openReports. */
 const moderationOverlaysRef = ref<InstanceType<typeof MessengerModerationOverlays> | null>(null)
-const voiceRecOpen = ref(false)
-const videoRecOpen = ref(false)
 
 // ---------- Quasar: адаптивный layout (drawer на мобильном) ----------
 const $q = useQuasar()
@@ -1962,79 +1960,43 @@ const onFileSelected = async (file: File) => {
 }
 
 // ---------- Запись аудио/видеосообщений ----------
-const openVoiceRec = () => {
-  closePopups()
-  voiceRecOpen.value = true
-}
-
-const onVoiceCancel = () => {
-  voiceRecOpen.value = false
-}
-
-const onVoiceSend = async (payload: RecordedMedia) => {
-  voiceRecOpen.value = false
-  await uploadRecordedMedia(payload, 'voice')
-}
-
-const openVideoRec = () => {
-  closePopups()
-  videoRecOpen.value = true
-}
-
-const onVideoCancel = () => {
-  videoRecOpen.value = false
-  resetRecordMode()
-}
-
-const onVideoSend = async (payload: RecordedMedia) => {
-  videoRecOpen.value = false
-  resetRecordMode()
-  await uploadRecordedMedia(payload, 'video')
-}
-
-const uploadRecordedMedia = async (payload: RecordedMedia, kind: 'voice' | 'video') => {
-  const chatId = selectedChatId.value
-  if (chatId === null) return
-  sendingFile.value = true
-  sendError.value = ''
-  // Голосовое/видео тоже показываем временным пузырём с прогрессом:
-  // длинная запись грузится не мгновенно.
-  const label = kind === 'voice' ? 'Голосовое сообщение' : 'Видеосообщение'
-  const localId = addPendingUpload(label)
-  void nextTick(scrollToBottom)
-  try {
-    const file = new File([payload.blob], mediaFileName(kind, payload.mime), {
-      type: payload.mime
-    })
-    // Голосовые и кружки шифруются так же, как обычные вложения.
-    const aes = await chatKeyOf(selectedChat.value)
-    const encrypted = aes ? await encryptFileForChat(aes, file) : null
-    const message = await sendAttachmentMessage(
-      chatId,
-      encrypted ? encrypted.blob : file,
-      encrypted ? encrypted.text : '',
-      replyTarget.value?.id,
-      (percent) => {
-        if (pendingUploads.value.some((p) => p.localId === localId)) {
-          setPendingProgress(localId, percent)
-        }
-      },
-      !!encrypted
-    )
-    if (encrypted) applyLocalFileEnvelope(message, encrypted.meta)
-    removePendingUpload(localId)
-    clearReply()
-    sendTypingStop(chatId)
+const {
+  voiceRecOpen,
+  videoRecOpen,
+  openVoiceRec,
+  onVoiceCancel,
+  onVoiceSend,
+  openVideoRec,
+  onVideoCancel,
+  onVideoSend
+} = useMediaRecording({
+  selectedChatId: () => selectedChatId.value,
+  selectedChat: () => selectedChat.value,
+  replyToId: () => replyTarget.value?.id,
+  prepare: closePopups,
+  resetRecordMode: () => resetRecordMode(),
+  chatKeyOf,
+  addPendingUpload,
+  removePendingUpload,
+  setPendingProgress,
+  hasPendingUpload: (localId) => pendingUploads.value.some((p) => p.localId === localId),
+  applyLocalFileEnvelope,
+  appendToThread: (message) => {
     messages.value = appendMessage(messages.value, message)
-    await Promise.all([loadPinned(chatId), loadChats()])
-    scrollToBottom()
-  } catch (error) {
-    removePendingUpload(localId)
-    sendError.value = getErrorMessage(error, 'Не удалось отправить медиасообщение')
-  } finally {
-    sendingFile.value = false
+  },
+  loadPinned,
+  refreshChats: loadChats,
+  clearReply: () => clearReply(),
+  stopTyping: sendTypingStop,
+  scrollToBottom,
+  nextTick: (callback) => void nextTick(callback),
+  setSendingFile: (value) => {
+    sendingFile.value = value
+  },
+  setSendError: (message) => {
+    sendError.value = message
   }
-}
+})
 
 // ---------- Одна кнопка аудио/видео (состояние в composable) ----------
 const {
