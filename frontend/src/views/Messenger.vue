@@ -39,8 +39,7 @@
         @toggle-mute="toggleChatMuted"
         @bulk-mute="bulkSetMuted"
         @bulk-pin="bulkSetPinned"
-        @bulk-delete="openBulkDeleteChats"
-        @delete-chat="openDeleteChatModal"
+        @bulk-delete="chatOverlaysRef?.openBulkDelete($event)"
         @to-contacts="openContacts"
         @to-stories="openStories"
         @open-story="openStory"
@@ -312,48 +311,28 @@
     @close="openStoryId = null"
   />
 
-  <!-- Информация о чате -->
-  <q-dialog v-model="showChatInfoModal">
-    <template v-if="selectedChat && !isGroupChat(selectedChat)">
-      <ChatInfo
-        :chat="selectedChat"
-        :current-user-id="currentUserId"
-        :subtitle="chatSubtitle(selectedChat)"
-        :messages="messages"
-        :e2ee-enabled="!!selectedChat.e2ee_enabled"
-        @toggle-e2ee="onChatInfoToggleE2ee"
-        @close="showChatInfoModal = false"
-        @open-image="openChatInfoImage"
-      />
-    </template>
-  </q-dialog>
-
-  <!-- Информация о группе: состав, роли, настройки -->
-  <q-dialog v-model="showGroupInfoModal">
-    <template v-if="selectedChat && isGroupChat(selectedChat)">
-      <GroupChatInfo
-        :chat="selectedChat"
-        :current-user-id="currentUserId"
-        :contacts="contacts"
-        :online-user-ids="onlineUserIds"
-        :e2ee-enabled="!!selectedChat.e2ee_enabled"
-        @close="showGroupInfoModal = false"
-        @updated="onGroupInfoUpdated"
-        @left="onGroupLeft"
-        @toggle-e2ee="onChatInfoToggleE2ee"
-        @members-changed="onGroupMembersChanged"
-      />
-    </template>
-  </q-dialog>
-
-  <!-- Создание группы -->
-  <q-dialog v-model="showCreateGroupModal">
-    <GroupCreateDialog
-      :contacts="contacts"
-      @close="showCreateGroupModal = false"
-      @created="onGroupCreated"
-    />
-  </q-dialog>
+  <!-- Информация о чате/группе, создание группы и удаление чата — состояние
+       этих диалогов живёт в отдельном компоненте (v-model у трёх «назад»-флагов). -->
+  <MessengerChatOverlays
+    ref="chatOverlaysRef"
+    v-model:chat-info="showChatInfoModal"
+    v-model:group-info="showGroupInfoModal"
+    v-model:create-group="showCreateGroupModal"
+    :chat="selectedChat"
+    :chats="chats"
+    :contacts="contacts"
+    :messages="messages"
+    :online-user-ids="onlineUserIds"
+    :current-user-id="currentUserId"
+    :subtitle="selectedChat ? chatSubtitle(selectedChat) : ''"
+    @open-image="openChatInfoImage"
+    @e2ee-toggle="onChatInfoToggleE2ee"
+    @group-updated="onGroupInfoUpdated"
+    @group-left="onGroupLeft"
+    @members-changed="onGroupMembersChanged"
+    @group-created="onGroupCreated"
+    @delete-confirmed="onDeleteChatConfirmed"
+  />
 
   <!-- Каналы: создание, подписка по ссылке, комментарии под постом, настройки
        и «предложить пост» — состояние диалогов живёт в отдельном компоненте. -->
@@ -368,40 +347,6 @@
     @left="onChannelLeft"
     @comments-count="onChannelCommentsCount"
   />
-
-  <!-- Удаление чата (для себя / для всех) -->
-  <q-dialog v-model="showDeleteChatModal">
-    <q-card class="delchat-card">
-      <q-card-section class="row no-wrap items-center delchat-head">
-        <div class="text-subtitle1 text-weight-medium ellipsis">
-          {{ deleteChatBulkIds.length ? 'Удалить чаты' : 'Удалить чат' }}
-        </div>
-        <q-space />
-        <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
-      </q-card-section>
-      <q-separator />
-      <q-card-section class="delchat-body">
-        <p class="delchat-text">
-          <template v-if="deleteChatBulkIds.length">
-            Удалить выбранные чаты ({{ deleteChatBulkIds.length }})?
-          </template>
-          <template v-else>
-            Удалить чат с <b>{{ deleteChatTitle }}</b
-            >?
-          </template>
-        </p>
-        <q-radio v-model="deleteChatScope" val="me" label="Только у меня" />
-        <div class="delchat-hint">Чат исчезнет из вашего списка; у собеседника останется.</div>
-        <q-radio v-model="deleteChatScope" val="all" label="Для всех" />
-        <div class="delchat-hint">Чат и переписка будут удалены у всех участников.</div>
-      </q-card-section>
-      <q-separator />
-      <q-card-actions align="right" class="delchat-actions">
-        <q-btn flat label="Отмена" v-close-popup />
-        <q-btn flat color="negative" label="Удалить" @click="confirmDeleteChat" />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
 
   <!-- Login Modal -->
   <LoginModal :visible="showLoginModal" @close-modal="onLoginModalClose" />
@@ -613,6 +558,7 @@ import MessageThread from '@/components/messenger/MessageThread.vue'
 import type { PendingRow } from '@/components/messenger/MessageThread.vue'
 import MessageComposer from '@/components/messenger/MessageComposer.vue'
 import MessengerChannelOverlays from '@/views/MessengerChannelOverlays.vue'
+import MessengerChatOverlays from '@/views/MessengerChatOverlays.vue'
 
 // Тяжёлые модалки/оверлеи подгружаем асинхронно — они нужны только после
 // действия пользователя (профиль/оформление/инфо о чате, звонок, лайтбокс,
@@ -624,11 +570,6 @@ const ForwardDialog = defineAsyncComponent(() => import('@/components/messenger/
 const ShareToChatDialog = defineAsyncComponent(
   () => import('@/components/messenger/ShareToChatDialog.vue')
 )
-const ChatInfo = defineAsyncComponent(() => import('@/components/messenger/ChatInfo.vue'))
-const GroupCreateDialog = defineAsyncComponent(
-  () => import('@/components/messenger/GroupCreateDialog.vue')
-)
-const GroupChatInfo = defineAsyncComponent(() => import('@/components/messenger/GroupChatInfo.vue'))
 const VideoRecorderModal = defineAsyncComponent(
   () => import('@/components/media/VideoRecorderModal.vue')
 )
@@ -704,6 +645,8 @@ const channelCard = ref<ChannelCard | null>(null)
 const channelPostMeta = ref<Record<number, { views: number; comments: number }>>({})
 /** Диалоги каналов: методы open* / closeAll. */
 const channelOverlaysRef = ref<InstanceType<typeof MessengerChannelOverlays> | null>(null)
+/** Оверлеи «чат и группа»: методы openDelete / openBulkDelete. */
+const chatOverlaysRef = ref<InstanceType<typeof MessengerChatOverlays> | null>(null)
 const showLoginModal = ref(true)
 // Модерация: жалоба на пользователя/сообщение и список заблокированных.
 const reportTarget = ref<{
@@ -2746,41 +2689,6 @@ const handleVisibilityForUnread = () => {
   void refreshOpenThreadQuiet()
 }
 
-/** Название чата для модалки удаления. */
-const chatDeleteLabel = (chat: Chat): string => {
-  const peer = otherUserOfChat(chat)
-  return chat.users.length === 2 && peer ? displayName(peer) : chat.name
-}
-
-// ---------- Модалка «Удалить чат» (для себя / для всех) ----------
-const showDeleteChatModal = ref(false)
-const deleteChatTarget = ref<Chat | null>(null)
-const deleteChatBulkIds = ref<number[]>([])
-const deleteChatScope = ref<'me' | 'all'>('me')
-
-const deleteChatTitle = computed<string>(() =>
-  deleteChatTarget.value ? chatDeleteLabel(deleteChatTarget.value) : ''
-)
-
-/** Открывает модалку удаления (вместо window.confirm). */
-const openDeleteChatModal = (chat: Chat) => {
-  if (chat.is_self) return // «Сохранённые сообщения» удалить нельзя
-  deleteChatTarget.value = chat
-  deleteChatBulkIds.value = []
-  deleteChatScope.value = 'me'
-  showDeleteChatModal.value = true
-}
-
-/** Удаление нескольких выбранных чатов (режим выделения). */
-const openBulkDeleteChats = (chatIds: number[]) => {
-  const ids = chatIds.filter((id) => !chats.value.find((item) => item.id === id)?.is_self)
-  if (ids.length === 0) return
-  deleteChatTarget.value = null
-  deleteChatBulkIds.value = ids
-  deleteChatScope.value = 'me'
-  showDeleteChatModal.value = true
-}
-
 /** Локальная чистка после удаления чата (список/черновик/пин/открытый тред). */
 const removeDeletedChat = (chat: Chat) => {
   chats.value = chats.value.filter((item) => item.id !== chat.id)
@@ -2828,21 +2736,11 @@ const handleChatRemoved = (chatId: number) => {
   showGroupInfoModal.value = false
 }
 
-/** Подтверждение из модалки: удалить «только у меня» или «для всех». */
-const confirmDeleteChat = async () => {
-  const ids = deleteChatBulkIds.value.length
-    ? deleteChatBulkIds.value
-    : deleteChatTarget.value
-      ? [deleteChatTarget.value.id]
-      : []
-  if (ids.length === 0) return
-  showDeleteChatModal.value = false
+/** Подтверждение из модалки удаления: убираем выбранные чаты (для себя/для всех). */
+const onDeleteChatConfirmed = async ({ ids, forAll }: { ids: number[]; forAll: boolean }) => {
   const targets = ids
     .map((id) => chats.value.find((item) => item.id === id))
     .filter((chat): chat is Chat => chat !== undefined)
-  deleteChatTarget.value = null
-  deleteChatBulkIds.value = []
-  const forAll = deleteChatScope.value === 'all'
   try {
     for (const chat of targets) {
       await deleteChat(chat.id, forAll)
@@ -4271,34 +4169,7 @@ watch(
   overflow: auto;
 }
 
-/* ---------- Модалка удаления чата ---------- */
-.delchat-card {
-  width: min(400px, calc(100vw - 32px));
-  border-radius: var(--ms-radius-lg, 18px);
-}
-
-.delchat-head {
-  padding: 8px 8px 8px 20px;
-}
-
-.delchat-body {
-  padding: 6px 20px 10px;
-}
-
-.delchat-text {
-  margin: 8px 0 10px;
-  font-size: 14.5px;
-}
-
-.delchat-hint {
-  font-size: 12.5px;
-  color: var(--ms-muted, #71808d);
-  margin: -2px 0 8px 30px;
-}
-
-.delchat-actions {
-  padding: 8px 12px;
-}
+/* Модалка удаления чата переехала в MessengerChatOverlays.vue вместе с разметкой. */
 
 /* Примечание «защищено сквозным шифрованием» над строкой ввода (как в Telegram) */
 .chat-e2ee-note {

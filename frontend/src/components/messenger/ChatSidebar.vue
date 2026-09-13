@@ -799,7 +799,6 @@ const emit = defineEmits<{
   (e: 'open-message', chatId: number, messageId: number): void
   (e: 'toggle-pin', chatId: number): void
   (e: 'toggle-mute', chatId: number): void
-  (e: 'delete-chat', chat: Chat): void
   (e: 'bulk-mute', chatIds: number[], muted: boolean): void
   (e: 'bulk-pin', chatIds: number[], pinned: boolean): void
   (e: 'bulk-delete', chatIds: number[]): void
