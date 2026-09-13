@@ -186,20 +186,8 @@
             @pick-message="openMessageResult"
           />
 
-          <!-- Скелетоны: показываем структуру списка вместо текста «Загрузка…» -->
-          <div v-if="!searchActive && loadingChats" class="sk-list" aria-busy="true">
-            <span class="sr-only">Загрузка диалогов…</span>
-            <div v-for="n in 6" :key="n" class="sk-row">
-              <span class="sk-avatar"></span>
-              <span class="sk-lines">
-                <span class="sk-line" :style="{ width: 40 + ((n * 13) % 35) + '%' }"></span>
-                <span class="sk-line short"></span>
-              </span>
-            </div>
-          </div>
-
-          <!-- Недавние диалоги: место результатов поиска, если он что-то ищет -->
-          <template v-else-if="!searchActive">
+          <!-- Список чатов: фильтры, скелетоны, строки (в ChatList.vue) -->
+          <template v-else>
             <!-- Истории: раскрытая полоса под шапкой. Появляется по нажатию на
                  кружки в шапке или по протяжке списка вниз у самого верха. -->
             <Transition name="slide-down" v-bind="slideDown">
@@ -207,130 +195,29 @@
                 <StoriesStrip @open-story="emit('open-story', $event)" />
               </div>
             </Transition>
-            <!-- Фильтры списка: быстро отсечь непрочитанное, личные или группы -->
-            <div
-              v-if="!selectionMode"
-              class="chat-filters"
-              role="tablist"
-              aria-label="Фильтр чатов"
-            >
-              <button
-                v-for="filter in CHAT_FILTERS"
-                :key="filter.key"
-                type="button"
-                class="chat-filter"
-                :class="{ active: chatFilter === filter.key }"
-                role="tab"
-                :aria-selected="chatFilter === filter.key"
-                @click="chatFilter = filter.key"
-              >
-                {{ filter.title }}
-                <span v-if="filter.key === 'unread' && unreadChatCount" class="chat-filter-count">
-                  {{ unreadChatCount > 99 ? '99+' : unreadChatCount }}
-                </span>
-              </button>
-            </div>
-            <div class="section-label">Недавние</div>
-            <div v-if="!orderedChats.length" class="empty-hint">
-              Найдите пользователя по логину или телефону и начните переписку
-            </div>
-            <div
-              ref="chatsScrollEl"
-              class="chat-scroll"
-              @scroll.passive="onChatsScroll"
-              @touchstart.passive="onListTouchStart"
-              @touchmove.passive="onListTouchMove"
-            >
-              <div v-for="chat in orderedChats" :key="chat.id" class="chat-row">
-                <button
-                  class="row-item"
-                  :class="{
-                    active: !selectionMode && selectedChatId === chat.id,
-                    selected: isSelected(chat.id)
-                  }"
-                  @pointerdown="onRowPointerDown(chat.id)"
-                  @pointerup="onRowPointerUp"
-                  @pointercancel="onRowPointerCancel"
-                  @pointerleave="onRowPointerUp"
-                  @click="onRowClick(chat.id)"
-                >
-                  <span
-                    v-if="selectionMode"
-                    class="row-selector"
-                    :class="{ on: isSelected(chat.id) }"
-                  >
-                    <q-icon v-if="isSelected(chat.id)" :name="icon('check')" size="15px" />
-                  </span>
-                  <span class="avatar-wrap" :class="{ online: chatPeerOnline(chat) }">
-                    <span
-                      class="avatar"
-                      :style="chat.is_self ? savedStyle : avatarStyle(chatTitleOf(chat))"
-                    >
-                      <q-icon
-                        v-if="chat.is_self"
-                        :name="icon('bookmark')"
-                        size="20px"
-                        aria-hidden="true"
-                      />
-                      <img
-                        v-else-if="chatAvatarOf(chat)"
-                        :src="chatAvatarOf(chat)"
-                        class="avatar-img"
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                      />
-                      <template v-else>{{ initials(chatTitleOf(chat)) }}</template>
-                    </span>
-                  </span>
-                  <span class="row-text">
-                    <span class="row-line">
-                      <span class="row-title">
-                        <q-icon
-                          v-if="chat.is_channel"
-                          :name="icon('campaign')"
-                          size="15px"
-                          class="row-channel"
-                          aria-hidden="true"
-                        />
-                        {{ chatTitleOf(chat) }}
-                      </span>
-                      <span class="row-time">
-                        <q-icon
-                          v-if="isMutedOf(chat.id)"
-                          :name="icon('notifications_off')"
-                          size="14px"
-                          class="row-muted"
-                          aria-hidden="true"
-                        />
-                        {{ chat.last_message ? formatChatTime(chat.last_message.timestamp) : '' }}
-                      </span>
-                    </span>
-                    <span class="row-line">
-                      <span
-                        class="row-sub preview"
-                        :class="{ typing: isChatTyping(chat), draft: draftOf(chat) !== null }"
-                      >
-                        <template v-if="isChatTyping(chat)">печатает…</template>
-                        <template v-else-if="draftOf(chat)">Черновик: {{ draftOf(chat) }}</template>
-                        <template v-else>
-                          <q-icon
-                            v-if="lastMessageIsOut(chat)"
-                            :name="icon('done')"
-                            class="tick"
-                            size="16px"
-                          />
-                          {{ previewText(chat) }}
-                        </template>
-                      </span>
-                      <span v-if="chat.unread_count > 0" class="unread-badge">
-                        {{ chat.unread_count }}
-                      </span>
-                    </span>
-                  </span>
-                </button>
-              </div>
-            </div>
+            <ChatList
+              :chats="orderedChats"
+              :loading="loadingChats"
+              :current-user-id="currentUserId"
+              :selected-chat-id="selectedChatId"
+              :selection-mode="selectionMode"
+              :selected-ids="selectedIds"
+              :filter="chatFilter"
+              :filters="CHAT_FILTERS"
+              :unread-count="unreadChatCount"
+              :drafts="drafts"
+              :typing-chat-ids="typingChatIds"
+              :muted-chat-ids="mutedChatIds"
+              :online-user-ids="onlineUserIds"
+              :handle-scroll="onChatsScroll"
+              :handle-touch-start="onListTouchStart"
+              :handle-touch-move="onListTouchMove"
+              @update:filter="chatFilter = $event as ChatFilterKey"
+              @row-click="onRowClick"
+              @row-pointer-down="onRowPointerDown"
+              @row-pointer-up="onRowPointerUp"
+              @row-pointer-cancel="onRowPointerCancel"
+            />
           </template>
         </template>
 
@@ -419,26 +306,14 @@ import ContactNameDialog from '@/components/messenger/ContactNameDialog.vue'
 import PhoneImportDialog from '@/components/messenger/PhoneImportDialog.vue'
 import SearchResults from '@/components/messenger/SearchResults.vue'
 import ContactsPanel from '@/components/messenger/ContactsPanel.vue'
+import ChatList from '@/components/messenger/ChatList.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import { openPrivateChat, type SearchUserResult } from '@/services/chatService'
 import type { Chat, ChatUser, Message } from '@/types'
-import { isEncryptedPayload } from '@/services/e2ee'
-import {
-  avatarStyle,
-  avatarUrlOf,
-  chatPeer,
-  chatTitle,
-  displayName,
-  groupAvatarUrl,
-  initials,
-  isGroupChat
-} from '@/utils/user'
+import { avatarStyle, initials, isGroupChat } from '@/utils/user'
 import { useChatSelection } from '@/composables/useChatSelection'
 import { usePhoneImport } from '@/composables/usePhoneImport'
-import { formatChatTime } from '@/utils/format'
-import { isLockedFile, lockedFileLabel, mediaTypeLabel } from '@/utils/media'
-import { plainMessageText } from '@/utils/mentions'
 import { useSlideDown } from '@/composables/useSlideDown'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
 
@@ -547,19 +422,24 @@ const setStoriesExpanded = (value: boolean) => {
 
 const toggleStoriesExpand = () => setStoriesExpanded(!storiesExpanded.value)
 
-const chatsScrollEl = ref<HTMLElement | null>(null)
 // Копим движение в пределах шага: без этого микро-дрожание скролла мигало бы полосой.
 const STORIES_SCROLL_STEP = 24
 let storiesScrollAcc = 0
 let storiesLastTop = 0
 let storiesRaf = 0
-const onChatsScroll = () => {
+/** Список пересоздали — первое событие скролла только задаёт отсчёт. */
+let storiesResetPending = false
+const onChatsScroll = (el: HTMLElement) => {
   if (storiesRaf) return
   storiesRaf = requestAnimationFrame(() => {
     storiesRaf = 0
-    const el = chatsScrollEl.value
-    if (!el) return
     const top = el.scrollTop
+    if (storiesResetPending) {
+      storiesResetPending = false
+      storiesLastTop = top
+      storiesScrollAcc = 0
+      return
+    }
     const delta = top - storiesLastTop
     storiesLastTop = top
     // У самого верха списка ничего не сжимаем: там работает протяжка вниз.
@@ -590,9 +470,8 @@ const onListTouchStart = (event: TouchEvent) => {
   pullStartY = event.touches[0]?.clientY ?? 0
   pullUsed = false
 }
-const onListTouchMove = (event: TouchEvent) => {
-  const el = chatsScrollEl.value
-  if (!el || pullUsed || el.scrollTop > 0) return
+const onListTouchMove = (event: TouchEvent, el: HTMLElement) => {
+  if (pullUsed || el.scrollTop > 0) return
   const y = event.touches[0]?.clientY ?? 0
   if (y - pullStartY < PULL_EXPAND_PX) return
   pullUsed = true
@@ -600,11 +479,9 @@ const onListTouchMove = (event: TouchEvent) => {
   revealSearch()
 }
 
-// Список пересоздаётся при смене раздела и при открытии поиска — отсчёт заново.
-watch(chatsScrollEl, (el) => {
-  storiesLastTop = el?.scrollTop ?? 0
-  storiesScrollAcc = 0
-})
+// Список пересоздаётся при смене раздела и при открытии поиска — отсчёт заново
+// (сам элемент списка теперь живёт в ChatList.vue, поэтому о пересоздании
+// узнаём по смене раздела/режима поиска). Объявление — ниже, рядом с поиском.
 onBeforeUnmount(() => {
   if (storiesRaf) cancelAnimationFrame(storiesRaf)
 })
@@ -658,36 +535,6 @@ const openContactName = (user: ChatUser | SearchUserResult) => {
 
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
-const chatPeerOf = (chat: Chat) => chatPeer(chat, props.currentUserId)
-const chatTitleOf = (chat: Chat): string => chatTitle(chat, props.currentUserId)
-/** Аватар чата: у группы — своё фото, у личного — аватар собеседника. */
-const chatAvatarOf = (chat: Chat): string | undefined =>
-  isGroupChat(chat) ? groupAvatarUrl(chat) : avatarUrlOf(chatPeerOf(chat))
-// Аватар-«книжечка» для «Сохранённых сообщений».
-const savedStyle: Record<string, string> = {
-  background: 'linear-gradient(135deg, #3b82f6, #1e40af)'
-}
-
-/**
- * «В сети»: только явное присутствие из WS-канала.
- *
- * Раньше здесь был ещё фоллбэк по `last_seen` (±30 секунд), и при свёрнутом
- * приложении зелёная точка загоралась после каждого heartbeat — собеседник видел
- * «онлайн» у того, кто давно ушёл. Теперь источник правды один — `presence`.
- */
-const isUserOnline = (user: ChatUser | undefined | null): boolean =>
-  !!user && (props.onlineUserIds?.includes(user.id) ?? false)
-
-/** Индикатор онлайн показываем только у личных (1-1) чатов. */
-const chatPeerOnline = (chat: Chat): boolean => {
-  if (chat.users.length !== 2) return false
-  return isUserOnline(chatPeerOf(chat))
-}
-
-/** Печатает ли сейчас собеседник в этом чате. */
-const isChatTyping = (chat: Chat): boolean =>
-  chat.users.length === 2 && (props.typingChatIds?.includes(chat.id) ?? false)
-
 /** Закреплён ли чат. */
 const isPinnedOf = (chatId: number): boolean => props.pinnedChatIds?.includes(chatId) ?? false
 
@@ -701,7 +548,6 @@ const isMutedOf = (chatId: number): boolean => props.mutedChatIds?.includes(chat
 const {
   selectionMode,
   selectedIds,
-  isSelected,
   isSelecting,
   exitSelection,
   allVisibleSelected,
@@ -770,12 +616,6 @@ watch([() => props.view, () => props.selectedChatId], () => {
   if (selectionMode.value) exitSelection()
 })
 
-/** Сохранённый черновик чата (null — черновика нет). */
-const draftOf = (chat: Chat): string | null => {
-  const text = props.drafts?.[chat.id]
-  return text && text.trim() ? text : null
-}
-
 /** Фильтры списка чатов: все / непрочитанные / личные / группы / каналы. */
 type ChatFilterKey = 'all' | 'unread' | 'private' | 'groups' | 'channels'
 
@@ -817,32 +657,6 @@ const orderedChats = computed<Chat[]>(() => {
   return [...self, ...top, ...rest]
 })
 
-const lastMessageIsOut = (chat: Chat): boolean => {
-  const last = chat.last_message
-  return !!last && props.currentUserId !== null && last.user_id === props.currentUserId
-}
-
-const previewText = (chat: Chat): string => {
-  const last = chat.last_message
-  if (!last) return 'Нет сообщений'
-  // Скрытое модерацией: сервер не отдаёт ни текст, ни файл — показываем пометку,
-  // а не пустую строку (иначе выглядит как сбой).
-  if (last.hidden) return 'Скрыто до проверки модератором'
-  // Зашифрованное вложение: содержимое и имя файла серверу неизвестны.
-  if (isLockedFile(last)) return lockedFileLabel(last)
-  if (last.encrypted && isEncryptedPayload(last.text)) return '🔒 Сообщение'
-  const me = props.currentUserId
-  const mine = me !== null && last.user_id === me
-  let prefix = mine ? 'Вы: ' : ''
-  if (!mine && isGroupChat(chat)) {
-    const author = chat.users.find((user) => user.id === last.user_id)
-    if (author) prefix = `${displayName(author)}: `
-  }
-  const body = last.file ? mediaTypeLabel(last.file) : plainMessageText(last.text)
-  if (last.forwarded_from) return `${prefix}↪ Переслано: ${body}`
-  return `${prefix}${body}`
-}
-
 const toggleSettingsMenu = () => {
   settingsMenuOpen.value = !settingsMenuOpen.value
 }
@@ -865,6 +679,14 @@ const searchOpen = ref(false)
  * выбирает: результаты (`people-results`) или обычный список с фильтрами.
  */
 const searchActive = computed(() => searchOpen.value && searchHasQuery.value)
+
+// Список пересоздаётся при смене раздела и при открытии поиска: первое событие
+// скролла после этого только задаёт отсчёт (иначе дельта считалась бы от
+// прокрутки прошлого списка и полоса историй схлопывалась бы рывком).
+watch([() => props.view, searchActive], () => {
+  storiesResetPending = true
+  storiesScrollAcc = 0
+})
 
 /** Показать поле поиска, не забирая фокус (протяжка списка вниз, как истории). */
 const revealSearch = () => {

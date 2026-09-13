@@ -141,9 +141,14 @@ describe('панели списка чатов', () => {
   })
 
   it('список чатов остаётся на месте, пока запрос поиска пуст', () => {
-    // Список подменяют только результаты поиска — и только когда он что-то ищет.
+    // Список подменяют только результаты поиска — и только когда он что-то ищет:
+    // SearchResults идёт с v-if, а список чатов — в v-else той же цепочки.
     expect(sidebar).toContain('v-if="searchActive"')
-    expect(sidebar).toContain('v-else-if="!searchActive"')
+    const resultsAt = sidebar.indexOf('<SearchResults')
+    const listAt = sidebar.indexOf('<ChatList')
+    expect(resultsAt).toBeGreaterThan(-1)
+    expect(listAt).toBeGreaterThan(resultsAt)
+    expect(sidebar.slice(resultsAt, listAt)).toContain('v-else')
     // Раньше при открытом поиске прятался и список: `v-else-if="!searchOpen"`.
     expect(sidebar).not.toContain('v-else-if="!searchOpen"')
     expect(sidebar).not.toContain('searchOpen && searchQuery.trim()')

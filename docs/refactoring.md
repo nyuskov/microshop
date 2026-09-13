@@ -12,11 +12,12 @@
 - **Логика поиска вынесена из `ChatSidebar.vue` в `composables/useGlobalSearch.ts`**
   (запрос, режим, результаты, задержка 350 мс, ошибка, сброс) — появился юнит-тест
   без DOM: `__tests__/globalSearch.spec.ts`.
-- **Строки списка, результаты поиска и раздел «Контакты» вынесены из
-  `ChatSidebar.vue`**: общий вид строк — `assets/rows.css` (область `.ms-rows`),
-  подписи результатов — `utils/messageSearch.ts`, панель результатов —
-  `components/messenger/SearchResults.vue`, контакты —
-  `components/messenger/ContactsPanel.vue` + `composables/useContactSearch.ts`.
+- **Строки списка, результаты поиска, контакты и список чатов вынесены из
+  `ChatSidebar.vue`** (2600 → 1185 строк): общий вид строк — `assets/rows.css`
+  (область `.ms-rows`), подписи результатов — `utils/messageSearch.ts`, панель
+  результатов — `components/messenger/SearchResults.vue`, контакты —
+  `components/messenger/ContactsPanel.vue` + `composables/useContactSearch.ts`,
+  список чатов — `components/messenger/ChatList.vue` + `utils/chatPreview.ts`.
   Заодно исправлены регрессии: размер значка профиля (общий `.avatar` перебивал
   размер из компонента), его оптическая центровка и пропавшие стили инлайн-
   результатов импорта из телефонной книги.
@@ -73,7 +74,7 @@
 тревога о новом входе; настройки канала из шапки, «Новый канал» и «Новая группа» из
 меню сайдбара, модалка удаления из режима выделения.
 
-### 2. `frontend/src/components/messenger/ChatSidebar.vue` — 2600 → 1378 строк (идёт)
+### 2. `frontend/src/components/messenger/ChatSidebar.vue` — 2600 → 1185 строк (идёт)
 
 ПРЕПЯТСТВИЕ, из-за которого нельзя было просто «вынести разметку»: строки списка и
 аватары описаны scoped-стилями самого сайдбара (`.row-item`, `.avatar`, `.row-text`,
@@ -97,15 +98,21 @@
    — `composables/useContactSearch.ts`. По ходу нашлась регрессия: правила
    `.phone-inline*` уехали в scoped-блок окна импорта, а разметка осталась в
    сайдбаре — инлайн-результаты остались без стилей; теперь стили живут рядом
-   с разметкой.
+   с разметкой;
+5. список чатов — `components/messenger/ChatList.vue` (фильтры-чипы, скелетоны,
+   строки диалогов), подписи строки — `utils/chatPreview.ts`. Жесты и режим
+   выделения остались в сайдбаре: обработчики скролла/протяжки приходят в
+   компонент функциями (элемент списка больше не течёт наружу), а события
+   строк уходят наверх (`row-click`, `row-pointer-*`).
 
-Осталось: список чатов с фильтрами и скелетонами, нижняя навигация.
+Осталось: шапка панели и нижняя навигация (небольшие блоки).
 
 Проверка: `slideDown.spec.ts`, `globalSearch.spec.ts`, `messageSearch.spec.ts`,
-`searchResults.spec.ts`, `contactSearch.spec.ts`, `chatSelection.spec.ts`,
-`phoneImport.spec.ts` + сценарии в браузере (открытие/закрытие поиска, протяжка
-списка вниз, прокрутка вверх, выделение чатов, импорт контактов с переходом в чат,
-поиск по людям и сообщениям с переходом в чат).
+`searchResults.spec.ts`, `contactSearch.spec.ts`, `chatPreview.spec.ts`,
+`chatSelection.spec.ts`, `phoneImport.spec.ts` + сценарии в браузере (открытие и
+закрытие поиска, протяжка списка вниз, прокрутка вверх, фильтры списка, выделение
+удержанием, импорт контактов с переходом в чат, поиск по людям и сообщениям с
+переходом в чат).
 
 ### 3. `frontend/src/stores/call.ts` — 2185 → 1608 строк (частично)
 
