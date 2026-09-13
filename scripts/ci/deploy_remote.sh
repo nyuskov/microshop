@@ -27,6 +27,15 @@ PROJECT="${PROJECT:-microshop-test}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yaml}"
 COMPOSE="docker compose -p $PROJECT -f $COMPOSE_FILE"
 
+# Регистрация временно закрыта на уровне production-конфигурации.
+# Обновляем только эту строку в локальном env-файле VM, не затрагивая секреты.
+ENV_FILE="${ENV_FILE:-.env}"
+if [ -f "$ENV_FILE" ] && grep -q '^REGISTRATION_ENABLED=' "$ENV_FILE"; then
+  sed -i 's/^REGISTRATION_ENABLED=.*/REGISTRATION_ENABLED=false/' "$ENV_FILE"
+else
+  printf '\nREGISTRATION_ENABLED=false\n' >> "$ENV_FILE"
+fi
+
 # Сколько секунд держать прежний слот живым после того, как новый уже готов.
 # По умолчанию 0: сигналинг звонков и presence живут В ПАМЯТИ ПРОЦЕССА
 # (api_v1/calls/manager.py), поэтому пока работают оба слота, часть
