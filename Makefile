@@ -45,8 +45,15 @@ test-backend:
 	@for i in $$(seq 1 30); do docker exec pismo-test-db pg_isready -U postgres -q && break; sleep 1; done
 	cd backend && DATABASE_URL=$(TEST_DB_URL) TEST_DATABASE_URL=$(TEST_DB_URL) \
 		$(PY) -m alembic upgrade head
-	cd backend && DATABASE_URL=$(TEST_DB_URL) TEST_DATABASE_URL=$(TEST_DB_URL) \
-		$(PY) -m pytest -q
+	@# Локально pywebpush может быть не установлен (в CI он есть): тогда честно
+	@# пропускаем только тесты push и говорим об этом, а не падаем на сборе.
+	@cd backend && if $(PY) -c 'import pywebpush' 2>/dev/null; then extra=""; \
+		else extra="--ignore=tests/test_push_notifications.py \
+			--deselect tests/test_call_signaling.py::test_call_push_expiry"; \
+			echo "!!! pywebpush не установлен — тесты push пропущены (в CI идут)"; \
+		fi; \
+		DATABASE_URL=$(TEST_DB_URL) TEST_DATABASE_URL=$(TEST_DB_URL) \
+		$(PY) -m pytest -q $$extra
 	@docker stop pismo-test-db >/dev/null 2>&1 || true
 
 # Инструмент, а не проверка: бывают ложные срабатывания (классы собираются из
