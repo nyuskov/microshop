@@ -191,13 +191,20 @@ RuStore Push, mute) и `limits` (rate limit, приватность, ссылк�
 
 Проверка: `make test-backend` — число тестов не должно измениться.
 
-### 6. `backend/api_v1/auth/views.py` — 1637 строк (отложено)
+### 6. `backend/api_v1/auth/views.py` — 1638 → 65 строк (сделано)
 
 Один файл на всю аутентификацию (пароль, OTP, коды на e-mail, устройства, сессии,
-паника). Разбить на `auth/routers/{password,otp,email_codes,devices,sessions}.py` и
-подключить в `auth/__init__.py` — роутеры уже собираются там, добавление бесплатное.
+паника) декомпозирован по чистым доменным роутерам:
+- `backend/api_v1/auth/common.py` (353 строки) — общие проверки, лимитеры, отправка в очередь;
+- `backend/api_v1/auth/routers/otp.py` (300 строк) — запрос и проверка OTP-кодов телефона, каналы, разморозка;
+- `backend/api_v1/auth/routers/password.py` (423 строки) — парольная регистрация, вход, смена и сброс пароля;
+- `backend/api_v1/auth/routers/email_codes.py` (183 строки) — подтверждение почты и вход по коду из письма;
+- `backend/api_v1/auth/routers/devices.py` (130 строк) — 2FA подтверждение новых устройств и привязка Telegram;
+- `backend/api_v1/auth/routers/sessions.py` (269 строк) — управление сессиями, лог безопасности, заморозка и тревога (паника);
+- `backend/api_v1/auth/routers/__init__.py` (26 строк) — объединяющий роутер `APIRouter(prefix="/auth")`;
+- `backend/api_v1/auth/views.py` (65 строк) — агрегатор роутеров и утилит с сохранением обратной совместимости импортов и monkeypatching.
 
-Проверка: `pytest` (299 тестов), отдельно — ручной вход по паролю и по коду.
+Проверка: `make check-backend` (isort, black, flake8, mypy: 0 проблем) и `make test-backend` (296 тестов прошли).
 
 ### 7. Тесты фронтенда — разложить по подпапкам (отложено)
 
