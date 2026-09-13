@@ -172,7 +172,7 @@
             :unread-count="unreadAtOpen"
             :channel-posts="selectedIsChannel"
             :post-meta="channelPostMeta"
-            @unread-seen="unreadAtOpen = 0"
+            @unread-seen="clearUnreadDivider"
             @post-viewed="onPostViewed"
             @open-comments="openChannelComments"
             @retry-pending="retryOutboxItem"
@@ -506,7 +506,6 @@ import type {
   Message
 } from '@/types'
 import { avatarUrlOf, chatPeer, chatTitle, displayName, isGroupChat } from '@/utils/user'
-import { setAppBadge } from '@/utils/appBadge'
 import { usernameFromProfilePath } from '@/utils/profileLink'
 import { channelUsernameFromPath } from '@/utils/channelLink'
 import { inviteTokenFromPath } from '@/utils/groupInvite'
@@ -524,6 +523,7 @@ import { useRealtimeSync } from '@/composables/useRealtimeSync'
 import { useRecordButton } from '@/composables/useRecordButton'
 import { useCallSession } from '@/composables/useCallSession'
 import { useChatNavigation } from '@/composables/useChatNavigation'
+import { useChatUnreadState } from '@/composables/useChatUnreadState'
 import { useForward } from '@/composables/useForward'
 import { useMediaRecording } from '@/composables/useMediaRecording'
 import { useLightbox } from '@/composables/useLightbox'
@@ -743,8 +743,6 @@ const sidebarRef = ref<InstanceType<typeof ChatSidebar> | null>(null)
  * Нужно ленте, чтобы нарисовать разделитель «Непрочитанные сообщения» и
  * открыть чат на нём, а не прыгать в самый низ. Обнуляется при выборе чата.
  */
-const unreadAtOpen = ref(0)
-
 // ---------- Фон окна сообщений (обои берутся из store оформления) ----------
 const chatBgStyle = computed(() => ({ background: themeStore.wallpaperCss }))
 
@@ -1275,11 +1273,6 @@ const syncPresenceFromChats = (list: Chat[]) => {
  * Без этого события телефон показывал «непрочитано» до перезагрузки, хотя чат
  * уже прочитан на компьютере: сервер сообщал о прочтении только собеседнику.
  */
-const onChatReadElsewhere = (chatId: number) => {
-  const chat = chats.value.find((item) => item.id === chatId)
-  if (chat) chat.unread_count = 0
-}
-
 /** «В сети» ли собеседник открытого личного чата (точка на аватаре в шапке). */
 const selectedChatPeerOnline = computed<boolean>(() => {
   const chat = selectedChat.value
@@ -1602,24 +1595,6 @@ const toggleReaction = async (message: Message, emoji: string) => {
  * страховочному таймеру) быстрее, чем сервер успевает записать прочтение от
  * запроса истории, и ответ перетирал локальный ноль.
  */
-const applyChatsFromServer = (list: Chat[]) => {
-  const openId = selectedChatId.value
-  // Чат не показываем, если окно свёрнуто: человек его не читает.
-  const reading = openId !== null && !document.hidden
-  chats.value = reading
-    ? list.map((chat) => (chat.id === openId ? { ...chat, unread_count: 0 } : chat))
-    : list
-  syncPresenceFromChats(chats.value)
-}
-
-/** Открытый чат прочитан: гасим значок и в уже загруженном списке. */
-const clearUnreadOfOpenChat = () => {
-  const openId = selectedChatId.value
-  if (openId === null) return
-  const chat = chats.value.find((item) => item.id === openId)
-  if (chat && chat.unread_count !== 0) chat.unread_count = 0
-}
-
 const loadChats = async () => {
   loadingChats.value = true
   try {
@@ -1753,7 +1728,7 @@ const scrollToBottom = () => {
 const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {}) => {
   const pushNav = options.pushNav !== false
   // Запоминаем непрочитанные до обнуления: лента нарисует по ним разделитель.
-  unreadAtOpen.value = chats.value.find((item) => item.id === chatId)?.unread_count ?? 0
+  rememberUnreadAtOpen(chatId)
   selectedChatId.value = chatId
   // Открытый чат виден в адресе: перезагрузка вернёт в него же.
   syncChatUrl(chatId)
@@ -2576,14 +2551,6 @@ const handleVisibilityForPresence = () => {
  * погаснуть сразу при возврате, а не после перезагрузки страницы. Запрос истории
  * заодно отмечает прочтение на сервере.
  */
-const handleVisibilityForUnread = () => {
-  if (document.hidden) return
-  const chatId = selectedChatId.value
-  if (chatId === null) return
-  clearUnreadOfOpenChat()
-  void refreshOpenThreadQuiet()
-}
-
 /** Локальная чистка после удаления чата (список/черновик/пин/открытый тред). */
 const removeDeletedChat = (chat: Chat) => {
   chats.value = chats.value.filter((item) => item.id !== chat.id)
@@ -2895,23 +2862,25 @@ const dropChat = (chatId: number) => {
 }
 
 // Оркестрация (таймеры/события) вынесена в composable.
+const {
+  unreadAtOpen,
+  applyChatsFromServer,
+  rememberUnreadAtOpen,
+  clearUnreadDivider,
+  clearUnreadOfOpenChat,
+  onChatReadElsewhere,
+  markChatReadQuietly,
+  handleVisibilityForUnread
+} = useChatUnreadState({
+  chats,
+  selectedChatId,
+  isAuthenticated: () => authStore.isAuthenticated,
+  fetchMessages,
+  refreshOpenThreadQuiet,
+  syncPresenceFromChats
+})
+
 // ---------- Уведомления о новых сообщениях + счётчик в заголовке вкладки ----------
-const BASE_DOC_TITLE = 'Pismo — мессенджер'
-
-const totalUnread = computed(() =>
-  chats.value.reduce((sum, chat) => sum + (chat.unread_count || 0), 0)
-)
-
-watch(
-  totalUnread,
-  (count) => {
-    document.title = count > 0 ? `(${count}) ${BASE_DOC_TITLE}` : BASE_DOC_TITLE
-    // То же число — на иконке установленного приложения (Badging API).
-    void setAppBadge(count)
-  },
-  { immediate: true }
-)
-
 // Всплывающие уведомления — ТОЛЬКО системные Web Push (service worker).
 // In-app «тостов» нет: пока приложение открыто, сообщения и так видны в ленте
 // (плюс счётчик непрочитанных в заголовке вкладки и бейджи), а когда оно
@@ -3606,22 +3575,6 @@ const openChatFromPush = async (chatId: number, options: { pushNav?: boolean } =
 const focusComposer = async () => {
   await nextTick()
   composerRef.value?.focusInput()
-}
-
-/**
- * Тихо помечает чат прочитанным (кнопка push «Пометить как прочитанное»),
- * не открывая сам чат.
- */
-const markChatReadQuietly = async (chatId: number) => {
-  if (!authStore.isAuthenticated) return
-  try {
-    // GET истории сам помечает входящие чата прочитанными на сервере.
-    await fetchMessages(chatId)
-  } catch {
-    return
-  }
-  const chat = chats.value.find((c) => c.id === chatId)
-  if (chat) chat.unread_count = 0
 }
 
 /** Слушаем сообщения от service worker (клик по уведомлению). */

@@ -7,8 +7,7 @@ import {
   connectionQuality as qualityOf,
   diagnosticsSummary as summaryOf,
   type CallDiagnostics,
-  type ConnectionQuality,
-  type StatsSample
+  type ConnectionQuality
 } from '@/utils/callStats'
 import {
   chooseDeviceId,
@@ -54,6 +53,7 @@ import {
   wireRemoteOutput
 } from './call/output'
 import { startRingtone, stopRingtone } from './call/ringtone'
+import { runtime, sendRuntimeMessage } from './call/signaling'
 import {
   CALL_REJOIN_TIMEOUT_MS,
   CALL_TOUCH_EVERY_SECONDS,
@@ -67,58 +67,6 @@ import type { CallKind, CallPeer, CallStatus, SignalingMessage } from './call/ty
 // импортируется из `@/stores/call`, хотя живёт в соседних модулях `stores/call/`.
 export { screenShareNotice, screenShareSupport } from './call/screenShare'
 export type { CallKind, CallPeer, CallStatus, ScreenShareSupport } from './call/types'
-
-/* ===================== Модульные (не реактивные) ресурсы звонка ===================== */
-
-let socket: WebSocket | null = null
-let peerConnection: RTCPeerConnection | null = null
-let localMedia: MediaStream | null = null
-let remoteMedia: MediaStream | null = null
-let pendingOffer: { callId: string; kind: CallKind; sdp: string } | null = null
-
-// Дорожки демонстрации экрана и «отложенная» камера: пока идёт показ экрана,
-// камеру гасим (иначе горит индикатор и тратится батарея), а при остановке
-// показа включаем заново — уже с выбранным в настройках устройством.
-let screenTrack: MediaStreamTrack | null = null
-/** Видеолиния, в которой идёт показ экрана (нужна, чтобы вернуть её назад/убрать). */
-let screenSender: RTCRtpSender | null = null
-/** Каким был звонок до показа экрана: аудиозвонок после остановки возвращается в аудио. */
-let shareReturnKind: CallKind = 'video'
-
-// Счётчик «поколений» пересогласования: ответ на устаревший offer игнорируем,
-// иначе два одновременных пересогласования ломают SDP.
-let renegotiateSeq = 0
-
-/** Сторож входящего звонка: вызов давно не звонит, а мы об этом не узнали. */
-let incomingTimer: number | undefined
-/** До какого момента входящий звонок ещё имеет смысл ждать (см. сторож). */
-let incomingDeadline = 0
-/** Отсчёт до «собеседник так и не вернулся» после перезагрузки страницы. */
-let rejoinTimer: number | undefined
-/* Восстановление связи при смене сети (Wi-Fi → LTE и обратно). */
-let iceRecoveryTimer: number | undefined
-let iceRestartAttempts = 0
-let socketRetryTimer: number | undefined
-let socketRetryDeadline = 0
-/** Инициатор звонка: он перезапускает ICE первым, отвечающий — с задержкой. */
-let isCaller = false
-/**
- * Наш SDP-ответ: нужен, чтобы повторить ответ собеседнику, если тот его не
- * получил (см. `_armAnswerRetry`).
- */
-let lastAnswerSdp: string | null = null
-let answerRetryTimer: number | undefined
-let answerRetryAttempts = 0
-/* Наблюдатель за медиа: звонок «установлен», но звук/видео так и не пришли. */
-let mediaWatchdogTimer: ReturnType<typeof setInterval> | undefined
-let mediaWatchdogFailures = 0
-let mediaWatchdogRestarts = 0
-let mediaWatchdogBusy = false
-/** Перезапуск ICE уже идёт: второй не нужен (иначе счётчик попыток сгорит). */
-let iceRestartInFlight = false
-/* Статистика соединения: опрос раз в несколько секунд (качество + диагностика). */
-let statsTimer: number | undefined
-let statsSample: StatsSample | null = null
 /* ============================== Store ============================== */
 
 interface CallState {
@@ -193,11 +141,7 @@ function makeCallId(): string {
 }
 
 function sendMessage(message: SignalingMessage): boolean {
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify(message))
-    return true
-  }
-  return false
+  return sendRuntimeMessage(message)
 }
 
 export const useCallStore = defineStore('call', {
@@ -231,36 +175,37 @@ export const useCallStore = defineStore('call', {
       const token = authStore.accessToken
       if (!token) return false
       if (
-        socket &&
-        (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)
+        runtime.socket &&
+        (runtime.socket.readyState === WebSocket.OPEN ||
+          runtime.socket.readyState === WebSocket.CONNECTING)
       ) {
-        if (socket.readyState === WebSocket.OPEN) return true
+        if (runtime.socket.readyState === WebSocket.OPEN) return true
         return this._waitForSocketOpen()
       }
-      socket = new WebSocket(socketUrl(token))
-      socket.onopen = () => {
+      runtime.socket = new WebSocket(socketUrl(token))
+      runtime.socket.onopen = () => {
         this.connected = true
         if (this.status === 'active' || this.status === 'outgoing') {
           // Сигналинг вернулся: сообщаем об этом и перезапускаем ICE — медиа
           // шло по адресам прежней сети.
           this.reconnecting = false
-          if (socketRetryTimer !== undefined) {
-            window.clearTimeout(socketRetryTimer)
-            socketRetryTimer = undefined
+          if (runtime.socketRetryTimer !== undefined) {
+            window.clearTimeout(runtime.socketRetryTimer)
+            runtime.socketRetryTimer = undefined
           }
-          socketRetryDeadline = 0
-          iceRestartAttempts = 0
-          if (peerConnection) this._scheduleIceRestart(ICE_RETRY_DELAY_MS)
+          runtime.socketRetryDeadline = 0
+          runtime.iceRestartAttempts = 0
+          if (runtime.peerConnection) this._scheduleIceRestart(ICE_RETRY_DELAY_MS)
           // Отвечающая сторона: повторяем ответ — пока канал был закрыт, он мог
           // «уйти в никуда», и зовущий всё ещё звонит.
-          if (this.status === 'active' && !isCaller) this._resendAnswer()
+          if (this.status === 'active' && !runtime.isCaller) this._resendAnswer()
         } else if (this.status === 'idle') {
           // Страница могла быть перезагружена во время звонка (случайный жест
           // «потянуть вниз», manual reload) — поднимаем его.
           void this.recoverCallAfterReload()
         }
       }
-      socket.onmessage = (event) => {
+      runtime.socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data as string) as SignalingMessage
           this._handleMessage(data)
@@ -268,9 +213,9 @@ export const useCallStore = defineStore('call', {
           /* некорректное сообщение — игнорируем */
         }
       }
-      socket.onclose = () => {
+      runtime.socket.onclose = () => {
         this.connected = false
-        socket = null
+        runtime.socket = null
         if (this.status === 'active' || this.status === 'outgoing') {
           // Смена сети (Wi-Fi → LTE) рвёт WebSocket, но звонок при этом жив:
           // даём время переподключиться и перезапустить ICE, и только если
@@ -289,20 +234,23 @@ export const useCallStore = defineStore('call', {
      * Вызывается, когда сокет закрылся во время звонка.
      */
     _scheduleSocketRetry() {
-      if (socketRetryDeadline === 0) {
-        socketRetryDeadline = Date.now() + LINK_RECOVERY_WINDOW_MS
+      if (runtime.socketRetryDeadline === 0) {
+        runtime.socketRetryDeadline = Date.now() + LINK_RECOVERY_WINDOW_MS
       }
-      if (socketRetryTimer !== undefined) window.clearTimeout(socketRetryTimer)
-      socketRetryTimer = window.setTimeout(() => {
-        socketRetryTimer = undefined
+      if (runtime.socketRetryTimer !== undefined) window.clearTimeout(runtime.socketRetryTimer)
+      runtime.socketRetryTimer = window.setTimeout(() => {
+        runtime.socketRetryTimer = undefined
         if (this.status !== 'active' && this.status !== 'outgoing') return
-        if (useAuthStore().isAuthenticated && (socket === null || socket.readyState > 1)) {
+        if (
+          useAuthStore().isAuthenticated &&
+          (runtime.socket === null || runtime.socket.readyState > 1)
+        ) {
           void this.connect()
         }
-        if (Date.now() >= socketRetryDeadline) {
+        if (Date.now() >= runtime.socketRetryDeadline) {
           this.reconnecting = false
-          socketRetryDeadline = 0
-          if (peerConnection && peerConnection.iceConnectionState === 'connected') {
+          runtime.socketRetryDeadline = 0
+          if (runtime.peerConnection && runtime.peerConnection.iceConnectionState === 'connected') {
             return
           }
           this._forceEnd('Связь потеряна — звонок завершён')
@@ -326,7 +274,7 @@ export const useCallStore = defineStore('call', {
         // Отвечающая сторона ждёт дольше: если перезапуск сделает зовущий,
         // попытка собеседника не понадобится (состояние станет connected).
         this._scheduleIceRestart(
-          isCaller ? ICE_DISCONNECTED_GRACE_MS : ICE_DISCONNECTED_GRACE_MS * 1.7
+          runtime.isCaller ? ICE_DISCONNECTED_GRACE_MS : ICE_DISCONNECTED_GRACE_MS * 1.7
         )
         return
       }
@@ -334,25 +282,25 @@ export const useCallStore = defineStore('call', {
     },
 
     _resetIceRecovery() {
-      if (iceRecoveryTimer !== undefined) {
-        window.clearTimeout(iceRecoveryTimer)
-        iceRecoveryTimer = undefined
+      if (runtime.iceRecoveryTimer !== undefined) {
+        window.clearTimeout(runtime.iceRecoveryTimer)
+        runtime.iceRecoveryTimer = undefined
       }
-      if (rejoinTimer !== undefined) {
-        window.clearTimeout(rejoinTimer)
-        rejoinTimer = undefined
+      if (runtime.rejoinTimer !== undefined) {
+        window.clearTimeout(runtime.rejoinTimer)
+        runtime.rejoinTimer = undefined
       }
-      iceRestartAttempts = 0
+      runtime.iceRestartAttempts = 0
       // Медиа пошло — значит ответ дошёл, повторять его больше не нужно.
       this._clearAnswerRetry()
       if (this.reconnecting && this.connected) this.reconnecting = false
     },
 
     _scheduleIceRestart(delay: number) {
-      if (iceRecoveryTimer !== undefined) window.clearTimeout(iceRecoveryTimer)
-      iceRecoveryTimer = window.setTimeout(() => {
-        iceRecoveryTimer = undefined
-        const pc = peerConnection
+      if (runtime.iceRecoveryTimer !== undefined) window.clearTimeout(runtime.iceRecoveryTimer)
+      runtime.iceRecoveryTimer = window.setTimeout(() => {
+        runtime.iceRecoveryTimer = undefined
+        const pc = runtime.peerConnection
         if (!pc) return
         const state = pc.iceConnectionState
         if (state === 'connected' || state === 'completed') return
@@ -367,18 +315,18 @@ export const useCallStore = defineStore('call', {
     _armMediaWatchdog() {
       this._clearMediaWatchdog()
       if (this.status !== 'active' || typeof window === 'undefined') return
-      mediaWatchdogRestarts = 0
-      mediaWatchdogTimer = window.setInterval(() => {
+      runtime.mediaWatchdogRestarts = 0
+      runtime.mediaWatchdogTimer = window.setInterval(() => {
         void this._checkMediaFlow()
       }, MEDIA_WATCHDOG_INTERVAL_MS)
     },
 
     _clearMediaWatchdog() {
-      if (mediaWatchdogTimer !== undefined) {
-        window.clearInterval(mediaWatchdogTimer)
-        mediaWatchdogTimer = undefined
+      if (runtime.mediaWatchdogTimer !== undefined) {
+        window.clearInterval(runtime.mediaWatchdogTimer)
+        runtime.mediaWatchdogTimer = undefined
       }
-      mediaWatchdogFailures = 0
+      runtime.mediaWatchdogFailures = 0
     },
 
     /**
@@ -389,69 +337,69 @@ export const useCallStore = defineStore('call', {
      * уже идёт — наблюдатель выключается (своё дело сделал).
      */
     async _checkMediaFlow() {
-      if (this.status !== 'active' || mediaWatchdogBusy) return
-      const pc = peerConnection
+      if (this.status !== 'active' || runtime.mediaWatchdogBusy) return
+      const pc = runtime.peerConnection
       if (!pc) {
         this._clearMediaWatchdog()
         return
       }
-      mediaWatchdogBusy = true
+      runtime.mediaWatchdogBusy = true
       const flowing = await (async () => {
         try {
           return await remoteMediaFlowing(pc)
         } finally {
-          mediaWatchdogBusy = false
+          runtime.mediaWatchdogBusy = false
         }
       })()
       // Пока читали статистику, звонок мог закончиться или соединение — замениться.
-      if (this.status !== 'active' || pc !== peerConnection) return
+      if (this.status !== 'active' || pc !== runtime.peerConnection) return
       if (flowing) {
         // Медиа пошло. Если для этого не понадобилось ни одного перезапуска —
         // сеть в порядке, снимаем пометку «в прошлый раз помогал только релей».
-        if (mediaWatchdogRestarts === 0) setRelayOnly(false)
+        if (runtime.mediaWatchdogRestarts === 0) setRelayOnly(false)
         this._clearMediaWatchdog()
         return
       }
-      mediaWatchdogFailures += 1
+      runtime.mediaWatchdogFailures += 1
       // Зовущий ждёт меньше, отвечающий — дольше: иначе два одновременных
       // пересогласования SDP столкнутся (glare) и оба сорвутся.
-      const failuresNeeded = isCaller
+      const failuresNeeded = runtime.isCaller
         ? MEDIA_WATCHDOG_FAILURES_BEFORE_RESTART
         : MEDIA_WATCHDOG_FAILURES_BEFORE_RESTART + 1
-      if (mediaWatchdogFailures < failuresNeeded) return
-      mediaWatchdogFailures = 0
-      if (mediaWatchdogRestarts >= MEDIA_WATCHDOG_MAX_RESTARTS) {
+      if (runtime.mediaWatchdogFailures < failuresNeeded) return
+      runtime.mediaWatchdogFailures = 0
+      if (runtime.mediaWatchdogRestarts >= MEDIA_WATCHDOG_MAX_RESTARTS) {
         // Сами не починили — дальше только предупреждаем, звонок не рвём.
         this._clearMediaWatchdog()
         this.notice = 'Звук и видео не идут — попробуйте переключить сеть или перезвонить'
         return
       }
-      mediaWatchdogRestarts += 1
+      runtime.mediaWatchdogRestarts += 1
       // Напрямую не выходит: в следующий раз начнём сразу через TURN-релей
       // (смена сети помогала именно потому, что заново поднимался ICE).
-      if (mediaWatchdogRestarts >= 2) setRelayOnly(true)
+      if (runtime.mediaWatchdogRestarts >= 2) setRelayOnly(true)
       this.reconnecting = true
       await this._restartIce(pc)
     },
 
     /** Перезапуск ICE: собираем адреса на новых интерфейсах и пересогласуем SDP. */
     async _restartIce(connection: RTCPeerConnection) {
-      if (this.status !== 'active' || connection !== peerConnection) return
+      if (this.status !== 'active' || connection !== runtime.peerConnection) return
       // Перезапуск уже идёт: второй только сожжёт попытки (см. наблюдатель медиа).
-      if (iceRestartInFlight) return
-      if (iceRestartAttempts >= ICE_RESTART_MAX_ATTEMPTS) {
+      if (runtime.iceRestartInFlight) return
+      if (runtime.iceRestartAttempts >= ICE_RESTART_MAX_ATTEMPTS) {
         this._forceEnd('Связь потеряна — звонок завершён')
         return
       }
-      iceRestartInFlight = true
-      iceRestartAttempts += 1
+      runtime.iceRestartInFlight = true
+      runtime.iceRestartAttempts += 1
       this.reconnecting = true
       try {
         const pc = connection as RTCPeerConnection & { restartIce?: () => void }
         pc.restartIce?.()
         const offer = await pc.createOffer({ iceRestart: true })
         await pc.setLocalDescription(offer)
-        if (connection !== peerConnection || this.status !== 'active') return
+        if (connection !== runtime.peerConnection || this.status !== 'active') return
         sendMessage({
           type: 'call-renegotiate',
           to_user_id: this.peerId ?? 0,
@@ -461,7 +409,7 @@ export const useCallStore = defineStore('call', {
       } catch {
         /* не получилось — попробуем ещё раз по таймеру */
       } finally {
-        iceRestartInFlight = false
+        runtime.iceRestartInFlight = false
       }
       this._scheduleIceRestart(ICE_RETRY_DELAY_MS)
     },
@@ -471,14 +419,14 @@ export const useCallStore = defineStore('call', {
       return new Promise((resolve) => {
         const timer = window.setTimeout(() => {
           window.clearInterval(poll)
-          resolve(socket !== null && socket.readyState === WebSocket.OPEN)
+          resolve(runtime.socket !== null && runtime.socket.readyState === WebSocket.OPEN)
         }, 9000)
         const poll = window.setInterval(() => {
-          if (socket && socket.readyState === WebSocket.OPEN) {
+          if (runtime.socket && runtime.socket.readyState === WebSocket.OPEN) {
             window.clearInterval(poll)
             window.clearTimeout(timer)
             resolve(true)
-          } else if (!socket || socket.readyState === WebSocket.CLOSED) {
+          } else if (!runtime.socket || runtime.socket.readyState === WebSocket.CLOSED) {
             window.clearInterval(poll)
             window.clearTimeout(timer)
             resolve(false)
@@ -502,10 +450,10 @@ export const useCallStore = defineStore('call', {
       if (this.status !== 'idle') {
         this._cleanup()
       }
-      if (socket) {
-        socket.onclose = null
-        socket.close()
-        socket = null
+      if (runtime.socket) {
+        runtime.socket.onclose = null
+        runtime.socket.close()
+        runtime.socket = null
       }
       this.connected = false
     },
@@ -519,10 +467,10 @@ export const useCallStore = defineStore('call', {
      * страница не должна продолжать получать сигналинг за второе устройство.
      */
     detachSignaling() {
-      if (!socket) return
-      socket.onclose = null
-      socket.close()
-      socket = null
+      if (!runtime.socket) return
+      runtime.socket.onclose = null
+      runtime.socket.close()
+      runtime.socket = null
       this.connected = false
     },
 
@@ -543,7 +491,7 @@ export const useCallStore = defineStore('call', {
             sendMessage({ type: 'call-decline', to_user_id: from, call_id: callId, reason: 'busy' })
             return
           }
-          pendingOffer = { callId, kind: message.kind ?? 'audio', sdp: message.sdp ?? '' }
+          runtime.pendingOffer = { callId, kind: message.kind ?? 'audio', sdp: message.sdp ?? '' }
           this.$patch({
             status: 'incoming',
             kind: message.kind ?? 'audio',
@@ -561,11 +509,11 @@ export const useCallStore = defineStore('call', {
           break
         }
         case 'call-answer': {
-          if (this.status === 'outgoing' && this.callId === callId && peerConnection) {
+          if (this.status === 'outgoing' && this.callId === callId && runtime.peerConnection) {
             if (message.sdp) {
               // Повторный ответ (страховка отвечающей стороны) не должен ронять
               // обработку: первый уже применён, второй просто игнорируем.
-              void peerConnection
+              void runtime.peerConnection
                 .setRemoteDescription({ type: 'answer', sdp: message.sdp })
                 .catch(() => undefined)
             }
@@ -575,8 +523,8 @@ export const useCallStore = defineStore('call', {
         }
         case 'ice-candidate': {
           const candidate = message.candidate
-          if (peerConnection && candidate && this.callId === callId) {
-            void peerConnection
+          if (runtime.peerConnection && candidate && this.callId === callId) {
+            void runtime.peerConnection
               .addIceCandidate(new RTCIceCandidate(candidate))
               .catch(() => undefined)
           }
@@ -585,13 +533,13 @@ export const useCallStore = defineStore('call', {
         case 'call-renegotiate': {
           // Собеседник меняет медиа (демонстрация экрана/смена устройства):
           // отвечаем своим SDP-ответом.
-          if (!peerConnection || this.callId !== callId || !message.sdp) return
+          if (!runtime.peerConnection || this.callId !== callId || !message.sdp) return
           void this._answerRenegotiate(message.sdp)
           break
         }
         case 'call-renegotiate-answer': {
-          if (!peerConnection || this.callId !== callId || !message.sdp) return
-          void peerConnection
+          if (!runtime.peerConnection || this.callId !== callId || !message.sdp) return
+          void runtime.peerConnection
             .setRemoteDescription({ type: 'answer', sdp: message.sdp })
             .catch(() => undefined)
           break
@@ -601,9 +549,9 @@ export const useCallStore = defineStore('call', {
           // ICE-адреса, а его прежний SDP мёртв. Связь жива только у нас,
           // поэтому пересогласуемся заново: для него это выглядит как короткое
           // «Переподключаемся…», а не как сброшенный звонок.
-          if (this.status !== 'active' || this.callId !== callId || !peerConnection) return
-          iceRestartAttempts = 0
-          void this._restartIce(peerConnection)
+          if (this.status !== 'active' || this.callId !== callId || !runtime.peerConnection) return
+          runtime.iceRestartAttempts = 0
+          void this._restartIce(runtime.peerConnection)
           break
         }
         case 'call-screen': {
@@ -726,14 +674,14 @@ export const useCallStore = defineStore('call', {
         const stream = await navigator.mediaDevices.getUserMedia(
           mediaConstraints(kind, this.selectedCamera, this.selectedMic)
         )
-        localMedia = stream
-        peerConnection = new RTCPeerConnection(ice)
-        this._wirePeerConnection(peerConnection)
-        stream.getTracks().forEach((track) => peerConnection?.addTrack(track, stream))
+        runtime.localMedia = stream
+        runtime.peerConnection = new RTCPeerConnection(ice)
+        this._wirePeerConnection(runtime.peerConnection)
+        stream.getTracks().forEach((track) => runtime.peerConnection?.addTrack(track, stream))
 
-        isCaller = true
-        const offer = await peerConnection.createOffer()
-        await peerConnection.setLocalDescription(offer)
+        runtime.isCaller = true
+        const offer = await runtime.peerConnection.createOffer()
+        await runtime.peerConnection.setLocalDescription(offer)
         sendMessage({
           type: 'call-offer',
           to_user_id: peer.id,
@@ -751,12 +699,12 @@ export const useCallStore = defineStore('call', {
 
     /** Принять входящий звонок. */
     async acceptCall() {
-      if (this.status !== 'incoming' || !pendingOffer) return
+      if (this.status !== 'incoming' || !runtime.pendingOffer) return
       stopRingtone()
       // Контекст вывода создаём в жесте пользователя (иначе аудио заглушится).
       ensureCallOutput()
-      const kind = pendingOffer.kind
-      const offerSdp = pendingOffer.sdp
+      const kind = runtime.pendingOffer.kind
+      const offerSdp = runtime.pendingOffer.sdp
       // Собеседник и вызов нужны и после `_cleanup()` — сохраняем заранее.
       const peerId = this.peerId ?? 0
       const callId = this.callId ?? ''
@@ -775,16 +723,16 @@ export const useCallStore = defineStore('call', {
         const stream = await navigator.mediaDevices.getUserMedia(
           mediaConstraints(kind, this.selectedCamera, this.selectedMic)
         )
-        localMedia = stream
-        peerConnection = new RTCPeerConnection(ice)
-        this._wirePeerConnection(peerConnection)
-        stream.getTracks().forEach((track) => peerConnection?.addTrack(track, stream))
-        await peerConnection.setRemoteDescription({ type: 'offer', sdp: offerSdp })
-        const answer = await peerConnection.createAnswer()
-        await peerConnection.setLocalDescription(answer)
-        isCaller = false
+        runtime.localMedia = stream
+        runtime.peerConnection = new RTCPeerConnection(ice)
+        this._wirePeerConnection(runtime.peerConnection)
+        stream.getTracks().forEach((track) => runtime.peerConnection?.addTrack(track, stream))
+        await runtime.peerConnection.setRemoteDescription({ type: 'offer', sdp: offerSdp })
+        const answer = await runtime.peerConnection.createAnswer()
+        await runtime.peerConnection.setLocalDescription(answer)
+        runtime.isCaller = false
         this.kind = kind
-        lastAnswerSdp = answer.sdp ?? null
+        runtime.lastAnswerSdp = answer.sdp ?? null
         sendMessage({
           type: 'call-answer',
           to_user_id: peerId,
@@ -844,9 +792,9 @@ export const useCallStore = defineStore('call', {
     _armAnswerRetry() {
       this._clearAnswerRetry()
       const tick = () => {
-        answerRetryTimer = undefined
-        const pc = peerConnection
-        if (!pc || isCaller || this.status !== 'active' || !lastAnswerSdp) return
+        runtime.answerRetryTimer = undefined
+        const pc = runtime.peerConnection
+        if (!pc || runtime.isCaller || this.status !== 'active' || !runtime.lastAnswerSdp) return
         if (
           pc.iceConnectionState === 'connected' ||
           pc.iceConnectionState === 'completed' ||
@@ -854,31 +802,31 @@ export const useCallStore = defineStore('call', {
         ) {
           return
         }
-        if (answerRetryAttempts >= ANSWER_RETRY_MAX_ATTEMPTS) return
-        answerRetryAttempts += 1
+        if (runtime.answerRetryAttempts >= ANSWER_RETRY_MAX_ATTEMPTS) return
+        runtime.answerRetryAttempts += 1
         this._resendAnswer()
-        answerRetryTimer = window.setTimeout(tick, ANSWER_RETRY_MS)
+        runtime.answerRetryTimer = window.setTimeout(tick, ANSWER_RETRY_MS)
       }
-      answerRetryTimer = window.setTimeout(tick, ANSWER_RETRY_MS)
+      runtime.answerRetryTimer = window.setTimeout(tick, ANSWER_RETRY_MS)
     },
 
     /** Отправляет сохранённый ответ ещё раз (см. `_armAnswerRetry`). */
     _resendAnswer() {
-      if (isCaller || !lastAnswerSdp || this.status !== 'active') return
+      if (runtime.isCaller || !runtime.lastAnswerSdp || this.status !== 'active') return
       sendMessage({
         type: 'call-answer',
         to_user_id: this.peerId ?? 0,
         call_id: this.callId ?? '',
-        sdp: lastAnswerSdp
+        sdp: runtime.lastAnswerSdp
       })
     },
 
     _clearAnswerRetry() {
-      if (answerRetryTimer !== undefined) {
-        window.clearTimeout(answerRetryTimer)
-        answerRetryTimer = undefined
+      if (runtime.answerRetryTimer !== undefined) {
+        window.clearTimeout(runtime.answerRetryTimer)
+        runtime.answerRetryTimer = undefined
       }
-      answerRetryAttempts = 0
+      runtime.answerRetryAttempts = 0
     },
 
     /** Отклонить входящий звонок. */
@@ -990,12 +938,12 @@ export const useCallStore = defineStore('call', {
      * Зовётся и по таймеру, и вручную из панели «Диагностика звонка».
      */
     async refreshDiagnostics(): Promise<void> {
-      const pc = peerConnection
+      const pc = runtime.peerConnection
       if (!pc || typeof pc.getStats !== 'function') return
       try {
         const report = await pc.getStats()
-        const { diagnostics, sample } = collectDiagnostics(report, pc, statsSample)
-        statsSample = sample
+        const { diagnostics, sample } = collectDiagnostics(report, pc, runtime.statsSample)
+        runtime.statsSample = sample
         this.diagnostics = diagnostics
       } catch {
         /* статистика может быть недоступна — звонку не мешаем */
@@ -1004,19 +952,19 @@ export const useCallStore = defineStore('call', {
 
     _startStatsPolling() {
       this._clearStatsPolling()
-      statsSample = null
+      runtime.statsSample = null
       void this.refreshDiagnostics()
-      statsTimer = window.setInterval(() => {
+      runtime.statsTimer = window.setInterval(() => {
         void this.refreshDiagnostics()
       }, STATS_POLL_INTERVAL_MS)
     },
 
     _clearStatsPolling() {
-      if (statsTimer !== undefined) {
-        window.clearInterval(statsTimer)
-        statsTimer = undefined
+      if (runtime.statsTimer !== undefined) {
+        window.clearInterval(runtime.statsTimer)
+        runtime.statsTimer = undefined
       }
-      statsSample = null
+      runtime.statsSample = null
     },
 
     /** Запоминает звонок для восстановления после перезагрузки страницы. */
@@ -1051,11 +999,11 @@ export const useCallStore = defineStore('call', {
         const stream = await navigator.mediaDevices.getUserMedia(
           mediaConstraints(stored.kind, this.selectedCamera, this.selectedMic)
         )
-        localMedia = stream
-        peerConnection = new RTCPeerConnection(ice)
-        this._wirePeerConnection(peerConnection)
-        stream.getTracks().forEach((track) => peerConnection?.addTrack(track, stream))
-        isCaller = false
+        runtime.localMedia = stream
+        runtime.peerConnection = new RTCPeerConnection(ice)
+        this._wirePeerConnection(runtime.peerConnection)
+        stream.getTracks().forEach((track) => runtime.peerConnection?.addTrack(track, stream))
+        runtime.isCaller = false
         this.$patch({
           status: 'active',
           kind: stored.kind,
@@ -1088,11 +1036,11 @@ export const useCallStore = defineStore('call', {
 
     /** Если собеседник не откликнулся на возврат — звонок действительно кончился. */
     _armRejoinTimeout() {
-      if (rejoinTimer !== undefined) window.clearTimeout(rejoinTimer)
-      rejoinTimer = window.setTimeout(() => {
-        rejoinTimer = undefined
+      if (runtime.rejoinTimer !== undefined) window.clearTimeout(runtime.rejoinTimer)
+      runtime.rejoinTimer = window.setTimeout(() => {
+        runtime.rejoinTimer = undefined
         if (this.status !== 'active' || !this.reconnecting) return
-        const pc = peerConnection
+        const pc = runtime.peerConnection
         if (pc && (pc.iceConnectionState === 'connected' || pc.connectionState === 'connected')) {
           return
         }
@@ -1103,7 +1051,9 @@ export const useCallStore = defineStore('call', {
     /** Ограничивает битрейт отправляемого видео (~300 Кбит/с). */
     async _capVideoBitrate(): Promise<void> {
       try {
-        const sender = peerConnection?.getSenders().find((s) => s.track && s.track.kind === 'video')
+        const sender = runtime.peerConnection
+          ?.getSenders()
+          .find((s) => s.track && s.track.kind === 'video')
         if (!sender) return
         const params = sender.getParameters()
         if (!params.encodings || params.encodings.length === 0) {
@@ -1136,7 +1086,7 @@ export const useCallStore = defineStore('call', {
     /** Переключить микрофон. */
     toggleMic() {
       this.micOn = !this.micOn
-      localMedia?.getAudioTracks().forEach((track) => {
+      runtime.localMedia?.getAudioTracks().forEach((track) => {
         track.enabled = this.micOn
       })
       // Собеседник должен видеть, что нас не слышно (а не думать, что сломалось).
@@ -1147,7 +1097,7 @@ export const useCallStore = defineStore('call', {
     toggleCamera() {
       if (this.kind !== 'video' || this.screenSharing) return
       this.videoOn = !this.videoOn
-      localMedia?.getVideoTracks().forEach((track) => {
+      runtime.localMedia?.getVideoTracks().forEach((track) => {
         track.enabled = this.videoOn
       })
       this._sendMediaState()
@@ -1174,7 +1124,7 @@ export const useCallStore = defineStore('call', {
     },
 
     async _startScreenShare() {
-      if (!peerConnection || this.screenSharing) return
+      if (!runtime.peerConnection || this.screenSharing) return
       const support = screenShareSupport()
       if (support !== 'ok') {
         // Причина может быть в http, в мобильном браузере или в самом браузере —
@@ -1186,30 +1136,32 @@ export const useCallStore = defineStore('call', {
         const stream = await navigator.mediaDevices.getDisplayMedia({ video: SCREEN_CONSTRAINTS })
         const track = stream.getVideoTracks()[0]
         if (!track) return
-        screenTrack = track
+        runtime.screenTrack = track
         // Кнопка «Остановить показ» в самом браузере (плашка Chrome/Safari).
         track.onended = () => this.stopScreenShare()
 
-        const sender = peerConnection.getSenders().find((item) => item.track?.kind === 'video')
+        const sender = runtime.peerConnection
+          .getSenders()
+          .find((item) => item.track?.kind === 'video')
         // Каким был звонок до показа: видеозвонок вернёт камеру, аудиозвонок — уберёт
         // видеолинию и останется аудио (см. `kindAfterScreenShare`).
-        shareReturnKind = kindAfterScreenShare(this.kind)
+        runtime.shareReturnKind = kindAfterScreenShare(this.kind)
         if (sender) {
           // Видеозвонок: подменяем дорожку без пересогласования.
           await sender.replaceTrack(track)
-          screenSender = sender
+          runtime.screenSender = sender
         } else {
           // Аудиозвонок: добавляем видео-линию — нужен новый SDP.
-          screenSender = peerConnection.addTrack(track, stream)
+          runtime.screenSender = runtime.peerConnection.addTrack(track, stream)
           await this._renegotiate()
         }
         // Гасим камеру на время показа (вернём при остановке) и показываем экран в превью.
-        localMedia?.getVideoTracks().forEach((camera) => {
+        runtime.localMedia?.getVideoTracks().forEach((camera) => {
           camera.stop()
-          localMedia?.removeTrack(camera)
+          runtime.localMedia?.removeTrack(camera)
         })
-        if (!localMedia) localMedia = new MediaStream()
-        localMedia.addTrack(track)
+        if (!runtime.localMedia) runtime.localMedia = new MediaStream()
+        runtime.localMedia.addTrack(track)
         this.screenSharing = true
         this.videoOn = true
         // Интерфейс становится видео-режимом: видно превью экрана и картинку собеседника.
@@ -1219,30 +1171,30 @@ export const useCallStore = defineStore('call', {
         void this._capVideoBitrate()
       } catch {
         // Отказ от выбора окна в диалоге браузера — не ошибка.
-        screenTrack = null
+        runtime.screenTrack = null
         this.notice = ''
       }
     },
 
     /** Останавливает показ экрана и возвращает звонок к прежнему виду. */
     stopScreenShare() {
-      const track = screenTrack
+      const track = runtime.screenTrack
       const sender =
-        screenSender ??
-        peerConnection?.getSenders().find((item) => item.track?.kind === 'video') ??
+        runtime.screenSender ??
+        runtime.peerConnection?.getSenders().find((item) => item.track?.kind === 'video') ??
         null
-      screenTrack = null
-      screenSender = null
+      runtime.screenTrack = null
+      runtime.screenSender = null
       if (track) {
         track.onended = null
         track.stop()
       }
       if (!this.screenSharing) return
       this.screenSharing = false
-      if (track && localMedia) {
-        localMedia.removeTrack(track)
+      if (track && runtime.localMedia) {
+        runtime.localMedia.removeTrack(track)
       }
-      if (shareReturnKind === 'audio') {
+      if (runtime.shareReturnKind === 'audio') {
         // Звонок был аудио — камеру НЕ включаем: убираем видео-линию и
         // возвращаемся в аудио (интерфейс и у собеседника тоже).
         this.kind = 'audio'
@@ -1273,19 +1225,19 @@ export const useCallStore = defineStore('call', {
 
     /** Возвращает камеру после показа экрана (или отключает видео-линию, если не удалось). */
     async _restoreCamera(sender: RTCRtpSender | null) {
-      if (!peerConnection) return
+      if (!runtime.peerConnection) return
       const target =
-        sender ?? peerConnection.getSenders().find((item) => item.track?.kind === 'video')
+        sender ?? runtime.peerConnection.getSenders().find((item) => item.track?.kind === 'video')
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: this._videoConstraints()
         })
         const track = stream.getVideoTracks()[0]
         if (!track) throw new Error('нет видеодорожки')
-        swapTrackInStream(localMedia, track, 'video')
+        swapTrackInStream(runtime.localMedia, track, 'video')
         track.enabled = this.videoOn
         if (target) await target.replaceTrack(track)
-        else peerConnection.addTrack(track, localMedia ?? new MediaStream([track]))
+        else runtime.peerConnection.addTrack(track, runtime.localMedia ?? new MediaStream([track]))
       } catch {
         // Камера недоступна — просто перестаём отправлять видео, звонок продолжается.
         if (target) await target.replaceTrack(null).catch(() => undefined)
@@ -1307,11 +1259,11 @@ export const useCallStore = defineStore('call', {
 
     /** Ответ на пересогласование от собеседника. */
     async _answerRenegotiate(sdp: string) {
-      if (!peerConnection) return
+      if (!runtime.peerConnection) return
       try {
-        await peerConnection.setRemoteDescription({ type: 'offer', sdp })
-        const answer = await peerConnection.createAnswer()
-        await peerConnection.setLocalDescription(answer)
+        await runtime.peerConnection.setRemoteDescription({ type: 'offer', sdp })
+        const answer = await runtime.peerConnection.createAnswer()
+        await runtime.peerConnection.setLocalDescription(answer)
         sendMessage({
           type: 'call-renegotiate-answer',
           to_user_id: this.peerId ?? 0,
@@ -1325,12 +1277,12 @@ export const useCallStore = defineStore('call', {
 
     /** Инициирует пересогласование SDP (после добавления видео-линии). */
     async _renegotiate() {
-      if (!peerConnection) return
-      const seq = ++renegotiateSeq
+      if (!runtime.peerConnection) return
+      const seq = ++runtime.renegotiateSeq
       try {
-        const offer = await peerConnection.createOffer()
-        await peerConnection.setLocalDescription(offer)
-        if (seq !== renegotiateSeq) return
+        const offer = await runtime.peerConnection.createOffer()
+        await runtime.peerConnection.setLocalDescription(offer)
+        if (seq !== runtime.renegotiateSeq) return
         sendMessage({
           type: 'call-renegotiate',
           to_user_id: this.peerId ?? 0,
@@ -1376,20 +1328,22 @@ export const useCallStore = defineStore('call', {
       this.selectedCamera = deviceId
       writeCallDevices({ camera: deviceId })
       if (this.status !== 'active' || this.screenSharing || this.kind !== 'video') return
-      const sender = peerConnection?.getSenders().find((item) => item.track?.kind === 'video')
-      if (!sender || !peerConnection) return
+      const sender = runtime.peerConnection
+        ?.getSenders()
+        .find((item) => item.track?.kind === 'video')
+      if (!sender || !runtime.peerConnection) return
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: this._videoConstraints()
         })
         const track = stream.getVideoTracks()[0]
         if (!track) return
-        localMedia?.getVideoTracks().forEach((old) => {
+        runtime.localMedia?.getVideoTracks().forEach((old) => {
           old.stop()
-          localMedia?.removeTrack(old)
+          runtime.localMedia?.removeTrack(old)
         })
-        if (!localMedia) localMedia = new MediaStream()
-        localMedia.addTrack(track)
+        if (!runtime.localMedia) runtime.localMedia = new MediaStream()
+        runtime.localMedia.addTrack(track)
         track.enabled = this.videoOn
         await sender.replaceTrack(track)
       } catch {
@@ -1402,7 +1356,9 @@ export const useCallStore = defineStore('call', {
       this.selectedMic = deviceId
       writeCallDevices({ mic: deviceId })
       if (this.status !== 'active') return
-      const sender = peerConnection?.getSenders().find((item) => item.track?.kind === 'audio')
+      const sender = runtime.peerConnection
+        ?.getSenders()
+        .find((item) => item.track?.kind === 'audio')
       if (!sender) return
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -1410,12 +1366,12 @@ export const useCallStore = defineStore('call', {
         })
         const track = stream.getAudioTracks()[0]
         if (!track) return
-        localMedia?.getAudioTracks().forEach((old) => {
+        runtime.localMedia?.getAudioTracks().forEach((old) => {
           old.stop()
-          localMedia?.removeTrack(old)
+          runtime.localMedia?.removeTrack(old)
         })
-        if (!localMedia) localMedia = new MediaStream()
-        localMedia.addTrack(track)
+        if (!runtime.localMedia) runtime.localMedia = new MediaStream()
+        runtime.localMedia.addTrack(track)
         track.enabled = this.micOn
         await sender.replaceTrack(track)
       } catch {
@@ -1431,12 +1387,12 @@ export const useCallStore = defineStore('call', {
 
     /** Возвращает текущий локальный поток (для превью). */
     getLocalStream(): MediaStream | null {
-      return localMedia
+      return runtime.localMedia
     },
 
     /** Возвращает текущий удалённый поток (для видео собеседника). */
     getRemoteStream(): MediaStream | null {
-      return remoteMedia
+      return runtime.remoteMedia
     },
 
     /** Сбросить уведомление. */
@@ -1464,18 +1420,18 @@ export const useCallStore = defineStore('call', {
     /** Сторож входящего звонка (см. `INCOMING_STALE_TIMEOUT_MS`). */
     _armIncomingTimer() {
       this._clearIncomingTimer()
-      incomingDeadline = Date.now() + INCOMING_STALE_TIMEOUT_MS
-      incomingTimer = window.setTimeout(() => {
-        incomingTimer = undefined
+      runtime.incomingDeadline = Date.now() + INCOMING_STALE_TIMEOUT_MS
+      runtime.incomingTimer = window.setTimeout(() => {
+        runtime.incomingTimer = undefined
         this.dropStaleRinging()
       }, INCOMING_STALE_TIMEOUT_MS)
     },
 
     _clearIncomingTimer() {
-      incomingDeadline = 0
-      if (incomingTimer !== undefined) {
-        window.clearTimeout(incomingTimer)
-        incomingTimer = undefined
+      runtime.incomingDeadline = 0
+      if (runtime.incomingTimer !== undefined) {
+        window.clearTimeout(runtime.incomingTimer)
+        runtime.incomingTimer = undefined
       }
     },
 
@@ -1492,7 +1448,7 @@ export const useCallStore = defineStore('call', {
      */
     dropStaleRinging(): boolean {
       if (this.status !== 'incoming') return false
-      if (!incomingDeadline || Date.now() < incomingDeadline) return false
+      if (!runtime.incomingDeadline || Date.now() < runtime.incomingDeadline) return false
       this._cleanup()
       this.notice = 'Звонок завершён'
       return true
@@ -1514,44 +1470,44 @@ export const useCallStore = defineStore('call', {
       }
       // Остановка показа экрана не должна дёргать getUserMedia для камеры:
       // звонок уже завершается, поэтому просто гасим дорожку.
-      if (screenTrack) {
-        screenTrack.onended = null
-        screenTrack.stop()
-        screenTrack = null
+      if (runtime.screenTrack) {
+        runtime.screenTrack.onended = null
+        runtime.screenTrack.stop()
+        runtime.screenTrack = null
       }
-      screenSender = null
-      shareReturnKind = 'video'
-      renegotiateSeq += 1
-      if (peerConnection) {
-        peerConnection.onicecandidate = null
-        peerConnection.ontrack = null
-        peerConnection.close()
-        peerConnection = null
+      runtime.screenSender = null
+      runtime.shareReturnKind = 'video'
+      runtime.renegotiateSeq += 1
+      if (runtime.peerConnection) {
+        runtime.peerConnection.onicecandidate = null
+        runtime.peerConnection.ontrack = null
+        runtime.peerConnection.close()
+        runtime.peerConnection = null
       }
-      stopAllTracks(localMedia)
-      stopAllTracks(remoteMedia)
+      stopAllTracks(runtime.localMedia)
+      stopAllTracks(runtime.remoteMedia)
       teardownCallOutput()
-      localMedia = null
-      remoteMedia = null
-      pendingOffer = null
-      if (iceRecoveryTimer !== undefined) {
-        window.clearTimeout(iceRecoveryTimer)
-        iceRecoveryTimer = undefined
+      runtime.localMedia = null
+      runtime.remoteMedia = null
+      runtime.pendingOffer = null
+      if (runtime.iceRecoveryTimer !== undefined) {
+        window.clearTimeout(runtime.iceRecoveryTimer)
+        runtime.iceRecoveryTimer = undefined
       }
-      if (rejoinTimer !== undefined) {
-        window.clearTimeout(rejoinTimer)
-        rejoinTimer = undefined
+      if (runtime.rejoinTimer !== undefined) {
+        window.clearTimeout(runtime.rejoinTimer)
+        runtime.rejoinTimer = undefined
       }
-      if (socketRetryTimer !== undefined) {
-        window.clearTimeout(socketRetryTimer)
-        socketRetryTimer = undefined
+      if (runtime.socketRetryTimer !== undefined) {
+        window.clearTimeout(runtime.socketRetryTimer)
+        runtime.socketRetryTimer = undefined
       }
-      iceRestartAttempts = 0
-      socketRetryDeadline = 0
-      isCaller = false
-      lastAnswerSdp = null
-      iceRestartInFlight = false
-      mediaWatchdogRestarts = 0
+      runtime.iceRestartAttempts = 0
+      runtime.socketRetryDeadline = 0
+      runtime.isCaller = false
+      runtime.lastAnswerSdp = null
+      runtime.iceRestartInFlight = false
+      runtime.mediaWatchdogRestarts = 0
       this._clearAnswerRetry()
       this._clearMediaWatchdog()
       this._clearStatsPolling()
@@ -1585,10 +1541,10 @@ export const useCallStore = defineStore('call', {
         // последним событием (иначе на части браузеров остаётся только аудио
         // или только видео — видео собеседника «не видно»).
         const incoming = event.streams && event.streams[0]
-        let stream = remoteMedia
+        let stream = runtime.remoteMedia
         if (!stream) {
           stream = new MediaStream()
-          remoteMedia = stream
+          runtime.remoteMedia = stream
         }
         if (incoming && incoming !== stream) {
           incoming.getTracks().forEach((track) => {
