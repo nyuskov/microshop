@@ -27,7 +27,7 @@ command -v crontab >/dev/null 2>&1 || {
 
 chmod +x "$SCRIPT"
 ESCAPED_SCRIPT="$(printf '%s' "$SCRIPT" | sed "s/'/'\\\\''/g")"
-CRON_LINE="$CRON_SCHEDULE $MARKER '$ESCAPED_SCRIPT' >/dev/null 2>&1"
+CRON_LINE="$CRON_SCHEDULE '$ESCAPED_SCRIPT' >/dev/null 2>&1 $MARKER"
 
 CURRENT="$(crontab -l 2>/dev/null || true)"
 FILTERED="$(printf '%s\n' "$CURRENT" | grep -v -F "$MARKER" | sed '/^[[:space:]]*$/d' || true)"

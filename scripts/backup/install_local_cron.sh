@@ -30,7 +30,9 @@ fi
 
 # Каталог проекта может содержать пробелы/кириллицу — экранируем для crontab.
 ESCAPED_SCRIPT="$(printf '%s' "$SCRIPT" | sed "s/'/'\\\\''/g")"
-CRON_LINE="$CRON_SCHEDULE $MARKER '$ESCAPED_SCRIPT'"
+# ВАЖНО: маркер идёт В КОНЦЕ строки. Спереди команды он превращал всю строку в
+# комментарий — cron исправно «выполнял» его, и бэкап не делался вовсе.
+CRON_LINE="$CRON_SCHEDULE '$ESCAPED_SCRIPT' $MARKER"
 
 CURRENT="$(crontab -l 2>/dev/null || true)"
 FILTERED="$(printf '%s\n' "$CURRENT" | grep -v -F "$MARKER" | sed '/^[[:space:]]*$/d' || true)"

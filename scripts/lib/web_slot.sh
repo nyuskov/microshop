@@ -12,8 +12,13 @@
 # Использование:
 #   slot="$(sh scripts/lib/web_slot.sh)"
 #   docker compose -p microshop-test -f docker-compose.test.yaml exec -T "$slot" ...
+#
+# ВАЖНО: файл запускают через `sh` (и локально, и по ssh на сервере, где /bin/sh
+# — это dash), поэтому здесь только POSIX-синтаксис: `set -o pipefail` в dash
+# не существует и валил скрипт целиком («Illegal option -o pipefail»), из-за чего
+# бэкап не находил слот и пропускал архив media.
 
-set -euo pipefail
+set -eu
 
 PROJECT="${PROJECT:-microshop-test}"
 STATE_FILE="${STATE_FILE:-$HOME/.microshop-deploy/active-web-slot}"

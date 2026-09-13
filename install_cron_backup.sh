@@ -28,7 +28,9 @@ fi
 
 # Путь может содержать пробелы/не-ASCII символы — оборачиваем в одинарные кавычки.
 ESCAPED_ROOT="$(printf '%s' "$ROOT" | sed "s/'/'\\\\''/g")"
-CRON_LINE="$CRON_SCHEDULE $MARKER cd '$ESCAPED_ROOT' && ./cron_dump_db.sh"
+# ВАЖНО: маркер — В КОНЦЕ строки. Спереди команды он превращал её в
+# комментарий: cron «выполнял» его, и бэкап молча не делался.
+CRON_LINE="$CRON_SCHEDULE cd '$ESCAPED_ROOT' && ./cron_dump_db.sh $MARKER"
 
 CURRENT="$(crontab -l 2>/dev/null || true)"
 # Убираем прежние строки с маркером и пустые строки.
