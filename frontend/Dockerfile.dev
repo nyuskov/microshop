@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:26-alpine
 
 # pnpm ставим через corepack: версия берётся из package.json → "packageManager"
 # (pnpm@12.3.4). Раньше здесь был `npm install -g pnpm` без версии — при пересборке
