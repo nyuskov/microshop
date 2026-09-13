@@ -378,6 +378,13 @@ import { icon } from '@/utils/icons'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { Message } from '@/types'
 import { mediaUrl } from '@/config'
+import {
+  QUICK_REACTIONS,
+  REACTION_EMOJIS,
+  hasMyReaction,
+  lastQuickReaction,
+  rememberQuickReaction
+} from '@/utils/reactions'
 import { haptic, HAPTIC_HOLD } from '@/utils/haptics'
 import { avatarStyle, initials } from '@/utils/user'
 import { formatBytes, formatMsgTime } from '@/utils/format'
@@ -541,31 +548,6 @@ const onForwarderClick = () => {
   if (forwarderClickable.value) emit('forwarder-click')
 }
 
-const REACTION_EMOJIS = [
-  '👍',
-  '❤️',
-  '🔥',
-  '😂',
-  '🤣',
-  '😮',
-  '😢',
-  '😭',
-  '😡',
-  '🎉',
-  '👏',
-  '🙏',
-  '🤔',
-  '🤯',
-  '🥰',
-  '😍',
-  '😎',
-  '😴',
-  '🤝',
-  '💯',
-  '👎',
-  '❤️‍🔥'
-]
-
 const mediaAbsolute = (path: string): string => mediaUrl(path)
 
 /** Вложение с настоящим именем/типом (у E2EE — из расшифрованного конверта). */
@@ -593,9 +575,6 @@ const fileUrl = computed<string>(() => {
 const lockedLabel = computed<string>(() =>
   decrypted.value?.status === 'failed' ? '🔒 Не удалось расшифровать' : '🔒 Расшифровываем…'
 )
-
-const hasMyReaction = (message: Message, emoji: string): boolean =>
-  message.reactions.some((reaction) => reaction.reacted_by_me && reaction.emoji === emoji)
 
 /** Текст и иконка системной отметки о звонке. */
 const callText = computed<string>(() => callMessageText(props.message) ?? 'Звонок')
@@ -808,11 +787,6 @@ const onReport = () => {
 }
 
 /* ---------- Лист действий: удержание (телефон) или правый клик ---------- */
-/** Быстрые реакции в верхней строке листа. */
-const QUICK_REACTIONS = ['👍', '❤️', '🔥', '😂', '😮', '😢', '🙏', '🎉']
-/** Ключ «последней реакции»: её ставит двойной тап. */
-const QUICK_REACTION_KEY = 'pismo_quick_reaction'
-
 const ctxOpen = ref(false)
 const ctxAllEmoji = ref(false)
 const ctxReady = ref(false)
@@ -833,22 +807,6 @@ const ctxStyle = computed<Record<string, string>>(() => ({
   // Пока не подогнали под границы экрана — не показываем, чтобы не «прыгало».
   visibility: ctxReady.value ? 'visible' : 'hidden'
 }))
-
-const lastQuickReaction = (): string => {
-  try {
-    return localStorage.getItem(QUICK_REACTION_KEY) || '❤️'
-  } catch {
-    return '❤️'
-  }
-}
-
-const rememberQuickReaction = (emoji: string): void => {
-  try {
-    localStorage.setItem(QUICK_REACTION_KEY, emoji)
-  } catch {
-    /* приватный режим — просто не запомним */
-  }
-}
 
 /**
  * Подогнать лист действий под границы экрана.
