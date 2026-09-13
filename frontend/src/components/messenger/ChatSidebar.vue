@@ -334,166 +334,21 @@
           </template>
         </template>
 
-        <!-- Контакты -->
-        <template v-else>
-          <div class="panel-search">
-            <q-icon :name="icon('search')" class="search-icon" size="17px" />
-            <input
-              v-model="contactsQuery"
-              class="panel-search-input"
-              type="text"
-              placeholder="Поиск по логину или телефону"
-              aria-label="Поиск контактов"
-            />
-          </div>
-
-          <!-- Результаты импорта из телефонной книги (показываются прямо в списке) -->
-          <div v-if="phoneMatched !== null && !phoneImportOpen" class="phone-inline">
-            <div class="phone-inline-head">
-              <span class="phone-result-title">
-                Из телефонной книги: {{ phoneMatched.length }}
-              </span>
-              <button
-                class="phone-inline-clear"
-                title="Закрыть результаты"
-                aria-label="Закрыть результаты"
-                @click="clearPhoneMatch"
-              >
-                <q-icon :name="icon('close')" size="18px" />
-              </button>
-            </div>
-            <p v-if="phoneError" class="phone-error">{{ phoneError }}</p>
-            <div v-if="!phoneBusy && !phoneMatched.length" class="empty-hint">
-              Никого из вашей книги нет в мессенджере
-            </div>
-            <div v-else class="phone-inline-list">
-              <button
-                v-for="user in phoneMatched"
-                :key="user.id"
-                class="row-item"
-                @click="openPhoneMatch(user)"
-              >
-                <span class="avatar" :style="avatarStyle(displayName(user))">
-                  <img
-                    v-if="avatarUrlOf(user)"
-                    :src="avatarUrlOf(user)"
-                    class="avatar-img"
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                  />
-                  <template v-else>{{ initials(displayName(user)) }}</template>
-                </span>
-                <span class="row-text">
-                  <span class="row-title">{{ displayName(user) }}</span>
-                  <span class="row-sub"
-                    >@{{ user.username
-                    }}<template v-if="user.phone_number"> · {{ user.phone_number }}</template></span
-                  >
-                </span>
-                <q-icon :name="icon('chat_bubble')" class="row-arrow" size="18px" />
-              </button>
-            </div>
-          </div>
-
-          <!-- Список контактов: моя записная книжка (кого я добавил) -->
-          <template v-if="phoneMatched === null || phoneImportOpen">
-            <div v-if="contactsLoading" class="sk-list" aria-busy="true">
-              <span class="sr-only">Загрузка контактов…</span>
-              <div v-for="n in 6" :key="n" class="sk-row">
-                <span class="sk-avatar"></span>
-                <span class="sk-lines">
-                  <span class="sk-line" :style="{ width: 35 + ((n * 17) % 40) + '%' }"></span>
-                  <span class="sk-line short"></span>
-                </span>
-              </div>
-            </div>
-
-            <template v-else>
-              <!-- Найденные в мессенджере (по поиску) — кого можно добавить -->
-              <div v-if="contactsSearchBusy" class="search-status" aria-busy="true">
-                Ищем людей…
-              </div>
-              <template v-else-if="foundNotInContacts.length">
-                <div class="section-label">Найдены в мессенджере</div>
-                <div class="people-results">
-                  <div v-for="user in foundNotInContacts" :key="user.id" class="contact-row">
-                    <button class="row-item" @click="openChatWithContact(user)">
-                      <span class="avatar" :style="avatarStyle(displayName(user))">
-                        <img
-                          v-if="avatarUrlOf(user)"
-                          :src="avatarUrlOf(user)"
-                          class="avatar-img"
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                        />
-                        <template v-else>{{ initials(displayName(user)) }}</template>
-                      </span>
-                      <span class="row-text">
-                        <span class="row-title">{{ displayName(user) }}</span>
-                        <span class="row-sub">@{{ user.username }}</span>
-                      </span>
-                    </button>
-                    <button
-                      class="contact-action"
-                      title="Добавить в контакты"
-                      aria-label="Добавить в контакты"
-                      @click="openContactName(user)"
-                    >
-                      <q-icon :name="icon('person_add')" size="18px" />
-                    </button>
-                  </div>
-                </div>
-              </template>
-
-              <p v-if="contactsSearchError" class="cn-side-error">{{ contactsSearchError }}</p>
-
-              <div v-if="!filteredContacts.length && !foundNotInContacts.length" class="empty-hint">
-                {{
-                  contactsQuery.trim()
-                    ? 'Никого не нашли — проверьте логин или телефон'
-                    : 'Контактов пока нет. Найдите человека по логину или телефону и добавьте его.'
-                }}
-              </div>
-
-              <div v-else-if="filteredContacts.length" class="chat-scroll">
-                <div v-for="contact in filteredContacts" :key="contact.id" class="contact-row">
-                  <button class="row-item" @click="openChatWithContact(contact)">
-                    <span class="avatar" :style="avatarStyle(displayName(contact))">
-                      <img
-                        v-if="avatarUrlOf(contact)"
-                        :src="avatarUrlOf(contact)"
-                        class="avatar-img"
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                      />
-                      <template v-else>{{ initials(displayName(contact)) }}</template>
-                    </span>
-                    <span class="row-text">
-                      <span class="row-title">{{ displayName(contact) }}</span>
-                      <span class="row-sub"
-                        >@{{ contact.username
-                        }}<template v-if="contact.phone_number">
-                          · {{ contact.phone_number }}</template
-                        ></span
-                      >
-                    </span>
-                  </button>
-                  <button
-                    class="contact-action"
-                    title="Имя контакта"
-                    aria-label="Имя контакта"
-                    @click="openContactName(contact)"
-                  >
-                    <q-icon :name="icon('edit')" size="17px" />
-                  </button>
-                </div>
-              </div>
-            </template>
-          </template>
-        </template>
+        <!-- Контакты: поиск, найденные в мессенджере, импорт из книги -->
+        <ContactsPanel
+          v-else
+          :contacts="contacts"
+          :current-user-id="currentUserId"
+          :loading="contactsLoading"
+          :phone-matched="phoneMatched"
+          :phone-busy="phoneBusy"
+          :phone-error="phoneError"
+          :phone-import-open="phoneImportOpen"
+          @pick="openChatWithContact"
+          @rename="openContactName"
+          @clear-phone="clearPhoneMatch"
+          @pick-phone="openPhoneMatch"
+        />
       </div>
     </Transition>
 
@@ -563,9 +418,10 @@ import StoriesStrip from '@/components/stories/StoriesStrip.vue'
 import ContactNameDialog from '@/components/messenger/ContactNameDialog.vue'
 import PhoneImportDialog from '@/components/messenger/PhoneImportDialog.vue'
 import SearchResults from '@/components/messenger/SearchResults.vue'
+import ContactsPanel from '@/components/messenger/ContactsPanel.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getErrorMessage } from '@/services/errors'
-import { openPrivateChat, searchUsers, type SearchUserResult } from '@/services/chatService'
+import { openPrivateChat, type SearchUserResult } from '@/services/chatService'
 import type { Chat, ChatUser, Message } from '@/types'
 import { isEncryptedPayload } from '@/services/e2ee'
 import {
@@ -791,13 +647,6 @@ const {
   setError: setSearchError,
   reset: resetSearch
 } = useGlobalSearch()
-const contactsQuery = ref('')
-// Поиск по всему мессенджеру в разделе «Контакты»: найденных показываем
-// отдельным блоком с кнопкой «добавить в контакты» (как в Telegram).
-const foundUsers = ref<SearchUserResult[]>([])
-const contactsSearchBusy = ref(false)
-const contactsSearchError = ref('')
-let contactsTimer: number | null = null
 /** Диалог «Добавить в контакты / Имя контакта». */
 const contactDialogOpen = ref(false)
 const contactDialogUser = ref<ChatUser | null>(null)
@@ -806,54 +655,6 @@ const openContactName = (user: ChatUser | SearchUserResult) => {
   contactDialogUser.value = user as ChatUser
   contactDialogOpen.value = true
 }
-
-/**
- * Найденные в мессенджере за вычетом тех, кого уже добавили.
- *
- * Список результатов поиска не трогаем (он живёт до следующего запроса), а
- * фильтруем на отображении: после нажатия «+» человек сразу пропадает из
- * блока «Найдены в мессенджере» и появляется в моих контактах.
- */
-const foundNotInContacts = computed<SearchUserResult[]>(() => {
-  const mine = new Set(props.contacts.map((contact) => contact.id))
-  return foundUsers.value.filter((user) => !mine.has(user.id))
-})
-
-// Минимальная длина запроса: короче — слишком много совпадений (и лишний трафик).
-const CONTACTS_SEARCH_MIN = 2
-
-watch(contactsQuery, (value) => {
-  if (contactsTimer !== null) {
-    window.clearTimeout(contactsTimer)
-    contactsTimer = null
-  }
-  contactsSearchError.value = ''
-  const query = value.trim()
-  if (query.length < CONTACTS_SEARCH_MIN) {
-    foundUsers.value = []
-    contactsSearchBusy.value = false
-    return
-  }
-  contactsSearchBusy.value = true
-  contactsTimer = window.setTimeout(async () => {
-    try {
-      const results = await searchUsers(query)
-      // Уже добавленные и я сам — не предлагаем повторно.
-      const mine = new Set(props.contacts.map((contact) => contact.id))
-      foundUsers.value = results.filter(
-        (user) => !mine.has(user.id) && user.id !== props.currentUserId
-      )
-    } catch (error) {
-      contactsSearchError.value = getErrorMessage(error, 'Не удалось выполнить поиск')
-    } finally {
-      contactsSearchBusy.value = false
-    }
-  }, 300)
-})
-
-onBeforeUnmount(() => {
-  if (contactsTimer !== null) window.clearTimeout(contactsTimer)
-})
 
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
@@ -1014,16 +815,6 @@ const orderedChats = computed<Chat[]>(() => {
   const top = others.filter((chat) => pinned.has(chat.id))
   const rest = others.filter((chat) => !pinned.has(chat.id))
   return [...self, ...top, ...rest]
-})
-
-const filteredContacts = computed<ChatUser[]>(() => {
-  const query = contactsQuery.value.trim().toLowerCase()
-  if (!query) return props.contacts
-  return props.contacts.filter((contact) =>
-    [contact.username, contact.first_name, contact.last_name, contact.phone_number]
-      .filter(Boolean)
-      .some((part) => (part as string).toLowerCase().includes(query))
-  )
 })
 
 const lastMessageIsOut = (chat: Chat): boolean => {
@@ -1298,30 +1089,6 @@ onBeforeUnmount(() => {
   font-size: 0.9rem;
 }
 
-.panel-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 12px 8px;
-  padding: 7px 12px;
-  background: var(--ms-surface-2);
-  border-radius: 10px;
-}
-
-.search-icon {
-  color: var(--ms-muted-3);
-  font-size: 0.9rem;
-}
-
-.panel-search-input {
-  flex: 1;
-  border: none;
-  outline: none;
-  background: transparent;
-  font-size: 14px;
-  color: var(--ms-text);
-}
-
 /* Поле поиска под шапкой: боковые отступы как у обычного поля, высоту задаёт
    содержимое (стрелки «назад» в панели нет — закрывает значок в шапке). */
 .search-head {
@@ -1387,12 +1154,6 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-.chat-scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding-bottom: 6px;
-}
-
 /* Обёртки, которые раскрываются слайдом вниз из-под шапки: полоса историй и
    поле поиска. Клип идёт по реальной высоте содержимого — её считает
    useSlideDown (см. composables/useSlideDown.ts), поэтому здесь только «коробка».
@@ -1435,13 +1196,6 @@ onBeforeUnmount(() => {
   }
 }
 
-.cn-side-error {
-  margin: 0;
-  padding: 10px 14px;
-  color: var(--ms-danger);
-  font-size: 12.5px;
-}
-
 .tick {
   font-size: 0.85rem;
   color: var(--ms-tick);
@@ -1451,13 +1205,6 @@ onBeforeUnmount(() => {
 /* Заглушка списка: «Контактов пока нет» и т. п.
    (`.search-status` и `.people-results` - в assets/rows.css: их делят список чатов,
    поиск и контакты.) */
-.empty-hint {
-  padding: 14px;
-  color: var(--ms-muted-2);
-  font-size: 13.5px;
-  text-align: center;
-}
-
 /* Dropdown-меню «⋯» */
 .ms-dropdown-wrap {
   position: relative;
@@ -1514,9 +1261,6 @@ onBeforeUnmount(() => {
 }
 
 /* Нижний отступ до «плавающей» панели разделов (safe-area учтён в ней). */
-.chat-scroll {
-  padding-bottom: 8px;
-}
 
 /* ---------- Режим выделения чатов (вход по удержанию) ---------- */
 .selection-bar {

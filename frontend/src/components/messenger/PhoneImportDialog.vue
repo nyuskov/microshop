@@ -377,53 +377,6 @@ const emit = defineEmits<{
   flex: none;
 }
 
-/* Встроенные результаты импорта из телефонной книги (без промежуточного окна) */
-.phone-inline {
-  padding: 4px 12px 6px;
-  border-top: 1px solid var(--ms-border, #eef1f3);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.phone-inline-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 2px 2px;
-}
-
-.phone-inline-clear {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: none;
-  background: transparent;
-  border-radius: 50%;
-  color: var(--ms-muted, #71808d);
-  cursor: pointer;
-}
-
-.phone-inline-clear:hover {
-  background: var(--ms-hover, #eef1f4);
-}
-
-.phone-inline-list {
-  overflow-y: auto;
-  max-height: 34vh;
-  margin-top: 2px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.phone-inline .row-item {
-  border-radius: 10px;
-}
-
-.phone-inline .phone-result-title {
-  margin: 0;
-}
+/* Встроенные результаты импорта из телефонной книги живут в ContactsPanel.vue:
+   окно их больше не показывает (разметка .phone-inline — в сайдбаре). */
 </style>

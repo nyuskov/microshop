@@ -275,3 +275,44 @@
   font-size: 13.5px;
   text-align: center;
 }
+
+/* Поле поиска в списке (глобальный поиск и поиск по контактам). */
+.ms-rows .panel-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 8px;
+  padding: 7px 12px;
+  background: var(--ms-surface-2);
+  border-radius: 10px;
+}
+
+.ms-rows .search-icon {
+  color: var(--ms-muted-3);
+  font-size: 0.9rem;
+}
+
+.ms-rows .panel-search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--ms-text);
+}
+
+/* Область прокрутки списка, занимающая остаток высоты панели. Нижний отступ —
+   до «плавающей» панели разделов (safe-area учтён в ней самой). */
+.ms-rows .chat-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+/* Заглушка списка:«Контактов пока нет» и т. п. */
+.ms-rows .empty-hint {
+  padding: 14px;
+  color: var(--ms-muted-2);
+  font-size: 13.5px;
+  text-align: center;
+}
