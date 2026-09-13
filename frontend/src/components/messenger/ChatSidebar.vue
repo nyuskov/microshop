@@ -127,6 +127,42 @@
       </div>
     </div>
 
+    <!-- Глобальный поиск: раскрывается слайдом вниз прямо из-под шапки — так же,
+         как полоса историй. Главная страница при этом остаётся на месте: список
+         чатов виден и с открытым полем поиска, пока запрос пуст. -->
+    <Transition name="slide-down" v-bind="slideDown">
+      <div v-if="view === 'chats' && !selectionMode && searchOpen" class="search-collapse">
+        <div class="panel-search search-head">
+          <button
+            class="icon-btn search-back"
+            title="Закрыть поиск"
+            aria-label="Закрыть поиск"
+            @click="closeSearch"
+          >
+            <q-icon :name="icon('arrow_back')" size="20px" />
+          </button>
+          <input
+            ref="searchInputRef"
+            v-model="searchQuery"
+            class="panel-search-input"
+            type="text"
+            placeholder="Поиск людей и сообщений"
+            aria-label="Глобальный поиск"
+            @keydown.esc="closeSearch"
+          />
+          <button
+            v-if="searchQuery.trim()"
+            class="icon-btn search-clear"
+            title="Очистить"
+            aria-label="Очистить"
+            @click="searchQuery = ''"
+          >
+            <q-icon :name="icon('close')" size="18px" />
+          </button>
+        </div>
+      </div>
+    </Transition>
+
     <!-- Разделы меняются плавно: короткий сдвиг + затухание. -->
     <Transition name="section" mode="out-in">
       <div :key="view" class="section-body">
@@ -138,39 +174,6 @@
         </template>
 
         <template v-else-if="view === 'chats'">
-          <!-- Глобальный поиск: раскрывается на месте шапки (как в Telegram),
-           плавно — поэтому обёрнут в Transition и держит высоту сам. -->
-          <Transition name="search-expand">
-            <div v-if="!selectionMode && searchOpen" class="panel-search search-head">
-              <button
-                class="icon-btn search-back"
-                title="Назад"
-                aria-label="Назад"
-                @click="closeSearch"
-              >
-                <q-icon :name="icon('arrow_back')" size="20px" />
-              </button>
-              <input
-                ref="searchInputRef"
-                v-model="searchQuery"
-                class="panel-search-input"
-                type="text"
-                placeholder="Поиск людей и сообщений"
-                aria-label="Глобальный поиск"
-                @keydown.esc="closeSearch"
-              />
-              <button
-                v-if="searchQuery.trim()"
-                class="icon-btn search-clear"
-                title="Очистить"
-                aria-label="Очистить"
-                @click="searchQuery = ''"
-              >
-                <q-icon :name="icon('close')" size="18px" />
-              </button>
-            </div>
-          </Transition>
-
           <div v-if="searchError" class="inline-error">{{ searchError }}</div>
 
           <!-- Результаты поиска: люди / сообщения -->
@@ -278,7 +281,7 @@
           </div>
 
           <!-- Скелетоны: показываем структуру списка вместо текста «Загрузка…» -->
-          <div v-if="!searchOpen && loadingChats" class="sk-list" aria-busy="true">
+          <div v-if="!searchQuery.trim() && loadingChats" class="sk-list" aria-busy="true">
             <span class="sr-only">Загрузка диалогов…</span>
             <div v-for="n in 6" :key="n" class="sk-row">
               <span class="sk-avatar"></span>
@@ -289,11 +292,11 @@
             </div>
           </div>
 
-          <!-- Недавние диалоги (скрыты, пока открыт глобальный поиск) -->
-          <template v-else-if="!searchOpen">
+          <!-- Недавние диалоги: место результатов поиска, если запрос не пуст -->
+          <template v-else-if="!searchQuery.trim()">
             <!-- Истории: раскрытая полоса под шапкой. Появляется по нажатию на
                  кружки в шапке или по протяжке списка вниз у самого верха. -->
-            <Transition name="stories-drop">
+            <Transition name="slide-down" v-bind="slideDown">
               <div v-if="storiesExpanded" class="stories-collapse">
                 <StoriesStrip @open-story="emit('open-story', $event)" />
               </div>
@@ -421,14 +424,6 @@
                   </span>
                 </button>
               </div>
-            </div>
-          </template>
-
-          <!-- Пустой глобальный поиск: подсказка вместо списка -->
-          <template v-else-if="searchOpen && !searchQuery.trim()">
-            <div class="search-hint">
-              <q-icon :name="icon('search')" class="search-hint-icon" size="30px" />
-              <p>Поиск по людям и сообщениям<br />во всех чатах</p>
             </div>
           </template>
         </template>
@@ -764,6 +759,10 @@ import { splitByQuery } from '@/utils/search'
 import { formatChatTime, formatMsgTime } from '@/utils/format'
 import { isLockedFile, lockedFileLabel, mediaTypeLabel } from '@/utils/media'
 import { plainMessageText } from '@/utils/mentions'
+import { useSlideDown } from '@/composables/useSlideDown'
+
+/** Общие хуки раскрытия для поиска и полосы историй (см. composables/useSlideDown). */
+const slideDown = useSlideDown()
 
 const props = defineProps<{
   view: 'chats' | 'contacts' | 'stories'
@@ -1691,8 +1690,8 @@ onBeforeUnmount(() => {
 .section-enter-active,
 .section-leave-active {
   transition:
-    opacity 0.16s ease,
-    transform 0.16s ease;
+    opacity 0.2s ease,
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .section-enter-from {
@@ -1941,52 +1940,46 @@ onBeforeUnmount(() => {
   padding-bottom: 6px;
 }
 
-/* Обёртка раскрытой полосы историй: «опускается» из-под шапки. */
-.stories-collapse {
+/* Обёртки, которые раскрываются слайдом вниз из-под шапки: полоса историй и
+   поле поиска. Клип идёт по реальной высоте содержимого — её считает
+   useSlideDown (см. composables/useSlideDown.ts), поэтому здесь только «коробка».
+   flex-shrink: 0 — иначе флекс-контейнер сжимал бы панель вместо списка. */
+.stories-collapse,
+.search-collapse {
   overflow: hidden;
+  flex-shrink: 0;
 }
 
-.stories-drop-enter-active,
-.stories-drop-leave-active {
+/* Время перехода держать согласованным с useSlideDown (там 0.28s). */
+.slide-down-enter-active,
+.slide-down-leave-active {
   overflow: hidden;
+  /* Высота меняется каждый кадр — заранее готовим слой. */
+  will-change: height, opacity;
   transition:
-    max-height 0.24s ease,
-    opacity 0.18s ease,
-    transform 0.24s ease;
+    height 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s ease;
 }
 
-.stories-drop-enter-from,
-.stories-drop-leave-to {
-  max-height: 0;
-  opacity: 0;
-  transform: translateY(-10px);
+/* Содержимое чуть «доезжает» за клипом — движение читается как слайд,
+   а не как мгновенная подмена высоты. */
+.slide-down-enter-active > *,
+.slide-down-leave-active > * {
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.stories-drop-enter-to,
-.stories-drop-leave-from {
-  max-height: 360px;
+.slide-down-enter-from > *,
+.slide-down-leave-to > * {
+  transform: translateY(-14px);
 }
 
-/* Поиск раскрывается на месте шапки, а не появляется рывком (как в Telegram). */
-.search-expand-enter-active,
-.search-expand-leave-active {
-  overflow: hidden;
-  transition:
-    max-height 0.2s ease,
-    opacity 0.14s ease,
-    transform 0.2s ease;
-}
-
-.search-expand-enter-from,
-.search-expand-leave-to {
-  max-height: 0;
-  opacity: 0;
-  transform: translateY(-8px);
-}
-
-.search-expand-enter-to,
-.search-expand-leave-from {
-  max-height: 64px;
+@media (prefers-reduced-motion: reduce) {
+  .slide-down-enter-active,
+  .slide-down-leave-active,
+  .slide-down-enter-active > *,
+  .slide-down-leave-active > * {
+    transition: none;
+  }
 }
 
 .row-item {
