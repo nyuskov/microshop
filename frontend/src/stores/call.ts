@@ -1,8 +1,6 @@
 import { defineStore } from 'pinia'
 
 import { useAuthStore } from '@/stores/auth'
-import { ICE_SERVERS as CONFIG_ICE_SERVERS, WS_ORIGIN } from '@/config'
-import { fetchIceServers } from '@/services/iceServers'
 import { kindAfterScreenShare } from '@/utils/callMode'
 import {
   collectDiagnostics,
@@ -19,222 +17,56 @@ import {
   writeCallDevices
 } from '@/utils/callDevices'
 
-/** Тип вызова: только голос или голос + видео. */
-export type CallKind = 'audio' | 'video'
-/** Почему показ экрана недоступен (или 'ok', если всё в порядке). */
-export type ScreenShareSupport = 'ok' | 'insecure' | 'mobile' | 'unsupported'
+import { screenShareNotice, screenShareSupport } from './call/screenShare'
+import {
+  ANSWER_RETRY_MAX_ATTEMPTS,
+  ANSWER_RETRY_MS,
+  ICE_DISCONNECTED_GRACE_MS,
+  ICE_RESTART_MAX_ATTEMPTS,
+  ICE_RETRY_DELAY_MS,
+  INCOMING_STALE_TIMEOUT_MS,
+  LINK_RECOVERY_WINDOW_MS,
+  LINK_RETRY_MS,
+  MEDIA_WATCHDOG_FAILURES_BEFORE_RESTART,
+  MEDIA_WATCHDOG_INTERVAL_MS,
+  MEDIA_WATCHDOG_MAX_RESTARTS,
+  RING_OUT_TIMEOUT_MS,
+  STATS_POLL_INTERVAL_MS
+} from './call/constants'
+import {
+  AUDIO_CONSTRAINTS,
+  SCREEN_CONSTRAINTS,
+  VIDEO_CONSTRAINTS,
+  loadIceConfiguration,
+  mediaConstraints,
+  mediaErrorMessage,
+  remoteMediaFlowing,
+  setRelayOnly,
+  socketUrl,
+  stopAllTracks,
+  swapTrackInStream
+} from './call/media'
+import {
+  ensureCallOutput,
+  remoteOutputReady,
+  setRemoteOutputVolume,
+  teardownCallOutput,
+  wireRemoteOutput
+} from './call/output'
+import { startRingtone, stopRingtone } from './call/ringtone'
+import {
+  CALL_REJOIN_TIMEOUT_MS,
+  CALL_TOUCH_EVERY_SECONDS,
+  callAfterReload,
+  forgetActiveCall,
+  rememberActiveCall
+} from './call/session'
+import type { CallKind, CallPeer, CallStatus, SignalingMessage } from './call/types'
 
-/**
- * Проверяет, можно ли вообще включить показ экрана в этом окружении.
- * `getDisplayMedia` требует защищённый контекст (HTTPS или localhost), а в
- * мобильных браузерах и WebView захват экрана не поддерживается вовсе — там
- * звонок идёт, а API отсутствует, поэтому кнопку лучше не показывать.
- */
-export function screenShareSupport(): ScreenShareSupport {
-  if (typeof navigator === 'undefined' || typeof window === 'undefined') {
-    return 'unsupported'
-  }
-  if (!window.isSecureContext || !navigator.mediaDevices) return 'insecure'
-  if (typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
-    const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
-    return isMobile ? 'mobile' : 'unsupported'
-  }
-  return 'ok'
-}
-
-/** Текст для пользователя: почему показа экрана не будет. */
-export function screenShareNotice(support: ScreenShareSupport): string {
-  if (support === 'insecure') {
-    return 'Показ экрана работает только по защищённому соединению (HTTPS)'
-  }
-  if (support === 'mobile') {
-    return 'На телефоне показ экрана недоступен — включите его с компьютера'
-  }
-  if (support === 'unsupported') return 'Браузер не поддерживает демонстрацию экрана'
-  return ''
-}
-
-/** Состояние текущего звонка в интерфейсе. */
-export type CallStatus =
-  | 'idle' // нет звонка
-  | 'outgoing' // исходящий, ждём ответа
-  | 'incoming' // входящий, звонит
-  | 'active' // соединение установлено
-  | 'ended' // завершён (показываем уведомление)
-
-export interface CallPeer {
-  id: number
-  name: string
-  avatarUrl?: string | null
-}
-
-interface SignalingMessage {
-  type: string
-  call_id?: string
-  from_user_id?: number
-  to_user_id?: number
-  kind?: CallKind
-  sdp?: string
-  candidate?: RTCIceCandidateInit
-  reason?: string
-  /** Для ``call-screen`` — начинает/заканчивает ли собеседник показ экрана. */
-  sharing?: boolean
-  /** Для ``call-parked`` — отправлено ли собеседнику уведомление о звонке. */
-  notified?: boolean
-  /** Для ``call-media-state`` — микрофон и камера собеседника. */
-  mic_on?: boolean
-  video_on?: boolean
-}
-
-const WS_PATH = '/api/v1/ws/calls'
-/**
- * Сколько ждём ответа. У собеседника приложение может быть закрыто: push,
- * холодный старт и нажатие «Ответить» должны уложиться в это время, поэтому
- * таймаут заметно больше обычных 30 секунд.
- *
- * Держим согласованным с сервером: парковка вызова живёт дольше этого времени
- * (`park_offer`, TTL 90 с), и окно входящего звонка у абонента закрывается не
- * раньше (`INCOMING_STALE_TIMEOUT_MS`). Иначе получается «у меня окно уже
- * пропало, а он всё ещё может ответить».
- */
-const RING_OUT_TIMEOUT_MS = 75_000
-/**
- * Сколько ждём входящий звонок, если о его завершении нам так и не сообщили
- * (приложение было закрыто, сигналинг обрывался, звонок приняли на другом
- * устройстве). Чуть больше, чем зовущий ждёт ответа, — плюс запас на доставку:
- * зовущий сам снимает вызов через `RING_OUT_TIMEOUT_MS`, и мы узнаём об этом.
- * Без такого сторожа «входящий» висел бы вечно, а с ним следующий вызов
- * автоматически отклонялся бы как «занят».
- */
-const INCOMING_STALE_TIMEOUT_MS = 95_000
-
-/** Сколько ждём восстановления связи, прежде чем завершить звонок. */
-const LINK_RECOVERY_WINDOW_MS = 12_000
-/** Как часто пробуем переподключить сигналинг во время звонка. */
-const LINK_RETRY_MS = 1500
-/** Пауза после «disconnected»: соединение часто восстанавливается само. */
-const ICE_DISCONNECTED_GRACE_MS = 3500
-/** Пауза между попытками перезапуска ICE. */
-const ICE_RETRY_DELAY_MS = 5000
-const ICE_RESTART_MAX_ATTEMPTS = 3
-/** Пауза перед повторной отправкой ответа: ждём, пока поднимется медиа. */
-const ANSWER_RETRY_MS = 2500
-/** Сколько раз повторяем ответ, если зовущий его так и не получил. */
-const ANSWER_RETRY_MAX_ATTEMPTS = 4
-/**
- * Как часто проверяем, что от собеседника реально идёт медиа.
- *
- * Баг: соединение числится установленным, а звука и видео нет (мобильная сеть,
- * TURN-релей); лечилось это только ручной сменой Wi-Fi↔LTE — то есть перезапуском
- * ICE. Делаем это сами.
- */
-const MEDIA_WATCHDOG_INTERVAL_MS = 3000
-/** Сколько проверок подряд «медиа нет», прежде чем перезапускать ICE. */
-const MEDIA_WATCHDOG_FAILURES_BEFORE_RESTART = 2
-/** Сколько раз пробуем починиться сами, прежде чем просто предупредить. */
-const MEDIA_WATCHDOG_MAX_RESTARTS = 3
-/** Как часто снимаем статистику соединения (качество связи и диагностика). */
-const STATS_POLL_INTERVAL_MS = 5000
-/**
- * Ключ «в прошлый раз помог только релей».
- *
- * Если напрямую медиа так и не пошло (мобильный оператор режет P2P), следующий
- * звонок начинаем сразу с `iceTransportPolicy: 'relay'` — то есть через TURN,
- * вместо того чтобы заново проходить ту же беду и чинить её перезапуском ICE.
- */
-const RELAY_ONLY_KEY = 'pismo_call_relay_only'
-
-// «Лёгкое» видео: невысокое разрешение и частота — видеозвонок должен работать
-// и через TURN-релей на мобильной сети (высокий битрейт 720p «валит» медиа,
-// тогда как аудио-звонок проходит). Битрейт дополнительно режется кодом ниже.
-const VIDEO_CONSTRAINTS: MediaTrackConstraints = {
-  width: { ideal: 640, max: 640 },
-  height: { ideal: 480, max: 480 },
-  frameRate: { ideal: 24, max: 30 }
-}
-
-// «Лёгкий» аудиоконстрейнт: эхоподавление и шумодав — как в обычном разговоре.
-const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
-  echoCancellation: true,
-  noiseSuppression: true
-}
-
-// Демонстрация экрана: чёткость важнее плавности (текст мелкий), поэтому 15 fps.
-const SCREEN_CONSTRAINTS: MediaTrackConstraints = {
-  frameRate: { ideal: 15, max: 30 }
-}
-
-// ICE-серверы: TURN-креды приходят с бэкенда временными (см. services/iceServers.ts),
-// если сервер не ответил — работаем по STUN из config (звонок важнее свежих кредов).
-// Точка обновления — перед каждым звонком (`_iceConfiguration()`).
-let iceConfiguration: RTCConfiguration = { iceServers: CONFIG_ICE_SERVERS }
-
-/** Готовит конфигурацию ICE: тянет свежие TURN-креды под текущего пользователя. */
-async function loadIceConfiguration(): Promise<RTCConfiguration> {
-  const servers = await fetchIceServers()
-  // Напрямую не получилось в прошлый раз — идём только через релей (TURN).
-  // Без TURN в списке так делать нельзя: остались бы без кандидатов вообще.
-  const relayOnly = relayOnlyEnabled() && hasTurnServer(servers)
-  iceConfiguration = {
-    iceServers: servers,
-    // Кандидаты собираем заранее — соединение поднимается на секунду-две быстрее.
-    iceCandidatePoolSize: 2,
-    ...(relayOnly ? { iceTransportPolicy: 'relay' as RTCIceTransportPolicy } : {})
-  }
-  return iceConfiguration
-}
-
-/** Помним ли, что в прошлый раз помог только релей. */
-function relayOnlyEnabled(): boolean {
-  try {
-    return window.localStorage.getItem(RELAY_ONLY_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-/** Запомнить/забыть «только через релей» (private-режим просто не помнит). */
-function setRelayOnly(enabled: boolean): void {
-  try {
-    if (enabled) window.localStorage.setItem(RELAY_ONLY_KEY, '1')
-    else window.localStorage.removeItem(RELAY_ONLY_KEY)
-  } catch {
-    /* приватный режим — не страшно */
-  }
-}
-
-/** Есть ли среди ICE-серверов TURN (без него режим «только релей» бесполезен). */
-function hasTurnServer(servers: RTCIceServer[]): boolean {
-  return servers.some((server) => {
-    const urls = Array.isArray(server.urls) ? server.urls : [server.urls]
-    return urls.some(
-      (url) => typeof url === 'string' && url.trim().toLowerCase().startsWith('turn')
-    )
-  })
-}
-
-/**
- * Понятный текст ошибки доступа к камере/микрофону.
- *
- * Советы в разных случаях разные: запрет в браузере, нет устройства, «занято
- * другим приложением» (частый случай на Android). Раньше на всё был один текст
- * «Не удалось получить доступ к камере/микрофону», и человек не знал, что делать.
- */
-function mediaErrorMessage(error: unknown, kind: CallKind): string {
-  const name = error instanceof Error ? error.name : ''
-  const subject = kind === 'video' ? 'камере и микрофону' : 'микрофону'
-  if (name === 'NotAllowedError' || name === 'SecurityError') {
-    return `Доступ к ${subject} запрещён — разрешите его в настройках браузера`
-  }
-  if (name === 'NotFoundError' || name === 'OverconstrainedError') {
-    const device = kind === 'video' ? 'камеру и микрофон' : 'микрофон'
-    return `Не нашлось подходящего устройства: проверьте ${device}`
-  }
-  if (name === 'NotReadableError' || name === 'AbortError') {
-    return 'Камера или микрофон заняты другим приложением — закройте его и попробуйте снова'
-  }
-  return `Не удалось получить доступ к ${subject}`
-}
+// Публичный контракт стора звонков остаётся прежним: всё это по-прежнему
+// импортируется из `@/stores/call`, хотя живёт в соседних модулях `stores/call/`.
+export { screenShareNotice, screenShareSupport } from './call/screenShare'
+export type { CallKind, CallPeer, CallStatus, ScreenShareSupport } from './call/types'
 
 /* ===================== Модульные (не реактивные) ресурсы звонка ===================== */
 
@@ -257,10 +89,6 @@ let shareReturnKind: CallKind = 'video'
 // иначе два одновременных пересогласования ломают SDP.
 let renegotiateSeq = 0
 
-// Таймеры создаются через `window.*`, то есть это DOM-таймеры, и их идентификатор
-// имеет тип `number`. Через `ReturnType<typeof setTimeout>` сюда попадают типы
-// Node (`NodeJS.Timeout`), и проверка типов падает — а она в CI блокирует деплой.
-let ringTimer: number | undefined
 /** Сторож входящего звонка: вызов давно не звонит, а мы об этом не узнали. */
 let incomingTimer: number | undefined
 /** До какого момента входящий звонок ещё имеет смысл ждать (см. сторож). */
@@ -291,409 +119,6 @@ let iceRestartInFlight = false
 /* Статистика соединения: опрос раз в несколько секунд (качество + диагностика). */
 let statsTimer: number | undefined
 let statsSample: StatsSample | null = null
-let audioContext: AudioContext | null = null
-let unlockBound = false
-
-/* --------- Идущий звонок переживает перезагрузку страницы --------- */
-
-/**
- * Где лежит «памятка» об идущем звонке.
- *
- * sessionStorage, а не localStorage: запись нужна только этой вкладке и только
- * до перезагрузки. Если приложение закрыли, звонок давно завершён — поднимать
- * его при следующем запуске нельзя.
- */
-const CALL_SESSION_KEY = 'pismo_call_session'
-/** Сколько считаем «мы только что перезагрузились» (дольше — это уже другой случай). */
-const CALL_REJOIN_WINDOW_MS = 60_000
-/** Как часто отмечаем идущий звонок «живым» (секунды, кратные этому числу). */
-const CALL_TOUCH_EVERY_SECONDS = 5
-/** Сколько ждём пересогласования от собеседника, прежде чем считать звонок сброшенным. */
-const CALL_REJOIN_TIMEOUT_MS = 12_000
-
-interface StoredCall {
-  callId: string
-  peerId: number
-  kind: CallKind
-  /** Когда звонок стал активным — чтобы вернуть честный счётчик времени. */
-  startedAt: number
-  /**
-   * Когда мы в последний раз видели звонок живым.
-   *
-   * Именно по этому полю решаем, восстанавливать ли звонок: разговор мог идти
-   * час, и это не повод считать запись устаревшей — важно, чтобы после
-   * перезагрузки звонок был ещё «свежим».
-   */
-  touchedAt: number
-}
-
-function rememberActiveCall(call: StoredCall): void {
-  try {
-    window.sessionStorage.setItem(CALL_SESSION_KEY, JSON.stringify(call))
-  } catch {
-    /* приватный режим — просто не сможем восстановить звонок */
-  }
-}
-
-function forgetActiveCall(): void {
-  try {
-    window.sessionStorage.removeItem(CALL_SESSION_KEY)
-  } catch {
-    /* нечего чистить */
-  }
-}
-
-/** Звонок, который шёл до перезагрузки страницы (или null). */
-function callAfterReload(): StoredCall | null {
-  try {
-    const raw = window.sessionStorage.getItem(CALL_SESSION_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as StoredCall
-    if (!parsed?.callId || !parsed.peerId) return null
-    const touched = parsed.touchedAt ?? parsed.startedAt ?? 0
-    if (Date.now() - touched > CALL_REJOIN_WINDOW_MS) return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-function socketUrl(token: string): string {
-  return `${WS_ORIGIN}${WS_PATH}?token=${encodeURIComponent(token)}`
-}
-
-function stopAllTracks(stream: MediaStream | null | undefined) {
-  if (!stream) return
-  stream.getTracks().forEach((track) => track.stop())
-}
-
-/** Заменяет в потоке дорожку того же вида (камера/микрофон) новой. */
-function swapTrackInStream(
-  stream: MediaStream | null,
-  track: MediaStreamTrack | null,
-  kind: 'audio' | 'video'
-) {
-  if (!stream) return
-  stream.getTracks().forEach((existing) => {
-    if (existing.kind === kind && existing !== track) {
-      stream.removeTrack(existing)
-    }
-  })
-  if (track && !stream.getTracks().includes(track)) {
-    stream.addTrack(track)
-  }
-}
-
-/** Медиа-констрейнты с учётом выбранного в настройках устройства. */
-function mediaConstraints(
-  kind: CallKind,
-  cameraId?: string,
-  micId?: string
-): MediaStreamConstraints {
-  const audio: MediaTrackConstraints = { ...AUDIO_CONSTRAINTS }
-  if (micId) audio.deviceId = { exact: micId }
-  if (kind !== 'video') return { audio, video: false }
-  const video: MediaTrackConstraints = { ...VIDEO_CONSTRAINTS }
-  if (cameraId) video.deviceId = { exact: cameraId }
-  return { audio, video }
-}
-
-/* ------------------ Гудки (WebAudio, без внешних файлов) ------------------ */
-
-/** Мастер-громкость гудков (цепочка gain → компрессор → выход). */
-let ringGain: GainNode | null = null
-
-/**
- * Общая громкость рингтона. Ниже единицы намеренно: звонок звучит в тишине
- * (часто — в наушниках или ночью) и не должен пугать.
- */
-const RING_LEVEL = 0.8
-/** Плавное затухание при остановке: без него слышен щелчок обрыва. */
-const RING_FADE_MS = 220
-/** Пауза между повторами фразы: входящий — спокойный, исходящий — пореже. */
-const RING_INCOMING_LOOP_MS = 5000
-const RING_OUTGOING_LOOP_MS = 3200
-
-/**
- * Цепочка вывода гудков: gain → компрессор → выход.
- *
- * Компрессор здесь вместо простого gain: он мягко придерживает пики
- * перекрывающихся нот. Без него сумма нот уходила за 1.0, браузер срезал
- * верхушки — звук становился дребезжащим и раздражающим.
- */
-function ensureRingChain(ctx: AudioContext): GainNode {
-  if (ringGain) return ringGain
-  const gain = ctx.createGain()
-  gain.gain.value = RING_LEVEL
-  const limiter = ctx.createDynamicsCompressor()
-  limiter.threshold.value = -18
-  limiter.knee.value = 14
-  limiter.ratio.value = 6
-  limiter.attack.value = 0.01
-  limiter.release.value = 0.35
-  gain.connect(limiter)
-  limiter.connect(ctx.destination)
-  ringGain = gain
-  return gain
-}
-
-function stopRingtone() {
-  if (ringTimer !== undefined) {
-    window.clearTimeout(ringTimer)
-    ringTimer = undefined
-  }
-  const ctx = audioContext
-  const gain = ringGain
-  audioContext = null
-  ringGain = null
-  if (!ctx) return
-  /* Плавно уводим громкость в ноль и только потом закрываем контекст: резкий
-     close() посреди ноты слышен как щелчок — он и делал гудок «резким». */
-  try {
-    if (gain) {
-      const now = ctx.currentTime
-      gain.gain.cancelScheduledValues(now)
-      gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.0001), now)
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + RING_FADE_MS / 1000)
-    }
-  } catch {
-    /* контекст уже закрыт */
-  }
-  window.setTimeout(() => {
-    void ctx.close().catch(() => undefined)
-  }, RING_FADE_MS + 80)
-}
-
-type RingNote = { at: number; f: number; d: number; vol?: number }
-
-/**
- * Входящий звонок: спокойная «стеклянная» фраза в ля-мажорной пентатонике.
- *
- * Прежний вариант был плотным маримбовым перезвоном из 12 нот с сильными
- * «бьющими» партиалами: на телефоне он звучал резко и успевал надоесть за
- * первый же гудок. Здесь ноты реже и тише, с длинными хвостами и мягкой опорой
- * в басу — слышно, но не раздражает.
- */
-const INCOMING_RING: RingNote[] = [
-  { at: 0.0, f: 220.0, d: 3.4, vol: 0.1 }, // A3 — тёплая опора
-  { at: 0.0, f: 440.0, d: 2.6, vol: 0.14 }, // A4
-  { at: 0.34, f: 739.99, d: 1.9, vol: 0.3 }, // F#5
-  { at: 0.78, f: 880.0, d: 1.9, vol: 0.28 }, // A5
-  { at: 1.22, f: 1108.73, d: 2.2, vol: 0.26 }, // C#6
-  { at: 1.72, f: 880.0, d: 2.6, vol: 0.2 } // A5 — спокойное разрешение
-]
-
-/** Гудки ожидания для звонящего: редкие тихие ноты вместо частых «бипов». */
-const OUTGOING_RING: RingNote[] = [
-  { at: 0.0, f: 196.0, d: 1.6, vol: 0.12 }, // G3
-  { at: 0.0, f: 392.0, d: 1.1, vol: 0.22 }, // G4
-  { at: 0.5, f: 523.25, d: 1.1, vol: 0.18 } // C5
-]
-
-/**
- * Мягкая нота: чистый синус + очень тихая октава и слабый третий обертон.
- *
- * Никаких партиал ×4 и ×9.2 (как у маримбы): именно они давали металлический
- * призвук, от которого звонок быстро надоедал. Атака 12 мс убирает щелчок,
- * длинный экспоненциальный хвост — «стеклянный» шлейф.
- */
-function softNote(freq: number, when: number, dur: number, volume: number) {
-  if (!audioContext) return
-  const ctx = audioContext
-  const out = ringGain ?? ctx.destination
-  const part = (ratio: number, rel: number, decay: number) => {
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = 'sine'
-    osc.frequency.value = freq * ratio
-    const peak = Math.max(0.0002, volume * rel)
-    gain.gain.setValueAtTime(0.0001, when)
-    gain.gain.exponentialRampToValueAtTime(peak, when + 0.012)
-    gain.gain.exponentialRampToValueAtTime(0.0001, when + dur * decay)
-    osc.connect(gain)
-    gain.connect(out)
-    osc.start(when)
-    osc.stop(when + dur + 0.05)
-  }
-  part(1, 1, 1) // фундаментал
-  part(2, 0.18, 0.7) // октава — звучит мягче и «дороже»
-  part(3, 0.05, 0.45) // лёгкий блик на затухании
-}
-
-/** Играет фразу (ноты перекрываются) и повторяет её после паузы. */
-function scheduleRing(notes: RingNote[], loopMs: number) {
-  if (ringTimer !== undefined) {
-    window.clearTimeout(ringTimer)
-  }
-  ringTimer = window.setTimeout(function tick() {
-    const ctx = audioContext
-    if (!ctx) return
-    const base = ctx.currentTime + 0.06
-    notes.forEach((n) => softNote(n.f, base + n.at, n.d, n.vol ?? 0.3))
-    ringTimer = window.setTimeout(tick, loopMs)
-  }, 150)
-}
-
-/**
- * Лёгкая вибрация при входящем звонке (Android, когда страница видима).
- * Два коротких толчка с длинной паузой: частые толчки бьют по нервам.
- */
-function vibrateRing() {
-  try {
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate([160, 800, 160])
-    }
-  } catch {
-    /* вибрация недоступна — не критично */
-  }
-}
-
-/** Возобновляет аудио-контекст, если браузер приостановил его (автоплей). */
-function resumeAudioIfSuspended() {
-  if (audioContext && audioContext.state === 'suspended') {
-    void audioContext.resume().catch(() => undefined)
-  }
-}
-
-/**
- * Браузеры блокируют звук без «жеста» пользователя. Привязываем возобновление
- * контекста к первому же клику/тапу — тогда рингтон сработает даже для
- * входящего звонка (пришедшего без участия пользователя).
- */
-function bindAudioUnlockOnce() {
-  if (unlockBound || typeof window === 'undefined') return
-  unlockBound = true
-  const events = ['pointerdown', 'keydown', 'touchstart'] as const
-  events.forEach((eventName) =>
-    window.addEventListener(eventName, resumeAudioIfSuspended, { passive: true })
-  )
-}
-
-bindAudioUnlockOnce()
-
-/* --------------- Вывод звука собеседника (Web Audio gain) ---------------
-   На телефонах/части браузеров element.volume у медиа-стримов игнорируется,
-   поэтому «тихий» режим (до включения громкой связи) делаем через честный
-   GainNode: громкость применяется гарантированно и не зависит от элемента. */
-let callOutputCtx: AudioContext | null = null
-let callOutputGain: GainNode | null = null
-let callOutputSource: MediaStreamAudioSourceNode | null = null
-let callOutputStream: MediaStream | null = null
-
-/** Создаёт/возобновляет контекст вывода. Звать в жесте пользователя. */
-function ensureCallOutput() {
-  if (!callOutputCtx) {
-    const Ctor =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    if (!Ctor) return
-    callOutputCtx = new Ctor()
-    callOutputGain = callOutputCtx.createGain()
-    callOutputGain.gain.value = 0.12
-    callOutputGain.connect(callOutputCtx.destination)
-  }
-  if (callOutputCtx.state === 'suspended') {
-    void callOutputCtx.resume().catch(() => undefined)
-  }
-}
-
-/** Подключает удалённый поток в цепочку вывода (после ontrack). */
-function wireRemoteOutput(stream: MediaStream | null) {
-  if (!stream || stream.getAudioTracks().length === 0) return
-  if (stream === callOutputStream && callOutputSource) return
-  if (callOutputSource) {
-    try {
-      callOutputSource.disconnect()
-    } catch {
-      /* ignore */
-    }
-    callOutputSource = null
-  }
-  ensureCallOutput()
-  if (!callOutputCtx || !callOutputGain) return
-  try {
-    callOutputSource = callOutputCtx.createMediaStreamSource(stream)
-    callOutputSource.connect(callOutputGain)
-    callOutputStream = stream
-  } catch {
-    /* не удалось подключить вывод — не критично */
-  }
-}
-
-/** Громкость собеседника: 1 — громко, меньше — «к уху». */
-function setRemoteOutputVolume(volume: number) {
-  if (callOutputGain && callOutputCtx) {
-    callOutputGain.gain.setValueAtTime(volume, callOutputCtx.currentTime)
-  }
-}
-
-function teardownCallOutput() {
-  if (callOutputSource) {
-    try {
-      callOutputSource.disconnect()
-    } catch {
-      /* ignore */
-    }
-    callOutputSource = null
-  }
-  callOutputGain = null
-  callOutputStream = null
-  if (callOutputCtx) {
-    void callOutputCtx.close().catch(() => undefined)
-    callOutputCtx = null
-  }
-}
-
-/**
- * Идёт ли от собеседника реальный медиапоток.
- *
- * Смотрим именно на принятые RTP-байты, а не на `iceConnectionState`: соединение
- * может числиться «подключённым», пока пакеты никуда не идут — тогда в звонке нет
- * ни звука, ни видео. Лечится это перезапуском ICE (то же делает ручное
- * переключение Wi-Fi↔LTE).
- */
-async function remoteMediaFlowing(pc: RTCPeerConnection): Promise<boolean> {
-  const ice = pc.iceConnectionState
-  if (ice !== 'connected' && ice !== 'completed') return false
-  // Статистики нет (старый браузер) — не мешаем звонку и считаем, что всё идёт.
-  if (typeof pc.getStats !== 'function') return true
-  try {
-    const stats = await pc.getStats()
-    let flowing = false
-    stats.forEach((report: { type?: string; bytesReceived?: number }) => {
-      if (report.type !== 'inbound-rtp') return
-      if (Number(report.bytesReceived ?? 0) > 0) flowing = true
-    })
-    return flowing
-  } catch {
-    // Статистику не получить — не трогаем живой звонок.
-    return true
-  }
-}
-
-function startRingtone(kind: 'outgoing' | 'incoming') {
-  stopRingtone()
-  try {
-    const Ctor =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    if (!Ctor) return
-    audioContext = new Ctor()
-    ensureRingChain(audioContext)
-    bindAudioUnlockOnce()
-    resumeAudioIfSuspended()
-    // Входящий — мягкий «стеклянный» перезвон; исходящему — редкие тихие гудки.
-    if (kind === 'outgoing') {
-      scheduleRing(OUTGOING_RING, RING_OUTGOING_LOOP_MS)
-    } else {
-      scheduleRing(INCOMING_RING, RING_INCOMING_LOOP_MS)
-      vibrateRing()
-    }
-  } catch {
-    /* Аудио недоступно — звонок идёт без гудков */
-  }
-}
-
 /* ============================== Store ============================== */
 
 interface CallState {
@@ -1700,9 +1125,7 @@ export const useCallStore = defineStore('call', {
 
     /** Готов ли Web Audio вывод (контекст запущен и поток подключён). */
     outputReady(): boolean {
-      return (
-        callOutputCtx !== null && callOutputCtx.state === 'running' && callOutputSource !== null
-      )
+      return remoteOutputReady()
     },
 
     /** Возобновить Web Audio (вызывать по тапу/каждому тику). */
