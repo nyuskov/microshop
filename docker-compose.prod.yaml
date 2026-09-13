@@ -1,60 +1,117 @@
-# Продовый стек microshop (starting point).
-#
-# Отличия от dev:
-#   - web: без bind-тома кода, без reload, без self-signed TLS (TLS — на nginx/edge);
-#   - миграции отдельным одноразовым сервисом migrate;
-#   - фронтенд собирается (vite build) в образ с nginx (статик + прокси /api, /media);
-#   - restart-политики и healthcheck'и.
-#
-# Запуск:
-#   docker compose -f docker-compose.prod.yaml up -d --build
-#
-# Переменные окружения: POSTGRES_PASSWORD, JWT_SECRET_KEY обязательны (см. .env.example).
-# VITE_API_ORIGIN — публичный origin, на котором отдаётся фронтенд (тот же origin,
-# что у nginx), напр. https://chat.example.com. По умолчанию http://localhost.
+name: microshop-test
 
-name: microshop-prod
-
-# Общая ротация docker-логов.
+# Общая ротация docker-логов (важно, чтобы диск не переполнился).
 x-logging: &default-logging
   driver: json-file
   options:
-    max-size: "10m"
-    max-file: "3"
+    max-size: "5m"
+    max-file: "2"
+
+# Общее описание слота бэкенда. Слотов два (web-blue / web-green), в работе
+# обычно один: деплой поднимает свободный слот на новом образе, дожидается у
+# него health и только потом гасит прежний — API не перестаёт отвечать.
+# nginx знает оба слота (frontend/nginx-prod/default.conf).
+x-web-slot: &web-slot
+  logging: *default-logging
+  mem_limit: 256m
+  cpus: 0.5
+  build:
+    context: .
+    dockerfile: ./backend/Dockerfile
+  # Один тег на оба слота: собирается один образ, слоты лишь контейнеры.
+  image: microshop-test-backend:latest
+  command: ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+  environment:
+    DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/microshop
+    JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+    RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672/
+    UVICORN_RELOAD: "0"
+    # Доставка OTP: SMS Aero (осн. канал); Telegram Gateway/бот — опционально.
+    SMS_AERO_EMAIL: ${SMS_AERO_EMAIL:-}
+    SMS_AERO_API_KEY: ${SMS_AERO_API_KEY:-}
+    SMS_AERO_SIGN: ${SMS_AERO_SIGN:-}
+    # Web Push (PWA): VAPID-ключи; пока пусто — push выключен.
+    # TURN (релей звонков): адреса и общий секрет для временных кредов.
+    TURN_URLS: ${TURN_URLS:-}
+    TURN_SECRET: ${TURN_SECRET:-}
+    TURN_REALM: ${TURN_REALM:-pismo.space}
+    TURN_TTL_SECONDS: ${TURN_TTL_SECONDS:-3600}
+    WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
+    WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
+    WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-mailto:nyuskov@gmail.com}
+    # RuStore Push (Android-приложение): ID проекта и сервисный токен.
+    RUSTORE_PUSH_PROJECT_ID: ${RUSTORE_PUSH_PROJECT_ID:-}
+    RUSTORE_PUSH_SERVICE_TOKEN: ${RUSTORE_PUSH_SERVICE_TOKEN:-}
+    TELEGRAM_GATEWAY_TOKEN: ${TELEGRAM_GATEWAY_TOKEN:-}
+    TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+    TELEGRAM_GATEWAY_BASE_URL: ${TELEGRAM_GATEWAY_BASE_URL:-https://gateway.telegram.org}
+    # Предпросмотр внешних ссылок в сообщениях: прокси для сайтов, до которых
+    # сервер сам не дотягивается (например, youtube.com с российского хостинга).
+    LINK_PREVIEW_PROXY_URL: ${LINK_PREVIEW_PROXY_URL:-}
+    # Суточные лимиты отправки кодов (защита баланса SMS-шлюза).
+    AUTH_OTP_DAILY_LIMIT: ${AUTH_OTP_DAILY_LIMIT:-50}
+    AUTH_OTP_PER_IP_DAILY_LIMIT: ${AUTH_OTP_PER_IP_DAILY_LIMIT:-20}
+    # E-mail-канал (подтверждение адреса, вход по коду, сброс пароля).
+    SMTP_HOST: ${SMTP_HOST:-}
+    SMTP_PORT: ${SMTP_PORT:-587}
+    SMTP_USER: ${SMTP_USER:-}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    SMTP_FROM: ${SMTP_FROM:-}
+    SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Pismo}
+    SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+    SMTP_SSL: ${SMTP_SSL:-false}
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+    rabbitmq:
+      condition: service_healthy
+  volumes:
+    - media_data:/app/media
+  healthcheck:
+    test:
+      - CMD
+      - python
+      - -c
+      - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status==200 else 1)"
+    interval: 15s
+    timeout: 5s
+    retries: 3
+  restart: unless-stopped
+  networks:
+    - server_network
 
 services:
   db:
     logging: *default-logging
-    mem_limit: 1g
-    cpus: 2.0
-    image: postgres:18
+    mem_limit: 256m
+    cpus: 0.5
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_URL: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: microshop
     volumes:
       - postgres_data:/var/lib/postgresql/
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d microshop"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
-      retries: 12
-      start_period: 10s
+      retries: 5
     networks:
       - server_network
 
-  # Разовые миграции перед стартом web.
   migrate:
     logging: *default-logging
-    mem_limit: 512m
-    cpus: 1.0
+    mem_limit: 256m
+    cpus: 0.5
     build:
       context: .
       dockerfile: ./backend/Dockerfile
     command: ["poetry", "run", "alembic", "upgrade", "head"]
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/microshop
     depends_on:
       db:
         condition: service_healthy
@@ -62,77 +119,73 @@ services:
     networks:
       - server_network
 
-  web:
-    logging: *default-logging
-    mem_limit: 768m
-    cpus: 1.5
-    build:
-      context: .
-      dockerfile: ./backend/Dockerfile
-    # Внутренний HTTP: TLS/HTTPS терминируется на nginx/edge.
-    command: ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-    environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}@rabbitmq:5672/
-      UVICORN_RELOAD: "0"
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      rabbitmq:
-        condition: service_healthy
-    volumes:
-      # Загруженные медиа храним в volume (сообщения/аватары).
-      - media_data:/app/media
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status==200 else 1)"
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 20s
-    restart: unless-stopped
-    networks:
-      - server_network
+  web-blue:
+    <<: *web-slot
 
-  # Брокер очередей (Celery + мост realtime-событий). Порт наружу не публикуем.
+  web-green:
+    <<: *web-slot
+
   rabbitmq:
     logging: *default-logging
-    mem_limit: 512m
-    cpus: 1.0
-    image: rabbitmq:4-management
+    mem_limit: 256m
+    cpus: 0.3
+    image: rabbitmq:4-management-alpine
     restart: unless-stopped
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "+P 1048576"
+      VM_MEMORY_HIGH_WATERMARK: "0.4"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 10s
+      interval: 15s
       timeout: 10s
-      retries: 12
-      start_period: 30s
+      retries: 5
     networks:
       - server_network
 
-  # Воркер фоновых задач Celery. Общий media-каталог с web (worker пишет файлы,
-  # web отдаёт их через /media и раздаёт realtime-события).
   worker:
     logging: *default-logging
-    mem_limit: 1g
-    cpus: 1.5
+    mem_limit: 256m
+    cpus: 0.4
     build:
       context: .
       dockerfile: ./backend/Dockerfile
-    command: ["poetry", "run", "celery", "-A", "core.celery_app", "worker", "--loglevel=INFO", "--without-gossip", "--without-mingle", "--without-heartbeat"]
+    command: ["poetry", "run", "celery", "-A", "core.celery_app", "worker", "--loglevel=INFO", "--concurrency=1", "--without-gossip", "--without-mingle", "--without-heartbeat"]
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}@rabbitmq:5672/
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/microshop
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      # Доставка OTP: SMS Aero (осн.) + Telegram (Gateway/бот) как доп. каналы.
+      SMS_AERO_EMAIL: ${SMS_AERO_EMAIL:-}
+      SMS_AERO_API_KEY: ${SMS_AERO_API_KEY:-}
+      SMS_AERO_SIGN: ${SMS_AERO_SIGN:-}
+      # E-mail-канал: письма с кодами отправляет воркер.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Pismo}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      SMTP_SSL: ${SMTP_SSL:-false}
+      # Web Push (PWA) — отправка в воркере; VAPID-ключи.
+      # TURN (релей звонков): адреса и общий секрет для временных кредов.
+      TURN_URLS: ${TURN_URLS:-}
+      TURN_SECRET: ${TURN_SECRET:-}
+      TURN_REALM: ${TURN_REALM:-pismo.space}
+      TURN_TTL_SECONDS: ${TURN_TTL_SECONDS:-3600}
+      WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
+      WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
+      WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-mailto:nyuskov@gmail.com}
+      # RuStore Push (Android-приложение): ID проекта и сервисный токен.
+      RUSTORE_PUSH_PROJECT_ID: ${RUSTORE_PUSH_PROJECT_ID:-}
+      RUSTORE_PUSH_SERVICE_TOKEN: ${RUSTORE_PUSH_SERVICE_TOKEN:-}
+      TELEGRAM_GATEWAY_TOKEN: ${TELEGRAM_GATEWAY_TOKEN:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_GATEWAY_BASE_URL: ${TELEGRAM_GATEWAY_BASE_URL:-https://gateway.telegram.org}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -144,19 +197,21 @@ services:
     networks:
       - server_network
 
-  # Планировщик периодических задач (celery beat) — очистка media по расписанию.
   beat:
     logging: *default-logging
-    mem_limit: 256m
-    cpus: 0.5
+    mem_limit: 64m
+    cpus: 0.1
     build:
       context: .
       dockerfile: ./backend/Dockerfile
     command: ["poetry", "run", "celery", "-A", "core.celery_app", "beat", "--loglevel=INFO"]
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}@rabbitmq:5672/
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/microshop
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      # Поллер обычного бота (привязка Telegram) работает в beat.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -166,20 +221,95 @@ services:
 
   frontend:
     logging: *default-logging
-    mem_limit: 128m
-    cpus: 0.5
+    mem_limit: 64m
+    cpus: 0.2
+    # Образ nginx без статики: файлы приходят из тома frontend_html, который
+    # обновляет сервис frontend-dist. Так деплой интерфейса не пересоздаёт
+    # контейнер и сайт не пропадает (см. scripts/ci/deploy_remote.sh).
     build:
       context: ./frontend
-      dockerfile: Dockerfile.prod
-      args:
-        VITE_API_ORIGIN: ${VITE_API_ORIGIN:-http://localhost}
+      dockerfile: Dockerfile.nginx
     ports:
       - "80:80"
-    depends_on:
-      - web
+      - "443:443" # Открываем порт для входящего HTTPS трафика
+    volumes:
+      - certbot_etc:/etc/letsencrypt
+      - certbot_var:/var/lib/letsencrypt
+      - frontend_html:/usr/share/nginx/html
+      # Конфиг монтируем из репозитория: правки применяются `nginx -s reload`
+      # (без пересоздания контейнера и без простоя). Монтируется именно каталог:
+      # при монтировании одного файла git заменяет его новым inode, и контейнер
+      # продолжал бы читать старую версию.
+      - ./frontend/nginx-prod:/etc/nginx/conf.d:ro
     restart: unless-stopped
     networks:
       - server_network
+
+  # Одноразовый сервис: собирает статику и копирует её в том frontend_html.
+  # Запускается во время деплоя явно (--profile dist), в обычном `up` не поднимается:
+  #   docker compose -p microshop-test -f docker-compose.test.yaml --profile dist \
+  #     run --rm --no-deps frontend-dist
+  frontend-dist:
+    profiles: ["dist"]
+    logging: *default-logging
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dist
+      args:
+        VITE_API_ORIGIN: ${VITE_API_ORIGIN:-http://localhost}
+    image: microshop-test-frontend-dist:latest
+    # Копированием занимается ENTRYPOINT образа (frontend/copy-static.sh).
+    volumes:
+      - frontend_html:/dst
+    networks:
+      - server_network
+
+  # Сервис автоматического перевыпуска SSL-сертификатов (раз в 12 часов)
+  certbot:
+    image: certbot/certbot:v2.11.0
+    restart: unless-stopped
+    volumes:
+      - certbot_etc:/etc/letsencrypt
+      - certbot_var:/var/lib/letsencrypt
+      # Копия сертификатов для coturn: он работает под nobody, а в каталог
+      # Let's Encrypt попасть не может (live/ и privkey — 0700 root). Обновляем
+      # копию при каждом renew — иначе после продления coturn остался бы со
+      # старым сертификатом.
+      - turn_certs:/turn-certs
+    entrypoint: "/bin/sh -c 'publish_certs() { mkdir -p /turn-certs; cp -fL /etc/letsencrypt/live/pismo.space/fullchain.pem /etc/letsencrypt/live/pismo.space/privkey.pem /turn-certs/ 2>/dev/null || true; chown root:65534 /turn-certs /turn-certs/*.pem 2>/dev/null || true; chmod 0750 /turn-certs 2>/dev/null || true; chmod 0640 /turn-certs/*.pem 2>/dev/null || true; }; publish_certs; trap exit TERM; while :; do certbot renew; publish_certs; sleep 12h & wait $${!}; done'"
+
+  # TURN-сервер для WebRTC-звонков за «симметричным» NAT (мобильные операторы).
+  # Creds — временные (TURN REST API): общий секрет TURN_SECRET в .env, статического
+  # логина/пароля больше нет (TURN_USERNAME/TURN_PASSWORD устарели, их можно убрать).
+  # Внешние порты: 3478/udp+tcp, релей 49160-49200/udp; для TURNS — 5349/tcp.
+  coturn:
+    image: coturn/coturn:4.6
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --min-port=49160
+      - --max-port=49200
+      - --realm=${TURN_REALM:-pismo.space}
+      # Временные креды (TURN REST API): coturn сам проверяет HMAC-SHA1 от
+      # общего секрета и срок из username. Статического пароля нет — значит его
+      # нельзя вытащить из клиентского бандла и гонять через релей чужой трафик.
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET:?TURN_SECRET is required}
+      - --fingerprint
+      - --lt-cred-mech
+      - --no-cli
+      # TLS для TURN (TURNS, 5349/tcp): нужен там, где оператор режет UDP и P2P.
+      # Сертификаты читаем из /turn-certs — копия, которую готовит certbot
+      # (в сам каталог Let's Encrypt coturn не имеет доступа: он не root).
+      - --tls-listening-port=5349
+      - --cert=/turn-certs/fullchain.pem
+      - --pkey=/turn-certs/privkey.pem
+      - --no-dtls
+      - --external-ip=176.108.249.9
+    volumes:
+      - turn_certs:/turn-certs:ro
 
 networks:
   server_network:
@@ -187,5 +317,11 @@ networks:
 
 volumes:
   postgres_data:
+  # Статика фронтенда: её обновляет frontend-dist, раздаёт frontend.
+  frontend_html:
   media_data:
   rabbitmq_data:
+  certbot_etc: # Новые тома для постоянного хранения SSL ключей
+  certbot_var:
+  # Копия сертификатов для coturn (читаемая пользователем nobody) — см. certbot.
+  turn_certs:

@@ -52,9 +52,9 @@
 
     <div v-else class="panel-header">
       <!-- Значок приложения в углу шапки (как иконка мессенджера). -->
-      <span class="app-mark" aria-hidden="true">
+      <!-- <span class="app-mark" aria-hidden="true">
         <img src="/favicon.svg" alt="" width="34" height="34" />
-      </span>
+      </span> -->
 
       <!-- Истории: сжатый ряд кружков рядом со значком приложения. Кликабельность
            видна по зелёному ореолу, нажатие раскрывает полосу под шапкой. -->

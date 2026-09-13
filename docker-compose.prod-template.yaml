@@ -1,0 +1,191 @@
+# Продовый стек microshop (starting point).
+#
+# Отличия от dev:
+#   - web: без bind-тома кода, без reload, без self-signed TLS (TLS — на nginx/edge);
+#   - миграции отдельным одноразовым сервисом migrate;
+#   - фронтенд собирается (vite build) в образ с nginx (статик + прокси /api, /media);
+#   - restart-политики и healthcheck'и.
+#
+# Запуск:
+#   docker compose -f docker-compose.prod.yaml up -d --build
+#
+# Переменные окружения: POSTGRES_PASSWORD, JWT_SECRET_KEY обязательны (см. .env.example).
+# VITE_API_ORIGIN — публичный origin, на котором отдаётся фронтенд (тот же origin,
+# что у nginx), напр. https://chat.example.com. По умолчанию http://localhost.
+
+name: microshop-prod
+
+# Общая ротация docker-логов.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    logging: *default-logging
+    mem_limit: 1g
+    cpus: 2.0
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_URL: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}
+      POSTGRES_DB: microshop
+    volumes:
+      - postgres_data:/var/lib/postgresql/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d microshop"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - server_network
+
+  # Разовые миграции перед стартом web.
+  migrate:
+    logging: *default-logging
+    mem_limit: 512m
+    cpus: 1.0
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    command: ["poetry", "run", "alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - server_network
+
+  web:
+    logging: *default-logging
+    mem_limit: 768m
+    cpus: 1.5
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    # Внутренний HTTP: TLS/HTTPS терминируется на nginx/edge.
+    command: ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}@rabbitmq:5672/
+      UVICORN_RELOAD: "0"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      # Загруженные медиа храним в volume (сообщения/аватары).
+      - media_data:/app/media
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - server_network
+
+  # Брокер очередей (Celery + мост realtime-событий). Порт наружу не публикуем.
+  rabbitmq:
+    logging: *default-logging
+    mem_limit: 512m
+    cpus: 1.0
+    image: rabbitmq:4-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    networks:
+      - server_network
+
+  # Воркер фоновых задач Celery. Общий media-каталог с web (worker пишет файлы,
+  # web отдаёт их через /media и раздаёт realtime-события).
+  worker:
+    logging: *default-logging
+    mem_limit: 1g
+    cpus: 1.5
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    command: ["poetry", "run", "celery", "-A", "core.celery_app", "worker", "--loglevel=INFO", "--without-gossip", "--without-mingle", "--without-heartbeat"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}@rabbitmq:5672/
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - media_data:/app/media
+    restart: unless-stopped
+    networks:
+      - server_network
+
+  # Планировщик периодических задач (celery beat) — очистка media по расписанию.
+  beat:
+    logging: *default-logging
+    mem_limit: 256m
+    cpus: 0.5
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    command: ["poetry", "run", "celery", "-A", "core.celery_app", "beat", "--loglevel=INFO"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - server_network
+
+  frontend:
+    logging: *default-logging
+    mem_limit: 128m
+    cpus: 0.5
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_ORIGIN: ${VITE_API_ORIGIN:-http://localhost}
+    ports:
+      - "80:80"
+    depends_on:
+      - web
+    restart: unless-stopped
+    networks:
+      - server_network
+
+networks:
+  server_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  media_data:
+  rabbitmq_data:
