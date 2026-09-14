@@ -80,6 +80,7 @@ async def invite_status(
     invite = await _get_invite(session, token)
     if not _invite_is_usable(invite):
         return InviteStatusResponse(valid=False)
+    assert invite is not None  # для типизации: проверено в _invite_is_usable
     return InviteStatusResponse(valid=True, phone_number=invite.phone_number)
 
 

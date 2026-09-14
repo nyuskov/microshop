@@ -302,8 +302,8 @@ const submit = async () => {
 }
 
 .login-message.msg-error {
-  background: color-mix(in srgb, #e5484d 16%, transparent);
-  color: #c53030;
+  background: var(--ms-danger-bg);
+  color: var(--ms-danger);
 }
 
 .privacy-note {
