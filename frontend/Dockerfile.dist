@@ -30,7 +30,7 @@ RUN pnpm run build-only
 # Этап 2 — маленький образ только с файлами и скриптом копирования:
 # node и зависимости для деплоя не нужны, а путь /usr/share/nginx/html намеренно
 # совпадает с тем, из которого раздаёт nginx (иначе копирование шло бы «в никуда»).
-FROM alpine:3.20
+FROM alpine:3.24
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY copy-static.sh /copy-static.sh
 ENTRYPOINT ["/bin/sh", "/copy-static.sh"]
