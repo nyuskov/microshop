@@ -31,6 +31,7 @@ from .common import (
 from .routers import (
     devices_router,
     email_codes_router,
+    invites_router,
     otp_router,
     password_router,
     router,
@@ -56,6 +57,7 @@ __all__ = [
     "enqueue_email_code",
     "enqueue_sms_otp",
     "generate_otp_code",
+    "invites_router",
     "otp_delivery_available",
     "otp_router",
     "password_router",

@@ -483,6 +483,38 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
+    /**
+     * Статус персональной ссылки-приглашения (см. /invite/:token): валидна ли
+     * ещё, и закреплена ли за конкретным номером.
+     */
+    async fetchInviteStatus(token: string): Promise<{
+      valid: boolean
+      phone_number: string | null
+    }> {
+      const response = await api.get(`/auth/invites/${encodeURIComponent(token)}/`)
+      return response.data as { valid: boolean; phone_number: string | null }
+    },
+
+    /** Регистрирует аккаунт по приглашению (без публичной регистрации) и входит. */
+    async registerWithInvite(
+      token: string,
+      phoneNumber: string,
+      password: string,
+      router: Router | null = null
+    ) {
+      try {
+        const response = await api.post(
+          `/auth/invites/${encodeURIComponent(token)}/register/`,
+          { phone_number: phoneNumber, password }
+        )
+        await this.applyTokenResponse(response.data, router)
+      } catch (error) {
+        console.error('Register with invite error:', error)
+        this.resetAuth()
+        throw error
+      }
+    },
+
     async refreshTokens() {
       if (!this.refreshToken) {
         throw new Error('No refresh token available')

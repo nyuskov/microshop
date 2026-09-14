@@ -2,6 +2,7 @@ import Messenger from '../views/Messenger.vue' // Импортируем нов�
 // import Home from '../components/Home.vue' // Закомментируем старый
 // import Registration from '../components/Registration.vue' // Закомментировал импорт
 import Login from '../components/Login.vue'
+import InviteRegister from '../components/InviteRegister.vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth' // Import the auth store
 
@@ -46,6 +47,15 @@ const routes = [
     name: 'Login',
     component: Login
   },
+  // Персональная ссылка-приглашение на регистрацию: /invite/<токен>. Единственный
+  // способ создать аккаунт, пока публичная регистрация выключена (см.
+  // backend/scripts/create_invite.py). Доступна и без входа — иначе
+  // приглашённый не смог бы завершить регистрацию.
+  {
+    path: '/invite/:token',
+    name: 'InviteRegister',
+    component: InviteRegister
+  },
   // Неизвестный адрес — экран «Страница не найдена» в стиле приложения.
   // Раньше тут был редирект на главную: nginx отдаёт index.html для любого пути
   // (SPA-фолбэк), и человек, попавший на битую ссылку, молча оказывался в
@@ -71,6 +81,17 @@ router.beforeEach((to, from, next) => {
   if (to.name === 'Login') {
     // Авторизованный пользователь не должен видеть форму входа при прямом
     // переходе на /auth/login/.
+    if (authStore.isAuthenticated) {
+      next({ name: 'Messenger' })
+    } else {
+      next()
+    }
+    return
+  }
+
+  if (to.name === 'InviteRegister') {
+    // Ссылка-приглашение — единственный способ зарегистрироваться без
+    // публичной регистрации, поэтому она должна открываться и без входа.
     if (authStore.isAuthenticated) {
       next({ name: 'Messenger' })
     } else {

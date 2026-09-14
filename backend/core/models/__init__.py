@@ -23,6 +23,7 @@ __all__ = [
     "Profile",
     "PushSubscription",
     "RefreshSession",
+    "RegistrationInvite",
     "RuStorePushToken",
     "SecurityEvent",
     "Story",
@@ -56,6 +57,7 @@ from .password_login_attempt import PasswordLoginAttempt  # noqa: F401
 from .profile import Profile  # noqa: F401
 from .push_subscription import PushSubscription  # noqa: F401
 from .refresh_session import RefreshSession  # noqa: F401
+from .registration_invite import RegistrationInvite  # noqa: F401
 from .rustore_push_token import RuStorePushToken  # noqa: F401
 from .security_event import SecurityEvent  # noqa: F401
 from .story import Story, StoryReaction, StoryView  # noqa: F401
