@@ -16,9 +16,13 @@
       <!-- Фильтры списка: быстро отсечь непрочитанное, личные или группы -->
       <div
         v-if="!props.selectionMode"
+        ref="filtersEl"
         class="chat-filters"
+        :class="{ 'fade-start': filterEdges.start, 'fade-end': filterEdges.end }"
         role="tablist"
         aria-label="Фильтр чатов"
+        @scroll.passive="updateFilterEdges"
+        @wheel.passive="onFiltersWheel"
       >
         <button
           v-for="filter in props.filters"
@@ -31,8 +35,8 @@
           @click="emit('update:filter', filter.key)"
         >
           {{ filter.title }}
-          <span v-if="filter.key === 'unread' && props.unreadCount" class="chat-filter-count">
-            {{ props.unreadCount > 99 ? '99+' : props.unreadCount }}
+          <span v-if="filterCount(filter.key)" class="chat-filter-count">
+            {{ filterCount(filter.key) > 99 ? '99+' : filterCount(filter.key) }}
           </span>
         </button>
       </div>
@@ -175,6 +179,8 @@
  */
 import { icon } from '@/utils/icons'
 import type { Chat } from '@/types'
+import { onMounted, nextTick, ref, watch } from 'vue'
+import { canScrollX, scrollEdges, wheelScrollLeft } from '@/utils/hScroll'
 import { avatarStyle, initials } from '@/utils/user'
 import { formatChatTime } from '@/utils/format'
 import {
@@ -199,8 +205,12 @@ const props = defineProps<{
   /** Активный фильтр списка («Все», «Непрочитанные», …). */
   filter: string
   filters: { key: string; title: string }[]
-  /** Сколько чатов с непрочитанными — счётчик на фильтре. */
+  /** Сколько чатов с непрочитанными — счётчик на фильтре «Непрочитанные». */
   unreadCount: number
+  /** Сколько чатов в архиве — счётчик на чипе «Архив» (заодно видно, живой ли он). */
+  archivedCount?: number
+  /** Сколько из архивных чатов с непрочитанными: подсвечиваем счётчик. */
+  archivedUnreadCount?: number
   drafts?: Record<number, string>
   typingChatIds?: number[]
   mutedChatIds?: number[]
@@ -220,6 +230,19 @@ const emit = defineEmits<{
   (e: 'row-pointer-cancel'): void
 }>()
 
+/**
+ * Число в счётчике на чипе.
+ *
+ * «Непрочитанные» — сколько чатов ждут прочтения; «Архив» — сколько архивных
+ * непрочитано (чтобы не пропустить сообщение в убранном чате). У остальных
+ * чипов счётчика нет.
+ */
+const filterCount = (key: string): number => {
+  if (key === 'unread') return props.unreadCount
+  if (key === 'archived') return props.archivedUnreadCount ?? 0
+  return 0
+}
+
 /** Аватар-«книжечка» для «Сохранённых сообщений». */
 const savedStyle: Record<string, string> = {
   background: 'linear-gradient(135deg, #3b82f6, #1e40af)'
@@ -227,6 +250,33 @@ const savedStyle: Record<string, string> = {
 
 const isSelected = (chatId: number): boolean => props.selectedIds.includes(chatId)
 const isMutedOf = (chatId: number): boolean => props.mutedChatIds?.includes(chatId) ?? false
+
+// Ряд фильтров на узких экранах шире панели (шесть чипов не влезают в 320–390 px),
+// поэтому: (1) колесо мыши прокручивает его вбок — иначе до правого края мышью
+// не добраться; (2) затухания по краям показываем только там, где правда есть
+// скрытое — статичная маска прятала текст чипа в конце прокрутки.
+const filtersEl = ref<HTMLElement | null>(null)
+const filterEdges = ref<{ start: boolean; end: boolean }>({ start: false, end: false })
+
+const updateFilterEdges = () => {
+  const el = filtersEl.value
+  if (!el) return
+  filterEdges.value = scrollEdges(el)
+}
+
+const onFiltersWheel = (event: WheelEvent) => {
+  const el = event.currentTarget as HTMLElement
+  if (!canScrollX(el)) return
+  el.scrollLeft = wheelScrollLeft(el, event.deltaX, event.deltaY)
+}
+
+// Число чипов меняется («Архив» появляется после первой архивации, а с ним и
+// переполнение) — пересчитываем края, не дожидаясь прокрутки.
+onMounted(() => void nextTick(updateFilterEdges))
+watch(
+  () => props.filters.length,
+  () => void nextTick(updateFilterEdges)
+)
 </script>
 
 <style scoped>
@@ -240,14 +290,33 @@ const isMutedOf = (chatId: number): boolean => props.mutedChatIds?.includes(chat
 
 .chat-filters {
   display: flex;
-  gap: 5px;
+  gap: 4px;
   padding: 8px 12px 4px;
   overflow-x: auto;
+  /* Прокрутка ряда не должна утаскивать за собой список чатов при достижении края. */
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
-  /* Затухание у правого края: подсказка, что ряд фильтров можно прокрутить
-     (на узких экранах чипы не влезают целиком). Ширина затухания — в пределах
-     бокового отступа, поэтому влезающий ряд не подтемняется. */
+}
+
+/* Затухание у того края, где действительно есть скрытые чипы: это подсказка,
+   что ряд листается (колесом, трекпадом или свайпом). Ширина затухания —
+   в пределах бокового отступа, поэтому влезающий ряд не подтемняется. */
+.chat-filters.fade-end {
   mask-image: linear-gradient(to right, black calc(100% - 10px), transparent);
+}
+
+.chat-filters.fade-start {
+  mask-image: linear-gradient(to right, transparent, black 10px);
+}
+
+.chat-filters.fade-start.fade-end {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 10px,
+    black calc(100% - 10px),
+    transparent
+  );
 }
 
 .chat-filters::-webkit-scrollbar {
@@ -261,7 +330,7 @@ const isMutedOf = (chatId: number): boolean => props.mutedChatIds?.includes(chat
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 9px;
+  padding: 4px 4px;
   border: none;
   border-radius: 11px;
   background: var(--ms-surface-2);
@@ -279,8 +348,8 @@ const isMutedOf = (chatId: number): boolean => props.mutedChatIds?.includes(chat
   font-weight: 600;
 }
 
-/* Сам чип компактный (пять фильтров должны влезать в 390 px), а область
-   нажатия расширена невидимым слоем — палец толще чипа 26 px. */
+/* Сам чип компактный (шесть фильтров должны влезать в 320–390 px), а область
+   нажатия расширена невидимым слоем — палец толще чипа 25 px. */
 .chat-filter::after {
   content: '';
   position: absolute;

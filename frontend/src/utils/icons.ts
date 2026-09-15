@@ -130,6 +130,9 @@ export const ICON_MAP: Record<string, string> = {
   // Telegram (круговое видео в рамке кадра). Такого глифа в Lucide нет, поэтому
   // он нарисован вручную: см. DRAWN_GLYPHS ниже и assets/icons-drawn.css.
   video_message: 'round-video',
+  // Архив: «короб с крышкой». В Lucide такого глифа нет, нарисован вручную —
+  // см. DRAWN_GLYPHS ниже и assets/icons-drawn.css.
+  archive: 'archive',
   mic: 'mic',
   mic_off: 'mic-off',
   volume_up: 'volume-2',
@@ -168,7 +171,7 @@ export const ICON_MAP: Record<string, string> = {
  * Добавили рисованный глиф — впишите его сюда И нарисуйте в icons-drawn.css,
  * иначе иконка отрендерится пустотой (страх в тестах это проверяет).
  */
-export const DRAWN_GLYPHS: ReadonlySet<string> = new Set(['round-video'])
+export const DRAWN_GLYPHS: ReadonlySet<string> = new Set(['round-video', 'archive'])
 
 /** Иконка по умолчанию: если имени нет в мэппинге. */
 const FALLBACK_ICON = 'circle-help'

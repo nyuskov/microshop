@@ -67,6 +67,12 @@
             <q-icon :name="icon('search')" size="19px" />
             <span>Поиск по сообщениям</span>
           </button>
+          <!-- Архив: чат уходит в отдельный чип «Архив» в списке, чтобы не мешать
+               в «Все». Хранится локально (как пины) — это личная настройка вида. -->
+          <button class="ms-dropdown-item" @click="runChatAction('archive')">
+            <q-icon :name="icon('archive')" size="19px" />
+            <span>{{ archived ? 'Из архива' : 'В архив' }}</span>
+          </button>
           <!-- Жалоба и блокировка — требования RuStore для UGC-приложений.
                Доступны только в личных диалогах (в группе нет одного собеседника,
                там жалуются на конкретное сообщение через его действия). -->
@@ -118,6 +124,8 @@ const props = defineProps<{
   e2ee?: boolean
   /** Закреплён ли этот чат в списке диалогов. */
   pinned?: boolean
+  /** Лежит ли этот чат в архиве (меняет подпись пункта меню). */
+  archived?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -127,6 +135,8 @@ const emit = defineEmits<{
   (e: 'open-info'): void
   (e: 'start-call', kind: 'audio' | 'video'): void
   (e: 'toggle-pin'): void
+  /** В архив или обратно. */
+  (e: 'toggle-archive'): void
   /** Жалоба на собеседника (модерация UGC, требование RuStore). */
   (e: 'report-chat'): void
   /** Блокировка собеседника. */
@@ -182,9 +192,10 @@ const toggleChatMenu = () => {
   chatMenuOpen.value = !chatMenuOpen.value
 }
 
-const runChatAction = (action: 'search' | 'report' | 'block') => {
+const runChatAction = (action: 'search' | 'archive' | 'report' | 'block') => {
   chatMenuOpen.value = false
   if (action === 'search') emit('toggle-search')
+  if (action === 'archive') emit('toggle-archive')
   if (action === 'report') emit('report-chat')
   if (action === 'block') emit('block-chat')
 }

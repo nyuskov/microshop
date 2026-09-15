@@ -29,6 +29,15 @@
         <q-icon :name="icon('push_pin')" size="20px" />
       </button>
       <button
+        class="icon-btn"
+        :class="{ on: selectionAllArchived }"
+        :title="selectionAllArchived ? 'Убрать из архива' : 'В архив'"
+        aria-label="В архив/из архива выбранных"
+        @click="emit('bulk-archive')"
+      >
+        <q-icon :name="icon('archive')" size="20px" />
+      </button>
+      <button
         class="icon-btn danger"
         title="Удалить выбранные"
         aria-label="Удалить выбранные"
@@ -159,6 +168,7 @@ const props = defineProps<{
   selectedCount: number
   selectionAllMuted: boolean
   selectionAllPinned: boolean
+  selectionAllArchived: boolean
   allVisibleSelected: boolean
   view: 'chats' | 'contacts'
   expanded: boolean
@@ -171,6 +181,7 @@ const emit = defineEmits<{
   (e: 'exit-selection'): void
   (e: 'bulk-mute'): void
   (e: 'bulk-pin'): void
+  (e: 'bulk-archive'): void
   (e: 'bulk-delete'): void
   (e: 'toggle-select-all'): void
   (e: 'toggle-stories-expand'): void

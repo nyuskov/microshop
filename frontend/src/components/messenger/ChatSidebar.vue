@@ -6,6 +6,7 @@
       :selected-count="selectedIds.length"
       :selection-all-muted="selectionAllMuted"
       :selection-all-pinned="selectionAllPinned"
+      :selection-all-archived="selectionAllArchived"
       :all-visible-selected="allVisibleSelected"
       :view="view"
       :expanded="storiesExpanded"
@@ -15,6 +16,7 @@
       @exit-selection="exitSelection"
       @bulk-mute="onBulkMute"
       @bulk-pin="onBulkPin"
+      @bulk-archive="onBulkArchive"
       @bulk-delete="onBulkDelete"
       @toggle-select-all="toggleSelectAll"
       @toggle-stories-expand="toggleStoriesExpand"
@@ -102,8 +104,10 @@
               :selection-mode="selectionMode"
               :selected-ids="selectedIds"
               :filter="chatFilter"
-              :filters="CHAT_FILTERS"
+              :filters="visibleFilters"
               :unread-count="unreadChatCount"
+              :archived-count="archivedCount"
+              :archived-unread-count="archivedUnreadCount"
               :drafts="drafts"
               :typing-chat-ids="typingChatIds"
               :muted-chat-ids="mutedChatIds"
@@ -189,8 +193,13 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch 
 import { getErrorMessage } from '@/services/errors'
 import { openPrivateChat, type SearchUserResult } from '@/services/chatService'
 import type { Chat, ChatUser, Message } from '@/types'
-import { isGroupChat } from '@/utils/user'
 import { useChatSelection } from '@/composables/useChatSelection'
+import {
+  CHAT_FILTERS,
+  chatMatchesFilter,
+  isChatArchived,
+  type ChatFilterKey
+} from '@/utils/chatFilters'
 import { usePhoneImport } from '@/composables/usePhoneImport'
 import { useSlideDown } from '@/composables/useSlideDown'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
@@ -226,6 +235,8 @@ const props = defineProps<{
   pinnedChatIds?: number[]
   /** id замьюченных чатов (без всплывающих уведомлений). */
   mutedChatIds?: number[]
+  /** id чатов в архиве (архив хранится локально, как пины). */
+  archivedChatIds?: number[]
   /** Сохранённые черновики по id чата (показываются в превью). */
   drafts?: Record<number, string>
   /** Имя и аватар текущего пользователя (кнопка «Настройки профиля»). */
@@ -247,6 +258,7 @@ const emit = defineEmits<{
   (e: 'toggle-mute', chatId: number): void
   (e: 'bulk-mute', chatIds: number[], muted: boolean): void
   (e: 'bulk-pin', chatIds: number[], pinned: boolean): void
+  (e: 'bulk-archive', chatIds: number[], archived: boolean): void
   (e: 'bulk-delete', chatIds: number[]): void
   /** Открыть диалог «Новая группа». */
   (e: 'create-group'): void
@@ -398,6 +410,9 @@ const isPinnedOf = (chatId: number): boolean => props.pinnedChatIds?.includes(ch
 /** Замьючен ли чат. */
 const isMutedOf = (chatId: number): boolean => props.mutedChatIds?.includes(chatId) ?? false
 
+/** В архиве ли чат. */
+const isArchivedOf = (chatId: number): boolean => isChatArchived(chatId, props.archivedChatIds)
+
 // ---------- Режим выделения чатов (long-press; как в Telegram) ----------
 // Вход: удержание на чате (~0,5 с). В режиме выделения клик по чату —
 // отметить/снять; сверху появляется панель действий (мьют/удалить/выбрать все).
@@ -410,9 +425,11 @@ const {
   allVisibleSelected,
   selectionAllMuted,
   selectionAllPinned,
+  selectionAllArchived,
   toggleSelectAll,
   onBulkMute,
   onBulkPin,
+  onBulkArchive,
   onBulkDelete,
   onRowPointerDown,
   onRowPointerUp,
@@ -422,9 +439,11 @@ const {
   visibleChatIds: () => orderedChats.value.map((chat) => chat.id),
   isMuted: (chatId) => isMutedOf(chatId),
   isPinned: (chatId) => isPinnedOf(chatId),
+  isArchived: (chatId) => isArchivedOf(chatId),
   openChat: (chatId) => selectChat(chatId),
   onBulkMute: (ids, muted) => emit('bulk-mute', ids, muted),
   onBulkPin: (ids, pinned) => emit('bulk-pin', ids, pinned),
+  onBulkArchive: (ids, archived) => emit('bulk-archive', ids, archived),
   onBulkDelete: (ids) => emit('bulk-delete', ids)
 })
 
@@ -473,17 +492,7 @@ watch([() => props.view, () => props.selectedChatId], () => {
   if (selectionMode.value) exitSelection()
 })
 
-/** Фильтры списка чатов: все / непрочитанные / личные / группы / каналы. */
-type ChatFilterKey = 'all' | 'unread' | 'private' | 'groups' | 'channels'
-
-const CHAT_FILTERS: { key: ChatFilterKey; title: string }[] = [
-  { key: 'all', title: 'Все' },
-  { key: 'unread', title: 'Непрочитанные' },
-  { key: 'private', title: 'Личные' },
-  { key: 'groups', title: 'Группы' },
-  { key: 'channels', title: 'Каналы' }
-]
-
+/** Фильтры списка чатов — в utils/chatFilters.ts (там же правило про архив). */
 const chatFilter = ref<ChatFilterKey>('all')
 
 /** Сколько чатов с непрочитанными — счётчик на фильтре. */
@@ -491,17 +500,39 @@ const unreadChatCount = computed(
   () => props.chats.filter((chat) => (chat.unread_count ?? 0) > 0).length
 )
 
+/** Сколько чатов в архиве — от этого зависит, показывать ли чип «Архив». */
+const archivedCount = computed(
+  () => props.chats.filter((chat) => isChatArchived(chat.id, props.archivedChatIds)).length
+)
+
+/** Сколько архивных чатов ждут прочтения — счётчик на чипе «Архив». */
+const archivedUnreadCount = computed(
+  () =>
+    props.chats.filter(
+      (chat) => isChatArchived(chat.id, props.archivedChatIds) && (chat.unread_count ?? 0) > 0
+    ).length
+)
+
+/**
+ * Чипы фильтров на экране.
+ *
+ * «Архив» показываем только когда там что-то есть (как в Telegram): пустой чип
+ * лишь занимает место в ряду. Пять остальных видим всегда.
+ */
+const visibleFilters = computed(() =>
+  CHAT_FILTERS.filter((filter) => filter.key !== 'archived' || archivedCount.value > 0)
+)
+
 /** Чаты после фильтра по чипам («Все», «Непрочитанные», «Личные» и т. д.). */
 const filteredChats = computed<Chat[]>(() =>
-  props.chats.filter((chat) => {
-    if (chatFilter.value === 'unread') return (chat.unread_count ?? 0) > 0
-    // Канал — тоже групповой чат, поэтому в «Группах» его не показываем.
-    if (chatFilter.value === 'groups') return isGroupChat(chat) && !chat.is_channel
-    if (chatFilter.value === 'channels') return !!chat.is_channel
-    if (chatFilter.value === 'private') return !isGroupChat(chat)
-    return true
-  })
+  props.chats.filter((chat) => chatMatchesFilter(chat, chatFilter.value, props.archivedChatIds))
 )
+
+// Чип «Архив» исчез (последний чат вынули) — возвращаемся к «Все», иначе список
+// остался бы пустым без единого видимого фильтра.
+watch(archivedCount, (count) => {
+  if (count === 0 && chatFilter.value === 'archived') chatFilter.value = 'all'
+})
 
 /** Чаты для показа: «Сохранённые сообщения», затем закреплённые, затем остальные. */
 const orderedChats = computed<Chat[]>(() => {

@@ -40,6 +40,7 @@
         :typing-chat-ids="typingChatIds"
         :pinned-chat-ids="pinnedChatIds"
         :muted-chat-ids="mutedChatIds"
+        :archived-chat-ids="archivedChatIds"
         :drafts="draftsByChatId"
         :self-name="selfName"
         :self-avatar-url="selfAvatarUrl"
@@ -49,6 +50,7 @@
         @toggle-mute="toggleChatMuted"
         @bulk-mute="bulkSetMuted"
         @bulk-pin="bulkSetPinned"
+        @bulk-archive="bulkSetArchived"
         @bulk-delete="chatOverlaysRef?.openBulkDelete($event)"
         @to-contacts="openContacts"
         @open-story="openStory"
@@ -139,12 +141,14 @@
             :show-back="isPhone"
             :peer-online="selectedChatPeerOnline"
             :pinned="selectedChatPinned"
+            :archived="selectedChatArchived"
             :e2ee="selectedChatE2ee"
             @back="goBackToList"
             @toggle-search="toggleInlineSearch"
             @open-info="openChatInfo"
             @start-call="startCall"
             @toggle-pin="toggleCurrentChatPin"
+            @toggle-archive="toggleCurrentChatArchive"
             @report-chat="openReportForPeer"
             @block-chat="blockSelectedPeer"
           />
@@ -933,6 +937,84 @@ const selectedChatPinned = computed<boolean>(
 const toggleCurrentChatPin = () => {
   const chat = selectedChat.value
   if (chat !== null) toggleChatPinned(chat.id)
+}
+
+// ---------- Архив чатов (личная настройка вида, хранится локально) ----------
+// Зачем: замьюченные/шумные чаты не должны занимать место в «Все», но и терять
+// их не хочется. Архив — отдельный чип в списке (как в Telegram): чат остаётся
+// с историей и уведомлениями, просто живёт в стороне. Так же, как пины, архив
+// хранится в localStorage по id пользователя — сервер об этом не знает.
+const ARCHIVED_CHATS_KEY = 'pismo_archived_chats'
+
+const readArchivedChats = (): number[] => {
+  const uid = currentUserId.value
+  if (uid === null) return []
+  try {
+    const raw = window.localStorage.getItem(ARCHIVED_CHATS_KEY)
+    const all = raw ? (JSON.parse(raw) as Record<string, number[]>) : {}
+    const list = all[String(uid)]
+    return Array.isArray(list) ? list.filter((id) => typeof id === 'number') : []
+  } catch {
+    return []
+  }
+}
+
+const writeArchivedChats = () => {
+  const uid = currentUserId.value
+  if (uid === null) return
+  try {
+    const raw = window.localStorage.getItem(ARCHIVED_CHATS_KEY)
+    const all = raw ? (JSON.parse(raw) as Record<string, number[]>) : {}
+    all[String(uid)] = archivedChatIds.value
+    window.localStorage.setItem(ARCHIVED_CHATS_KEY, JSON.stringify(all))
+  } catch {
+    // localStorage недоступен — архив просто не сохранится.
+  }
+}
+
+const archivedChatIds = ref<number[]>([])
+
+watch(
+  currentUserId,
+  () => {
+    archivedChatIds.value = readArchivedChats()
+  },
+  { immediate: true }
+)
+
+const isChatArchived = (chatId: number): boolean => archivedChatIds.value.includes(chatId)
+
+const toggleChatArchived = (chatId: number) => {
+  const next = new Set(archivedChatIds.value)
+  if (next.has(chatId)) {
+    next.delete(chatId)
+  } else {
+    next.add(chatId)
+  }
+  archivedChatIds.value = Array.from(next)
+  writeArchivedChats()
+}
+
+/** Архивировать/вернуть сразу несколько чатов (режим выделения). */
+const bulkSetArchived = (chatIds: number[], archived: boolean) => {
+  const next = new Set(archivedChatIds.value)
+  chatIds.forEach((id) => {
+    if (archived) next.add(id)
+    else next.delete(id)
+  })
+  archivedChatIds.value = Array.from(next)
+  writeArchivedChats()
+}
+
+/** Лежит ли открытый чат в архиве (подпись пункта меню в шапке). */
+const selectedChatArchived = computed<boolean>(
+  () => selectedChat.value !== null && isChatArchived(selectedChat.value.id)
+)
+
+/** В архив/из архива открытый чат. */
+const toggleCurrentChatArchive = () => {
+  const chat = selectedChat.value
+  if (chat !== null) toggleChatArchived(chat.id)
 }
 
 // ---------- Замьюченные чаты (без push-уведомлений; mute хранится на сервере) ----------
@@ -2710,11 +2792,13 @@ const handleVisibilityForPresence = () => {
  * погаснуть сразу при возврате, а не после перезагрузки страницы. Запрос истории
  * заодно отмечает прочтение на сервере.
  */
-/** Локальная чистка после удаления чата (список/черновик/пин/открытый тред). */
+/** Локальная чистка после удаления чата (список/черновик/пин/архив/открытый тред). */
 const removeDeletedChat = (chat: Chat) => {
   chats.value = chats.value.filter((item) => item.id !== chat.id)
   clearDraftFor(chat.id)
   if (pinnedChatIds.value.includes(chat.id)) toggleChatPinned(chat.id)
+  // Чата больше нет — в архиве ему делать нечего (иначе останется мусорный id).
+  if (archivedChatIds.value.includes(chat.id)) toggleChatArchived(chat.id)
   // Mute снимается на сервере самим удалением/выходом из чата.
   if (selectedChatId.value === chat.id) {
     selectedChatId.value = null

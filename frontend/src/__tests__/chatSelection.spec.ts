@@ -8,19 +8,23 @@ import { useChatSelection, type ChatSelectionDeps } from '@/composables/useChatS
 const makeSelection = (overrides: Partial<ChatSelectionDeps> = {}) => {
   const muted = new Set<number>([2])
   const pinned = new Set<number>([3])
+  const archived = new Set<number>([4])
   const opened: number[] = []
   const bulk: { kind: string; ids: number[]; value?: boolean }[] = []
   const selection = useChatSelection({
     visibleChatIds: () => [1, 2, 3],
     isMuted: (id) => muted.has(id),
     isPinned: (id) => pinned.has(id),
+    isArchived: (id) => archived.has(id),
     openChat: (id) => opened.push(id),
     onBulkMute: (ids, value) => bulk.push({ kind: 'mute', ids, value }),
     onBulkPin: (ids, value) => bulk.push({ kind: 'pin', ids, value }),
+    onBulkArchive: (ids, value) => bulk.push({ kind: 'archive', ids, value }),
     onBulkDelete: (ids) => bulk.push({ kind: 'delete', ids }),
     ...overrides
   })
-  return { selection, opened, bulk }
+  // 4 — чат из архива, его не видно в списке, но он нужен для проверки панели.
+  return { selection, opened, bulk, archived }
 }
 
 beforeEach(() => {
@@ -167,6 +171,28 @@ describe('панель действий', () => {
     expect(bulk).toEqual([{ kind: 'pin', ids: [3], value: false }])
   })
 
+  it('архив: чат ещё в списке — архивируем', () => {
+    const { selection, bulk } = makeSelection()
+
+    hold(selection, 1)
+    expect(selection.selectionAllArchived.value).toBe(false)
+    selection.onBulkArchive()
+
+    expect(bulk).toEqual([{ kind: 'archive', ids: [1], value: true }])
+    expect(selection.selectionMode.value).toBe(false)
+  })
+
+  it('архив: всё выбранное уже в архиве — вынимаем', () => {
+    const { selection, bulk } = makeSelection({ visibleChatIds: () => [1, 2, 4] })
+
+    selection.onRowPointerDown(4)
+    vi.advanceTimersByTime(480)
+    expect(selection.selectionAllArchived.value).toBe(true)
+    selection.onBulkArchive()
+
+    expect(bulk).toEqual([{ kind: 'archive', ids: [4], value: false }])
+  })
+
   it('удаление отдаёт отмеченные чаты и выходит из режима', () => {
     const { selection, bulk } = makeSelection()
 
@@ -184,6 +210,7 @@ describe('панель действий', () => {
 
     selection.onBulkMute()
     selection.onBulkPin()
+    selection.onBulkArchive()
     selection.onBulkDelete()
 
     expect(bulk).toEqual([])

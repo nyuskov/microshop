@@ -7,11 +7,14 @@ export interface ChatSelectionDeps {
   isMuted: (chatId: number) => boolean
   /** Закреплён ли чат. */
   isPinned: (chatId: number) => boolean
+  /** В архиве ли чат (архив хранится локально, как пины). */
+  isArchived: (chatId: number) => boolean
   /** Открыть чат (клик по строке вне режима выделения). */
   openChat: (chatId: number) => void
   /** Действия панели — списки id уводим наружу, чтобы стор и API жили в одном месте. */
   onBulkMute: (ids: number[], muted: boolean) => void
   onBulkPin: (ids: number[], pinned: boolean) => void
+  onBulkArchive: (ids: number[], archived: boolean) => void
   onBulkDelete: (ids: number[]) => void
   /** Сколько держать строку, чтобы войти в режим выделения (мс). */
   holdMs?: number
@@ -33,9 +36,12 @@ export interface ChatSelection {
   selectionAllMuted: ComputedRef<boolean>
   /** Все отмеченные чаты закреплены. */
   selectionAllPinned: ComputedRef<boolean>
+  /** Все отмеченные чаты в архиве (тогда панель покажет «Из архива»). */
+  selectionAllArchived: ComputedRef<boolean>
   toggleSelectAll: () => void
   onBulkMute: () => void
   onBulkPin: () => void
+  onBulkArchive: () => void
   onBulkDelete: () => void
   /** Строка списка: удержание открывает режим выделения, клик — выбор/отметку. */
   onRowPointerDown: (chatId: number) => void
@@ -137,6 +143,11 @@ export function useChatSelection(deps: ChatSelectionDeps): ChatSelection {
     return selectedIds.value.every((id) => deps.isPinned(id))
   })
 
+  const selectionAllArchived = computed<boolean>(() => {
+    if (selectedIds.value.length === 0) return false
+    return selectedIds.value.every((id) => deps.isArchived(id))
+  })
+
   const toggleSelectAll = () => {
     if (allVisibleSelected.value) {
       exitSelection()
@@ -169,6 +180,20 @@ export function useChatSelection(deps: ChatSelectionDeps): ChatSelection {
     deps.onBulkDelete(ids)
   }
 
+  /**
+   * В архив или из архива.
+   *
+   * Как у мьюта и пина: если всё выбранное уже в архиве — действие возвращает
+   * чаты обратно, иначе архивирует. Иначе из архива не было бы выхода пачкой.
+   */
+  const onBulkArchive = () => {
+    const ids = [...selectedIds.value]
+    if (ids.length === 0) return
+    const archived = !selectionAllArchived.value
+    exitSelection()
+    deps.onBulkArchive(ids, archived)
+  }
+
   return {
     selectionMode,
     selectedIds,
@@ -179,9 +204,11 @@ export function useChatSelection(deps: ChatSelectionDeps): ChatSelection {
     allVisibleSelected,
     selectionAllMuted,
     selectionAllPinned,
+    selectionAllArchived,
     toggleSelectAll,
     onBulkMute,
     onBulkPin,
+    onBulkArchive,
     onBulkDelete,
     onRowPointerDown,
     onRowPointerUp,
