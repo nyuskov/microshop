@@ -189,8 +189,9 @@ html .q-field--outlined .q-field__control {
     max-height: none;
 }
 
-/* Прозрачный подложка бэкдропа диалога в тёмной теме */
-html[data-theme='dark'] .q-dialog__backdrop {
+/* Прозрачный подложка бэкдропа диалога в тёмных темах */
+html[data-theme='dark'] .q-dialog__backdrop,
+html[data-theme='amoled'] .q-dialog__backdrop {
     background: rgba(0, 0, 0, 0.6);
 }
 

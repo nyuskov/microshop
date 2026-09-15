@@ -15,6 +15,29 @@
           <span>{{ opt.label }}</span>
         </button>
       </div>
+
+      <!-- Чёрный фон (AMOLED) — не четвёртая тема в ряду, а уточнение тёмной:
+           на OLED-экране чёрный пиксель не светится. Поэтому тумблер, который
+           гасится в светлой теме — там чёрный фон смысла не имеет. -->
+      <div class="toggle-row" :class="{ 'toggle-row-off': !themeStore.darkActive }">
+        <div class="toggle-text">
+          <span class="toggle-name">Чёрный фон (AMOLED)</span>
+          <span class="toggle-desc">
+            {{
+              themeStore.darkActive
+                ? 'Чистый чёрный вместо тёмно-серого — экономит заряд на OLED'
+                : 'Доступно в тёмной теме'
+            }}
+          </span>
+        </div>
+        <q-toggle
+          :model-value="themeStore.amoled"
+          color="primary"
+          keep-color
+          :disable="!themeStore.darkActive"
+          @update:model-value="themeStore.setAmoled(!!$event)"
+        />
+      </div>
     </section>
 
     <!-- Акцентный цвет -->
@@ -229,6 +252,36 @@ const onReset = () => {
   margin: 0;
   font-size: 12px;
   color: var(--ms-muted, #71808d);
+}
+
+/* Тумблер AMOLED: уточнение тёмной темы, поэтому в светлой он неактивен и
+   приглушён — но остаётся на виду, иначе про настройку никто не узнает. */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.toggle-row-off {
+  opacity: 0.6;
+}
+
+.toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.toggle-name {
+  font-size: var(--ms-fs-base, 14.5px);
+  color: var(--ms-text);
+}
+
+.toggle-desc {
+  font-size: var(--ms-fs-sm, 12.5px);
+  color: var(--ms-muted);
 }
 
 .opt-pill {

@@ -11,6 +11,7 @@
     class="msg"
     :class="[
       isOwn ? 'out' : 'in',
+      `series-${props.series ?? 'single'}`,
       { 'msg-highlight': highlighted, selection: selectionMode, selected, 'msg-media': !!file }
     ]"
     :data-message-id="message.id"
@@ -215,6 +216,7 @@ import { highlightQuery, splitMessageText } from '@/utils/mentions'
 import { followLink } from '@/composables/useExternalLinkGuard'
 import { useVisibleOnce } from '@/composables/useVisibleOnce'
 import { callMessageIcon, callMessageText, effectiveFile, isRoundVideoOnly } from '@/utils/media'
+import type { SeriesKind } from '@/utils/thread'
 import LinkPreviewCard from '@/components/messenger/LinkPreviewCard.vue'
 import MessageActionSheet from '@/components/messenger/MessageActionSheet.vue'
 import MessageActionsBar from '@/components/messenger/MessageActionsBar.vue'
@@ -300,6 +302,11 @@ const props = defineProps<{
   selectable: boolean
   /** Имя автора (для групповых чатов; пусто — не показывать). */
   authorName?: string
+  /**
+   * Место сообщения в серии подряд идущих сообщений одного автора
+   * (utils/thread.ts::seriesKindFor): от него зависит форма пузыря.
+   */
+  series?: SeriesKind
   /**
    * Запрос поиска по сообщениям: совпадения подсвечиваются в тексте.
    * Пусто — обычный показ (поиск закрыт).
@@ -604,12 +611,31 @@ const onDoubleTap = (): void => {
 
 .msg.out .msg-bubble {
   background: var(--ms-bubble-out);
-  border-top-right-radius: 3px;
 }
 
 .msg.in .msg-bubble {
   background: var(--ms-surface);
+}
+
+/* «Серия» — несколько сообщений одного автора подряд.
+   Срезанный угол остаётся только у ПЕРВОГО пузыря серии: он отмечает начало
+   блока. Если оставить срез на каждом (как было), подряд идущие сообщения
+   дают частокол одинаковых срезов, и граница серии не читается. */
+.msg.out.series-first .msg-bubble,
+.msg.out.series-single .msg-bubble {
+  border-top-right-radius: 3px;
+}
+
+.msg.in.series-first .msg-bubble,
+.msg.in.series-single .msg-bubble {
   border-top-left-radius: 3px;
+}
+
+/* Продолжение серии прижимается к предыдущему пузырю (базовый отступ строки —
+   3px): вместе с общими скруглениями серия читается как один блок. */
+.msg.series-middle,
+.msg.series-last {
+  margin-top: 1px;
 }
 
 /* Имя автора в групповом чате (в начале «серии» сообщений собеседника) */

@@ -28,13 +28,22 @@
         :disabled="busy"
       />
 
-      <label class="invites-label gap" for="invite-days">Срок действия</label>
-      <select id="invite-days" v-model.number="expiresDays" class="invites-field" :disabled="busy">
-        <option :value="null">Бессрочно</option>
-        <option :value="1">1 день</option>
-        <option :value="7">7 дней</option>
-        <option :value="30">30 дней</option>
-      </select>
+      <span id="invite-days" class="invites-label gap">Срок действия</span>
+      <div class="invites-chips" role="radiogroup" aria-labelledby="invite-days">
+        <button
+          v-for="option in EXPIRY_OPTIONS"
+          :key="String(option.days)"
+          type="button"
+          class="invites-chip"
+          :class="{ active: expiresDays === option.days }"
+          role="radio"
+          :aria-checked="expiresDays === option.days"
+          :disabled="busy"
+          @click="expiresDays = option.days"
+        >
+          {{ option.label }}
+        </button>
+      </div>
 
       <button class="invites-btn primary" type="button" :disabled="busy" @click="createInvite">
         <q-icon :name="icon('add')" size="17px" />
@@ -154,7 +163,23 @@ const created = ref<RegistrationInvite | null>(null)
 
 const phone = ref('')
 const note = ref('')
+/**
+ * Срок действия ссылки в днях (`null` — бессрочно).
+ *
+ * Выбирается чипами, а не родным списком браузера: его рисует сам браузер
+ * (в WebView и при нестандартном масштабе — системным окошком далеко от поля,
+ * на это и жаловался пользователь), а чипы всегда на месте, видны целиком и
+ * выбираются одним касанием.
+ */
 const expiresDays = ref<number | null>(null)
+
+/** Варианты срока действия ссылки: дни и подпись. */
+const EXPIRY_OPTIONS: { days: number | null; label: string }[] = [
+  { days: null, label: 'Бессрочно' },
+  { days: 1, label: '1 день' },
+  { days: 7, label: '7 дней' },
+  { days: 30, label: '30 дней' }
+]
 
 const canShare = computed(
   () => typeof navigator !== 'undefined' && typeof navigator.share === 'function'
@@ -330,6 +355,42 @@ async function share(link: string) {
 .invites-field:focus-visible {
   outline: 2px solid var(--ms-accent);
   outline-offset: 1px;
+}
+
+/* Срок действия — чипами (см. комментарий у EXPIRY_OPTIONS). */
+.invites-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.invites-chip {
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ms-muted);
+  background: var(--ms-surface-2);
+  border: 1px solid var(--ms-border);
+  border-radius: 11px;
+  cursor: pointer;
+}
+
+.invites-chip:hover {
+  color: var(--ms-text);
+  background: var(--ms-hover);
+}
+
+.invites-chip.active {
+  background: var(--ms-accent-soft);
+  border-color: var(--ms-accent-border);
+  color: var(--ms-accent);
+  font-weight: 600;
+}
+
+.invites-chip:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .invites-row {

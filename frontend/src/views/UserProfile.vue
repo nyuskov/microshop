@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
-import { reactive, ref, watch, computed } from 'vue'
+import { reactive, ref, watch, computed, nextTick } from 'vue'
 import { useAuthStore, type AuthSession as AuthSessionRow } from '@/stores/auth'
 import { getErrorMessage } from '@/services/errors'
 import { parseServerTime } from '@/utils/format'
@@ -8,6 +8,14 @@ import { removeAvatar, uploadAvatar } from '@/services/api'
 import { mediaUrl } from '@/services/chatService'
 import { optimizeAvatarFile } from '@/utils/media'
 import { formatPhoneForBackend, localPhoneDigits, maskPhoneLocal } from '@/utils/phone'
+import {
+  caretAfterDateDigits,
+  dateDigits,
+  dateToIso,
+  isoToDateMask,
+  maskDate,
+  validateBirthDate
+} from '@/utils/dateInput'
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
 import { profileLinkFor } from '@/utils/profileLink'
 import {
@@ -27,6 +35,7 @@ import {
 } from '@/services/securityLog'
 import { PASSWORD_MIN_LENGTH, passwordProblem, passwordStrength } from '@/utils/passwordPolicy'
 import DeleteAccountDialog from '@/components/messenger/DeleteAccountDialog.vue'
+import SelectField from '@/components/common/SelectField.vue'
 import InvitesSettings from '@/components/messenger/InvitesSettings.vue'
 import AppearanceSettings from '@/views/AppearanceSettings.vue'
 
@@ -58,6 +67,22 @@ const COUNTRIES = [
   { code: 'DE', name: 'Германия' },
   { code: 'ES', name: 'Испания' },
   { code: 'FR', name: 'Франция' }
+]
+
+/**
+ * Варианты для выпадающих списков «Язык» и «Страна».
+ *
+ * Пустое значение стоит вариантом в списке (а не плейсхолдером): человек должен
+ * уметь снять выбор, как это было в родном списке («Не выбран»/«Не выбрана»).
+ */
+const LANGUAGE_OPTIONS = [
+  { value: '', label: 'Не выбран' },
+  ...LANGUAGES.map((lang) => ({ value: lang.code, label: lang.name }))
+]
+
+const COUNTRY_OPTIONS = [
+  { value: '', label: 'Не выбрана' },
+  ...COUNTRIES.map((country) => ({ value: country.code, label: country.name }))
 ]
 
 interface ProfileForm {
@@ -102,7 +127,8 @@ watch(
     profileForm.email = user.email ?? ''
     profileForm.status = user.status ?? ''
     profileForm.bio = profile?.bio ?? ''
-    profileForm.birth_date = profile?.birth_date ?? ''
+    // Дата хранится как ISO (YYYY-MM-DD), а в поле показывается маской ДД.ММ.ГГГГ.
+    profileForm.birth_date = isoToDateMask(profile?.birth_date)
     profileForm.language = profile?.language ?? ''
     profileForm.country = profile?.country ?? ''
     profileForm.notifications_enabled = profile?.notifications_enabled ?? true
@@ -764,8 +790,45 @@ const phoneFieldValue = computed<string>(() =>
   profileForm.phone_number ? maskPhoneLocal(localPhoneDigits(profileForm.phone_number)) : ''
 )
 
+// ---------- Дата рождения ----------
+/** Подсказка-ошибка под полем даты ('' — всё в порядке). */
+const birthError = ref('')
+
+/**
+ * Ввод даты: маска ставит точки, каретка идёт за цифрами.
+ *
+ * Позицию считаем по цифрам СЛЕВА от каретки (как в поле телефона): иначе при
+ * правке в середине строки каретка уезжала бы в конец. Точки добавляются к
+ * позиции — их вставляет сама маска.
+ */
+const onBirthInput = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const caret = input.selectionStart ?? input.value.length
+  const digitsBefore = dateDigits(input.value.slice(0, caret)).length
+  const digits = dateDigits(input.value)
+  profileForm.birth_date = maskDate(digits)
+  // Пока дату не добили — не ругаемся, но проверяем сразу, когда цифр хватает.
+  birthError.value = digits.length === 8 ? (validateBirthDate(digits) ?? '') : ''
+  const position = caretAfterDateDigits(Math.min(digitsBefore, digits.length))
+  void nextTick(() => input.setSelectionRange(position, position))
+}
+
+/** Уход из поля: если дата неполная — объясняем, что именно набрать. */
+const onBirthBlur = () => {
+  birthError.value = validateBirthDate(profileForm.birth_date) ?? ''
+}
+
 const updateProfile = async () => {
   if (saving.value) return
+
+  // Дата в поле — маска ДД.ММ.ГГГГ, на сервер уходит ISO. Неполную/невозможную
+  // дату не отправляем, а показываем, что поправить (сервер такую тоже отвергнет).
+  const birthProblem = validateBirthDate(profileForm.birth_date)
+  if (birthProblem) {
+    birthError.value = birthProblem
+    return
+  }
+  birthError.value = ''
 
   saving.value = true
   success.value = false
@@ -781,7 +844,7 @@ const updateProfile = async () => {
 
   const profileData = {
     bio: profileForm.bio.trim() || null,
-    birth_date: profileForm.birth_date || null,
+    birth_date: dateToIso(profileForm.birth_date) || null,
     language: profileForm.language || null,
     country: profileForm.country || null,
     notifications_enabled: profileForm.notifications_enabled,
@@ -1109,25 +1172,44 @@ const onNotificationsToggle = async (val: boolean) => {
             </div>
             <div class="field">
               <label for="pf-birth">Дата рождения</label>
-              <input id="pf-birth" v-model="profileForm.birth_date" type="date" />
+              <!-- Маска ДД.ММ.ГГГГ вместо `<input type="date">`: календарь рисует
+                   браузер, и в WebView он открывается системным окном далеко от
+                   поля (жалоба 15.09.2026). -->
+              <input
+                id="pf-birth"
+                type="text"
+                inputmode="numeric"
+                autocomplete="bday"
+                placeholder="ДД.ММ.ГГГГ"
+                maxlength="10"
+                :value="profileForm.birth_date"
+                :aria-invalid="birthError ? 'true' : undefined"
+                :aria-describedby="birthError ? 'pf-birth-error' : undefined"
+                @input="onBirthInput"
+                @blur="onBirthBlur"
+              />
+              <p v-if="birthError" id="pf-birth-error" class="field-problem">
+                {{ birthError }}
+              </p>
             </div>
             <div class="field">
               <label for="pf-lang">Язык</label>
-              <select id="pf-lang" v-model="profileForm.language">
-                <option value="">Не выбран</option>
-                <option v-for="lang in LANGUAGES" :key="lang.code" :value="lang.code">
-                  {{ lang.name }}
-                </option>
-              </select>
+              <SelectField
+                id="pf-lang"
+                v-model="profileForm.language"
+                :options="LANGUAGE_OPTIONS"
+                aria-label="Язык"
+              />
             </div>
             <div class="field">
               <label for="pf-country">Страна</label>
-              <select id="pf-country" v-model="profileForm.country">
-                <option value="">Не выбрана</option>
-                <option v-for="country in COUNTRIES" :key="country.code" :value="country.code">
-                  {{ country.name }}
-                </option>
-              </select>
+              <SelectField
+                id="pf-country"
+                v-model="profileForm.country"
+                :options="COUNTRY_OPTIONS"
+                searchable
+                aria-label="Страна"
+              />
             </div>
           </div>
         </section>
@@ -2626,6 +2708,14 @@ const onNotificationsToggle = async (val: boolean) => {
   margin: 4px 0 0;
   font-size: 12px;
   color: var(--ms-muted-2);
+}
+
+/* Ошибка под полем (дата рождения): тот же ритм, что у подсказки, но цветом
+   опасности — рядом с полем, а не общей плашкой внизу формы. */
+.field-problem {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--ms-danger);
 }
 
 /* Поле пароля с «глазком»: кнопка лежит поверх инпута справа. */

@@ -14,7 +14,10 @@
       (mode === 'system' &&
         window.matchMedia &&
         window.matchMedia('(prefers-color-scheme: dark)').matches)
-    root.setAttribute('data-theme', dark ? 'dark' : 'light')
+    // Чёрный фон (AMOLED, хранится флагом `amoled`) — уточнение тёмной темы:
+    // в светлой схеме флаг ничего не меняет (как и в store).
+    var theme = dark && stored.amoled ? 'amoled' : dark ? 'dark' : 'light'
+    root.setAttribute('data-theme', theme)
     var accents = {
       green: '#2ea25e',
       blue: '#2f7fd1',
@@ -29,7 +32,14 @@
     if (stored.bubbleKey) root.setAttribute('data-bubble', stored.bubbleKey)
     var themeColor = document.querySelector('meta[name="theme-color"]')
     if (themeColor)
-      themeColor.setAttribute('content', dark ? '#10151c' : accents[stored.accentKey] || '#2ea25e')
+      themeColor.setAttribute(
+        'content',
+        theme === 'amoled'
+          ? '#000000'
+          : theme === 'dark'
+            ? '#10151c'
+            : accents[stored.accentKey] || '#2ea25e'
+      )
   } catch (e) {
     /* невалидный localStorage — пропускаем */
   }

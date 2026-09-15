@@ -194,6 +194,29 @@
   min-width: 0;
 }
 
+/* Галочка «последнее сообщение моё» и отметка о звонке.
+   Раньше `.tick` был объявлен в scoped-стилях ChatSidebar, а разметка строки
+   переехала в ChatList.vue — на её элементы чужой scope-атрибут не действует, и
+   галочка рисовалась цветом и размером обычного текста превью. */
+.ms-rows .row-sub .tick {
+  font-size: 0.85rem;
+  color: var(--ms-tick);
+  flex-shrink: 0;
+}
+
+/* Отметка о звонке: иконка показывает, что был звонок и чем он закончился.
+   Пропущенный и отклонённый — «тревожным» цветом: это то, на что человеку
+   надо отреагировать (единственный красный элемент списка). */
+.ms-rows .row-sub .call-mark {
+  font-size: 0.9rem;
+  color: var(--ms-muted-2);
+  flex-shrink: 0;
+}
+
+.ms-rows .row-sub .call-mark.missed {
+  color: var(--ms-danger);
+}
+
 .ms-rows .unread-badge {
   background: var(--ms-accent);
   color: var(--ms-on-accent);

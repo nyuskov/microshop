@@ -142,10 +142,21 @@
     --ms-call-fg: #ffffff;
     --ms-call-ring: rgba(255, 255, 255, 0.15);
     --ms-call-danger: #e5484d;
+    /* Поля и списки внутри панели звонка (камера/микрофон/динамик): стеклянная
+       подложка, её рамка и приглушённый текст. Тоже одинаковы в обеих темах —
+       панель лежит поверх видео. */
+    --ms-call-surface: rgba(255, 255, 255, 0.08);
+    --ms-call-surface-hover: rgba(255, 255, 255, 0.16);
+    --ms-call-border: rgba(255, 255, 255, 0.18);
+    --ms-call-muted: rgba(255, 255, 255, 0.65);
 }
 
-/* ---------- Токены: тёмная тема ---------- */
-html[data-theme='dark'] {
+/* ---------- Токены: тёмная тема ----------
+   AMOLED (блок ниже) — уточнение тёмной темы, а не отдельный набор значений:
+   селекторы идут списком, поэтому тёмные токены достаются обеим темам, а
+   AMOLED переопределяет только поверхности. */
+html[data-theme='dark'],
+html[data-theme='amoled'] {
     /* Нативные контролы/скроллбары — тёмные */
     color-scheme: dark;
 
@@ -203,6 +214,28 @@ html[data-theme='dark'] {
     --ms-tooltip-text: #141d26;
 }
 
+/* ---------- Токены: AMOLED ----------
+   Смысл темы: на OLED-экране чёрный пиксель не светится, поэтому фон окна и
+   ленты — чистый чёрный. «Поднятые» поверхности (панели, карточки, поля)
+   оставлены чуть светлее чёрного: иначе они сливаются с фоном и пропадает
+   иерархия (грабли амолед-тем — «всё одной плоской чернотой»).
+   Текст, акцент, пузыри и тени наследуются от тёмной темы: её цвета подобраны
+   под тёмный фон, а на более тёмном фоне контраст только растёт
+   (тема прогоняется через scripts/check-contrast.mjs). */
+html[data-theme='amoled'] {
+    /* Нативные контролы/скроллбары — тёмные (в `:root` объявлен light) */
+    color-scheme: dark;
+
+    --ms-shell: #000000;
+    --ms-body: #000000;
+    --ms-surface: #0a0a0a;
+    --ms-surface-2: #151515;
+    --ms-hover: #1c1c1c;
+    --ms-border: #262626;
+
+    --ms-chat-bg: #000000;
+}
+
 /* ---------- Цвет исходящих сообщений (светлая тема) ---------- */
 html[data-bubble='blue'] {
     --ms-bubble-out: #cfe6f9;
@@ -228,28 +261,37 @@ html[data-bubble='orange'] {
     --ms-bubble-out: #fee3c8;
 }
 
-/* Тёмная тема: исходящие пузыри — тёмные оттенки выбранного цвета */
-html[data-theme='dark'][data-bubble='blue'] {
+/* Тёмные темы: исходящие пузыри — тёмные оттенки выбранного цвета.
+   AMOLED стоит в списке, потому что в тёмной теме пузырь должен быть чуть
+   светлее фона: если здесь его не переопределить, вернулось бы светлое
+   значение из блока выше и в чёрной теме появился бы светлый пузырь. */
+html[data-theme='dark'][data-bubble='blue'],
+html[data-theme='amoled'][data-bubble='blue'] {
     --ms-bubble-out: color-mix(in srgb, #2f8fd6 30%, #111820);
 }
 
-html[data-theme='dark'][data-bubble='lilac'] {
+html[data-theme='dark'][data-bubble='lilac'],
+html[data-theme='amoled'][data-bubble='lilac'] {
     --ms-bubble-out: color-mix(in srgb, #8b6ce0 30%, #111820);
 }
 
-html[data-theme='dark'][data-bubble='pink'] {
+html[data-theme='dark'][data-bubble='pink'],
+html[data-theme='amoled'][data-bubble='pink'] {
     --ms-bubble-out: color-mix(in srgb, #e06aa6 30%, #111820);
 }
 
-html[data-theme='dark'][data-bubble='peach'] {
+html[data-theme='dark'][data-bubble='peach'],
+html[data-theme='amoled'][data-bubble='peach'] {
     --ms-bubble-out: color-mix(in srgb, #ee8a3d 30%, #111820);
 }
 
-html[data-theme='dark'][data-bubble='orange'] {
+html[data-theme='dark'][data-bubble='orange'],
+html[data-theme='amoled'][data-bubble='orange'] {
     --ms-bubble-out: color-mix(in srgb, #f08618 30%, #111820);
 }
 
-html[data-theme='dark'][data-bubble='mint'] {
+html[data-theme='dark'][data-bubble='mint'],
+html[data-theme='amoled'][data-bubble='mint'] {
     --ms-bubble-out: color-mix(in srgb, #12a58e 30%, #111820);
 }
 

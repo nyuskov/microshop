@@ -27,7 +27,7 @@ const base: BackSnapshot = {
   previousView: undefined,
   chatOpen: false,
   drawerOpen: true,
-  isDesktop: false
+  twoPane: false
 }
 
 const step = (patch: Partial<BackSnapshot> = {}) => decideBackStep({ ...base, ...patch })
@@ -62,10 +62,10 @@ describe('decideBackStep', () => {
     ).toEqual({ kind: 'section', section: 'contacts', showList: true })
   })
 
-  it('на десктопе drawer не трогаем — раздел и так виден', () => {
+  it('в двухпанельном режиме drawer не трогаем — раздел и так виден', () => {
     expect(
       step({
-        isDesktop: true,
+        twoPane: true,
         currentView: 'chats',
         previousView: 'contacts',
         chatOpen: true,

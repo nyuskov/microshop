@@ -1,6 +1,12 @@
 import type { Chat, ChatUser, Message } from '@/types'
 import { isEncryptedPayload } from '@/services/e2ee'
-import { isLockedFile, lockedFileLabel, mediaTypeLabel } from '@/utils/media'
+import {
+  callMessageIcon,
+  callMessageText,
+  isLockedFile,
+  lockedFileLabel,
+  mediaTypeLabel
+} from '@/utils/media'
 import { plainMessageText } from '@/utils/mentions'
 import {
   avatarUrlOf,
@@ -72,8 +78,31 @@ const lastMessageAuthor = (chat: Chat, message: Message): ChatUser | undefined =
   chat.users.find((user) => user.id === message.user_id)
 
 /**
+ * Отметка о звонке для строки списка: иконка и «тревожный» тон.
+ *
+ * В строке превью иконка вместо эмодзи (как у галочек и колокольчика «без
+ * звука»): `call_missed`/`call_end` рисуются красным, потому что пропущенный
+ * звонок — то, на что человеку надо отреагировать.
+ * Возвращает null, если последнее сообщение — не звонок.
+ */
+export interface PreviewCall {
+  /** Логическое имя иконки (см. utils/icons.ts). */
+  icon: string
+  /** Пропущенный/отклонённый — рисуем акцентом «обрати внимание». */
+  missed: boolean
+}
+
+export const previewCallOf = (message: Message | null | undefined): PreviewCall | null => {
+  if (!message || message.kind !== 'call') return null
+  return {
+    icon: callMessageIcon(message),
+    missed: message.call_state === 'missed' || message.call_state === 'declined'
+  }
+}
+
+/**
  * Текст превью последнего сообщения: «Вы: », имя автора в группе, пометка
- * пересылки, тип вложения вместо текста.
+ * пересылки, тип вложения или запись о звонке вместо текста.
  */
 export const previewText = (chat: Chat, currentUserId: number | null): string => {
   const last = chat.last_message
@@ -90,7 +119,21 @@ export const previewText = (chat: Chat, currentUserId: number | null): string =>
     const author = lastMessageAuthor(chat, last)
     if (author) prefix = `${displayName(author)}: `
   }
-  const body = last.file ? mediaTypeLabel(last.file) : plainMessageText(last.text)
+  const body = lastBody(last)
   if (last.forwarded_from) return `${prefix}↪ Переслано: ${body}`
   return `${prefix}${body}`
+}
+
+/**
+ * Содержимое превью без префикса: запись о звонке, вложение или текст.
+ *
+ * ГРАБЛЯ (поймано пользователем 15.09.2026): у сообщения-звонка `text` пустой
+ * (сервер пишет `text=""`, см. `api_v1/calls/views.py::_persist_call_record`),
+ * и в списке чатов превью было ПУСТЫМ — по строке нельзя было понять, что был
+ * звонок, какой (аудио/видео) и чем закончился. Здесь звонок разбирается так же,
+ * как в цитатах и закреплённых (`utils/media.ts::messageSnippet`).
+ */
+const lastBody = (message: Message): string => {
+  if (message.kind === 'call') return callMessageText(message) ?? 'Звонок'
+  return message.file ? mediaTypeLabel(message.file) : plainMessageText(message.text)
 }

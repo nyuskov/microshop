@@ -325,58 +325,42 @@
                 </div>
               </div>
 
-              <!-- Настройки устройств звонка -->
+              <!-- Настройки устройств звонка. Списки — свои (SelectField), а не
+                   родные <select>: системное окно браузера открывается далеко от
+                   поля (жалоба 15.09.2026). -->
               <div v-if="settingsOpen" class="call-settings">
-                <label v-if="callStore.cameras.length" class="settings-row">
+                <div v-if="callStore.cameras.length" class="settings-row">
                   <span class="settings-label">Камера</span>
-                  <select
-                    class="settings-select"
-                    :value="callStore.selectedCamera"
-                    @change="onCameraChange($event)"
-                  >
-                    <option
-                      v-for="cam in callStore.cameras"
-                      :key="cam.deviceId"
-                      :value="cam.deviceId"
-                    >
-                      {{ cam.label || 'Камера' }}
-                    </option>
-                  </select>
-                </label>
+                  <SelectField
+                    :model-value="callStore.selectedCamera"
+                    :options="cameraOptions"
+                    variant="call"
+                    aria-label="Камера"
+                    @update:model-value="onCameraPick"
+                  />
+                </div>
 
-                <label v-if="callStore.microphones.length" class="settings-row">
+                <div v-if="callStore.microphones.length" class="settings-row">
                   <span class="settings-label">Микрофон</span>
-                  <select
-                    class="settings-select"
-                    :value="callStore.selectedMic"
-                    @change="onMicChange($event)"
-                  >
-                    <option
-                      v-for="mic in callStore.microphones"
-                      :key="mic.deviceId"
-                      :value="mic.deviceId"
-                    >
-                      {{ mic.label || 'Микрофон' }}
-                    </option>
-                  </select>
-                </label>
+                  <SelectField
+                    :model-value="callStore.selectedMic"
+                    :options="micOptions"
+                    variant="call"
+                    aria-label="Микрофон"
+                    @update:model-value="onMicPick"
+                  />
+                </div>
 
-                <label v-if="callStore.speakers.length && canSelectSpeaker" class="settings-row">
+                <div v-if="callStore.speakers.length && canSelectSpeaker" class="settings-row">
                   <span class="settings-label">Звук</span>
-                  <select
-                    class="settings-select"
-                    :value="callStore.selectedSpeaker"
-                    @change="onSpeakerChange($event)"
-                  >
-                    <option
-                      v-for="spk in callStore.speakers"
-                      :key="spk.deviceId"
-                      :value="spk.deviceId"
-                    >
-                      {{ spk.label || 'Динамик' }}
-                    </option>
-                  </select>
-                </label>
+                  <SelectField
+                    :model-value="callStore.selectedSpeaker"
+                    :options="speakerOptions"
+                    variant="call"
+                    aria-label="Звук"
+                    @update:model-value="onSpeakerPick"
+                  />
+                </div>
 
                 <p
                   v-if="!callStore.cameras.length && !callStore.microphones.length"
@@ -416,6 +400,7 @@ import { icon } from '@/utils/icons'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { screenShareSupport, useCallStore } from '@/stores/call'
 import { mediaUrl } from '@/services/chatService'
+import SelectField from '@/components/common/SelectField.vue'
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
 
 const callStore = useCallStore()
@@ -593,19 +578,24 @@ const canSelectSpeaker = computed(
   () => typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype
 )
 
-const onCameraChange = (event: Event) => {
-  const value = (event.target as HTMLSelectElement).value
-  void callStore.setCameraDevice(value)
-}
+const onCameraPick = (deviceId: string) => void callStore.setCameraDevice(deviceId)
 
-const onMicChange = (event: Event) => {
-  const value = (event.target as HTMLSelectElement).value
-  void callStore.setMicDevice(value)
-}
+const onMicPick = (deviceId: string) => void callStore.setMicDevice(deviceId)
 
-const onSpeakerChange = (event: Event) => {
-  callStore.setSpeakerDevice((event.target as HTMLSelectElement).value)
-}
+const onSpeakerPick = (deviceId: string) => callStore.setSpeakerDevice(deviceId)
+
+/** Варианты для списков устройств (значение — deviceId, подпись — имя устройства). */
+const cameraOptions = computed(() =>
+  callStore.cameras.map((cam) => ({ value: cam.deviceId, label: cam.label || 'Камера' }))
+)
+
+const micOptions = computed(() =>
+  callStore.microphones.map((mic) => ({ value: mic.deviceId, label: mic.label || 'Микрофон' }))
+)
+
+const speakerOptions = computed(() =>
+  callStore.speakers.map((spk) => ({ value: spk.deviceId, label: spk.label || 'Динамик' }))
+)
 
 /** Направляет звук на выбранный динамик (Safari/iOS не поддерживают — молча пропускаем). */
 const applySink = () => {
@@ -1203,21 +1193,6 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   letter-spacing: 0.4px;
   color: rgba(255, 255, 255, 0.6);
-}
-
-.settings-select {
-  width: 100%;
-  padding: 8px 10px;
-  border-radius: 9px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-  font-size: 13.5px;
-  font-family: inherit;
-}
-
-.settings-select option {
-  color: #10161e;
 }
 
 .settings-hint {

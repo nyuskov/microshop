@@ -1,9 +1,19 @@
 <template>
-  <q-card class="grp-info-card">
+  <q-card class="grp-info-card" :class="{ 'is-panel': panel }">
     <q-card-section class="row no-wrap items-center grp-info-head">
       <div class="text-subtitle1 text-weight-medium ellipsis">Информация о группе</div>
       <q-space />
-      <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
+      <!-- В панели (широкий экран) закрывать q-popup нечего — только событие. -->
+      <q-btn
+        v-if="panel"
+        flat
+        round
+        dense
+        icon="close"
+        aria-label="Закрыть"
+        @click="emit('close')"
+      />
+      <q-btn v-else flat round dense icon="close" v-close-popup aria-label="Закрыть" />
     </q-card-section>
     <q-separator />
     <q-card-section class="grp-info-body">
@@ -311,6 +321,11 @@ const props = defineProps<{
   e2eeEnabled?: boolean
   /** Идёт переключение шифрования (блокирует тумблер). */
   e2eeBusy?: boolean
+  /**
+   * Режим правой панели (широкий экран): та же карточка, но без рамки, на всю
+   * высоту колонки и с прокруткой внутри (см. ChatInfo.vue — там то же самое).
+   */
+  panel?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -724,6 +739,23 @@ const deleteGroup = async () => {
   padding: 6px 18px 18px;
   max-height: 80vh;
   overflow-y: auto;
+}
+
+/* Режим правой панели (≥1280px): карточка занимает колонку целиком, прокрутка
+   внутри тела (см. также ChatInfo.vue — там то же самое). */
+.grp-info-card.is-panel {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.grp-info-card.is-panel .grp-info-body {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
 }
 
 .grp-info-status {

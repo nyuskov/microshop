@@ -4,26 +4,26 @@
     <p class="sr-only" role="status" aria-live="polite">{{ liveAnnouncement }}</p>
     <!-- Подсказка при перетаскивании файлов в окно: бросить можно в любом месте -->
     <FileDropOverlay :active="fileDropActive" :can-send="canDropFiles" />
-    <!-- ======= QDrawer: Чаты / Контакты (десктоп — постоянная панель,
-         мобильный — выдвижной drawer поверх чата) ======= -->
-    <!-- `persistent` на мобильном: без него Quasar сам скрывает drawer при
+    <!-- ======= QDrawer: Чаты / Контакты (десктоп и планшет — постоянная панель,
+         телефон — выдвижной drawer поверх чата) ======= -->
+    <!-- `persistent` на телефоне: без него Quasar сам скрывает drawer при
          ЛЮБОЙ смене `$route.fullPath` (use-model-toggle, hideOnRouteChange).
          Наш «программный шаг назад» (stepBackInApp) — это настоящий history.go,
          и vue-router после него «догоняет» адрес и видит смену маршрута: список
          закрывался в момент закрытия настроек, лайтбокса, карточки чата — человек
-         оставался на переписке вместо списка. Навигацию на мобильном целиком
+         оставался на переписке вместо списка. Навигацию на телефоне целиком
          ведёт приложение (utils/mobileNav.ts), поэтому гасим поведение Quasar.
          Свайп и закрытие по фону остаются — они управляются `no-swipe-*`. -->
     <q-drawer
       v-model="drawerOpen"
       side="left"
       :width="drawerWidth"
-      :breakpoint="1023"
+      :breakpoint="599"
       :show-if-above="true"
-      :overlay="!isDesktop"
-      :persistent="!isDesktop"
-      :no-swipe-open="!isDesktop && selectedChatId !== null"
-      :no-swipe-close="!isDesktop && selectedChatId === null"
+      :overlay="isPhone"
+      :persistent="isPhone"
+      :no-swipe-open="isPhone && selectedChatId !== null"
+      :no-swipe-close="isPhone && selectedChatId === null"
       bordered
       class="ms-drawer"
     >
@@ -64,7 +64,7 @@
     </q-drawer>
 
     <!-- ======= Правая область чата ======= -->
-    <q-page-container class="messenger-page">
+    <q-page-container class="messenger-page" :class="{ 'has-rail': railVisible }">
       <main class="chat-panel" :style="chatBgStyle">
         <template v-if="!selectedChatId">
           <ChatPlaceholder @open-contacts="openContacts" />
@@ -136,7 +136,7 @@
             :subtitle="chatSubtitle(selectedChat)"
             :status-pill="peerStatus(selectedChat)"
             :show-call-button="isPrivateChat(selectedChat)"
-            :show-back="!isDesktop"
+            :show-back="isPhone"
             :peer-online="selectedChatPeerOnline"
             :pinned="selectedChatPinned"
             :e2ee="selectedChatE2ee"
@@ -266,6 +266,40 @@
           />
         </template>
       </main>
+
+      <!-- Правая панель (≥1280px): информация о чате/группе и общие медиа рядом с
+           перепиской, а не модалкой поверх неё. Ключ по id чата — при смене чата
+           компонент пересоздаётся и заново читает данные о нём. -->
+      <aside v-if="railVisible && selectedChat" class="chat-rail" aria-label="Информация о чате">
+        <ChatInfo
+          v-if="!isGroupChat(selectedChat)"
+          :key="selectedChat.id"
+          panel
+          :chat="selectedChat"
+          :current-user-id="currentUserId"
+          :subtitle="chatSubtitle(selectedChat)"
+          :messages="messages"
+          :e2ee-enabled="!!selectedChat.e2ee_enabled"
+          @open-image="openChatInfoImage"
+          @toggle-e2ee="onChatInfoToggleE2ee"
+          @close="infoRailOpen = false"
+        />
+        <GroupChatInfo
+          v-else
+          :key="selectedChat.id"
+          panel
+          :chat="selectedChat"
+          :current-user-id="currentUserId"
+          :contacts="contacts"
+          :online-user-ids="onlineUserIds"
+          :e2ee-enabled="!!selectedChat.e2ee_enabled"
+          @updated="onGroupInfoUpdated"
+          @left="onGroupLeft"
+          @members-changed="onGroupMembersChanged"
+          @toggle-e2ee="onChatInfoToggleE2ee"
+          @close="infoRailOpen = false"
+        />
+      </aside>
     </q-page-container>
   </q-layout>
 
@@ -587,6 +621,11 @@ const GroupInviteDialog = defineAsyncComponent(
 // Диалоги модерации (требования RuStore) — в MessengerModerationOverlays.vue.
 // Просмотрщик историй — открывается по клику на историю.
 const StoryViewer = defineAsyncComponent(() => import('@/components/stories/StoryViewer.vue'))
+// Информация о чате/группе: на широком экране — правая панель (см. railVisible),
+// на остальных — модалка внутри MessengerChatOverlays. Компоненты те же, поэтому
+// содержимое не расходится между панелью и диалогом.
+const ChatInfo = defineAsyncComponent(() => import('@/components/messenger/ChatInfo.vue'))
+const GroupChatInfo = defineAsyncComponent(() => import('@/components/messenger/GroupChatInfo.vue'))
 import { useCallStore } from '@/stores/call'
 import { useContactsStore } from '@/stores/contacts'
 import { useRealtimeStore } from '@/stores/realtime'
@@ -642,10 +681,22 @@ const accountOverlaysRef = ref<InstanceType<typeof MessengerAccountOverlays> | n
 /** Диалоги модерации: методы openReport / openBlocked / openReports. */
 const moderationOverlaysRef = ref<InstanceType<typeof MessengerModerationOverlays> | null>(null)
 
-// ---------- Quasar: адаптивный layout (drawer на мобильном) ----------
+// ---------- Quasar: адаптивный layout (drawer на телефоне) ----------
 const $q = useQuasar()
-/** «Десктоп» = ширина окна ≥ 1024px (md и выше). Ниже — мобильный режим. */
+/**
+ * Раскладка по ширине окна (пороги Quasar):
+ *   < 600px   — телефон: список и нить живут на одном экране, drawer поверх чата;
+ *   600–1023  — планшет: две панели рядом (список 320px + нить);
+ *   ≥ 1024px  — десктоп: две панели, список шире (380px).
+ * `isDesktop` нужен там, где дело именно в большом экране (размер модалок),
+ * `twoPane` — «список и нить видны одновременно» (история приложения, возврат
+ * к списку этим и определяется).
+ */
 const isDesktop = computed(() => $q.screen.gt.sm)
+/** Телефон: список и нить — один экран, навигация по истории приложения. */
+const isPhone = computed(() => $q.screen.lt.sm)
+/** Две панели рядом (планшет и десктоп). */
+const twoPane = computed(() => !isPhone.value)
 
 /**
  * id чата из адреса — читаем ДО первого рендера, чтобы после перезагрузки чат
@@ -672,13 +723,20 @@ const replyLaunchRequested = isReplyLaunch(initialSearch)
 const initialChatId =
   new URLSearchParams(initialSearch).get('markread') === '1' ? null : initialChatFromUrl
 
-/** На мобильном список и нить — один экран: если в адресе чат, показываем нить. */
-const initialDrawerOpen = initialChatId === null || isDesktop.value
+/** На телефоне список и нить — один экран: если в адресе чат, показываем нить. */
+const initialDrawerOpen = initialChatId === null || twoPane.value
 
-/** Открыт ли drawer со списком чатов (значим в мобильном режиме). */
+/** Открыт ли drawer со списком чатов (значим на телефоне). */
 const drawerOpen = ref(initialDrawerOpen)
-/** Ширина панели чатов: фикс. 380px на десктопе, почти во весь экран на мобильном. */
-const drawerWidth = computed(() => (isDesktop.value ? 380 : Math.min($q.screen.width, 460)))
+/**
+ * Ширина панели чатов: 380px на десктопе, 320px на планшете (на 600–1023 px
+ * 380px съедала бы половину экрана), на телефоне — почти во весь экран.
+ */
+const drawerWidth = computed(() => {
+  if (isDesktop.value) return 380
+  if (isPhone.value) return Math.min($q.screen.width, 460)
+  return 320
+})
 
 // Адрес (?chat=), история приложения и системная «назад» — в composables/useChatNavigation.ts.
 // Вызов ниже (там, где объявлены все зависимости: раздел, выделение, слои).
@@ -786,6 +844,20 @@ const selectedChat = computed<Chat | null>(() => {
   if (selectedChatId.value === null) return null
   return chats.value.find((chat) => chat.id === selectedChatId.value) ?? null
 })
+
+// ---------- Правая панель: информация о чате и его медиа ----------
+/**
+ * Широкий экран (≥1280px): информации о чате хватает места рядом с ним, поэтому
+ * она живёт в правой колонке, а не модалкой поверх переписки. На более узких
+ * экранах (и для каналов, у которых своя навигация по разделам внутри диалога)
+ * остаётся прежняя модалка.
+ */
+const isWide = computed(() => $q.screen.width >= 1280)
+/** Открыта ли правая панель (на широком экране). */
+const infoRailOpen = ref(false)
+const railVisible = computed(
+  () => infoRailOpen.value && isWide.value && !!selectedChat.value && !selectedChat.value.is_channel
+)
 
 const messageRows = computed<ThreadRow[]>(() => buildMessageRows(messages.value, inlineQuery.value))
 
@@ -1009,8 +1081,16 @@ const {
 
 // ---------- Информация о чате / группе ----------
 const openChatInfo = () => {
-  pushMobileNav()
   const chat = selectedChat.value
+  // Широкий экран: правая панель (та же информация, но рядом с чатом). Повторный
+  // клик закрывает её — панель работает как переключатель: и клик по названию
+  // чата, и пункт «Информация о чате» в меню «⋯» ведут сюда.
+  // Каналы оставляем в диалоге: у них внутри своя навигация по разделам.
+  if (chat && !chat.is_channel && isWide.value) {
+    infoRailOpen.value = !infoRailOpen.value
+    return
+  }
+  pushMobileNav()
   if (chat?.is_channel) {
     channelOverlaysRef.value?.openInfo()
     void refreshChannelCard()
@@ -1791,9 +1871,9 @@ const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
   )
   scrollToBottom()
-  // Мобильный режим: выбор чата закрывает drawer — нить на весь экран.
+  // Телефон: выбор чата закрывает drawer — нить на весь экран.
   // Запоминаем шаг в истории, чтобы системная «назад» вернула к списку.
-  if (!isDesktop.value) {
+  if (isPhone.value) {
     if (pushNav) pushMobileNav()
     drawerOpen.value = false
   }
@@ -1806,7 +1886,7 @@ const selectChat = async (chatId: number) => {
     // память приложения — иначе после обновления страницы человек оказывался на
     // списке чатов, хотя был в переписке (?chat= в адресе не было).
     syncChatUrl(chatId)
-    if (!isDesktop.value) {
+    if (isPhone.value) {
       pushMobileNav()
       drawerOpen.value = false
     }
@@ -2269,7 +2349,7 @@ const selectedMessagesOf = (): Message[] =>
 // (режим выбора, карточка приглашения), а выше — раздел и выбранный чат.
 const { syncChatUrl, goBackToList, pushMobileNav, revealDrawer, onAppPopState } = useChatNavigation(
   {
-    isDesktop,
+    twoPane,
     view,
     drawerOpen,
     selectedChatId,
@@ -3061,11 +3141,11 @@ const closeOpenChat = () => {
 
 /** Переключение между списками в шапке — всегда прямой переход. */
 const switchSection = (section: Section) => {
-  if (isDesktop.value) {
+  if (twoPane.value) {
     if (view.value === section) return
     view.value = section
   } else {
-    // На мобильном разделы (Чаты/Контакты) живут в drawer'е. Если он
+    // На телефоне разделы (Чаты/Контакты) живут в drawer'е. Если он
     // закрыт (человек на заглушке «Выберите, кому хотели бы написать») и мы
     // просто меняем `view`, переход происходит «невидимо» — кнопка «Открыть
     // контакты» как будто не работает. Поэтому всегда показываем список.
@@ -3693,7 +3773,7 @@ const openChatFromPush = async (chatId: number, options: { pushNav?: boolean } =
     return
   }
   await openChatThread(chatId, options)
-  if (!isDesktop.value) drawerOpen.value = false
+  if (isPhone.value) drawerOpen.value = false
 }
 
 /**
@@ -3895,6 +3975,25 @@ watch(
   height: 100%;
   min-height: 0;
   background: var(--ms-body);
+}
+
+/* Широкий экран с открытой информацией о чате: чат и правая панель — рядом
+   (на узких экранах панель не открывается, поэтому класс не срабатывает). */
+.messenger-page.has-rail {
+  flex-direction: row;
+}
+
+/* Правая панель: карточка информации растянута на высоту колонки, прокрутка —
+   внутри неё (см. ChatInfo.vue/GroupChatInfo.vue, режим `panel`). */
+.chat-rail {
+  width: 340px;
+  flex-shrink: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--ms-border);
+  background: var(--ms-surface);
 }
 
 /* Чат восстанавливается из адреса (перезагрузка страницы, повторное открытие

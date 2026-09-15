@@ -7,6 +7,7 @@ import {
   draftOf,
   isChatTyping,
   lastMessageIsOut,
+  previewCallOf,
   previewText
 } from '@/utils/chatPreview'
 import type { Chat, ChatUser, Message } from '@/types'
@@ -177,5 +178,78 @@ describe('previewText', () => {
     })
 
     expect(previewText(withFile, 1)).toBe('Вы: Файл: док.pdf')
+  })
+})
+
+/**
+ * Звонок в превью списка чатов (жалоба пользователя 15.09.2026: «если был
+ * звонок, в превью нет никакого упоминания»).
+ *
+ * У записи о звонке `text` пустой (сервер пишет `text=""`, см.
+ * `api_v1/calls/views.py::_persist_call_record`), поэтому без явной ветки в
+ * превью не было ни типа звонка, ни того, чем он закончился.
+ */
+describe('previewText: запись о звонке', () => {
+  const call = (patch: Partial<Message> = {}) =>
+    message({ kind: 'call', call_kind: 'audio', call_state: 'missed', text: '', ...patch })
+
+  it('пропущенный звонок — по строке видно, что не ответили', () => {
+    expect(previewText(chat({ last_message: call() }), 1)).toBe('Пропущенный звонок')
+  })
+
+  it('видеозвонок отличается от аудио', () => {
+    expect(previewText(chat({ last_message: call({ call_kind: 'video' }) }), 1)).toBe(
+      'Пропущенный видеозвонок'
+    )
+  })
+
+  it('состоявшийся звонок — с длительностью и префиксом «Вы:» у исходящего', () => {
+    const outgoing = call({
+      user_id: 1,
+      call_kind: 'video',
+      call_state: 'completed',
+      call_duration: 65
+    })
+    expect(previewText(chat({ last_message: outgoing }), 1)).toBe('Вы: Видеозвонок · 01:05')
+  })
+
+  it('отклонённый звонок назван явно', () => {
+    expect(previewText(chat({ last_message: call({ call_state: 'declined' }) }), 1)).toBe(
+      'Аудиозвонок отклонён'
+    )
+  })
+
+  it('короткий разговор не ломает строку', () => {
+    const short = call({ user_id: 1, call_state: 'completed', call_duration: 9 })
+    expect(previewText(chat({ last_message: short }), 1)).toBe('Вы: Аудиозвонок · 00:09')
+  })
+})
+
+describe('previewCallOf: иконка и тон отметки в строке', () => {
+  const call = (patch: Partial<Message> = {}) =>
+    message({ kind: 'call', call_kind: 'audio', call_state: 'completed', text: '', ...patch })
+
+  it('не звонок — отметки нет', () => {
+    expect(previewCallOf(null)).toBeNull()
+    expect(previewCallOf(message({ text: 'привет' }))).toBeNull()
+  })
+
+  it('пропущенный и отклонённый — «тревожный» тон', () => {
+    expect(previewCallOf(call({ call_state: 'missed' }))).toEqual({
+      icon: 'call_missed',
+      missed: true
+    })
+    expect(previewCallOf(call({ call_state: 'declined' }))).toEqual({
+      icon: 'call_end',
+      missed: true
+    })
+  })
+
+  it('состоявшийся звонок — иконка по типу (аудио/видео)', () => {
+    expect(previewCallOf(call())).toEqual({ icon: 'call', missed: false })
+    expect(previewCallOf(call({ call_kind: 'video' }))).toEqual({
+      icon: 'videocam',
+      missed: false
+    })
   })
 })

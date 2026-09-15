@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import { inviteLinkFor, inviteState, type RegistrationInvite } from '@/services/invites'
@@ -64,5 +65,30 @@ describe('inviteState', () => {
 describe('inviteLinkFor', () => {
   it('собирает ссылку вида /invite/<token> на текущем домене', () => {
     expect(inviteLinkFor('abc', 'https://pismo.space')).toBe('https://pismo.space/invite/abc')
+  })
+})
+
+/**
+ * Срок действия ссылки в разделе «Приглашения».
+ *
+ * Раньше это был родной `<select>`: список рисует сам браузер, и в мобильном
+ * WebView (и при нестандартном масштабе страницы) он открывается системным
+ * окошком далеко от поля — жалоба пользователя 15.09.2026. Чипы всегда на месте.
+ * Проверка статическая: jsdom не открывает родные списки, поэтому читаем исходник.
+ */
+describe('«Приглашения»: выбор срока действия', () => {
+  const settings = readFileSync('src/components/messenger/InvitesSettings.vue', 'utf8')
+
+  it('выбирается чипами, а не родным списком', () => {
+    expect(settings).not.toContain('<select')
+    expect(settings).toContain('role="radiogroup"')
+    expect(settings).toMatch(/v-for="option in EXPIRY_OPTIONS"/)
+  })
+
+  it('все четыре варианта срока на месте', () => {
+    expect(settings).toMatch(/label: 'Бессрочно'/)
+    expect(settings).toMatch(/label: '1 день'/)
+    expect(settings).toMatch(/label: '7 дней'/)
+    expect(settings).toMatch(/label: '30 дней'/)
   })
 })

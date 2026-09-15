@@ -55,7 +55,11 @@ export interface BackSnapshot {
   /** Открыта ли переписка (`selectedChatId !== null`). */
   chatOpen: boolean
   drawerOpen: boolean
-  isDesktop: boolean
+  /**
+   * Список и нить видны одновременно (десктоп и планшет — от 600px). Тогда
+   * «назад» не должно показывать список: он и так на экране.
+   */
+  twoPane: boolean
 }
 
 /**
@@ -66,8 +70,8 @@ export interface BackSnapshot {
  * мобильном закрывает переписку и открывает список.
  */
 export function decideBackStep(snapshot: BackSnapshot): MobileBackStep {
-  /** Нужно ли на этом шаге показать список раздела (мобильный). */
-  const needsList = !snapshot.isDesktop && (snapshot.chatOpen || !snapshot.drawerOpen)
+  /** Нужно ли на этом шаге показать список раздела (телефон). */
+  const needsList = !snapshot.twoPane && (snapshot.chatOpen || !snapshot.drawerOpen)
 
   if (snapshot.storyOpen) return { kind: 'story' }
   if (snapshot.lightboxOpen) return { kind: 'lightbox' }

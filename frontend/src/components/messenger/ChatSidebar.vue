@@ -138,10 +138,12 @@
       </div>
     </Transition>
 
-    <!-- Админская «шестерёнка» — в самом низу слева, как управление в VS Code.
-         Сюда уходят ВСЕ служебные разделы (приглашения, жалобы и журнал
-         модерации), чтобы не мешаться в обычных настройках профиля. Видна
-         только аккаунту администратора. -->
+    <!-- Админская «шестерёнка» — только значок в левом нижнем углу панели, как
+         управление в VS Code. Сюда уходят ВСЕ служебные разделы (приглашения,
+         жалобы и журнал модерации), чтобы не мешаться в обычных настройках
+         профиля. Подписи нет намеренно: строка во всю ширину читалась как ещё
+         один раздел списка чатов, а смысл кнопки объясняют title и aria-label.
+         Видна только аккаунту администратора. -->
     <button
       v-if="isAdmin && !selectionMode"
       class="admin-gear"
@@ -150,8 +152,7 @@
       aria-label="Администрирование"
       @click="emit('open-admin')"
     >
-      <q-icon :name="icon('admin_panel_settings')" size="18px" />
-      <span>Администрирование</span>
+      <q-icon :name="icon('admin_panel_settings')" size="22px" />
     </button>
 
     <!-- Личное имя контакта: добавление / переименование / удаление -->
@@ -633,30 +634,41 @@ watch([() => props.view, () => props.selectedChatId], () => {
   color: var(--ms-accent, #1e9b51);
 }
 
-/* Админская «шестерёнка» внизу панели (как управление в VS Code): прижата к
-   левому нижнему углу, во всю ширину и на своей подложке — чтобы не путаться
-   со строками списка чатов. Видна только администратору (v-if в разметке). */
+/* Админская «шестерёнка»: только значок в левом нижнем углу панели (как
+   управление в VS Code). Размер — как у значка профиля в шапке
+   (`.self-profile-btn` / `.self-avatar`: круг 40px), чтобы оба значка читались
+   парой; левый отступ совпадает с отступом шапки (12px).
+   Видна только администратору (v-if в разметке). */
 .admin-gear {
   display: flex;
   flex: none;
+  align-self: flex-start;
   align-items: center;
-  gap: 9px;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
   /* Отступ снизу = безопасная зона: на телефоне с полоской-индикатором кнопка
      в самом низу экрана иначе оказалась бы под системной панелью. */
-  padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+  margin: 2px 0 calc(8px + env(safe-area-inset-bottom, 0px)) 12px;
+  padding: 0;
   font-family: inherit;
-  font-size: 13px;
-  color: var(--ms-muted-2);
-  background: var(--ms-surface-2);
+  color: var(--ms-icon-2);
+  background: transparent;
   border: 0;
-  border-top: 1px solid var(--ms-border);
+  border-radius: 50%;
   cursor: pointer;
-  text-align: left;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
 .admin-gear:hover {
   color: var(--ms-text);
   background: var(--ms-hover);
+}
+
+.admin-gear:active {
+  transform: scale(0.94);
 }
 
 .admin-gear:focus-visible {
@@ -847,11 +859,5 @@ watch([() => props.view, () => props.selectedChatId], () => {
   .slide-down-leave-active > * {
     transition: none;
   }
-}
-
-.tick {
-  font-size: 0.85rem;
-  color: var(--ms-tick);
-  flex-shrink: 0;
 }
 </style>

@@ -1,8 +1,12 @@
 import { defineStore } from 'pinia'
 
-/** Режим темы: светлая / тёмная / по системе. */
-export type Theme = 'light' | 'dark'
-export type ThemeMode = Theme | 'system'
+/** Режим темы: светлая / тёмная / по системе.
+ *
+ * `amoled` — не выбор пользователя в ряду тем, а уточнение тёмной («чёрный
+ * фон»): его включает флаг `amoled`, а в `currentTheme` попадает уже готовое
+ * значение для атрибута `data-theme`. */
+export type Theme = 'light' | 'dark' | 'amoled'
+export type ThemeMode = 'light' | 'dark' | 'system'
 
 export interface AccentPreset {
   key: string
@@ -126,6 +130,8 @@ const DEFAULT_MODE: ThemeMode = 'dark'
 interface AppearanceState {
   currentTheme: Theme
   mode: ThemeMode
+  /** Чёрный фон (AMOLED) — усилие тёмной темы, а не отдельная тема. */
+  amoled: boolean
   accentKey: string
   bubbleKey: string
   textSizeKey: string
@@ -137,6 +143,7 @@ interface AppearanceState {
 const DEFAULT_STATE: Omit<AppearanceState, 'isSidebarCollapsed'> = {
   currentTheme: 'dark',
   mode: DEFAULT_MODE,
+  amoled: false,
   accentKey: 'green',
   bubbleKey: 'green',
   textSizeKey: 'normal',
@@ -200,6 +207,12 @@ export const useThemeStore = defineStore('theme', {
   },
 
   getters: {
+    /** Действует ли сейчас тёмная схема (в неё входит и AMOLED).
+     *
+     * Нужен настройкам внешнего вида: чёрный фон имеет смысл только на тёмной
+     * теме, поэтому тумблер AMOLED гасится в светлой. */
+    darkActive: (state): boolean => state.currentTheme !== 'light',
+
     /** CSS-фон окна сообщений с учётом пресета или загруженного фото. */
     wallpaperCss: (state): string => {
       if (state.wallpaperKey === 'custom' && state.wallpaperCustom) {
@@ -214,7 +227,10 @@ export const useThemeStore = defineStore('theme', {
     /** Применяет текущие настройки оформления к документу. */
     applyAppearance() {
       const prefersDark = systemPrefersDark()
-      const resolved: Theme = this.mode === 'system' ? (prefersDark ? 'dark' : 'light') : this.mode
+      const base: Theme = this.mode === 'system' ? (prefersDark ? 'dark' : 'light') : this.mode
+      // Чёрный фон — только для тёмной схемы: в светлой флаг не должен менять
+      // атрибут `data-theme`, иначе получится чёрное окно со светлыми токенами.
+      const resolved: Theme = base === 'dark' && this.amoled ? 'amoled' : base
       this.currentTheme = resolved
       document.documentElement.setAttribute('data-theme', resolved)
       try {
@@ -236,7 +252,8 @@ export const useThemeStore = defineStore('theme', {
       // Цвет панели браузера: светлая тема — акцент, тёмная — цвет фона приложения.
       const themeColor = document.querySelector('meta[name="theme-color"]')
       if (themeColor) {
-        themeColor.setAttribute('content', resolved === 'dark' ? '#10151c' : accentHex)
+        const hex = resolved === 'amoled' ? '#000000' : resolved === 'dark' ? '#10151c' : accentHex
+        themeColor.setAttribute('content', hex)
       }
       this.saveAppearance()
     },
@@ -247,6 +264,7 @@ export const useThemeStore = defineStore('theme', {
           STORAGE_KEY,
           JSON.stringify({
             mode: this.mode,
+            amoled: this.amoled,
             accentKey: this.accentKey,
             bubbleKey: this.bubbleKey,
             textSizeKey: this.textSizeKey,
@@ -269,6 +287,12 @@ export const useThemeStore = defineStore('theme', {
 
     setThemeMode(mode: ThemeMode) {
       this.mode = mode
+      this.applyAppearance()
+    },
+
+    /** Чёрный фон (AMOLED). Действует, только пока активна тёмная схема. */
+    setAmoled(on: boolean) {
+      this.amoled = on
       this.applyAppearance()
     },
 
@@ -315,6 +339,7 @@ export const useThemeStore = defineStore('theme', {
 
     resetAppearance() {
       this.mode = DEFAULT_MODE
+      this.amoled = DEFAULT_STATE.amoled
       this.accentKey = DEFAULT_STATE.accentKey
       this.bubbleKey = DEFAULT_STATE.bubbleKey
       this.textSizeKey = DEFAULT_STATE.textSizeKey

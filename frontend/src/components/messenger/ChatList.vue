@@ -131,8 +131,19 @@
                     Черновик: {{ draftOf(chat, props.drafts) }}
                   </template>
                   <template v-else>
+                    <!-- Звонок в превью: иконка вместо галочки — по ней видно, что
+                         был звонок (аудио/видео) и чем закончился (пропущен —
+                         красным), иначе в строке не было ничего. -->
                     <q-icon
-                      v-if="lastMessageIsOut(chat, props.currentUserId)"
+                      v-if="previewCallOf(chat.last_message)"
+                      :name="icon(previewCallOf(chat.last_message)?.icon ?? 'call')"
+                      class="call-mark"
+                      :class="{ missed: previewCallOf(chat.last_message)?.missed }"
+                      size="16px"
+                      aria-hidden="true"
+                    />
+                    <q-icon
+                      v-else-if="lastMessageIsOut(chat, props.currentUserId)"
                       :name="icon('done')"
                       class="tick"
                       size="16px"
@@ -173,6 +184,7 @@ import {
   draftOf,
   isChatTyping,
   lastMessageIsOut,
+  previewCallOf,
   previewText
 } from '@/utils/chatPreview'
 

@@ -21,10 +21,20 @@ describe('шестерёнка админа в сайдбаре', () => {
     expect(sidebar).toMatch(/@click="emit\('open-admin'\)"/)
   })
 
-  it('прижата к низу панели и учитывает безопасную зону экрана', () => {
-    // Кнопка в самом низу: без safe-area она уходит под системную полоску.
+  it('это только значок — без подписи «Администрирование»', () => {
+    // Подпись убрана: строка во всю ширину с текстом читалась как ещё один
+    // раздел списка чатов. Смысл кнопки объясняют title и aria-label.
+    expect(sidebar).not.toMatch(/<span>Администрирование<\/span>/)
+    expect(sidebar).toMatch(/class="admin-gear"[\s\S]{0,200}<q-icon/)
+    expect(sidebar).toMatch(/title="Администрирование"[\s\S]{0,120}aria-label="Администрирование"/)
+  })
+
+  it('прижата к левому нижнему углу и учитывает безопасную зону экрана', () => {
+    // Кнопка в левом углу панели: без safe-area она уходит под системную полоску.
+    expect(sidebar).toMatch(/align-self: flex-start/)
     expect(sidebar).toMatch(/env\(safe-area-inset-bottom/)
-    expect(sidebar).toMatch(/border-top: 1px solid var\(--ms-border\)/)
+    // Размер — как у значка профиля в шапке (.self-profile-btn: круг 40px).
+    expect(sidebar).toMatch(/width: 40px;\s*\n\s*height: 40px;/)
   })
 
   it('«Жалобы» больше не живут в меню «⋯»', () => {

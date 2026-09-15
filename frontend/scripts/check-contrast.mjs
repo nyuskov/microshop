@@ -73,7 +73,14 @@ const CHECKS = [
 
 const THEMES = [
   { name: 'светлая', selector: ':root' },
-  { name: 'тёмная', selector: "html[data-theme='dark']" }
+  { name: 'тёмная', selector: "html[data-theme='dark']" },
+  {
+    // AMOLED переопределяет только поверхности, остальное берёт у тёмной темы —
+    // поэтому в `base` указано, откуда добирать токены.
+    name: 'AMOLED',
+    selector: "html[data-theme='amoled']",
+    base: "html[data-theme='dark']"
+  }
 ]
 
 /** Варианты цвета исходящих сообщений из настроек оформления. */
@@ -81,10 +88,14 @@ const BUBBLE_VARIANTS = ['blue', 'lilac', 'pink', 'peach', 'mint', 'orange']
 
 /**
  * Вырезает содержимое блока правил по селектору.
- * В `appearance.css` блоки токенов закрываются `}` в начале строки.
+ *
+ * Ищем сам селектор, а не `селектор {`: блоки тем могут стоять в списке
+ * (`html[data-theme='dark'], html[data-theme='amoled'] {`), и при поиске с
+ * пробелом и скобкой такой блок просто не нашёлся бы. Берём первый `{` после
+ * селектора — в файле это всегда начало блока токенов.
  */
 function extractBlockOrNull(css, selector) {
-  const start = css.indexOf(`${selector} {`)
+  const start = css.indexOf(selector)
   if (start === -1) return null
   const from = css.indexOf('{', start) + 1
   const end = css.indexOf('\n}', from)
@@ -211,15 +222,18 @@ async function main() {
   const css = await readFile(CSS_PATH, 'utf8')
   let failures = 0
 
-  // `:root` — база: тёмная тема переопределяет только часть токенов,
+  // `:root` — база: тёмные темы переопределяют только часть токенов,
   // остальные наследуются, поэтому собираем итоговый набор как объединение.
   const rootTokens = parseTokens(extractBlock(css, ':root'))
 
   for (const theme of THEMES) {
+    const parent = theme.base
+      ? new Map([...rootTokens, ...parseTokens(extractBlock(css, theme.base))])
+      : rootTokens
     const baseTokens =
       theme.selector === ':root'
         ? rootTokens
-        : new Map([...rootTokens, ...parseTokens(extractBlock(css, theme.selector))])
+        : new Map([...parent, ...parseTokens(extractBlock(css, theme.selector))])
     failures += runChecks(baseTokens, `${theme.name} тема (${theme.selector})`)
 
     // Цвет исходящих сообщений выбирается в настройках — проверяем каждый вариант.

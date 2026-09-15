@@ -1,9 +1,20 @@
 <template>
-  <q-card class="chatinfo-card">
+  <q-card class="chatinfo-card" :class="{ 'is-panel': panel }">
     <q-card-section class="row no-wrap items-center chatinfo-head">
       <div class="text-subtitle1 text-weight-medium ellipsis">Информация о чате</div>
       <q-space />
-      <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
+      <!-- В панели (широкий экран) «закрыть» — просто событие: закрывать
+           q-popup там нечего, диалога нет. -->
+      <q-btn
+        v-if="panel"
+        flat
+        round
+        dense
+        icon="close"
+        aria-label="Закрыть"
+        @click="emit('close')"
+      />
+      <q-btn v-else flat round dense icon="close" v-close-popup aria-label="Закрыть" />
     </q-card-section>
     <q-separator />
     <q-card-section class="chatinfo-body">
@@ -29,8 +40,10 @@
         </div>
       </template>
 
-      <!-- Личное имя контакта: видит только владелец (как в Telegram) -->
-      <div v-if="peer" class="ci-section ci-e2ee">
+      <!-- Личное имя контакта: видит только владелец (как в Telegram).
+           В «Сохранённых сообщениях» собеседник — сам человек, добавлять себя в
+           контакты нечего (и переименовывать тоже). -->
+      <div v-if="peer && !isSelfChat" class="ci-section ci-e2ee">
         <div class="ci-e2ee-row">
           <div class="ci-e2ee-info">
             <div class="ci-e2ee-title">Контакт</div>
@@ -53,8 +66,11 @@
         </div>
       </div>
 
-      <!-- Тип чата: обычный / зашифрованный (E2EE) -->
-      <div v-if="peer" class="ci-section ci-e2ee">
+      <!-- Тип чата: обычный / зашифрованный (E2EE).
+           У «Сохранённых сообщений» переключателя нет: сервер отклоняет такой
+           чат (`api_v1/chats/crud.py::set_chat_e2ee` — 400 на `chat.is_self`),
+           то есть кнопка вела в ошибку. -->
+      <div v-if="peer && !isSelfChat" class="ci-section ci-e2ee">
         <div class="ci-e2ee-row">
           <div class="ci-e2ee-info">
             <div class="ci-e2ee-title">Сквозное шифрование</div>
@@ -133,7 +149,7 @@
     </q-card-section>
 
     <!-- Диалог «Добавить в контакты / Имя контакта» -->
-    <ContactNameDialog v-if="peer" v-model="contactDialogOpen" :user="peer" />
+    <ContactNameDialog v-if="peer && !isSelfChat" v-model="contactDialogOpen" :user="peer" />
   </q-card>
 </template>
 
@@ -161,6 +177,12 @@ const props = defineProps<{
   e2eeEnabled?: boolean
   /** Идёт ли сохранение переключения типа чата. */
   e2eeBusy?: boolean
+  /**
+   * Режим правой панели (широкий экран): та же карточка, но без рамки, на всю
+   * высоту колонки и с прокруткой внутри. Разметка и логика те же, поэтому
+   * информация не расходится между модалкой и панелью.
+   */
+  panel?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -175,6 +197,16 @@ const onToggleE2ee = (val: boolean | string | null) => {
 }
 
 const peer = computed<ChatUser | undefined>(() => chatPeer(props.chat, props.currentUserId))
+
+/**
+ * «Сохранённые сообщения» — чат с собой.
+ *
+ * ГРАБЛЯ (поймал пользователь 15.09.2026): `chatPeer` для такого чата отдаёт
+ * САМОГО человека (фоллбэк `chat.users[0]`), и карточка предлагала «В контакты»
+ * с переименованием себя же, а тумблер «Сквозное шифрование» отправлял запрос,
+ * который сервер отклоняет. У собеседника-себя нет ничего, чем можно управлять.
+ */
+const isSelfChat = computed<boolean>(() => props.chat.is_self === true)
 
 /** Личное имя собеседника (пусто — не добавлен в контакты / не назван). */
 const contactsStore = useContactsStore()
@@ -300,6 +332,23 @@ watch(
   padding: 6px 18px 20px;
   max-height: 80vh;
   overflow-y: auto;
+}
+
+/* Режим правой панели (≥1280px): карточка растягивается на высоту колонки,
+   прокручивается только тело — как у модалки, но без «карточных» границ. */
+.chatinfo-card.is-panel {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chatinfo-card.is-panel .chatinfo-body {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
 }
 
 .ci-hero {

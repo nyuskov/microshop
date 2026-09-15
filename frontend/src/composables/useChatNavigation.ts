@@ -36,8 +36,11 @@ export interface NavigationHooks {
 }
 
 export interface ChatNavigationDeps {
-  /** Десктоп: там список и нить — два экрана, история приложения не нужна. */
-  isDesktop: ComputedRef<boolean>
+  /**
+   * Список и нить видны одновременно (десктоп и планшет — от 600px): там
+   * история приложения не нужна, «назад» ведёт себя как в браузере.
+   */
+  twoPane: ComputedRef<boolean>
   /** Открытый раздел списка (Чаты/Контакты). */
   view: Ref<Section>
   /** Открыт ли drawer со списком чатов (значим в мобильном режиме). */
@@ -62,7 +65,7 @@ export interface ChatNavigationDeps {
  */
 export function useChatNavigation(deps: ChatNavigationDeps) {
   const router = useRouter()
-  const { isDesktop, view, drawerOpen, selectedChatId, layers, hooks } = deps
+  const { twoPane, view, drawerOpen, selectedChatId, layers, hooks } = deps
 
   /**
    * Держим открытый чат в адресной строке (`?chat=<id>`), чтобы перезагрузка
@@ -85,9 +88,9 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
     }
   }
 
-  /** На мобильном: «назад» из открытого чата — снова показать список (drawer). */
+  /** На телефоне: «назад» из открытого чата — снова показать список (drawer). */
   const goBackToList = () => {
-    if (!isDesktop.value) {
+    if (!twoPane.value) {
       // Если открытие чата записано в историю — идём «назад» по ней (popstate
       // откроет список), иначе просто показываем список.
       if (window.history.state && window.history.state.pismoNav) {
@@ -102,7 +105,7 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
   }
 
   const pushMobileNav = (section?: Section) => {
-    if (isDesktop.value) return
+    if (twoPane.value) return
     try {
       // В записи истории храним раздел, который будет показан на этом шаге:
       // по «назад» возвращаемся именно в него, а не всегда в «Чаты».
@@ -129,9 +132,9 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
   /** Drawer открыли мы сами (переход в раздел) — чужие маркеры не гасим. */
   let drawerOpenedBySection = false
 
-  /** Показать список разделов на мобильном (открыть drawer), не гася историю. */
+  /** Показать список разделов на телефоне (открыть drawer), не гася историю. */
   const revealDrawer = () => {
-    if (isDesktop.value || drawerOpen.value) return
+    if (twoPane.value || drawerOpen.value) return
     drawerOpenedBySection = true
     drawerOpen.value = true
   }
@@ -145,7 +148,7 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
    * Возвращает true, если маркер был и его убрали.
    */
   const stepBackInApp = (): boolean => {
-    if (isDesktop.value || handlingSystemBack) return false
+    if (twoPane.value || handlingSystemBack) return false
     const state = window.history.state as { pismoNav?: boolean } | null
     if (!state?.pismoNav) return false
     programmaticBack = true
@@ -178,7 +181,7 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
       previousView: state?.pismoView,
       chatOpen: selectedChatId.value !== null,
       drawerOpen: drawerOpen.value,
-      isDesktop: isDesktop.value
+      twoPane: twoPane.value
     })
 
     switch (step.kind) {
@@ -236,7 +239,7 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
       programmaticBack = false
       return
     }
-    if (isDesktop.value) return
+    if (twoPane.value) return
     handlingSystemBack = true
     try {
       handleAppBack(event.state as { pismoView?: Section } | null)
@@ -286,13 +289,13 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
   )
 
   /**
-   * На мобильном список и нить — один экран. Если список открыли жестом (drawer),
+   * На телефоне список и нить — один экран. Если список открыли жестом (drawer),
    * маркер от нити больше не нужен — гасим его, иначе «назад» уйдёт впустую.
    */
   watch(
     drawerOpen,
     (open) => {
-      if (!open || isDesktop.value) return
+      if (!open || twoPane.value) return
       if (drawerOpenedByBack || drawerOpenedBySection) {
         drawerOpenedByBack = false
         drawerOpenedBySection = false
