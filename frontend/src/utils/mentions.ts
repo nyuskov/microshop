@@ -12,9 +12,18 @@
 
 import { findLinks } from './linkPreview'
 
-/** Вид фрагмента: обычный текст, упоминание, ссылка или оформление. */
+/** Вид фрагмента: обычный текст, упоминание, ссылка, оформление или совпадение поиска. */
 export type MessageTextPartType =
-  'text' | 'mention' | 'link' | 'bold' | 'italic' | 'code' | 'strike' | 'spoiler'
+  | 'text'
+  | 'mention'
+  | 'link'
+  | 'bold'
+  | 'italic'
+  | 'code'
+  | 'strike'
+  | 'spoiler'
+  /** Найденное поиском совпадение — подсвечивается в ленте (см. MessageRow). */
+  | 'search'
 
 /** Что нашли в тексте: сам фрагмент и, для ссылок, адрес перехода. */
 export interface MessageTextPart {
@@ -149,6 +158,44 @@ export function plainMessageText(text: string): string {
   return splitMessageText(text)
     .map((part) => part.value)
     .join('')
+}
+
+/**
+ * Подсвечивает найденный поиском запрос: режет обычный текст на «до / совпадение /
+ * после» (тип `search`), остальные фрагменты оставляет как есть.
+ *
+ * Почему только обычный текст: внутри ссылки, упоминания, кода или спойлера
+ * подсветка либо ломает вид фрагмента, либо мешает его смыслу (ссылку нельзя
+ * перекрашивать в «найдено» — непонятно, что она кликабельная). Регистр не важен;
+ * запрос трактуем как строку, а не как регулярку — иначе `(` в поиске ломал бы
+ * разбор сообщения.
+ */
+export function highlightQuery(parts: MessageTextPart[], query: string): MessageTextPart[] {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return parts
+
+  const result: MessageTextPart[] = []
+  for (const part of parts) {
+    if (part.type !== 'text') {
+      result.push(part)
+      continue
+    }
+    const haystack = part.value.toLowerCase()
+    let cursor = 0
+    for (;;) {
+      const hit = haystack.indexOf(needle, cursor)
+      if (hit === -1) break
+      if (hit > cursor) {
+        result.push({ type: 'text', value: part.value.slice(cursor, hit) })
+      }
+      result.push({ type: 'search', value: part.value.slice(hit, hit + needle.length) })
+      cursor = hit + needle.length
+    }
+    if (cursor < part.value.length) {
+      result.push({ type: 'text', value: part.value.slice(cursor) })
+    }
+  }
+  return result
 }
 
 /**

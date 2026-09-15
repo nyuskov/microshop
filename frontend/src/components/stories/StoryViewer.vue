@@ -955,7 +955,7 @@ watch(flat, (list) => {
   height: 24px;
   border-radius: 50%;
   overflow: hidden;
-  font-size: 11px;
+  font-size: var(--ms-fs-xs);
   font-weight: 600;
   flex: 0 0 auto;
 }

@@ -38,6 +38,7 @@ from ..refresh_sessions import issue_refresh_token, revoke_all_sessions
 from ..schemas import (
     EmailLoginRequest,
     OTPResponse,
+    PasswordRegisterRequest,
     PasswordRequest,
     PasswordResetConfirmRequest,
     PasswordSetRequest,
@@ -133,7 +134,7 @@ async def password_status(
 
 @router.post("/password/register/", response_model=TokenResponse)
 async def register_with_password(
-    request_data: PasswordRequest,
+    request_data: PasswordRegisterRequest,
     request: Request,
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> TokenResponse:
@@ -163,6 +164,17 @@ async def register_with_password(
     hashed = get_password_hash(password)
     if user is None:
         user = await create_user_by_phone_number(session, phone_number, hashed)
+        # Регистрация нового аккаунта: если человек отметил согласие с
+        # документами сервиса, оставляем это в журнале безопасности — так
+        # согласие можно подтвердить задним числом.
+        if request_data.accept_terms:
+            await audit.log_security_event(
+                session,
+                event="terms_accepted",
+                user_id=user.id,
+                request=request,
+                detail=audit.TERMS_DETAIL,
+            )
     else:
         user.hashed_password = hashed
         user.password_set = True

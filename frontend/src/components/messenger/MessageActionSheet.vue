@@ -306,7 +306,10 @@ defineExpose({ openAt, close, isOpen })
 
 .ctx-reactions {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  /* `minmax(0, 1fr)`, а не `1fr`: у `1fr` минимум = min-content самой эмодзи,
+     поэтому ряд шире карточки и последняя реакция уезжает за край экрана
+     (проверено на 390/360/320 px). Ноль в минимуме разрешает колонкам сжиматься. */
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 2px;
   padding: 2px 2px 6px;
   border-bottom: 1px solid var(--ms-hairline, rgba(15, 23, 42, 0.08));
@@ -315,7 +318,7 @@ defineExpose({ openAt, close, isOpen })
 
 /* Полный набор реакций — 6 в ряд, чтобы лист не растягивался по высоте */
 .ctx-reactions.wide {
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .ctx-emoji {
@@ -323,6 +326,7 @@ defineExpose({ openAt, close, isOpen })
   align-items: center;
   justify-content: center;
   height: 32px;
+  min-width: 0;
   border: 0;
   border-radius: 9px;
   background: transparent;

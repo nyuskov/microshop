@@ -6,6 +6,8 @@ import { getErrorMessage } from '../services/errors'
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { formatPhoneForBackend, isValidPhoneNumber, prettyPhone } from '@/utils/phone'
 import { PASSWORD_MIN_LENGTH, passwordProblem, passwordStrength } from '@/utils/passwordPolicy'
+import PhoneInput from '@/components/common/PhoneInput.vue'
+import ConsentCheckbox from '@/components/common/ConsentCheckbox.vue'
 
 // Шаги входа: телефон → (пароль | код в Telegram | создание пароля), плюс
 // отдельная ветка работы с e-mail: вход по коду из письма и сброс пароля.
@@ -72,6 +74,26 @@ const otpAvailable = ref(false)
 const afterOtp = ref(false)
 const otpCode = ref('')
 const otpFieldRef = ref<HTMLInputElement | null>(null)
+
+// --- Согласие с правилами: спрашиваем там, где создаётся аккаунт ---
+/** Галка «принимаю документы сервиса»: без неё аккаунт не создаём. */
+const acceptRules = ref(false)
+/** Галку не отметили там, где она обязательна — подсветить её. */
+const consentError = ref(false)
+/**
+ * Нужна ли галка согласия на текущем шаге.
+ *
+ * Только там, где создаётся НОВЫЙ аккаунт: подтверждение кода на новом номере
+ * (сервер заводит пользователя в `/auth/verify-otp/`) и ввод пароля для нового
+ * номера. При обычном входе и при задании пароля уже существующему аккаунту
+ * согласие не спрашиваем — аккаунт создан раньше, и лишняя галка на входе
+ * только мешает.
+ */
+const consentRequired = computed(
+  () =>
+    (state.value === 'otp' && isNewNumber.value) ||
+    (state.value === 'create' && isNewNumber.value && !afterOtp.value)
+)
 
 // --- E-mail: вход по коду из письма и восстановление пароля ---
 const emailValue = ref('')
@@ -300,11 +322,30 @@ function finishLogin() {
 }
 
 /**
+ * Проверяет галку принятия правил перед созданием аккаунта.
+ *
+ * Возвращает `false` и показывает сообщение, если согласие не отмечено:
+ * согласие на обработку персональных данных должно быть явным действием
+ * человека, а не текстом под кнопкой.
+ */
+function requireConsent(): boolean {
+  if (acceptRules.value) {
+    consentError.value = false
+    return true
+  }
+  consentError.value = true
+  result.value = 'Отметьте согласие с правилами сервиса — без него аккаунт создать нельзя.'
+  severity.value = 'error'
+  return false
+}
+
+/**
  * Подтверждает номер кодом. После успеха пользователь уже авторизован, но если
  * пароля у него нет — переходим к шагу «придумайте пароль» (и не закрываем окно).
  */
 async function onOtpSubmit() {
   if (isLoading.value) return
+  if (isNewNumber.value && !requireConsent()) return
   const code = otpCode.value.replace(/\D/g, '')
   if (code.length < 4) {
     result.value = 'Введите код из сообщения.'
@@ -315,7 +356,12 @@ async function onOtpSubmit() {
   isLoading.value = true
   result.value = ''
   try {
-    await authStore.loginWithOtp(formatPhoneForBackend(phoneOrUsername.value), code, null)
+    await authStore.loginWithOtp(
+      formatPhoneForBackend(phoneOrUsername.value),
+      code,
+      null,
+      acceptRules.value
+    )
     emit('otp-verified')
     otpCode.value = ''
     if (hasPassword.value) {
@@ -344,6 +390,9 @@ async function onCreateSubmit() {
     return
   }
 
+  // Галка нужна только при создании нового аккаунта (см. `consentRequired`).
+  if (consentRequired.value && !requireConsent()) return
+
   // Та же политика, что на сервере (см. utils/passwordPolicy.ts): длина,
   // чёрный список частых паролей, запрет данных аккаунта.
   const problem = passwordProblem(password.value, {
@@ -371,7 +420,8 @@ async function onCreateSubmit() {
       await authStore.registerWithPassword(
         formatPhoneForBackend(phoneOrUsername.value),
         password.value,
-        router
+        router,
+        acceptRules.value
       )
     }
     finishLogin()
@@ -391,6 +441,10 @@ function goBackToPhoneInput() {
   resetPasswordFields()
   otpCode.value = ''
   afterOtp.value = false
+  // Согласие относится к конкретной попытке регистрации: вернулись к номеру —
+  // спрашиваем заново.
+  acceptRules.value = false
+  consentError.value = false
   result.value = ''
 }
 
@@ -578,7 +632,7 @@ const leaveFrozen = () => {
         >
           <label class="field-label" for="unfreeze-email">E-mail аккаунта</label>
           <q-input
-            id="unfreeze-email"
+            for="unfreeze-email"
             v-model="unfreezeEmail"
             type="email"
             outlined
@@ -593,7 +647,7 @@ const leaveFrozen = () => {
           <template v-if="unfreezeSent">
             <label class="field-label gap-top" for="unfreeze-code">Код из письма</label>
             <q-input
-              id="unfreeze-code"
+              for="unfreeze-code"
               v-model="unfreezeCode"
               outlined
               class="phone-input"
@@ -642,16 +696,12 @@ const leaveFrozen = () => {
         <p class="step-subtitle">Введите номер телефона — войдёте по паролю.</p>
 
         <label class="field-label" for="phone-input">Номер телефона</label>
-        <q-input
+        <PhoneInput
           id="phone-input"
           v-model="phoneOrUsername"
-          mask="+7 (###) ###-##-##"
-          outlined
-          class="phone-input"
           placeholder="+7 (___) ___-__-__"
           aria-label="Номер телефона"
-          hide-bottom-space
-          @keyup.enter="continueWithPhone"
+          @enter="continueWithPhone"
         />
 
         <button class="btn btn-primary" :disabled="isLoading" @click="continueWithPhone">
@@ -691,7 +741,7 @@ const leaveFrozen = () => {
         <form class="otp-form" @submit.prevent="onLoginSubmit">
           <label class="field-label" for="password-input">Пароль</label>
           <q-input
-            id="password-input"
+            for="password-input"
             ref="passwordFieldRef"
             v-model="password"
             :type="showCurrent ? 'text' : 'password'"
@@ -756,7 +806,7 @@ const leaveFrozen = () => {
         <form class="otp-form" @submit.prevent="onDeviceSubmit">
           <label class="field-label" for="device-code-input">Код из письма</label>
           <q-input
-            id="device-code-input"
+            for="device-code-input"
             ref="deviceFieldRef"
             v-model="deviceCode"
             :type="showDeviceCode ? 'text' : 'password'"
@@ -817,7 +867,7 @@ const leaveFrozen = () => {
         <form class="otp-form" @submit.prevent="onEmailSubmit">
           <label class="field-label" for="email-input">E-mail</label>
           <q-input
-            id="email-input"
+            for="email-input"
             v-model="emailValue"
             type="email"
             outlined
@@ -832,7 +882,7 @@ const leaveFrozen = () => {
           <template v-if="emailCodeSent">
             <label class="field-label gap-top" for="email-code-input">Код из письма</label>
             <q-input
-              id="email-code-input"
+              for="email-code-input"
               v-model="emailCode"
               :type="showEmailCode ? 'text' : 'password'"
               inputmode="numeric"
@@ -858,7 +908,7 @@ const leaveFrozen = () => {
             <template v-if="emailMode === 'reset'">
               <label class="field-label gap-top" for="reset-password-input">Новый пароль</label>
               <q-input
-                id="reset-password-input"
+                for="reset-password-input"
                 v-model="resetPassword"
                 :type="showResetPassword ? 'text' : 'password'"
                 outlined
@@ -891,7 +941,7 @@ const leaveFrozen = () => {
                 Повторите пароль
               </label>
               <q-input
-                id="reset-password-confirm"
+                for="reset-password-confirm"
                 v-model="resetPasswordConfirm"
                 :type="showResetPassword ? 'text' : 'password'"
                 outlined
@@ -943,7 +993,7 @@ const leaveFrozen = () => {
         <form class="otp-form" @submit.prevent="onOtpSubmit">
           <label class="field-label" for="otp-input">Код из сообщения</label>
           <q-input
-            id="otp-input"
+            for="otp-input"
             ref="otpFieldRef"
             v-model="otpCode"
             inputmode="numeric"
@@ -955,6 +1005,10 @@ const leaveFrozen = () => {
             aria-label="Код подтверждения"
             hide-bottom-space
           />
+
+          <!-- Новый номер: подтверждение кода СРАЗУ создаёт аккаунт,
+               поэтому согласие спрашиваем здесь, а не только на вводе пароля. -->
+          <ConsentCheckbox v-if="consentRequired" v-model="acceptRules" :invalid="consentError" />
 
           <button type="submit" class="btn btn-primary" :disabled="isLoading">
             <span v-if="isLoading" class="spinner"></span>
@@ -1002,7 +1056,7 @@ const leaveFrozen = () => {
         <form class="otp-form" @submit.prevent="onCreateSubmit">
           <label class="field-label" for="new-password-input">Пароль</label>
           <q-input
-            id="new-password-input"
+            for="new-password-input"
             ref="passwordFieldRef"
             v-model="password"
             :type="showNew ? 'text' : 'password'"
@@ -1035,7 +1089,7 @@ const leaveFrozen = () => {
 
           <label class="field-label gap-top" for="confirm-password-input">Повторите пароль</label>
           <q-input
-            id="confirm-password-input"
+            for="confirm-password-input"
             v-model="passwordConfirm"
             :type="showConfirm ? 'text' : 'password'"
             outlined
@@ -1057,6 +1111,9 @@ const leaveFrozen = () => {
               />
             </template>
           </q-input>
+
+          <!-- Согласие с документами сервиса: без галки аккаунт не создаётся. -->
+          <ConsentCheckbox v-if="consentRequired" v-model="acceptRules" :invalid="consentError" />
 
           <button type="submit" class="btn btn-primary" :disabled="isLoading">
             <span v-if="isLoading" class="spinner"></span>
@@ -1096,8 +1153,10 @@ const leaveFrozen = () => {
       </div>
     </transition>
 
-    <!-- Уведомление об обработке персональных данных (требование RuStore и 152-ФЗ). -->
-    <p class="privacy-note">
+    <!-- Уведомление об обработке персональных данных (требование RuStore и 152-ФЗ).
+         На шагах регистрации его заменяет обязательная галка согласия — повторять
+         одно и то же дважды не нужно. -->
+    <p v-if="!consentRequired" class="privacy-note">
       Продолжая, вы соглашаетесь с
       <a href="/privacy.html" target="_blank" rel="noopener">политикой конфиденциальности</a>,
       <a href="/terms.html" target="_blank" rel="noopener">пользовательским соглашением</a>,

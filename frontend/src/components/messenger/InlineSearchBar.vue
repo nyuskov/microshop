@@ -7,9 +7,45 @@
       type="text"
       placeholder="Поиск по сообщениям"
       aria-label="Поиск по сообщениям"
+      @keydown.enter.exact.prevent="emit('next')"
+      @keydown.enter.shift.prevent="emit('prev')"
     />
-    <span v-if="count > 0" class="inline-search-count">{{ count }} совп.</span>
-    <button class="icon-btn" title="Закрыть поиск" @click="emit('close')">
+    <!-- Счётчик «3 из 12»: видно, где мы среди найденных совпадений -->
+    <span v-if="count > 0" class="inline-search-count" role="status">
+      {{
+        (current ?? 0) > 0
+          ? `${current} из ${count}`
+          : `${count} ${pluralRu(count, 'совпадение', 'совпадения', 'совпадений')}`
+      }}
+    </span>
+    <!-- Стрелки появляются только когда есть куда ходить -->
+    <template v-if="count > 1">
+      <button
+        class="icon-btn"
+        type="button"
+        title="Предыдущее (Shift+Enter)"
+        aria-label="Предыдущее совпадение"
+        @click="emit('prev')"
+      >
+        <q-icon :name="icon('expand_less')" size="20px" />
+      </button>
+      <button
+        class="icon-btn"
+        type="button"
+        title="Следующее (Enter)"
+        aria-label="Следующее совпадение"
+        @click="emit('next')"
+      >
+        <q-icon :name="icon('expand_more')" size="20px" />
+      </button>
+    </template>
+    <button
+      class="icon-btn"
+      type="button"
+      title="Закрыть поиск"
+      aria-label="Закрыть поиск"
+      @click="emit('close')"
+    >
       <q-icon :name="icon('close')" size="20px" />
     </button>
   </div>
@@ -17,15 +53,29 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
+import { pluralRu } from '@/utils/format'
+
+/**
+ * Поиск по сообщениям внутри чата.
+ *
+ * Поиск серверный (по всей истории, а не только по загруженной порции), поэтому
+ * строка сама ленту не фильтрует и не подсвечивает: она показывает, сколько
+ * нашлось и на каком совпадении мы стоим, а переход делает родитель
+ * (`next`/`prev`). Enter — следующее совпадение, Shift+Enter — предыдущее.
+ */
 const query = defineModel<string>('query', { required: true })
 
 defineProps<{
-  /** Количество совпадений на сервере (0 — не показываем счётчик). */
+  /** Сколько совпадений на сервере (0 — счётчик не показываем). */
   count: number
+  /** Номер показанного совпадения, 1-based (0 — ещё никуда не переходили). */
+  current?: number
 }>()
 
 const emit = defineEmits<{
   (e: 'close'): void
+  (e: 'prev'): void
+  (e: 'next'): void
 }>()
 </script>
 

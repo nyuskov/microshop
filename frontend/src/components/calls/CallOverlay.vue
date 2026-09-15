@@ -949,7 +949,7 @@ onBeforeUnmount(() => {
   gap: 4px;
   margin-top: 6px;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 11.5px;
+  font-size: var(--ms-fs-xs);
   background: rgba(46, 162, 94, 0.18);
   border: 1px solid rgba(46, 162, 94, 0.4);
   border-radius: 999px;
@@ -965,7 +965,7 @@ onBeforeUnmount(() => {
 .call-e2ee.video {
   align-self: flex-start;
   margin-top: 3px;
-  font-size: 10px;
+  font-size: var(--ms-fs-xs);
   padding: 1px 7px;
 }
 
@@ -976,7 +976,7 @@ onBeforeUnmount(() => {
   gap: 5px;
   margin-top: 6px;
   color: #fff;
-  font-size: 11.5px;
+  font-size: var(--ms-fs-xs);
   background: rgba(58, 166, 224, 0.22);
   border: 1px solid rgba(58, 166, 224, 0.5);
   border-radius: 999px;
@@ -992,7 +992,7 @@ onBeforeUnmount(() => {
 .call-sharing.video {
   align-self: flex-start;
   margin-top: 3px;
-  font-size: 10px;
+  font-size: var(--ms-fs-xs);
   padding: 1px 7px;
 }
 
@@ -1096,7 +1096,7 @@ onBeforeUnmount(() => {
   gap: 4px;
   padding: 2px 8px;
   border-radius: 10px;
-  font-size: 11px;
+  font-size: var(--ms-fs-xs);
   background: rgba(255, 255, 255, 0.16);
 }
 
@@ -1199,7 +1199,7 @@ onBeforeUnmount(() => {
 }
 
 .settings-label {
-  font-size: 11px;
+  font-size: var(--ms-fs-xs);
   text-transform: uppercase;
   letter-spacing: 0.4px;
   color: rgba(255, 255, 255, 0.6);

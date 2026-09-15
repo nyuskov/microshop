@@ -215,7 +215,7 @@ const onCycleSpeed = () => {
 }
 
 .am-time {
-  font-size: 11.5px;
+  font-size: var(--ms-fs-xs);
   color: var(--ms-bubble-time, #8a98a3);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
@@ -228,7 +228,7 @@ const onCycleSpeed = () => {
   align-items: center;
   gap: 8px;
   margin-top: 6px;
-  font-size: 11.5px;
+  font-size: var(--ms-fs-xs);
   min-width: 0;
 }
 
@@ -259,7 +259,7 @@ const onCycleSpeed = () => {
   border: none;
   background: transparent;
   color: var(--ms-accent, #2ea25e);
-  font-size: 11.5px;
+  font-size: var(--ms-fs-xs);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   padding: 2px 6px;

@@ -16,6 +16,11 @@ class RequestOTPRequest(BaseModel):
 class VerifyOTPRequest(BaseModel):
     phone_number: str
     otp: str
+    #: Подтверждено ли согласие с документами сервиса. Обязательно только для
+    #: НОВОГО номера (в этом запросе аккаунт и создаётся); при входе в уже
+    #: существующий аккаунт поле не нужно. Старые клиенты его не присылают —
+    #: поэтому по умолчанию False, а необязательность не ломает вход.
+    accept_terms: bool = False
 
 
 class OTPResponse(BaseModel):
@@ -91,6 +96,20 @@ class PasswordResetConfirmRequest(BaseModel):
 class PasswordRequest(BaseModel):
     phone_number: str
     password: str
+
+
+class PasswordRegisterRequest(PasswordRequest):
+    """Создание пароля (и аккаунта, если его ещё нет) — регистрация.
+
+    ``accept_terms`` — отметил ли человек галку согласия с политикой
+    конфиденциальности, пользовательским соглашением и правилами сообщества.
+    При ``True`` сервер пишет событие в журнал безопасности: это и есть
+    подтверждение, что согласие было явным (152-ФЗ). Поле необязательное:
+    старые клиенты (например, Android-приложение) его не присылают, и уже
+    установленные версии не должны перестать работать.
+    """
+
+    accept_terms: bool = False
 
 
 class PasswordSetRequest(BaseModel):

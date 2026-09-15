@@ -157,11 +157,22 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    async loginWithOtp(phoneNumber: string, otpCode: string, router: Router | null = null) {
+    /**
+     * Вход по коду на телефон. Для НОВОГО номера сервер в этом же запросе
+     * создаёт аккаунт, поэтому вместе с ответом передаём факт принятия правил
+     * (`accept_terms`) — по нему сервер пишет запись в журнал безопасности.
+     */
+    async loginWithOtp(
+      phoneNumber: string,
+      otpCode: string,
+      router: Router | null = null,
+      acceptTerms = false
+    ) {
       try {
         const response = await api.post('/auth/verify-otp/', {
           phone_number: phoneNumber,
-          otp: otpCode
+          otp: otpCode,
+          accept_terms: acceptTerms
         })
 
         if (!response.data?.access_token) {
@@ -468,12 +479,14 @@ export const useAuthStore = defineStore('auth', {
     async registerWithPassword(
       phoneNumber: string,
       password: string,
-      router: Router | null = null
+      router: Router | null = null,
+      acceptTerms = false
     ) {
       try {
         const response = await api.post('/auth/password/register/', {
           phone_number: phoneNumber,
-          password
+          password,
+          accept_terms: acceptTerms
         })
         await this.applyTokenResponse(response.data, router)
       } catch (error) {
@@ -500,13 +513,15 @@ export const useAuthStore = defineStore('auth', {
       token: string,
       phoneNumber: string,
       password: string,
-      router: Router | null = null
+      router: Router | null = null,
+      acceptTerms = false
     ) {
       try {
-        const response = await api.post(
-          `/auth/invites/${encodeURIComponent(token)}/register/`,
-          { phone_number: phoneNumber, password }
-        )
+        const response = await api.post(`/auth/invites/${encodeURIComponent(token)}/register/`, {
+          phone_number: phoneNumber,
+          password,
+          accept_terms: acceptTerms
+        })
         await this.applyTokenResponse(response.data, router)
       } catch (error) {
         console.error('Register with invite error:', error)

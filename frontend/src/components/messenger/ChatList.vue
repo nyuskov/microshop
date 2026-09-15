@@ -244,6 +244,8 @@ const isMutedOf = (chatId: number): boolean => props.mutedChatIds?.includes(chat
 
 .chat-filter {
   flex: 0 0 auto;
+  /* Область нажатия расширяет ::after — ей нужна своя система координат. */
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -265,12 +267,20 @@ const isMutedOf = (chatId: number): boolean => props.mutedChatIds?.includes(chat
   font-weight: 600;
 }
 
+/* Сам чип компактный (пять фильтров должны влезать в 390 px), а область
+   нажатия расширена невидимым слоем — палец толще чипа 26 px. */
+.chat-filter::after {
+  content: '';
+  position: absolute;
+  inset: -4px -2px;
+}
+
 .chat-filter-count {
   padding: 0 5px;
   border-radius: 8px;
   background: var(--ms-accent);
   color: var(--ms-on-accent);
-  font-size: 10.5px;
+  font-size: var(--ms-fs-xs);
   font-weight: 600;
 }
 </style>

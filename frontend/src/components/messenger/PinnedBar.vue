@@ -84,7 +84,7 @@ const emit = defineEmits<{
   color: var(--ms-pinned-text);
   border-radius: 10px;
   padding: 0 6px;
-  font-size: 11px;
+  font-size: var(--ms-fs-xs);
 }
 
 .pinned-item {

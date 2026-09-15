@@ -34,8 +34,10 @@ export const prettyPhone = (phone: string): string => {
  */
 export const localPhoneDigits = (value: string): string => {
   const digits = phoneDigits(value)
-  // 11 цифр, начинающихся с 7/8 — «код страны + локальный номер».
-  if (digits.length === 11 && (digits[0] === '7' || digits[0] === '8')) {
+  // 11 и больше цифр, начинающихся с 7/8 — «код страны + локальный номер».
+  // Больше 11 бывает при вставке номера с мусором («+7 900 111 00 01 99») —
+  // лишние цифры справа отбрасываем, иначе код страны уезжал в номер.
+  if (digits.length >= 11 && (digits[0] === '7' || digits[0] === '8')) {
     return digits.slice(1, 11)
   }
   // Меньше 11 цифр, начинающихся с 7 — вероятно, только начали вводить код страны.
@@ -57,6 +59,31 @@ export const maskPhoneLocal = (local: string): string => {
   if (d.length >= 7) out += `-${d.slice(6, 8)}`
   if (d.length >= 9) out += `-${d.slice(8, 10)}`
   return out
+}
+
+/**
+ * Ввод в поле телефона: любое написание → маска +7 (XXX) XXX-XX-XX и позиция
+ * каретки по числу введённых цифр.
+ *
+ * Зачем не хватило одной `mask` из Quasar: маска ждёт РОВНО 10 локальных цифр и
+ * не понимает код страны. Стоило вставить номер как его пишут в телефоне
+ * («+7 900 111-00-01» или «8 900 111 00 01») — лишние цифры сдвигали ввод, а
+ * последняя отбрасывалась: на экране оказывался ДРУГОЙ, но «валидный» номер.
+ *
+ * Пустой ввод остаётся пустым: иначе в поле залипает «+7 (», и человеку,
+ * стёршему номер, эта строка мешает.
+ */
+export const formatPhoneInput = (
+  value: string,
+  caret?: number | null
+): { value: string; caret: number | null } => {
+  const local = localPhoneDigits(value)
+  const formatted = local ? maskPhoneLocal(local) : ''
+  if (caret === undefined || caret === null) {
+    return { value: formatted, caret: null }
+  }
+  const left = localPhoneDigits(value.slice(0, caret)).length
+  return { value: formatted, caret: formatted ? caretAfterNDigits(formatted, left) : 0 }
 }
 
 /**

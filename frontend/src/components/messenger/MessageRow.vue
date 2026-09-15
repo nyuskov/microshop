@@ -111,6 +111,8 @@
           <em v-else-if="part.type === 'italic'" class="msg-italic">{{ part.value }}</em>
           <s v-else-if="part.type === 'strike'" class="msg-strike">{{ part.value }}</s>
           <code v-else-if="part.type === 'code'" class="msg-code">{{ part.value }}</code>
+          <!-- Совпадение поиска по сообщениям: видно, ЧТО именно нашлось -->
+          <mark v-else-if="part.type === 'search'" class="msg-search-hit">{{ part.value }}</mark>
           <!-- Спойлер скрыт, пока по нему не нажмут -->
           <span
             v-else-if="part.type === 'spoiler'"
@@ -209,7 +211,7 @@ import { lastQuickReaction } from '@/utils/reactions'
 import { haptic, HAPTIC_HOLD } from '@/utils/haptics'
 import { formatMsgTime } from '@/utils/format'
 import { avatarStyle, initials } from '@/utils/user'
-import { splitMessageText } from '@/utils/mentions'
+import { highlightQuery, splitMessageText } from '@/utils/mentions'
 import { followLink } from '@/composables/useExternalLinkGuard'
 import { useVisibleOnce } from '@/composables/useVisibleOnce'
 import { callMessageIcon, callMessageText, effectiveFile, isRoundVideoOnly } from '@/utils/media'
@@ -243,7 +245,9 @@ let swipeFeedback = false
 /** С какого размера текст сворачиваем (примерно 12 строк). */
 const LONG_TEXT_LIMIT = 600
 
-const textParts = computed(() => splitMessageText(props.message.text ?? ''))
+const textParts = computed(() =>
+  highlightQuery(splitMessageText(props.message.text ?? ''), props.searchQuery ?? '')
+)
 
 /** Спойлеры, которые пользователь уже раскрыл нажатием (по индексу фрагмента). */
 const revealedSpoilers = ref<Set<number>>(new Set())
@@ -296,6 +300,11 @@ const props = defineProps<{
   selectable: boolean
   /** Имя автора (для групповых чатов; пусто — не показывать). */
   authorName?: string
+  /**
+   * Запрос поиска по сообщениям: совпадения подсвечиваются в тексте.
+   * Пусто — обычный показ (поиск закрыт).
+   */
+  searchQuery?: string
 }>()
 
 /** Текст плашки «Переслано от …» (null, если сообщение не переслано). */
@@ -614,8 +623,13 @@ const onDoubleTap = (): void => {
   user-select: none;
 }
 
-/* Пузырь, где лежит только «кружок»-видеосообщение, — без фона и отступов */
-.msg-bubble.round-video-only {
+/* Пузырь, где лежит только «кружок»-видеосообщение, — без фона и отступов.
+   Селекторы с .msg.in/.msg.out обязательны: у правил цвета пузыря выше
+   специфичность выше (три класса + scope-атрибут), поэтому без них «кружок»
+   получал прямоугольную подложку под видео. */
+.msg-bubble.round-video-only,
+.msg.in .msg-bubble.round-video-only,
+.msg.out .msg-bubble.round-video-only {
   background: transparent;
   box-shadow: none;
   padding: 2px;
@@ -698,6 +712,16 @@ const onDoubleTap = (): void => {
   padding: 0 4px;
 }
 
+/* Совпадение поиска по сообщениям. Фон — предупреждающая подложка (пара
+   «текст на --ms-warn-bg» уже проверена по контрасту), цвет текста наследуем:
+   пузыри бывают разных цветов, и свой цвет здесь выглядел бы чужеродно. */
+.msg-search-hit {
+  background: var(--ms-warn-bg);
+  color: inherit;
+  border-radius: 4px;
+  padding: 0 2px;
+}
+
 .msg-spoiler {
   background: var(--ms-mark-bg);
   border-radius: 5px;
@@ -736,8 +760,9 @@ const onDoubleTap = (): void => {
 .msg-text {
   display: block;
   color: var(--ms-bubble-text);
-  /* Размер текста сообщений подчиняется настройке «Размер текста». */
-  font-size: calc(14.5px * var(--ms-text-scale, 1));
+  /* Размер текста сообщений — токен шкалы: он же несёт множитель настройки
+     «Размер текста» из оформления. */
+  font-size: var(--ms-fs-base);
   line-height: 1.35;
   word-wrap: break-word;
   white-space: pre-wrap;
@@ -753,7 +778,7 @@ const onDoubleTap = (): void => {
 }
 
 .msg-time {
-  font-size: 11px;
+  font-size: var(--ms-fs-xs);
   color: var(--ms-bubble-time);
 }
 
@@ -768,7 +793,7 @@ const onDoubleTap = (): void => {
 }
 
 .msg-edited {
-  font-size: 11px;
+  font-size: var(--ms-fs-xs);
   font-style: italic;
   opacity: 0.75;
   margin-right: 6px;
@@ -784,7 +809,7 @@ const onDoubleTap = (): void => {
   border-radius: 7px;
   background: var(--ms-warn-bg);
   color: var(--ms-warn);
-  font-size: 11.5px;
+  font-size: var(--ms-fs-xs);
   font-weight: 600;
   line-height: 1.3;
 }
@@ -816,7 +841,9 @@ const onDoubleTap = (): void => {
   align-items: center;
   justify-content: center;
   color: var(--ms-on-accent);
-  font-size: 8.5px;
+  /* Кружок пересылки всего 18 px: текст мельче нечитаем, но и 11.5 px в него
+     не влезет — держим 10 px, зато с множителем настройки «Размер текста». */
+  font-size: calc(10px * var(--ms-text-scale, 1));
   font-weight: 700;
   overflow: hidden;
 }
@@ -896,7 +923,7 @@ const onDoubleTap = (): void => {
 }
 
 .reaction-count {
-  font-size: 11.5px;
+  font-size: var(--ms-fs-xs);
   font-weight: 600;
 }
 

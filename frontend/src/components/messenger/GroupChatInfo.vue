@@ -892,7 +892,7 @@ const deleteGroup = async () => {
 
 .gi-e2ee-hint {
   margin: 6px 2px 0;
-  font-size: 11.5px;
+  font-size: var(--ms-fs-xs);
   color: var(--ms-muted, #71808d);
 }
 
@@ -1116,7 +1116,7 @@ const deleteGroup = async () => {
 }
 
 .gi-role {
-  font-size: 10.5px;
+  font-size: var(--ms-fs-xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.3px;

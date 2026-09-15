@@ -36,6 +36,7 @@
               :is-own="item.row.message.user_id === currentUserId"
               :viewer-id="currentUserId"
               :highlighted="highlightedMessageId === item.row.message.id"
+              :search-query="searchQuery"
               :emoji-picker-open="emojiPickerFor === item.row.message.id"
               :quote="quoteOf(item.row.message)"
               :selection-mode="selectionMode"
@@ -203,6 +204,11 @@ const props = defineProps<{
   loading: boolean
   currentUserId: number | null
   highlightedMessageId: number | null
+  /**
+   * Запрос поиска по сообщениям: совпадения подсвечиваются прямо в тексте
+   * (см. `highlightQuery`), пустая строка — обычный показ ленты.
+   */
+  searchQuery?: string
   emojiPickerFor: number | null
   /** Резолвит данные ответа-цитаты для строки (null — цитата не загружена). */
   quoteOf: (message: Message) => MessageQuote | null
@@ -844,7 +850,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11.5px;
+  font-size: var(--ms-fs-xs);
   color: var(--ms-muted, #7b8a96);
 }
 

@@ -291,7 +291,7 @@ const confirmForward = () => {
 }
 
 .fwd-preview-label {
-  font-size: 11.5px;
+  font-size: var(--ms-fs-xs);
   font-weight: 700;
   color: var(--ms-accent, #2ea25e);
   text-transform: uppercase;

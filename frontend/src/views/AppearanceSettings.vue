@@ -355,7 +355,7 @@ const onReset = () => {
 }
 
 .wallpaper-label {
-  font-size: 10.5px;
+  font-size: var(--ms-fs-xs);
   color: var(--ms-muted, #71808d);
   max-width: 100%;
   white-space: nowrap;

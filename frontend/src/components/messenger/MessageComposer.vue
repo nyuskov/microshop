@@ -528,7 +528,7 @@ watch(newMessage, () => {
   color: var(--ms-tooltip-text);
   padding: 4px 10px;
   border-radius: 10px;
-  font-size: 11.5px;
+  font-size: var(--ms-fs-xs);
   font-weight: 600;
   white-space: nowrap;
   pointer-events: none;
@@ -788,7 +788,7 @@ watch(newMessage, () => {
   background: var(--ms-surface-2);
   color: var(--ms-muted);
   font: inherit;
-  font-size: 11.5px;
+  font-size: var(--ms-fs-xs);
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
@@ -862,12 +862,11 @@ watch(newMessage, () => {
 
 @media (max-width: 420px) {
   .input-row {
-    gap: 4px;
+    gap: 6px;
     padding: 4px 6px;
   }
-  .round-btn {
-    width: 30px;
-    height: 30px;
-  }
+  /* Размер кнопок здесь НЕ уменьшаем: 30 px для пальца мало (общий телефонный
+     размер — 38 px в appearance.css), а зазор 2 px превращал промах в нажатие
+     по соседней кнопке. */
 }
 </style>

@@ -214,6 +214,18 @@ async def verify_otp_endpoint(
     user = existing_user or await get_or_create_user_by_phone_number(
         session, phone_number
     )
+    # Новый номер = регистрация: подтверждение кода здесь же и создаёт аккаунт,
+    # поэтому согласие с документами сервиса приходит в ЭТОМ запросе (см.
+    # `consentRequired` на экране входа). Пишем в журнал безопасности, чтобы
+    # согласие можно было подтвердить задним числом.
+    if existing_user is None and request_data.accept_terms:
+        await audit.log_security_event(
+            session,
+            event="terms_accepted",
+            user_id=user.id,
+            request=request,
+            detail=audit.TERMS_DETAIL,
+        )
     await _require_device_verification(session, request, user)
     await audit.log_security_event(
         session,

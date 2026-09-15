@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyMention,
+  highlightQuery,
   mentionBeforeCaret,
   plainMessageText,
   splitMessageText
@@ -111,6 +112,39 @@ describe('plainMessageText', () => {
     expect(plainMessageText('@ivan вот https://pismo.space/a*b')).toBe(
       '@ivan вот https://pismo.space/a*b'
     )
+  })
+})
+
+describe('highlightQuery: подсветка найденного поиском', () => {
+  it('режет обычный текст на «до / совпадение / после»', () => {
+    expect(highlightQuery(splitMessageText('второе сообщение для бейджа'), 'сообщение')).toEqual([
+      { type: 'text', value: 'второе ' },
+      { type: 'search', value: 'сообщение' },
+      { type: 'text', value: ' для бейджа' }
+    ])
+  })
+
+  it('находит все совпадения и не смотрит на регистр', () => {
+    const parts = highlightQuery(splitMessageText('Проверка и ещё проверка'), 'проверк')
+    const hits = parts.filter((part) => part.type === 'search')
+    expect(hits.map((part) => part.value)).toEqual(['Проверк', 'проверк'])
+  })
+
+  it('не подсвечивает внутри ссылок и упоминаний', () => {
+    // Иначе ссылка перестала бы выглядеть кликабельной, а упоминание — адресом.
+    const parts = highlightQuery(splitMessageText('@ivan https://pismo.space/ivan'), 'ivan')
+    expect(parts.some((part) => part.type === 'search')).toBe(false)
+  })
+
+  it('пустой запрос ничего не меняет', () => {
+    const parts = splitMessageText('обычный текст')
+    expect(highlightQuery(parts, '   ')).toEqual(parts)
+  })
+
+  it('запрос — строка, а не регулярка: скобка не ломает разбор', () => {
+    expect(() => highlightQuery(splitMessageText('а (б) в'), '(')).not.toThrow()
+    const parts = highlightQuery(splitMessageText('а (б) в'), '(')
+    expect(parts.filter((part) => part.type === 'search')).toHaveLength(1)
   })
 })
 

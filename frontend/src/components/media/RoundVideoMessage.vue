@@ -2,8 +2,8 @@
   <div
     class="round-video-msg"
     :class="{ playing: isPlaying, broken }"
-    role="button"
-    tabindex="0"
+    :role="broken ? undefined : 'button'"
+    :tabindex="broken ? undefined : 0"
     :title="broken ? 'Видео недоступно' : 'Воспроизвести видеосообщение'"
     @click="togglePlay"
     @keydown.enter.prevent="togglePlay"
@@ -66,9 +66,10 @@
       <q-icon :name="icon('fullscreen')" size="18px" />
     </button>
 
-    <!-- Плавающее окно: видео продолжает играть поверх других приложений -->
+    <!-- Плавающее окно: видео продолжает играть поверх других приложений.
+         У недоступной записи кнопка бессмысленна — играть нечего. -->
     <button
-      v-if="canPictureInPicture"
+      v-if="canPictureInPicture && !broken"
       class="rvm-chip rvm-pip"
       title="Смотреть в плавающем окне"
       @click.stop="openPictureInPicture"
@@ -295,7 +296,7 @@ const closePreview = () => {
   height: 22px;
   border-radius: 11px;
   padding: 0 6px;
-  font-size: 11px;
+  font-size: var(--ms-fs-xs);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -313,22 +314,39 @@ const closePreview = () => {
   font-size: 0.85rem;
 }
 
-.rvm-error {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
+/* Недоступная запись: круг 300 px из чёрного фона — это огромное чёрное пятно
+   ради строки «Видео недоступно», да ещё и не по теме (в светлой теме оно тоже
+   чёрное). Рисуем компактную плашку в цветах темы, как у недоступного
+   вложения: видео в ней скрыто, содержимое — иконка и текст. */
+.round-video-msg.broken {
+  width: auto;
+  height: auto;
+  aspect-ratio: auto;
+  border-radius: var(--ms-radius-sm);
+  background: var(--ms-surface-2);
+  box-shadow: none;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: #fff;
-  font-size: 12.5px;
-  background: rgba(0, 0, 0, 0.5);
+  cursor: default;
+  padding: 0;
+}
+
+.round-video-msg.broken .rvm-video {
+  display: none;
+}
+
+.rvm-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  color: var(--ms-muted);
+  font-size: var(--ms-fs-xs);
   cursor: default;
 }
 
 .rvm-error i {
-  font-size: 1.4rem;
+  font-size: 1rem;
 }
 
 /* Модальный плеер */

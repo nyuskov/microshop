@@ -77,7 +77,7 @@ describe('маршрут ссылки на канал', () => {
   })
 
   it('до входа защищён глобальным auth-gate', () => {
-    expect(router).toContain("if (!authStore.isAuthenticated)")
+    expect(router).toContain('if (!authStore.isAuthenticated)')
     expect(router).toContain("next({ name: 'Login' })")
   })
 })

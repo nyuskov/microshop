@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   caretAfterNDigits,
   formatPhoneForBackend,
+  formatPhoneInput,
   isValidPhoneNumber,
   localPhoneDigits,
   maskPhoneLocal,
@@ -49,5 +50,55 @@ describe('caretAfterNDigits', () => {
     expect(caretAfterNDigits('+7 (921) 555-22-33', 1)).toBe(5) // после «9»
     expect(caretAfterNDigits('+7 (921) 555-22-33', 3)).toBe(7)
     expect(caretAfterNDigits('+7 (921) 555-22-33', 10)).toBe('+7 (921) 555-22-33'.length)
+  })
+})
+
+describe('formatPhoneInput: ввод в поле телефона', () => {
+  /**
+   * Главный случай — вставка номера так, как его пишут в телефоне. Раньше поле
+   * использовало жёсткую маску Quasar (`+7 (###) ###-##-##`), она не знает про
+   * код страны: ввод «+7 900 111-00-01» превращался в «+7 (790) 011-10-00» —
+   * цифры сдвигались, последняя терялась. Номер при этом оставался «валидным»
+   * (11 цифр, начинается с 7) и уходил на сервер как чужой.
+   */
+  it('вставку «+7 …» и «8 …» приводит к одному и тому же номеру', () => {
+    const expected = '+7 (900) 111-00-01'
+    expect(formatPhoneInput('+7 900 111-00-01').value).toBe(expected)
+    expect(formatPhoneInput('8 900 111 00 01').value).toBe(expected)
+    expect(formatPhoneInput('+79001110001').value).toBe(expected)
+    expect(formatPhoneInput('9001110001').value).toBe(expected)
+    expect(formatPhoneInput('+7 (900) 111-00-01').value).toBe(expected)
+  })
+
+  it('номер из результата нормализуется в тот же +7…', () => {
+    const formatted = formatPhoneInput('+7 900 111-00-01').value
+    expect(formatPhoneForBackend(formatted)).toBe('+79001110001')
+    expect(isValidPhoneNumber(formatted)).toBe(true)
+  })
+
+  it('чистит лишнее и не оставляет в поле мусор', () => {
+    expect(formatPhoneInput('+7 900 abc 111').value).toBe('+7 (900) 111')
+    expect(formatPhoneInput('+7 900 111 00 01 99').value).toBe('+7 (900) 111-00-01')
+  })
+
+  it('пустое поле остаётся пустым (а не «+7 (»)', () => {
+    expect(formatPhoneInput('').value).toBe('')
+    expect(formatPhoneInput('+', 1).value).toBe('')
+  })
+
+  it('возвращает каретку на ту же цифру, а не в конец строки', () => {
+    // Каретка стоит сразу после дописанной цифры в середине номера — там и
+    // должна остаться (reflow-маска иначе уводит её в конец строки).
+    const typed = '+7 (900) 111-00-05'
+    const caret = typed.indexOf('5') + 1
+    const result = formatPhoneInput(typed, caret)
+    expect(result.value).toBe('+7 (900) 111-00-05')
+    expect(result.caret).toBe(caret)
+  })
+
+  it('при вставке каретка уходит в конец', () => {
+    const pasted = '+7 900 111-00-01'
+    const result = formatPhoneInput(pasted, pasted.length)
+    expect(result.caret).toBe(result.value.length)
   })
 })

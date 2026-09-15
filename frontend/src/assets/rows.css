@@ -180,7 +180,7 @@
 }
 
 .ms-rows .row-sub {
-  font-size: calc(13.5px * var(--ms-text-scale, 1));
+  font-size: var(--ms-fs-md);
   color: var(--ms-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -197,7 +197,7 @@
 .ms-rows .unread-badge {
   background: var(--ms-accent);
   color: var(--ms-on-accent);
-  font-size: 11px;
+  font-size: var(--ms-fs-xs);
   font-weight: 700;
   min-width: 20px;
   height: 20px;
@@ -241,7 +241,7 @@
 /* Заголовок группы строк («Найти людей», «Недавние», «Найдены в мессенджере»). */
 .ms-rows .section-label {
   padding: 8px 14px 4px;
-  font-size: 11px;
+  font-size: var(--ms-fs-xs);
   font-weight: 600;
   letter-spacing: 0.6px;
   text-transform: uppercase;

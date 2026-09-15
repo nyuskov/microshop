@@ -57,6 +57,12 @@ class RegistrationInvite(Base):
     used_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("user.id", ondelete="SET NULL"), nullable=True
     )
+    #: Когда владелец отозвал ссылку вручную (NULL — не отзывалась).
+    #: Отдельно от ``used_at``: «по ссылке зарегистрировались» и «ссылку
+    #: погасили» — разные события, и в списке приглашений их важно различать.
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 __all__ = ("RegistrationInvite",)

@@ -9,6 +9,7 @@
           class="story-avatar-btn"
           type="button"
           :title="mini ? 'Показать истории' : 'Моя история'"
+          :aria-label="mini ? 'Показать истории' : 'Моя история'"
           @click="onMineClick"
         >
           <span
@@ -19,6 +20,9 @@
             <img v-if="myAvatar" :src="myAvatar" alt="" loading="lazy" decoding="async" />
             <template v-else>{{ myInitials }}</template>
           </span>
+          <!-- В шапке рядом два кружка с инициалами (этот и аватар профиля) —
+               маленький «+» объясняет, что этот кружок про истории. -->
+          <span v-if="mini && !mine" class="story-plus" aria-hidden="true">+</span>
         </button>
         <button
           v-if="!mini && !publishing"
@@ -364,6 +368,28 @@ const publish = async () => {
    ореол постоянный, как на образце. */
 .mini .story-cell:has(.story-avatar.unseen)::after {
   border-color: var(--ms-accent);
+}
+
+/* Кружок без своей истории: значок «+» в углу. Без него вход в истории не
+   отличить от аватара профиля — рядом стоят два одинаковых кружка с инициалами
+   (подпись `title` на тач-устройствах не видна, а `aria-label` нужен только
+   скринридеру). */
+.mini .story-plus {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ms-accent);
+  color: var(--ms-on-accent);
+  /* Знак «+» живёт в кружке 14 px: крупнее 11 px он не влезает, но множитель
+     настройки «Размер текста» учитываем. */
+  font-size: calc(11px * var(--ms-text-scale, 1));
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
 }
 
 /* Полоса историй раскрыта: кружок в шапке подсвечен — как значок поиска в

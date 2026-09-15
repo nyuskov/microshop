@@ -149,7 +149,7 @@ import { avatarStyle, initials } from '@/utils/user'
 import StoriesStrip from '@/components/stories/StoriesStrip.vue'
 
 export interface SettingsAction {
-  key: 'group' | 'channel' | 'blocked' | 'reports'
+  key: 'group' | 'channel' | 'blocked'
   label: string
   icon: string
 }
@@ -165,7 +165,6 @@ const props = defineProps<{
   searchOpen: boolean
   selfName: string
   selfAvatarUrl?: string
-  isAdmin?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -184,7 +183,6 @@ const emit = defineEmits<{
   (e: 'create-group'): void
   (e: 'create-channel'): void
   (e: 'open-blocked'): void
-  (e: 'open-reports'): void
 }>()
 
 /** Обёртка меню «⋯» (кнопка + выпадающий список) — по ней считаем «клик мимо». */
@@ -195,23 +193,19 @@ const toggleSettingsMenu = () => {
   settingsMenuOpen.value = !settingsMenuOpen.value
 }
 
-// Пункты верхнего меню «⋯»; «Жалобы» видят только администраторы.
-const settingsActions = computed<SettingsAction[]>(() => {
-  const items: SettingsAction[] = [
-    { key: 'group', label: 'Новая группа', icon: 'group_add' },
-    { key: 'channel', label: 'Новый канал', icon: 'campaign' },
-    { key: 'blocked', label: 'Заблокированные', icon: 'block' }
-  ]
-  if (props.isAdmin) items.push({ key: 'reports', label: 'Жалобы', icon: 'flag' })
-  return items
-})
+// Пункты верхнего меню «⋯». Служебные разделы (разбор жалоб и т.п.) здесь
+// больше не живут: они собраны в админской «шестерёнке» внизу панели.
+const settingsActions = computed<SettingsAction[]>(() => [
+  { key: 'group', label: 'Новая группа', icon: 'group_add' },
+  { key: 'channel', label: 'Новый канал', icon: 'campaign' },
+  { key: 'blocked', label: 'Заблокированные', icon: 'block' }
+])
 
 const runSettingsAction = (action: SettingsAction) => {
   settingsMenuOpen.value = false
   if (action.key === 'group') emit('create-group')
   if (action.key === 'channel') emit('create-channel')
   if (action.key === 'blocked') emit('open-blocked')
-  if (action.key === 'reports') emit('open-reports')
 }
 
 // Тап/клик мимо меню закрывает «⋯».

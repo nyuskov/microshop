@@ -87,7 +87,7 @@ const domain = computed<string>(
 }
 
 .lp-site {
-  font-size: 11.5px;
+  font-size: var(--ms-fs-xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.3px;

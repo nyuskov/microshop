@@ -6,6 +6,14 @@
     <FileDropOverlay :active="fileDropActive" :can-send="canDropFiles" />
     <!-- ======= QDrawer: Чаты / Контакты (десктоп — постоянная панель,
          мобильный — выдвижной drawer поверх чата) ======= -->
+    <!-- `persistent` на мобильном: без него Quasar сам скрывает drawer при
+         ЛЮБОЙ смене `$route.fullPath` (use-model-toggle, hideOnRouteChange).
+         Наш «программный шаг назад» (stepBackInApp) — это настоящий history.go,
+         и vue-router после него «догоняет» адрес и видит смену маршрута: список
+         закрывался в момент закрытия настроек, лайтбокса, карточки чата — человек
+         оставался на переписке вместо списка. Навигацию на мобильном целиком
+         ведёт приложение (utils/mobileNav.ts), поэтому гасим поведение Quasar.
+         Свайп и закрытие по фону остаются — они управляются `no-swipe-*`. -->
     <q-drawer
       v-model="drawerOpen"
       side="left"
@@ -13,6 +21,7 @@
       :breakpoint="1023"
       :show-if-above="true"
       :overlay="!isDesktop"
+      :persistent="!isDesktop"
       :no-swipe-open="!isDesktop && selectedChatId !== null"
       :no-swipe-close="!isDesktop && selectedChatId === null"
       bordered
@@ -45,12 +54,12 @@
         @open-story="openStory"
         @to-chats="goToChats"
         @open-profile="goToProfile"
+        @open-admin="goToAdmin"
         @select-chat="selectChat"
         @chat-opened="onChatOpened"
         @create-group="openCreateGroup"
         @create-channel="openCreateChannel"
         @open-blocked="moderationOverlaysRef?.openBlocked()"
-        @open-reports="moderationOverlaysRef?.openReports()"
       />
     </q-drawer>
 
@@ -145,6 +154,9 @@
             v-if="inlineSearchOpen"
             v-model:query="inlineQuery"
             :count="serverMatchCount"
+            :current="inlineMatchIndex + 1"
+            @prev="goToInlineMatch(-1)"
+            @next="goToInlineMatch(1)"
             @close="toggleInlineSearch"
           />
 
@@ -164,6 +176,7 @@
             :loading="messagesLoading"
             :current-user-id="currentUserId"
             :highlighted-message-id="highlightedMessageId"
+            :search-query="inlineSearchOpen ? inlineQuery.trim() : ''"
             :emoji-picker-for="emojiPickerFor"
             :quote-of="quoteFor"
             :selection-mode="msgSelectionMode"
@@ -281,11 +294,14 @@
     @share="sendIncomingShare"
   />
 
-  <!-- Profile Modal (Quasar) -->
-  <q-dialog v-model="showProfileModal" @hide="onProfileHidden">
-    <q-card class="ms-modal ms-modal-profile">
+  <!-- Profile Modal (Quasar). На телефоне — во весь экран (`maximized`):
+       карточка оставляла по краям полоски чата и два вложенных скролла. -->
+  <q-dialog v-model="showProfileModal" :maximized="!isDesktop" @hide="onProfileHidden">
+    <q-card class="ms-modal ms-modal-profile" :class="{ 'ms-modal-full': !isDesktop }">
       <q-card-section class="row no-wrap items-center ms-modal-head">
-        <div class="text-subtitle1 text-weight-medium ellipsis">Настройки</div>
+        <!-- Заголовок окна — название текущего экрана: обычные настройки или
+             админский раздел (в него входит «шестерёнка» из списка чатов). -->
+        <div class="text-subtitle1 text-weight-medium ellipsis">{{ profileTitle }}</div>
         <q-space />
         <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
       </q-card-section>
@@ -293,7 +309,12 @@
       <q-card-section class="ms-modal-body">
         <Suspense>
           <template #default>
-            <UserProfile ref="profileRef" @close-modal="showProfileModal = false" />
+            <UserProfile
+              ref="profileRef"
+              :start-section="profileStartSection"
+              @close-modal="showProfileModal = false"
+              @open-moderation="openModerationFromAdmin"
+            />
           </template>
           <template #fallback>
             <div class="q-pa-md">Загрузка профиля...</div>
@@ -599,6 +620,8 @@ const storiesStore = useStoriesStore()
 interface ProfileHandle {
   isInSection: () => boolean
   backToSections: () => void
+  /** Открыть админский экран (служительные разделы: приглашения, жалобы). */
+  openAdmin: () => void
 }
 const profileRef = ref<ProfileHandle | null>(null)
 const showChatInfoModal = ref(false)
@@ -2749,6 +2772,25 @@ const toggleInlineSearch = () => {
 // ---------- Поиск по сообщениям (серверный) ----------
 let inlineSearchTimer: number | null = null
 const serverMatchCount = ref(0)
+/** Найденные совпадения (по возрастанию) и номер того, что показано сейчас. */
+const inlineMatches = ref<{ id: number }[]>([])
+const inlineMatchIndex = ref(0)
+
+/**
+ * Переход к совпадению по кругу: после последнего снова первое.
+ *
+ * Поиск серверный, поэтому совпадение может лежать в ещё не загруженной части
+ * истории — `ensureMessageLoaded` догружает нужную страницу и не даёт ленте
+ * «прыгнуть» (см. выше).
+ */
+const goToInlineMatch = async (delta: number) => {
+  const total = inlineMatches.value.length
+  if (total === 0) return
+  inlineMatchIndex.value = (inlineMatchIndex.value + delta + total) % total
+  const match = inlineMatches.value[inlineMatchIndex.value]
+  const loaded = await ensureMessageLoaded(match.id)
+  if (loaded) await revealMessageInThread(match.id)
+}
 
 const revealMessageInThread = async (messageId: number) => {
   if (highlightTimer !== undefined) {
@@ -2782,29 +2824,24 @@ const runInlineServerSearch = async () => {
   const query = inlineQuery.value.trim()
   if (!query || chatId === null) {
     serverMatchCount.value = 0
+    inlineMatches.value = []
+    inlineMatchIndex.value = 0
     return
   }
   const results = await searchMessages(query, chatId)
   serverMatchCount.value = results.length
-  if (results.length === 0) return
-
-  // Результаты приходят по возрастанию: первый — самый старый.
-  const oldestNeeded = results[0].id
-  const minLoaded = messages.value.length ? Math.min(...messages.value.map((m) => m.id)) : null
-  if (minLoaded !== null && minLoaded <= oldestNeeded) {
-    await revealMessageInThread(results[results.length - 1].id)
+  inlineMatches.value = results.map((message) => ({ id: message.id }))
+  if (results.length === 0) {
+    inlineMatchIndex.value = 0
     return
   }
-  // Догружаем более старые, пока не накроем самый старый результат.
-  for (let i = 0; i < 20 && !noMoreOlder.value; i += 1) {
-    await loadOlderMessages()
-    const nextMin = messages.value.length ? Math.min(...messages.value.map((m) => m.id)) : null
-    if (nextMin !== null && nextMin <= oldestNeeded) break
-  }
+
+  // Показываем САМОЕ СВЕЖЕЕ совпадение: с него начинают смотреть, а дальше по
+  // стрелкам уходим вглубь истории (счётчик при этом показывает «N из M»).
+  inlineMatchIndex.value = results.length - 1
   const newest = results[results.length - 1]
-  if (messages.value.some((m) => m.id === newest.id)) {
-    await revealMessageInThread(newest.id)
-  }
+  const loaded = await ensureMessageLoaded(newest.id)
+  if (loaded) await revealMessageInThread(newest.id)
 }
 
 watch(inlineQuery, (value) => {
@@ -2814,6 +2851,8 @@ watch(inlineQuery, (value) => {
   }
   if (!value.trim() || selectedChatId.value === null) {
     serverMatchCount.value = 0
+    inlineMatches.value = []
+    inlineMatchIndex.value = 0
     return
   }
   inlineSearchTimer = window.setTimeout(() => {
@@ -3048,12 +3087,48 @@ watch(view, (section) => storeSection(section))
 
 const goToChats = () => switchSection('chats')
 
+/**
+ * С какого экрана открывать настройки.
+ *
+ * Профиль грузится отдельным чанком (defineAsyncComponent), поэтому в момент
+ * первого открытия дочернего компонента ещё нет и вызов метода в него не
+ * долетит. Начальный экран передаём пропом — его компонент читает при
+ * монтировании; для уже открытого профиля тот же переход делается методом.
+ */
+const profileStartSection = ref<'root' | 'admin'>('root')
+
+/**
+ * Заголовок окна настроек: у админского экрана он свой — «Администрирование».
+ *
+ * Своя шапка внутри админского экрана не рисуется (иначе два заголовка подряд),
+ * поэтому название даёт само окно. Разделы, открытые ИЗ админского экрана
+ * (например «Приглашения»), остаются под этим же заголовком.
+ */
+const profileTitle = computed(() =>
+  profileStartSection.value === 'admin' ? 'Администрирование' : 'Настройки'
+)
+
 const goToProfile = () => {
   // Профиль всегда открывается списком разделов — если в прошлый раз был
   // открыт конкретный раздел, возвращаемся к списку.
+  profileStartSection.value = 'root'
   profileRef.value?.backToSections()
   pushMobileNav()
   showProfileModal.value = true
+}
+
+/** Админская «шестерёнка» внизу списка чатов: служебные разделы и жалобы. */
+const goToAdmin = () => {
+  profileStartSection.value = 'admin'
+  pushMobileNav()
+  showProfileModal.value = true
+  void nextTick(() => profileRef.value?.openAdmin())
+}
+
+/** «Жалобы» из админского экрана: закрываем настройки и открываем разбор. */
+const openModerationFromAdmin = () => {
+  showProfileModal.value = false
+  void nextTick(() => moderationOverlaysRef.value?.openReports())
 }
 
 /** Закрытие профиля: сбрасываем раздел (следующее открытие — со списка). */
@@ -3887,6 +3962,32 @@ watch(
   padding: 8px 22px 24px;
   max-height: 82vh;
   overflow: auto;
+}
+
+/* Мобильные настройки — во весь экран. У Quasar-«maximized» селектор
+   `.q-dialog__inner--maximized > div` (класс + элемент) слабее нашего
+   `.ms-modal[data-v-…]` (класс + scope-атрибут), поэтому ширину и отступы
+   перебиваем здесь, а не надеемся на диалог. Прокрутка — ОДНА, общий
+   `.ms-modal-body`: карточка не скроллится (flex-колонка), тело растягивается. */
+.ms-modal-full {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Вырез экрана (чёлку) учитываем: полноэкранный диалог начинается от самого
+   верха окна, а не от безопасной зоны. */
+.ms-modal-full .ms-modal-head {
+  padding: calc(8px + env(safe-area-inset-top)) 8px 8px 16px;
+}
+
+.ms-modal-full .ms-modal-body {
+  flex: 1;
+  max-height: none;
+  padding: 4px 16px calc(24px + env(safe-area-inset-bottom));
 }
 
 /* Модалка удаления чата переехала в MessengerChatOverlays.vue вместе с разметкой. */

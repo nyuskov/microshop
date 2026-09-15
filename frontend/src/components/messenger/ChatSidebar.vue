@@ -12,7 +12,6 @@
       :search-open="searchOpen"
       :self-name="selfName"
       :self-avatar-url="selfAvatarUrl"
-      :is-admin="isAdmin"
       @exit-selection="exitSelection"
       @bulk-mute="onBulkMute"
       @bulk-pin="onBulkPin"
@@ -28,7 +27,6 @@
       @create-group="emit('create-group')"
       @create-channel="emit('create-channel')"
       @open-blocked="emit('open-blocked')"
-      @open-reports="emit('open-reports')"
     />
 
     <!-- Истории и поиск под шапкой. Порядок как в Telegram: первой выезжает
@@ -140,6 +138,22 @@
       </div>
     </Transition>
 
+    <!-- Админская «шестерёнка» — в самом низу слева, как управление в VS Code.
+         Сюда уходят ВСЕ служебные разделы (приглашения, жалобы и журнал
+         модерации), чтобы не мешаться в обычных настройках профиля. Видна
+         только аккаунту администратора. -->
+    <button
+      v-if="isAdmin && !selectionMode"
+      class="admin-gear"
+      type="button"
+      title="Администрирование"
+      aria-label="Администрирование"
+      @click="emit('open-admin')"
+    >
+      <q-icon :name="icon('admin_panel_settings')" size="18px" />
+      <span>Администрирование</span>
+    </button>
+
     <!-- Личное имя контакта: добавление / переименование / удаление -->
     <ContactNameDialog
       v-if="contactDialogUser"
@@ -216,7 +230,7 @@ const props = defineProps<{
   /** Имя и аватар текущего пользователя (кнопка «Настройки профиля»). */
   selfName: string
   selfAvatarUrl: string | undefined
-  /** Администратор: показывает в «⋯» разбор жалоб. */
+  /** Администратор: показывает разбор жалоб в меню и «шестерёнку» внизу. */
   isAdmin?: boolean
 }>()
 
@@ -239,8 +253,8 @@ const emit = defineEmits<{
   (e: 'create-channel'): void
   /** Открыть список заблокированных пользователей. */
   (e: 'open-blocked'): void
-  /** Открыть разбор жалоб (только администраторы). */
-  (e: 'open-reports'): void
+  /** Открыть админскую панель (приглашения, жалобы) — только администраторы. */
+  (e: 'open-admin'): void
 }>()
 
 /**
@@ -619,6 +633,37 @@ watch([() => props.view, () => props.selectedChatId], () => {
   color: var(--ms-accent, #1e9b51);
 }
 
+/* Админская «шестерёнка» внизу панели (как управление в VS Code): прижата к
+   левому нижнему углу, во всю ширину и на своей подложке — чтобы не путаться
+   со строками списка чатов. Видна только администратору (v-if в разметке). */
+.admin-gear {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 9px;
+  /* Отступ снизу = безопасная зона: на телефоне с полоской-индикатором кнопка
+     в самом низу экрана иначе оказалась бы под системной панелью. */
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ms-muted-2);
+  background: var(--ms-surface-2);
+  border: 0;
+  border-top: 1px solid var(--ms-border);
+  cursor: pointer;
+  text-align: left;
+}
+
+.admin-gear:hover {
+  color: var(--ms-text);
+  background: var(--ms-hover);
+}
+
+.admin-gear:focus-visible {
+  outline: 2px solid var(--ms-accent);
+  outline-offset: -2px;
+}
+
 .inline-error {
   color: var(--ms-danger);
   font-size: 12px;
@@ -693,6 +738,8 @@ watch([() => props.view, () => props.selectedChatId], () => {
 
 .chat-filter {
   flex: 0 0 auto;
+  /* Область нажатия расширяет ::after — ей нужна своя система координат. */
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -714,12 +761,22 @@ watch([() => props.view, () => props.selectedChatId], () => {
   font-weight: 600;
 }
 
+/* Сам чип держим компактным (пять фильтров должны влезать в 390 px), а область
+   нажатия расширяем невидимым слоем: зазор между чипами 5 px, поэтому 2 px по
+   горизонтали и 4 px по вертикали — соседи не перехватывают нажатие, а
+   вертикаль остаётся внутри отступов полосы (8 px сверху, 4 px снизу). */
+.chat-filter::after {
+  content: '';
+  position: absolute;
+  inset: -4px -2px;
+}
+
 .chat-filter-count {
   padding: 0 5px;
   border-radius: 8px;
   background: var(--ms-accent);
   color: var(--ms-on-accent);
-  font-size: 10.5px;
+  font-size: var(--ms-fs-xs);
   font-weight: 600;
 }
 

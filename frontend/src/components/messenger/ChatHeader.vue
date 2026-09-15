@@ -302,7 +302,7 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
 
 .chat-status-pill {
   max-width: 170px;
-  font-size: 11px;
+  font-size: var(--ms-fs-xs);
   font-weight: 600;
   color: var(--ms-accent);
   background: var(--ms-accent-soft);
@@ -465,7 +465,7 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   }
   .chat-status-pill {
     max-width: 40%;
-    font-size: 10px;
+    font-size: var(--ms-fs-xs);
     padding: 1px 6px;
     border-radius: 9px;
   }
@@ -476,10 +476,8 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
     padding: 6px 8px;
     gap: 6px;
   }
-  .chat-header .icon-btn {
-    width: 30px;
-    height: 30px;
-  }
+  /* Кнопки НЕ уменьшаем: на самом узком экране они и так впритык для пальца
+     (общий размер для телефона — 38 px в appearance.css). */
   .chat-avatar {
     width: 36px;
     height: 36px;
@@ -490,7 +488,7 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   }
   .chat-status-pill {
     max-width: 34%;
-    font-size: 9.5px;
+    font-size: var(--ms-fs-xs);
   }
 }
 </style>

@@ -19,7 +19,7 @@ NODE_BIN ?= ./node_modules/.bin
 # вычистить (грабля: тесты один раз уже стирали dev-данные).
 TEST_DB_URL ?= postgresql+asyncpg://postgres:test@localhost:55432/microshop_test
 
-.PHONY: check check-backend check-frontend test-backend dead-css
+.PHONY: check check-backend check-frontend test-backend dead-css invite invites invite-revoke admin
 
 check: check-backend check-frontend
 
@@ -61,3 +61,55 @@ test-backend:
 # скрипта и в docs/checks.md.
 dead-css:
 	cd $(FE) && node scripts/check-dead-css.mjs
+
+# ---------- Приглашения на регистрацию (закрытый доступ «по инвайтам») ----------
+# Публичной регистрации нет: новый аккаунт заводится только по одноразовой
+# ссылке, которую владелец передаёт лично. Раньше для этого нужно было помнить
+# docker-пути и модуль скрипта — теперь это команды make.
+#
+#   make invite                            # ссылка на localhost:8080
+#   make invite NOTE="для Пети"            # с заметкой для себя
+#   make invite PHONE=+79991234567         # только для этого номера
+#   make invite DAYS=7                     # срок действия
+#   make invites                           # список выданных (без полных токенов)
+#   make invite-revoke ID=3                # погасить ссылку
+#   make admin PHONE=+79991234567          # выдать аккаунту права владельца
+#
+# На проде — те же команды, но с прод-сервисом и файлом compose:
+#   make invite SERVICE=web-blue INVITE_BASE_URL=https://pismo.space \
+#     COMPOSE="docker compose -p microshop-test -f docker-compose.prod.yaml"
+# (активный слот — `cat ~/.microshop-deploy/active-web-slot`)
+#
+# Приглашения можно выдавать и из приложения: профиль → «Приглашения»
+# (доступно аккаунту с флагом is_superuser, см. `make admin`).
+COMPOSE ?= docker compose
+SERVICE ?= web
+DB_SERVICE ?= db
+DB_USER ?= postgres
+DB_NAME ?= microshop
+INVITE_BASE_URL ?= http://localhost:8080
+
+invite:
+	@$(COMPOSE) exec -T $(SERVICE) poetry run python -m scripts.create_invite \
+		$(if $(PHONE),--phone $(PHONE)) \
+		$(if $(NOTE),--note "$(NOTE)") \
+		$(if $(DAYS),--expires-days $(DAYS)) \
+		--base-url $(INVITE_BASE_URL)
+
+invites:
+	@$(COMPOSE) exec -T $(DB_SERVICE) psql -U $(DB_USER) -d $(DB_NAME) -c \
+		"SELECT id, left(token, 8) AS token_head, phone_number, note, created_at, expires_at, used_at, revoked_at FROM registration_invites ORDER BY id DESC LIMIT 25"
+
+# Погашение ссылки: помечаем revoked_at (как кнопка «отозвать» в приложении).
+# Полный токен не нужен — хватает id из `make invites`.
+invite-revoke:
+	@case "$(ID)" in ''|*[!0-9]*) echo 'Укажи числовой ID: make invite-revoke ID=3 (список — make invites)'; exit 1;; esac
+	@$(COMPOSE) exec -T $(DB_SERVICE) psql -U $(DB_USER) -d $(DB_NAME) -c \
+		"UPDATE registration_invites SET revoked_at = now() WHERE id = $(ID) AND used_at IS NULL AND revoked_at IS NULL"
+
+# Права владельца нужны только для экрана «Приглашения» и разбора жалоб.
+# Номер сравниваем по цифрам: в базе он может лежать как «+7 (911) 111-22-33».
+admin:
+	@printf '%s' '$(PHONE)' | grep -Eq '^[+0-9() -]{10,20}$$' || { echo 'Укажи номер: make admin PHONE=+79991234567'; exit 1; }
+	@$(COMPOSE) exec -T $(DB_SERVICE) psql -U $(DB_USER) -d $(DB_NAME) -c \
+		"UPDATE \"user\" SET is_superuser = true WHERE regexp_replace(phone_number, '[^0-9]', '', 'g') = regexp_replace('$(PHONE)', '[^0-9]', '', 'g')"

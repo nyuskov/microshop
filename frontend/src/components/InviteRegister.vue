@@ -4,8 +4,10 @@ import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { getErrorMessage } from '@/services/errors'
-import { formatPhoneForBackend, isValidPhoneNumber } from '@/utils/phone'
+import { formatPhoneForBackend, formatPhoneInput, isValidPhoneNumber } from '@/utils/phone'
 import { PASSWORD_MIN_LENGTH, passwordProblem } from '@/utils/passwordPolicy'
+import PhoneInput from '@/components/common/PhoneInput.vue'
+import ConsentCheckbox from '@/components/common/ConsentCheckbox.vue'
 
 // Регистрация по персональной ссылке-приглашению (/invite/:token). Публичной
 // регистрации нет — попасть сюда можно только по ссылке, которую владелец
@@ -27,6 +29,11 @@ const passwordConfirm = ref('')
 const busy = ref(false)
 const errorMessage = ref('')
 
+/** Галка «принимаю документы сервиса» — обязательна для создания аккаунта. */
+const acceptRules = ref(false)
+/** Галку не отметили — подсветить её. */
+const consentError = ref(false)
+
 onMounted(async () => {
   if (authStore.isAuthenticated) {
     await router.replace({ name: 'Messenger' })
@@ -37,7 +44,9 @@ onMounted(async () => {
     inviteValid.value = status.valid
     if (status.phone_number) {
       lockedPhone.value = status.phone_number
-      phone.value = status.phone_number
+      // Сервер отдаёт номер в виде `+7XXXXXXXXXX`, а поле показывает маску
+      // `+7 (XXX) XXX-XX-XX` — приводим сразу, иначе в поле виден «сырой» номер.
+      phone.value = formatPhoneInput(status.phone_number).value
     }
   } catch {
     inviteValid.value = false
@@ -61,10 +70,22 @@ const submit = async () => {
     errorMessage.value = 'Пароли не совпадают.'
     return
   }
+  if (!acceptRules.value) {
+    consentError.value = true
+    errorMessage.value = 'Отметьте согласие с правилами сервиса — без него аккаунт создать нельзя.'
+    return
+  }
+  consentError.value = false
 
   busy.value = true
   try {
-    await authStore.registerWithInvite(token, formattedPhone, password.value, router)
+    await authStore.registerWithInvite(
+      token,
+      formattedPhone,
+      password.value,
+      router,
+      acceptRules.value
+    )
   } catch (error) {
     errorMessage.value = getErrorMessage(error, 'Не удалось завершить регистрацию.')
   } finally {
@@ -87,8 +108,8 @@ const submit = async () => {
       <template v-else-if="inviteValid === false">
         <h2 class="step-title">Ссылка недействительна</h2>
         <p class="step-subtitle">
-          Эта ссылка-приглашение уже использована, истекла или не существует. Обратитесь к тому,
-          кто её отправил, за новой ссылкой.
+          Эта ссылка-приглашение уже использована, истекла или не существует. Обратитесь к тому, кто
+          её отправил, за новой ссылкой.
         </p>
         <button class="link-btn" type="button" @click="router.push({ name: 'Login' })">
           На страницу входа
@@ -97,27 +118,21 @@ const submit = async () => {
 
       <template v-else>
         <h2 class="step-title">Регистрация по приглашению</h2>
-        <p class="step-subtitle">
-          Придумайте пароль, чтобы завершить создание аккаунта.
-        </p>
+        <p class="step-subtitle">Придумайте пароль, чтобы завершить создание аккаунта.</p>
 
         <form class="otp-form" @submit.prevent="submit">
           <label class="field-label" for="invite-phone">Номер телефона</label>
-          <q-input
+          <PhoneInput
             id="invite-phone"
             v-model="phone"
-            outlined
-            class="phone-input"
-            placeholder="+7 999 123-45-67"
-            autocomplete="tel"
-            inputmode="tel"
+            placeholder="+7 (900) 111-00-01"
+            aria-label="Номер телефона"
             :disable="!!lockedPhone"
-            hide-bottom-space
           />
 
           <label class="field-label gap-top" for="invite-password">Пароль</label>
           <q-input
-            id="invite-password"
+            for="invite-password"
             v-model="password"
             type="password"
             outlined
@@ -129,7 +144,7 @@ const submit = async () => {
 
           <label class="field-label gap-top" for="invite-password-confirm">Повторите пароль</label>
           <q-input
-            id="invite-password-confirm"
+            for="invite-password-confirm"
             v-model="passwordConfirm"
             type="password"
             outlined
@@ -137,6 +152,9 @@ const submit = async () => {
             autocomplete="new-password"
             hide-bottom-space
           />
+
+          <!-- Регистрация: без явного согласия аккаунт не создаётся. -->
+          <ConsentCheckbox v-model="acceptRules" :invalid="consentError" />
 
           <q-btn
             unelevated
@@ -158,14 +176,6 @@ const submit = async () => {
         </div>
       </transition>
     </div>
-
-    <p class="privacy-note">
-      Продолжая, вы соглашаетесь с
-      <a href="/privacy.html" target="_blank" rel="noopener">политикой конфиденциальности</a>,
-      <a href="/terms.html" target="_blank" rel="noopener">пользовательским соглашением</a>,
-      <a href="/community.html" target="_blank" rel="noopener">правилами сообщества</a>
-      и обработкой персональных данных.
-    </p>
   </div>
 </template>
 
@@ -306,22 +316,8 @@ const submit = async () => {
   color: var(--ms-danger);
 }
 
-.privacy-note {
-  margin: 14px 4px 0;
-  text-align: center;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--ms-muted);
-}
-
-.privacy-note a {
-  color: var(--ms-accent, var(--ms-accent));
-  text-decoration: none;
-}
-
-.privacy-note a:hover {
-  text-decoration: underline;
-}
+/* Подписи «Продолжая, вы соглашаетесь…» здесь больше нет: на этом экране
+   согласие подтверждают галкой (ConsentCheckbox), дублировать текст незачем. */
 
 .fade-enter-active,
 .fade-leave-active {

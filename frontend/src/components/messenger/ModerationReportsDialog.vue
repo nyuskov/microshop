@@ -376,7 +376,7 @@ const restoreAuthorMessages = async (userId: number) => {
 }
 
 .mod-status {
-  font-size: 11.5px;
+  font-size: var(--ms-fs-xs);
   border-radius: 999px;
   padding: 2px 8px;
   background: var(--ms-surface-2, #eef1f4);

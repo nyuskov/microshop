@@ -218,7 +218,7 @@ watch(
 }
 
 .ch-comment-time {
-  font-size: 11px;
+  font-size: var(--ms-fs-xs);
   color: var(--ms-muted, #71808d);
 }
 
