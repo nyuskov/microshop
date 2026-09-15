@@ -61,7 +61,9 @@ export const mediaTypeLabel = (file: MessageFile): string => {
  */
 export const fileIcon = (file: MessageFile): string => {
   if (file.mime?.startsWith('image/')) return 'image'
-  if (file.mime?.startsWith('video/')) return 'videocam'
+  // Видео — «кружок» (см. mediaTypeLabel), а не камкордер: камкордер закреплён
+  // за видеозвонком, иначе в списке медиа он читается как кнопка звонка.
+  if (file.mime?.startsWith('video/')) return 'video_message'
   if (file.mime === 'application/pdf') return 'picture_as_pdf'
   if (file.mime?.startsWith('audio/')) return 'volume_up'
   if (file.mime?.startsWith('text/')) return 'description'

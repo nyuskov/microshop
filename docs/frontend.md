@@ -59,7 +59,7 @@ node node_modules/prettier/bin/prettier.cjs --write <files> # формат
 - `Messenger.vue` — адаптивный Telegram-подобный вид: `q-layout` + `q-drawer` (панель «Чаты/Контакты»; на мобильном — выдвижной drawer), список диалогов (пины/онлайн/«печатает…»), окно чата (пузыри вправо/влево, day-разделители, reply-цитата, закреплённые сверху, файлы/картинки, реакции, hover-действия, inline-поиск по сообщениям). Модалка «Настройки» (`UserProfile`) — список разделов (Аккаунт, Безопасность, Приватность, Уведомления, Хранилище, Внешний вид, О приложении); оформление (`AppearanceSettings`) встроено в раздел «Внешний вид». Ещё модалки: «Информация о чате» (`ChatInfo`), вход (`LoginModal`), лайтбокс изображений (`ImageLightbox`). Обновления — WS-события + fallback-polling 20 с.
 - `UserProfile.vue` — редактирование профиля + аватар (клик по аватару → выбор файла, удаление фото, кнопка «Выйти»); телефон — только для чтения (логин аккаунта, класс `.readonly-field`), в запрос обновления не отправляется.
 - `Login.vue` / `LoginModal.vue` — вход по номеру: шаги `phone → password | otp → create` (автофокус поля), исходя из `password/status`; `LoginModal` держит диалог открытым после подтверждения кода (`pendingPassword`), пока пользователь не задаст пароль.
-- Компоненты мессенджера вынесены в `components/messenger/` (`ChatSidebar`, `ChatHeader`, `MessageThread`, `MessageRow`, `MessageComposer`, `PinnedBar`, `InlineSearchBar`, `ChatPlaceholder`, `ChatInfo`, `ForwardDialog`); медиа — в `components/media/` (лайтбокс, голос/видео/кружки, GIF-пикер); звонки — `components/calls/`. Реактивное присутствие/печать — `composables/usePeerActivity`, realtime-оркестрация — `composables/useRealtimeSync`, запись — `useRecordButton`.
+- Компоненты мессенджера вынесены в `components/messenger/` (`ChatSidebar`, `ChatHeader`, `MessageThread`, `MessageRow`, `MessageComposer`, `PinnedBar`, `InlineSearchBar`, `ChatPlaceholder`, `ChatInfo`, `ForwardDialog`, `FileDropOverlay`); медиа — в `components/media/` (лайтбокс, голос/видео/кружки, GIF-пикер); звонки — `components/calls/`. Реактивное присутствие/печать — `composables/usePeerActivity`, realtime-оркестрация — `composables/useRealtimeSync`, запись — `useRecordButton`, перетаскивание файлов в окно — `useFileDrop` (слушатели на `window`: бросить файл можно в любое место, `preventDefault` не даёт браузеру открыть файл вместо чата).
 
 ### Иконки (Lucide) и шрифты
 
@@ -80,6 +80,8 @@ node node_modules/prettier/bin/prettier.cjs --write <files> # формат
 | `scripts/migrate-icons-names.py` | одноразовая миграция: `name="close"` → `:name="icon('close')"` |
 
 **Добавили иконку — допишите её в `ICON_MAP` и прогоните `build_icons.py`** (при первом запуске — ещё `fetch_icons.py`), иначе она отрендерится пустотой. Страж в тестах (`src/__tests__/icons.spec.ts`) проверяет, что все имена из шаблонов есть в мэппинге и что для каждой иконки есть правило в CSS.
+
+Исключение — глифы, которых в наборе нет: они нарисованы вручную в `src/assets/icons-drawn.css` (SVG в data-URI, показывается через `mask`, краска — `currentColor`), имена перечислены в `DRAWN_GLYPHS` (`src/utils/icons.ts`). Сборка шрифта такие имена пропускает, а `icon()` отдаёт им классы `icon-drawn icon-<глиф>` вместо `icon-lucide …`. Файл **не генерируется** — правки в нём пересборка не затирает. Сейчас так нарисован один глиф: `round-video` — видеосообщение («кружок» в квадрате со скруглёнными углами, как в Telegram).
 
 Шрифты (локально, без внешних запросов; собирает `scripts/fetch_fonts.py`) — три роли:
 

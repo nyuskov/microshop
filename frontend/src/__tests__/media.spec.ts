@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { Message, MessageFile } from '@/types'
 import {
+  callMessageIcon,
   fileIcon,
   isImageFile,
   isRecordedVideoMessage,
@@ -72,11 +73,21 @@ describe('isImageFile / isRecordedVideoMessage', () => {
 describe('fileIcon', () => {
   it('подбирает Material-иконку по mime', () => {
     expect(fileIcon(makeFile({ mime: 'image/png' }))).toBe('image')
-    expect(fileIcon(makeFile({ mime: 'video/mp4' }))).toBe('videocam')
+    expect(fileIcon(makeFile({ mime: 'video/mp4' }))).toBe('video_message')
     expect(fileIcon(makeFile({ mime: 'application/pdf' }))).toBe('picture_as_pdf')
     expect(fileIcon(makeFile({ mime: 'audio/mpeg' }))).toBe('volume_up')
     expect(fileIcon(makeFile({ mime: 'text/plain' }))).toBe('description')
     expect(fileIcon(makeFile({ mime: 'application/zip' }))).toBe('insert_drive_file')
+  })
+
+  it('видео не путается с видеозвонком', () => {
+    // Камкордер закреплён за видеозвонком: в списке медиа он читался бы как
+    // кнопка «позвонить с видео».
+    const videoCallIcon = callMessageIcon(
+      makeMessage({ kind: 'call', call_kind: 'video', call_state: 'ended' })
+    )
+    expect(videoCallIcon).toBe('videocam')
+    expect(fileIcon(makeFile({ mime: 'video/mp4' }))).not.toBe(videoCallIcon)
   })
 })
 

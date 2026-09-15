@@ -55,6 +55,7 @@
         @keydown="onTextKeydown"
         @input="onTextInput"
         @click="updateMentions"
+        @paste="onTextPaste"
       ></textarea>
       <button
         class="round-btn"
@@ -88,7 +89,7 @@
           @pointercancel="emit('mic-cancel')"
           @contextmenu.prevent
         >
-          <q-icon :name="icon(recordMode === 'video' ? 'videocam' : 'mic')" size="20px" />
+          <q-icon :name="icon(recordMode === 'video' ? 'video_message' : 'mic')" size="20px" />
         </button>
         <span v-if="recordModeHint" class="record-mode-hint">{{ recordModeHint }}</span>
       </span>
@@ -280,6 +281,27 @@ const onFileSelected = (event: Event) => {
   if (file) emit('file-selected', file)
 }
 
+// ---------- Вставка файла из буфера обмена ----------
+// Перетаскивание файлов живёт не здесь, а в `useFileDrop` (слушатели на окне):
+// бросить файл можно в любое место приложения, поэтому и подсветка одна на всё
+// приложение — см. FileDropOverlay. Здесь остаётся только вставка из буфера
+// (Ctrl+V с картинкой) — она привязана к полю ввода.
+/** Вставка картинки из буфера (Ctrl+V) — отправляем как вложение. */
+const onTextPaste = (event: ClipboardEvent) => {
+  const items = event.clipboardData?.items
+  if (!items) return
+  for (const item of items) {
+    if (item.kind === 'file') {
+      const file = item.getAsFile()
+      if (file) {
+        event.preventDefault()
+        emit('file-selected', file)
+        return
+      }
+    }
+  }
+}
+
 // ---------- Ввод с клавиатуры ----------
 // Десктоп: Enter — отправка, Shift+Enter — новая строка.
 // Мобильный (тач): Enter виртуальной клавиатуры вставляет перевод строки,
@@ -428,6 +450,9 @@ watch(newMessage, () => {
   position: relative;
 }
 
+/* Перетаскивание файла в окно подсвечивает оверлеем (FileDropOverlay), а не
+   полосой ввода: бросить файл можно в любое место приложения. */
+
 .round-btn.muted {
   color: var(--ms-icon-3);
 }
@@ -451,21 +476,35 @@ watch(newMessage, () => {
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
+  /* Кнопка записи — акцентная (и голосовое, и видео): это главное действие
+     композера, как кнопки звонков в шапке чата. Соседние «прикрепить» и
+     «эмодзи» — служебные, они остаются серыми. */
+  color: var(--ms-accent);
 }
 
+/* Наведение: фон даёт общий слой (`html .messenger-shell .round-btn:hover` в
+   appearance.css), но он же меняет цвет на `--ms-text` — и акцент гаснет. У
+   слоя специфичность выше scoped-правила, поэтому возвращаем цвет через
+   :global (тот же приём, что в StoriesStrip.vue). */
+:global(html .messenger-shell .mic-hold-btn:hover) {
+  color: var(--ms-accent);
+}
+
+.mic-hold-btn.mode-video {
+  background: var(--ms-accent-soft);
+  color: var(--ms-accent);
+}
+
+/* Идёт запись — состояние сильнее режима: кнопка заливается акцентом целиком,
+   поэтому правила «удержания» идут последними (раньше `mode-video` стоял ниже
+   и в режиме видео во время записи оставлял бледную подложку). */
 .mic-hold-btn.holding {
-  /* Удержание = идёт запись: кнопка становится акцентной */
   background: var(--ms-accent);
   color: var(--ms-on-accent);
 }
 
 .mic-hold-btn.holding .q-icon {
   color: var(--ms-on-accent);
-}
-
-.mic-hold-btn.mode-video {
-  background: var(--ms-accent-soft);
-  color: var(--ms-accent);
 }
 
 .mic-hold-btn.holding::after {

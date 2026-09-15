@@ -17,6 +17,11 @@ import './assets/quasar-subset.sass'
 // (полный набор 5 МБ — см. frontend/scripts/build-icons-font.py).
 import './assets/icons.css'
 
+// Иконки, которых нет в Lucide, — нарисованы вручную (маска из своего SVG).
+// Сразу после icons.css: правила должны идти после стилей Quasar и шрифтовых
+// иконок — см. DRAWN_GLYPHS в src/utils/icons.ts.
+import './assets/icons-drawn.css'
+
 // Основной шрифт Roboto — локально (кириллица + латиница):
 // frontend/scripts/fetch_font.py скачивает наборы и собирает fonts.css.
 import './assets/fonts.css'

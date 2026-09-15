@@ -2,6 +2,8 @@
   <q-layout class="messenger-shell" view="hhh lpr fff">
     <!-- Озвучивание входящих сообщений скринридером (визуально скрыто) -->
     <p class="sr-only" role="status" aria-live="polite">{{ liveAnnouncement }}</p>
+    <!-- Подсказка при перетаскивании файлов в окно: бросить можно в любом месте -->
+    <FileDropOverlay :active="fileDropActive" :can-send="canDropFiles" />
     <!-- ======= QDrawer: Чаты / Контакты (десктоп — постоянная панель,
          мобильный — выдвижной drawer поверх чата) ======= -->
     <q-drawer
@@ -528,9 +530,11 @@ import { useForward } from '@/composables/useForward'
 import { useMediaRecording } from '@/composables/useMediaRecording'
 import { useLightbox } from '@/composables/useLightbox'
 import { useNativeShare } from '@/composables/useNativeShare'
+import { useFileDrop } from '@/composables/useFileDrop'
 import ChatSidebar from '@/components/messenger/ChatSidebar.vue'
 import ChatHeader from '@/components/messenger/ChatHeader.vue'
 import ChatPlaceholder from '@/components/messenger/ChatPlaceholder.vue'
+import FileDropOverlay from '@/components/messenger/FileDropOverlay.vue'
 import InlineSearchBar from '@/components/messenger/InlineSearchBar.vue'
 import PinnedBar from '@/components/messenger/PinnedBar.vue'
 import MessageThread from '@/components/messenger/MessageThread.vue'
@@ -1879,11 +1883,15 @@ const appendMessage = (list: Message[], message: Message): Message[] => {
   return [...list, message]
 }
 
-const onFileSelected = async (file: File) => {
+/**
+ * Отправка одного файла: временный пузырь с прогрессом → сжатие фото → E2EE →
+ * загрузка. На ошибке бросает исключение (почистив за собой временный пузырь) —
+ * что показать пользователю, решает вызывающий: отправка одного файла или пачки.
+ */
+const sendFileMessage = async (file: File) => {
   const chatId = selectedChatId.value
   if (chatId === null) return
 
-  sendError.value = ''
   // Сразу показываем временный пузырь (для фото — с превью), чтобы было видно,
   // что отправка идёт; затем заменяем его настоящим сообщением.
   const isImage = file.type.startsWith('image/')
@@ -1926,11 +1934,59 @@ const onFileSelected = async (file: File) => {
   } catch (error) {
     removePendingUpload(localId)
     if (previewUrl) URL.revokeObjectURL(previewUrl)
-    sendError.value = getErrorMessage(error, 'Не удалось отправить файл')
+    throw error
   } finally {
     sendingFile.value = false
   }
 }
+
+/**
+ * Отправка файлов: кнопка «Прикрепить», вставка из буфера и перетаскивание в
+ * окно. Файлы уходят по очереди, каждый — отдельным сообщением (альбомов в
+ * модели сообщений нет). Подпись из поля ввода достаётся первому файлу: после
+ * него поле очищается — ровно как при отправке одного файла.
+ */
+const sendFiles = async (files: File[]) => {
+  if (selectedChatId.value === null || files.length === 0) return
+  sendError.value = ''
+  const failures: string[] = []
+  for (const file of files) {
+    try {
+      await sendFileMessage(file)
+    } catch (error) {
+      // Один неудачный файл не отменяет остальные: копим причины и показываем
+      // итог после всей пачки.
+      failures.push(getErrorMessage(error, `Не удалось отправить «${file.name}»`))
+    }
+  }
+  if (failures.length === 1) sendError.value = failures[0]
+  else if (failures.length > 1) {
+    sendError.value = `Не удалось отправить ${failures.length} из ${files.length} файлов`
+  }
+}
+
+/** Кнопка «Прикрепить» и вставка картинки из буфера — всегда один файл. */
+const onFileSelected = (file: File) => {
+  void sendFiles([file])
+}
+
+/**
+ * Файлы, брошенные в окно. Нужен именно открытый (загруженный) чат: пока чат
+ * восстанавливается из адреса, ключа E2EE ещё нет — файл уехал бы на сервер
+ * открытым. О том же говорит и подсказка (FileDropOverlay, `canDropFiles`).
+ */
+const handleDroppedFiles = (files: File[]) => {
+  if (selectedChat.value === null) {
+    Notify.create({ message: 'Откройте чат, чтобы отправить файл', timeout: 3000 })
+    return
+  }
+  void sendFiles(files)
+}
+
+/* Файл можно бросить в любое место окна — слушатели живут в composable. */
+const { active: fileDropActive } = useFileDrop({ onFiles: handleDroppedFiles })
+/** Отправлять есть куда: чат открыт (пока он грузится, подсказка нейтральная). */
+const canDropFiles = computed(() => selectedChat.value !== null)
 
 // ---------- Запись аудио/видеосообщений ----------
 const {

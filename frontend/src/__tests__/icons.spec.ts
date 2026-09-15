@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { ICON_MAP, icon } from '@/utils/icons'
+import { DRAWN_GLYPHS, ICON_MAP, icon } from '@/utils/icons'
 
 /** Исходники проекта (.vue и .ts), которые могут содержать имена иконок. */
 function sourceFiles(dir: string): string[] {
@@ -29,6 +29,36 @@ describe('icon(): логическое имя → классы иконки', ()
     expect(icon(undefined)).toBeUndefined()
     expect(icon('')).toBeUndefined()
     expect(icon('icon-lucide icon-user')).toBe('icon-lucide icon-user')
+  })
+})
+
+describe('иконки видео', () => {
+  it('видеосообщение и видеозвонок — разные глифы', () => {
+    // Одно изображение на «записать кружок» и «позвонить с видео» читалось
+    // неоднозначно, поэтому у видеосообщения свой глиф: «кружок внутри квадрата
+    // со скруглёнными углами» — как в Telegram. В Lucide такого нет, глиф
+    // нарисован вручную (см. icons-drawn.css).
+    expect(ICON_MAP.videocam).toBe('video')
+    expect(ICON_MAP.video_message).toBe('round-video')
+    expect(ICON_MAP.video_message).not.toBe(ICON_MAP.videocam)
+    // Класс-база другая: рисованный глиф рисует маска, а не шрифт.
+    expect(icon('video_message')).toBe('icon-drawn icon-round-video')
+  })
+
+  it('рисованный глиф описан в icons-drawn.css', () => {
+    // Иначе кнопка записи видео останется пустым местом: имени `round-video`
+    // нет ни в шрифте, ни в сгенерированном icons.css.
+    const css = readFileSync('src/assets/icons-drawn.css', 'utf8')
+    const glyph = css.match(/\.icon-round-video\s*\{[^}]*--icon-glyph:\s*url\("([^"]+)"\)/)
+    expect(glyph).not.toBeNull()
+
+    // Форма из маски: квадрат со скруглением и кружок внутри.
+    const svg = decodeURIComponent(glyph![1])
+    expect(svg).toContain('<rect')
+    expect(svg).toContain("rx='6'")
+    expect(svg).toContain('<circle')
+    // Штрих 2 из поля 24 — как у иконок Lucide, иначе глиф выбивается по весу.
+    expect(svg).toContain("stroke-width='2'")
   })
 })
 
@@ -86,11 +116,14 @@ describe('мэппинг иконок', () => {
     expect(unknown).toEqual([])
   })
 
-  it('для каждой иконки есть правило в сгенерированном icons.css', () => {
+  it('у каждой иконки есть правило: шрифтовой — в icons.css, рисованной — в icons-drawn.css', () => {
     // Иначе иконка отрендерится пустотой: имени не будет в CSS.
-    const css = readFileSync('src/assets/icons.css', 'utf8')
-    const missing = [...new Set(Object.values(ICON_MAP))].filter(
-      (name) => !css.includes(`.icon-${name}::before`)
+    const font = readFileSync('src/assets/icons.css', 'utf8')
+    const drawn = readFileSync('src/assets/icons-drawn.css', 'utf8')
+    const missing = [...new Set(Object.values(ICON_MAP))].filter((name) =>
+      DRAWN_GLYPHS.has(name)
+        ? !drawn.includes(`.icon-${name} {`)
+        : !font.includes(`.icon-${name}::before`)
     )
     expect(missing).toEqual([])
   })

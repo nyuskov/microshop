@@ -83,7 +83,7 @@
       <div class="rvm-modal-card">
         <div class="rvm-modal-head">
           <span class="rvm-modal-title">
-            <q-icon :name="icon('videocam')" size="18px" />
+            <q-icon :name="icon('video_message')" size="18px" />
             {{ name }}
           </span>
           <button class="rvm-modal-close" title="Закрыть" @click="closePreview">

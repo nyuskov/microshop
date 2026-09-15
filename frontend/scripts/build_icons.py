@@ -6,10 +6,11 @@
 
 1. берём мэппинг из `src/utils/icons.ts`;
 2. сверяем его с набором Lucide (карта `codepoints.json` из пакета) и ошибаемся,
-   перечисляя неизвестные имена;
+   перечисляя неизвестные имена; глифы из `DRAWN_GLYPHS` пропускаем — они
+   нарисованы вручную в `src/assets/icons-drawn.css`, в шрифте их нет;
 3. режем шрифт Lucide до нужных глифов (полный — 281 КБ, урезанный — единицы КБ);
 4. пишем `src/assets/icons.css`: @font-face, базовый класс `.icon-lucide` и
-   правила `content` для каждой иконки.
+   правила `content` для каждой иконки (рисованных вручную среди них нет).
 
 Класс начинается с `icon-` не случайно: Quasar по префиксу понимает, что ему
 передали СПИСОК КЛАССОВ, а не имя лигатуры — иначе он рисует значение текстом.
@@ -55,6 +56,18 @@ def read_codepoints() -> dict[str, str]:
     return {name: f"{int(code):X}" for name, code in data.items()}
 
 
+def read_drawn() -> set[str]:
+    """Глифы, нарисованные вручную (см. `DRAWN_GLYPHS` в src/utils/icons.ts).
+
+    В наборе Lucide их нет — в шрифт они не попадают, живут в
+    `src/assets/icons-drawn.css`, поэтому и проверку «нет в Lucide» проходят
+    отдельно.
+    """
+    text = MAP_TS.read_text(encoding="utf-8")
+    found = re.search(r"export const DRAWN_GLYPHS[^\n]*\[([^\]]*)\]", text)
+    return set(re.findall(r"'([a-z0-9-]+)'", found.group(1))) if found else set()
+
+
 def main() -> int:
     if not SOURCE_FONT.exists() or not CODEPOINTS.exists():
         print(
@@ -64,16 +77,31 @@ def main() -> int:
         return 2
 
     mapping = read_mapping()
+    drawn = read_drawn()
     codepoints = read_codepoints()
-    print(f"иконок в мэппинге: {len(mapping)}, в наборе Lucide: {len(codepoints)}")
+    print(
+        f"иконок в мэппинге: {len(mapping)} (рисованных вручную: {len(drawn)}), "
+        f"в наборе Lucide: {len(codepoints)}"
+    )
 
-    missing = sorted({name for name in mapping.values() if name not in codepoints})
+    missing = sorted(
+        {
+            name
+            for name in mapping.values()
+            if name not in codepoints and name not in drawn
+        }
+    )
     if missing:
         print("нет в Lucide:", ", ".join(missing), file=sys.stderr)
+        print(
+            "если глиф нарисован вручную — впишите его в DRAWN_GLYPHS "
+            "(src/utils/icons.ts) и нарисуйте в src/assets/icons-drawn.css",
+            file=sys.stderr,
+        )
         return 1
 
     # Уникальные символы (несколько логических имён могут давать один глиф).
-    chars = sorted({codepoints[name] for name in mapping.values()})
+    chars = sorted({codepoints[name] for name in mapping.values() if name not in drawn})
     unicodes = ",".join(f"U+{code}" for code in chars)
 
     subprocess.run(
@@ -91,9 +119,9 @@ def main() -> int:
         check=True,
     )
 
-    used = sorted(set(mapping.values()))
+    used = sorted(set(mapping.values()) - drawn)
     css = [
-        "/* Иконки интерфейса. ФАЙЛ СГЕНЕРИРОВАН: frontend/scripts/build-icons-css.py",
+        "/* Иконки интерфейса. ФАЙЛ СГЕНЕРИРОВАН: frontend/scripts/build_icons.py",
         " *",
         " * Набор — Lucide (тонкий штрих, скруглённые концы). Логические имена в",
         " * коде (`close`, `reply`, ...) превращает в классы функция `icon()` из",
@@ -104,6 +132,9 @@ def main() -> int:
         " *",
         " * Добавили иконку в код — допишите её в ICON_MAP и прогоните скрипт,",
         " * иначе иконка отрендерится пустотой (имени не будет в CSS).",
+        " *",
+        " * Рисованные вручную иконки (DRAWN_GLYPHS — те, которых нет в Lucide)",
+        " * здесь не появляются: они живут в icons-drawn.css и подключаются рядом.",
         " */",
         "/* Резервный шрифт: внутренние элементы Quasar и имена, которых нет в",
         " * ICON_MAP, рисуются им (см. scripts/build-icons-font.py). */",
@@ -145,7 +176,8 @@ def main() -> int:
         stale.unlink()
 
     print(
-        f"иконок в CSS: {len(used)}, шрифт: {OUT_FONT.stat().st_size / 1024:.0f} КБ "
+        f"иконок в CSS: {len(used)}, рисованных вручную (не в шрифте): {len(drawn)}, "
+        f"шрифт: {OUT_FONT.stat().st_size / 1024:.0f} КБ "
         f"(было {SOURCE_FONT.stat().st_size / 1024:.0f} КБ)"
     )
     return 0

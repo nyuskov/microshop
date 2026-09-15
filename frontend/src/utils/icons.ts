@@ -4,11 +4,13 @@
  * В разметке и хелперах имена остаются прежними (`close`, `reply`, `videocam`):
  * так код не зависит от конкретного набора иконок, а замена набора — это правка
  * одного этого файла. Преобразование делает `icon()` (см. ниже), а CSS и
- * урезанный шрифт собираются скриптом `frontend/scripts/build-icons-css.py`
+ * урезанный шрифт собираются скриптом `frontend/scripts/build_icons.py`
  * (он читает именно этот файл).
  *
  * Правило: имя справа — имя иконки Lucide (класс `icon-<имя>`). Если имени нет
- * в наборе, скрипт сборки это подсветит (см. scripts/build-icons-css.py).
+ * в наборе, скрипт сборки это подсветит (см. scripts/build_icons.py).
+ * Исключение — глифы из `DRAWN_GLYPHS`: их рисуем вручную (в Lucide таких
+ * форм нет), в шрифт они не попадают.
  */
 export const ICON_MAP: Record<string, string> = {
   // Управление и навигация
@@ -120,7 +122,14 @@ export const ICON_MAP: Record<string, string> = {
   call: 'phone',
   call_end: 'phone-off',
   call_missed: 'phone-missed',
+  // Видеозвонок: камкордер. Видеосообщение («кружок») намеренно рисуется другой
+  // иконкой (см. video_message) — иначе в шапке чата и в композере одно и то же
+  // изображение значит разные действия.
   videocam: 'video',
+  // Видеосообщение: «кружок внутри квадрата со скруглёнными углами» — как в
+  // Telegram (круговое видео в рамке кадра). Такого глифа в Lucide нет, поэтому
+  // он нарисован вручную: см. DRAWN_GLYPHS ниже и assets/icons-drawn.css.
+  video_message: 'round-video',
   mic: 'mic',
   mic_off: 'mic-off',
   volume_up: 'volume-2',
@@ -148,6 +157,19 @@ export const ICON_MAP: Record<string, string> = {
   date_range: 'calendar-days'
 }
 
+/**
+ * Глифы, которых нет в Lucide, — нарисованы вручную в `src/assets/icons-drawn.css`.
+ *
+ * Зачем список: сборка шрифта (`scripts/build_icons.py`) сверяет значения
+ * `ICON_MAP` с набором Lucide и падает на незнакомом имени — эти имена она
+ * должна пропускать, в шрифте их нет. Заодно `icon()` понимает, что такому
+ * глифу нужен класс `.icon-drawn` (маска), а не `.icon-lucide` (шрифт).
+ *
+ * Добавили рисованный глиф — впишите его сюда И нарисуйте в icons-drawn.css,
+ * иначе иконка отрендерится пустотой (страх в тестах это проверяет).
+ */
+export const DRAWN_GLYPHS: ReadonlySet<string> = new Set(['round-video'])
+
 /** Иконка по умолчанию: если имени нет в мэппинге. */
 const FALLBACK_ICON = 'circle-help'
 
@@ -165,9 +187,11 @@ const FALLBACK_ICON = 'circle-help'
 export function icon(name?: string | null): string | undefined {
   if (!name) return undefined
   if (name.includes(' ')) return name
-  const lucide = ICON_MAP[name]
-  if (!lucide) return name
-  return `icon-lucide icon-${lucide}`
+  const glyph = ICON_MAP[name]
+  if (!glyph) return name
+  // Шрифтовой глиф (Lucide) или нарисованный вручную — см. DRAWN_GLYPHS.
+  const base = DRAWN_GLYPHS.has(glyph) ? 'icon-drawn' : 'icon-lucide'
+  return `${base} icon-${glyph}`
 }
 
 /** Имя Lucide для логического имени (для сборки CSS и проверок). */
