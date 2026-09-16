@@ -106,7 +106,7 @@ async def test_search_finds_encrypted_text(
     raw = await session.execute(text("SELECT text FROM messages"))
     values = [value for (value,) in raw.all()]
     assert values, "сообщения должны были записаться"
-    assert all(value.startswith(at_rest.PREFIX) for value in values)
+    assert all(at_rest.is_encrypted(value) for value in values)
     assert not any("Секретное слово" in (value or "") for value in values)
 
     # А поиск по подстроке (в любом регистре) находит зашифрованное.

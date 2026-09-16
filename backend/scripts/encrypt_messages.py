@@ -71,7 +71,7 @@ BATCH_SQL = (
 async def count_pending(session) -> int:  # noqa: ANN001
     """Сколько сообщений ещё не зашифровано."""
     result = await session.execute(
-        sql_text(PENDING_SQL), {"prefix": f"{at_rest.PREFIX}%"}
+        sql_text(PENDING_SQL), {"prefix": f"{at_rest.MARKER}%"}
     )
     return int(result.scalar() or 0)
 
@@ -80,7 +80,7 @@ async def encrypt_batch(session, batch: int) -> int:  # noqa: ANN001
     """Шифрует одну порцию сообщений. Возвращает, сколько затронуто."""
     rows = (
         await session.execute(
-            sql_text(BATCH_SQL), {"prefix": f"{at_rest.PREFIX}%", "limit": batch}
+            sql_text(BATCH_SQL), {"prefix": f"{at_rest.MARKER}%", "limit": batch}
         )
     ).all()
     if not rows:

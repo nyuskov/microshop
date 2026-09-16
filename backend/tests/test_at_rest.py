@@ -53,7 +53,7 @@ def test_round_trip(with_key) -> None:  # noqa: ANN001 - фикстура
     """Текст читается обратно, а в «базе» лежит не он."""
     encrypted = at_rest.encrypt_text("секретное сообщение")
     assert encrypted is not None
-    assert encrypted.startswith(at_rest.PREFIX)
+    assert at_rest.is_encrypted(encrypted)
     assert "секретное сообщение" not in encrypted
     assert at_rest.decrypt_text(encrypted) == "секретное сообщение"
 
@@ -98,8 +98,14 @@ def test_encrypted_value_without_key_is_returned_as_is(
 
 def test_broken_ciphertext_does_not_raise(with_key) -> None:  # noqa: ANN001
     """Испорченное значение (обрезали, подменили) не роняет чтение истории."""
-    assert at_rest.decrypt_text(f"{at_rest.PREFIX}не-base64") is not None
-    assert at_rest.decrypt_text(f"{at_rest.PREFIX}AAAA") is not None
+    garbage = [
+        f"{at_rest.PREFIX_V1}не-base64",
+        f"{at_rest.PREFIX_V1}AAAA",
+        f"{at_rest.PREFIX_V2}deadbeef:не-base64",
+        f"{at_rest.PREFIX_V2}deadbeef:AAAA",
+    ]
+    for value in garbage:
+        assert at_rest.decrypt_text(value) == value
 
 
 def test_wrong_key_does_not_crash(with_key) -> None:  # noqa: ANN001
@@ -111,3 +117,88 @@ def test_wrong_key_does_not_crash(with_key) -> None:  # noqa: ANN001
         assert at_rest.decrypt_text(encrypted) == encrypted
     finally:
         settings.at_rest_key = KEY_HEX
+
+
+# --- Ротация ключа (docs/at-rest-rotation.md) ---------------------------
+
+
+def _encrypt_with(key_hex: str, value: str, monkeypatch: pytest.MonkeyPatch) -> str:
+    """Значение, каким его записала бы версия с таким ключом."""
+    monkeypatch.setattr(settings, "at_rest_key", key_hex)
+    return at_rest.encrypt_text(value) or ""
+
+
+def test_new_values_carry_key_id(with_key) -> None:  # noqa: ANN001
+    """В новом формате есть номер ключа — по нему выбираем ключ при чтении."""
+    value = at_rest.encrypt_text("привет") or ""
+
+    assert value.startswith(f"{at_rest.PREFIX_V2}{at_rest.key_id(KEY)}:")
+    assert at_rest.encrypted_with_current_key(value) is True
+    assert at_rest.encrypted_with_current_key(f"{at_rest.PREFIX_V1}AAAA") is False
+
+
+def test_old_key_values_readable_after_rotation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """После смены ключа история читается: старый ключ в AT_REST_KEY_PREVIOUS."""
+    old = _encrypt_with(KEY_HEX, "старое значение", monkeypatch)
+    new_key_hex = bytes(range(32, 64)).hex()
+    monkeypatch.setattr(settings, "at_rest_key", new_key_hex)
+    monkeypatch.setattr(settings, "at_rest_key_previous", KEY_HEX)
+
+    assert at_rest.decrypt_text(old) == "старое значение"
+    # Новое значение пишем уже новым ключом, и оно помечено его номером.
+    fresh = at_rest.encrypt_text("новое значение") or ""
+    assert at_rest.encrypted_with_current_key(fresh) is True
+    assert at_rest.decrypt_text(fresh) == "новое значение"
+    # Старое значение ротации ещё не прошло — его нужно перешифровать.
+    assert at_rest.encrypted_with_current_key(old) is False
+
+
+def test_several_previous_keys_are_supported(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Переживаем несколько ротаций: прошлые ключи — списком через запятую."""
+    first = _encrypt_with(bytes(range(32)).hex(), "первое", monkeypatch)
+    second = _encrypt_with(bytes(range(32, 64)).hex(), "второе", monkeypatch)
+    third_hex = bytes(range(64, 96)).hex()
+    monkeypatch.setattr(settings, "at_rest_key", third_hex)
+    monkeypatch.setattr(
+        settings,
+        "at_rest_key_previous",
+        f"{bytes(range(32)).hex()}, {bytes(range(32, 64)).hex()}",
+    )
+
+    assert at_rest.decrypt_text(first) == "первое"
+    assert at_rest.decrypt_text(second) == "второе"
+    assert len(at_rest.previous_keys()) == 2
+
+
+def test_previous_entry_that_never_was_a_key_is_skipped(
+    with_key, monkeypatch: pytest.MonkeyPatch  # noqa: ANN001
+) -> None:
+    """Мусор в списке прошлых ключей не ломает чтение (и текущий не дублируем)."""
+    monkeypatch.setattr(settings, "at_rest_key_previous", f"не-ключ, {KEY_HEX}, ")
+    assert at_rest.previous_keys() == []
+    assert at_rest.decryption_keys() == [(at_rest.key_id(KEY), KEY)]
+
+
+def test_v1_values_readable_without_key_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Старый формат (enc:v1) читается перебором известных ключей."""
+    key = KEY
+    nonce = bytes(12)
+    blob = base64.b64encode(
+        nonce + AESGCM(key).encrypt(nonce, "старое".encode(), None)
+    ).decode()
+    value = f"{at_rest.PREFIX_V1}{blob}"
+    monkeypatch.setattr(settings, "at_rest_key", bytes(range(32, 64)).hex())
+    monkeypatch.setattr(settings, "at_rest_key_previous", KEY_HEX)
+
+    assert at_rest.encrypted_with_current_key(value) is False
+    assert at_rest.decrypt_text(value) == "старое"
+
+
+def test_value_with_unknown_key_id_is_not_readable(
+    with_key, monkeypatch: pytest.MonkeyPatch  # noqa: ANN001
+) -> None:
+    """Чужой номер ключа: пробуем остальные ключи, но не выдумываем данные."""
+    stranger = at_rest.PREFIX_V2 + "ffffffff:" + base64.b64encode(bytes(40)).decode()
+    assert at_rest.decrypt_text(stranger) == stranger

@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from PIL import Image
@@ -205,6 +206,109 @@ def test_plaintext_size_of_broken_container(
 
     with pytest.raises(ValueError):
         media_crypto.plaintext_size(path)
+
+
+# --- Ротация ключа файлов -----------------------------------------------
+
+
+def test_header_carries_current_key_id(
+    tmp_path: Path, with_key
+) -> None:  # noqa: ANN001
+    """В заголовке записан номер текущего ключа — по нему выбираем ключ."""
+    path = tmp_path / "photo.png"
+    media_crypto.write_file(path, b"data")
+
+    header = media_crypto.read_header(path)
+    assert header.key_id == at_rest.key_id(KEY)
+    assert media_crypto.encrypted_with_current_key(path) is True
+
+
+def test_file_encrypted_with_previous_key_is_readable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """После смены ключа старые файлы читаются, пока прошлый ключ в настройках."""
+    path = tmp_path / "old.png"
+    monkeypatch.setattr(settings, "at_rest_key", KEY_HEX)
+    media_crypto.write_file(path, b"old-file")
+
+    monkeypatch.setattr(settings, "at_rest_key", OTHER_KEY_HEX)
+    monkeypatch.setattr(settings, "at_rest_key_previous", KEY_HEX)
+
+    assert media_crypto.encrypted_with_current_key(path) is False
+    assert media_crypto.read_file(path) == b"old-file"
+    assert b"".join(media_crypto.iter_plaintext(path, 2, 6)) == b"d-fi"
+
+
+def test_rotate_rewrites_old_and_plain_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`--rotate` переводит и старые файлы, и открытые на текущий ключ."""
+    monkeypatch.setattr(settings, "at_rest_key", KEY_HEX)
+    old = tmp_path / "old.png"
+    media_crypto.write_file(old, b"was-encrypted")
+    (tmp_path / "plain.png").write_bytes(b"was-plain")
+
+    monkeypatch.setattr(settings, "at_rest_key", OTHER_KEY_HEX)
+    monkeypatch.setattr(settings, "at_rest_key_previous", KEY_HEX)
+    files = encrypt_media.pending_files(tmp_path, rotate=True)
+    assert {path.name for path in files} == {"old.png", "plain.png"}
+    for path in files:
+        encrypt_media.encrypt_file(path, rotate=True)
+
+    # Прошлый ключ убираем: всё должно читаться уже новым.
+    monkeypatch.setattr(settings, "at_rest_key_previous", None)
+    assert media_crypto.read_file(old) == b"was-encrypted"
+    assert media_crypto.read_file(tmp_path / "plain.png") == b"was-plain"
+    assert encrypt_media.pending_files(tmp_path, rotate=True) == []
+
+
+def test_rotate_does_not_touch_file_with_unknown_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Файл с чужим ключом не трогаем: иначе зашифруем шифротекст и потеряем данные."""
+    path = tmp_path / "stranger.png"
+    monkeypatch.setattr(settings, "at_rest_key", KEY_HEX)
+    media_crypto.write_file(path, b"important")
+    before = path.read_bytes()
+
+    monkeypatch.setattr(settings, "at_rest_key", OTHER_KEY_HEX)
+    monkeypatch.setattr(settings, "at_rest_key_previous", None)
+
+    with pytest.raises(encrypt_media.UnreadableFile):
+        encrypt_media.encrypt_file(path, rotate=True)
+    assert path.read_bytes() == before
+
+
+def test_legacy_v1_file_is_readable_and_needs_rotation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Старый формат (encf:v1, без номера ключа) читается и попадает в ротацию."""
+    path = tmp_path / "legacy.png"
+    path.write_bytes(_container_v1(b"legacy-body", KEY))
+
+    monkeypatch.setattr(settings, "at_rest_key", OTHER_KEY_HEX)
+    monkeypatch.setattr(settings, "at_rest_key_previous", KEY_HEX)
+
+    assert media_crypto.read_header(path).key_id is None
+    assert media_crypto.encrypted_with_current_key(path) is False
+    assert media_crypto.read_file(path) == b"legacy-body"
+    assert path in encrypt_media.pending_files(tmp_path, rotate=True)
+
+
+def _container_v1(data: bytes, key: bytes) -> bytes:
+    """Собирает контейнер старого формата — так файлы лежали до этой итерации."""
+    base = bytes(range(12))
+    cipher = AESGCM(key)
+    out = bytearray(media_crypto.MAGIC_V1)
+    out += len(data).to_bytes(8, "big")
+    out += base
+    for index, offset in enumerate(range(0, len(data), media_crypto.CHUNK_BYTES)):
+        out += cipher.encrypt(
+            base[:8] + index.to_bytes(4, "big"),
+            data[offset : offset + media_crypto.CHUNK_BYTES],
+            None,
+        )
+    return bytes(out)
 
 
 # --- Запись файлов приложением ------------------------------------------
@@ -499,9 +603,8 @@ def test_is_encrypted_file_tolerates_missing_file(tmp_path: Path) -> None:
 
 
 def test_key_missing_error_is_clear(with_key, monkeypatch) -> None:  # noqa: ANN001
-    """В сообщении об ошибке — что именно не задано (для дежурного)."""
-    media_crypto.encrypt_bytes(b"x")
+    """В сообщении об ошибке видно, что именно не задано (для дежурного)."""
     monkeypatch.setattr(settings, "at_rest_key", None)
     assert at_rest.is_enabled() is False
-    with pytest.raises(media_crypto.MediaKeyMissing, match="AT_REST_KEY"):
-        media_crypto._require_key()
+    with pytest.raises(media_crypto.MediaKeyMissing, match="Ключ at-rest"):
+        media_crypto._keys_for(None)

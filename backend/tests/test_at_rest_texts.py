@@ -46,7 +46,9 @@ from core.models import (
 )
 from scripts import encrypt_texts
 
-KEY_HEX = bytes(range(32)).hex()
+KEY = bytes(range(32))
+KEY_HEX = KEY.hex()
+NEW_KEY_HEX = bytes(range(32, 64)).hex()
 SECRET = "секретный пользовательский текст"
 
 
@@ -294,7 +296,7 @@ async def test_new_rows_are_encrypted(
 
     raw = await _raw_value(session, target)
     assert raw is not None
-    assert raw.startswith(at_rest.PREFIX)
+    assert raw.startswith(f"{at_rest.PREFIX_V2}{at_rest.key_id(KEY)}:")
     assert SECRET not in raw
     assert await _orm_value(session, target) == SECRET
 
@@ -332,11 +334,12 @@ async def test_backfill_encrypts_legacy_rows_for_every_target(
         assert await encrypt_texts.count_pending(session, target) >= 1, target.name
 
     for target in encrypt_texts.TARGETS:
-        assert await encrypt_texts.encrypt_batch(session, target, 100) >= 1, target.name
+        processed, rewritten = await encrypt_texts.encrypt_batch(session, target, 100)
+        assert processed >= 1 and rewritten >= 1, target.name
 
     for target in encrypt_texts.TARGETS:
         raw = await _raw_value(session, target)
-        assert raw is not None and raw.startswith(at_rest.PREFIX), target.name
+        assert raw is not None and at_rest.is_encrypted(raw), target.name
         # Идемпотентность: второй прогон не находит работы и не портит данные.
         assert await encrypt_texts.count_pending(session, target) == 0, target.name
         assert await _orm_value(session, target) == SECRET, target.name
@@ -353,3 +356,75 @@ async def test_backfill_does_not_touch_empty_values(
         item for item in encrypt_texts.TARGETS if item.name == "moderation_actions.note"
     )
     assert await encrypt_texts.count_pending(session, target) == 0
+
+
+# --- Ротация ключа ------------------------------------------------------
+
+
+async def test_rotate_rewrites_history_to_the_new_key(
+    plain_env,  # noqa: ANN001 - ключ выключен до создания данных
+    session: AsyncSession,
+    world: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--rotate` переводит историю на новый ключ — после этого старый не нужен."""
+    # История записана ПЕРВЫМ ключом.
+    monkeypatch.setattr(settings, "at_rest_key", KEY_HEX)
+    for target in encrypt_texts.TARGETS:
+        await _ensure_row(session, target, world)
+
+    # Смена ключа: новый пишем, старый оставили на чтение.
+    monkeypatch.setattr(settings, "at_rest_key", NEW_KEY_HEX)
+    monkeypatch.setattr(settings, "at_rest_key_previous", KEY_HEX)
+
+    for target in encrypt_texts.TARGETS:
+        # Пока не перешифровано, чтение идёт прошлым ключом.
+        assert await _orm_value(session, target) == SECRET, target.name
+        assert await encrypt_texts.count_pending(session, target, rotate=True) >= 1
+
+    for target in encrypt_texts.TARGETS:
+        processed, rewritten = await encrypt_texts.encrypt_batch(
+            session, target, 100, rotate=True
+        )
+        assert processed >= 1 and rewritten >= 1, target.name
+
+    # Прошлый ключ убираем: данные должны читаться только новым.
+    monkeypatch.setattr(settings, "at_rest_key_previous", None)
+    for target in encrypt_texts.TARGETS:
+        assert (
+            await encrypt_texts.count_pending(session, target, rotate=True) == 0
+        ), target.name
+        assert await _orm_value(session, target) == SECRET, target.name
+        raw = await _raw_value(session, target)
+        assert raw is not None
+        assert raw.startswith(
+            f"{at_rest.PREFIX_V2}{at_rest.key_id(bytes(range(32, 64)))}:"
+        )
+
+
+async def test_rotate_skips_rows_with_unknown_key(
+    plain_env,  # noqa: ANN001
+    session: AsyncSession,
+    world: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Строку с ключом, которого у нас нет, не переписываем — иначе потеряем текст."""
+    target = next(
+        item for item in encrypt_texts.TARGETS if item.name == "stories.caption"
+    )
+    # Записали чужим ключом (например, предыдущий ключ потерян и в настройках его нет).
+    unknown_hex = bytes(range(64, 96)).hex()
+    monkeypatch.setattr(settings, "at_rest_key", unknown_hex)
+    await _ensure_row(session, target, world)
+    before = await _raw_value(session, target)
+
+    monkeypatch.setattr(settings, "at_rest_key", KEY_HEX)
+    monkeypatch.setattr(settings, "at_rest_key_previous", None)
+
+    processed, rewritten = await encrypt_texts.encrypt_batch(
+        session, target, 100, rotate=True
+    )
+    assert processed == 1
+    assert rewritten == 0
+    # Значение осталось прежним: мы не зашифровали шифротекст повторно.
+    assert await _raw_value(session, target) == before

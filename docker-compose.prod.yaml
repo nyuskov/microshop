@@ -52,6 +52,9 @@ x-web-slot: &web-slot
     RUSTORE_PUSH_SERVICE_TOKEN: ${RUSTORE_PUSH_SERVICE_TOKEN:-}
     # Шифрование данных «в покое» (тексты сообщений): ключ 32 байта (hex/base64).
     AT_REST_KEY: ${AT_REST_KEY:-}
+    # Прошлый ключ (ротация): читаем им, пока история не перешифрована.
+    # Порядок — docs/at-rest-rotation.md.
+    AT_REST_KEY_PREVIOUS: ${AT_REST_KEY_PREVIOUS:-}
     TELEGRAM_GATEWAY_TOKEN: ${TELEGRAM_GATEWAY_TOKEN:-}
     TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
@@ -195,6 +198,8 @@ services:
       RUSTORE_PUSH_SERVICE_TOKEN: ${RUSTORE_PUSH_SERVICE_TOKEN:-}
       # Шифрование «в покое»: ключ нужен и воркеру — он собирает текст push.
       AT_REST_KEY: ${AT_REST_KEY:-}
+      # Прошлый ключ (ротация): воркер тоже читает историю (push, GIF).
+      AT_REST_KEY_PREVIOUS: ${AT_REST_KEY_PREVIOUS:-}
       TELEGRAM_GATEWAY_TOKEN: ${TELEGRAM_GATEWAY_TOKEN:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_GATEWAY_BASE_URL: ${TELEGRAM_GATEWAY_BASE_URL:-https://gateway.telegram.org}

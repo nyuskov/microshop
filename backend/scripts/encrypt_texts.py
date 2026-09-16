@@ -18,6 +18,8 @@
     poetry run python -m scripts.encrypt_texts
     # только одну колонку (или одну таблицу):
     poetry run python -m scripts.encrypt_texts --only messages.text
+    # после смены ключа — перешифровать всё текущим ключом:
+    poetry run python -m scripts.encrypt_texts --rotate
 
 В контейнере:
 
@@ -31,6 +33,9 @@ SQL, а пишем через модель (`update(Model)`) — там шифр
 
 ВАЖНО: перед запуском на проде сделайте свежий дамп БД — операция массовая
 (хотя и сводится к UPDATE отдельных колонок).
+
+Ротация ключа (``--rotate``) — отдельный сценарий: пишем ТЕКУЩИМ ключом, а читаем
+текущим и ``AT_REST_KEY_PREVIOUS``. Порядок действий — ``docs/at-rest-rotation.md``.
 """
 
 from __future__ import annotations
@@ -156,7 +161,21 @@ def _quoted(name: str) -> str:
     return f'"{name}"'
 
 
-def _pending_sql(target: Target, *, with_columns: bool) -> str:
+def pending_prefix(*, rotate: bool) -> str:
+    """Шаблон «уже сделано» для SQL-фильтра.
+
+    * обычный прогон — всё, что не похоже на шифротекст (`enc:%`);
+    * ``--rotate`` — всё, что помечено НЕ текущим ключом (старый формат `v1`,
+      прошлый ключ, открытый текст): так видно остаток работы при ротации.
+    """
+    if not rotate:
+        return f"{at_rest.MARKER}%"
+    key = at_rest.encryption_key()
+    identifier = at_rest.key_id(key) if key is not None else ""
+    return f"{at_rest.PREFIX_V2}{identifier}:%"
+
+
+def _pending_sql(target: Target, *, with_columns: bool, rotate: bool) -> str:
     """SQL для необработанных записей (имена таблиц/колонок — из кода, не из ввода)."""
     where = PENDING_WHERE.format(column=_quoted(target.column))
     table = _quoted(target.table)
@@ -167,37 +186,70 @@ def _pending_sql(target: Target, *, with_columns: bool) -> str:
     return f"SELECT count(*) FROM {table} {where}"
 
 
-async def count_pending(session, target: Target) -> int:  # noqa: ANN001
-    """Сколько записей в колонке ещё не зашифровано."""
+async def count_pending(  # noqa: ANN001
+    session, target: Target, *, rotate: bool = False
+) -> int:
+    """Сколько записей в колонке ещё требует работы."""
     result = await session.execute(
-        sql_text(_pending_sql(target, with_columns=False)),
-        {"prefix": f"{at_rest.PREFIX}%"},
+        sql_text(_pending_sql(target, with_columns=False, rotate=rotate)),
+        {"prefix": pending_prefix(rotate=rotate)},
     )
     return int(result.scalar() or 0)
 
 
-async def encrypt_batch(session, target: Target, batch: int) -> int:  # noqa: ANN001
-    """Шифрует одну порцию записей. Возвращает, сколько затронуто."""
+async def encrypt_batch(  # noqa: ANN001
+    session, target: Target, batch: int, *, rotate: bool = False
+) -> tuple[int, int]:
+    """Обрабатывает одну порцию записей.
+
+    Возвращает ``(просмотрено, перезаписано)``. В режиме ротации часть строк
+    остаётся как есть: те, что уже под текущим ключом, и те, что не читаются ни
+    одним известным ключом — их трогать нельзя, иначе зашифруем шифротекст и
+    потеряем данные.
+    """
     rows = (
         await session.execute(
-            sql_text(_pending_sql(target, with_columns=True)),
-            {"prefix": f"{at_rest.PREFIX}%", "limit": batch},
+            sql_text(_pending_sql(target, with_columns=True, rotate=rotate)),
+            {"prefix": pending_prefix(rotate=rotate), "limit": batch},
         )
     ).all()
     if not rows:
-        return 0
+        return 0, 0
 
+    rewritten = 0
     for row in rows:
         values = dict(zip((*target.pk, target.column), row, strict=True))
+        raw = values[target.column]
+        if rotate and at_rest.encrypted_with_current_key(raw):
+            continue
+        if rotate:
+            # Читаем значение известным ключом и пишем ОТКРЫТЫЙ текст: если
+            # отдать модели шифротекст, `encrypt_text` увидит `enc:v2:` и
+            # оставит его как есть — ротация была бы пустой.
+            plain = at_rest.decrypt_text(raw)
+            if at_rest.is_encrypted(raw) and plain == raw:
+                logger.warning(
+                    "Пропускаем %s (%s): значение не читается известными ключами",
+                    target.name,
+                    _pk_repr(target, values),
+                )
+                continue
+            value = plain
+        else:
+            value = raw
         condition = [getattr(target.model, name) == values[name] for name in target.pk]
         # Пишем через модель: именно она шифрует значение перед отправкой в БД.
         await session.execute(
-            update(target.model)
-            .where(*condition)
-            .values(**{target.column: values[target.column]})
+            update(target.model).where(*condition).values(**{target.column: value})
         )
+        rewritten += 1
     await session.commit()
-    return len(rows)
+    return len(rows), rewritten
+
+
+def _pk_repr(target: Target, values: dict[str, object]) -> str:
+    """Первичный ключ строки — для понятных предупреждений в логе."""
+    return ", ".join(f"{name}={values[name]}" for name in target.pk)
 
 
 def select_targets(only: str | None) -> tuple[Target, ...]:
@@ -246,6 +298,11 @@ async def main() -> int:
         default=None,
         help="обработать только одну таблицу/колонку (например, user.status)",
     )
+    parser.add_argument(
+        "--rotate",
+        action="store_true",
+        help="перешифровать всё текущим ключом (после смены AT_REST_KEY)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -261,6 +318,14 @@ async def main() -> int:
         logger.error("--batch должен быть положительным")
         return 1
 
+    if args.rotate:
+        key = at_rest.encryption_key()
+        logger.info(
+            "Ротация: пишем ключом %s, читаем ключами: %s",
+            at_rest.key_id(key) if key else "—",
+            ", ".join(identifier for identifier, _ in at_rest.decryption_keys()),
+        )
+
     targets = select_targets(args.only)
     total_pending = 0
     total_done = 0
@@ -268,31 +333,35 @@ async def main() -> int:
     async with db_helper.session_factory() as session:
         plan: list[tuple[Target, int]] = []
         for target in targets:
-            pending = await count_pending(session, target)
+            pending = await count_pending(session, target, rotate=args.rotate)
             total_pending += pending
             plan.append((target, pending))
             if pending:
                 logger.info(
-                    "%s: %s — не зашифровано %s", target.name, target.label, pending
+                    "%s: %s — к обработке %s", target.name, target.label, pending
                 )
 
         if args.dry_run or total_pending == 0:
-            logger.info("Всего записей без шифрования: %s", total_pending)
+            logger.info("Всего записей к обработке: %s", total_pending)
             return 0
 
         for target, pending in plan:
             if not pending:
                 continue
-            done = 0
-            while done < pending:
-                affected = await encrypt_batch(session, target, args.batch)
-                if not affected:
+            seen = 0
+            rewritten = 0
+            while seen < pending:
+                processed, changed = await encrypt_batch(
+                    session, target, args.batch, rotate=args.rotate
+                )
+                if not processed:
                     break
-                done += affected
-            total_done += done
-            logger.info("%s: зашифровано %s из %s", target.name, done, pending)
+                seen += processed
+                rewritten += changed
+            total_done += rewritten
+            logger.info("%s: перезаписано %s из %s", target.name, rewritten, pending)
 
-        logger.info("Готово: зашифровано записей — %s", total_done)
+        logger.info("Готово: перезаписано записей — %s", total_done)
     return 0
 
 

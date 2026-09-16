@@ -15,6 +15,7 @@
 | [email-smtp.md](email-smtp.md) | почта: SMTP для писем/уведомлений |
 | [turn.md](turn.md) | TURN для WebRTC-звонков |
 | [jwt-rotation.md](jwt-rotation.md) | ротация JWT-ключа без разлогина всех |
+| [at-rest-rotation.md](at-rest-rotation.md) | ротация ключа шифрования «в покое» (тексты + файлы) |
 
 ## Разработка
 

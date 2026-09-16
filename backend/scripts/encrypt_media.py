@@ -32,6 +32,8 @@ import logging
 import sys
 from pathlib import Path
 
+from cryptography.exceptions import InvalidTag
+
 # Запуск как `python -m scripts.encrypt_media` из каталога backend.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -44,22 +46,45 @@ logger = logging.getLogger("encrypt_media")
 PROGRESS_EVERY = 200
 
 
-def pending_files(root: Path) -> list[Path]:
-    """Файлы каталога, которые ещё не зашифрованы (отсортированы по имени)."""
+class UnreadableFile(RuntimeError):
+    """Файл зашифрован ключом, которого у нас нет — трогать его нельзя."""
+
+
+def pending_files(root: Path, *, rotate: bool = False) -> list[Path]:
+    """Файлы каталога, которые ещё требуют работы (отсортированы по имени).
+
+    * обычный прогон — всё, что не в контейнере (``encf:v1``/``encf:v2``);
+    * ``--rotate`` — всё, что не помечено ТЕКУЩИМ ключом (старый формат v1,
+      прошлый ключ, открытые файлы).
+    """
     found: list[Path] = []
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.name.startswith("."):
             # Пропускаем временные файлы: они появляются на миг при записи.
             continue
-        if media_crypto.is_encrypted_file(path):
-            continue
-        found.append(path)
+        if rotate:
+            if not media_crypto.encrypted_with_current_key(path):
+                found.append(path)
+        elif not media_crypto.is_encrypted_file(path):
+            found.append(path)
     return found
 
 
-def encrypt_file(path: Path) -> int:
-    """Шифрует один файл. Возвращает размер открытых данных (байт)."""
-    data = path.read_bytes()
+def encrypt_file(path: Path, *, rotate: bool = False) -> int:
+    """Шифрует файл текущим ключом. Возвращает размер открытых данных (байт).
+
+    В режиме ротации сначала расшифровываем содержимое известным ключом (текущим
+    или прошлым), а потом пишем заново — иначе ``write_file`` увидел бы контейнер
+    и оставил его как есть. Файл, который не читается ни одним ключом, не трогаем:
+    записать его без расшифровки означало бы зашифровать шифротекст.
+    """
+    if rotate:
+        try:
+            data = media_crypto.read_file(path)
+        except (InvalidTag, ValueError, media_crypto.MediaKeyMissing) as exc:
+            raise UnreadableFile(str(exc)) from exc
+    else:
+        data = path.read_bytes()
     media_crypto.write_file(path, data)
     return len(data)
 
@@ -82,6 +107,11 @@ def main() -> int:
         default=str(MEDIA_DIR),
         help=f"каталог медиа (по умолчанию {MEDIA_DIR})",
     )
+    parser.add_argument(
+        "--rotate",
+        action="store_true",
+        help="перешифровать всё текущим ключом (после смены AT_REST_KEY)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -98,8 +128,16 @@ def main() -> int:
         logger.error("Каталог не найден: %s", root)
         return 1
 
-    files = pending_files(root)
-    logger.info("Файлов без шифрования: %s", len(files))
+    if args.rotate:
+        key = at_rest.encryption_key()
+        logger.info(
+            "Ротация: пишем ключом %s, читаем ключами: %s",
+            at_rest.key_id(key) if key else "—",
+            ", ".join(identifier for identifier, _ in at_rest.decryption_keys()),
+        )
+
+    files = pending_files(root, rotate=args.rotate)
+    logger.info("Файлов к обработке: %s", len(files))
     if args.dry_run or not files:
         return 0
 
@@ -112,19 +150,19 @@ def main() -> int:
     errors = 0
     for path in files:
         try:
-            total_bytes += encrypt_file(path)
-        except OSError as exc:
-            # Один «занятый» файл не повод бросать остальные: дошифруем, что
-            # сможем, а причину покажем.
+            total_bytes += encrypt_file(path, rotate=args.rotate)
+        except (OSError, UnreadableFile) as exc:
+            # Один «занятый» файл или файл с чужим ключом — не повод бросать
+            # остальные: дошифруем, что сможем, а причину покажем.
             errors += 1
-            logger.warning("Не удалось зашифровать %s: %s", path.name, exc)
+            logger.warning("Не удалось обработать %s: %s", path.name, exc)
             continue
         done += 1
         if done % PROGRESS_EVERY == 0:
-            logger.info("Зашифровано: %s из %s", done, len(files))
+            logger.info("Обработано: %s из %s", done, len(files))
 
     logger.info(
-        "Готово: зашифровано %s файлов (%s МиБ), ошибок: %s",
+        "Готово: обработано %s файлов (%s МиБ), ошибок: %s",
         done,
         round(total_bytes / (1024 * 1024), 1),
         errors,

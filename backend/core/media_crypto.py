@@ -12,17 +12,23 @@
   докачка. Зная, что куски одного размера и лежат подряд, можно расшифровать
   только нужные, а не весь файл.
 
-Формат файла (``encf:v1``)::
+Формат файла (``encf:v2``, текущий)::
 
-    0   8   magic «encf:v1:»
-    8   8   размер содержимого (uint64, big-endian)
-    16  12  базовый nonce
-    28  ... куски: для каждого — AES-256-GCM(ciphertext||tag)
+    0   8   magic «encf:v2:»
+    8   8   номер ключа (первые 8 hex-символов SHA-256 ключа)
+    16  8   размер содержимого (uint64, big-endian)
+    24  12  базовый nonce
+    36  ... куски: для каждого — AES-256-GCM(ciphertext||tag)
+
+Старый формат ``encf:v1`` был тем же, но без номера ключа (заголовок 28 байт).
+Такие файлы читаются перебором известных ключей (текущий и ``AT_REST_KEY_PREVIOUS``,
+см. ``docs/at-rest-rotation.md``), а при ротации перешифровываются скриптом
+``scripts/encrypt_media.py --rotate``.
 
 Кусок i шифруется nonce'ом «базовый nonce без последних 4 байт + номер куска».
 Кусок занимает ``len(открытых данных) + 16`` байт, открытых данных — не больше
 ``CHUNK_BYTES``, поэтому позиция любого байта в файле считается арифметикой:
-``offset = HEADER_BYTES + (позиция // CHUNK_BYTES) * (CHUNK_BYTES + 16)``.
+``offset = заголовок + (позиция // CHUNK_BYTES) * (CHUNK_BYTES + 16)``.
 
 Ключа нет — функции работают «насквозь» (пишем и читаем как раньше), поэтому
 включать шифрование можно в любой момент и на живой базе: старые файлы читаются
@@ -35,6 +41,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -43,11 +50,19 @@ from core import at_rest
 
 logger = logging.getLogger(__name__)
 
-#: Признак нашего контейнера в начале файла (он же — версия формата).
-MAGIC = b"encf:v1:"
+#: Признаки контейнера в начале файла: старая версия (без номера ключа) и текущая.
+MAGIC_V1 = b"encf:v1:"
+MAGIC_V2 = b"encf:v2:"
+MAGIC = MAGIC_V2
 
-#: magic (8) + размер содержимого (8) + базовый nonce (12).
-HEADER_BYTES = 28
+#: Заголовок версии 1: magic (8) + размер содержимого (8) + базовый nonce (12).
+HEADER_V1_BYTES = 28
+
+#: Заголовок текущей версии: magic (8) + номер ключа (8) + размер (8) + nonce (12).
+HEADER_BYTES = 36
+
+#: Сколько символов отпечатка ключа пишем в заголовок (`core.at_rest.key_id`).
+KEY_ID_CHARS = at_rest.KEY_ID_CHARS
 
 #: Размер тега GCM (он дописывается к каждому куску).
 TAG_BYTES = 16
@@ -73,17 +88,117 @@ def is_enabled() -> bool:
 
 
 def is_encrypted_bytes(data: bytes) -> bool:
-    """Начинается ли содержимое с нашего заголовка."""
-    return data.startswith(MAGIC)
+    """Начинается ли содержимое с нашего заголовка (любой версии)."""
+    return data.startswith(MAGIC_V1) or data.startswith(MAGIC_V2)
 
 
 def is_encrypted_file(path: str | Path) -> bool:
     """Зашифрован ли файл на диске (нет файла — считаем, что нет)."""
+    return _magic(path) is not None
+
+
+def encrypted_with_current_key(path: str | Path) -> bool:
+    """Записан ли файл текущим ключом.
+
+    Для старого формата (`encf:v1:`) ответ всегда «нет»: номера ключа в нём нет,
+    поэтому при ротации такие файлы нужно перешифровать (см. `--rotate`).
+    """
+    magic = _magic(path)
+    if magic != MAGIC_V2:
+        return False
+    current = at_rest.encryption_key()
+    if current is None:
+        return False
+    return _key_id_of(path) == at_rest.key_id(current)
+
+
+def _magic(path: str | Path) -> bytes | None:
+    """Версия контейнера по первым байтам (None — файл не наш)."""
     try:
         with Path(path).open("rb") as file:
-            return file.read(len(MAGIC)) == MAGIC
+            head = file.read(len(MAGIC_V2))
     except OSError:
-        return False
+        return None
+    for magic in (MAGIC_V2, MAGIC_V1):
+        if head.startswith(magic):
+            return magic
+    return None
+
+
+def _key_id_of(path: str | Path) -> str | None:
+    """Номер ключа из заголовка (None — файл не в текущем формате)."""
+    with Path(path).open("rb") as file:
+        head = file.read(HEADER_BYTES)
+    if not head.startswith(MAGIC_V2):
+        return None
+    start = len(MAGIC_V2)
+    return head[start : start + KEY_ID_CHARS].decode("ascii", "replace")
+
+
+@dataclass(frozen=True)
+class Header:
+    """Заголовок контейнера (разбор версии и метаданных)."""
+
+    #: Номер ключа (``None`` у старого формата, где его нет).
+    key_id: str | None
+    #: Размер открытого содержимого.
+    plain_size: int
+    #: Базовый nonce, из которого считаются nonce'ы кусков.
+    base_nonce: bytes
+    #: Размер заголовка на диске (у версий он разный).
+    header_bytes: int
+
+
+def _parse_header(head: bytes) -> Header:
+    """Разбирает заголовок контейнера: текущий формат или старый."""
+    if head.startswith(MAGIC_V2):
+        id_start = len(MAGIC_V2)
+        size_start = id_start + KEY_ID_CHARS
+        nonce_start = size_start + 8
+        return Header(
+            key_id=head[id_start:size_start].decode("ascii", "replace"),
+            plain_size=int.from_bytes(head[size_start:nonce_start], "big"),
+            base_nonce=head[nonce_start:HEADER_BYTES],
+            header_bytes=HEADER_BYTES,
+        )
+    if head.startswith(MAGIC_V1):
+        size_start = len(MAGIC_V1)
+        nonce_start = size_start + 8
+        return Header(
+            key_id=None,
+            plain_size=int.from_bytes(head[size_start:nonce_start], "big"),
+            base_nonce=head[nonce_start:HEADER_V1_BYTES],
+            header_bytes=HEADER_V1_BYTES,
+        )
+    raise ValueError("Файл не в нашем контейнере")
+
+
+def read_header(path: str | Path) -> Header:
+    """Заголовок файла на диске (ошибка, если файл не зашифрован)."""
+    magic = _magic(path)
+    if magic is None:
+        raise ValueError("Файл не зашифрован")
+    size = HEADER_BYTES if magic == MAGIC_V2 else HEADER_V1_BYTES
+    with Path(path).open("rb") as file:
+        head = file.read(size)
+    if len(head) < size:
+        raise ValueError("Повреждённый контейнер media")
+    return _parse_header(head)
+
+
+def _keys_for(identifier: str | None) -> list[bytes]:
+    """Ключи для расшифровки в порядке проверки.
+
+    Сначала тот, чей номер записан в контейнере (обычный случай), затем
+    остальные — так читается и то, что записано прошлым ключом, и старый формат
+    без номера.
+    """
+    known = at_rest.decryption_keys()
+    if not known:
+        raise MediaKeyMissing("Ключ at-rest не задан — зашифрованный файл не прочитать")
+    ordered = [key for current_id, key in known if current_id == identifier]
+    ordered += [key for current_id, key in known if current_id != identifier]
+    return ordered
 
 
 def _chunk_nonce(base: bytes, index: int) -> bytes:
@@ -99,7 +214,7 @@ def chunk_count(plain_size: int) -> int:
 
 
 def encrypt_bytes(data: bytes) -> bytes:
-    """Заворачивает содержимое в контейнер.
+    """Заворачивает содержимое в контейнер текущим ключом.
 
     Без ключа или если данные уже в контейнере — возвращает их как есть: так
     запись работает и до включения шифрования, и при повторной обработке.
@@ -109,7 +224,9 @@ def encrypt_bytes(data: bytes) -> bytes:
         return data
     base = os.urandom(at_rest.NONCE_BYTES)
     cipher = AESGCM(key)
-    out = bytearray(MAGIC)
+    out = bytearray(MAGIC_V2)
+    # Номер ключа в заголовке — чтобы при ротации сразу видеть, чей это файл.
+    out += at_rest.key_id(key).encode("ascii")
     out += len(data).to_bytes(8, "big")
     out += base
     for index, offset in enumerate(range(0, len(data), CHUNK_BYTES)):
@@ -123,26 +240,28 @@ def decrypt_bytes(data: bytes) -> bytes:
     """Возвращает содержимое контейнера. Обычные данные — как есть."""
     if not is_encrypted_bytes(data):
         return data
-    if len(data) < HEADER_BYTES:
-        raise ValueError("Повреждённый контейнер media")
-    plain_size = int.from_bytes(data[8:16], "big")
-    base = data[16:HEADER_BYTES]
-    cipher = AESGCM(_require_key())
+    header = _parse_header(data)
+    plain_size = header.plain_size
+    keys = _keys_for(header.key_id)
     out = bytearray()
     for index in range(chunk_count(plain_size)):
-        start = HEADER_BYTES + index * CHUNK_FILE_BYTES
-        out += cipher.decrypt(
-            _chunk_nonce(base, index), data[start : start + CHUNK_FILE_BYTES], None
-        )
+        start = header.header_bytes + index * CHUNK_FILE_BYTES
+        blob = data[start : start + CHUNK_FILE_BYTES]
+        out += _decrypt_chunk(keys, header.base_nonce, index, blob)
     return bytes(out)
 
 
-def _require_key() -> bytes:
-    """Ключ шифрования; без него читать зашифрованное нечем."""
-    key = at_rest.encryption_key()
-    if key is None:
-        raise MediaKeyMissing("AT_REST_KEY не задан — зашифрованный файл не прочитать")
-    return key
+def _decrypt_chunk(
+    keys: list[bytes], base_nonce: bytes, index: int, blob: bytes
+) -> bytes:
+    """Расшифровывает один кусок, перебирая известные ключи."""
+    last_error: Exception | None = None
+    for key in keys:
+        try:
+            return AESGCM(key).decrypt(_chunk_nonce(base_nonce, index), blob, None)
+        except Exception as exc:  # noqa: BLE001 - пробуем следующий ключ
+            last_error = exc
+    raise last_error if last_error is not None else MediaKeyMissing("Нет ключа")
 
 
 def plaintext_size(path: str | Path) -> int:
@@ -150,11 +269,7 @@ def plaintext_size(path: str | Path) -> int:
     file_path = Path(path)
     if not is_encrypted_file(file_path):
         return file_path.stat().st_size
-    with file_path.open("rb") as file:
-        header = file.read(HEADER_BYTES)
-    if len(header) < HEADER_BYTES:
-        raise ValueError("Повреждённый контейнер media")
-    return int.from_bytes(header[8:16], "big")
+    return read_header(file_path).plain_size
 
 
 def read_file(path: str | Path) -> bytes:
@@ -193,13 +308,14 @@ def iter_plaintext(
         return
 
     with file_path.open("rb") as file:
-        base = file.read(HEADER_BYTES)[16:HEADER_BYTES]
-        cipher = AESGCM(_require_key())
+        header = read_header(file_path)
+        file.seek(header.header_bytes)
+        keys = _keys_for(header.key_id)
         index = start // CHUNK_BYTES
         while start < stop:
-            file.seek(HEADER_BYTES + index * CHUNK_FILE_BYTES)
-            plain = cipher.decrypt(
-                _chunk_nonce(base, index), file.read(CHUNK_FILE_BYTES), None
+            file.seek(header.header_bytes + index * CHUNK_FILE_BYTES)
+            plain = _decrypt_chunk(
+                keys, header.base_nonce, index, file.read(CHUNK_FILE_BYTES)
             )
             chunk_start = index * CHUNK_BYTES
             taken = min(len(plain), stop - chunk_start)
