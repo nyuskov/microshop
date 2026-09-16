@@ -283,12 +283,13 @@ async def _is_call_blocked(from_user_id: int, to_user_id: int) -> bool:
     """Блокировка между участниками звонка (в любую сторону).
 
     Проверка обязательна: заблокированный не должен ни дозвониться, ни получить
-    push «Вам звонят…». Ошибка БД не должна ронять сигналинг — тогда просто
-    пропускаем вызов, как раньше.
+    push «Вам звонят…». Учитывается и мягкая блокировка («только звонки») —
+    человек как раз и просил не звонить. Ошибка БД не должна ронять сигналинг:
+    тогда просто пропускаем вызов, как раньше.
     """
     try:
         async with db_helper.session_factory() as session:
-            return await moderation_crud.is_blocked_between(
+            return await moderation_crud.is_call_blocked_between(
                 session, user_id=to_user_id, other_id=from_user_id
             )
     except Exception:  # noqa: BLE001 - блокировки не роняют сигналинг

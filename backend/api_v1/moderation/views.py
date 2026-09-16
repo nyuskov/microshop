@@ -8,14 +8,13 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth import audit, security_notifications
 from api_v1.auth.refresh_sessions import revoke_all_sessions
 from api_v1.auth.utils import get_current_superuser, get_current_user
 from api_v1.chats.crud import is_user_chat_member
-from api_v1.users.schemas import UserSearchResultSchema
 from core.config import settings
 from core.models import Message, User, UserReport, db_helper
 from core.models.moderation_action import (
@@ -296,13 +295,29 @@ async def unhide_user_messages(
     return schemas.UnhideResponse(restored=restored)
 
 
-@router.get("/blocks/", response_model=list[UserSearchResultSchema])
+@router.get("/blocks/", response_model=list[schemas.BlockedUserItem])
 async def list_blocked(
     user: Annotated[User, Depends(get_current_user)],
     session: AsyncSession = Depends(db_helper.session_dependency),
-) -> list[User]:
-    """Возвращает список заблокированных мной пользователей."""
-    return await crud.get_blocked_users(session, blocker_id=user.id)
+) -> list[schemas.BlockedUserItem]:
+    """Возвращает список заблокированных мной пользователей.
+
+    В каждой строке — вид блокировки (полная или «только звонки»), чтобы экран
+    «Заблокированные» мог показать состояние и дать его переключить.
+    """
+    rows = await crud.get_blocked_users(session, blocker_id=user.id)
+    return [
+        schemas.BlockedUserItem(
+            id=blocked.id,
+            username=blocked.username,
+            first_name=blocked.first_name,
+            last_name=blocked.last_name,
+            avatar_url=blocked.avatar_url,
+            avatar_thumb_url=blocked.avatar_thumb_url,
+            messages_allowed=messages_allowed,
+        )
+        for blocked, messages_allowed in rows
+    ]
 
 
 @router.put("/blocks/{user_id}/", response_model=schemas.BlockStateResponse)
@@ -310,8 +325,14 @@ async def block_user(
     user_id: int,
     user: Annotated[User, Depends(get_current_user)],
     session: AsyncSession = Depends(db_helper.session_dependency),
+    payload: Annotated[schemas.BlockRequest | None, Body()] = None,
 ) -> schemas.BlockStateResponse:
-    """Блокирует пользователя: он не сможет писать, чат скрывается из списка."""
+    """Блокирует пользователя (или меняет вид уже стоящей блокировки).
+
+    Без тела запроса — полная блокировка (как было). С
+    ``messages_allowed=true`` — «только звонки»: он не сможет дозвониться, но
+    переписка и чат остаются на месте.
+    """
     if user_id == user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -323,8 +344,34 @@ async def block_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Пользователь не найден",
         )
-    await crud.block_user(session, blocker_id=user.id, blocked_id=user_id)
-    return schemas.BlockStateResponse(blocked=True)
+    messages_allowed = bool(payload.messages_allowed) if payload else False
+    await crud.block_user(
+        session,
+        blocker_id=user.id,
+        blocked_id=user_id,
+        messages_allowed=messages_allowed,
+    )
+    return schemas.BlockStateResponse(blocked=True, messages_allowed=messages_allowed)
+
+
+@router.get("/blocks/{user_id}/", response_model=schemas.BlockStateResponse)
+async def get_block_state(
+    user_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> schemas.BlockStateResponse:
+    """Стоит ли блокировка на этого пользователя и какого она вида.
+
+    Нужно интерфейсу, чтобы показать верные подписи в меню чата. Рассказываем
+    только про СВОЮ блокировку: чужие не раскрываем.
+    """
+    messages_allowed = await crud.get_block_messages_allowed(
+        session, blocker_id=user.id, blocked_id=user_id
+    )
+    return schemas.BlockStateResponse(
+        blocked=messages_allowed is not None,
+        messages_allowed=bool(messages_allowed),
+    )
 
 
 @router.delete("/blocks/{user_id}/", response_model=schemas.BlockStateResponse)
@@ -333,7 +380,7 @@ async def unblock_user(
     user: Annotated[User, Depends(get_current_user)],
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> schemas.BlockStateResponse:
-    """Снимает блокировку с пользователя (идемпотентно)."""
+    """Снимает блокировку с пользователя (идемпотентно, любого вида)."""
     await crud.unblock_user(session, blocker_id=user.id, blocked_id=user_id)
     return schemas.BlockStateResponse(blocked=False)
 

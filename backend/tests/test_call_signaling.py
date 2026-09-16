@@ -411,6 +411,10 @@ async def test_blocked_pair_cannot_call(monkeypatch: pytest.MonkeyPatch) -> None
 
     Зовущему отвечаем как при недоступности — о самом факте блокировки не сообщаем,
     иначе блокировка превращалась бы в способ сообщить о себе.
+
+    Проверяем именно ``is_call_blocked_between``: он учитывает оба вида блокировки
+    — и полную, и мягкую («только звонки»), — тогда как `is_blocked_between`
+    отвечает только за запрет переписки.
     """
     from api_v1.calls import views as calls_views
     from api_v1.calls.manager import call_manager
@@ -431,7 +435,9 @@ async def test_blocked_pair_cannot_call(monkeypatch: pytest.MonkeyPatch) -> None
     ) -> None:
         parked.append((callee_id, offer))
 
-    monkeypatch.setattr(calls_views.moderation_crud, "is_blocked_between", _blocked)
+    monkeypatch.setattr(
+        calls_views.moderation_crud, "is_call_blocked_between", _blocked
+    )
     monkeypatch.setattr(calls_views, "_any_push_channel_configured", lambda: True)
     monkeypatch.setattr(calls_views, "_spawn", spawned.append)
     monkeypatch.setattr(call_manager, "park_offer", _fake_park)

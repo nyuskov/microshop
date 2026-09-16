@@ -75,15 +75,28 @@
           </button>
           <!-- Жалоба и блокировка — требования RuStore для UGC-приложений.
                Доступны только в личных диалогах (в группе нет одного собеседника,
-               там жалуются на конкретное сообщение через его действия). -->
+               там жалуются на конкретное сообщение через его действия).
+               Блокировка бывает двух видов: полная и «только звонки» — вторая
+               оставляет переписку, но запрещает дозвон (жалоба «не звони мне»). -->
           <template v-if="canModeratePeer">
             <button class="ms-dropdown-item" @click="runChatAction('report')">
               <q-icon :name="icon('flag')" size="19px" />
               <span>Пожаловаться</span>
             </button>
+            <!-- При полной блокировке запрещено всё, поэтому отдельный пункт про
+                 звонки не показываем — достаточно «Разблокировать». -->
+            <button
+              v-if="!blocked"
+              class="ms-dropdown-item"
+              :class="{ on: callsBlocked }"
+              @click="runChatAction('calls')"
+            >
+              <q-icon :name="icon(callsBlocked ? 'call' : 'call_end')" size="19px" />
+              <span>{{ callsBlocked ? 'Принимать звонки' : 'Не принимать звонки' }}</span>
+            </button>
             <button class="ms-dropdown-item danger" @click="runChatAction('block')">
               <q-icon :name="icon('block')" size="19px" />
-              <span>Заблокировать</span>
+              <span>{{ blocked ? 'Разблокировать' : 'Заблокировать' }}</span>
             </button>
           </template>
         </div>
@@ -126,6 +139,10 @@ const props = defineProps<{
   pinned?: boolean
   /** Лежит ли этот чат в архиве (меняет подпись пункта меню). */
   archived?: boolean
+  /** Заблокирован ли собеседник ПОЛНОСТЬЮ (переписка и звонки запрещены). */
+  blocked?: boolean
+  /** Запрещены ли только звонки («не звони мне, но писать можно»). */
+  callsBlocked?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -137,6 +154,8 @@ const emit = defineEmits<{
   (e: 'toggle-pin'): void
   /** В архив или обратно. */
   (e: 'toggle-archive'): void
+  /** Запретить/разрешить звонки от собеседника (мягкая блокировка). */
+  (e: 'toggle-calls-block'): void
   /** Жалоба на собеседника (модерация UGC, требование RuStore). */
   (e: 'report-chat'): void
   /** Блокировка собеседника. */
@@ -192,10 +211,11 @@ const toggleChatMenu = () => {
   chatMenuOpen.value = !chatMenuOpen.value
 }
 
-const runChatAction = (action: 'search' | 'archive' | 'report' | 'block') => {
+const runChatAction = (action: 'search' | 'archive' | 'calls' | 'report' | 'block') => {
   chatMenuOpen.value = false
   if (action === 'search') emit('toggle-search')
   if (action === 'archive') emit('toggle-archive')
+  if (action === 'calls') emit('toggle-calls-block')
   if (action === 'report') emit('report-chat')
   if (action === 'block') emit('block-chat')
 }

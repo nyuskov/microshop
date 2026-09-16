@@ -44,10 +44,15 @@ def story_expiry(now: datetime | None = None) -> datetime:
 
 
 async def _blocked_ids(session: AsyncSession, user_id: int) -> set[int]:
-    """Пользователи, между которыми есть блокировка (в любую сторону)."""
+    """Пользователи с ПОЛНОЙ блокировкой (в любую сторону).
+
+    Мягкая блокировка («только звонки») на истории не влияет: переписка и лента
+    остаются как были, ограничен именно дозвон.
+    """
     result = await session.execute(
         select(UserBlock.blocker_id, UserBlock.blocked_id).where(
-            or_(UserBlock.blocker_id == user_id, UserBlock.blocked_id == user_id)
+            or_(UserBlock.blocker_id == user_id, UserBlock.blocked_id == user_id),
+            UserBlock.messages_allowed.is_(False),
         )
     )
     blocked: set[int] = set()

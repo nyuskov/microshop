@@ -29,10 +29,35 @@ class ReportResponse(BaseModel):
     status: str
 
 
+class BlockRequest(BaseModel):
+    """Вид блокировки при постановке.
+
+    По умолчанию — полная (сообщения и звонки запрещены, чат скрыт).
+    ``messages_allowed=True`` — «только звонки»: переписка остаётся.
+    """
+
+    messages_allowed: bool = False
+
+
 class BlockStateResponse(BaseModel):
     """Текущее состояние блокировки пользователя."""
 
     blocked: bool
+    #: True — это мягкая блокировка («только звонки»), сообщения проходят.
+    messages_allowed: bool = False
+
+
+class BlockedUserItem(BaseModel):
+    """Заблокированный пользователь в списке (с видом блокировки)."""
+
+    id: int
+    username: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    avatar_url: str | None = None
+    avatar_thumb_url: str | None = None
+    #: True — сообщения от него проходят, запрещены только звонки.
+    messages_allowed: bool = False
 
 
 class ReportItem(BaseModel):

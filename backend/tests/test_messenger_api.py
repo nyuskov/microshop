@@ -1660,6 +1660,64 @@ async def test_block_user_blocks_messages_and_hides_chat(api: _ApiCtx) -> None:
     assert r.status_code == 200, r.text
 
 
+async def test_soft_block_keeps_chat_and_messages(api: _ApiCtx) -> None:
+    """Мягкая блокировка («только звонки»): чат на месте, переписка идёт.
+
+    Полная блокировка вычёркивает человека целиком, а эта — запрещает только
+    дозвон. Проверяем через API: чат виден обоим, сообщения проходят в обе
+    стороны, состояние читается для интерфейса, и в списке видно вид блокировки.
+    """
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    t1 = await api.token_for(u1)
+    t2 = await api.token_for(u2)
+    chat = await api.private_chat(t1, u2.id)
+
+    r = await api.client.put(
+        f"/api/v1/moderation/blocks/{u2.id}/",
+        json={"messages_allowed": True},
+        headers=api.auth(t1),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"blocked": True, "messages_allowed": True}
+
+    # Чат остаётся у обоих: переписка не запрещена.
+    for token in (t1, t2):
+        chats = (await api.client.get("/api/v1/chats/", headers=api.auth(token))).json()
+        assert any(c["id"] == chat["id"] for c in chats)
+
+    # Сообщения проходят в обе стороны.
+    for token in (t1, t2):
+        r = await api.client.post(
+            "/api/v1/messages/",
+            json={"chat_id": chat["id"], "text": "переписка при мягкой блокировке"},
+            headers=api.auth(token),
+        )
+        assert r.status_code == 200, r.text
+
+    # Состояние для интерфейса (подписи в меню чата) и вид в списке.
+    state = (
+        await api.client.get(
+            f"/api/v1/moderation/blocks/{u2.id}/", headers=api.auth(t1)
+        )
+    ).json()
+    assert state == {"blocked": True, "messages_allowed": True}
+    blocked = (
+        await api.client.get("/api/v1/moderation/blocks/", headers=api.auth(t1))
+    ).json()
+    assert [(item["id"], item["messages_allowed"]) for item in blocked] == [
+        (u2.id, True)
+    ]
+
+    # Переключение обратно в полную блокировку — без тела запроса.
+    r = await api.client.put(
+        f"/api/v1/moderation/blocks/{u2.id}/", headers=api.auth(t1)
+    )
+    assert r.json() == {"blocked": True, "messages_allowed": False}
+    chats1 = (await api.client.get("/api/v1/chats/", headers=api.auth(t1))).json()
+    assert all(c["id"] != chat["id"] for c in chats1)
+
+
 async def test_block_validation(api: _ApiCtx) -> None:
     """Нельзя заблокировать себя; чужой аккаунт — 404; без токена — 401."""
     u1 = await api.make_user()

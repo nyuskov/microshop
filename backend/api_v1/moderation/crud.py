@@ -9,11 +9,20 @@ from core.models import Message, User, UserBlock, UserReport
 
 
 async def block_user(
-    session: AsyncSession, *, blocker_id: int, blocked_id: int
+    session: AsyncSession,
+    *,
+    blocker_id: int,
+    blocked_id: int,
+    messages_allowed: bool = False,
 ) -> None:
-    """Блокирует пользователя (идемпотентно)."""
+    """Блокирует пользователя (идемпотентно).
+
+    ``messages_allowed=True`` — мягкая блокировка: «не звони, но писать можно».
+    Повторный вызов меняет вид блокировки, а не создаёт вторую запись (на пару
+    есть уникальный индекс).
+    """
     existing = await session.scalar(
-        select(UserBlock.id)
+        select(UserBlock)
         .where(
             UserBlock.blocker_id == blocker_id,
             UserBlock.blocked_id == blocked_id,
@@ -21,8 +30,19 @@ async def block_user(
         .limit(1)
     )
     if existing is None:
-        session.add(UserBlock(blocker_id=blocker_id, blocked_id=blocked_id))
-        await session.commit()
+        session.add(
+            UserBlock(
+                blocker_id=blocker_id,
+                blocked_id=blocked_id,
+                messages_allowed=messages_allowed,
+            )
+        )
+    elif existing.messages_allowed != messages_allowed:
+        existing.messages_allowed = messages_allowed
+    else:
+        # Ничего не изменилось — коммит не нужен.
+        return
+    await session.commit()
 
 
 async def unblock_user(
@@ -39,39 +59,87 @@ async def unblock_user(
 
 
 async def get_blocked_ids(session: AsyncSession, *, blocker_id: int) -> set[int]:
-    """ID пользователей, которых заблокировал ``blocker_id``."""
+    """ID пользователей, которых ``blocker_id`` заблокировал ПОЛНОСТЬЮ.
+
+    Мягкие блокировки («только звонки») сюда не попадают намеренно: переписка
+    с таким человеком продолжается, и прятать чат из списка нельзя.
+    """
     rows = await session.execute(
-        select(UserBlock.blocked_id).where(UserBlock.blocker_id == blocker_id)
+        select(UserBlock.blocked_id).where(
+            UserBlock.blocker_id == blocker_id,
+            UserBlock.messages_allowed.is_(False),
+        )
     )
     return set(rows.scalars().all())
 
 
-async def get_blocked_users(session: AsyncSession, *, blocker_id: int) -> list[User]:
-    """Список заблокированных пользователей (для экрана «Заблокированные»)."""
+async def get_blocked_users(
+    session: AsyncSession, *, blocker_id: int
+) -> list[tuple[User, bool]]:
+    """Заблокированные мной: пользователь и признак «сообщения разрешены».
+
+    Вид блокировки нужен экрану «Заблокированные»: иначе нельзя показать, что
+    человеку запрещены только звонки, и нельзя переключить вид обратно.
+    """
     stmt = (
-        select(User)
+        select(User, UserBlock.messages_allowed)
         .join(UserBlock, UserBlock.blocked_id == User.id)
         .where(UserBlock.blocker_id == blocker_id)
         .order_by(UserBlock.created_at.desc())
     )
     result = await session.execute(stmt)
-    return list(result.scalars().all())
+    return [(user, bool(messages_allowed)) for user, messages_allowed in result.all()]
+
+
+async def get_block_messages_allowed(
+    session: AsyncSession, *, blocker_id: int, blocked_id: int
+) -> bool | None:
+    """Вид МОЕЙ блокировки: None — не блокировал, иначе ``messages_allowed``.
+
+    Нужно интерфейсу: в меню чата должны быть верные подписи («Заблокировать»
+    или «Разблокировать», «Не принимать звонки» или «Принимать звонки»).
+    Чужие блокировки не показываем — это личное дело собеседника.
+    """
+    found = await session.scalar(
+        select(UserBlock.messages_allowed)
+        .where(
+            UserBlock.blocker_id == blocker_id,
+            UserBlock.blocked_id == blocked_id,
+        )
+        .limit(1)
+    )
+    return None if found is None else bool(found)
 
 
 async def is_blocked_between(
     session: AsyncSession, *, user_id: int, other_id: int
 ) -> bool:
-    """Есть ли блокировка между парой (в любую сторону)."""
-    found = await session.scalar(
-        select(UserBlock.id)
-        .where(
-            or_(
-                (UserBlock.blocker_id == user_id) & (UserBlock.blocked_id == other_id),
-                (UserBlock.blocker_id == other_id) & (UserBlock.blocked_id == user_id),
-            )
-        )
-        .limit(1)
+    """Полная блокировка между парой (в любую сторону): сообщения запрещены."""
+    return await _has_block(session, user_id=user_id, other_id=other_id, any_kind=False)
+
+
+async def is_call_blocked_between(
+    session: AsyncSession, *, user_id: int, other_id: int
+) -> bool:
+    """Любая блокировка между парой: звонок запрещён в обоих видах.
+
+    Для звонков годится и полная блокировка, и мягкая («только звонки») —
+    во втором случае человек как раз и просил не звонить.
+    """
+    return await _has_block(session, user_id=user_id, other_id=other_id, any_kind=True)
+
+
+async def _has_block(
+    session: AsyncSession, *, user_id: int, other_id: int, any_kind: bool
+) -> bool:
+    """Есть ли блокировка между парой (``any_kind`` — учитывать оба вида)."""
+    conditions = or_(
+        (UserBlock.blocker_id == user_id) & (UserBlock.blocked_id == other_id),
+        (UserBlock.blocker_id == other_id) & (UserBlock.blocked_id == user_id),
     )
+    if not any_kind:
+        conditions = conditions & UserBlock.messages_allowed.is_(False)
+    found = await session.scalar(select(UserBlock.id).where(conditions).limit(1))
     return found is not None
 
 

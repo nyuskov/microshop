@@ -10,8 +10,8 @@
 
       <q-card-section class="mod-body">
         <p class="mod-hint">
-          Заблокированные не могут писать вам, а их диалоги скрыты из списка. Здесь блокировку можно
-          снять.
+          Заблокированные не могут писать вам, а их диалоги скрыты из списка. Для тех, кому
+          запрещены только звонки, переписка остаётся. Здесь блокировку можно снять.
         </p>
 
         <div v-if="loading" class="mod-empty">Загрузка…</div>
@@ -32,8 +32,22 @@
             </span>
             <span class="mod-name">
               <span class="mod-name-main">{{ displayName(user) }}</span>
-              <span class="mod-name-sub">{{ user.phone_number || `@${user.username}` }}</span>
+              <span class="mod-name-sub">
+                {{ user.phone_number || `@${user.username}` }}
+                <template v-if="user.messages_allowed"> · только звонки</template>
+              </span>
             </span>
+            <!-- Вид блокировки меняется на месте: «только звонки» и полная —
+                 это одно действие пользователя, а не два разных списка. -->
+            <q-btn
+              flat
+              no-caps
+              dense
+              :color="user.messages_allowed ? 'grey' : 'primary'"
+              :label="user.messages_allowed ? 'Запретить писать' : 'Только звонки'"
+              :loading="busyId === user.id"
+              @click="toggleKind(user)"
+            />
             <q-btn
               flat
               no-caps
@@ -55,18 +69,18 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 
-import { fetchBlockedUsers, unblockUser } from '@/services/moderation'
-import type { SearchUserResult } from '@/services/chatService'
+import { fetchBlockedUsers, blockUser, unblockUser } from '@/services/moderation'
+import type { BlockedUser } from '@/services/moderation'
 import { getErrorMessage } from '@/services/errors'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 
 const emit = defineEmits<{
   (e: 'close'): void
-  /** Блокировка снята — родитель перечитывает список диалогов. */
+  /** Блокировка снята или изменена — родитель перечитывает список диалогов. */
   (e: 'unblocked'): void
 }>()
 
-const users = ref<SearchUserResult[]>([])
+const users = ref<BlockedUser[]>([])
 const loading = ref(true)
 const busyId = ref<number | null>(null)
 const error = ref('')
@@ -93,6 +107,24 @@ const unblock = async (userId: number) => {
     emit('unblocked')
   } catch (err) {
     error.value = getErrorMessage(err, 'Не удалось снять блокировку')
+  } finally {
+    busyId.value = null
+  }
+}
+
+/** Переключает вид блокировки: полная ↔ «только звонки» (переписка вернётся). */
+const toggleKind = async (user: BlockedUser) => {
+  if (busyId.value !== null) return
+  busyId.value = user.id
+  error.value = ''
+  try {
+    const state = await blockUser(user.id, { messagesAllowed: !user.messages_allowed })
+    users.value = users.value.map((item) =>
+      item.id === user.id ? { ...item, messages_allowed: state.messagesAllowed } : item
+    )
+    emit('unblocked')
+  } catch (err) {
+    error.value = getErrorMessage(err, 'Не удалось изменить блокировку')
   } finally {
     busyId.value = null
   }

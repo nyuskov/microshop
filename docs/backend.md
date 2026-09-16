@@ -262,9 +262,10 @@ Push рисует система (в Android — SDK RuStore, в PWA — слу�
 | DELETE | `/users/me/avatar/` | удалить аватар | токен |
 | DELETE | `/users/me/` | удалить аккаунт `{password?, confirm:"УДАЛИТЬ"}` → 204 (204/400/403) | токен |
 | POST | `/moderation/reports/` | жалоба на пользователя/сообщение `{user_id, reason, comment?, chat_id?, message_id?}` (причины: `spam/abuse/fraud/violence/other`) | токен |
-| GET | `/moderation/blocks/` | список заблокированных мной | токен |
-| PUT | `/moderation/blocks/{user_id}/` | заблокировать (диалог скрыт, сообщения в обе стороны — 403) | токен |
-| DELETE | `/moderation/blocks/{user_id}/` | снять блокировку | токен |
+| GET | `/moderation/blocks/` | список заблокированных мной (у каждого — `messages_allowed`) | токен |
+| GET | `/moderation/blocks/{user_id}/` | состояние СВОЕЙ блокировки: `{blocked, messages_allowed}` | токен |
+| PUT | `/moderation/blocks/{user_id}/` | заблокировать `{messages_allowed?: bool}` (без тела — полная; `true` — «только звонки») | токен |
+| DELETE | `/moderation/blocks/{user_id}/` | снять блокировку (любого вида) | токен |
 | GET | `/moderation/reports/?status=&reason=&limit=&offset=` | **админ**: список жалоб (`total` + `items`) | токен, `is_superuser` |
 | PATCH | `/moderation/reports/{report_id}/` | **админ**: статус разбора `{status: new/in_review/resolved/rejected, note?}`; `resolved` скрывает контент, `rejected` возвращает | токен, `is_superuser` |
 | GET | `/moderation/journal/?limit=&offset=` | **админ**: журнал модерации (`total`, `hidden_messages`, `items`) | токен, `is_superuser` |
@@ -288,6 +289,15 @@ Push рисует система (в Android — SDK RuStore, в PWA — слу�
 > (назначение и инструкция для модератора — `docs/rustore.md`, §9.1).
 > Жалобы лежат в `user_reports` (статусы `new → in_review → resolved/rejected`),
 > автоблокировки по жалобе нет — решение принимает модератор вручную.
+>
+> **Блокировка бывает двух видов** (`user_blocks.messages_allowed`): полная
+> (по умолчанию: переписка и звонки запрещены в обе стороны, чат скрыт из списка)
+> и мягкая — «только звонки»: переписка и чат остаются, запрещён дозвон.
+> Второй вид нужен чаще, чем полная: «не звони мне, но писать можно». Разница
+> видна на уровне проверок: сообщения и скрытие чата смотрят только полную
+> блокировку (`is_blocked_between`, `get_blocked_ids`), а звонки — любую
+> (`is_call_blocked_between` в `api_v1/calls/views._is_call_blocked`).
+> Истории фильтруются как переписка — по полной блокировке.
 
 ### Модель данных (основное)
 
@@ -300,7 +310,7 @@ Push рисует система (в Android — SDK RuStore, в PWA — слу�
 - `chat_invites` — ссылки-приглашения в группы (токен, срок годности, лимит
   входов, отзыв);
 - `device_keys` — публичный ключ E2EE на устройство; `chat_group_keys` — обёртки ключа группы (по строке на участника: ключ группы, зашифрованный на общем секрете с `wrapped_by`); `push_subscriptions` — Web Push-подписки; `rustore_push_tokens` — токены RuStore Push; `chat_mutes` — «без уведомлений» (PK `user_id+chat_id`); `telegram_bind_links` — коды привязки Telegram; `message_drafts` — черновики сообщений (PK `user_id+chat_id`, текст в том же виде, что в сообщении: в E2EE-чате это шифротекст).
-- `user_blocks` — блокировки 1-1 (уникальная пара `blocker_id+blocked_id`); `user_reports` — жалобы (`reporter_id`, `reported_id`, `reason`, `comment`, контекст `chat_id`/`message_id`, `status`, `note`, `created_at`, `reviewed_at`).
+- `user_blocks` — блокировки 1-1 (уникальная пара `blocker_id+blocked_id`, `messages_allowed` — вид блокировки); `user_reports` — жалобы (`reporter_id`, `reported_id`, `reason`, `comment`, контекст `chat_id`/`message_id`, `status`, `note`, `created_at`, `reviewed_at`).
 - Legacy-таблицы `post`/`product`/`order`/`group` — **удалены** (миграция `f6a7b8c9d0e1`); моделей нет.
 
 ### Миграции (Alembic, история)
@@ -357,7 +367,8 @@ Push рисует система (в Android — SDK RuStore, в PWA — слу�
 48. `2026_09_12_1800-e9f0a1b2c3d4` — ссылки-приглашения в группы (`chat_invites`)
 49. `2026_09_14_0800-f4f71cf4525b` — персональные приглашения на регистрацию (`registration_invites`)
 50. `2026_09_15_1930-b8c9d0e1f2a3` — отзыв приглашения (`registration_invites.revoked_at`)
-51. `2026_09_16_1000-c9d0e1f2a3b4` — тихие часы в профиле (`quiet_hours_*`) — **голова**
+51. `2026_09_16_1000-c9d0e1f2a3b4` — тихие часы в профиле (`quiet_hours_*`)
+52. `2026_09_16_1400-f5a6b7c8d9e0` — мягкая блокировка: `user_blocks.messages_allowed` — **голова**
 
 Применение: `cd backend && poetry run alembic upgrade head`. В docker-стеке миграции выполняются автоматически при старте контейнера `web`.
 

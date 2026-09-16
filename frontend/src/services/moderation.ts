@@ -44,9 +44,35 @@ export async function reportUser(payload: ReportPayload): Promise<void> {
   })
 }
 
-/** Блокирует пользователя: он не сможет писать, диалог скрывается. */
-export async function blockUser(userId: number): Promise<void> {
-  await api.put(`/moderation/blocks/${userId}/`)
+/** Состояние блокировки: стоит ли и какого она вида. */
+export interface BlockState {
+  blocked: boolean
+  /** true — «только звонки»: переписка идёт, дозвон запрещён. */
+  messagesAllowed: boolean
+}
+
+/** Заблокированный пользователь в списке (с видом блокировки). */
+export interface BlockedUser extends SearchUserResult {
+  messages_allowed: boolean
+}
+
+/**
+ * Блокирует пользователя.
+ *
+ * По умолчанию — полная блокировка: он не сможет писать, диалог скрывается.
+ * С `messagesAllowed` — мягкая («только звонки»): переписка и чат остаются,
+ * запрещён дозвон. Нужна чаще, чем полная: человек не хочет звонков от
+ * знакомого, но не собирается вычёркивать его из переписки.
+ */
+export async function blockUser(
+  userId: number,
+  options?: { messagesAllowed?: boolean }
+): Promise<BlockState> {
+  const { data } = await api.put<{ blocked: boolean; messages_allowed: boolean }>(
+    `/moderation/blocks/${userId}/`,
+    { messages_allowed: options?.messagesAllowed ?? false }
+  )
+  return { blocked: data.blocked, messagesAllowed: data.messages_allowed }
 }
 
 /** Снимает блокировку. */
@@ -54,9 +80,21 @@ export async function unblockUser(userId: number): Promise<void> {
   await api.delete(`/moderation/blocks/${userId}/`)
 }
 
-/** Список заблокированных пользователей. */
-export async function fetchBlockedUsers(): Promise<SearchUserResult[]> {
-  const { data } = await api.get<SearchUserResult[]>('/moderation/blocks/')
+/**
+ * Своя блокировка этого пользователя (для подписей в меню чата).
+ *
+ * Рассказываем только про СВОЮ блокировку — чужая не наше дело.
+ */
+export async function fetchBlockState(userId: number): Promise<BlockState> {
+  const { data } = await api.get<{ blocked: boolean; messages_allowed: boolean }>(
+    `/moderation/blocks/${userId}/`
+  )
+  return { blocked: data.blocked, messagesAllowed: data.messages_allowed }
+}
+
+/** Список заблокированных пользователей (с видом блокировки). */
+export async function fetchBlockedUsers(): Promise<BlockedUser[]> {
+  const { data } = await api.get<BlockedUser[]>('/moderation/blocks/')
   return data
 }
 
