@@ -1,6 +1,8 @@
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
 
+from core.db_types import EncryptedText
+
 from .base import Base
 from .mixins import IdIntPkMixin, UserRelationMixin
 
@@ -9,9 +11,11 @@ class Profile(IdIntPkMixin, UserRelationMixin, Base):
     _user_id_unique = True
     _user_back_populates = "profile"
 
+    # Профиль: имя/фамилия в этой таблице не используются (живут в `user`), а
+    # «о себе» показывается в карточке профиля — этот текст шифруем.
     first_name: Mapped[str | None] = mapped_column(String(40))
     last_name: Mapped[str | None] = mapped_column(String(40))
-    bio: Mapped[str | None]
+    bio: Mapped[str | None] = mapped_column(EncryptedText)
     birth_date: Mapped[str | None] = mapped_column(String(10))  # Format: YYYY-MM-DD
     language: Mapped[str | None] = mapped_column(String(10))  # e.g., 'en', 'ru'
     country: Mapped[str | None] = mapped_column(String(10))  # e.g., 'US', 'RU'

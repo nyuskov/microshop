@@ -14,8 +14,10 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from core.db_types import EncryptedText
 
 from .base import Base
 from .mixins import IdIntPkMixin
@@ -44,7 +46,7 @@ class ChannelComment(IdIntPkMixin, Base):
         ForeignKey("messages.id", ondelete="CASCADE"), index=True
     )
     user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"))
-    text: Mapped[str] = mapped_column(Text)
+    text: Mapped[str] = mapped_column(EncryptedText)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -83,7 +85,7 @@ class ChannelSuggestion(IdIntPkMixin, Base):
     )
     #: Кто предложил (подписчик канала).
     author_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"))
-    text: Mapped[str] = mapped_column(Text)
+    text: Mapped[str] = mapped_column(EncryptedText)
     #: pending | approved | rejected (см. константы выше).
     status: Mapped[str] = mapped_column(
         String(length=16), default=SUGGESTION_PENDING, server_default=SUGGESTION_PENDING

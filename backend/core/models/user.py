@@ -5,6 +5,8 @@ from fastapi_users.db import SQLAlchemyBaseUserTable
 from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from core.db_types import EncryptedText
+
 from .associations import user_chat_association_table
 from .base import Base
 from .mixins import IdIntPkMixin
@@ -20,8 +22,11 @@ class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
 
     username: Mapped[str] = mapped_column(String(32), unique=True)
     phone_number: Mapped[str] = mapped_column(String(20), unique=True, nullable=True)
-    first_name: Mapped[str] = mapped_column(String(32), nullable=True)
-    last_name: Mapped[str] = mapped_column(String(32), nullable=True)
+    # Имя и фамилия — личные данные: шифруются «в покое». Открытыми остаются
+    # только идентификаторы (username, phone_number), потому что по ним идёт
+    # поиск в SQL, они уникальны и по ним считаются лимиты.
+    first_name: Mapped[str] = mapped_column(EncryptedText, nullable=True)
+    last_name: Mapped[str] = mapped_column(EncryptedText, nullable=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
     # Задал ли пользователь собственный пароль (вход по телефону+пароль).
     # У аккаунтов, созданных через OTP/SMS, пароль случайный и password_set=False:
@@ -60,7 +65,8 @@ class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
     # None — показываем оригинал (старые аватары или файл не читается).
     avatar_thumb_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Текст-статус пользователя (например «в работе», «🚀»), задаётся в профиле.
-    status: Mapped[str | None] = mapped_column(String(140), nullable=True)
+    # Шифруется «в покое»: по колонке нет ни поиска, ни сортировки в SQL.
+    status: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     # Время последней активности — для присутствия («в сети» / «был(а) N назад»).
     last_seen: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

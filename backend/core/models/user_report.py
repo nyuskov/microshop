@@ -12,6 +12,8 @@ from datetime import datetime
 from sqlalchemy import DateTime, ForeignKey, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from core.db_types import EncryptedText
+
 from .base import Base
 
 # Допустимые причины жалобы (значения приходят с клиента).
@@ -51,13 +53,13 @@ class UserReport(Base):
     )
     # Код причины (см. REPORT_REASONS) и свободный комментарий.
     reason: Mapped[str] = mapped_column(String(32), nullable=False)
-    comment: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    comment: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     # Статус разбора: new / in_review / resolved / rejected (см. REPORT_STATUSES).
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default=text("'new")
     )
     # Заметка модератора по итогам разбора (что сделали).
-    note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    note: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

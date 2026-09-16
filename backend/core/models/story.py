@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from core.db_types import EncryptedText
+
 from .base import Base
 from .mixins import IdIntPkMixin
 
@@ -36,7 +38,8 @@ class Story(IdIntPkMixin, Base):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("user.id", ondelete="CASCADE"), index=True
     )
-    caption: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Подпись к истории: пользовательский текст, шифруется «в покое».
+    caption: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
 
     # Медиа лежит в общем каталоге media; в БД только ссылка и метаданные
     # (как у вложений сообщений — их же учитывает квота хранилища).

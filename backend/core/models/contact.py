@@ -10,8 +10,10 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column
+
+from core.db_types import EncryptedText
 
 from .base import Base
 
@@ -26,7 +28,10 @@ class Contact(Base):
         ForeignKey("user.id", ondelete="CASCADE"), primary_key=True
     )
     # Псевдоним: пусто — показываем обычное имя/логин пользователя.
-    custom_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Шифруется «в покое»: имя вроде «Мама» выдаёт родственные связи, а по
+    # колонке нет ни поиска, ни сортировки в SQL (сортировка — в Python,
+    # api_v1/contacts/views.py).
+    custom_name: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

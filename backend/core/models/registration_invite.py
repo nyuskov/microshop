@@ -21,6 +21,8 @@ from datetime import datetime
 from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
+from core.db_types import EncryptedText
+
 from .base import Base
 
 
@@ -39,8 +41,8 @@ class RegistrationInvite(Base):
     phone_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     #: Заметка для владельца сервиса (например, «для Пети», не показывается
-    #: приглашённому).
-    note: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    #: приглашённому). Шифруется «в покое» вместе с остальным личным текстом.
+    note: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

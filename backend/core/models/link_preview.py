@@ -14,6 +14,8 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
+from core.db_types import EncryptedText
+
 from .base import Base
 from .mixins import IdIntPkMixin
 
@@ -24,9 +26,12 @@ class LinkPreview(IdIntPkMixin, Base):
     __tablename__ = "link_previews"
 
     url: Mapped[str] = mapped_column(String(2048), unique=True, index=True)
-    title: Mapped[str | None] = mapped_column(String(300), nullable=True)
-    description: Mapped[str | None] = mapped_column(String(600), nullable=True)
-    site_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Заголовок/описание/имя сайта — текст чужой страницы, он связан с тем, что
+    # человек пересылал в переписке, поэтому шифруется. Сам адрес (`url`)
+    # остаётся открытым: это ключ кэша (уникальный индекс) и по нему идёт поиск.
+    title: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    description: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    site_name: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     image_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     #: Удалось ли собрать карточку (неудачи тоже кэшируем, чтобы не долбить сайт).
     ok: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

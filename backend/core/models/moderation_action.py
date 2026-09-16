@@ -12,8 +12,10 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
+
+from core.db_types import EncryptedText
 
 from .base import Base
 
@@ -66,7 +68,8 @@ class ModerationAction(Base):
     )
     action: Mapped[str] = mapped_column(String(40), index=True)
     # Человекочитаемое пояснение: причина жалости/решение модератора/повод.
-    note: Mapped[str] = mapped_column(Text, default="")
+    # В заметке цитируется пользовательский текст, поэтому она тоже шифруется.
+    note: Mapped[str] = mapped_column(EncryptedText, default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
