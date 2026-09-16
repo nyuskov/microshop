@@ -8,6 +8,10 @@
 Pillow может не открыть файл (битый или необычный формат) — это не повод ломать
 загрузку: миниатюры просто не будет, а клиент покажет оригинал (см.
 ``avatar_thumb_url`` в схемах).
+
+Файлы пишутся через ``core.media_crypto``: при заданном ``AT_REST_KEY`` на диске
+лежат зашифрованными (иначе шифрование текстов сообщений обходилось бы картинкой
+с тем же содержимым).
 """
 
 from io import BytesIO
@@ -15,6 +19,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from PIL import Image, UnidentifiedImageError
+
+from core.media_crypto import write_file
 
 #: Каталог аватаров (оригиналы и миниатюры лежат рядом).
 AVATAR_DIR = Path(__file__).resolve().parent.parent / "media" / "avatars"
@@ -71,7 +77,9 @@ def store_avatar(
     """
     AVATAR_DIR.mkdir(parents=True, exist_ok=True)
     stored_name = f"{prefix}_{uuid4().hex}.{extension}"
-    (AVATAR_DIR / stored_name).write_bytes(content)
+    # Пишем через media_crypto: при заданном AT_REST_KEY файлы на диске лежат
+    # зашифрованными (миниатюра делается из открытых байт — они у нас в руках).
+    write_file(AVATAR_DIR / stored_name, content)
 
     url = f"{AVATAR_URL_PREFIX}{stored_name}"
     thumb = make_avatar_thumb(content)
@@ -80,7 +88,7 @@ def store_avatar(
 
     thumb_data, thumb_ext = thumb
     thumb_name = thumb_stored_name(stored_name, thumb_ext)
-    (AVATAR_DIR / thumb_name).write_bytes(thumb_data)
+    write_file(AVATAR_DIR / thumb_name, thumb_data)
     return url, f"{AVATAR_URL_PREFIX}{thumb_name}"
 
 

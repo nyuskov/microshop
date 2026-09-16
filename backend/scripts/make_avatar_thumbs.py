@@ -23,6 +23,7 @@ from core.avatar_store import (
     make_avatar_thumb,
     thumb_stored_name,
 )
+from core.media_crypto import read_file, write_file
 from core.models import Chat, User, db_helper
 
 
@@ -31,12 +32,14 @@ def _make_thumb_for(avatar_url: str) -> str | None:
     source = AVATAR_DIR / avatar_url.rsplit("/", 1)[-1]
     if not source.is_file():
         return None
-    thumb = make_avatar_thumb(source.read_bytes())
+    # read_file расшифровывает оригинал, если он лежит под AT_REST_KEY, а
+    # write_file шифрует миниатюру тем же ключом (см. core/media_crypto.py).
+    thumb = make_avatar_thumb(read_file(source))
     if thumb is None:
         return None
     thumb_data, thumb_ext = thumb
     thumb_name = thumb_stored_name(source.name, thumb_ext)
-    (AVATAR_DIR / thumb_name).write_bytes(thumb_data)
+    write_file(AVATAR_DIR / thumb_name, thumb_data)
     return f"{AVATAR_URL_PREFIX}{thumb_name}"
 
 

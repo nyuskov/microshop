@@ -7,11 +7,11 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from api_v1 import router_v1
 from api_v1.events.bridge import start_bridge, stop_bridge
 from api_v1.health.views import router as health_router
+from api_v1.media.views import router as media_router
 from core.config import settings
 
 logger = logging.getLogger("pismo")
@@ -84,7 +84,10 @@ app.include_router(router=router_v1, prefix=settings.api_v1_prefix)
 # используют healthcheck'и docker и локальная отладка; `/api/v1/health` нужен
 # мониторингу, т.к. наружу проксируется только `/api/` (см. api_v1/health).
 app.include_router(router=health_router)
-app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
+# Медиа отдаём своим обработчиком, а не StaticFiles: файлы на диске лежат
+# зашифрованными, и расшифровать их умеет только приложение (нужны ещё и
+# Range-запросы — перемотка видео, докачка больших вложений).
+app.include_router(media_router, prefix="/media")
 
 
 @app.get(
