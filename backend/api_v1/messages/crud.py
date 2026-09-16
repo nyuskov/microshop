@@ -4,9 +4,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import HTTPException, status
-from sqlalchemy import case, func, or_, select, update
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql.elements import ColumnElement
 
 from api_v1.channels.crud import ensure_can_post
 from api_v1.chats.crud import is_group_chat, is_user_chat_member, mark_group_chat_read
@@ -23,6 +24,14 @@ from core.timeutils import as_utc
 
 _NOT_MEMBER_DETAIL = "Вы не являетесь участником этого чата"
 _BLOCKED_DETAIL = "Нельзя отправить сообщение: пользователь недоступен"
+
+# Сколько сообщений максимум перебирает поиск за один запрос.
+#
+# Текст сообщений зашифрован «в покое» (core/at_rest), поэтому поиск идёт в
+# приложении: без предела один запрос вычитывал бы всю историю пользователя.
+# Предел с запасом покрывает реальные чаты, а когда сообщений больше, поиск так
+# же, как раньше, отдаёт самые свежие совпадения.
+SEARCH_SCAN_LIMIT = 20_000
 
 # Размер «страницы» истории по умолчанию. Раньше запрос без параметров отдавал
 # ВСЮ историю чата — с ростом переписки это становилось опасным (память/сеть).
@@ -871,36 +880,98 @@ async def search_messages(
     chat_id: int | None = None,
     limit: int = 50,
 ) -> list[dict]:
-    """Ищет сообщения пользователя по тексту или имени файла (ILIKE).
+    """Ищет сообщения пользователя по тексту или имени файла.
 
-    Если ``chat_id`` не задан — ищет по всем чатам пользователя. Возвращает
-    до ``limit`` сообщений в хронологическом порядке (для отображения).
+    Текст сообщений хранится зашифрованным (`core.at_rest`), а по шифротексту
+    SQL-ом не поискать — LIKE увидел бы base64. Поэтому поведение прежнее
+    (подстрока без учёта регистра, все чаты пользователя или один), но текст
+    фильтруется в приложении: страницами идём по истории от новых к старым,
+    расшифровываем (это делает тип колонки) и сравниваем.
+
+    Имя файла не шифруется (метаданные), поэтому совпадения по нему ищет
+    SQL — так поиск по вложению не зависит от перебора истории.
+
+    Ограничение — `SEARCH_SCAN_LIMIT`: просматриваем не больше сообщений за
+    запрос, чтобы поиск не превращался в вычитку всей базы. Если совпадений
+    больше `limit`, возвращаем самые свежие: так же, как раньше.
     """
-    text_pattern = f"%{query}%"
-    stmt = (
-        select(Message)
-        .where(
-            or_(
-                Message.text.ilike(text_pattern),
-                Message.file_name.ilike(text_pattern),
-            )
-        )
-        .options(selectinload(Message.reactions))
-    )
+    needle = query.strip().casefold()
+    if not needle:
+        return []
 
     if chat_id is None:
-        user_chats = select(user_chat_association_table.c.chat_id).where(
+        chat_ids = select(user_chat_association_table.c.chat_id).where(
             user_chat_association_table.c.user_id == user_id
         )
-        stmt = stmt.where(Message.chat_id.in_(user_chats))
+        scope_cond: ColumnElement[bool] = Message.chat_id.in_(chat_ids)
     else:
         await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
-        stmt = stmt.where(Message.chat_id == chat_id)
+        scope_cond = Message.chat_id == chat_id
 
     # Скрытое модерацией не ищем: иначе поиск находил бы скрытый контент.
-    stmt = stmt.where(_hide_filter(user_id))
-    stmt = stmt.order_by(Message.timestamp.desc(), Message.id.desc()).limit(limit)
-    result = await session.execute(stmt)
-    rows = list(result.scalars().all())
-    rows.reverse()
+    scope: ColumnElement[bool] = and_(scope_cond, _hide_filter(user_id))
+
+    found: dict[int, Message] = {}
+    for message in await _file_name_matches(session, scope, query, limit):
+        found[message.id] = message
+
+    for message in await _text_matches(session, scope, needle, limit):
+        found[message.id] = message
+        if len(found) >= limit:
+            break
+
+    rows = sorted(found.values(), key=lambda item: (item.timestamp, item.id))
     return [message_to_dict(message, user_id) for message in rows]
+
+
+async def _file_name_matches(
+    session: AsyncSession, scope, query: str, limit: int
+) -> list[Message]:
+    """Совпадения по имени вложения (не шифруется — ищем прямо в SQL)."""
+    stmt = (
+        select(Message)
+        .where(and_(scope, Message.file_name.ilike(f"%{query}%")))
+        .options(selectinload(Message.reactions))
+        .order_by(Message.timestamp.desc(), Message.id.desc())
+        .limit(limit)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def _text_matches(
+    session: AsyncSession, scope, needle: str, limit: int
+) -> list[Message]:
+    """Совпадения по тексту: расшифровываем историю страницами.
+
+    Keyset-пагинация по `id` (он растёт вместе со временем) вместо OFFSET: так
+    выборка не тормозит на больших чатах и не «плывёт» при новых сообщениях.
+    """
+    matches: list[Message] = []
+    scanned = 0
+    before_id: int | None = None
+    page = 500
+    while scanned < SEARCH_SCAN_LIMIT and len(matches) < limit:
+        stmt = (
+            select(Message)
+            .where(and_(scope, Message.text.isnot(None)))
+            .options(selectinload(Message.reactions))
+            .order_by(Message.id.desc())
+            .limit(page)
+        )
+        if before_id is not None:
+            stmt = stmt.where(Message.id < before_id)
+        rows = list((await session.execute(stmt)).scalars().all())
+        if not rows:
+            break
+        for message in rows:
+            scanned += 1
+            # Расшифровка уже сделана типом колонки (`EncryptedText`).
+            if needle in (message.text or "").casefold():
+                matches.append(message)
+                if len(matches) >= limit:
+                    break
+        before_id = rows[-1].id
+        if len(rows) < page:
+            break
+    # Возвращаем в хронологическом порядке (старые → новые), как раньше.
+    return sorted(matches, key=lambda item: (item.timestamp, item.id))

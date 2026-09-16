@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import DateTime, ForeignKey, Index, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from core.db_types import EncryptedText
+
 from .base import Base
 from .mixins import IdIntPkMixin
 
@@ -20,7 +22,10 @@ class Message(IdIntPkMixin, Base):
         Index("ix_messages_chat_timestamp", "chat_id", "timestamp"),
     )
 
-    text: Mapped[str]
+    # Текст сообщения хранится зашифрованным ключом сервера (at-rest), а по
+    # колонке нельзя искать SQL-ом — поиск идёт в приложении
+    # (см. messages.crud.search_messages).
+    text: Mapped[str] = mapped_column(EncryptedText)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
         server_default=func.now(),

@@ -81,6 +81,9 @@ services:
       REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-false}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}@rabbitmq:5672/
       UVICORN_RELOAD: "0"
+      # Шифрование данных «в покое» (тексты сообщений): ключ 32 байта (hex/base64).
+      # Пусто — выключено (данные пишутся и читаются как раньше).
+      AT_REST_KEY: ${AT_REST_KEY:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -138,6 +141,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}@rabbitmq:5672/
+      # Шифрование «в покое»: ключ нужен и воркеру — он собирает текст для push.
+      AT_REST_KEY: ${AT_REST_KEY:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

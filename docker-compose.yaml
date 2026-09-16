@@ -48,6 +48,9 @@ services:
       - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Pismo}
       - SMTP_STARTTLS=${SMTP_STARTTLS:-true}
       - SMTP_SSL=${SMTP_SSL:-false}
+      # Шифрование данных «в покое» (тексты сообщений): ключ 32 байта (hex/base64).
+      # Пусто — выключено (данные пишутся и читаются как раньше).
+      - AT_REST_KEY=${AT_REST_KEY:-}
       # Web Push (PWA): VAPID-ключи; пока пусто — push выключен.
       - WEB_PUSH_VAPID_PUBLIC_KEY=${WEB_PUSH_VAPID_PUBLIC_KEY:-}
       - WEB_PUSH_VAPID_PRIVATE_KEY=${WEB_PUSH_VAPID_PRIVATE_KEY:-}
@@ -112,6 +115,8 @@ services:
       - TELEGRAM_GATEWAY_TOKEN=${TELEGRAM_GATEWAY_TOKEN:-}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}
+      # Шифрование «в покое»: ключ нужен и воркеру — он собирает текст для push.
+      - AT_REST_KEY=${AT_REST_KEY:-}
       # Web Push (PWA): отправка в воркере; VAPID-ключи.
       - WEB_PUSH_VAPID_PUBLIC_KEY=${WEB_PUSH_VAPID_PUBLIC_KEY:-}
       - WEB_PUSH_VAPID_PRIVATE_KEY=${WEB_PUSH_VAPID_PRIVATE_KEY:-}
