@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest'
  * jsdom не считает ни раскладку, ни видимость, поэтому читаем исходники.
  */
 const sidebar = readFileSync('src/components/messenger/ChatSidebar.vue', 'utf8')
+const rows = readFileSync('src/assets/rows.css', 'utf8')
 const header = readFileSync('src/components/messenger/SidebarHeader.vue', 'utf8')
 const profile = readFileSync('src/views/UserProfile.vue', 'utf8')
 const messenger = readFileSync('src/views/Messenger.vue', 'utf8')
@@ -29,12 +30,26 @@ describe('шестерёнка админа в сайдбаре', () => {
     expect(sidebar).toMatch(/title="Администрирование"[\s\S]{0,120}aria-label="Администрирование"/)
   })
 
-  it('прижата к левому нижнему углу и учитывает безопасную зону экрана', () => {
-    // Кнопка в левом углу панели: без safe-area она уходит под системную полоску.
-    expect(sidebar).toMatch(/align-self: flex-start/)
-    expect(sidebar).toMatch(/env\(safe-area-inset-bottom/)
+  it('плавающий круглый значок в левом нижнем углу, с учётом безопасной зоны', () => {
+    // Требование: это КНОПКА-КРУЖОК поверх списка, как кнопка «вниз» в ленте,
+    // а не строка/полоса во всю ширину панели (ту читали как ещё один раздел).
+    expect(sidebar).toMatch(/\.admin-gear \{[\s\S]*?position: absolute;/)
+    expect(sidebar).toMatch(/left: 12px;/)
+    expect(sidebar).toMatch(/bottom: calc\(12px \+ env\(safe-area-inset-bottom/)
+    expect(sidebar).toMatch(/border-radius: 50%;/)
+    expect(sidebar).toMatch(/box-shadow: var\(--ms-shadow-md/)
     // Размер — как у значка профиля в шапке (.self-profile-btn: круг 40px).
     expect(sidebar).toMatch(/width: 40px;\s*\n\s*height: 40px;/)
+    // Абсолютное позиционирование считает координаты от панели, а не от окна.
+    expect(sidebar).toMatch(/\.side-panel \{[\s\S]*?position: relative;/)
+  })
+
+  it('не отбирает высоту у списка и не прячет последнюю строку', () => {
+    // В потоке кнопки нет (иначе она сжимала бы список), зато списку добавляем
+    // запас снизу — иначе последний чат уезжает под плавающий кружок.
+    expect(sidebar).not.toMatch(/\.admin-gear \{[\s\S]*?flex: none;/)
+    expect(sidebar).toMatch(/'has-admin-gear': isAdmin && !selectionMode/)
+    expect(rows).toMatch(/\.ms-rows\.has-admin-gear \.chat-scroll \{[\s\S]*?padding-bottom: 60px;/)
   })
 
   it('«Жалобы» больше не живут в меню «⋯»', () => {

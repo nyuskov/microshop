@@ -1,5 +1,5 @@
 <template>
-  <aside class="side-panel ms-rows">
+  <aside class="side-panel ms-rows" :class="{ 'has-admin-gear': isAdmin && !selectionMode }">
     <!-- Шапка панели (обычный режим и режим выделения чатов — в SidebarHeader.vue) -->
     <SidebarHeader
       :selection-mode="selectionMode"
@@ -142,12 +142,13 @@
       </div>
     </Transition>
 
-    <!-- Админская «шестерёнка» — только значок в левом нижнем углу панели, как
-         управление в VS Code. Сюда уходят ВСЕ служебные разделы (приглашения,
-         жалобы и журнал модерации), чтобы не мешаться в обычных настройках
-         профиля. Подписи нет намеренно: строка во всю ширину читалась как ещё
-         один раздел списка чатов, а смысл кнопки объясняют title и aria-label.
-         Видна только аккаунту администратора. -->
+    <!-- Админская «шестерёнка» — плавающий круглый значок в левом нижнем углу
+         панели (как кнопка «вниз» в ленте сообщений). Панель-подложку во всю
+         ширину не делаем: такая полоса читалась как ещё один раздел списка
+         чатов, а кнопка должна быть просто кнопкой. Сюда уходят ВСЕ служебные
+         разделы (приглашения, жалобы и журнал модерации), чтобы не мешаться в
+         обычных настройках профиля. Подписи нет намеренно — смысл объясняют
+         title и aria-label. Видна только аккаунту администратора. -->
     <button
       v-if="isAdmin && !selectionMode"
       class="admin-gear"
@@ -659,34 +660,37 @@ watch([() => props.view, () => props.selectedChatId], () => {
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+  /* Плавающий админский значок позиционируется от панели, а не от окна. */
+  position: relative;
 }
 
 .icon-btn.open {
   color: var(--ms-accent, #1e9b51);
 }
 
-/* Админская «шестерёнка»: только значок в левом нижнем углу панели (как
-   управление в VS Code). Размер — как у значка профиля в шапке
-   (`.self-profile-btn` / `.self-avatar`: круг 40px), чтобы оба значка читались
-   парой; левый отступ совпадает с отступом шапки (12px).
+/* Админская «шестерёнка»: КРУГЛЫЙ ПЛАВАЮЩИЙ значок поверх списка чатов — тем
+   же приёмом, что кнопка «вниз» в ленте (`.jump-down` в MessageThread). Строку
+   во всю ширину не делаем: она читалась как ещё один раздел списка чатов, а не
+   как кнопка. Размер — как у значка профиля в шапке (круг 40px), левый отступ
+   совпадает с отступом шапки (12px), снизу учтена безопасная зона экрана.
    Видна только администратору (v-if в разметке). */
 .admin-gear {
-  display: flex;
-  flex: none;
-  align-self: flex-start;
+  position: absolute;
+  left: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  z-index: 5;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 40px;
   height: 40px;
-  /* Отступ снизу = безопасная зона: на телефоне с полоской-индикатором кнопка
-     в самом низу экрана иначе оказалась бы под системной панелью. */
-  margin: 2px 0 calc(8px + env(safe-area-inset-bottom, 0px)) 12px;
   padding: 0;
   font-family: inherit;
-  color: var(--ms-icon-2);
-  background: transparent;
-  border: 0;
+  color: var(--ms-icon);
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-border);
   border-radius: 50%;
+  box-shadow: var(--ms-shadow-md);
   cursor: pointer;
   transition:
     color 0.15s ease,
@@ -698,13 +702,15 @@ watch([() => props.view, () => props.selectedChatId], () => {
   background: var(--ms-hover);
 }
 
+/* Нажатие — смена фона, а не `transform: scale()`: у слоя с трансформацией
+   браузер успевает показать квадрат вместо круга (ловили на кружке истории). */
 .admin-gear:active {
-  transform: scale(0.94);
+  background: var(--ms-surface-2);
 }
 
 .admin-gear:focus-visible {
   outline: 2px solid var(--ms-accent);
-  outline-offset: -2px;
+  outline-offset: 2px;
 }
 
 .inline-error {
