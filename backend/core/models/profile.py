@@ -17,6 +17,11 @@ class Profile(IdIntPkMixin, UserRelationMixin, Base):
     country: Mapped[str | None] = mapped_column(String(10))  # e.g., 'US', 'RU'
     notifications_enabled: Mapped[bool] = mapped_column(default=True)
     privacy_mode: Mapped[bool] = mapped_column(default=False)
+    # Показывать текст сообщения прямо в push. Выключают те, кто не хочет,
+    # чтобы содержимое переписки читалось с экрана заблокированного телефона
+    # (и попадало в галерею уведомлений). Имя отправителя остаётся — иначе
+    # непонятно, открывать ли приложение вообще.
+    notification_preview: Mapped[bool] = mapped_column(default=True)
 
     # ---------- Тихие часы (не беспокоить) ----------
     # Время хранится в МИНУТАХ от полуночи по местному времени пользователя:

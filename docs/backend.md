@@ -185,6 +185,21 @@ Push рисует система (в Android — SDK RuStore, в PWA — слу�
 - Тесты: `backend/tests/test_quiet_hours.py` (20 — границы, переход через
   полночь, разные пояса, звонки).
 
+### Текст сообщения в уведомлении (`profile.notification_preview`)
+
+Push показывает текст прямо на экране блокировки — его видит любой, кто взял
+телефон, и текст оседает в галерее уведомлений. Настройка выключает превью:
+остаётся имя отправителя (понятно, открывать ли чат), тело — «Новое сообщение».
+По умолчанию `true` — как было до появления настройки.
+
+- Решает сервер (`tasks/notifications.py::_body_for_user`) по тому же принципу,
+  что и тихие часы: push рисует система, а не наша страница.
+- Тело уведомления теперь персональное, поэтому push группируется по паре
+  «заголовок + тело» (`_group_by_push`): иначе одному уведомлению с текстом ушли
+  бы и те, кто превью выключил.
+- E2EE-чаты текст и так не отдают (там своё нейтральное тело) — два правила не
+  конфликтуют.
+
 ### Медиафайлы
 
 - Каталог `backend/media/`, раздаётся приложением: `/media/...` (FastAPI `StaticFiles`, см. `main.py`).
@@ -302,7 +317,7 @@ Push рисует система (в Android — SDK RuStore, в PWA — слу�
 ### Модель данных (основное)
 
 - `user` — `id`, `username` (уник.), `phone_number` (уник., null), `first_name`, `last_name`, `email` (nullable), `hashed_password`, `avatar_url`, `avatar_thumb_url` (миниатюра 128px), `status` (текст-статус), `last_seen` (присутствие); профиль (1:1), чаты (m2m), сообщения.
-- `profile` — 1:1 к `user`: `bio`, `birth_date`, `language`, `country`, `notifications_enabled`, `privacy_mode`.
+- `profile` — 1:1 к `user`: `bio`, `birth_date`, `language`, `country`, `notifications_enabled`, `privacy_mode`, `notification_preview` (показывать текст сообщения в push), поля тихих часов (`quiet_hours_*`).
 - `chats` — `id`, `name`; участники через m2m `chat_user_association`. **Личный чат = ровно 2 участника**.
 - `messages` — `id`, `text`, `timestamp` (default now()), `user_id`, `chat_id`, `reply_to_id` (self FK), `is_read`, `is_pinned`, `edited_at`, `file_name/file_url/mime_type/file_size`, поля пересылки `forwarded_from_id`/`forwarded_sender_id`/`forwarded_sender_name`/`forwarded_chat_id` (снимок «от кого»). Индекс `(chat_id, timestamp)`.
 - `message_reactions` — PK `(message_id, user_id)`, `emoji` (по одной реакции на пользователя).
@@ -368,7 +383,8 @@ Push рисует система (в Android — SDK RuStore, в PWA — слу�
 49. `2026_09_14_0800-f4f71cf4525b` — персональные приглашения на регистрацию (`registration_invites`)
 50. `2026_09_15_1930-b8c9d0e1f2a3` — отзыв приглашения (`registration_invites.revoked_at`)
 51. `2026_09_16_1000-c9d0e1f2a3b4` — тихие часы в профиле (`quiet_hours_*`)
-52. `2026_09_16_1400-f5a6b7c8d9e0` — мягкая блокировка: `user_blocks.messages_allowed` — **голова**
+52. `2026_09_16_1400-f5a6b7c8d9e0` — мягкая блокировка: `user_blocks.messages_allowed`
+53. `2026_09_16_1600-a6b7c8d9e0f1` — текст сообщения в уведомлении (`profile.notification_preview`) — **голова**
 
 Применение: `cd backend && poetry run alembic upgrade head`. В docker-стеке миграции выполняются автоматически при старте контейнера `web`.
 

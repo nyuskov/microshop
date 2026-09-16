@@ -110,19 +110,61 @@ async def test_call_record_skips_message_push(monkeypatch: pytest.MonkeyPatch) -
     assert len(enqueued) == 1
 
 
-def test_group_by_title_uses_personal_contact_name() -> None:
+def test_hidden_preview_replaces_text_with_neutral_body() -> None:
+    """«Показывать текст сообщения» выключено — тело становится нейтральным.
+
+    Имя отправителя в заголовке остаётся: иначе непонятно, открывать ли чат.
+    """
+    hidden = SimpleNamespace(notification_preview=False)
+    shown = SimpleNamespace(notification_preview=True)
+    assert (
+        notifications._body_for_user("секрет", hidden) == notifications.PUSH_HIDDEN_BODY
+    )
+    assert notifications._body_for_user("привет", shown) == "привет"
+    # Профиля нет (старый аккаунт) — ведём себя как раньше, показываем текст.
+    assert notifications._body_for_user("привет", None) == "привет"
+
+
+def test_group_by_push_uses_personal_contact_name() -> None:
     """Заголовок уведомления — личное имя контакта у каждого получателя.
 
     Один общий push на всех не подходит: у кого отправитель записан как «Мама»,
     тот видит «Мама», остальные — обычное имя из профиля.
     """
-    groups = notifications._group_by_title([1, 2, 3], {2: "Мама"}, "Иван Петров")
-    assert groups == {"Иван Петров": [1, 3], "Мама": [2]}
+    groups = notifications._group_by_push(
+        [1, 2, 3],
+        {2: "Мама"},
+        {},
+        "Иван Петров",
+        "Привет",
+    )
+    assert groups == {("Иван Петров", "Привет"): [1, 3], ("Мама", "Привет"): [2]}
 
 
-def test_group_by_title_without_personal_names() -> None:
-    """Нет личных имён — все получатели в одной группе (один запрос в RuStore)."""
-    assert notifications._group_by_title([4, 5], {}, "Иван") == {"Иван": [4, 5]}
+def test_group_by_push_splits_hidden_preview() -> None:
+    """Кто скрыл текст сообщения — уходит отдельной группой с нейтральным телом.
+
+    Иначе одному и тому же push с текстом ушли бы оба: и тот, кто превью
+    выключил, — то есть настройка бы не работала.
+    """
+    groups = notifications._group_by_push(
+        [1, 2, 3],
+        {},
+        {2: notifications.PUSH_HIDDEN_BODY},
+        "Иван Петров",
+        "секретный текст",
+    )
+    assert groups == {
+        ("Иван Петров", "секретный текст"): [1, 3],
+        ("Иван Петров", notifications.PUSH_HIDDEN_BODY): [2],
+    }
+
+
+def test_group_by_push_without_personal_names() -> None:
+    """Нет личных имён и разные настройки превью — все в одной группе."""
+    assert notifications._group_by_push([4, 5], {}, {}, "Иван", "текст") == {
+        ("Иван", "текст"): [4, 5]
+    }
 
 
 async def test_call_cancelled_push_carries_reason(

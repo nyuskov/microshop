@@ -106,6 +106,7 @@ interface ProfileForm {
   country: string
   notifications_enabled: boolean
   privacy_mode: boolean
+  notification_preview: boolean
   quiet_hours_enabled: boolean
   quiet_hours_start: number
   quiet_hours_end: number
@@ -126,6 +127,7 @@ const profileForm = reactive<ProfileForm>({
   country: '',
   notifications_enabled: true,
   privacy_mode: false,
+  notification_preview: true,
   quiet_hours_enabled: false,
   quiet_hours_start: QUIET_DEFAULT_START,
   quiet_hours_end: QUIET_DEFAULT_END,
@@ -152,6 +154,7 @@ watch(
     profileForm.country = profile?.country ?? ''
     profileForm.notifications_enabled = profile?.notifications_enabled ?? true
     profileForm.privacy_mode = profile?.privacy_mode ?? false
+    profileForm.notification_preview = profile?.notification_preview ?? true
     profileForm.quiet_hours_enabled = profile?.quiet_hours_enabled ?? false
     profileForm.quiet_hours_start = profile?.quiet_hours_start ?? QUIET_DEFAULT_START
     profileForm.quiet_hours_end = profile?.quiet_hours_end ?? QUIET_DEFAULT_END
@@ -275,6 +278,15 @@ const checkForUpdates = async () => {
 
 /** Приватный режим сохраняется сразу: в разделе нет отдельной кнопки «Сохранить». */
 const onPrivacyToggle = async () => {
+  await updateProfile()
+}
+
+/**
+ * «Показывать текст сообщения» — тоже сразу: в уведомлениях нет кнопки
+ * «Сохранить» (как и у приватности), а текст на экране блокировки — то, что
+ * человек хочет поменять одной галочкой.
+ */
+const onPreviewToggle = async () => {
   await updateProfile()
 }
 const currentSectionTitle = computed(() => {
@@ -872,7 +884,8 @@ const updateProfile = async () => {
     language: profileForm.language || null,
     country: profileForm.country || null,
     notifications_enabled: profileForm.notifications_enabled,
-    privacy_mode: profileForm.privacy_mode
+    privacy_mode: profileForm.privacy_mode,
+    notification_preview: profileForm.notification_preview
   }
 
   try {
@@ -1295,6 +1308,24 @@ const onNotificationsToggle = async (val: boolean) => {
               color="primary"
               keep-color
               @update:model-value="onNotificationsToggle"
+            />
+          </div>
+
+          <!-- Текст сообщения в уведомлении: выключают те, кто не хочет, чтобы
+               переписку читали с экрана блокировки. -->
+          <div class="toggle-row">
+            <div class="toggle-text">
+              <span class="toggle-name">Показывать текст сообщения</span>
+              <span class="toggle-desc">
+                Если выключить — в уведомлении будет только имя отправителя
+              </span>
+            </div>
+            <q-toggle
+              v-model="profileForm.notification_preview"
+              color="primary"
+              keep-color
+              :disable="!profileForm.notifications_enabled"
+              @update:model-value="onPreviewToggle"
             />
           </div>
 

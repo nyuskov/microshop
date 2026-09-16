@@ -67,6 +67,35 @@ def _web_push_configured() -> bool:
     )
 
 
+#: Тело уведомления, когда человек скрыл текст сообщения в настройках: видно,
+#: кто написал, но не что именно.
+PUSH_HIDDEN_BODY = "Новое сообщение"
+
+
+def _body_for_user(body: str, profile: Profile | None) -> str:
+    """Тело уведомления для получателя: без текста, если он его скрыл.
+
+    Профиля нет (старый аккаунт) — считаем, что превью разрешено: вести себя
+    иначе, чем до появления настройки, нельзя.
+    """
+    if profile is not None and not profile.notification_preview:
+        return PUSH_HIDDEN_BODY
+    return body
+
+
+async def _profiles_by_user(
+    session: AsyncSession, user_ids: list[int]
+) -> dict[int, Profile]:
+    """Профили получателей (настройки уведомлений живут в них)."""
+    if not user_ids:
+        return {}
+    stmt = select(Profile).where(Profile.user_id.in_(user_ids))
+    return {
+        profile.user_id: profile
+        for profile in (await session.execute(stmt)).scalars().all()
+    }
+
+
 async def _awake_ids(
     session: AsyncSession, user_ids: list[int], *, is_call: bool
 ) -> list[int]:
@@ -81,11 +110,7 @@ async def _awake_ids(
     """
     if not user_ids:
         return []
-    stmt = select(Profile).where(Profile.user_id.in_(user_ids))
-    profiles = {
-        profile.user_id: profile
-        for profile in (await session.execute(stmt)).scalars().all()
-    }
+    profiles = await _profiles_by_user(session, user_ids)
     now = utc_now()
     return [
         user_id
@@ -119,18 +144,26 @@ async def _mentioned_recipient_ids(
     }
 
 
-def _group_by_title(
-    recipient_ids: list[int], titles: dict[int, str], fallback: str
-) -> dict[str, list[int]]:
-    """Группирует получателей по заголовку уведомления.
+def _group_by_push(
+    recipient_ids: list[int],
+    titles: dict[int, str],
+    bodies: dict[int, str],
+    fallback_title: str,
+    fallback_body: str,
+) -> dict[tuple[str, str], list[int]]:
+    """Группирует получателей по паре «заголовок + тело» уведомления.
 
-    Личное имя контакта («Мама») у каждого получателя своё, поэтому один общий
-    push на всех уже не годится: собираем группы с одинаковым заголовком и шлём
-    на каждую свою копию уведомления.
+    Личное имя контакта («Мама») и настройка «показывать текст сообщения» у
+    каждого свои, поэтому один общий push на всех не годится: собираем группы
+    с одинаковым текстом уведомления и шлём на каждую свою копию.
     """
-    groups: dict[str, list[int]] = {}
+    groups: dict[tuple[str, str], list[int]] = {}
     for user_id in recipient_ids:
-        groups.setdefault(titles.get(user_id, fallback), []).append(user_id)
+        key = (
+            titles.get(user_id, fallback_title),
+            bodies.get(user_id, fallback_body),
+        )
+        groups.setdefault(key, []).append(user_id)
     return groups
 
 
@@ -279,7 +312,13 @@ async def _send_message_push_async(
         # Тихие часы: ночью не будим сообщениями. Из очереди задача выходит
         # штатно — сообщение всё равно придёт в приложение, а непрочитанное
         # видно счётчиком. Звонки здесь не при чём (см. is_call ниже).
-        recipient_ids = await _awake_ids(session, recipient_ids, is_call=False)
+        profiles = await _profiles_by_user(session, recipient_ids)
+        now = utc_now()
+        recipient_ids = [
+            user_id
+            for user_id in recipient_ids
+            if not skips_push(profiles.get(user_id), now, is_call=False)
+        ]
         if not recipient_ids:
             return
 
@@ -319,17 +358,25 @@ async def _send_message_push_async(
             for user_id in recipient_ids
         }
 
-        # Заголовок у каждого получателя может быть свой (личное имя контакта),
-        # поэтому шлём группами по одинаковому заголовку.
-        for group_title, group_ids in _group_by_title(
-            recipient_ids, push_titles, title
+        # Текст сообщения — только тем, кто его не скрыл в настройках: иначе
+        # содержимое переписки читается с экрана блокировки и оседает в галерее
+        # уведомлений. Имя отправителя остаётся — понятно, открывать ли чат.
+        push_bodies = {
+            user_id: _body_for_user(body, profiles.get(user_id))
+            for user_id in recipient_ids
+        }
+
+        # Заголовок и тело у каждого получателя могут быть свои (личное имя
+        # контакта, настройка превью), поэтому шлём группами.
+        for (group_title, group_body), group_ids in _group_by_push(
+            recipient_ids, push_titles, push_bodies, title, body
         ).items():
             await _send_rustore_push(
                 session,
                 group_ids,
                 _rustore_message(
                     title=group_title,
-                    body=body,
+                    body=group_body,
                     channel_id=PUSH_CHANNEL_MESSAGES,
                     data={
                         "type": "message",
@@ -360,12 +407,13 @@ async def _send_message_push_async(
             return
         stale_ids: list[int] = []
         for sub in subscriptions:
-            # Заголовок собираем на каждую подписку: у получателя может быть своё
-            # личное имя отправителя («Мама») — см. titles выше.
+            # Заголовок и тело собираем на каждую подписку: у получателя может
+            # быть своё личное имя отправителя («Мама») и своя настройка
+            # «показывать текст сообщения» — см. titles и push_bodies выше.
             payload = json.dumps(
                 {
                     "title": push_titles.get(sub.user_id, title),
-                    "body": body,
+                    "body": push_bodies.get(sub.user_id, body),
                     # Крупная иконка — аватар отправителя (как в мессенджерах).
                     "icon": _push_icon(sender),
                     "badge": PUSH_BADGE,

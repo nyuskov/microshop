@@ -16,6 +16,8 @@ export interface ApiUserProfile {
   country: string | null
   notifications_enabled: boolean
   privacy_mode: boolean
+  /** Показывать текст сообщения в push (иначе только имя отправителя). */
+  notification_preview?: boolean
   // Тихие часы: окно в минутах от полуночи по местному времени и сдвиг пояса.
   quiet_hours_enabled?: boolean
   quiet_hours_start?: number

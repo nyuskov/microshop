@@ -30,6 +30,7 @@ class ProfileSchema(BaseModel):
     country: str | None
     notifications_enabled: bool
     privacy_mode: bool
+    notification_preview: bool = True
     quiet_hours_enabled: bool = False
     quiet_hours_start: int = 1380
     quiet_hours_end: int = 480
@@ -44,6 +45,7 @@ class ProfileUpdateSchema(BaseModel):
     country: str | None = None
     notifications_enabled: bool | None = None
     privacy_mode: bool | None = None
+    notification_preview: bool | None = None
     quiet_hours_enabled: bool | None = None
     quiet_hours_start: int | None = None
     quiet_hours_end: int | None = None
