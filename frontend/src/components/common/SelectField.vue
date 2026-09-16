@@ -84,7 +84,8 @@ import {
   indexOfValue,
   moveHighlight,
   placeLayer,
-  type SelectOption
+  type SelectOption,
+  type SelectValue
 } from '@/utils/select'
 
 /**
@@ -97,10 +98,14 @@ import {
  * Доступность — паттерн combobox: фокус остаётся на кнопке, подсвеченный вариант
  * объявлен через `aria-activedescendant`, стрелки/Home/End/Enter/Escape работают
  * с клавиатуры. Вариант выбирается кликом или Enter.
+ *
+ * Значение — строка или число (тихие часы передают минуты от полуночи): тип
+ * значения обязан совпадать с тем, что в модели, иначе подсветка выбранного
+ * варианта не сработает.
  */
 const props = withDefaults(
   defineProps<{
-    modelValue: string
+    modelValue: SelectValue
     options: SelectOption[]
     /** Пусто — «Ничего не выбрано» (значение ''). */
     placeholder?: string
@@ -117,7 +122,7 @@ const props = withDefaults(
   { placeholder: 'Не выбрано', variant: 'field' }
 )
 
-const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>()
+const emit = defineEmits<{ (e: 'update:modelValue', value: SelectValue): void }>()
 
 const triggerRef = ref<HTMLButtonElement | null>(null)
 const layerRef = ref<HTMLElement | null>(null)

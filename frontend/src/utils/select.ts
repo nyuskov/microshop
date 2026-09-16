@@ -8,13 +8,15 @@
  * позиционируется нами, поэтому всегда оказывается под полем.
  */
 
+export type SelectValue = string | number
+
 export interface SelectOption {
-  value: string
+  value: SelectValue
   label: string
 }
 
 /** Индекс варианта с этим значением (-1 — нет такого). */
-export const indexOfValue = (options: SelectOption[], value: string): number =>
+export const indexOfValue = (options: SelectOption[], value: SelectValue): number =>
   options.findIndex((option) => option.value === value)
 
 /**

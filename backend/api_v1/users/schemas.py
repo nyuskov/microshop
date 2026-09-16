@@ -12,6 +12,8 @@ from pydantic import (
     model_validator,
 )
 
+from core import quiet_hours
+
 PHONE_PATTERN = re.compile(r"^\+?[\d\s\-()]+$")
 
 
@@ -28,6 +30,11 @@ class ProfileSchema(BaseModel):
     country: str | None
     notifications_enabled: bool
     privacy_mode: bool
+    quiet_hours_enabled: bool = False
+    quiet_hours_start: int = 1380
+    quiet_hours_end: int = 480
+    quiet_hours_allow_calls: bool = True
+    quiet_hours_offset: int = 0
 
 
 class ProfileUpdateSchema(BaseModel):
@@ -37,6 +44,40 @@ class ProfileUpdateSchema(BaseModel):
     country: str | None = None
     notifications_enabled: bool | None = None
     privacy_mode: bool | None = None
+    quiet_hours_enabled: bool | None = None
+    quiet_hours_start: int | None = None
+    quiet_hours_end: int | None = None
+    quiet_hours_allow_calls: bool | None = None
+    quiet_hours_offset: int | None = None
+
+    @field_validator("quiet_hours_start", "quiet_hours_end")
+    @classmethod
+    def _check_minute_of_day(cls, value: int | None) -> int | None:
+        """Граница окна — минуты от полуночи (0…1439)."""
+        if value is None:
+            return None
+        if not 0 <= value < quiet_hours.MINUTES_IN_DAY:
+            raise ValueError("Время должно быть в пределах суток (0…1439 минут)")
+        return value
+
+    @field_validator("quiet_hours_offset")
+    @classmethod
+    def _check_offset(cls, value: int | None) -> int | None:
+        """Сдвиг часового пояса: от UTC−12 до UTC+14.
+
+        Клиент присылает своё текущее значение ( ``-getTimezoneOffset()``), но
+        мусор от чужого клиента всё равно отсекаем — иначе настройка «тихие
+        часы» станет непредсказуемой.
+        """
+        if value is None:
+            return None
+        if (
+            not quiet_hours.MIN_OFFSET_MINUTES
+            <= value
+            <= quiet_hours.MAX_OFFSET_MINUTES
+        ):
+            raise ValueError("Сдвиг часового пояса вне допустимых границ")
+        return value
 
 
 class UserAvatarResponse(BaseModel):

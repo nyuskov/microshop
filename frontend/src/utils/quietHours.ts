@@ -1,0 +1,85 @@
+/**
+ * Тихие часы в профиле: варианты времени, подпись и сдвиг часового пояса.
+ *
+ * Время хранится и передаётся в МИНУТАХ от полуночи (как на сервере): так не
+ * нужно разбирать строки «23:30» и легко сравнивать границы окна. Здесь же
+ * живёт человеческая подпись настройки и получение сдвига пояса с устройства.
+ */
+
+/** Шаг выбора времени: полчаса — этого хватает, а список остаётся коротким. */
+export const QUIET_STEP_MINUTES = 30
+
+/** Минут в сутках — столько же, сколько допускает сервер. */
+export const MINUTES_IN_DAY = 24 * 60
+
+/** Значения по умолчанию (совпадают с серверными): окно 23:00–08:00. */
+export const QUIET_DEFAULT_START = 23 * 60
+export const QUIET_DEFAULT_END = 8 * 60
+
+/** Время «ЧЧ:ММ» из минут от полуночи (значение вне суток приводим к 00:00). */
+export const formatMinutes = (minutes: number): string => {
+  const safe = Number.isFinite(minutes) ? Math.trunc(minutes) : 0
+  const normalized = ((safe % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY
+  const hours = Math.floor(normalized / 60)
+  const mins = normalized % 60
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
+}
+
+/**
+ * Варианты для списка времени: 00:00, 00:30, … 23:30.
+ *
+ * Список собирается кодом, а не родным `<input type="time">`: системное окно
+ * браузера в WebView открывается далеко от поля (та же причина, по которой в
+ * проекте появились SelectField и маска даты).
+ */
+export const timeOptions = (step = QUIET_STEP_MINUTES): { value: number; label: string }[] => {
+  const safeStep = step > 0 && MINUTES_IN_DAY % step === 0 ? step : QUIET_STEP_MINUTES
+  const options: { value: number; label: string }[] = []
+  for (let minutes = 0; minutes < MINUTES_IN_DAY; minutes += safeStep) {
+    options.push({ value: minutes, label: formatMinutes(minutes) })
+  }
+  return options
+}
+
+/** Границы окна в одном дне: `start < end` — без перехода через полночь. */
+export const crossesMidnight = (start: number, end: number): boolean => start > end
+
+/** Окно пустое (одинаковые границы) — сервер такое окно считает выключенным. */
+export const isEmptyWindow = (start: number, end: number): boolean => start === end
+
+/**
+ * Подпись настройки: показывается под тумблером, чтобы не открывать список,
+ * чтобы понять, что выбрано.
+ */
+export const quietHoursSummary = (options: {
+  enabled: boolean
+  start: number
+  end: number
+  allowCalls: boolean
+}): string => {
+  if (!options.enabled) return 'Выключено: уведомления приходят круглосуточно'
+  if (isEmptyWindow(options.start, options.end)) {
+    return 'Границы совпали — тишины не будет, уведомления приходят круглосуточно'
+  }
+  const window = `с ${formatMinutes(options.start)} до ${formatMinutes(options.end)}`
+  const night = crossesMidnight(options.start, options.end) ? ' (через ночь)' : ''
+  const calls = options.allowCalls ? 'звонки разрешены' : 'звонки тоже не приходят'
+  return `Не беспокоить ${window}${night}; ${calls}`
+}
+
+/**
+ * Сдвиг местного времени от UTC в минутах (то, что ждёт сервер).
+ *
+ * `getTimezoneOffset()` отдаёт обратную величину (в минутах «назад» от UTC),
+ * поэтому знак переворачиваем: для Москвы функция вернёт 180.
+ */
+export const localUtcOffsetMinutes = (date = new Date()): number => -date.getTimezoneOffset()
+
+/** Подпись часового пояса для подсказки: «UTC+03:00». */
+export const formatOffset = (offsetMinutes: number): string => {
+  const sign = offsetMinutes < 0 ? '−' : '+'
+  const abs = Math.abs(Math.trunc(offsetMinutes))
+  const hours = String(Math.floor(abs / 60)).padStart(2, '0')
+  const mins = String(abs % 60).padStart(2, '0')
+  return `UTC${sign}${hours}:${mins}`
+}

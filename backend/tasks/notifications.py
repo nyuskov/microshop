@@ -26,7 +26,8 @@ from core.amqp import publish_realtime_event
 from core.celery_app import celery_app
 from core.config import settings
 from core.mentions import mentioned_logins
-from core.models import Message, PushSubscription, RuStorePushToken, User
+from core.models import Message, Profile, PushSubscription, RuStorePushToken, User
+from core.quiet_hours import skips_push, utc_now
 from tasks.base import make_engine, make_session, run_async
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,33 @@ def _web_push_configured() -> bool:
     return bool(
         settings.web_push_vapid_public_key and settings.web_push_vapid_private_key
     )
+
+
+async def _awake_ids(
+    session: AsyncSession, user_ids: list[int], *, is_call: bool
+) -> list[int]:
+    """Кого из получателей можно будить сейчас (без учёта тихих часов).
+
+    Мьют чата и тихие часы — разные вещи: мьют убирает уведомления об одном
+    чате навсегда, тихие часы — про время суток у конкретного человека. Поэтому
+    мьют отсеивается раньше (там известно только про один чат), а здесь мы
+    смотрим настройку получателя целиком.
+
+    Уведомления безопасности эту проверку не проходят — там свой вызов push.
+    """
+    if not user_ids:
+        return []
+    stmt = select(Profile).where(Profile.user_id.in_(user_ids))
+    profiles = {
+        profile.user_id: profile
+        for profile in (await session.execute(stmt)).scalars().all()
+    }
+    now = utc_now()
+    return [
+        user_id
+        for user_id in user_ids
+        if not skips_push(profiles.get(user_id), now, is_call=is_call)
+    ]
 
 
 def _mention_title(base: str, mentioned: bool) -> str:
@@ -247,6 +275,13 @@ async def _send_message_push_async(
     try:
         sender = await session.get(User, sender_id)
         message = await session.get(Message, message_id)
+
+        # Тихие часы: ночью не будим сообщениями. Из очереди задача выходит
+        # штатно — сообщение всё равно придёт в приложение, а непрочитанное
+        # видно счётчиком. Звонки здесь не при чём (см. is_call ниже).
+        recipient_ids = await _awake_ids(session, recipient_ids, is_call=False)
+        if not recipient_ids:
+            return
 
         # «Как в Telegram»: если отправитель записан у получателя в контактах под
         # своим именем («Мама»), в уведомлении показываем именно его. Имя личное:
@@ -615,6 +650,14 @@ async def _send_call_push_async(
     session = make_session(engine)
     try:
         caller = await session.get(User, caller_id)
+        # Тихие часы: звонок пропускаем, только если человек сам запретил звонки
+        # в это время (по умолчанию — разрешены, звонить можно и ночью).
+        if not await _awake_ids(session, [user_id], is_call=True):
+            logger.info(
+                "Звонок %s: у получателя тихие часы, звонки запрещены — не будим",
+                call_id,
+            )
+            return
         name = _display_name(caller) if caller else "Пользователь"
         # Личное имя звонящего у получателя («Мама») — как в списке чатов.
         if caller is not None:

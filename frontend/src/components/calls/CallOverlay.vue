@@ -401,6 +401,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { screenShareSupport, useCallStore } from '@/stores/call'
 import { mediaUrl } from '@/services/chatService'
 import SelectField from '@/components/common/SelectField.vue'
+import type { SelectValue } from '@/utils/select'
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
 
 const callStore = useCallStore()
@@ -578,11 +579,11 @@ const canSelectSpeaker = computed(
   () => typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype
 )
 
-const onCameraPick = (deviceId: string) => void callStore.setCameraDevice(deviceId)
+const onCameraPick = (value: SelectValue) => void callStore.setCameraDevice(String(value))
 
-const onMicPick = (deviceId: string) => void callStore.setMicDevice(deviceId)
+const onMicPick = (value: SelectValue) => void callStore.setMicDevice(String(value))
 
-const onSpeakerPick = (deviceId: string) => callStore.setSpeakerDevice(deviceId)
+const onSpeakerPick = (value: SelectValue) => void callStore.setSpeakerDevice(String(value))
 
 /** Варианты для списков устройств (значение — deviceId, подпись — имя устройства). */
 const cameraOptions = computed(() =>

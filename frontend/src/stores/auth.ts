@@ -16,6 +16,12 @@ export interface ApiUserProfile {
   country: string | null
   notifications_enabled: boolean
   privacy_mode: boolean
+  // Тихие часы: окно в минутах от полуночи по местному времени и сдвиг пояса.
+  quiet_hours_enabled?: boolean
+  quiet_hours_start?: number
+  quiet_hours_end?: number
+  quiet_hours_allow_calls?: boolean
+  quiet_hours_offset?: number
 }
 
 export interface ApiUser {
@@ -36,7 +42,8 @@ export interface ApiUser {
   avatar_thumb_url?: string | null
   status?: string | null
   last_seen?: string | null
-  profile?: ApiUserProfile | null
+  /** Профиль приходит целиком при чтении, а в запросах обновления может быть частичным. */
+  profile?: Partial<ApiUserProfile> | null
 }
 
 /**

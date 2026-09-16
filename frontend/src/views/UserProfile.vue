@@ -34,6 +34,14 @@ import {
   type SecurityLogEntry
 } from '@/services/securityLog'
 import { PASSWORD_MIN_LENGTH, passwordProblem, passwordStrength } from '@/utils/passwordPolicy'
+import {
+  QUIET_DEFAULT_END,
+  QUIET_DEFAULT_START,
+  formatOffset,
+  localUtcOffsetMinutes,
+  quietHoursSummary,
+  timeOptions
+} from '@/utils/quietHours'
 import DeleteAccountDialog from '@/components/messenger/DeleteAccountDialog.vue'
 import SelectField from '@/components/common/SelectField.vue'
 import InvitesSettings from '@/components/messenger/InvitesSettings.vue'
@@ -98,6 +106,11 @@ interface ProfileForm {
   country: string
   notifications_enabled: boolean
   privacy_mode: boolean
+  quiet_hours_enabled: boolean
+  quiet_hours_start: number
+  quiet_hours_end: number
+  quiet_hours_allow_calls: boolean
+  quiet_hours_offset: number
 }
 
 const profileForm = reactive<ProfileForm>({
@@ -112,7 +125,13 @@ const profileForm = reactive<ProfileForm>({
   language: '',
   country: '',
   notifications_enabled: true,
-  privacy_mode: false
+  privacy_mode: false,
+  quiet_hours_enabled: false,
+  quiet_hours_start: QUIET_DEFAULT_START,
+  quiet_hours_end: QUIET_DEFAULT_END,
+  quiet_hours_allow_calls: true,
+  // Сдвиг пояса берём у устройства: сервер про пояс ничего не знает.
+  quiet_hours_offset: localUtcOffsetMinutes()
 })
 
 watch(
@@ -133,6 +152,11 @@ watch(
     profileForm.country = profile?.country ?? ''
     profileForm.notifications_enabled = profile?.notifications_enabled ?? true
     profileForm.privacy_mode = profile?.privacy_mode ?? false
+    profileForm.quiet_hours_enabled = profile?.quiet_hours_enabled ?? false
+    profileForm.quiet_hours_start = profile?.quiet_hours_start ?? QUIET_DEFAULT_START
+    profileForm.quiet_hours_end = profile?.quiet_hours_end ?? QUIET_DEFAULT_END
+    profileForm.quiet_hours_allow_calls = profile?.quiet_hours_allow_calls ?? true
+    profileForm.quiet_hours_offset = profile?.quiet_hours_offset ?? localUtcOffsetMinutes()
   },
   { immediate: true }
 )
@@ -862,6 +886,48 @@ const updateProfile = async () => {
   }
 }
 
+// ---------- Тихие часы (не беспокоить) ----------
+// Настройка серверная: push в Android-приложении рисует SDK RuStore, в PWA —
+// служба push браузера, и при закрытом приложении наша страница решить «сейчас
+// тихо» не может. Поэтому сервер сверяется с этими полями перед отправкой.
+// Сохраняем сразу при изменении: отдельной кнопки тут нет (как у приватности).
+const TIME_OPTIONS = timeOptions()
+const quietSaving = ref(false)
+const quietError = ref('')
+
+const quietSummary = computed(() =>
+  quietHoursSummary({
+    enabled: profileForm.quiet_hours_enabled,
+    start: profileForm.quiet_hours_start,
+    end: profileForm.quiet_hours_end,
+    allowCalls: profileForm.quiet_hours_allow_calls
+  })
+)
+
+const saveQuietHours = async () => {
+  if (quietSaving.value) return
+  quietSaving.value = true
+  quietError.value = ''
+  try {
+    await authStore.updateCurrentUser({
+      profile: {
+        quiet_hours_enabled: profileForm.quiet_hours_enabled,
+        quiet_hours_start: profileForm.quiet_hours_start,
+        quiet_hours_end: profileForm.quiet_hours_end,
+        quiet_hours_allow_calls: profileForm.quiet_hours_allow_calls,
+        // Сдвиг пояса спрашиваем у устройства в момент сохранения: после
+        // переезда или перехода на летнее время он не устареет.
+        quiet_hours_offset: localUtcOffsetMinutes()
+      }
+    })
+    profileForm.quiet_hours_offset = localUtcOffsetMinutes()
+  } catch (error) {
+    quietError.value = getErrorMessage(error, 'Не удалось сохранить тихие часы')
+  } finally {
+    quietSaving.value = false
+  }
+}
+
 // ---------- Уведомления: тумблер профиля управляет push-подпиской ----------
 // В браузере это Web Push (разрешение браузера + подписка), в Android-приложении
 // из RuStore — RuStore Push (разрешение Android + push-токен RuStore). Вызов идёт
@@ -1230,6 +1296,70 @@ const onNotificationsToggle = async (val: boolean) => {
               keep-color
               @update:model-value="onNotificationsToggle"
             />
+          </div>
+
+          <!-- Тихие часы: окно, когда push не приходит. Звонки по умолчанию
+               разрешены — ночью человека будит звонок, а не сообщение. -->
+          <div class="toggle-row">
+            <div class="toggle-text">
+              <span class="toggle-name">Тихие часы</span>
+              <span class="toggle-desc">
+                Не присылать уведомления о сообщениях в выбранное время
+              </span>
+            </div>
+            <q-toggle
+              v-model="profileForm.quiet_hours_enabled"
+              color="primary"
+              keep-color
+              :disable="!profileForm.notifications_enabled"
+              @update:model-value="saveQuietHours"
+            />
+          </div>
+
+          <div v-if="profileForm.quiet_hours_enabled" class="quiet-block">
+            <div class="quiet-times">
+              <div class="field">
+                <label for="pf-quiet-from">С</label>
+                <SelectField
+                  id="pf-quiet-from"
+                  v-model="profileForm.quiet_hours_start"
+                  :options="TIME_OPTIONS"
+                  aria-label="Начало тихих часов"
+                  @update:model-value="saveQuietHours"
+                />
+              </div>
+              <div class="field">
+                <label for="pf-quiet-to">До</label>
+                <SelectField
+                  id="pf-quiet-to"
+                  v-model="profileForm.quiet_hours_end"
+                  :options="TIME_OPTIONS"
+                  aria-label="Конец тихих часов"
+                  @update:model-value="saveQuietHours"
+                />
+              </div>
+            </div>
+
+            <div class="toggle-row quiet-calls">
+              <div class="toggle-text">
+                <span class="toggle-name">Разрешить звонки</span>
+                <span class="toggle-desc">Входящий звонок разбудит даже в тихие часы</span>
+              </div>
+              <q-toggle
+                v-model="profileForm.quiet_hours_allow_calls"
+                color="primary"
+                keep-color
+                @update:model-value="saveQuietHours"
+              />
+            </div>
+
+            <p class="field-hint">{{ quietSummary }}</p>
+            <p class="field-hint">
+              Время местное, {{ formatOffset(profileForm.quiet_hours_offset) }} —
+              <span v-if="quietSaving">сохраняем…</span>
+              <span v-else>сохраняется сразу</span>
+            </p>
+            <p v-if="quietError" class="field-problem">{{ quietError }}</p>
           </div>
         </section>
 
@@ -2175,6 +2305,29 @@ const onNotificationsToggle = async (val: boolean) => {
   justify-content: space-between;
   gap: 16px;
   padding: 10px 2px;
+}
+
+/* Тихие часы: окно настройки раскрывается под тумблером */
+.quiet-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 2px 2px;
+}
+
+.quiet-times {
+  display: flex;
+  gap: 12px;
+}
+
+.quiet-times .field {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Тумблер звонков внутри блока: разделитель сверху не нужен */
+.quiet-calls {
+  padding-top: 6px;
 }
 
 .toggle-row + .toggle-row {
