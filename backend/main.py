@@ -100,8 +100,8 @@ MAINTENANCE_EXEMPT_PREFIXES = (
 )
 
 
-async def _request_from_superuser(request: Request) -> bool:
-    """Запрос от администратора? (проверяем только когда режим включён)
+async def _request_from_admin(request: Request) -> bool:
+    """Запрос от администратора или владельца? (проверяем только при техработах)
 
     Зависимостью (`get_current_user`) тут не обойтись: решение нужно ДО
     маршрутизации, когда сессии из `Depends` ещё нет. Проверка намеренно
@@ -126,7 +126,7 @@ async def _request_from_superuser(request: Request) -> bool:
     except Exception as exc:  # noqa: BLE001
         logger.warning("Техработы: не удалось проверить администратора: %s", exc)
         return False
-    return user is not None and user.is_active and user.is_superuser
+    return user is not None and user.is_active and (user.is_admin or user.is_superuser)
 
 
 @app.middleware("http")
@@ -150,7 +150,7 @@ async def maintenance_guard(request: Request, call_next):
     state = await maintenance.current_state()
     if not state.enabled:
         return await call_next(request)
-    if await _request_from_superuser(request):
+    if await _request_from_admin(request):
         return await call_next(request)
 
     return JSONResponse(

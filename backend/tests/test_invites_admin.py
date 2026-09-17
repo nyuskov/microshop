@@ -39,13 +39,21 @@ def _request() -> Request:
     )
 
 
-async def _make_user(session, username: str, *, admin: bool) -> User:
+async def _make_user(
+    session, username: str, *, admin: bool = False, owner: bool = False
+) -> User:
+    """Создаёт пользователя с ролью: администратор и/или владелец.
+
+    Приглашения доступны обеим ролям (`get_current_admin`), поэтому в тестах
+    встречаются оба варианта: `admin=True` — помощник, `owner=True` — владелец.
+    """
     user = User(
         username=username,
         phone_number=None,
         hashed_password="x",
         is_active=True,
-        is_superuser=admin,
+        is_admin=admin,
+        is_superuser=owner,
         is_verified=False,
     )
     session.add(user)
@@ -61,7 +69,7 @@ async def _status(session, token: str) -> bool:
 
 
 async def test_owner_creates_invite(session) -> None:
-    admin = await _make_user(session, "invites_admin", admin=True)
+    admin = await _make_user(session, "invites_admin", owner=True)
 
     invite = await create_invite(
         request_data=InviteCreateRequest(note="для Пети", expires_days=7),
@@ -86,6 +94,24 @@ async def test_invite_can_be_bound_to_phone(session) -> None:
     )
 
     assert invite.phone_number == "+79001110055"
+
+
+async def test_admin_role_can_create_invite(session) -> None:
+    """Администратор (без владельца) тоже выдаёт приглашения.
+
+    Роли разделены: `is_admin` — модерация и приглашения, `is_superuser` —
+    владелец с рубильником техработ. Приглашения должны работать у обоих.
+    """
+    helper = await _make_user(session, "invites_helper", admin=True)
+
+    invite = await create_invite(
+        request_data=InviteCreateRequest(note="для помощника"),
+        admin=helper,
+        session=session,
+    )
+
+    assert invite.token
+    assert invite.note == "для помощника"
 
 
 async def test_bad_phone_and_expiry_rejected(session) -> None:

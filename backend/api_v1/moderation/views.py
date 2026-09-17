@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth import audit, security_notifications
 from api_v1.auth.refresh_sessions import revoke_all_sessions
-from api_v1.auth.utils import get_current_superuser, get_current_user
+from api_v1.auth.utils import get_current_admin, get_current_user
 from api_v1.chats.crud import is_user_chat_member
 from core.config import settings
 from core.models import Message, User, UserReport, db_helper
@@ -187,7 +187,7 @@ async def _serialize_reports(
 
 @router.get("/reports/", response_model=schemas.ReportListResponse)
 async def list_reports(
-    admin: Annotated[User, Depends(get_current_superuser)],
+    admin: Annotated[User, Depends(get_current_admin)],
     session: AsyncSession = Depends(db_helper.session_dependency),
     report_status: Annotated[schemas.ReportStatus | None, Query(alias="status")] = None,
     reason: Annotated[schemas.ReportReason | None, Query()] = None,
@@ -211,7 +211,7 @@ async def list_reports(
 async def update_report(
     report_id: int,
     payload: schemas.ReportUpdateRequest,
-    admin: Annotated[User, Depends(get_current_superuser)],
+    admin: Annotated[User, Depends(get_current_admin)],
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> schemas.ReportItem:
     """Меняет статус разбора жалобы (и, при желании, оставляет заметку)."""
@@ -246,7 +246,7 @@ async def update_report(
 
 @router.get("/journal/", response_model=schemas.JournalResponse)
 async def get_journal(
-    admin: Annotated[User, Depends(get_current_superuser)],
+    admin: Annotated[User, Depends(get_current_admin)],
     session: AsyncSession = Depends(db_helper.session_dependency),
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -280,7 +280,7 @@ async def get_journal(
 @router.post("/users/{user_id}/unhide/", response_model=schemas.UnhideResponse)
 async def unhide_user_messages(
     user_id: int,
-    admin: Annotated[User, Depends(get_current_superuser)],
+    admin: Annotated[User, Depends(get_current_admin)],
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> schemas.UnhideResponse:
     """Снимает скрытие со всех сообщений автора (жалобы оказались ложными)."""
@@ -397,7 +397,7 @@ async def unblock_user(
 )
 async def admin_revoke_sessions(
     user_id: int,
-    admin: Annotated[User, Depends(get_current_superuser)],
+    admin: Annotated[User, Depends(get_current_admin)],
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> schemas.BlockStateResponse:
     """Завершает все входы пользователя (включая украденные токены)."""
@@ -428,7 +428,7 @@ async def admin_revoke_sessions(
 @router.post("/users/{user_id}/freeze/", response_model=schemas.BlockStateResponse)
 async def admin_freeze_user(
     user_id: int,
-    admin: Annotated[User, Depends(get_current_superuser)],
+    admin: Annotated[User, Depends(get_current_admin)],
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> schemas.BlockStateResponse:
     """Заморозка аккаунта поддержкой (по обращению владельца)."""
@@ -465,7 +465,7 @@ async def admin_freeze_user(
 @router.post("/users/{user_id}/unfreeze/", response_model=schemas.BlockStateResponse)
 async def admin_unfreeze_user(
     user_id: int,
-    admin: Annotated[User, Depends(get_current_superuser)],
+    admin: Annotated[User, Depends(get_current_admin)],
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> schemas.BlockStateResponse:
     """Снимает заморозку (владелец подтвердил, что доступ вернул себе)."""

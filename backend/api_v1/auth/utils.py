@@ -211,12 +211,30 @@ async def get_current_user(
 async def get_current_superuser(
     user: Annotated[User, Depends(get_current_user)],
 ) -> User:
-    """Как get_current_user, но только для администраторов (модераторов).
+    """Как get_current_user, но только для ВЛАДЕЛЬЦА (``is_superuser``).
 
-    Используется служебными эндпоинтами (разбор жалоб): обычный пользователь
-    получает 403, чтобы не мог читать чужие жалобы.
+    Владелец отличается от администратора (``is_admin``) ровно одним: он может
+    переключать режим технических работ. Включить техработы значит остановить
+    сервис, поэтому помощникам это право не выдают.
     """
     if not user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Недостаточно прав",
+        )
+    return user
+
+
+async def get_current_admin(
+    user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """Как get_current_user, но только для администратора или владельца.
+
+    Используется админскими эндпоинтами (разбор жалоб, приглашения): обычный
+    пользователь получает 403, чтобы не мог читать чужие жалобы. Владелец
+    (``is_superuser``) проходит всегда — он старше по роли.
+    """
+    if not (user.is_admin or user.is_superuser):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Недостаточно прав",

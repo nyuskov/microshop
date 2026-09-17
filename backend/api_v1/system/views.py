@@ -116,10 +116,14 @@ async def maintenance_status(
 )
 async def set_maintenance(
     request_data: MaintenanceUpdateRequest,
-    admin: User = Depends(get_current_superuser),
+    owner: User = Depends(get_current_superuser),
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> MaintenanceResponse:
-    """Переключает режим (только администратор сервиса).
+    """Переключает режим (только ВЛАДЕЛЕЦ сервиса).
+
+    Включить техработы значит остановить сервис для всех — это право владельца
+    (``is_superuser``); администратору (``is_admin``) доступны модерация,
+    приглашения и обход заглушки, но не рубильник.
 
     Включение — событие уровня безопасности: до этого API отвечал всем, а после
     отвечает только администратору, поэтому пишем в лог, кто и что переключил.
@@ -128,11 +132,11 @@ async def set_maintenance(
         session,
         enabled=request_data.enabled,
         message=request_data.message,
-        user_id=admin.id,
+        user_id=owner.id,
     )
     logger.warning(
-        "Режим технических работ %s (администратор id=%s)",
+        "Режим технических работ %s (владелец id=%s)",
         "ВКЛЮЧЁН" if state.enabled else "выключен",
-        admin.id,
+        owner.id,
     )
     return _to_response(state)

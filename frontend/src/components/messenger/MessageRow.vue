@@ -42,7 +42,13 @@
       class="msg-select-hit"
       @click.stop="onSelectClick"
     ></div>
-    <div class="msg-bubble" :class="{ 'round-video-only': isRoundVideoOnly(message) }">
+    <div
+      class="msg-bubble"
+      :class="{
+        'round-video-only': isRoundVideoOnly(message),
+        'sticker-only': stickerLayout !== 'text'
+      }"
+    >
       <!-- Скрыто до проверки модератором: такое сообщение видит только автор,
            поэтому пометка объясняет, куда пропал контент у собеседника -->
       <div v-if="message.hidden" class="moderation-note" role="status">
@@ -115,8 +121,13 @@
 
       <!-- Очень длинные тексты показываем свёрнутыми: иначе одна «простыня»
            растягивает ленту на несколько экранов. -->
+      <!-- Стикер: сообщение из одних эмодзи (1–3) — крупно и без пузыря, как в
+           Telegram. Форматирование и ссылки тут не нужны: текста нет. -->
+      <span v-if="stickerLayout !== 'text'" class="msg-sticker" :class="stickerLayout">
+        {{ message.text.trim() }}
+      </span>
       <!-- Упоминания @логин подсвечиваем: видно, к кому обращаются -->
-      <span v-if="message.text" class="msg-text" :class="{ clamped: isClamped }">
+      <span v-else-if="message.text" class="msg-text" :class="{ clamped: isClamped }">
         <template v-for="(part, index) in textParts" :key="index">
           <span v-if="part.type === 'mention'" class="msg-mention">{{ part.value }}</span>
           <a
@@ -236,6 +247,7 @@ import { computed, ref } from 'vue'
 import type { Message } from '@/types'
 import { mediaUrl } from '@/config'
 import { lastQuickReaction } from '@/utils/reactions'
+import { emojiLayout, type EmojiLayout } from '@/utils/emoji'
 import { haptic, HAPTIC_HOLD } from '@/utils/haptics'
 import { formatMsgTime } from '@/utils/format'
 import { avatarStyle, initials } from '@/utils/user'
@@ -309,6 +321,23 @@ const rowRoot = ref<HTMLElement | null>(null)
 const { visible: rowVisible } = useVisibleOnce(rowRoot)
 const canCollapse = computed(() => (props.message.text?.length ?? 0) > LONG_TEXT_LIMIT)
 const isClamped = computed(() => canCollapse.value && !expanded.value)
+
+/**
+ * Насколько крупно рисовать сообщение из эмодзи (`text` — обычный пузырь).
+ *
+ * Стикером считаем только «чистое» сообщение: без вложений, ответов,
+ * пересылок и звонков — иначе крупные эмодзи ломали бы разметку плашек.
+ */
+const stickerLayout = computed<EmojiLayout>(() => {
+  const message = props.message
+  if (!message.text) return 'text'
+  if (message.file || message.e2ee_file || message.forwarded_from || message.call_kind) {
+    return 'text'
+  }
+  if (props.quote || props.message.reply_to_story) return 'text'
+  if (props.selectionMode && props.selected) return 'text'
+  return emojiLayout(message.text)
+})
 
 const props = defineProps<{
   message: Message
@@ -699,6 +728,35 @@ const onDoubleTap = (): void => {
   background: transparent;
   box-shadow: none;
   padding: 2px;
+}
+
+/* ---------- Стикер: сообщение из одних эмодзи ---------- */
+/* Пузырь прозрачный (как у «кружка»-видео), а сами эмодзи крупные. Время и
+   галочки остаются под ними мелким текстом — по ним видно, что сообщение ушло. */
+.msg-bubble.sticker-only,
+.msg.in .msg-bubble.sticker-only,
+.msg.out .msg-bubble.sticker-only {
+  background: transparent;
+  box-shadow: none;
+  padding: 0 2px;
+  max-width: min(70%, 320px);
+}
+
+.msg-sticker {
+  display: block;
+  line-height: 1.05;
+  /* Эмодзи — картинки шрифта, поэтому цвет текста на них не влияет. */
+  font-size: calc(44px * var(--ms-text-scale, 1));
+  word-break: break-word;
+}
+
+/* Три эмодзи — помельче: в ряд они должны влезать на телефоне. */
+.msg-sticker.large {
+  font-size: calc(32px * var(--ms-text-scale, 1));
+}
+
+.msg-bubble.sticker-only .msg-meta {
+  color: var(--ms-muted-2);
 }
 
 /* ---------- Свайп вправо = ответ ---------- */

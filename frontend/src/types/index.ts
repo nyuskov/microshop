@@ -288,6 +288,8 @@ export interface User {
   last_name?: string | null
   email?: string | null
   is_superuser?: boolean
+  /** Администратор: модерация и приглашения, без рубильника техработ. */
+  is_admin?: boolean
   avatar_url?: string | null
   /** Миниатюра аватара 128px: списки и шапки берут её вместо оригинала. */
   avatar_thumb_url?: string | null

@@ -1,8 +1,21 @@
 <template>
   <div class="stories-wrap" :class="{ mini, expanded: mini && expanded }">
     <!-- В шапке (mini) — сжатый ряд кружков размером с аватар профиля;
-         в раскрытой полосе — крупные кружки с подписями. -->
-    <div class="stories-strip">
+         в раскрытой полосе — крупные кружки с подписями. Ряд листается колесом
+         мыши и перетаскиванием (useHScroll): иначе крайние истории пропадали
+         за краем — особенно в веб-версии, где нет свайпа. -->
+    <div
+      ref="stripEl"
+      class="stories-strip"
+      :class="{ 'fade-start': stripEdges.start, 'fade-end': stripEdges.end }"
+      @scroll.passive="refreshStripEdges"
+      @wheel.passive="onStripWheel"
+      @pointerdown="onStripPointerDown"
+      @pointermove="onStripPointerMove"
+      @pointerup="onStripPointerUp"
+      @pointerleave="onStripPointerUp"
+      @pointercancel="onStripPointerUp"
+    >
       <!-- Моя история: без своей — сразу выбор файла, со своей — открыть/добавить -->
       <div class="story-cell" :style="mini ? { zIndex: 100 } : undefined">
         <button
@@ -122,6 +135,7 @@ import { Notify } from 'quasar'
 import { mediaUrl } from '@/config'
 import { useAuthStore } from '@/stores/auth'
 import { useStoriesStore } from '@/stores/stories'
+import { useHScroll } from '@/composables/useHScroll'
 import type { StoryGroup } from '@/services/stories'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 
@@ -155,6 +169,24 @@ const onGroupClick = (group: StoryGroup) => {
 
 const stories = useStoriesStore()
 const authStore = useAuthStore()
+
+/**
+ * Прокрутка полосы историй.
+ *
+ * В сжатом виде (шапка) ряд не влезает уже с четырёх историй: без прокрутки
+ * крайние просто уезжали за край и их нельзя было открыть. Колесо мыши и
+ * перетаскивание работают одинаково и в веб-версии, и на телефоне (там ещё и
+ * свайп), а затухание у края подсказывает, что полоса продолжается.
+ */
+const {
+  el: stripEl,
+  edges: stripEdges,
+  refresh: refreshStripEdges,
+  onWheel: onStripWheel,
+  onPointerDown: onStripPointerDown,
+  onPointerMove: onStripPointerMove,
+  onPointerUp: onStripPointerUp
+} = useHScroll(() => stories.groups.length)
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const pendingFile = ref<File | null>(null)
@@ -294,6 +326,26 @@ const publish = async () => {
   border-bottom: none;
   overflow-x: auto;
   overflow-y: hidden;
+}
+
+/* Затухание у того края, где действительно есть скрытые истории: подсказка,
+   что полосу можно листать (и что за краем ещё кто-то есть). */
+.mini .stories-strip.fade-end {
+  mask-image: linear-gradient(to right, black calc(100% - 10px), transparent);
+}
+
+.mini .stories-strip.fade-start {
+  mask-image: linear-gradient(to right, transparent, black 10px);
+}
+
+.mini .stories-strip.fade-start.fade-end {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 10px,
+    black calc(100% - 10px),
+    transparent
+  );
 }
 
 /* Наложение кружков друг на друга, как в Telegram: каждый следующий сдвинут

@@ -846,67 +846,6 @@ watch([() => props.view, () => props.selectedChatId], () => {
   min-width: 0;
 }
 
-/* Фильтры списка чатов. */
-.chat-filters {
-  display: flex;
-  gap: 5px;
-  padding: 8px 12px 4px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  /* Затухание у правого края: подсказка, что ряд фильтров можно прокрутить
-     (на узких экранах чипы не влезают целиком). Ширина затухания — в пределах
-     бокового отступа, поэтому влезающий ряд не подтемняется. */
-  mask-image: linear-gradient(to right, black calc(100% - 10px), transparent);
-}
-
-.chat-filters::-webkit-scrollbar {
-  display: none;
-}
-
-.chat-filter {
-  flex: 0 0 auto;
-  /* Область нажатия расширяет ::after — ей нужна своя система координат. */
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 9px;
-  border: none;
-  border-radius: 11px;
-  background: var(--ms-surface-2);
-  color: var(--ms-muted);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.chat-filter.active {
-  background: var(--ms-accent-soft);
-  color: var(--ms-accent);
-  font-weight: 600;
-}
-
-/* Сам чип держим компактным (пять фильтров должны влезать в 390 px), а область
-   нажатия расширяем невидимым слоем: зазор между чипами 5 px, поэтому 2 px по
-   горизонтали и 4 px по вертикали — соседи не перехватывают нажатие, а
-   вертикаль остаётся внутри отступов полосы (8 px сверху, 4 px снизу). */
-.chat-filter::after {
-  content: '';
-  position: absolute;
-  inset: -4px -2px;
-}
-
-.chat-filter-count {
-  padding: 0 5px;
-  border-radius: 8px;
-  background: var(--ms-accent);
-  color: var(--ms-on-accent);
-  font-size: var(--ms-fs-xs);
-  font-weight: 600;
-}
-
 /* Обёртки, которые раскрываются слайдом вниз из-под шапки: полоса историй и
    поле поиска. Клип идёт по реальной высоте содержимого — её считает
    useSlideDown (см. composables/useSlideDown.ts), поэтому здесь только «коробка».

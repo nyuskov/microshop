@@ -278,6 +278,7 @@
             @set-extras-tab="setExtrasTab"
             @gif-sent="onGifSent"
             @append-emoji="appendEmoji"
+            @send-sticker="sendSticker"
           />
         </template>
       </main>
@@ -893,8 +894,8 @@ const inlineSearchOpen = ref(false)
 const inlineQuery = ref('')
 const emojiPickerFor = ref<number | null>(null)
 // Единое меню доп.контента поля ввода: 'emoji' | 'gif' | закрыто.
-const extrasTab = ref<'emoji' | 'gif'>('emoji')
-const extrasPanel = ref<'none' | 'emoji' | 'gif'>('none')
+const extrasTab = ref<'emoji' | 'stickers' | 'gif'>('emoji')
+const extrasPanel = ref<'none' | 'emoji' | 'stickers' | 'gif'>('none')
 const pinnedOpen = ref(true)
 const highlightedMessageId = ref<number | null>(null)
 let highlightTimer: number | undefined
@@ -2171,6 +2172,42 @@ const upsertChat = (chat: Chat) => {
 }
 
 // ---------- Отправка ----------
+/**
+ * Доставка текста: E2EE, отправка, показ в ленте.
+ *
+ * Общая для обычного сообщения и для стикера (стикер — это тоже текст из
+ * эмодзи): различается только то, что делает вызывающий до и после.
+ */
+const deliverText = async (chatId: number, text: string, replyTo: number | null) => {
+  // E2EE шифрует, только если чат «зашифрованный» (e2ee_enabled) и обе стороны
+  // опубликовали ключи. Обычные чаты идут открытым текстом (текст виден в
+  // превью списка и в push-уведомлениях — как в обычных чатах Telegram).
+  let wireText = text
+  let wireEncrypted = false
+  const aes = await chatKeyOf(selectedChat.value)
+  if (aes) {
+    wireText = await encryptText(aes, text)
+    wireEncrypted = true
+    e2eePeerReadyByChat.value = {
+      ...e2eePeerReadyByChat.value,
+      [chatId]: true
+    }
+  }
+  const message = await sendNewMessage(chatId, wireText, replyTo, wireEncrypted)
+  if (wireEncrypted) {
+    // Локально в ленте показываем открытый текст; шифротекст живёт на сервере.
+    message.text = text
+    message.encrypted = false
+  }
+  await refreshThread()
+  messages.value = appendMessage(messages.value, message)
+  await loadPinned(chatId)
+  // Короткий отклик при отправке: понятно, что сообщение ушло, не сверяясь
+  // с галочками (на телефоне ощущается как «нажалось»).
+  haptic()
+  scrollToBottom()
+}
+
 const sendText = async () => {
   const chatId = selectedChatId.value
   const text = newMessage.value.trim()
@@ -2192,37 +2229,11 @@ const sendText = async () => {
       return
     }
 
-    // E2EE шифрует, только если чат «зашифрованный» (e2ee_enabled) и обе стороны
-    // опубликовали ключи. Обычные чаты идут открытым текстом (текст виден в
-    // превью списка и в push-уведомлениях — как в обычных чатах Telegram).
-    let wireText = text
-    let wireEncrypted = false
-    const aes = await chatKeyOf(selectedChat.value)
-    if (aes) {
-      wireText = await encryptText(aes, text)
-      wireEncrypted = true
-      e2eePeerReadyByChat.value = {
-        ...e2eePeerReadyByChat.value,
-        [chatId]: true
-      }
-    }
-    const message = await sendNewMessage(chatId, wireText, replyTarget.value?.id, wireEncrypted)
-    if (wireEncrypted) {
-      // Локально в ленте показываем открытый текст; шифротекст живёт на сервере.
-      message.text = text
-      message.encrypted = false
-    }
+    await deliverText(chatId, text, replyTarget.value?.id ?? null)
     newMessage.value = ''
     clearDraftFor(chatId)
     sendTypingStop(chatId)
     clearReply()
-    await refreshThread()
-    messages.value = appendMessage(messages.value, message)
-    await loadPinned(chatId)
-    // Короткий отклик при отправке: понятно, что сообщение ушло, не сверяясь
-    // с галочками (на телефоне ощущается как «нажалось»).
-    haptic()
-    scrollToBottom()
   } catch (error) {
     // Связь пропала — не теряем набранное: ставим в очередь и отправим сами,
     // как только сеть вернётся (сообщение видно в ленте как «Ждёт сети»).
@@ -2234,6 +2245,34 @@ const sendText = async () => {
       void nextTick(scrollToBottom)
     } else {
       sendError.value = getErrorMessage(error, 'Не удалось отправить сообщение')
+    }
+  } finally {
+    sending.value = false
+  }
+}
+
+/**
+ * Отправляет стикер (эмодзи) отдельным сообщением — тап в панели «Стикеры».
+ *
+ * Черновик в поле ввода НЕ трогаем: человек мог параллельно набирать текст, а
+ * стикер — отдельное сообщение. В ленте оно рисуется крупно и без пузыря
+ * (`MessageRow.vue`, `emojiLayout`).
+ */
+const sendSticker = async (sticker: string) => {
+  const chatId = selectedChatId.value
+  if (chatId === null || !sticker || sending.value) return
+  sending.value = true
+  sendError.value = ''
+  try {
+    await deliverText(chatId, sticker, replyTarget.value?.id ?? null)
+    clearReply()
+  } catch (error) {
+    if (isNetworkError(error)) {
+      queueOutgoingText(chatId, sticker, replyTarget.value?.id)
+      clearReply()
+      void nextTick(scrollToBottom)
+    } else {
+      sendError.value = getErrorMessage(error, 'Не удалось отправить стикер')
     }
   } finally {
     sending.value = false
@@ -3220,7 +3259,7 @@ watch(inlineQuery, (value) => {
   }, 350)
 })
 
-// ---------- Эмодзи / GIF в поле ввода ----------
+// ---------- Эмодзи / стикеры / GIF в поле ввода ----------
 const appendEmoji = (emoji: string) => {
   newMessage.value = `${newMessage.value}${emoji}`
 }
@@ -3229,7 +3268,7 @@ const toggleExtras = () => {
   extrasPanel.value = extrasPanel.value === 'none' ? extrasTab.value : 'none'
 }
 
-const setExtrasTab = (tab: 'emoji' | 'gif') => {
+const setExtrasTab = (tab: 'emoji' | 'stickers' | 'gif') => {
   extrasTab.value = tab
   extrasPanel.value = tab
 }

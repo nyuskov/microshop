@@ -36,6 +36,8 @@ export interface ApiUser {
   // Подтверждён ли адрес кодом из письма (вход без пароля и сброс пароля).
   email_verified?: boolean
   is_superuser?: boolean
+  /** Администратор: жалобы, приглашения и обход экрана техработ. */
+  is_admin?: boolean
   // Состояние безопасности: задан ли пароль и не устарел/ослаб ли он.
   password_set?: boolean
   password_weak?: boolean
@@ -145,7 +147,11 @@ export const useAuthStore = defineStore('auth', {
 
   getters: {
     // Проверка, является ли пользователь администратором
-    isAdmin: (state): boolean => state.user?.is_superuser === true
+    isAdmin: (state): boolean =>
+      // Админский раздел доступен и администратору, и владельцу (он старше).
+      state.user?.is_admin === true || state.user?.is_superuser === true,
+    /** Владелец сервиса: только ему доступен рубильник техработ. */
+    isOwner: (state): boolean => state.user?.is_superuser === true
   },
 
   actions: {

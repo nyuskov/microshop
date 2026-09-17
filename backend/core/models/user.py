@@ -61,7 +61,15 @@ class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
         nullable=False,
     )
     avatar_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # Маленькая копия аватара для списков и шапок (128px);
+    # Администратор: разбор жалоб, приглашения и обход экрана техработ. Рубильник
+    # техработ ему НЕ доступен — это возможность владельца (``is_superuser``):
+    # включить техработы значит остановить сервис, а помощнику это не нужно.
+    is_admin: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=text("false"),
+        nullable=False,
+    )  # Маленькая копия аватара для списков и шапок (128px);
     # None — показываем оригинал (старые аватары или файл не читается).
     avatar_thumb_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Текст-статус пользователя (например «в работе», «🚀»), задаётся в профиле.

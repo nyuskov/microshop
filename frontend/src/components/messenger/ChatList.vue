@@ -15,7 +15,7 @@
     <template v-else>
       <!-- Фильтры списка: быстро отсечь непрочитанное, личные или группы.
            Ряд листается (папки могут не влезать): колесом мыши, свайпом и
-           перетаскиванием мышью — см. utils/hScroll.ts. -->
+           перетаскиванием мышью — см. useHScroll. -->
       <div
         v-if="!props.selectionMode"
         ref="filtersEl"
@@ -23,7 +23,7 @@
         :class="{ 'fade-start': filterEdges.start, 'fade-end': filterEdges.end }"
         role="tablist"
         aria-label="Фильтр чатов"
-        @scroll.passive="updateFilterEdges"
+        @scroll.passive="refreshFilterEdges"
         @wheel.passive="onFiltersWheel"
         @pointerdown="onFiltersPointerDown"
         @pointermove="onFiltersPointerMove"
@@ -217,15 +217,9 @@
  */
 import { icon } from '@/utils/icons'
 import type { Chat } from '@/types'
-import { onBeforeUnmount, onMounted, nextTick, ref, watch } from 'vue'
+import { onBeforeUnmount, nextTick, watch } from 'vue'
 import { FOLDER_FILTER_PREFIX } from '@/utils/chatFolders'
-import {
-  canScrollX,
-  DRAG_THRESHOLD_PX,
-  dragScrollLeft,
-  scrollEdges,
-  wheelScrollLeft
-} from '@/utils/hScroll'
+import { useHScroll } from '@/composables/useHScroll'
 import { avatarStyle, initials } from '@/utils/user'
 import { formatChatTime } from '@/utils/format'
 import {
@@ -334,88 +328,41 @@ const isSelected = (chatId: number): boolean => props.selectedIds.includes(chatI
 const isMutedOf = (chatId: number): boolean => props.mutedChatIds?.includes(chatId) ?? false
 
 // Ряд фильтров на узких экранах шире панели (шесть базовых чипов не влезают в
-// 320–390 px), а папок может быть до десяти — поэтому ряд листается четырьмя
-// способами: колесом мыши, свайпом пальцем, стрелками у краёв и перетаскиванием
-// мышью. Затухания по краям показываем только там, где правда есть скрытое —
-// статичная маска прятала текст чипа в конце прокрутки.
-const filtersEl = ref<HTMLElement | null>(null)
-const filterEdges = ref<{ start: boolean; end: boolean }>({ start: false, end: false })
+// 320–390 px), а папок может быть до десяти — поэтому ряд листается колесом
+// мыши, свайпом и перетаскиванием мышью (общий механизм — useHScroll).
+// Затухания по краям показываем только там, где правда есть скрытое: статичная
+// маска прятала текст чипа в конце прокрутки.
+const {
+  el: filtersEl,
+  edges: filterEdges,
+  refresh: refreshFilterEdges,
+  onWheel: onFiltersWheel,
+  onPointerDown: onFiltersPointerDown,
+  onPointerMove: onFiltersPointerMove,
+  onPointerUp: onFiltersPointerUpRaw,
+  wasDragged: filtersWereDragged,
+  reveal: revealFilter
+} = useHScroll(() => props.filters.length)
 
-const updateFilterEdges = () => {
-  const el = filtersEl.value
-  if (!el) return
-  filterEdges.value = scrollEdges(el)
-}
-
-const onFiltersWheel = (event: WheelEvent) => {
-  const el = event.currentTarget as HTMLElement
-  if (!canScrollX(el)) return
-  el.scrollLeft = wheelScrollLeft(el, event.deltaX, event.deltaY)
-}
-
-// Перетаскивание мышью: на десктопе это самый понятный способ подвинуть ряд.
-// Клик по чипу после протяжки не срабатывает (иначе «прокрутил» = «выбрал папку»).
-let dragStartX = 0
-let dragStartLeft = 0
-let dragging = false
-let suppressClick = false
-
-const onFiltersPointerDown = (event: PointerEvent) => {
-  if (event.pointerType !== 'mouse') return
-  const el = filtersEl.value
-  if (!el || !canScrollX(el)) return
-  dragStartX = event.clientX
-  dragStartLeft = el.scrollLeft
-  dragging = false
-}
-
-const onFiltersPointerMove = (event: PointerEvent) => {
-  if (event.pointerType !== 'mouse') return
-  const el = filtersEl.value
-  if (!el || event.buttons === 0) return
-  const dx = event.clientX - dragStartX
-  if (!dragging && Math.abs(dx) < DRAG_THRESHOLD_PX) return
-  dragging = true
-  suppressClick = true
-  el.scrollLeft = dragScrollLeft(el, dragStartLeft, dx)
-}
-
+/** Отпускание указателя: гасим ещё и таймер долгого тапа по чипу папки. */
 const onFiltersPointerUp = () => {
-  dragging = false
+  onFiltersPointerUpRaw()
   cancelFilterHold()
-  // Клик приходит сразу после pointerup: гасим его и снимаем флаг к следующему.
-  if (suppressClick) window.setTimeout(() => (suppressClick = false), 0)
 }
 
 /** Клик по чипу: фильтр, но не после перетаскивания ряда. */
 const onFilterClick = (key: string) => {
-  if (suppressClick) return
+  if (filtersWereDragged()) return
   emit('update:filter', key)
   // Выбранная папка должна быть видна — догоняем её, если она уехала за край.
-  void nextTick(() => scrollActiveFilterIntoView(key))
+  void nextTick(() => revealFilter(`[data-filter="${key}"]`))
 }
-
-/** Показывает активный чип в ряду (после выбора папки или смены фильтра). */
-const scrollActiveFilterIntoView = (key: string) => {
-  const el = filtersEl.value
-  if (!el) return
-  const chip = el.querySelector<HTMLElement>(`[data-filter="${key}"]`)
-  chip?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-}
-
-// Число чипов меняется («Архив» появляется после первой архивации, папка — после
-// создания), а с ним и переполнение — пересчитываем края, не дожидаясь прокрутки.
-onMounted(() => void nextTick(updateFilterEdges))
-watch(
-  () => props.filters.length,
-  () => void nextTick(updateFilterEdges)
-)
 
 // Фильтр сменили не только кликом (горячие клавиши, удаление папки) — тоже
 // показываем активный чип.
 watch(
   () => props.filter,
-  (key) => void nextTick(() => scrollActiveFilterIntoView(key))
+  (key) => void nextTick(() => revealFilter(`[data-filter="${key}"]`))
 )
 </script>
 

@@ -7,8 +7,23 @@
     </q-card-section>
     <q-separator />
     <!-- Вкладки — кнопками: в приложении уже так сделаны фильтры списка,
-         а q-tabs затянул бы в бандл лишние компоненты и их стили. -->
-    <div class="ch-info-tabs" role="tablist" aria-label="Разделы канала">
+         а q-tabs затянул бы в бандл лишние компоненты и их стили. Лента
+         листается колесом и перетаскиванием: разделов у владельца больше,
+         чем влезает, и на веб-версии без этого последние были недоступны. -->
+    <div
+      ref="tabsEl"
+      class="ch-info-tabs"
+      :class="{ 'fade-start': tabsEdges.start, 'fade-end': tabsEdges.end }"
+      role="tablist"
+      aria-label="Разделы канала"
+      @scroll.passive="refreshTabsEdges"
+      @wheel.passive="onTabsWheel"
+      @pointerdown="onTabsPointerDown"
+      @pointermove="onTabsPointerMove"
+      @pointerup="onTabsPointerUp"
+      @pointerleave="onTabsPointerUp"
+      @pointercancel="onTabsPointerUp"
+    >
       <button
         v-for="entry in TABS"
         :key="entry.key"
@@ -162,6 +177,7 @@ import {
   updateChannel
 } from '@/services/channelService'
 import { getErrorMessage } from '@/services/errors'
+import { useHScroll } from '@/composables/useHScroll'
 import type { ChannelCard, ChannelSuggestion } from '@/types'
 
 const props = defineProps<{
@@ -202,6 +218,18 @@ const TABS = computed<ReadonlyArray<{ key: ChannelTabKey; title: () => string }>
   }
   return tabs
 })
+
+/** Лента вкладок: разделов у владельца несколько — на узком экране они
+ *  не влезают, а в веб-версии без прокрутки последние пропадали. */
+const {
+  el: tabsEl,
+  edges: tabsEdges,
+  refresh: refreshTabsEdges,
+  onWheel: onTabsWheel,
+  onPointerDown: onTabsPointerDown,
+  onPointerMove: onTabsPointerMove,
+  onPointerUp: onTabsPointerUp
+} = useHScroll(() => TABS.value.length)
 const channel = ref<ChannelCard | null>(null)
 const people = ref<Person[]>([])
 const pending = ref<ChannelSuggestion[]>([])
@@ -332,6 +360,25 @@ watch(
 
 .ch-info-tabs::-webkit-scrollbar {
   display: none;
+}
+
+/* Затухание у края: подсказка, что вкладок больше, чем видно. */
+.ch-info-tabs.fade-end {
+  mask-image: linear-gradient(to right, black calc(100% - 10px), transparent);
+}
+
+.ch-info-tabs.fade-start {
+  mask-image: linear-gradient(to right, transparent, black 10px);
+}
+
+.ch-info-tabs.fade-start.fade-end {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 10px,
+    black calc(100% - 10px),
+    transparent
+  );
 }
 
 .ch-tab {

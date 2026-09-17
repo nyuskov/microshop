@@ -146,6 +146,14 @@
           <button
             type="button"
             class="extras-tab"
+            :class="{ active: extrasPanel === 'stickers' }"
+            @click="emit('set-extras-tab', 'stickers')"
+          >
+            Стикеры
+          </button>
+          <button
+            type="button"
+            class="extras-tab"
             :class="{ active: extrasPanel === 'gif' }"
             @click="emit('set-extras-tab', 'gif')"
           >
@@ -153,8 +161,22 @@
           </button>
         </div>
         <div v-if="extrasPanel === 'emoji'" class="emoji-panel">
-          <!-- Категории: недавние + группы по смыслу -->
-          <div class="emoji-cats" role="tablist" aria-label="Категории эмодзи">
+          <!-- Категории: недавние + группы по смыслу. Лента листается колесом и
+               перетаскиванием (мышь) и свайпом — см. useHScroll. -->
+          <div
+            ref="emojiCatsEl"
+            class="emoji-cats"
+            :class="{ 'fade-start': emojiCatsEdges.start, 'fade-end': emojiCatsEdges.end }"
+            role="tablist"
+            aria-label="Категории эмодзи"
+            @scroll.passive="emojiCatsRefresh"
+            @wheel.passive="emojiCats.onWheel"
+            @pointerdown="emojiCats.onPointerDown"
+            @pointermove="emojiCats.onPointerMove"
+            @pointerup="emojiCats.onPointerUp"
+            @pointerleave="emojiCats.onPointerUp"
+            @pointercancel="emojiCats.onPointerUp"
+          >
             <button
               v-for="tab in emojiTabs"
               :key="tab.key"
@@ -182,6 +204,54 @@
             </button>
           </div>
         </div>
+        <div v-else-if="extrasPanel === 'stickers'" class="stickers-panel">
+          <!-- Стикеры — те же эмодзи, но крупно и без пузыря: тап отправляет
+               сразу, как в Telegram (в отличие от панели «Эмодзи», которая
+               вставляет символ в набранный текст). -->
+          <p class="stickers-hint">Стикер отправляется сразу — как сообщение.</p>
+          <div
+            ref="stickerCatsEl"
+            class="emoji-cats"
+            :class="{ 'fade-start': stickerCatsEdges.start, 'fade-end': stickerCatsEdges.end }"
+            role="tablist"
+            aria-label="Категории стикеров"
+            @scroll.passive="stickerCatsRefresh"
+            @wheel.passive="stickerCats.onWheel"
+            @pointerdown="stickerCats.onPointerDown"
+            @pointermove="stickerCats.onPointerMove"
+            @pointerup="stickerCats.onPointerUp"
+            @pointerleave="stickerCats.onPointerUp"
+            @pointercancel="stickerCats.onPointerUp"
+          >
+            <button
+              v-for="tab in stickerTabs"
+              :key="tab.key"
+              type="button"
+              class="emoji-cat"
+              :class="{ active: stickerTab === tab.key }"
+              role="tab"
+              :aria-selected="stickerTab === tab.key"
+              @click="stickerTab = tab.key"
+            >
+              {{ tab.title }}
+            </button>
+          </div>
+          <p v-if="!stickerItems.length" class="emoji-hint">
+            Здесь появятся стикеры, которые вы отправляли последними.
+          </p>
+          <div v-else class="extras-grid stickers-grid">
+            <button
+              v-for="sticker in stickerItems"
+              :key="sticker"
+              class="sticker-option"
+              :title="`Отправить ${sticker}`"
+              :aria-label="`Отправить стикер ${sticker}`"
+              @click="sendSticker(sticker)"
+            >
+              {{ sticker }}
+            </button>
+          </div>
+        </div>
         <div v-else-if="extrasPanel === 'gif' && chatId !== null" class="extras-gif">
           <GifPicker
             :chat-id="chatId"
@@ -201,7 +271,16 @@ import type { ChatUser, Message } from '@/types'
 import { messageSnippet } from '@/utils/media'
 import { applyMention, mentionBeforeCaret } from '@/utils/mentions'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
-import { EMOJI_GROUPS, EMOJI_RECENT_KEY, readRecentEmoji, rememberEmoji } from '@/utils/emoji'
+import {
+  EMOJI_GROUPS,
+  EMOJI_RECENT_KEY,
+  readRecentEmoji,
+  readRecentStickers,
+  rememberEmoji,
+  rememberSticker,
+  STICKER_RECENT_KEY
+} from '@/utils/emoji'
+import { useHScroll } from '@/composables/useHScroll'
 import VoiceRecorderBar from '@/components/media/VoiceRecorderBar.vue'
 import GifPicker from '@/components/media/GifPicker.vue'
 import type { RecordedMedia } from '@/services/recorder'
@@ -214,8 +293,8 @@ const props = defineProps<{
   /** Название в шапке цитаты ответа (вычисляется родителем). */
   replyBarName: string
   editingMessage: Message | null
-  /** Единое меню доп.контента: 'emoji' | 'gif' (открыто) либо 'none'. */
-  extrasPanel: 'none' | 'emoji' | 'gif'
+  /** Единое меню доп.контента: 'emoji' | 'stickers' | 'gif' (открыто) либо 'none'. */
+  extrasPanel: 'none' | 'emoji' | 'stickers' | 'gif'
   voiceRecOpen: boolean
   recordMode: 'audio' | 'video'
   micHolding: boolean
@@ -255,6 +334,46 @@ const pickEmoji = (emoji: string) => {
   emit('append-emoji', emoji)
 }
 
+// ---------- Стикеры: тап = отправить ----------
+const stickerRecent = ref<string[]>(readRecentStickers(globalThis.localStorage))
+const stickerTab = ref<string>(stickerRecent.value.length ? 'recent' : EMOJI_GROUPS[0].key)
+const stickerTabs = computed(() => [
+  { key: 'recent', title: 'Недавние', items: stickerRecent.value },
+  ...EMOJI_GROUPS
+])
+const stickerItems = computed(
+  () => stickerTabs.value.find((tab) => tab.key === stickerTab.value)?.items ?? []
+)
+
+// ---------- Ленты категорий: одна прокрутка на все ----------
+// Категорий («Недавние», «Смайлы», …) больше, чем влезает в полосу: без
+// прокрутки последние уезжали за край и были недоступны — особенно в веб-версии,
+// где нет свайпа. Ленты эмодзи и стикеров показываются по очереди, поэтому у
+// каждой свой экземпляр прокрутки.
+const {
+  el: emojiCatsEl,
+  edges: emojiCatsEdges,
+  refresh: emojiCatsRefresh,
+  ...emojiCats
+} = useHScroll(() => emojiTabs.value.length)
+const {
+  el: stickerCatsEl,
+  edges: stickerCatsEdges,
+  refresh: stickerCatsRefresh,
+  ...stickerCats
+} = useHScroll(() => stickerTabs.value.length)
+
+/** Отправляет стикер сообщением и запоминает его в «Недавние». */
+const sendSticker = (sticker: string) => {
+  stickerRecent.value = rememberSticker(stickerRecent.value, sticker)
+  try {
+    globalThis.localStorage?.setItem(STICKER_RECENT_KEY, JSON.stringify(stickerRecent.value))
+  } catch {
+    // Память не сохранится — отправить это не мешает.
+  }
+  emit('send-sticker', sticker)
+}
+
 const emit = defineEmits<{
   (e: 'send-text'): void
   (e: 'file-selected', file: File): void
@@ -267,9 +386,11 @@ const emit = defineEmits<{
   (e: 'mic-cancel'): void
   (e: 'mic-click'): void
   (e: 'toggle-extras'): void
-  (e: 'set-extras-tab', tab: 'emoji' | 'gif'): void
+  (e: 'set-extras-tab', tab: 'emoji' | 'stickers' | 'gif'): void
   (e: 'gif-sent'): void
   (e: 'append-emoji', emoji: string): void
+  /** Стикер: отправить сразу отдельным сообщением. */
+  (e: 'send-sticker', sticker: string): void
 }>()
 
 const attachInput = ref<HTMLInputElement | null>(null)
@@ -831,6 +952,42 @@ watch(newMessage, () => {
 
 .extras-menu :deep(.gif-picker-inner) {
   max-height: none;
+}
+
+/* Панель стикеров: крупные плитки, тап = отправка. */
+.stickers-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stickers-hint {
+  margin: 0;
+  font-size: var(--ms-fs-xs);
+  color: var(--ms-muted-2);
+}
+
+.stickers-grid {
+  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+}
+
+.sticker-option {
+  background: transparent;
+  border: none;
+  font-size: 30px;
+  line-height: 1;
+  cursor: pointer;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sticker-option:hover {
+  background: var(--ms-hover);
+  transform: scale(1.08);
 }
 
 .emoji-option {

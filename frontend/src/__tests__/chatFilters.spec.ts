@@ -149,12 +149,17 @@ describe('точки входа архива', () => {
     // Жалоба 15.09.2026: «в веб-версии не крутится» — шесть чипов шире панели,
     // палец ряд листал, а обычное колесо мыши прокручивало список чатов, и до
     // «Архива» было не добраться. Плюс статичная маска прятала текст чипа в
-    // конце прокрутки.
+    // конце прокрутки. Прокрутка общая для всех лент — useHScroll.
     const list = source('components/messenger/ChatList.vue')
+    expect(list).toContain('useHScroll(() => props.filters.length)')
     expect(list).toContain('@wheel.passive="onFiltersWheel"')
-    expect(list).toContain('@scroll.passive="updateFilterEdges"')
-    expect(list).toContain('wheelScrollLeft(el, event.deltaX, event.deltaY)')
+    expect(list).toContain('@scroll.passive="refreshFilterEdges"')
     expect(list).toContain("'fade-start': filterEdges.start")
+    expect(list).toContain('overscroll-behavior-x: contain')
+    // Сама математика прокрутки — в utils/hScroll.ts (там же порог и границы).
+    const utils = source('utils/hScroll.ts')
+    expect(utils).toContain('wheelScrollLeft')
+    expect(utils).toContain('dragScrollLeft')
     // Маска больше не висит на ряду постоянно: она включается классами.
     expect(list).not.toMatch(/\.chat-filters\s*\{[^}]*mask-image/)
   })

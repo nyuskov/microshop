@@ -56,14 +56,14 @@ describe('чипы папок в списке чатов', () => {
   it('ряд листается мышью и пальцем, без стрелок', () => {
     // Повод: папок может быть больше, чем влезает в панель; стрелки оказались
     // лишними (пользователь: «и так понятно, что должно прокручиваться»).
+    // Механизм прокрутки общий для всех лент — composables/useHScroll.ts.
+    expect(list).toContain('useHScroll(() => props.filters.length)')
     expect(list).toContain('@wheel.passive="onFiltersWheel"')
-    expect(list).toContain('dragScrollLeft(el, dragStartLeft, dx)')
-    expect(list).toContain('DRAG_THRESHOLD_PX')
     expect(list).not.toContain('chat-filters-nav')
     // Клик после протяжки не должен выбирать папку.
-    expect(list).toContain('if (suppressClick) return')
+    expect(list).toContain('if (filtersWereDragged()) return')
     // Выбранную папку подкручиваем в видимую часть ряда.
-    expect(list).toContain("scrollIntoView({ block: 'nearest', inline: 'nearest' })")
+    expect(list).toContain('revealFilter(`[data-filter="${key}"]`)')
   })
 
   it('долгий тап по чипу папки открывает её настройки', () => {

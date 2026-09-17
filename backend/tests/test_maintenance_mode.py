@@ -38,13 +38,14 @@ class _ApiCtx:
         self.client = client
         self.factory = factory
 
-    async def make_user(self, *, admin: bool = False) -> User:
+    async def make_user(self, *, admin: bool = False, owner: bool = False) -> User:
         async with self.factory() as session:
             user = User(
                 username=f"user_{uuid.uuid4().hex[:10]}",
                 hashed_password="x",
                 is_active=True,
-                is_superuser=admin,
+                is_admin=admin,
+                is_superuser=owner,
                 is_verified=False,
             )
             session.add(user)
@@ -142,8 +143,8 @@ async def test_off_by_default(api: _ApiCtx) -> None:
 
 async def test_switch_persists_state(api: _ApiCtx) -> None:
     """Включение сохраняется в БД вместе с автором и временем переключения."""
-    admin = await api.make_user(admin=True)
-    token = await api.token_for(admin)
+    owner = await api.make_user(owner=True)
+    token = await api.token_for(owner)
 
     response = await api.client.put(
         "/api/v1/system/maintenance/",
@@ -160,11 +161,11 @@ async def test_switch_persists_state(api: _ApiCtx) -> None:
 
     row = await api.raw_setting()
     assert row is not None
-    assert row.updated_by_user_id == admin.id
+    assert row.updated_by_user_id == owner.id
     payload = json.loads(row.value)
     assert payload["enabled"] is True
     assert payload["message"] == "Обновляем сервис, вернёмся к 15:00"
-    assert payload["by"] == admin.id
+    assert payload["by"] == owner.id
 
 
 async def test_empty_message_falls_back_to_default(api: _ApiCtx) -> None:
@@ -188,9 +189,15 @@ async def test_broken_setting_is_treated_as_disabled(api: _ApiCtx) -> None:
     assert state.message == maintenance.DEFAULT_MESSAGE
 
 
-async def test_toggle_requires_superuser(api: _ApiCtx) -> None:
-    """Переключать режим может только администратор сервиса."""
+async def test_toggle_requires_owner(api: _ApiCtx) -> None:
+    """Переключать режим может только ВЛАДЕЛЕЦ: администратору — 403.
+
+    Роль администратора даёт модерацию, приглашения и обход заглушки, но не
+    рубильник: включить техработы значит остановить сервис для всех.
+    """
     user = await api.make_user()
+    admin = await api.make_user(admin=True)
+    admin_token = await api.token_for(admin)
     token = await api.token_for(user)
 
     anonymous = await api.client.put(
@@ -203,14 +210,22 @@ async def test_toggle_requires_superuser(api: _ApiCtx) -> None:
     )
     assert forbidden.status_code == 403, forbidden.text
 
+    # Администратор — тоже не владелец: рубильник ему недоступен.
+    admin_forbidden = await api.client.put(
+        "/api/v1/system/maintenance/",
+        json={"enabled": True},
+        headers=api.auth(admin_token),
+    )
+    assert admin_forbidden.status_code == 403, admin_forbidden.text
+
     response = await api.client.get("/api/v1/system/maintenance/")
     assert response.json()["enabled"] is False
 
 
-async def test_admin_switches_mode_from_the_app(api: _ApiCtx) -> None:
-    """Администратор включает и выключает режим теми же эндпоинтами, что и панель."""
-    admin = await api.make_user(admin=True)
-    token = await api.token_for(admin)
+async def test_owner_switches_mode_from_the_app(api: _ApiCtx) -> None:
+    """Владелец включает и выключает режим теми же эндпоинтами, что и панель."""
+    owner = await api.make_user(owner=True)
+    token = await api.token_for(owner)
 
     enabled = await api.client.put(
         "/api/v1/system/maintenance/",
@@ -265,16 +280,19 @@ async def test_liveness_status_and_login_stay_available(api: _ApiCtx) -> None:
     assert channels.status_code == 200, channels.text
 
 
-async def test_superuser_passes_through(api: _ApiCtx) -> None:
-    """Администратор работает как обычно: он и включает режим, и живёт в сервисе."""
+async def test_admin_and_owner_pass_through(api: _ApiCtx) -> None:
+    """Заглушка не мешает ни администратору, ни владельцу; обычному — 503."""
     admin = await api.make_user(admin=True)
+    owner = await api.make_user(owner=True)
     regular = await api.make_user()
     admin_token = await api.token_for(admin)
+    owner_token = await api.token_for(owner)
     regular_token = await api.token_for(regular)
     await api.switch(enabled=True)
 
-    allowed = await api.client.get("/api/v1/chats/", headers=api.auth(admin_token))
-    assert allowed.status_code == 200, allowed.text
+    for token in (admin_token, owner_token):
+        allowed = await api.client.get("/api/v1/chats/", headers=api.auth(token))
+        assert allowed.status_code == 200, allowed.text
 
     blocked = await api.client.get("/api/v1/chats/", headers=api.auth(regular_token))
     assert blocked.status_code == 503, blocked.text

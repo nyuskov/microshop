@@ -38,7 +38,7 @@ from ..device import device_info
 from ..jwt import get_jwt_strategy
 from ..refresh_sessions import issue_refresh_token
 from ..schemas import TokenResponse
-from ..utils import get_current_superuser
+from ..utils import get_current_admin
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,7 @@ class InviteCreateRequest(BaseModel):
 
 @router.get("/invites/", response_model=InviteListResponse)
 async def list_invites(
-    admin: Annotated[User, Depends(get_current_superuser)],
+    admin: Annotated[User, Depends(get_current_admin)],
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> InviteListResponse:
     """Список приглашений (только владелец): свежие сверху.
@@ -162,7 +162,7 @@ async def list_invites(
 )
 async def create_invite(
     request_data: InviteCreateRequest,
-    admin: Annotated[User, Depends(get_current_superuser)],
+    admin: Annotated[User, Depends(get_current_admin)],
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> InviteItem:
     """Создаёт одноразовую ссылку-приглашение (только владелец).
@@ -219,7 +219,7 @@ async def create_invite(
 @router.delete("/invites/{invite_id}/", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_invite(
     invite_id: int,
-    admin: Annotated[User, Depends(get_current_superuser)],
+    admin: Annotated[User, Depends(get_current_admin)],
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> None:
     """Погашает ссылку, не дожидаясь, пока ей воспользуются (только владелец).

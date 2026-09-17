@@ -260,6 +260,18 @@ const ADMIN_ROWS: AdminRow[] = [
 
 const section = ref<SettingsSection>('root')
 
+/**
+ * Пункты админского экрана для этого аккаунта.
+ *
+ * «Технические работы» — рубильник, который закрывает сервис всем: это право
+ * владельца (`is_superuser`). Администратору (`is_admin`) доступны приглашения
+ * и жалобы, обход заглушки техработ — но не сам рубильник (сервер его тоже не
+ * отдаст: `PUT /system/maintenance/` требует владельца).
+ */
+const adminRows = computed<AdminRow[]>(() =>
+  ADMIN_ROWS.filter((row) => row.key !== 'maintenance' || authStore.isOwner)
+)
+
 // Компонент грузится отдельным чанком: к моменту первого открытия настройки
 // родитель ещё не может вызвать openAdmin() (в него нечего вызывать), поэтому
 // стартовый экран приходит пропом. `immediate` нужен именно для этого случая —
@@ -1122,7 +1134,7 @@ const onNotificationsToggle = async (val: boolean) => {
            списка чатов). Обычный пользователь сюда не попадёт. -->
       <nav v-if="section === 'admin'" class="settings-list" aria-label="Разделы администрирования">
         <button
-          v-for="row in ADMIN_ROWS"
+          v-for="row in adminRows"
           :key="row.key"
           type="button"
           class="settings-link"
@@ -1175,8 +1187,8 @@ const onNotificationsToggle = async (val: boolean) => {
       </div>
 
       <!-- Технические работы (только владелец сервиса): рубильник, который
-           закрывает приложение всем, кроме администратора. -->
-      <div v-if="section === 'maintenance'" class="settings-embed">
+           закрывает приложение всем, кроме администраторов. -->
+      <div v-if="section === 'maintenance' && authStore.isOwner" class="settings-embed">
         <MaintenanceSettings />
       </div>
 

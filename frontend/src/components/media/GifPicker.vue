@@ -15,7 +15,18 @@
         </button>
       </div>
 
-      <div class="gif-chips">
+      <div
+        ref="chipsEl"
+        class="gif-chips"
+        :class="{ 'fade-start': chipsEdges.start, 'fade-end': chipsEdges.end }"
+        @scroll.passive="refreshChipsEdges"
+        @wheel.passive="onChipsWheel"
+        @pointerdown="onChipsPointerDown"
+        @pointermove="onChipsPointerMove"
+        @pointerup="onChipsPointerUp"
+        @pointerleave="onChipsPointerUp"
+        @pointercancel="onChipsPointerUp"
+      >
         <button class="gif-chip" :class="{ active: !query.trim() }" @click="loadTrending()">
           Тренды
         </button>
@@ -60,6 +71,7 @@
 import { icon } from '@/utils/icons'
 import { onMounted, ref } from 'vue'
 import { sendGifMessage } from '@/services/chatService'
+import { useHScroll } from '@/composables/useHScroll'
 import { fetchTrendingGifs, hasGiphyKey, searchGifs, type GiphyGif } from '@/services/giphy'
 
 const props = defineProps<{
@@ -74,6 +86,18 @@ const emit = defineEmits<{
 }>()
 
 const QUICK_QUERIES = ['😀', 'кот', 'привет', 'спасибо', 'праздник', 'круто']
+
+/** Быстрые запросы — тоже лента: на телефоне она не влезает целиком, а в
+ *  веб-версии без прокрутки до правого края было не добраться. */
+const {
+  el: chipsEl,
+  edges: chipsEdges,
+  refresh: refreshChipsEdges,
+  onWheel: onChipsWheel,
+  onPointerDown: onChipsPointerDown,
+  onPointerMove: onChipsPointerMove,
+  onPointerUp: onChipsPointerUp
+} = useHScroll(() => QUICK_QUERIES.length)
 
 const keyAvailable = hasGiphyKey()
 const query = ref('')
@@ -198,6 +222,30 @@ onMounted(() => {
   gap: 6px;
   overflow-x: auto;
   padding: 8px 2px 4px;
+  scrollbar-width: none;
+}
+
+.gif-chips::-webkit-scrollbar {
+  display: none;
+}
+
+/* Затухание у края с подсказкой, что лента быстрых запросов продолжается. */
+.gif-chips.fade-end {
+  mask-image: linear-gradient(to right, black calc(100% - 10px), transparent);
+}
+
+.gif-chips.fade-start {
+  mask-image: linear-gradient(to right, transparent, black 10px);
+}
+
+.gif-chips.fade-start.fade-end {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 10px,
+    black calc(100% - 10px),
+    transparent
+  );
 }
 
 .gif-chip {

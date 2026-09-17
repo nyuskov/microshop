@@ -1905,16 +1905,23 @@ async def test_delete_account(api: _ApiCtx) -> None:
     assert r.status_code == 401
 
 
-# --- Разбор жалоб модератором (только is_superuser) -----------------------
+# --- Разбор жалоб модератором (роль администратора или владельца) --------
 
 
-async def _make_admin(api: _ApiCtx) -> tuple[User, str]:
-    """Создаёт суперпользователя и возвращает его вместе с токеном."""
+async def _make_admin(api: _ApiCtx, *, owner: bool = False) -> tuple[User, str]:
+    """Создаёт модератора и возвращает его вместе с токеном.
+
+    По умолчанию — администратор (`is_admin`): жалобы ему доступны, как и
+    владельцу (`owner=True`), а рубильник техработ — нет (см. system/views).
+    """
     admin = await api.make_user()
     async with api.factory() as session:
         row = await session.get(User, admin.id)
         assert row is not None
-        row.is_superuser = True
+        if owner:
+            row.is_superuser = True
+        else:
+            row.is_admin = True
         await session.commit()
     return admin, await api.token_for(admin)
 
@@ -2040,6 +2047,22 @@ async def test_reports_admin_only(api: _ApiCtx) -> None:
         )
     ).status_code == 403
     assert (await api.client.get("/api/v1/moderation/reports/")).status_code == 401
+
+
+async def test_reports_available_to_both_admin_roles(api: _ApiCtx) -> None:
+    """Жалобы доступны администратору (`is_admin`) и владельцу (`is_superuser`).
+
+    Роли разделены ради рубильника техработ: разбор жалоб — общая админская
+    работа, поэтому проверяем обе роли.
+    """
+    _admin, tadmin = await _make_admin(api)
+    _owner, towner = await _make_admin(api, owner=True)
+
+    for token in (tadmin, towner):
+        response = await api.client.get(
+            "/api/v1/moderation/reports/", headers=api.auth(token)
+        )
+        assert response.status_code == 200, response.text
 
 
 async def test_reports_pagination(api: _ApiCtx) -> None:

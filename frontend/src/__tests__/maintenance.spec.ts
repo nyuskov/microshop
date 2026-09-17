@@ -63,14 +63,14 @@ describe('экран технических работ', () => {
     expect(app).toContain('useMaintenanceWatch()')
   })
 
-  it('администратору экран не показывается — иначе он не выключит режим', () => {
-    // Сервер администратора пускает (см. main.py), значит и приложение не должно
-    // закрываться перед ним: панель нужно уметь открыть.
+  it('администратору и владельцу экран не показывается — иначе не выключить', () => {
+    // Сервер пускает обе роли (см. main.py), значит и приложение не должно
+    // закрываться перед ними: панель нужно уметь открыть.
     expect(utils).toMatch(/if \(viewerIsAdmin\) return/)
     expect(utils).toMatch(/export function setMaintenanceExempt/)
     expect(app).toContain('setMaintenanceExempt')
     expect(app).toMatch(/watch\(\(\) => authStore\.isAdmin, setMaintenanceExempt/)
-    expect(backendMain).toMatch(/user\.is_superuser/)
+    expect(backendMain).toMatch(/user\.is_admin or user\.is_superuser/)
   })
 })
 
@@ -107,7 +107,11 @@ describe('рубильник в админской панели', () => {
   it('раздел есть в админском списке и открывает компонент', () => {
     const adminRows = profile.split('const ADMIN_ROWS')[1].split('const section =')[0]
     expect(adminRows).toContain("key: 'maintenance'")
-    expect(profile).toMatch(/v-if="section === 'maintenance'"[\s\S]{0,120}<MaintenanceSettings \/>/)
+    // Показываем рубильник только владельцу (is_superuser): включить техработы
+    // значит остановить сервис всем, администратору это право не дают.
+    expect(profile).toMatch(
+      /v-if="section === 'maintenance' && authStore\.isOwner"[\s\S]{0,120}<MaintenanceSettings \/>/
+    )
     // Рубильник не должен оказаться в обычных настройках: он служебный.
     const userRows = profile.split('const SETTINGS_ROWS')[1].split('const ADMIN_ROWS')[0]
     expect(userRows).not.toContain("'maintenance'")
