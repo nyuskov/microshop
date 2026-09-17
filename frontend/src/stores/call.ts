@@ -23,6 +23,13 @@ import {
   writeCallDevices
 } from '@/utils/callDevices'
 
+import {
+  applyTrackHints,
+  tuneSenders,
+  tunedDescription,
+  videoBitrateFor,
+  VIDEO_BITRATE_FAIR
+} from './call/quality'
 import { screenShareNotice, screenShareSupport } from './call/screenShare'
 import {
   ANSWER_RETRY_MAX_ATTEMPTS,
@@ -473,6 +480,8 @@ export const useCallStore = defineStore('call', {
       }
       runtime.confirmedPeers = new Set(peers)
       if (chatId !== null) this.groupChatId = chatId
+      // Состав изменился — у новых связей передатчики ещё без наших настроек.
+      this._tuneMedia()
       // Пока звонок не принят (входящий) — соединения не поднимаем: медиа ещё
       // не разрешено, а собеседники решили бы, что мы уже в разговоре.
       if (this.status !== 'active' && this.status !== 'outgoing') return
@@ -507,15 +516,17 @@ export const useCallStore = defineStore('call', {
         const stream = runtime.localMedia
         if (stream) {
           stream.getTracks().forEach((track) => link.pc.addTrack(track, stream))
+          applyTrackHints(stream)
+          this._tuneMedia([link])
         }
-        const offer = await link.pc.createOffer()
-        await link.pc.setLocalDescription(offer)
+        const sent = tunedDescription(await link.pc.createOffer())
+        await link.pc.setLocalDescription(sent)
         sendMessage({
           type: 'call-offer',
           to_user_id: peerId,
           call_id: this.callId,
           kind: this.kind,
-          sdp: offer.sdp ?? '',
+          sdp: sent.sdp ?? '',
           group: true,
           chat_id: this.groupChatId ?? undefined
         })
@@ -535,9 +546,11 @@ export const useCallStore = defineStore('call', {
         const stream = runtime.localMedia
         if (stream && link.pc.getSenders().length === 0) {
           stream.getTracks().forEach((track) => link.pc.addTrack(track, stream))
+          applyTrackHints(stream)
+          this._tuneMedia([link])
         }
         await link.pc.setRemoteDescription({ type: 'offer', sdp })
-        const answer = await link.pc.createAnswer()
+        const answer = tunedDescription(await link.pc.createAnswer())
         await link.pc.setLocalDescription(answer)
         link.lastAnswerSdp = answer.sdp ?? null
         this._flushCandidates(peerId)
@@ -725,7 +738,7 @@ export const useCallStore = defineStore('call', {
       try {
         const pc = connection as RTCPeerConnection & { restartIce?: () => void }
         pc.restartIce?.()
-        const offer = await pc.createOffer({ iceRestart: true })
+        const offer = tunedDescription(await pc.createOffer({ iceRestart: true }))
         await pc.setLocalDescription(offer)
         if (this._linkFor(link.peerId) !== link || this.status !== 'active') return
         sendMessage({
@@ -1201,11 +1214,12 @@ export const useCallStore = defineStore('call', {
           mediaConstraints(kind, this.selectedCamera, this.selectedMic)
         )
         runtime.localMedia = stream
+        applyTrackHints(stream)
         const link = this._newLink(peer.id, ice)
         stream.getTracks().forEach((track) => link.pc.addTrack(track, stream))
 
         runtime.isCaller = true
-        const offer = await link.pc.createOffer()
+        const offer = tunedDescription(await link.pc.createOffer())
         await link.pc.setLocalDescription(offer)
         sendMessage({
           type: 'call-offer',
@@ -1249,10 +1263,11 @@ export const useCallStore = defineStore('call', {
           mediaConstraints(kind, this.selectedCamera, this.selectedMic)
         )
         runtime.localMedia = stream
+        applyTrackHints(stream)
         const link = this._newLink(peerId, ice)
         stream.getTracks().forEach((track) => link.pc.addTrack(track, stream))
         await link.pc.setRemoteDescription({ type: 'offer', sdp: offerSdp })
-        const answer = await link.pc.createAnswer()
+        const answer = tunedDescription(await link.pc.createAnswer())
         await link.pc.setLocalDescription(answer)
         runtime.isCaller = false
         this.kind = kind
@@ -1499,7 +1514,9 @@ export const useCallStore = defineStore('call', {
         // а не только что начатый.
         if (this.seconds % CALL_TOUCH_EVERY_SECONDS === 0) this.rememberCall()
       }, 1000)
-      // Режем битрейт видео, чтобы звонок стабильно шёл через TURN/мобильный.
+      // Настраиваем отправку: битрейт видео, приоритет звука, FEC (см.
+      // `stores/call/quality.ts`). Дальше битрейт подстраивается по статистике.
+      this._tuneMedia()
       void this._capVideoBitrate()
       // Пока звонок идёт — помним о нём: перезагрузка страницы не должна его терять.
       this.rememberCall()
@@ -1558,6 +1575,9 @@ export const useCallStore = defineStore('call', {
      * Зовётся и по таймеру, и вручную из панели «Диагностика звонка».
      */
     async refreshDiagnostics(): Promise<void> {
+      // В группе качество считаем по первой живой связи: общей картины по
+      // нескольким собеседникам всё равно не получить, а решение о битрейте
+      // нужно одно — оно влияет на всю отправку.
       const pc = this._primaryLink()?.pc
       if (!pc || typeof pc.getStats !== 'function') return
       try {
@@ -1565,8 +1585,28 @@ export const useCallStore = defineStore('call', {
         const { diagnostics, sample } = collectDiagnostics(report, pc, runtime.statsSample)
         runtime.statsSample = sample
         this.diagnostics = diagnostics
+        void this._adaptVideoBitrate(diagnostics)
       } catch {
         /* статистика может быть недоступна — звонку не мешаем */
+      }
+    },
+
+    /**
+     * Подстраивает битрейт видео под качество сети.
+     *
+     * Потери и дрожание — это и есть «плохо слышно» на междугородних звонках:
+     * канал занят видео, и звук уезжает вместе с ним. Поэтому при ухудшении
+     * связи видео режется ступенями, а когда сеть выровнялась — возвращается.
+     * Битрейт меняем только при смене ступени: дёргать `setParameters` на каждом
+     * опросе (раз в пару секунд) незачем.
+     */
+    async _adaptVideoBitrate(diagnostics: CallDiagnostics | null): Promise<void> {
+      if (this.status !== 'active' || this.screenSharing) return
+      const target = videoBitrateFor(diagnostics)
+      if (target === runtime.videoBitrate) return
+      runtime.videoBitrate = target
+      for (const link of [...runtime.links.values()]) {
+        void tuneSenders(link.pc, target)
       }
     },
 
@@ -1668,23 +1708,30 @@ export const useCallStore = defineStore('call', {
       }, CALL_REJOIN_TIMEOUT_MS)
     },
 
-    /** Ограничивает битрейт отправляемого видео (~300 Кбит/с). */
+    /**
+     * Ограничивает битрейт отправляемого видео под текущее качество сети.
+     *
+     * Точное значение выбирает `_adaptVideoBitrate` по статистике; здесь —
+     * применение к связям (в группе связей несколько, у каждой свой передатчик).
+     */
     async _capVideoBitrate(): Promise<void> {
-      for (const link of [...runtime.links.values()]) {
-        try {
-          const sender = link.pc.getSenders().find((s) => s.track && s.track.kind === 'video')
-          if (!sender) continue
-          const params = sender.getParameters()
-          if (!params.encodings || params.encodings.length === 0) {
-            params.encodings = [{}]
-          }
-          params.encodings.forEach((encoding) => {
-            encoding.maxBitrate = 300_000
-          })
-          await sender.setParameters(params)
-        } catch {
-          /* ограничение битрейта — не критично */
-        }
+      const bitrate = runtime.videoBitrate || VIDEO_BITRATE_FAIR
+      await Promise.all(
+        [...runtime.links.values()].map((link) =>
+          tuneSenders(link.pc, bitrate, { screen: this.screenSharing })
+        )
+      )
+    },
+
+    /**
+     * Настраивает отправку медиа: битрейт видео, приоритеты, помехоустойчивость
+     * звука (см. `stores/call/quality.ts`). Зовётся при поднятии связи и когда
+     * состав связей изменился.
+     */
+    _tuneMedia(links = [...runtime.links.values()]) {
+      const bitrate = runtime.videoBitrate || VIDEO_BITRATE_FAIR
+      for (const link of links) {
+        void tuneSenders(link.pc, bitrate, { screen: this.screenSharing })
       }
     },
 
@@ -1756,6 +1803,13 @@ export const useCallStore = defineStore('call', {
         const stream = await navigator.mediaDevices.getDisplayMedia({ video: SCREEN_CONSTRAINTS })
         const track = stream.getVideoTracks()[0]
         if (!track) return
+        // Мелкий текст на экране должен оставаться читаемым: кодеру сообщаем,
+        // что это статичная картинка, а не движение (см. `tuneSenders`).
+        try {
+          track.contentHint = 'text'
+        } catch {
+          /* старые браузеры не знают contentHint */
+        }
         runtime.screenTrack = track
         // Кнопка «Остановить показ» в самом браузере (плашка Chrome/Safari).
         track.onended = () => this.stopScreenShare()
@@ -1858,6 +1912,7 @@ export const useCallStore = defineStore('call', {
         const track = stream.getVideoTracks()[0]
         if (!track) throw new Error('нет видеодорожки')
         swapTrackInStream(runtime.localMedia, track, 'video')
+        applyTrackHints(runtime.localMedia)
         track.enabled = this.videoOn
         if (senders.length) {
           await Promise.all(senders.map((item) => item.replaceTrack(track).catch(() => undefined)))
@@ -1895,7 +1950,7 @@ export const useCallStore = defineStore('call', {
       if (!link) return
       try {
         await link.pc.setRemoteDescription({ type: 'offer', sdp })
-        const answer = await link.pc.createAnswer()
+        const answer = tunedDescription(await link.pc.createAnswer())
         await link.pc.setLocalDescription(answer)
         this._flushCandidates(peerId)
         sendMessage({
@@ -1921,7 +1976,7 @@ export const useCallStore = defineStore('call', {
       const seq = ++runtime.renegotiateSeq
       for (const link of [...runtime.links.values()]) {
         try {
-          const offer = await link.pc.createOffer()
+          const offer = tunedDescription(await link.pc.createOffer())
           await link.pc.setLocalDescription(offer)
           if (seq !== runtime.renegotiateSeq) return
           sendMessage({

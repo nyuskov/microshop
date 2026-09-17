@@ -65,6 +65,13 @@ export interface CallSignalingRuntime {
    * (медиа не идёт, видно только своё видео).
    */
   pendingCandidates: Map<number, RTCIceCandidateInit[]>
+  /**
+   * Битрейт отправляемого видео под текущее качество сети (бит/с).
+   *
+   * Меняется ступенями по статистике (`_adaptVideoBitrate`), а не на каждом
+   * опросе: дёргать `setParameters` зря не нужно.
+   */
+  videoBitrate: number
   localMedia: MediaStream | null
   remoteMedia: MediaStream | null
   pendingOffer: PendingOffer | null
@@ -110,6 +117,7 @@ export const runtime: CallSignalingRuntime = {
   primaryPeerId: null,
   confirmedPeers: new Set<number>(),
   pendingCandidates: new Map<number, RTCIceCandidateInit[]>(),
+  videoBitrate: 0,
   localMedia: null,
   remoteMedia: null,
   pendingOffer: null,
