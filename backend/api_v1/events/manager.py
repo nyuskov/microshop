@@ -7,15 +7,27 @@
 фон приложение соединение не рвёт (сообщения должны доходить), но человеком оно
 не считается — собеседник не должен видеть «в сети» у того, кто ушёл в другое
 приложение.
+
+Сокеты живут только в этом процессе, поэтому присутствие собирается из двух
+источников: свои активные соединения и «пульс» других процессов web (см.
+``mark_remote_present`` и ``presence_heartbeat`` в `api_v1/events/bridge.py`).
+Без второго при двух слотах `presence_snapshot` врал бы: человек на другом слоте
+выглядел бы ушедшим.
 """
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
+
+#: Сколько считаем «пульс» другого процесса живым. Больше интервала пульса с
+#: запасом: процесс может задуматься на сборке мусора или на секунду потерять
+#: брокер, и «в сети» не должно мигать от этого.
+PRESENCE_TTL_SECONDS = 45.0
 
 
 class EventsConnectionManager:
@@ -26,6 +38,9 @@ class EventsConnectionManager:
         #: Соединения, владелец которых сейчас смотрит в приложение (не свёрнуто).
         self._active: dict[int, set[WebSocket]] = {}
         self._lock = asyncio.Lock()
+        #: Пользователи, про которых мы узнали из пульса других процессов:
+        #: user_id -> момент (monotonic), до которого считаем их «у экрана».
+        self._remote_present: dict[int, float] = {}
 
     async def connect(self, user_id: int, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -51,8 +66,36 @@ class EventsConnectionManager:
         return user_id in self._connections
 
     def is_present(self, user_id: int) -> bool:
-        """Смотрит ли человек в приложение прямо сейчас."""
-        return bool(self._active.get(user_id))
+        """Смотрит ли человек в приложение прямо сейчас.
+
+        Учитываем и свои сокеты, и пульс других процессов: человек может быть у
+        экрана на другом слоте `web`, и тогда «не в сети» у собеседника было бы
+        ошибкой.
+        """
+        if self._active.get(user_id):
+            return True
+        return self._remote_present.get(user_id, 0.0) > time.monotonic()
+
+    def local_present_ids(self) -> list[int]:
+        """Кто у экрана в ЭТОМ процессе (для пульса другим)."""
+        return [user_id for user_id, sockets in self._active.items() if sockets]
+
+    def mark_remote_present(self, user_ids: list[int]) -> None:
+        """Отмечает пришедший пульс другого процесса (живёт до TTL).
+
+        Заодно чистим протухшие записи: без этого карта копила бы всех, кто
+        когда-либо был в сети на другом слоте.
+        """
+        expires_at = time.monotonic() + PRESENCE_TTL_SECONDS
+        for user_id in user_ids:
+            self._remote_present[user_id] = expires_at
+        stale = [
+            user_id
+            for user_id, until in self._remote_present.items()
+            if until <= time.monotonic()
+        ]
+        for user_id in stale:
+            self._remote_present.pop(user_id, None)
 
     async def set_active(
         self, user_id: int, websocket: WebSocket, active: bool

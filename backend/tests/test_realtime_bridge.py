@@ -258,3 +258,113 @@ async def test_bridge_routes_calls_to_call_manager(
 
     assert await bridge._on_event([7], {"type": "message.new"}) is True
     assert broadcast == [[7]]
+
+
+# ---------- Присутствие между процессами ----------
+
+
+def _fresh_manager():
+    """Новый менеджер событий: состояние присутствия живёт в памяти процесса."""
+    from api_v1.events.manager import EventsConnectionManager
+
+    return EventsConnectionManager()
+
+
+def test_presence_combines_local_and_remote() -> None:
+    """«У экрана» = свои сокеты ИЛИ свежий пульс другого процесса.
+
+    Без второго при двух слотах `web` человек, смотрящий в приложение на другом
+    слоте, выглядел бы ушедшим — и собеседник видел бы «не в сети».
+    """
+    manager = _fresh_manager()
+    assert manager.is_present(1) is False
+
+    manager.mark_remote_present([1])
+    assert manager.is_present(1) is True
+    assert manager.is_present(2) is False
+
+
+def test_presence_from_remote_expires() -> None:
+    """Протухший пульс не держит человека «в сети» (процесс мог умереть)."""
+    from api_v1.events import manager as manager_module
+
+    events = _fresh_manager()
+    events.mark_remote_present([5])
+    # Сдвигаем запись в прошлое: TTL истёк.
+    events._remote_present[5] = 0.0
+    assert events.is_present(5) is False
+    assert manager_module.PRESENCE_TTL_SECONDS > 0
+
+
+def test_presence_heartbeat_updates_and_prunes() -> None:
+    """Пульс обновляет срок и попутно чистит протухшие записи."""
+    events = _fresh_manager()
+    events._remote_present[7] = 0.0
+    events._remote_present[8] = 0.0
+    events.mark_remote_present([7])
+
+    assert events.is_present(7) is True
+    # Восьмёрку в пульсе не назвали и её срок истёк — запись убрана.
+    assert 8 not in events._remote_present
+
+
+async def test_bridge_marks_presence_heartbeat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Пульс из моста отмечает присутствие и НЕ уходит клиентам.
+
+    Клиентам нужны события «онлайн/офлайн», а не служебный пульс процессов: если
+    отдавать его в сокеты, клиент получал бы непонятные сообщения каждые 15 с.
+    """
+    from api_v1.events import bridge
+
+    marked: list[list[int]] = []
+    broadcasted: list[list[int]] = []
+
+    def fake_mark(user_ids: list[int]) -> None:
+        marked.append(user_ids)
+
+    async def fake_broadcast(user_ids: list[int], payload: dict) -> bool:
+        broadcasted.append(user_ids)
+        return True
+
+    monkeypatch.setattr(bridge.events_manager, "mark_remote_present", fake_mark)
+    monkeypatch.setattr(bridge.events_manager, "broadcast", fake_broadcast)
+
+    handled = await bridge._on_event([11, 12], {"type": amqp.EVENT_PRESENCE_HEARTBEAT})
+
+    assert handled is True
+    assert marked == [[11, 12]]
+    assert broadcasted == []
+
+
+async def test_heartbeat_loop_publishes_only_when_someone_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Пульс публикуется только когда есть кому пульсировать."""
+    from api_v1.events import bridge
+
+    published: list[list[int]] = []
+
+    async def fake_publish(payload: dict, recipient_ids: list[int]) -> str:
+        published.append(recipient_ids)
+        return "evt"
+
+    monkeypatch.setattr(bridge, "publish_realtime_event", fake_publish)
+    monkeypatch.setattr(bridge, "PRESENCE_HEARTBEAT_SECONDS", 0.01)
+    monkeypatch.setattr(bridge.events_manager, "local_present_ids", lambda: [])
+
+    task = asyncio.create_task(bridge._presence_heartbeat_loop())
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert published == []
+
+    monkeypatch.setattr(bridge.events_manager, "local_present_ids", lambda: [3])
+    task = asyncio.create_task(bridge._presence_heartbeat_loop())
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert published and published[-1] == [3]
