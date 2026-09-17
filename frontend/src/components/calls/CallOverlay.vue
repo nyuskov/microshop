@@ -61,17 +61,23 @@
         </template>
 
         <template v-else-if="callStore.status === 'active'">
+          <!-- Групповой звонок «mesh»: видео и звук идут от каждого участника
+               напрямую, поэтому показываем сетку плиток, а не одного человека. -->
+          <CallGrid v-if="callStore.isGroup" />
           <!-- Видео собеседника (звук — Web Audio или фолбэк элемента).
                Когда камера выключена, видеопотока нет: показываем аватар и
                подпись, а не чёрный прямоугольник. -->
           <video
-            v-if="callStore.kind === 'video' && callStore.peerVideoOn"
+            v-if="!callStore.isGroup && callStore.kind === 'video' && callStore.peerVideoOn"
             ref="remoteVideoEl"
             class="remote-video"
             autoplay
             playsinline
           ></video>
-          <div v-if="callStore.kind === 'video' && !callStore.peerVideoOn" class="peer-video-off">
+          <div
+            v-if="!callStore.isGroup && callStore.kind === 'video' && !callStore.peerVideoOn"
+            class="peer-video-off"
+          >
             <span class="call-avatar huge" :style="avatarStyle(displayName)">
               <img
                 v-if="avatarUrl && !avatarImgFailed"
@@ -427,6 +433,7 @@ import { icon } from '@/utils/icons'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { screenShareSupport, useCallStore } from '@/stores/call'
 import { mediaUrl } from '@/services/chatService'
+import CallGrid from '@/components/calls/CallGrid.vue'
 import SelectField from '@/components/common/SelectField.vue'
 import type { SelectValue } from '@/utils/select'
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'

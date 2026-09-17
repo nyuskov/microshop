@@ -93,11 +93,18 @@ async def set_chat_e2ee(
 async def get_private_chat_id_between(
     session: AsyncSession, first_user_id: int, second_user_id: int
 ) -> int | None:
-    """Возвращает id чата, в котором состоят ровно два указанных пользователя."""
+    """Возвращает id ЛИЧНОГО чата, в котором ровно два указанных пользователя."""
     stmt = (
         select(user_chat_association_table.c.chat_id)
+        # Тип чата обязателен в условии: без него «написать лично» находил бы
+        # группу на двоих (у неё ровно те же два участника) и открывал её, а
+        # запись о звонке попадала бы в группу вместо личного диалога.
+        .join(Chat, Chat.id == user_chat_association_table.c.chat_id)
         .where(
-            user_chat_association_table.c.user_id.in_([first_user_id, second_user_id])
+            user_chat_association_table.c.user_id.in_([first_user_id, second_user_id]),
+            Chat.is_group.is_(False),
+            Chat.is_channel.is_(False),
+            Chat.is_self.is_(False),
         )
         .group_by(user_chat_association_table.c.chat_id)
         .having(

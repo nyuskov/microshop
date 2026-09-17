@@ -325,6 +325,34 @@ def _leave_group_call(data: dict[str, Any], user_id: int) -> None:
         _group_calls.pop(call_id, None)
 
 
+def _group_call_peers(call_id: str) -> list[int]:
+    """Кто сейчас в групповом звонке (по возрастанию id — порядок для клиента)."""
+    return sorted(_group_calls.get(call_id, set()))
+
+
+async def _broadcast_group_peers(call_id: str, chat_id: int) -> None:
+    """Сообщает участникам, кто в звонке.
+
+    Без этого списка «mesh» не собрать: каждый держит соединение с каждым, и
+    клиенты должны знать, с кем ещё соединяться. Младший по id инициирует
+    соединение сам — правило простое и без конфликтов (см. стор звонков).
+    """
+    peers = _group_call_peers(call_id)
+    if not peers:
+        return
+    for peer_id in peers:
+        await _deliver_signal(
+            peer_id,
+            {
+                "type": "call-peers",
+                "call_id": call_id,
+                "chat_id": chat_id,
+                "group": True,
+                "peers": peers,
+            },
+        )
+
+
 def _decline_state(data: dict[str, Any]) -> str:
     """Исход звонка по отказному сообщению (``call-decline``).
 
@@ -518,8 +546,19 @@ async def _relay_message(
                     },
                 )
                 return
+            # Состав звонка изменился — говорим об этом всем участникам, чтобы
+            # они соединились с новым человеком (mesh: каждый с каждым).
+            call_id = str(data.get("call_id") or "")
+            chat_id = int(data.get("chat_id") or 0)
+            if call_id:
+                _spawn(_broadcast_group_peers(call_id, chat_id))
         elif message_type in ("call-end", "call-cancel", "call-decline"):
             _leave_group_call(data, from_user_id)
+            call_id = str(data.get("call_id") or "")
+            chat_id = int(data.get("chat_id") or 0)
+            if call_id and _group_calls.get(call_id):
+                # Остальные продолжают разговор: сообщаем актуальный состав.
+                _spawn(_broadcast_group_peers(call_id, chat_id))
 
     delivered = await _deliver_signal(to_user_id, envelope)
     if delivered:

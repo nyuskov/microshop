@@ -29,6 +29,8 @@ export interface SignalingMessage {
   group?: boolean
   /** Чат группового звонка (сервер проверяет по нему участие). */
   chat_id?: number
+  /** Для `call-peers`: кто сейчас в групповом звонке. */
+  peers?: number[]
   /** Для ``call-screen`` — начинает/заканчивает ли собеседник показ экрана. */
   sharing?: boolean
   /** Для ``call-parked`` — отправлено ли собеседнику уведомление о звонке. */

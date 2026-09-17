@@ -33,6 +33,7 @@ import {
   INCOMING_STALE_TIMEOUT_MS,
   LINK_RECOVERY_WINDOW_MS,
   LINK_RETRY_MS,
+  MAX_GROUP_PARTICIPANTS,
   MEDIA_WATCHDOG_FAILURES_BEFORE_RESTART,
   MEDIA_WATCHDOG_INTERVAL_MS,
   MEDIA_WATCHDOG_MAX_RESTARTS,
@@ -369,6 +370,102 @@ export const useCallStore = defineStore('call', {
       this.participants.splice(index, 1, { ...this.participants[index], ...patch })
     },
 
+    /**
+     * Приводит состав группового звонка к списку с сервера и достраивает связи.
+     *
+     * «Mesh» требует соединения «каждый с каждым», но двум сторонам нельзя
+     * инициировать его одновременно (glare): соединение начинает тот, у кого
+     * МЕНЬШИЙ id, а второй только отвечает. Правило простое и без конфликтов —
+     * не нужно согласовывать, кто «главный» в комнате.
+     */
+    _applyGroupPeers(peers: number[], chatId: number | null): void {
+      const myId = useAuthStore().current_user?.id ?? null
+      if (myId === null) return
+      const known = new Set(this.participants.map((item) => item.id))
+      const fresh = peers.filter((id) => id !== myId && !known.has(id))
+      for (const id of fresh) {
+        this.participants.push({
+          id,
+          name: `@${id}`,
+          avatarUrl: null,
+          micOn: true,
+          videoOn: this.kind === 'video',
+          screenSharing: false,
+          connected: false
+        })
+      }
+      // Ушедшие из звонка: закрываем им соединения и убираем плитку.
+      for (const item of [...this.participants]) {
+        if (peers.includes(item.id)) continue
+        this._dropLink(item.id)
+        this.participants = this.participants.filter((row) => row.id !== item.id)
+      }
+      if (chatId !== null) this.groupChatId = chatId
+      // Пока звонок не принят (входящий) — соединения не поднимаем: медиа ещё
+      // не разрешено, а собеседники решили бы, что мы уже в разговоре.
+      if (this.status !== 'active' && this.status !== 'outgoing') return
+      // Младший инициирует соединение со старшими — включая тех, кто уже был.
+      for (const id of peers) {
+        if (id === myId || runtime.links.has(id)) continue
+        if (myId < id) void this._offerToPeer(id)
+      }
+    },
+
+    /** Создаёт связь с участником и отправляет ему offer (mesh). */
+    async _offerToPeer(peerId: number): Promise<void> {
+      if (runtime.links.has(peerId) || !this.callId) return
+      try {
+        const ice = await loadIceConfiguration()
+        const link = this._newLink(peerId, ice, false)
+        const stream = runtime.localMedia
+        if (stream) {
+          stream.getTracks().forEach((track) => link.pc.addTrack(track, stream))
+        }
+        const offer = await link.pc.createOffer()
+        await link.pc.setLocalDescription(offer)
+        sendMessage({
+          type: 'call-offer',
+          to_user_id: peerId,
+          call_id: this.callId,
+          kind: this.kind,
+          sdp: offer.sdp ?? '',
+          group: true,
+          chat_id: this.groupChatId ?? undefined
+        })
+      } catch {
+        this._dropLink(peerId)
+      }
+    },
+
+    /**
+     * Ответ на offer участника внутри уже идущего группового звонка:
+     * новый собеседник не «звонит» повторно, а просто присоединяется.
+     */
+    async _acceptPeerOffer(peerId: number, sdp: string): Promise<void> {
+      try {
+        const ice = await loadIceConfiguration()
+        const link = runtime.links.get(peerId) ?? this._newLink(peerId, ice, false)
+        const stream = runtime.localMedia
+        if (stream && link.pc.getSenders().length === 0) {
+          stream.getTracks().forEach((track) => link.pc.addTrack(track, stream))
+        }
+        await link.pc.setRemoteDescription({ type: 'offer', sdp })
+        const answer = await link.pc.createAnswer()
+        await link.pc.setLocalDescription(answer)
+        link.lastAnswerSdp = answer.sdp ?? null
+        sendMessage({
+          type: 'call-answer',
+          to_user_id: peerId,
+          call_id: this.callId ?? '',
+          sdp: answer.sdp ?? '',
+          group: true,
+          chat_id: this.groupChatId ?? undefined
+        })
+      } catch {
+        this._dropLink(peerId)
+      }
+    },
+
     /** Состояние ICE: перезапуск при смене сети и завершение, если не вышло. */
     _handleIceState(connection: RTCPeerConnection) {
       const state = connection.iceConnectionState
@@ -602,6 +699,18 @@ export const useCallStore = defineStore('call', {
             break
           }
           if (this.status !== 'idle') {
+            // Тот же групповой звонок: новый участник не «звонит» повторно, он
+            // просто присоединяется — отвечаем ему без окна входящего.
+            if (
+              this.isGroup &&
+              message.group &&
+              this.callId === callId &&
+              this.status === 'active' &&
+              message.sdp
+            ) {
+              void this._acceptPeerOffer(from, message.sdp)
+              break
+            }
             // Уже занят другим вызовом — автоматически отклоняем.
             sendMessage({ type: 'call-decline', to_user_id: from, call_id: callId, reason: 'busy' })
             return
@@ -613,7 +722,21 @@ export const useCallStore = defineStore('call', {
             callId,
             peerId: from,
             peerName: `@${from}`,
-            peerAvatar: null
+            peerAvatar: null,
+            // Групповой вызов: запоминаем чат — состав придёт в `call-peers`.
+            isGroup: Boolean(message.group),
+            groupChatId: message.chat_id ?? null,
+            participants: [
+              {
+                id: from,
+                name: `@${from}`,
+                avatarUrl: null,
+                micOn: true,
+                videoOn: message.kind === 'video',
+                screenSharing: false,
+                connected: false
+              }
+            ]
           })
           startRingtone('incoming')
           // Страховка на случай, когда о завершении вызова нам не сообщили
@@ -673,18 +796,43 @@ export const useCallStore = defineStore('call', {
           }
           break
         }
+        case 'call-peers': {
+          // Состав группового звонка: с этими людьми нужно соединиться (mesh).
+          // Сервер присылает его при каждом входе участника.
+          if (this.callId !== callId) break
+          const peers = Array.isArray(message.peers) ? message.peers : []
+          this._applyGroupPeers(peers, message.chat_id ?? this.groupChatId)
+          break
+        }
+        case 'call-media-state': {
+          if (this.callId !== callId) break
+          const micOn = message.mic_on !== false
+          const videoOn = message.video_on !== false
+          if (from !== 0) this._patchParticipant(from, { micOn, videoOn })
+          // В личном разговоре состояние собеседника показывается напрямую (и
+          // сообщение могло прийти без отправителя — от старого клиента).
+          if (!this.isGroup || from === this.peerId) {
+            this.peerMicOn = micOn
+            this.peerVideoOn = videoOn
+          }
+          break
+        }
         case 'call-screen': {
-          if (this.callId !== callId) return
-          this.peerScreenSharing = Boolean(message.sharing)
-          if (this.peerScreenSharing) {
-            // Показ экрана включается как видео — переводим интерфейс в видео-режим,
-            // чтобы было видно картинку собеседника (своя сторона уже это сделала).
-            this.kind = 'video'
-          } else if (!this.screenSharing && message.kind === 'audio') {
-            // Собеседник показывал экран из аудиозвонка и закончил — возвращаемся
-            // в аудио (если я сам сейчас ничего не показываю). Проверяем именно
-            // 'audio': старый клиент поле не шлёт, и его режим менять нельзя.
-            this.kind = 'audio'
+          if (this.callId !== callId) break
+          // В группе показ экрана — свойство участника, в 1:1 — общее состояние.
+          this._patchParticipant(from, { screenSharing: Boolean(message.sharing) })
+          if (!this.isGroup || from === this.peerId) {
+            this.peerScreenSharing = Boolean(message.sharing)
+            if (this.peerScreenSharing) {
+              // Показ экрана включается как видео — переводим интерфейс в видео-режим,
+              // чтобы было видно картинку собеседника (своя сторона уже это сделала).
+              this.kind = 'video'
+            } else if (!this.screenSharing && message.kind === 'audio') {
+              // Собеседник показывал экран из аудиозвонка и закончил — возвращаемся
+              // в аудио (если я сам сейчас ничего не показываю). Проверяем именно
+              // 'audio': старый клиент поле не шлёт, и его режим менять нельзя.
+              this.kind = 'audio'
+            }
           }
           break
         }
@@ -731,14 +879,6 @@ export const useCallStore = defineStore('call', {
           this.notice = elsewhere[String(message.reason)] ?? 'Звонок отклонён на другом устройстве'
           break
         }
-        case 'call-media-state': {
-          // Собеседник выключил микрофон/камеру: показываем это в интерфейсе,
-          // чтобы чёрный экран не выглядел поломкой.
-          if (this.callId !== callId) return
-          this.peerMicOn = message.mic_on !== false
-          this.peerVideoOn = message.video_on !== false
-          break
-        }
         case 'call-parked': {
           // Абонент не в сети: вызов ждёт его в приложении и будет доставлен,
           // как только он туда зайдёт (см. park_offer на бэкенде). Уведомление
@@ -751,13 +891,79 @@ export const useCallStore = defineStore('call', {
         }
         case 'call-unavailable': {
           if (this.status === 'outgoing' && this.callId === callId) {
+            // «Занято» у группы значит, что в звонке уже четыре человека —
+            // говорим об этом прямо, а не «недоступен».
+            const full = message.reason === 'full'
             this._cleanup()
-            this.notice = 'Абонент сейчас недоступен'
+            this.notice = full
+              ? `В звонке уже ${MAX_GROUP_PARTICIPANTS} человека — больше не помещается`
+              : 'Абонент сейчас недоступен'
           }
           break
         }
         default:
           break
+      }
+    },
+
+    /**
+     * Начать ГРУППОВОЙ звонок «mesh» (до четырёх человек вместе со мной).
+     *
+     * Звоню каждому участнику группы отдельно: сервер только пересылает SDP, а
+     * медиа идёт напрямую. Поэтому сквозное шифрование сохраняется — SFU, через
+     * который медиа шло бы на сервере, тут не нужен.
+     */
+    async startGroupCall(chatId: number, members: CallPeer[], kind: CallKind) {
+      if (this.status !== 'idle') return
+      // Место в звонке занимаю я сам — остальным остаётся три.
+      const targets = members.slice(0, MAX_GROUP_PARTICIPANTS - 1)
+      if (targets.length === 0) return
+      ensureCallOutput()
+      this.$patch({
+        status: 'outgoing',
+        kind,
+        callId: makeCallId(),
+        peerId: targets[0].id,
+        peerName: targets.map((item) => item.name).join(', '),
+        peerAvatar: targets[0].avatarUrl ?? null,
+        isGroup: true,
+        groupChatId: chatId,
+        participants: targets.map((item) => ({
+          id: item.id,
+          name: item.name,
+          avatarUrl: item.avatarUrl ?? null,
+          micOn: true,
+          videoOn: kind === 'video',
+          screenSharing: false,
+          connected: false
+        })),
+        micOn: true,
+        videoOn: true,
+        seconds: 0
+      })
+      startRingtone('outgoing')
+
+      const connected = await this.connect()
+      if (!connected) {
+        this._cleanup()
+        this.notice = 'Не удалось подключиться к серверу звонков'
+        return
+      }
+
+      try {
+        this._restoreSavedDevices()
+        const stream = await navigator.mediaDevices.getUserMedia(
+          mediaConstraints(kind, this.selectedCamera, this.selectedMic)
+        )
+        runtime.localMedia = stream
+        runtime.isCaller = true
+        // Соединение с каждым участником (медиа добавляется внутри `_offerToPeer`).
+        for (const target of targets) await this._offerToPeer(target.id)
+        this._armRingOutTimer()
+        void this.loadDevices()
+      } catch (error) {
+        this._cleanup()
+        this.notice = mediaErrorMessage(error, kind)
       }
     },
 
@@ -774,6 +980,19 @@ export const useCallStore = defineStore('call', {
         peerId: peer.id,
         peerName: peer.name,
         peerAvatar: peer.avatarUrl ?? null,
+        isGroup: false,
+        groupChatId: null,
+        participants: [
+          {
+            id: peer.id,
+            name: peer.name,
+            avatarUrl: peer.avatarUrl ?? null,
+            micOn: true,
+            videoOn: kind === 'video',
+            screenSharing: false,
+            connected: false
+          }
+        ],
         micOn: true,
         videoOn: true,
         seconds: 0
@@ -855,7 +1074,8 @@ export const useCallStore = defineStore('call', {
           type: 'call-answer',
           to_user_id: peerId,
           call_id: callId,
-          sdp: answer.sdp ?? ''
+          sdp: answer.sdp ?? '',
+          ...(this.isGroup ? { group: true, chat_id: this.groupChatId ?? undefined } : {})
         })
         this._becomeActive()
         // Ответ мог не дойти — повторяем, пока не поднимется медиа.
@@ -1400,15 +1620,16 @@ export const useCallStore = defineStore('call', {
     },
 
     _sendScreenStatus(sharing: boolean) {
-      sendMessage({
-        type: 'call-screen',
-        to_user_id: this.peerId ?? 0,
-        call_id: this.callId ?? '',
-        sharing,
-        // В каком режиме продолжается звонок: собеседник вернёт аудио-интерфейс,
-        // если показ экрана закончился в аудиозвонке.
-        kind: sharing ? 'video' : this.kind
-      })
+      const targets = this.isGroup ? this.participants.map((item) => item.id) : [this.peerId ?? 0]
+      for (const targetId of targets) {
+        sendMessage({
+          type: 'call-screen',
+          to_user_id: targetId,
+          call_id: this.callId ?? '',
+          sharing,
+          ...(this.isGroup ? { group: true, chat_id: this.groupChatId ?? undefined } : {})
+        })
+      }
     },
 
     /** Ответ на пересогласование от конкретного участника. */
@@ -1559,6 +1780,17 @@ export const useCallStore = defineStore('call', {
     /** Возвращает текущий удалённый поток (для видео собеседника). */
     getRemoteStream(): MediaStream | null {
       return runtime.remoteMedia
+    },
+
+    /**
+     * Поток конкретного участника группового звонка.
+     *
+     * Не геттер: поток лежит вне реактивного состояния (MediaStream в Pinia
+     * хранить нельзя), и плитка перерисовывается по изменениям `participants` —
+     * крик `_patchParticipant` на `ontrack` как раз это и делает.
+     */
+    remoteStreamOf(peerId: number): MediaStream | null {
+      return runtime.links.get(peerId)?.remoteStream ?? null
     },
 
     /** Сбросить уведомление. */

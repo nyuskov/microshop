@@ -142,7 +142,7 @@
             :current-user-id="currentUserId"
             :subtitle="chatSubtitle(selectedChat)"
             :status-pill="peerStatus(selectedChat)"
-            :show-call-button="isPrivateChat(selectedChat)"
+            :show-call-button="isPrivateChat(selectedChat) || isGroupCallChat(selectedChat)"
             :show-back="isPhone"
             :peer-online="selectedChatPeerOnline"
             :peer-typing="isPeerTyping(selectedChat.id)"
@@ -1571,6 +1571,10 @@ const isOwnMessage = (message: Message): boolean =>
 
 const startVoiceCall = () => {
   const chat = selectedChat.value
+  if (isGroupCallChat(chat)) {
+    startGroupCall('audio')
+    return
+  }
   if (!isPrivateChat(chat)) return
   const peer = otherUserOfChat(chat as Chat)
   if (!peer) return
@@ -1587,6 +1591,10 @@ const startVoiceCall = () => {
 
 const startVideoCall = () => {
   const chat = selectedChat.value
+  if (isGroupCallChat(chat)) {
+    startGroupCall('video')
+    return
+  }
   if (!isPrivateChat(chat)) return
   const peer = otherUserOfChat(chat as Chat)
   if (!peer) return
@@ -1599,6 +1607,31 @@ const startVideoCall = () => {
     },
     'video'
   )
+}
+
+/**
+ * Годится ли чат для ГРУППОВОГО звонка: обычная группа (не канал и не
+ * «Сохранённые сообщения»), где есть с кем разговаривать.
+ */
+const isGroupCallChat = (chat: Chat | null): boolean =>
+  !!chat && !!chat.is_group && !chat.is_channel && !chat.is_self
+
+/**
+ * Групповой звонок «mesh»: звоним участникам группы (до четырёх человек вместе
+ * со собой). Себя, каналы и удалённые аккаунты в список не берём.
+ */
+const startGroupCall = (kind: 'audio' | 'video') => {
+  const chat = selectedChat.value
+  if (!isGroupCallChat(chat) || currentUserId.value === null) return
+  const members = (chat as Chat).users
+    .filter((user) => user.id !== currentUserId.value)
+    .map((user) => ({
+      id: user.id,
+      name: displayName(user),
+      avatarUrl: user.avatar_thumb_url ?? user.avatar_url ?? null
+    }))
+  if (members.length === 0) return
+  void callStore.startGroupCall((chat as Chat).id, members, kind)
 }
 
 /** Кнопка звонка в шапке чата: клик (без удержания) = звонок выбранного типа. */
