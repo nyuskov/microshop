@@ -554,6 +554,16 @@ async def _relay_message(
             chat_id = int(data.get("chat_id") or 0)
             if call_id:
                 _spawn(_broadcast_group_peers(call_id, chat_id))
+        elif message_type == "call-answer":
+            # Кто-то поднял трубку. Состав звонка не изменился, но связи между
+            # участниками нужно достроить: offer «среднего» участника мог прийти,
+            # пока человек ещё не ответил, и был проигнорирован как «этот же
+            # звонок» — тогда двое так и не слышали друг друга. Рассылаем состав,
+            # по нему клиенты повторяют недостающие связи.
+            call_id = str(data.get("call_id") or "")
+            chat_id = int(data.get("chat_id") or 0)
+            if call_id:
+                _spawn(_broadcast_group_peers(call_id, chat_id))
         elif message_type in ("call-end", "call-cancel", "call-decline"):
             _leave_group_call(data, from_user_id)
             call_id = str(data.get("call_id") or "")

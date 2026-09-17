@@ -21,6 +21,8 @@ import type { CallDiagnostics } from '@/utils/callStats'
  */
 const source = (path: string): string => readFileSync(path, 'utf8')
 const store = source('src/stores/call.ts')
+const output = source('src/stores/call/output.ts')
+const grid = source('src/components/calls/CallGrid.vue')
 
 /** Минимальное SDP с Opus — как его отдаёт браузер. */
 const SDP = [
@@ -48,10 +50,18 @@ const diagnostics = (patch: Partial<CallDiagnostics>): CallDiagnostics => ({
 })
 
 describe('параметры Opus в SDP', () => {
-  it('включает помехоустойчивость, DTX и моно', () => {
+  it('включает помехоустойчивость и моно', () => {
     expect(AUDIO_OPUS_PARAMS).toContain('useinbandfec=1')
-    expect(AUDIO_OPUS_PARAMS).toContain('usedtx=1')
     expect(AUDIO_OPUS_PARAMS).toContain('stereo=0')
+    expect(AUDIO_OPUS_PARAMS).toContain('sprop-stereo=0')
+    // 48 кбит/с — чистый голос; ниже слышно «песок» на шипящих.
+    expect(AUDIO_OPUS_PARAMS).toContain('maxaveragebitrate=48000')
+  })
+
+  it('НЕ включает DTX: экономия тишины слышна щелчками на стыках фраз', () => {
+    expect(AUDIO_OPUS_PARAMS).not.toContain('usedtx')
+    // 20 мс пакетирование (по умолчанию) — меньше пакетов на плохом канале.
+    expect(AUDIO_OPUS_PARAMS).not.toContain('minptime')
   })
 
   it('подменяет существующий fmtp и сохраняет структуру SDP', () => {
@@ -117,5 +127,30 @@ describe('настройка отправки в сторе', () => {
 
   it('подсказки кодеку ставятся на локальный поток', () => {
     expect(store).toContain('applyTrackHints(stream)')
+  })
+})
+
+describe('звук собеседников не дублируется и не теряется', () => {
+  it('в микшере держатся ВСЕ собеседники, а не последний', () => {
+    // Раньше новый поток заменял прежний: в группе слышно было только одного.
+    expect(output).toMatch(/callOutputSources\.push\(source\)/)
+    expect(output).toMatch(/export function unwireRemoteOutput/)
+    expect(output).not.toMatch(/callOutputSource\b(?!s)/)
+  })
+
+  it('громкость меняется плавно: мгновенная смена щёлкает', () => {
+    expect(output).toContain('linearRampToValueAtTime')
+    expect(output).not.toMatch(/gain\.value = volume/)
+  })
+
+  it('плитки в сетке глушатся, когда звук играет Web Audio', () => {
+    // Иначе та же речь звучит дважды с задержкой — «расплывается» и слышится
+    // как искажения.
+    expect(grid).toMatch(/:muted="viaWebAudio"/)
+    expect(grid).toMatch(/viaWebAudio\.value = callStore\.outputReady\(\)/)
+  })
+
+  it('ушедший участник убирается из микшера', () => {
+    expect(store).toContain('unwireRemoteOutput(link.remoteStream)')
   })
 })

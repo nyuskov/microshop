@@ -41,6 +41,8 @@ import {
   LINK_RECOVERY_WINDOW_MS,
   LINK_RETRY_MS,
   MAX_GROUP_PARTICIPANTS,
+  OFFER_MAX_ATTEMPTS,
+  OFFER_RETRY_MS,
   MEDIA_WATCHDOG_FAILURES_BEFORE_RESTART,
   MEDIA_WATCHDOG_INTERVAL_MS,
   MEDIA_WATCHDOG_MAX_RESTARTS,
@@ -66,6 +68,7 @@ import {
   remoteOutputReady,
   setRemoteOutputVolume,
   teardownCallOutput,
+  unwireRemoteOutput,
   wireRemoteOutput
 } from './call/output'
 import { startRingtone, stopRingtone } from './call/ringtone'
@@ -348,7 +351,9 @@ export const useCallStore = defineStore('call', {
         remoteStream: null,
         lastAnswerSdp: null,
         iceRestartInFlight: false,
-        iceRestartAttempts: 0
+        iceRestartAttempts: 0,
+        offerAttempts: 0,
+        offerSentAt: 0
       }
       runtime.links.set(peerId, link)
       if (primary || runtime.primaryPeerId === null) {
@@ -396,6 +401,9 @@ export const useCallStore = defineStore('call', {
     _dropLink(peerId: number): void {
       const link = runtime.links.get(peerId)
       if (!link) return
+      // Голос участника (если он уже был подключён к выводу) больше не звучит:
+      // иначе в микшере оставалась бы «мёртвая» дорожка.
+      unwireRemoteOutput(link.remoteStream)
       try {
         link.pc.close()
       } catch {
@@ -486,9 +494,13 @@ export const useCallStore = defineStore('call', {
       // не разрешено, а собеседники решили бы, что мы уже в разговоре.
       if (this.status !== 'active' && this.status !== 'outgoing') return
       // Младший инициирует соединение со старшими — включая тех, кто уже был.
+      // Если offer уже уходил и ответа нет (собеседник тогда ещё звонил) —
+      // повторяем: состав приходит и после того, как кто-то поднял трубку.
       for (const id of peers) {
-        if (id === myId || runtime.links.has(id)) continue
-        if (myId < id) void this._offerToPeer(id)
+        if (id === myId || myId >= id) continue
+        const link = runtime.links.get(id)
+        if (link?.pc.remoteDescription) continue
+        void this._offerToPeer(id, Boolean(link))
       }
     },
 
@@ -507,14 +519,33 @@ export const useCallStore = defineStore('call', {
       this._applyGroupPeers(ids, this.groupChatId)
     },
 
-    /** Создаёт связь с участником и отправляет ему offer (mesh). */
-    async _offerToPeer(peerId: number): Promise<void> {
-      if (runtime.links.has(peerId) || !this.callId) return
+    /**
+     * Создаёт связь с участником и отправляет ему offer (mesh).
+     *
+     * `retry` — повтор, когда связь уже создана, но ответа так и нет. Так бывает
+     * у «среднего» участника группы: его offer ушёл, пока собеседник ещё звонил,
+     * и был проигнорирован как «тот же звонок». Без повтора двое участников
+     * навсегда оставались без связи друг с другом (слышал только зовущий).
+     * Повторяем редко и не бесконечно — счётчики в самой связи.
+     */
+    async _offerToPeer(peerId: number, retry = false): Promise<void> {
+      const existing = this._linkFor(peerId)
+      // Связь уже согласована — переспрашивать нечего.
+      if (existing?.pc.remoteDescription) return
+      if (existing) {
+        if (!retry) return
+        if (existing.offerAttempts >= OFFER_MAX_ATTEMPTS) return
+        if (Date.now() - existing.offerSentAt < OFFER_RETRY_MS) return
+      }
+      if (!this.callId) return
       try {
         const ice = await loadIceConfiguration()
-        const link = this._newLink(peerId, ice, false)
+        const link = existing ?? this._newLink(peerId, ice, false)
+        link.offerAttempts += 1
+        link.offerSentAt = Date.now()
         const stream = runtime.localMedia
-        if (stream) {
+        // Дорожки добавляем один раз: у повтора отправляем только новое описание.
+        if (stream && link.pc.getSenders().length === 0) {
           stream.getTracks().forEach((track) => link.pc.addTrack(track, stream))
           applyTrackHints(stream)
           this._tuneMedia([link])
@@ -540,6 +571,10 @@ export const useCallStore = defineStore('call', {
      * новый собеседник не «звонит» повторно, а просто присоединяется.
      */
     async _acceptPeerOffer(peerId: number, sdp: string): Promise<void> {
+      // У нас мог остаться свой неотвеченный offer (собеседник его проигнорировал,
+      // пока звонил): применить к нему чужой offer нельзя — начинаем связь заново.
+      const stale = this._linkFor(peerId)
+      if (stale && !stale.pc.remoteDescription) this._dropLink(peerId)
       try {
         const ice = await loadIceConfiguration()
         const link = runtime.links.get(peerId) ?? this._newLink(peerId, ice, false)
@@ -839,6 +874,23 @@ export const useCallStore = defineStore('call', {
       const callId = message.call_id ?? ''
       switch (message.type) {
         case 'call-offer': {
+          // Тот же групповой звонок, разговор уже идёт: новый участник не
+          // «звонит» повторно, он присоединяется — отвечаем сразу, без окна
+          // входящего. Сюда же попадает ПОВТОРНЫЙ offer участника mesh: первый
+          // мог уйти, пока мы ещё не подняли трубку, и был проигнорирован.
+          // Проверка стоит ДО «этот же звонок — игнорируем»: иначе она съедала
+          // такие offer'ы, и двое участников группы так и не соединялись.
+          if (
+            this.isGroup &&
+            message.group &&
+            callId &&
+            this.callId === callId &&
+            (this.status === 'active' || this.status === 'outgoing') &&
+            message.sdp
+          ) {
+            void this._acceptPeerOffer(from, message.sdp)
+            break
+          }
           // Повторная доставка того же вызова (переподключение сокета, повторный
           // push из уведомления) — не начинаем звонок заново.
           if (callId && this.callId === callId && this.status !== 'idle') {
@@ -847,18 +899,6 @@ export const useCallStore = defineStore('call', {
             break
           }
           if (this.status !== 'idle') {
-            // Тот же групповой звонок: новый участник не «звонит» повторно, он
-            // просто присоединяется — отвечаем ему без окна входящего.
-            if (
-              this.isGroup &&
-              message.group &&
-              this.callId === callId &&
-              this.status === 'active' &&
-              message.sdp
-            ) {
-              void this._acceptPeerOffer(from, message.sdp)
-              break
-            }
             // Уже занят другим вызовом — автоматически отклоняем.
             sendMessage({ type: 'call-decline', to_user_id: from, call_id: callId, reason: 'busy' })
             return

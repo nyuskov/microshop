@@ -32,6 +32,10 @@ export interface PeerLink {
    * лимит у остальных — иначе разговор со всеми рвётся из-за одного.
    */
   iceRestartAttempts: number
+  /** Сколько раз мы отправляли offer (первый + повторы, см. `_offerToPeer`). */
+  offerAttempts: number
+  /** Когда отправлен последний offer — чтобы повторять не чаще `OFFER_RETRY_MS`. */
+  offerSentAt: number
 }
 
 export interface CallSignalingRuntime {

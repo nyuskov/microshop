@@ -15,10 +15,16 @@ export const VIDEO_CONSTRAINTS: MediaTrackConstraints = {
   frameRate: { ideal: 24, max: 30 }
 }
 
-// «Лёгкий» аудиоконстрейнт: эхоподавление и шумодав — как в обычном разговоре.
+// Аудиоконстрейнт: эхоподавление, шумодав и автоматический уровень — как в
+// обычном разговоре. Обработку задаём явно: на части устройств браузерные
+// значения по умолчанию дают «плавающую» громкость и гулкий звук.
+// Моно: речь стерео не требует, а полусумма двух каналов на телефонах часто
+// звучит тише и с фазовыми артефактами.
 export const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
   echoCancellation: true,
-  noiseSuppression: true
+  noiseSuppression: true,
+  autoGainControl: true,
+  channelCount: 1
 }
 
 // Демонстрация экрана: чёткость важнее плавности (текст мелкий), поэтому 15 fps.

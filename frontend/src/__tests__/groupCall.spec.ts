@@ -46,7 +46,8 @@ describe('лимит участников', () => {
 
 describe('правила «mesh»', () => {
   it('соединение инициирует младший по id — без одновременных offer', () => {
-    expect(store).toMatch(/if \(myId < id\) void this\._offerToPeer\(id\)/)
+    // Инициирует только младший: старший пропускает свой шаг.
+    expect(store).toMatch(/if \(id === myId \|\| myId >= id\) continue/)
   })
 
   it('состав приходит от сервера отдельным сообщением', () => {
@@ -197,6 +198,49 @@ describe('разговор начинается, не дожидаясь все�
     expect(grid).toContain("'Звоним…'")
   })
 })
+describe('участники соединяются друг с другом (mesh)', () => {
+  it('неотвеченный offer повторяется, а не считается «связь уже есть»', () => {
+    // Первый offer уходит, пока «средний» участник ещё звонит: он игнорирует его
+    // как «тот же звонок», и без повтора двое так и не слышали друг друга.
+    expect(store).toMatch(/if \(existing\.offerAttempts >= OFFER_MAX_ATTEMPTS\) return/)
+    expect(store).toMatch(/if \(Date\.now\(\) - existing\.offerSentAt < OFFER_RETRY_MS\) return/)
+    expect(constants).toContain('OFFER_RETRY_MS')
+    expect(constants).toContain('OFFER_MAX_ATTEMPTS')
+  })
+
+  it('состав звонка повторяет связи без удалённого описания', () => {
+    expect(store).toMatch(/if \(link\?\.pc\.remoteDescription\) continue/)
+    expect(store).toMatch(/void this\._offerToPeer\(id, Boolean\(link\)\)/)
+  })
+
+  it('повтор добавляет дорожки только один раз', () => {
+    expect(store).toMatch(
+      /if \(stream && link\.pc\.getSenders\(\)\.length === 0\) \{[\s\S]{0,200}addTrack/
+    )
+  })
+
+  it('присоединение к идущему звонку проверяется ДО «этот же звонок»', () => {
+    // Иначе проверка «этот же звонок — игнорируем» съедала такие offer'ы.
+    const join = store.indexOf('void this._acceptPeerOffer(from, message.sdp)')
+    const ignore = store.indexOf('this.ignoredCallOffers += 1')
+    expect(join).toBeGreaterThan(-1)
+    expect(ignore).toBeGreaterThan(-1)
+    expect(join).toBeLessThan(ignore)
+  })
+
+  it('зависший свой offer не мешает принять чужой', () => {
+    expect(store).toMatch(
+      /const stale = this\._linkFor\(peerId\)[\s\S]{0,120}this\._dropLink\(peerId\)/
+    )
+  })
+
+  it('сервер рассылает состав после поднятой трубки', () => {
+    expect(backendViews).toMatch(
+      /message_type == "call-answer"[\s\S]{0,900}_broadcast_group_peers\(call_id, chat_id\)/
+    )
+  })
+})
+
 describe('сброс неподключившихся', () => {
   it('у плитки «Звоним…» есть кнопка сброса', () => {
     expect(grid).toContain('grid-drop')

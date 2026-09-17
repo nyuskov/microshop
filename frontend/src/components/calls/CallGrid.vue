@@ -12,6 +12,7 @@
         class="grid-video"
         autoplay
         playsinline
+        :muted="viaWebAudio"
       ></video>
       <div v-else class="grid-avatar">
         <q-icon
@@ -161,6 +162,16 @@ const attachStreams = (): void => {
   if (el && local && el.srcObject !== local) el.srcObject = local
 }
 
+/**
+ * Играет ли звук Web Audio (тогда элементы плиток глушим).
+ *
+ * Без глушения одна и та же речь звучала бы дважды — из элемента плитки и из
+ * Web Audio, с небольшой задержкой между копиями: голос «расплывается», это и
+ * слышно как искажения. Если Web Audio не запущен, звук идёт через плитки
+ * (фолбэк), чтобы звонок не был немым.
+ */
+const viaWebAudio = ref(false)
+
 watch(
   () => [
     callStore.participants.length,
@@ -175,7 +186,12 @@ watch(
 )
 
 /** Треки могли приехать до появления плитки — дотягиваем по таймеру. */
-const poll = window.setInterval(attachStreams, 1000)
+const poll = window.setInterval(() => {
+  // Пытаемся держать Web Audio запущенным; глушение плиток зависит от него.
+  callStore.resumeOutput()
+  viaWebAudio.value = callStore.outputReady()
+  attachStreams()
+}, 1000)
 onBeforeUnmount(() => window.clearInterval(poll))
 </script>
 
