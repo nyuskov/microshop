@@ -412,6 +412,21 @@ export const useCallStore = defineStore('call', {
       }
     },
 
+    /**
+     * Достраивает «mesh» по текущему составу: соединяем меня с каждым, с кем
+     * связи ещё нет, если инициировать должен я (младший по id).
+     *
+     * Зовётся после того, как разговор начался (первый ответил) и при ответе
+     * присоединившегося позже — иначе второй-третий участники оставались бы без
+     * соединения, хотя формально «уже в звонке».
+     */
+    _syncMesh(): void {
+      const myId = useAuthStore().current_user?.id
+      if (myId === undefined || myId === null) return
+      const ids = [...this.participants.map((item) => item.id), myId]
+      this._applyGroupPeers(ids, this.groupChatId)
+    },
+
     /** Создаёт связь с участником и отправляет ему offer (mesh). */
     async _offerToPeer(peerId: number): Promise<void> {
       if (runtime.links.has(peerId) || !this.callId) return
@@ -796,15 +811,26 @@ export const useCallStore = defineStore('call', {
         }
         case 'call-answer': {
           const link = this._linkFor(message.from_user_id ?? this.peerId)
-          if (this.status === 'outgoing' && this.callId === callId && link) {
+          // В группе ответ приходит и когда разговор уже идёт: кто-то поднял
+          // трубку позже и присоединяется к нам. Раньше такой ответ молча
+          // терялся (`status` уже `active`), и человек «входил» в пустоту.
+          const relevant =
+            this.callId === callId &&
+            link &&
+            (this.status === 'outgoing' || (this.isGroup && this.status === 'active'))
+          if (relevant) {
+            const answerLink = link as PeerLink
             if (message.sdp) {
               // Повторный ответ (страховка отвечающей стороны) не должен ронять
               // обработку: первый уже применён, второй просто игнорируем.
-              void link.pc
+              void answerLink.pc
                 .setRemoteDescription({ type: 'answer', sdp: message.sdp })
                 .catch(() => undefined)
             }
-            this._becomeActive()
+            if (this.status === 'outgoing') this._becomeActive()
+            // Разговор уже идёт (или только начался) — достраиваем «mesh»:
+            // новые собеседники соединяются с каждым, кто в звонке.
+            if (this.isGroup) this._syncMesh()
           }
           break
         }
@@ -849,6 +875,12 @@ export const useCallStore = defineStore('call', {
           // Сервер присылает его при каждом входе участника.
           if (this.callId !== callId) break
           const peers = Array.isArray(message.peers) ? message.peers : []
+          if (this.status === 'incoming') {
+            // Пока разговор уже идёт, входящий вызов у того, кто ещё не ответил,
+            // должен продолжать звонить: иначе через полторы минуты он «пропустит»
+            // звонок, в котором все остальные давно разговаривают.
+            this._armIncomingTimer()
+          }
           this._applyGroupPeers(peers, message.chat_id ?? this.groupChatId)
           break
         }
@@ -1143,6 +1175,10 @@ export const useCallStore = defineStore('call', {
           ...(this.isGroup ? { group: true, chat_id: this.groupChatId ?? undefined } : {})
         })
         this._becomeActive()
+        // Групповой звонок: разговор со первым ответившим уже идёт, а остальные
+        // продолжают звонить. Достраиваем соединения со всеми, кто в наборе,
+        // чтобы позже принявшие подключились без повторного звонка.
+        if (this.isGroup) this._syncMesh()
         // Ответ мог не дойти — повторяем, пока не поднимется медиа.
         this._armAnswerRetry()
         void this.loadDevices()
@@ -1281,20 +1317,81 @@ export const useCallStore = defineStore('call', {
     /** Отменить исходящий звонок до ответа. */
     cancelCall() {
       if (this.status !== 'outgoing') return
-      const peerId = this.peerId ?? 0
-      const callId = this.callId ?? ''
+      const targets = this._callTargets()
+      const context = this._callContext()
       this._cleanup()
-      // Без гарантированной отправки собеседник продолжал бы звонить в тишине.
-      void this._sendSignaling({ type: 'call-cancel', to_user_id: peerId, call_id: callId })
+      // Без гарантированной отправки собеседник продолжал бы звонить в тишине,
+      // а в группе — ещё и каждый из приглашённых.
+      for (const peerId of targets) {
+        void this._sendSignaling({
+          type: 'call-cancel',
+          to_user_id: peerId,
+          call_id: context.callId,
+          ...context.extra
+        })
+      }
     },
 
     /** Завершить активный звонок. */
     endCall() {
       if (this.status === 'idle') return
-      const peerId = this.peerId ?? 0
-      const callId = this.callId ?? ''
+      const targets = this._callTargets()
+      const context = this._callContext()
       this._cleanup()
-      void this._sendSignaling({ type: 'call-end', to_user_id: peerId, call_id: callId })
+      for (const peerId of targets) {
+        void this._sendSignaling({
+          type: 'call-end',
+          to_user_id: peerId,
+          call_id: context.callId,
+          ...context.extra
+        })
+      }
+    },
+
+    /** Признак группового звонка для исходящего сообщения. */
+    _callContext(): { callId: string; extra: Partial<SignalingMessage> } {
+      return {
+        callId: this.callId ?? '',
+        extra: this.isGroup ? { group: true, chat_id: this.groupChatId ?? undefined } : {}
+      }
+    },
+
+    /**
+     * Сбросить участника, который так и не подключился.
+     *
+     * В групповом звонке ждать неответившего нельзя: разговор уже идёт. Сервер по
+     * `call-drop` убирает его из состава (и гасит у него окно вызова), а мы —
+     * плитку и связь. Если после этого в звонке никого не осталось, звонок
+     * завершается.
+     */
+    dropPeer(peerId: number): void {
+      if (!this.callId) return
+      const callId = this.callId
+      const context = this._callContext()
+      sendMessage({
+        type: 'call-drop',
+        to_user_id: peerId,
+        call_id: callId,
+        drop_user_id: peerId,
+        ...context.extra
+      })
+      this._dropParticipant(peerId)
+      if (this.isGroup && this.participants.length === 0) {
+        this.endCall()
+        this.notice = 'Звонок завершён'
+      }
+    },
+
+    /**
+     * Кому адресовать отмену/завершение: в группе — всем участникам набора,
+     * иначе они продолжат звонить (или «висеть» в вызове), хотя разговор уже
+     * закончился.
+     */
+    _callTargets(): number[] {
+      if (this.isGroup && this.participants.length > 0) {
+        return this.participants.map((item) => item.id)
+      }
+      return [this.peerId ?? 0]
     },
 
     _becomeActive() {

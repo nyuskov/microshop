@@ -190,3 +190,39 @@ async def test_last_participant_clears_the_call(group_call: dict) -> None:
     calls_views._leave_group_call({"call_id": call_id}, owner.id)
     calls_views._leave_group_call({"call_id": call_id}, member.id)
     assert call_id not in _group_calls
+
+
+async def test_drop_removes_ringing_participant(group_call: dict) -> None:
+    """Сброс убирает того, кто не поднял трубку, из состава звонка.
+
+    Сервер обязан сделать это сам: сообщение `call-drop` адресовано ЕМУ, и если
+    бы мы обрабатывали его как обычное «завершение от отправителя», из звонка
+    вылетал бы инициатор, а неответивший продолжал бы «звонить».
+    """
+    owner = group_call["owner"]
+    members = group_call["members"]
+    chat_id = group_call["chat"]["id"]
+    call_id = "call-drop"
+
+    await calls_views._admit_group_call(
+        {"call_id": call_id, "chat_id": chat_id},
+        from_user_id=owner.id,
+        to_user_id=members[0].id,
+    )
+    await calls_views._admit_group_call(
+        {"call_id": call_id, "chat_id": chat_id},
+        from_user_id=owner.id,
+        to_user_id=members[1].id,
+    )
+    assert set(_group_call_peers(call_id)) == {owner.id, members[0].id, members[1].id}
+
+    # Инициатор сбрасывает того, кто не ответил.
+    calls_views._leave_group_call({"call_id": call_id}, members[1].id)
+    assert members[1].id not in _group_call_peers(call_id)
+    # Инициатор и ответивший остаются: разговор продолжается.
+    assert set(_group_call_peers(call_id)) == {owner.id, members[0].id}
+
+
+def test_drop_is_in_relay_whitelist() -> None:
+    """`call-drop` пересылается: иначе кнопка «сбросить» молча ничего не делает."""
+    assert "call-drop" in calls_views.RELAY_MESSAGE_TYPES

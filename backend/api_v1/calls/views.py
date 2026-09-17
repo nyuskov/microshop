@@ -188,6 +188,8 @@ RELAY_MESSAGE_TYPES = frozenset(
         # новое соединение и новые ICE-адреса, поэтому вторая сторона
         # пересогласовывает SDP (иначе звонок выглядел бы сброшенным).
         "call-rejoin",
+        # Групповой звонок: участник сбрасывает того, кто так и не взял трубку.
+        "call-drop",
     }
 )
 
@@ -559,6 +561,30 @@ async def _relay_message(
             if call_id and _group_calls.get(call_id):
                 # Остальные продолжают разговор: сообщаем актуальный состав.
                 _spawn(_broadcast_group_peers(call_id, chat_id))
+        elif message_type == "call-drop":
+            # Кто-то из участников сбрасывает того, кто так и не поднял трубку:
+            # выкидываем его из состава и гасим у него окно вызова (сам он этого
+            # сообщения не увидит — оно адресовано тому, кого сбрасывают).
+            if from_user_id in _group_calls.get(str(data.get("call_id") or ""), set()):
+                _leave_group_call(data, to_user_id)
+                await call_manager.send_to_user(
+                    to_user_id,
+                    {
+                        "type": "call-end",
+                        "call_id": data.get("call_id"),
+                        "chat_id": data.get("chat_id"),
+                        "group": True,
+                        "from_user_id": from_user_id,
+                        "to_user_id": to_user_id,
+                        "reason": "dropped",
+                    },
+                )
+                call_id = str(data.get("call_id") or "")
+                chat_id = int(data.get("chat_id") or 0)
+                if call_id and _group_calls.get(call_id):
+                    _spawn(_broadcast_group_peers(call_id, chat_id))
+                # Сам сброс дальше не пересылаем: получателю уже сказано.
+                return
 
     delivered = await _deliver_signal(to_user_id, envelope)
     if delivered:

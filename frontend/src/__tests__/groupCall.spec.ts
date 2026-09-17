@@ -72,7 +72,7 @@ describe('правила «mesh»', () => {
 
 describe('интерфейс сетки', () => {
   it('оверлей показывает сетку только в групповом звонке', () => {
-    expect(overlay).toContain('<CallGrid v-if="callStore.isGroup" />')
+    expect(overlay).toMatch(/<CallGrid v-if="callStore\.isGroup"[^>]*\/>/)
     expect(overlay).toMatch(/!callStore\.isGroup && callStore\.kind === 'video'/)
   })
 
@@ -145,5 +145,82 @@ describe('разговор не рвётся из-за неподключивш�
 
   it('если никто не ответил — так и говорим', () => {
     expect(store).toMatch(/this\.notice = this\.isGroup \? 'Никто не ответил'/)
+  })
+})
+describe('разговор начинается, не дожидаясь всех', () => {
+  it('ответ приходит и в уже идущий разговор (поздний участник присоединяется)', () => {
+    // Раньше ответ принимался только в статусе `outgoing`: тот, кто поднял
+    // трубку вторым, «входил» в пустоту — связи не появлялось.
+    const answer = store.slice(
+      store.indexOf("case 'call-answer'"),
+      store.indexOf("case 'ice-candidate'")
+    )
+    expect(answer).toMatch(/this\.isGroup && this\.status === 'active'/)
+    expect(answer).toContain('this._syncMesh()')
+  })
+
+  it('после приёма звонка связи достраиваются со всеми участниками', () => {
+    expect(store).toMatch(/_becomeActive\(\)[\s\S]{0,320}if \(this\.isGroup\) this\._syncMesh\(\)/)
+  })
+
+  it('«mesh» строится по текущему составу, а не только по приглашённым', () => {
+    expect(store).toMatch(
+      /const ids = \[\.\.\.this\.participants\.map\(\(item\) => item\.id\), myId\]/
+    )
+  })
+
+  it('у неответившего вызов продолжает звонить, пока разговор идёт', () => {
+    // Иначе через полторы минуты он «пропускал» звонок, в котором остальные уже
+    // разговаривают, и присоединиться было нельзя.
+    const peers = store.slice(
+      store.indexOf("case 'call-peers'"),
+      store.indexOf("case 'call-media-state'")
+    )
+    expect(peers).toMatch(/this\.status === 'incoming'[\s\S]{0,400}this\._armIncomingTimer\(\)/)
+  })
+
+  it('инициатор сразу видит сетку: он уже в звонке, остальные звенят', () => {
+    const outgoing = overlay.slice(
+      overlay.indexOf("status === 'outgoing'"),
+      overlay.indexOf("status === 'active'")
+    )
+    expect(outgoing).toMatch(/v-if="callStore\.isGroup"[\s\S]{0,80}<CallGrid[^>]*\/>/)
+    expect(outgoing).toContain('Звоним…')
+  })
+
+  it('плитка неподключившегося показывает, что у него идёт вызов', () => {
+    expect(grid).toContain('ringing(participant.id)')
+    expect(grid).toContain("'Звоним…'")
+  })
+})
+describe('сброс неподключившихся', () => {
+  it('у плитки «Звоним…» есть кнопка сброса', () => {
+    expect(grid).toContain('grid-drop')
+    expect(grid).toMatch(/v-if="ringing\(participant\.id\)"/)
+    expect(grid).toContain("emit('drop', participant.id)")
+  })
+
+  it('оверлей передаёт сброс в стор', () => {
+    expect(overlay).toMatch(/<CallGrid[^>]*@drop="callStore\.dropPeer"/)
+  })
+
+  it('стор сбрасывает участника на сервере и убирает плитку', () => {
+    expect(store).toContain("type: 'call-drop'")
+    expect(store).toMatch(/this\._dropParticipant\(peerId\)/)
+    // Если после сброса никого не осталось — звонок завершается.
+    expect(store).toMatch(/participants\.length === 0[\s\S]{0,120}this\.endCall\(\)/)
+  })
+
+  it('сервер убирает из состава именно сброшенного', () => {
+    expect(backendViews).toContain('"call-drop"')
+    expect(backendViews).toMatch(
+      /message_type == "call-drop"[\s\S]{0,600}_leave_group_call\(data, to_user_id\)/
+    )
+  })
+
+  it('завершение и отмена в группе уходят ВСЕМ участникам', () => {
+    // Иначе остальные продолжают звонить, хотя разговор уже закончился.
+    expect(store).toMatch(/const targets = this\._callTargets\(\)/)
+    expect(store).toMatch(/return this\.participants\.map\(\(item\) => item\.id\)/)
   })
 })

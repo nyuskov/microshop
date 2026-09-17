@@ -14,9 +14,27 @@
         playsinline
       ></video>
       <div v-else class="grid-avatar">
-        <q-icon :name="icon('person')" size="34px" aria-hidden="true" />
-        <span class="grid-avatar-name">{{ participant.name }}</span>
+        <q-icon
+          :name="icon(ringing(participant.id) ? 'call' : 'person')"
+          size="34px"
+          aria-hidden="true"
+        />
+        <span class="grid-avatar-name">
+          {{ ringing(participant.id) ? 'Звоним…' : participant.name }}
+        </span>
       </div>
+      <!-- Не поднял трубку — его можно сбросить, не дожидаясь, пока он ответит
+           (разговор с остальными уже идёт). -->
+      <button
+        v-if="ringing(participant.id)"
+        class="grid-drop"
+        type="button"
+        :title="`Сбросить вызов: ${participant.name}`"
+        :aria-label="`Сбросить вызов: ${participant.name}`"
+        @click.stop="emit('drop', participant.id)"
+      >
+        <q-icon :name="icon('call_end')" size="18px" />
+      </button>
       <div class="grid-plate">
         <q-icon
           :name="icon(participant.micOn ? 'mic' : 'mic_off')"
@@ -82,6 +100,9 @@ import { icon } from '@/utils/icons'
  */
 const callStore = useCallStore()
 
+/** Сброс участника, который так и не подключился (обрабатывает оверлей). */
+const emit = defineEmits<{ (e: 'drop', peerId: number): void }>()
+
 /** Элементы видео по участникам: поток надо назначать вручную (`srcObject`). */
 const videoEls = new Map<number, HTMLVideoElement>()
 const localVideoEl = ref<HTMLVideoElement | null>(null)
@@ -91,6 +112,13 @@ const columns = computed<number>(() => {
   const total = callStore.participants.length + 1
   return total <= 1 ? 1 : total === 2 ? 1 : 2
 })
+
+/** Собеседник ещё не подключился: у него сейчас идёт вызов. */
+const ringing = (peerId: number): boolean => {
+  const participant = callStore.participants.find((item) => item.id === peerId)
+  if (!participant) return false
+  return !participant.connected
+}
 
 /** Идёт ли от участника видео (камера или показ экрана). */
 const showsVideo = (peerId: number): boolean => {
@@ -196,6 +224,26 @@ onBeforeUnmount(() => window.clearInterval(poll))
 
 .grid-avatar-name {
   font-size: 0.85rem;
+}
+
+.grid-drop {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: var(--ms-call-danger);
+  color: var(--ms-call-fg);
+  cursor: pointer;
+}
+
+.grid-drop:hover {
+  filter: brightness(1.1);
 }
 
 .grid-plate {

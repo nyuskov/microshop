@@ -31,6 +31,8 @@ export interface SignalingMessage {
   chat_id?: number
   /** Для `call-peers`: кто сейчас в групповом звонке. */
   peers?: number[]
+  /** Для `call-drop`: кого участник сбрасывает (тот не поднял трубку). */
+  drop_user_id?: number
   /** Для ``call-screen`` — начинает/заканчивает ли собеседник показ экрана. */
   sharing?: boolean
   /** Для ``call-parked`` — отправлено ли собеседнику уведомление о звонке. */

@@ -39,7 +39,21 @@
         </template>
 
         <template v-else-if="callStore.status === 'outgoing'">
-          <div class="call-card">
+          <!-- Групповой вызов: я уже «в звонке» — вижу себя, а у остальных идёт
+               вызов. Ждать, пока поднимут все трубки, не нужно: как только
+               ответит первый, разговор начнётся, остальные присоединятся. -->
+          <template v-if="callStore.isGroup">
+            <CallGrid @drop="callStore.dropPeer" />
+            <div class="group-ringing">
+              <p class="call-subtitle">Звоним…</p>
+              <div class="call-controls incoming-controls">
+                <button class="ctl-btn danger big" title="Отменить" @click="callStore.cancelCall()">
+                  <q-icon :name="icon('call_end')" size="28px" />
+                </button>
+              </div>
+            </div>
+          </template>
+          <div v-else class="call-card">
             <span class="call-avatar" :style="avatarStyle(displayName)">
               <img
                 v-if="avatarUrl && !avatarImgFailed"
@@ -63,7 +77,7 @@
         <template v-else-if="callStore.status === 'active'">
           <!-- Групповой звонок «mesh»: видео и звук идут от каждого участника
                напрямую, поэтому показываем сетку плиток, а не одного человека. -->
-          <CallGrid v-if="callStore.isGroup" />
+          <CallGrid v-if="callStore.isGroup" @drop="callStore.dropPeer" />
           <!-- Видео собеседника (звук — Web Audio или фолбэк элемента).
                Когда камера выключена, видеопотока нет: показываем аватар и
                подпись, а не чёрный прямоугольник. -->
@@ -856,6 +870,26 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   padding: 24px;
+}
+
+/*
+ * Групповой исходящий вызов: сетка участников + подпись «Звоним…» под ней.
+ * Ждать всех не нужно — разговор начинается с первым ответившим.
+ */
+.group-ringing {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.group-ringing .call-controls {
+  pointer-events: auto;
 }
 
 .call-avatar {
