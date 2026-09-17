@@ -226,6 +226,7 @@
             @edit="startEditMessage"
             @forward="openForward"
             @save="saveMessageToSelf"
+            @make-sticker="makeStickerFromMessage"
             @delete="deleteMessageOf"
             @report="openReportForMessage"
             @open-image="openImageFromMessage"
@@ -284,6 +285,8 @@
             @gif-sent="onGifSent"
             @append-emoji="appendEmoji"
             @send-sticker="sendSticker"
+            @send-sticker-image="sendStickerImage"
+            @sticker-error="onStickerError"
           />
         </template>
       </main>
@@ -646,6 +649,8 @@ import { deleteDraft, fetchDrafts, putDraft } from '@/services/drafts'
 import { fetchChannel, fetchPostsMeta, markPostViewed } from '@/services/channelService'
 import { type Section } from '@/utils/mobileNav'
 import { mediaUrl } from '@/config'
+import { stickerFromMessage, type StickerItem } from '@/services/stickers'
+import { useStickersStore } from '@/stores/stickers'
 import { chatIdFromUrl, isReplyLaunch, readStoredSection, storeSection } from '@/utils/chatUrl'
 import { haptic } from '@/utils/haptics'
 import { usePeerActivity } from '@/composables/usePeerActivity'
@@ -907,7 +912,8 @@ const newMessage = ref('')
 const sending = ref(false)
 const sendingFile = ref(false)
 const sendError = ref('')
-
+/** Паки стикеров: панель в композере и «В стикеры» из меню картинки. */
+const stickerStore = useStickersStore()
 const replyTarget = ref<Message | null>(null)
 const inlineSearchOpen = ref(false)
 const inlineQuery = ref('')
@@ -2388,6 +2394,72 @@ const sendSticker = async (sticker: string) => {
 const appendMessage = (list: Message[], message: Message): Message[] => {
   if (list.some((item) => item.id === message.id)) return list
   return [...list, message]
+}
+
+/** Ошибка добавления стикера (из панели стикеров): показываем в строке ошибок. */
+const onStickerError = (message: string) => {
+  sendError.value = message
+}
+
+/**
+ * «В стикеры» из сообщения: сервер копирует картинку в пак по умолчанию.
+ *
+ * Пункт показывается только там, где сервер может прочитать файл (обычный чат),
+ * поэтому расшифровывать на клиенте нечего: см. `canBecomeSticker`.
+ */
+const makeStickerFromMessage = async (message: Message) => {
+  sendError.value = ''
+  try {
+    await stickerFromMessage(message.id)
+    // Библиотека изменилась — панель стикеров должна увидеть новый стикер сразу.
+    await stickerStore.load(true)
+    Notify.create({ message: 'Стикер добавлен в «Мои стикеры»', timeout: 2500 })
+  } catch (error) {
+    sendError.value = getErrorMessage(error, 'Не удалось добавить стикер')
+  }
+}
+
+/**
+ * Отправляет стикер-картинку отдельным сообщением (тап в панели «Стикеры»).
+ *
+ * Стикер уже лежит на сервере (человек загрузил его в свой пак), поэтому
+ * скачиваем байты и отправляем их тем же путём, что обычное вложение, только с
+ * ``sticker=true``: сообщение получает ``kind='sticker'`` и рисуется без пузыря.
+ * В E2EE-чате байты сначала шифруются — как и любое другое вложение.
+ */
+const sendStickerImage = async (sticker: StickerItem) => {
+  const chatId = selectedChatId.value
+  if (chatId === null || sending.value) return
+  sending.value = true
+  sendError.value = ''
+  try {
+    const response = await fetch(mediaUrl(sticker.file_url))
+    if (!response.ok) throw new Error('Не удалось прочитать стикер')
+    const blob = await response.blob()
+    const file = new File([blob], 'sticker.webp', {
+      type: sticker.mime_type || blob.type || 'image/webp'
+    })
+    const aes = await chatKeyOf(selectedChat.value)
+    const payload = aes ? await encryptFileForChat(aes, file, '') : null
+    const message = await sendAttachmentMessage(
+      chatId,
+      payload ? payload.blob : file,
+      payload ? payload.text : '',
+      replyTarget.value?.id ?? null,
+      undefined,
+      !!payload,
+      true
+    )
+    if (payload) applyLocalFileEnvelope(message, payload.meta)
+    clearReply()
+    sendTypingStop(chatId)
+    messages.value = appendMessage(messages.value, message)
+    scrollToBottom()
+  } catch (error) {
+    sendError.value = getErrorMessage(error, 'Не удалось отправить стикер')
+  } finally {
+    sending.value = false
+  }
 }
 
 /**

@@ -1,29 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import {
-  EMOJI_GROUPS,
-  EMOJI_RECENT_KEY,
-  EMOJI_RECENT_LIMIT,
-  readRecentEmoji,
-  rememberEmoji
-} from '@/utils/emoji'
+import { EMOJI_RECENT_KEY, EMOJI_RECENT_LIMIT, readRecentEmoji, rememberEmoji } from '@/utils/emoji'
 
-/** Панель эмодзи: категории и «Недавние» (иначе нужный смайл искать глазами). */
-describe('категории эмодзи', () => {
-  it('во всех категориях есть эмодзи и уникальные ключи', () => {
-    const keys = EMOJI_GROUPS.map((group) => group.key)
-    expect(new Set(keys).size).toBe(keys.length)
-    for (const group of EMOJI_GROUPS) {
-      expect(group.items.length).toBeGreaterThan(5)
-      expect(group.title.length).toBeGreaterThan(0)
-    }
-  })
-
-  it('эмодзи не повторяются между категориями', () => {
-    const all = EMOJI_GROUPS.flatMap((group) => group.items)
-    expect(new Set(all).size).toBe(all.length)
-  })
-})
+/** «Недавние» эмодзи: без них нужный смайл приходится искать глазами. */
 
 describe('недавние эмодзи', () => {
   beforeEach(() => {

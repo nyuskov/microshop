@@ -49,6 +49,31 @@ export const isRoundVideoOnly = (message: Message): boolean => {
   return !!file && isRecordedVideoMessage(file) && !message.text && message.reply_to_id == null
 }
 
+/**
+ * Можно ли сделать из сообщения стикер («В стикеры» в меню картинки).
+ *
+ * Только картинка и только открытый файл: зашифрованную картинку сервер
+ * прочитать не может (на диске шифротекст), поэтому в E2EE-чате пункта нет —
+ * иначе он обещал бы действие, которого сервер не сделает.
+ */
+export const canBecomeSticker = (message: Message): boolean => {
+  const file = effectiveFile(message)
+  return !!file && isImageFile(file) && !message.encrypted && message.kind !== 'call'
+}
+
+/**
+ * Стикер-картинка: сообщение из панели стикеров (`kind='sticker'`).
+ *
+ * Такое сообщение рисуется без пузыря и крупно — как в Telegram. Проверяем ещё
+ * и тип вложения: сервер помечает `kind='sticker'` только картинки, но старые
+ * или чужие записи могут прийти и с файлом — «стикером» файл-карточку
+ * показывать нельзя.
+ */
+export const isStickerMessage = (message: Message): boolean => {
+  const file = effectiveFile(message)
+  return message.kind === 'sticker' && !!file && isImageFile(file)
+}
+
 export const mediaTypeLabel = (file: MessageFile): string => {
   if (isImageFile(file)) return 'Изображение'
   if (isAudioFile(file)) return 'Голосовое сообщение'

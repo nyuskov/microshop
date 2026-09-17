@@ -272,20 +272,28 @@ export const sendNewMessage = async (
   return response.data
 }
 
-/** Отправляет файл/изображение как сообщение. */
+/** Отправляет файл/изображение как сообщение.
+ *
+ * `sticker=true` помечает сообщение стикером (``kind='sticker'``): лента рисует
+ * его без пузыря, крупно. Сервер принимает так только картинки.
+ */
 export const sendAttachmentMessage = async (
   chatId: number,
   file: File,
   caption = '',
   replyToId?: number | null,
   onProgress?: (percent: number) => void,
-  encrypted = false
+  encrypted = false,
+  sticker = false
 ): Promise<Message> => {
   const params: Record<string, string | number> = {
     chat_id: chatId,
     filename: file.name,
     caption,
     mime: file.type
+  }
+  if (sticker) {
+    params.sticker = 'true'
   }
   if (replyToId) {
     params.reply_to_id = replyToId

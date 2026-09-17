@@ -69,6 +69,10 @@
           <q-icon :name="icon('bookmark')" size="18px" />
           <span>Сохранить в Сохранённые</span>
         </button>
+        <button v-if="canMakeSticker" class="ctx-item" @click="ctxAction('sticker')">
+          <q-icon :name="icon('add_reaction')" size="18px" />
+          <span>В стикеры</span>
+        </button>
         <button v-if="isOwn && message.text" class="ctx-item" @click="ctxAction('edit')">
           <q-icon :name="icon('edit')" size="18px" />
           <span>Редактировать</span>
@@ -118,6 +122,8 @@ const props = defineProps<{
   isOwn: boolean
   /** Можно ли сохранить сообщение в «Сохранённые». */
   canSave: boolean
+  /** Можно ли сделать из сообщения стикер (только открытая картинка). */
+  canMakeSticker?: boolean
   /** Доступны ли реакции и «ответить» (у служебных сообщений — нет). */
   selectable: boolean
   /** Режим выделения: в нём лист не нужен. */
@@ -133,6 +139,8 @@ const emit = defineEmits<{
   (e: 'copy'): void
   (e: 'edit'): void
   (e: 'save'): void
+  /** «В стикеры»: картинка уходит в свои стикеры. */
+  (e: 'make-sticker'): void
   (e: 'delete'): void
   (e: 'report'): void
   (e: 'toggle-pin'): void
@@ -217,7 +225,7 @@ const pickCtxEmoji = (emoji: string): void => {
 
 /** Действие из листа: закрываем лист и повторяем обычный emit. */
 const ctxAction = (
-  action: 'reply' | 'forward' | 'copy' | 'pin' | 'save' | 'edit' | 'report' | 'delete'
+  action: 'reply' | 'forward' | 'copy' | 'pin' | 'save' | 'sticker' | 'edit' | 'report' | 'delete'
 ): void => {
   close()
   if (action === 'reply') emit('set-reply')
@@ -225,6 +233,7 @@ const ctxAction = (
   else if (action === 'copy') emit('copy')
   else if (action === 'pin') emit('toggle-pin')
   else if (action === 'save') emit('save')
+  else if (action === 'sticker') emit('make-sticker')
   else if (action === 'edit') emit('edit')
   else if (action === 'report') emit('report')
   else emit('delete')

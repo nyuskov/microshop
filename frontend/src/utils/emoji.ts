@@ -1,11 +1,16 @@
 /**
- * Эмодзи для панели в поле ввода: категории + недавние.
+ * Эмодзи и стикеры: правила «крупного» рендера, «крупные» эмодзи-стикеры и память
+ * о недавних.
  *
- * Здесь же — правила «крупного» рендера: сообщение из одних эмодзи (1–3 штуки)
- * показывается без пузыря и большим размером, как стикер в Telegram. Это ещё и
- * способ отправлять стикеры без отдельного знборника: один тап в панели — и
- * эмодзи уходит сообщением.
+ * Каталог эмодзи лежит отдельно — `utils/emojiCatalog.ts` (он генерируется из
+ * списка Unicode), а здесь — только правила и память панели.
+ *
+ * «Крупный» рендер: сообщение из одних эмодзи (1–3 штуки) показывается без
+ * пузыря и большим размером, как стикер в Telegram. Это ещё и способ отправлять
+ * «стикеры» без отдельного знборника: один тап в панели — и эмодзи уходит
+ * сообщением.
  */
+
 export interface EmojiGroup {
   key: string
   title: string
@@ -18,10 +23,16 @@ export const EMOJI_RECENT_KEY = 'pismo_emoji_recent'
 /** Сколько недавних храним. */
 export const EMOJI_RECENT_LIMIT = 16
 
-/** Ключ localStorage со списком недавних СТИКЕРОВ (отдельно от эмодзи). */
+/** Ключ localStorage со списком недавних СТИКЕРОВ-КАРТИНОК (по устройству). */
+export const STICKER_IMAGE_RECENT_KEY = 'pismo_sticker_image_recent'
+
+/** Сколько недавних стикеров-картинок храним: два ряда в панели. */
+export const STICKER_IMAGE_RECENT_LIMIT = 16
+
+/** Ключ localStorage со списком недавних «крупных» эмодзи-стикеров. */
 export const STICKER_RECENT_KEY = 'pismo_sticker_recent'
 
-/** Сколько недавних стикеров храним: сетка из двух рядов. */
+/** Сколько недавних эмодзи-стикеров храним: сетка из двух рядов. */
 export const STICKER_RECENT_LIMIT = 16
 
 /**
@@ -65,106 +76,6 @@ export const emojiLayout = (text: string): EmojiLayout => {
   if (count > EMOJI_STICKER_MAX) return 'text'
   return count <= 2 ? 'huge' : 'large'
 }
-
-export const EMOJI_GROUPS: EmojiGroup[] = [
-  {
-    key: 'smileys',
-    title: 'Смайлы',
-    items: [
-      '😀',
-      '😁',
-      '😂',
-      '🤣',
-      '😊',
-      '😍',
-      '😘',
-      '😜',
-      '🤪',
-      '😎',
-      '🤩',
-      '🥳',
-      '😇',
-      '🙂',
-      '😉',
-      '😌',
-      '😔',
-      '😢',
-      '😭',
-      '😤',
-      '😡',
-      '🤯',
-      '😱',
-      '🥶',
-      '😴',
-      '🤒',
-      '🤢',
-      '🥺',
-      '🤗',
-      '🫡',
-      '😅',
-      '🙃'
-    ]
-  },
-  {
-    key: 'gestures',
-    title: 'Жесты',
-    items: [
-      '👍',
-      '👎',
-      '👏',
-      '🙌',
-      '🤝',
-      '💪',
-      '🙏',
-      '👌',
-      '✌️',
-      '🤞',
-      '🖐️',
-      '🤙',
-      '👋',
-      '💅',
-      '🤘',
-      '🫶'
-    ]
-  },
-  {
-    key: 'hearts',
-    title: 'Сердца',
-    items: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '💖', '💔']
-  },
-  {
-    key: 'symbols',
-    title: 'Символы',
-    items: [
-      '🔥',
-      '✨',
-      '⭐',
-      '🌟',
-      '🎉',
-      '🎂',
-      '🎁',
-      '🎊',
-      '🚀',
-      '🏆',
-      '⚽',
-      '🏀',
-      '🎮',
-      '🎧',
-      '🎵',
-      '🎸'
-    ]
-  },
-  {
-    key: 'food',
-    title: 'Еда',
-    items: ['☕', '🍕', '🍔', '🍟', '🍰', '🌮', '🍣', '🍩', '🍺', '🥂']
-  },
-  {
-    key: 'nature',
-    title: 'Разное',
-    items: ['🌹', '🌸', '🌈', '☀️', '❄️', '⚡', '🍀', '👀', '💬', '✅', '❌', '❓']
-  }
-]
 
 /** Читает недавние эмодзи из хранилища (устойчиво к мусору внутри). */
 export function readRecentEmoji(storage: Storage | undefined): string[] {
@@ -210,7 +121,37 @@ export function readRecentStickers(storage: Storage | undefined): string[] {
   }
 }
 
-/** Запоминает отправленный стикер (в начало, без дублей). */
+/** Запоминает отправленный эмодзи-стикер (в начало, без дублей). */
 export function rememberSticker(recent: string[], sticker: string): string[] {
   return [sticker, ...recent.filter((item) => item !== sticker)].slice(0, STICKER_RECENT_LIMIT)
+}
+
+/**
+ * Недавние стикеры-картинки — по id, а не по ссылке.
+ *
+ * Так удалённый стикер сам исчезает из «Недавних»: список сверяется с
+ * библиотекой, и битой ссылки в панели не бывает.
+ */
+export function readRecentStickerIds(storage: Storage | undefined): number[] {
+  if (!storage) return []
+  try {
+    const raw = storage.getItem(STICKER_IMAGE_RECENT_KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((item): item is number => typeof item === 'number' && Number.isInteger(item))
+      .slice(0, STICKER_IMAGE_RECENT_LIMIT)
+  } catch {
+    // Битое значение в localStorage не должно ломать панель стикеров.
+    return []
+  }
+}
+
+/** Запоминает отправленный стикер-картинку (в начало, без дублей). */
+export function rememberStickerId(recent: number[], stickerId: number): number[] {
+  return [stickerId, ...recent.filter((item) => item !== stickerId)].slice(
+    0,
+    STICKER_IMAGE_RECENT_LIMIT
+  )
 }

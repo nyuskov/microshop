@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 
 import MessageComposer from '@/components/messenger/MessageComposer.vue'
 import MessageRow from '@/components/messenger/MessageRow.vue'
@@ -42,7 +43,11 @@ function mountComposer(text: string, members: ChatUser[] = [IVAN, ANNA]) {
       newMessage: text,
       'onUpdate:newMessage': (value: string) => wrapper.setProps({ newMessage: value })
     },
-    global: { stubs: { 'q-icon': true, VoiceRecorderBar: true, GifPicker: true } }
+    global: {
+      // Композер держит паки стикеров в сторе, поэтому Pinia обязательна.
+      plugins: [createPinia()],
+      stubs: { 'q-icon': true, VoiceRecorderBar: true, GifPicker: true }
+    }
   })
   return wrapper
 }

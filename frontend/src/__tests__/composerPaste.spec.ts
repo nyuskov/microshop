@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 
 import MessageComposer from '@/components/messenger/MessageComposer.vue'
 
@@ -22,7 +23,11 @@ function mountComposer() {
       mentionMembers: [],
       newMessage: ''
     },
-    global: { stubs: { 'q-icon': true, VoiceRecorderBar: true, GifPicker: true } }
+    global: {
+      // Композер держит паки стикеров в сторе, поэтому Pinia обязательна.
+      plugins: [createPinia()],
+      stubs: { 'q-icon': true, VoiceRecorderBar: true, GifPicker: true }
+    }
   })
 }
 

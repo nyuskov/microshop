@@ -3,8 +3,9 @@
     <button
       v-if="isImageFile(file)"
       class="attachment attachment-image-btn"
+      :class="{ sticker: props.sticker }"
       type="button"
-      :title="`Открыть изображение «${file.name}»`"
+      :title="props.sticker ? 'Открыть стикер' : `Открыть изображение «${file.name}»`"
       @click.stop="emit('open-image')"
     >
       <img
@@ -97,6 +98,11 @@ const props = defineProps<{
   message: Message
   /** Строка уже доходила до экрана — только тогда расшифровываем содержимое. */
   rowVisible: boolean
+  /**
+   * Картинка-стикер (`kind='sticker'`): показываем крупно и без рамки — в ленте
+   * это не «вложение с превью», а сам стикер.
+   */
+  sticker?: boolean
 }>()
 
 const emit = defineEmits<{ (e: 'open-image'): void }>()
@@ -150,6 +156,14 @@ const lockedLabel = computed<string>(() =>
   max-height: 260px;
   border-radius: 8px;
   display: block;
+}
+
+/* Стикер: квадрат поменьше и без скругления фона — это не «превью фото», а
+   картинка-эмоция, поэтому она не должна выглядеть как вложенный снимок. */
+.attachment-image-btn.sticker .attachment-image {
+  max-width: 160px;
+  max-height: 160px;
+  border-radius: 0;
 }
 
 .attachment-video {

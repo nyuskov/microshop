@@ -161,8 +161,8 @@
           </button>
         </div>
         <div v-if="extrasPanel === 'emoji'" class="emoji-panel">
-          <!-- Категории: недавние + группы по смыслу. Лента листается колесом и
-               перетаскиванием (мышь) и свайпом — см. useHScroll. -->
+          <!-- Полоска значков: недавние и категории эмодзи. Лента листается
+               колесом и перетаскиванием (мышь) и свайпом. -->
           <div
             ref="emojiCatsEl"
             class="emoji-cats"
@@ -184,10 +184,12 @@
               class="emoji-cat"
               :class="{ active: emojiTab === tab.key }"
               role="tab"
+              :title="tab.title"
+              :aria-label="tab.title"
               :aria-selected="emojiTab === tab.key"
               @click="emojiTab = tab.key"
             >
-              {{ tab.title }}
+              {{ tab.icon }}
             </button>
           </div>
           <p v-if="!emojiItems.length" class="emoji-hint">
@@ -205,16 +207,30 @@
           </div>
         </div>
         <div v-else-if="extrasPanel === 'stickers'" class="stickers-panel">
-          <!-- Стикеры — те же эмодзи, но крупно и без пузыря: тап отправляет
-               сразу, как в Telegram (в отличие от панели «Эмодзи», которая
-               вставляет символ в набранный текст). -->
-          <p class="stickers-hint">Стикер отправляется сразу — как сообщение.</p>
+          <!-- Стикеры: мои картинки (тап — сразу сообщение) и «крупные»
+               эмодзи. Управление паками — за кнопкой с шестерёнкой. -->
+          <div class="stickers-bar">
+            <span class="stickers-hint">Стикер уходит сразу — как сообщение.</span>
+            <button type="button" class="stickers-tool" @click="pickStickers">
+              <q-icon :name="icon('image')" size="16px" />
+              Добавить
+            </button>
+            <button
+              type="button"
+              class="stickers-tool"
+              title="Мои паки стикеров"
+              @click="stickerPacksOpen = true"
+            >
+              <q-icon :name="icon('tune')" size="16px" />
+              Паки
+            </button>
+          </div>
           <div
             ref="stickerCatsEl"
             class="emoji-cats"
             :class="{ 'fade-start': stickerCatsEdges.start, 'fade-end': stickerCatsEdges.end }"
             role="tablist"
-            aria-label="Категории стикеров"
+            aria-label="Паки стикеров"
             @scroll.passive="stickerCatsRefresh"
             @wheel.passive="stickerCats.onWheel"
             @pointerdown="stickerCats.onPointerDown"
@@ -236,12 +252,28 @@
               {{ tab.title }}
             </button>
           </div>
-          <p v-if="!stickerItems.length" class="emoji-hint">
-            Здесь появятся стикеры, которые вы отправляли последними.
+          <p
+            v-if="!currentStickerTab?.images.length && !currentStickerTab?.emojis.length"
+            class="emoji-hint"
+          >
+            Здесь появятся стикеры, которые вы отправляли последними. Свои картинки добавляются
+            кнопкой «Добавить»: PNG, WebP или GIF до 512 КБ.
           </p>
+          <div v-else-if="currentStickerTab?.kind === 'image'" class="extras-grid stickers-grid">
+            <button
+              v-for="sticker in currentStickerTab.images"
+              :key="sticker.id"
+              class="sticker-option sticker-image"
+              title="Отправить стикер"
+              aria-label="Отправить стикер"
+              @click="sendImageSticker(sticker)"
+            >
+              <img :src="mediaUrl(sticker.file_url)" alt="" loading="lazy" />
+            </button>
+          </div>
           <div v-else class="extras-grid stickers-grid">
             <button
-              v-for="sticker in stickerItems"
+              v-for="sticker in currentStickerTab?.emojis ?? []"
               :key="sticker"
               class="sticker-option"
               :title="`Отправить ${sticker}`"
@@ -251,6 +283,15 @@
               {{ sticker }}
             </button>
           </div>
+          <!-- Скрытый input: файлы уходят в текущий пак (см. onStickersSelected). -->
+          <input
+            ref="stickerInput"
+            class="sr-only-input"
+            type="file"
+            :accept="STICKER_ACCEPT"
+            multiple
+            @change="onStickersSelected"
+          />
         </div>
         <div v-else-if="extrasPanel === 'gif' && chatId !== null" class="extras-gif">
           <GifPicker
@@ -260,19 +301,21 @@
           />
         </div>
       </div>
+
+      <!-- Панель «Мои стикеры»: паки, загрузка, порядок. -->
+      <StickerPacksDialog v-if="stickerPacksOpen" @close="stickerPacksOpen = false" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue'
 import type { ChatUser, Message } from '@/types'
 import { messageSnippet } from '@/utils/media'
 import { applyMention, mentionBeforeCaret } from '@/utils/mentions'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import {
-  EMOJI_GROUPS,
   EMOJI_RECENT_KEY,
   readRecentEmoji,
   readRecentStickers,
@@ -280,6 +323,18 @@ import {
   rememberSticker,
   STICKER_RECENT_KEY
 } from '@/utils/emoji'
+import type { EmojiCategory } from '@/utils/emojiCatalog'
+import { mediaUrl } from '@/config'
+import { useStickersStore } from '@/stores/stickers'
+import { STICKER_ACCEPT, type StickerItem } from '@/services/stickers'
+/**
+ * Диалог «Мои стикеры» грузим лениво: он нужен только тем, кто открывает
+ * панель стикеров и нажимает «Паки», а в основном чанке это лишние килобайты
+ * при каждом запуске приложения.
+ */
+const StickerPacksDialog = defineAsyncComponent(
+  () => import('@/components/messenger/StickerPacksDialog.vue')
+)
 import { useHScroll } from '@/composables/useHScroll'
 import VoiceRecorderBar from '@/components/media/VoiceRecorderBar.vue'
 import GifPicker from '@/components/media/GifPicker.vue'
@@ -312,15 +367,84 @@ const newMessage = defineModel<string>('newMessage', { required: true })
 /** Есть ли текст в поле (для скрытия кнопок файла/микрофона при наборе). */
 const hasText = computed(() => newMessage.value.trim().length > 0)
 
-// ---------- Эмодзи: недавние + категории ----------
+// ---------- Эмодзи: категории и недавние ----------
+const stickersStore = useStickersStore()
+
+/** Ключ служебной вкладки «Недавние»: остальные — категории каталога. */
+const RECENT_KEY = 'recent'
+
+/** Диалог «Мои стикеры» (паки, загрузка, порядок). */
+const stickerPacksOpen = ref(false)
+
 const emojiRecent = ref<string[]>(readRecentEmoji(globalThis.localStorage))
-const emojiTab = ref<string>(emojiRecent.value.length ? 'recent' : EMOJI_GROUPS[0].key)
+const emojiTab = ref<string>(emojiRecent.value.length ? RECENT_KEY : '')
+
+/**
+ * Каталог эмодзи (~1900 символов) подгружаем динамическим импортом при первом
+ * открытии панели.
+ *
+ * В основном чанке он стоил бы +8–10 КБ на каждый запуск приложения — ради
+ * панели, которую открывают не все и не сразу. Ровно поэтому же лениво грузится
+ * GIF (`GifPicker.vue`).
+ */
+const emojiCategories = ref<EmojiCategory[]>([])
+let emojiCategoriesLoading: Promise<void> | null = null
+
+const ensureEmojiCategories = async (): Promise<void> => {
+  if (emojiCategories.value.length) return
+  if (!emojiCategoriesLoading) {
+    emojiCategoriesLoading = import('@/utils/emojiCatalog')
+      .then((module) => {
+        emojiCategories.value = module.EMOJI_CATEGORIES
+      })
+      .finally(() => {
+        emojiCategoriesLoading = null
+      })
+  }
+  await emojiCategoriesLoading
+}
+
+/**
+ * Вкладки панели: недавние и все группы эмодзи.
+ *
+ * Без персональных «паков»: эмодзи одинаков у всех, а паками человек только
+ * путался бы, собирая нужные темы вручную. Значок вкладки — эмодзи группы,
+ * поэтому подписи не нужны: они остаются в `title` для подсказки и скринридера.
+ */
 const emojiTabs = computed(() => [
-  { key: 'recent', title: 'Недавние', items: emojiRecent.value },
-  ...EMOJI_GROUPS
+  { key: RECENT_KEY, title: 'Недавние', icon: '🕒', items: emojiRecent.value },
+  ...emojiCategories.value.map((category) => ({
+    key: category.key,
+    title: category.title,
+    icon: category.icon,
+    items: category.items
+  }))
 ])
 const emojiItems = computed(
   () => emojiTabs.value.find((tab) => tab.key === emojiTab.value)?.items ?? []
+)
+
+// Панель могла «потерять» текущую вкладку: например, очистили недавние.
+watch(emojiTabs, (tabs) => {
+  if (tabs.some((tab) => tab.key === emojiTab.value)) return
+  emojiTab.value = tabs[0]?.key ?? ''
+})
+
+// Панель открыли — грузим каталог и ставим вкладку по умолчанию (недавние,
+// если они есть, иначе первую группу).
+watch(
+  () => props.extrasPanel,
+  (panel) => {
+    if (panel !== 'emoji') return
+    void ensureEmojiCategories().then(() => {
+      if (!emojiTab.value) {
+        emojiTab.value = emojiRecent.value.length
+          ? RECENT_KEY
+          : (emojiCategories.value[0]?.key ?? '')
+      }
+    })
+  },
+  { immediate: true }
 )
 
 /** Вставляет эмодзи и запоминает его для раздела «Недавние». */
@@ -335,21 +459,149 @@ const pickEmoji = (emoji: string) => {
 }
 
 // ---------- Стикеры: тап = отправить ----------
-const stickerRecent = ref<string[]>(readRecentStickers(globalThis.localStorage))
-const stickerTab = ref<string>(stickerRecent.value.length ? 'recent' : EMOJI_GROUPS[0].key)
-const stickerTabs = computed(() => [
-  { key: 'recent', title: 'Недавние', items: stickerRecent.value },
-  ...EMOJI_GROUPS
-])
-const stickerItems = computed(
-  () => stickerTabs.value.find((tab) => tab.key === stickerTab.value)?.items ?? []
+// Вкладка панели: либо мои картинки (стикеры), либо «крупные» эмодзи-стикеры.
+type StickerTab = {
+  key: string
+  title: string
+  kind: 'image' | 'emoji'
+  images: StickerItem[]
+  emojis: string[]
+}
+
+const emojiStickerRecent = ref<string[]>(readRecentStickers(globalThis.localStorage))
+const stickerTab = ref<string>(RECENT_KEY)
+
+const stickerTabs = computed<StickerTab[]>(() => {
+  const tabs: StickerTab[] = [
+    { key: RECENT_KEY, title: 'Недавние', kind: 'image', images: stickersStore.recent, emojis: [] }
+  ]
+  for (const pack of stickersStore.packs) {
+    tabs.push({
+      key: `pack:${pack.id}`,
+      title: pack.title,
+      kind: 'image',
+      images: pack.stickers,
+      emojis: []
+    })
+  }
+  if (emojiStickerRecent.value.length) {
+    tabs.push({
+      key: 'emoji-recent',
+      title: 'Эмодзи',
+      kind: 'emoji',
+      images: [],
+      emojis: emojiStickerRecent.value
+    })
+  }
+  for (const category of emojiCategories.value) {
+    tabs.push({
+      key: `emoji:${category.key}`,
+      title: category.title,
+      kind: 'emoji',
+      images: [],
+      emojis: category.items
+    })
+  }
+  return tabs
+})
+
+const currentStickerTab = computed(
+  () => stickerTabs.value.find((tab) => tab.key === stickerTab.value) ?? stickerTabs.value[0]
 )
 
-// ---------- Ленты категорий: одна прокрутка на все ----------
-// Категорий («Недавние», «Смайлы», …) больше, чем влезает в полосу: без
-// прокрутки последние уезжали за край и были недоступны — особенно в веб-версии,
-// где нет свайпа. Ленты эмодзи и стикеров показываются по очереди, поэтому у
-// каждой свой экземпляр прокрутки.
+watch(stickerTabs, (tabs) => {
+  if (tabs.some((tab) => tab.key === stickerTab.value)) return
+  stickerTab.value = tabs[0]?.key ?? RECENT_KEY
+})
+
+/** Пак, в который уйдёт загрузка: текущая вкладка, иначе первый пак. */
+const uploadPackId = computed<number | null>(() => {
+  const key = currentStickerTab.value?.key ?? ''
+  if (key.startsWith('pack:')) return Number(key.slice(5))
+  return stickersStore.packs[0]?.id ?? null
+})
+
+// Библиотеку стикеров тянем только когда панель открыли: у тех, кто стикерами
+// не пользуется, лишнего запроса не будет.
+watch(
+  () => props.extrasPanel,
+  (panel) => {
+    if (panel === 'stickers') {
+      // Каталог нужен и в панели стикеров: там эмодзи-стикеры идут вкладками.
+      void ensureEmojiCategories()
+      void stickersStore.load()
+    }
+  },
+  { immediate: true }
+)
+
+/**
+ * Отправляет стикер-картинку сообщением.
+ *
+ * Сервер отдаёт стикер как файл, а сообщение отправляется теми же байтами с
+ * ``sticker=true`` — поэтому здесь только достаём картинку и просим отправить.
+ */
+const sendImageSticker = (sticker: StickerItem) => {
+  stickersStore.rememberRecent(sticker.id)
+  emit('send-sticker-image', sticker)
+}
+
+/** Отправляет эмодзи-стикер (крупный эмодзи) и запоминает его в «Недавние». */
+const sendSticker = (sticker: string) => {
+  emojiStickerRecent.value = rememberSticker(emojiStickerRecent.value, sticker)
+  try {
+    globalThis.localStorage?.setItem(STICKER_RECENT_KEY, JSON.stringify(emojiStickerRecent.value))
+  } catch {
+    // Память не сохранится — отправить это не мешает.
+  }
+  emit('send-sticker', sticker)
+}
+
+// ---------- Загрузка стикеров из панели ----------
+const stickerInput = ref<HTMLInputElement | null>(null)
+
+const pickStickers = () => {
+  stickerInput.value?.click()
+}
+
+/**
+ * Загружает выбранные картинки в текущий пак (или в первый, создав его).
+ *
+ * Ошибки показываем одним сообщением после всей пачки: обычно так грузят
+ * несколько стикеров сразу.
+ */
+const onStickersSelected = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  if (files.length === 0) return
+  void (async () => {
+    try {
+      const packId = uploadPackId.value ?? (await stickersStore.createPack()).id
+      const failed: string[] = []
+      for (const file of files) {
+        try {
+          await stickersStore.addSticker(packId, file)
+        } catch (cause) {
+          failed.push(cause instanceof Error ? cause.message : file.name)
+        }
+      }
+      if (failed.length) {
+        emit('sticker-error', `Не добавились: ${failed.join('; ')}`)
+        return
+      }
+      stickerTab.value = `pack:${packId}`
+    } catch (cause) {
+      emit('sticker-error', cause instanceof Error ? cause.message : 'Не удалось добавить стикер')
+    }
+  })()
+}
+
+// ---------- Ленты вкладок: одна прокрутка на все ----------
+// Вкладок (недавние + категории) больше, чем влезает в полосу: без прокрутки
+// последние уезжали за край и были недоступны — особенно в веб-версии, где нет
+// свайпа. Ленты эмодзи и стикеров показываются по очереди, поэтому у каждой
+// свой экземпляр прокрутки.
 const {
   el: emojiCatsEl,
   edges: emojiCatsEdges,
@@ -362,17 +614,6 @@ const {
   refresh: stickerCatsRefresh,
   ...stickerCats
 } = useHScroll(() => stickerTabs.value.length)
-
-/** Отправляет стикер сообщением и запоминает его в «Недавние». */
-const sendSticker = (sticker: string) => {
-  stickerRecent.value = rememberSticker(stickerRecent.value, sticker)
-  try {
-    globalThis.localStorage?.setItem(STICKER_RECENT_KEY, JSON.stringify(stickerRecent.value))
-  } catch {
-    // Память не сохранится — отправить это не мешает.
-  }
-  emit('send-sticker', sticker)
-}
 
 const emit = defineEmits<{
   (e: 'send-text'): void
@@ -389,8 +630,12 @@ const emit = defineEmits<{
   (e: 'set-extras-tab', tab: 'emoji' | 'stickers' | 'gif'): void
   (e: 'gif-sent'): void
   (e: 'append-emoji', emoji: string): void
-  /** Стикер: отправить сразу отдельным сообщением. */
+  /** Стикер-эмодзи: отправить сразу отдельным сообщением. */
   (e: 'send-sticker', sticker: string): void
+  /** Стикер-картинка: отправить её как сообщение (kind='sticker'). */
+  (e: 'send-sticker-image', sticker: StickerItem): void
+  /** Сообщение об ошибке добавления стикера (показывает родитель). */
+  (e: 'sticker-error', message: string): void
 }>()
 
 const attachInput = ref<HTMLInputElement | null>(null)
@@ -888,7 +1133,7 @@ watch(newMessage, () => {
   color: var(--ms-accent);
 }
 
-/* Категории эмодзи: «Недавние» + группы по смыслу. */
+/* Полоска значков: «Недавние» и категории эмодзи. */
 .emoji-cats {
   display: flex;
   gap: 4px;
@@ -903,22 +1148,20 @@ watch(newMessage, () => {
 
 .emoji-cat {
   flex: 0 0 auto;
-  padding: 3px 9px;
+  padding: 3px 7px;
   border: none;
   border-radius: 10px;
   background: var(--ms-surface-2);
   color: var(--ms-muted);
   font: inherit;
-  font-size: var(--ms-fs-xs);
-  font-weight: 500;
+  font-size: var(--ms-fs-lg);
+  line-height: 1.2;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .emoji-cat.active {
   background: var(--ms-accent-soft);
-  color: var(--ms-accent);
-  font-weight: 600;
 }
 
 .emoji-hint {
@@ -961,6 +1204,40 @@ watch(newMessage, () => {
   gap: 6px;
 }
 
+.stickers-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stickers-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 10px;
+  background: var(--ms-surface-2);
+  color: var(--ms-muted);
+  font: inherit;
+  font-size: var(--ms-fs-xs);
+  cursor: pointer;
+}
+
+.stickers-tool:hover {
+  background: var(--ms-hover);
+  color: var(--ms-accent);
+}
+
+.sr-only-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
 .stickers-hint {
   margin: 0;
   font-size: var(--ms-fs-xs);
@@ -988,6 +1265,13 @@ watch(newMessage, () => {
 .sticker-option:hover {
   background: var(--ms-hover);
   transform: scale(1.08);
+}
+
+/* Стикер-картинка: показываем целиком и не растягиваем за пропорции. */
+.sticker-image img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 
 .emoji-option {

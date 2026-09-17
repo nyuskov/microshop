@@ -43,6 +43,10 @@
         <q-icon :name="icon('bookmark')" size="16px" />
         <span>Сохранить в Сохранённые</span>
       </button>
+      <button v-if="canMakeSticker" class="more-item" @click="onMakeSticker">
+        <q-icon :name="icon('add_reaction')" size="16px" />
+        <span>В стикеры</span>
+      </button>
       <!-- Жалоба на чужое сообщение — требование RuStore для UGC-приложений. -->
       <button v-if="!isOwn" class="more-item" @click="onReport">
         <q-icon :name="icon('flag')" size="16px" />
@@ -91,6 +95,8 @@ const props = defineProps<{
   isOwn: boolean
   /** Можно ли сохранить сообщение в «Сохранённые». */
   canSave: boolean
+  /** Можно ли сделать из сообщения стикер (только открытая картинка). */
+  canMakeSticker?: boolean
   /** Открыта ли палитра реакций (состояние представления). */
   emojiPickerOpen: boolean
   /** Строка уже доходила до экрана — только тогда рисуем панель. */
@@ -105,6 +111,8 @@ const emit = defineEmits<{
   (e: 'copy'): void
   (e: 'edit'): void
   (e: 'save'): void
+  /** «В стикеры»: картинка уходит в свои стикеры. */
+  (e: 'make-sticker'): void
   (e: 'delete'): void
   (e: 'report'): void
   (e: 'toggle-pin'): void
@@ -197,6 +205,11 @@ const onEdit = () => {
 const onSave = () => {
   moreOpen.value = false
   emit('save')
+}
+
+const onMakeSticker = () => {
+  moreOpen.value = false
+  emit('make-sticker')
 }
 
 const onDelete = () => {

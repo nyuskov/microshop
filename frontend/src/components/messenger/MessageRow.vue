@@ -46,7 +46,8 @@
       class="msg-bubble"
       :class="{
         'round-video-only': isRoundVideoOnly(message),
-        'sticker-only': stickerLayout !== 'text'
+        'sticker-only': stickerLayout !== 'text',
+        'sticker-image': isStickerMessage(message)
       }"
     >
       <!-- Скрыто до проверки модератором: такое сообщение видит только автор,
@@ -116,6 +117,7 @@
       <MessageAttachment
         :message="message"
         :row-visible="rowVisible"
+        :sticker="isStickerMessage(message)"
         @open-image="emit('open-image')"
       />
 
@@ -204,6 +206,7 @@
       :message="message"
       :is-own="isOwn"
       :can-save="canSave"
+      :can-make-sticker="canMakeSticker"
       :emoji-picker-open="emojiPickerOpen"
       :row-visible="rowVisible"
       @toggle-emoji-picker="emit('toggle-emoji-picker')"
@@ -213,6 +216,7 @@
       @copy="emit('copy')"
       @edit="emit('edit')"
       @save="emit('save')"
+      @make-sticker="emit('make-sticker')"
       @delete="emit('delete')"
       @report="emit('report')"
       @toggle-pin="emit('toggle-pin')"
@@ -225,6 +229,7 @@
       :message="message"
       :is-own="isOwn"
       :can-save="canSave"
+      :can-make-sticker="canMakeSticker"
       :selectable="selectable"
       :selection-mode="selectionMode"
       :emoji-picker-open="emojiPickerOpen"
@@ -234,6 +239,7 @@
       @copy="emit('copy')"
       @edit="emit('edit')"
       @save="emit('save')"
+      @make-sticker="emit('make-sticker')"
       @delete="emit('delete')"
       @report="emit('report')"
       @toggle-pin="emit('toggle-pin')"
@@ -254,7 +260,14 @@ import { avatarStyle, initials } from '@/utils/user'
 import { highlightQuery, splitMessageText } from '@/utils/mentions'
 import { followLink } from '@/composables/useExternalLinkGuard'
 import { useVisibleOnce } from '@/composables/useVisibleOnce'
-import { callMessageIcon, callMessageText, effectiveFile, isRoundVideoOnly } from '@/utils/media'
+import {
+  callMessageIcon,
+  callMessageText,
+  canBecomeSticker,
+  effectiveFile,
+  isRoundVideoOnly,
+  isStickerMessage
+} from '@/utils/media'
 import type { SeriesKind } from '@/utils/thread'
 import LinkPreviewCard from '@/components/messenger/LinkPreviewCard.vue'
 import MessageActionSheet from '@/components/messenger/MessageActionSheet.vue'
@@ -407,6 +420,8 @@ const emit = defineEmits<{
   (e: 'edit'): void
   (e: 'forward'): void
   (e: 'save'): void
+  /** «В стикеры»: скопировать картинку сообщения в свои стикеры. */
+  (e: 'make-sticker'): void
   (e: 'delete'): void
   /** Жалоба на сообщение (модерация UGC, требование RuStore). */
   (e: 'report'): void
@@ -454,6 +469,9 @@ const callIcon = computed<string>(() => callMessageIcon(props.message))
 
 /** «Сохранить» доступно для обычных сообщений (не для отметок о звонках). */
 const canSave = computed<boolean>(() => props.message.kind !== 'call')
+
+/** «В стикеры» — только для открытых картинок (см. `canBecomeSticker`). */
+const canMakeSticker = computed<boolean>(() => canBecomeSticker(props.message))
 
 // ---------- Режим выделения сообщений (долгое нажатие; как в чатах) ----------
 let holdTimer: number | null = null

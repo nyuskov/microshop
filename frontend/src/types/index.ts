@@ -233,8 +233,8 @@ export interface Message {
    * текста сообщения (в API его нет); пока пусто — показываем «🔒 Вложение».
    */
   e2ee_file?: EncryptedFileMeta | null
-  /** kind: 'text' — обычное; 'call' — системная отметка о звонке. */
-  kind?: 'text' | 'call'
+  /** kind: 'text' — обычное; 'call' — системная отметка о звонке; 'sticker' — картинка-стикер. */
+  kind?: 'text' | 'call' | 'sticker'
   call_kind?: 'audio' | 'video'
   call_state?: 'completed' | 'missed' | 'declined'
   call_duration?: number
