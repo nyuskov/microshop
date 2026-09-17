@@ -16,6 +16,8 @@ __all__ = [
     "Contact",
     "DeviceKey",
     "EmailCode",
+    "EmojiFavorite",
+    "EmojiPackChoice",
     "LinkPreview",
     "LoginDevice",
     "Message",
@@ -30,6 +32,8 @@ __all__ = [
     "RegistrationInvite",
     "RuStorePushToken",
     "SecurityEvent",
+    "Sticker",
+    "StickerPack",
     "Story",
     "StoryReaction",
     "StoryView",
@@ -53,6 +57,7 @@ from .contact import Contact  # noqa: F401
 from .db_helper import DatabaseHelper, db_helper  # noqa: F401
 from .device_key import DeviceKey  # noqa: F401
 from .email_code import EmailCode  # noqa: F401
+from .emoji_pref import EmojiFavorite, EmojiPackChoice  # noqa: F401
 from .link_preview import LinkPreview  # noqa: F401
 from .login_device import LoginDevice  # noqa: F401
 from .message import Message  # noqa: F401
@@ -67,6 +72,7 @@ from .refresh_session import RefreshSession  # noqa: F401
 from .registration_invite import RegistrationInvite  # noqa: F401
 from .rustore_push_token import RuStorePushToken  # noqa: F401
 from .security_event import SecurityEvent  # noqa: F401
+from .sticker import Sticker, StickerPack  # noqa: F401
 from .story import Story, StoryReaction, StoryView  # noqa: F401
 from .telegram_bind_link import TelegramBindLink  # noqa: F401
 from .user import User  # noqa: F401

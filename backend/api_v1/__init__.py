@@ -16,8 +16,10 @@ from .link_previews.views import router as link_previews_router
 from .messages.views import router as messages_router
 from .moderation.views import router as moderation_router
 from .push.views import router as push_router
+from .stickers.views import router as stickers_router
 from .stories.views import router as stories_router
 from .system.views import router as system_router
+from .users.emoji import router as users_emoji_router
 from .users.views import router as users_router
 
 router_v1 = APIRouter()
@@ -25,6 +27,9 @@ router_v1 = APIRouter()
 router_v1.include_router(auth_router)
 router_v1.include_router(health_router)
 router_v1.include_router(jwt_router)
+# `/users/me/emoji` — ПЕРЕД users_router: иначе его перехватит маршрут с
+# параметром пути (та же грабли, что были у ссылок-приглашений).
+router_v1.include_router(users_emoji_router)
 router_v1.include_router(users_router)
 router_v1.include_router(chat_invites_router)
 router_v1.include_router(chats_router)
@@ -36,6 +41,7 @@ router_v1.include_router(link_previews_router)
 router_v1.include_router(moderation_router)
 router_v1.include_router(push_router)
 router_v1.include_router(stories_router)
+router_v1.include_router(stickers_router)
 router_v1.include_router(system_router)
 router_v1.include_router(calls_router)
 router_v1.include_router(calls_rest_router)

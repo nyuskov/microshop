@@ -143,6 +143,7 @@ async def create_attachment_message(
     reply_to_id: int | None = Query(default=None),
     mime: str | None = Query(default=None, max_length=120),
     encrypted: bool = Query(default=False),
+    sticker: bool = Query(default=False),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
@@ -151,6 +152,10 @@ async def create_attachment_message(
     При ``encrypted=true`` тело — уже зашифрованный на клиенте блоб
     (имя файла нейтральное, ``application/octet-stream``), поэтому проверять
     расширение и сигнатуры нечего: сервер такие данные не читает.
+
+    ``sticker=true`` — это картинка-стикер: сообщение получает ``kind='sticker'``
+    и рисуется без пузыря (панель стикеров шлёт так свои картинки, в том числе
+    зашифрованной копией в E2EE-чатах).
     """
     await _enforce_user_rate_limit(
         user,
@@ -171,6 +176,13 @@ async def create_attachment_message(
 
     if not encrypted:
         validate_attachment_upload(filename, content)
+    if sticker and not encrypted and not (mime or "").startswith("image/"):
+        # Зашифрованный стикер проверять нечем (на сервере шифротекст), а
+        # открытый обязан быть картинкой — иначе «стикером» уедет что угодно.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Стикер — это картинка",
+        )
     # Квота проверяется до записи на диск (см. core/media_quota.py).
     await enforce_media_quota(session, user_id=user.id, incoming_bytes=len(content))
 
@@ -186,6 +198,7 @@ async def create_attachment_message(
         text=caption.strip(),
         reply_to_id=reply_to_id,
         encrypted=encrypted,
+        kind="sticker" if sticker else "text",
     )
 
 

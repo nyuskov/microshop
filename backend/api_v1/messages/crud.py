@@ -443,6 +443,7 @@ async def send_attachment_message(
     text: str = "",
     reply_to_id: int | None = None,
     encrypted: bool = False,
+    kind: str = "text",
 ) -> dict:
     """Отправляет сообщение с файлом-вложением.
 
@@ -450,6 +451,9 @@ async def send_attachment_message(
     шифротекст), а ``text`` — зашифрованный конверт с ключом/именем файла.
     В «обычном» чате такие вложения запрещены: если положить их как есть,
     ключ и имя файла оказались бы на сервере в открытом виде.
+
+    ``kind='sticker'`` — картинка-стикер: сообщение рисуется без пузыря
+    (см. `api_v1/stickers` — панель стикеров шлёт так свои картинки).
     """
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
     await _ensure_not_blocked(session, chat_id=chat_id, user_id=user_id)
@@ -472,6 +476,7 @@ async def send_attachment_message(
         chat_id=chat_id,
         user_id=user_id,
         reply_to_id=reply_to_id,
+        kind=kind,
         file_name=file_name,
         file_url=file_url,
         mime_type=mime_type,

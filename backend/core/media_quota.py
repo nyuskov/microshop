@@ -28,7 +28,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
-from core.models import Message, Story
+from core.models import Message, Sticker, StickerPack, Story
 
 logger = logging.getLogger(__name__)
 
@@ -84,10 +84,22 @@ async def media_usage(session: AsyncSession, *, user_id: int) -> MediaUsage:
     ).where(Story.user_id == user_id)
     story_bytes, story_files = (await session.execute(story_stmt)).one()
 
+    # Стикеры лежат в media так же, как вложения: их надо считать, иначе
+    # квоту можно обойти своими наборами стикеров. Владелец — у набора (пака),
+    # сам стикер про пользователя не знает.
+    sticker_stmt = (
+        select(func.coalesce(func.sum(Sticker.file_size), 0), func.count(Sticker.id))
+        .join(StickerPack, StickerPack.id == Sticker.pack_id)
+        .where(StickerPack.owner_id == user_id)
+    )
+    sticker_bytes, sticker_files = (await session.execute(sticker_stmt)).one()
+
     return MediaUsage(
-        used_bytes=int(total_bytes or 0) + int(story_bytes or 0),
+        used_bytes=int(total_bytes or 0)
+        + int(story_bytes or 0)
+        + int(sticker_bytes or 0),
         quota_bytes=settings.media_quota_bytes,
-        files=int(files or 0) + int(story_files or 0),
+        files=int(files or 0) + int(story_files or 0) + int(sticker_files or 0),
     )
 
 
