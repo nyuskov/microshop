@@ -63,6 +63,7 @@ import { onMounted, ref } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import {
   fetchMaintenanceStatus,
+  realMaintenanceEnabled,
   setMaintenanceMode,
   type MaintenanceStatus
 } from '@/services/maintenance'
@@ -97,8 +98,11 @@ async function load() {
   try {
     const status = await fetchMaintenanceStatus()
     state.value = status
-    enabled.value = status.enabled
-    message.value = status.enabled ? status.message : ''
+    // Панель показывает НАСТОЯЩЕЕ состояние: администратору сервер отдаёт
+    // `enabled=false`, чтобы приложение перед ним не закрывалось заглушкой.
+    const real = realMaintenanceEnabled(status)
+    enabled.value = real
+    message.value = real ? status.message : ''
   } catch (err) {
     error.value = getErrorMessage(err, 'Не удалось узнать состояние режима')
   }
@@ -114,9 +118,10 @@ async function save() {
     // Пустое поле — не ошибка: сервер подставит свой текст по умолчанию.
     const status = await setMaintenanceMode(enabled.value, message.value)
     state.value = status
-    enabled.value = status.enabled
-    message.value = status.enabled ? status.message : ''
-    notice.value = status.enabled
+    const real = realMaintenanceEnabled(status)
+    enabled.value = real
+    message.value = real ? status.message : ''
+    notice.value = real
       ? 'Режим включён: пользователи видят экран технических работ.'
       : 'Режим выключен: приложение снова работает как обычно.'
   } catch (err) {

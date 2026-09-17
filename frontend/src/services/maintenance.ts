@@ -16,7 +16,24 @@ export interface MaintenanceStatus {
   message: string
   /** Когда режим переключили в текущее состояние (ISO-строка или null). */
   since: string | null
+  /**
+   * Настоящее состояние режима (только для администратора).
+   *
+   * Администратору сервер отдаёт `enabled = false`, чтобы приложение перед ним
+   * не закрывалось: иначе та же заглушка вылезала бы и у него — в том числе в
+   * старом клиенте, который о ролях ничего не знает (кэш PWA, не обновлённое
+   * приложение). Панель техработ обязана показывать именно это поле.
+   */
+  actual_enabled?: boolean | null
 }
+
+/**
+ * Настоящее состояние режима: для администратора — из `actual_enabled`.
+ *
+ * Обычному пользователю это поле не приходит — у него `enabled` и есть правда.
+ */
+export const realMaintenanceEnabled = (status: MaintenanceStatus): boolean =>
+  status.actual_enabled ?? status.enabled
 
 /** Текущее состояние режима технических работ. */
 export async function fetchMaintenanceStatus(): Promise<MaintenanceStatus> {

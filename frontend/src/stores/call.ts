@@ -330,7 +330,8 @@ export const useCallStore = defineStore('call', {
         pc,
         remoteStream: null,
         lastAnswerSdp: null,
-        iceRestartInFlight: false
+        iceRestartInFlight: false,
+        iceRestartAttempts: 0
       }
       runtime.links.set(peerId, link)
       if (primary || runtime.primaryPeerId === null) {
@@ -552,15 +553,25 @@ export const useCallStore = defineStore('call', {
         this._clearMediaWatchdog()
         return
       }
-      const pc = link.pc
+      const links = [...runtime.links.values()]
       runtime.mediaWatchdogBusy = true
-      const flowing = await (async () => {
-        try {
-          return await remoteMediaFlowing(pc)
-        } finally {
-          runtime.mediaWatchdogBusy = false
+      let flowing: boolean
+      try {
+        if (links.length > 1) {
+          // Групповой звонок: собеседник мог не подключиться вовсе (вышел из
+          // сети, отказался) — это НЕ значит, что у нас пропало медиа. Считаем
+          // связь живой, если слышно хотя бы кого-то; перезапуск ICE — только
+          // тем, от кого ничего не приходит, и без завершения звонка.
+          const results = await Promise.all(
+            links.map((item) => remoteMediaFlowing(item.pc).catch(() => false))
+          )
+          flowing = results.some(Boolean)
+        } else {
+          flowing = await remoteMediaFlowing(link.pc)
         }
-      })()
+      } finally {
+        runtime.mediaWatchdogBusy = false
+      }
       // Пока читали статистику, звонок мог закончиться или соединение — замениться.
       if (this.status !== 'active' || this._linkFor(link.peerId) !== link) return
       if (flowing) {
@@ -589,7 +600,17 @@ export const useCallStore = defineStore('call', {
       // (смена сети помогала именно потому, что заново поднимался ICE).
       if (runtime.mediaWatchdogRestarts >= 2) setRelayOnly(true)
       this.reconnecting = true
-      await this._restartIce(pc)
+      if (links.length > 1) {
+        // Перезапускаем ICE только у тех связей, от кого не идёт медиа: у
+        // остальных разговор продолжается, и завершать звонок нельзя — в группе
+        // «молчит один» это норма (он ещё не подключился или уже выпал).
+        for (const item of links) {
+          if (item.pc.iceConnectionState === 'connected' && item.remoteStream) continue
+          await this._restartIce(item.pc)
+        }
+        return
+      }
+      await this._restartIce(link.pc)
     },
 
     /** Перезапуск ICE: собираем адреса на новых интерфейсах и пересогласуем SDP. */
@@ -598,12 +619,21 @@ export const useCallStore = defineStore('call', {
       if (this.status !== 'active' || !link) return
       // Перезапуск уже идёт: второй только сожжёт попытки (см. наблюдатель медиа).
       if (runtime.iceRestartInFlight) return
-      if (runtime.iceRestartAttempts >= ICE_RESTART_MAX_ATTEMPTS) {
-        this._forceEnd('Связь потеряна — звонок завершён')
+      // Лимит попыток — СВОЙ у каждой связи. В группе один участник может так и
+      // не подключиться (вышел из сети, отказался, экзотический NAT), и если
+      // считать попытки общими, его неудачи израсходуют лимит у всех — разговор
+      // со всеми рвётся из-за одного. Именно так и выглядела «потеря связи после
+      // подключения не всех».
+      if (link.iceRestartAttempts >= ICE_RESTART_MAX_ATTEMPTS) {
+        this._patchParticipant(link.peerId, { connected: false })
+        // Все связи мертвы — вот тогда звонок действительно закончился.
+        if (!this._hasLiveLink()) {
+          this._forceEnd('Связь потеряна — звонок завершён')
+        }
         return
       }
       runtime.iceRestartInFlight = true
-      runtime.iceRestartAttempts += 1
+      link.iceRestartAttempts += 1
       this.reconnecting = true
       try {
         const pc = connection as RTCPeerConnection & { restartIce?: () => void }
@@ -624,6 +654,24 @@ export const useCallStore = defineStore('call', {
         runtime.iceRestartInFlight = false
       }
       this._scheduleIceRestart(ICE_RETRY_DELAY_MS)
+    },
+
+    /** Убирает участника из идущего группового звонка (отказ, выход, обрыв). */
+    _dropParticipant(peerId: number): void {
+      this._dropLink(peerId)
+      this.participants = this.participants.filter((item) => item.id !== peerId)
+      // Список «кто ещё говорит» — для плиток и подписи в шапке звонка.
+      this.peerName = this.participants.map((item) => item.name).join(', ')
+    },
+
+    /** Есть ли хоть одна живая связь (в 1:1 — единственная). */
+    _hasLiveLink(): boolean {
+      return [...runtime.links.values()].some(
+        (link) =>
+          link.pc.iceConnectionState === 'connected' ||
+          link.pc.iceConnectionState === 'completed' ||
+          link.pc.connectionState === 'connected'
+      )
     },
 
     /** Ожидает, пока сигнальный сокет откроется (до 9 секунд). */
@@ -844,7 +892,15 @@ export const useCallStore = defineStore('call', {
           break
         }
         case 'call-decline': {
-          if (this.status === 'outgoing' && this.callId === callId) {
+          if (this.callId !== callId) break
+          // В группе отказ одного — не конец разговора: он просто не участвует.
+          // Раньше здесь вызывался общий `_cleanup()`, и звонок обрывался у ВСЕХ
+          // — именно так выглядела «потеря связи, когда подключились не все».
+          if (this.isGroup && this.status === 'active') {
+            this._dropParticipant(from)
+            break
+          }
+          if (this.status === 'outgoing') {
             this._cleanup()
             this.notice =
               message.reason === 'busy'
@@ -856,10 +912,19 @@ export const useCallStore = defineStore('call', {
           break
         }
         case 'call-end': {
-          if (this.callId === callId) {
-            this._cleanup()
-            this.notice = 'Звонок завершён'
+          if (this.callId !== callId) break
+          // В группе «звонок завершён» от одного участника значит, что вышел
+          // именно он: остальные продолжают разговаривать.
+          if (this.isGroup && this.status === 'active') {
+            this._dropParticipant(from)
+            if (this.participants.length === 0) {
+              this._cleanup()
+              this.notice = 'Звонок завершён'
+            }
+            break
           }
+          this._cleanup()
+          this.notice = 'Звонок завершён'
           break
         }
         case 'call-ended-elsewhere': {
@@ -1806,7 +1871,7 @@ export const useCallStore = defineStore('call', {
       this.ringOutTimer = window.setTimeout(() => {
         if (this.status === 'outgoing') {
           this.cancelCall()
-          this.notice = 'Абонент не отвечает'
+          this.notice = this.isGroup ? 'Никто не ответил' : 'Абонент не отвечает'
         }
       }, RING_OUT_TIMEOUT_MS)
     },

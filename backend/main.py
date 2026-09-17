@@ -4,21 +4,18 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import jwt
 import uvicorn
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api_v1 import router_v1
-from api_v1.auth.utils import REFRESH_TOKEN_TYPE, decode_jwt
+from api_v1.auth.utils import request_from_admin
 from api_v1.events.bridge import start_bridge, stop_bridge
 from api_v1.health.views import router as health_router
 from api_v1.media.views import router as media_router
-from api_v1.users.crud import get_user_by_id
 from core import maintenance
 from core.config import settings
-from core.models import db_helper
 
 logger = logging.getLogger("pismo")
 
@@ -100,35 +97,6 @@ MAINTENANCE_EXEMPT_PREFIXES = (
 )
 
 
-async def _request_from_admin(request: Request) -> bool:
-    """Запрос от администратора или владельца? (проверяем только при техработах)
-
-    Зависимостью (`get_current_user`) тут не обойтись: решение нужно ДО
-    маршрутизации, когда сессии из `Depends` ещё нет. Проверка намеренно
-    «мягкая» — при любой осечке считаем, что это не администратор.
-    """
-    scheme, _, token = request.headers.get("authorization", "").partition(" ")
-    if scheme.lower() != "bearer" or not token:
-        return False
-    try:
-        payload = decode_jwt(token)
-    except jwt.InvalidTokenError:
-        return False
-    # Refresh-токен не должен открывать доступ как access (как в get_current_user).
-    if payload.get("type") == REFRESH_TOKEN_TYPE:
-        return False
-    subject = str(payload.get("sub", ""))
-    if not subject.isdigit():
-        return False
-    try:
-        async with db_helper.session_factory() as session:
-            user = await get_user_by_id(session, int(subject))
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Техработы: не удалось проверить администратора: %s", exc)
-        return False
-    return user is not None and user.is_active and (user.is_admin or user.is_superuser)
-
-
 @app.middleware("http")
 async def maintenance_guard(request: Request, call_next):
     """Во время техработ отвечает 503 всем, кроме администратора.
@@ -150,7 +118,7 @@ async def maintenance_guard(request: Request, call_next):
     state = await maintenance.current_state()
     if not state.enabled:
         return await call_next(request)
-    if await _request_from_admin(request):
+    if await request_from_admin(request):
         return await call_next(request)
 
     return JSONResponse(

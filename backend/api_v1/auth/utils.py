@@ -1,11 +1,12 @@
 """Вспомогательные функции для аутентификации и работы с JWT."""
 
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException, WebSocket, status
+from fastapi import Depends, HTTPException, Request, WebSocket, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +16,8 @@ from core.models.user import User
 from core.security import verify_password
 
 from ..users.crud import get_user_by_id, get_user_by_phone_number, get_user_by_username
+
+logger = logging.getLogger(__name__)
 
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=f"{settings.api_v1_prefix}/auth/token/",
@@ -240,6 +243,38 @@ async def get_current_admin(
             detail="Недостаточно прав",
         )
     return user
+
+
+async def request_from_admin(request: Request) -> bool:
+    """Запрос пришёл от администратора (или владельца)?
+
+    Проверка намеренно «мягкая» — при любой осечке считаем, что это не
+    администратор. Нужна там, где решение принимается ДО маршрутизации и сессии
+    из `Depends` ещё нет: обход экрана техработ (`maintenance_guard` в
+    ``main.py``) и публичный статус режима (``api_v1/system/views.py``) — второму
+    она нужна, чтобы администратор не видел заглушку даже в старом клиенте,
+    который о своей роли ничего не знает.
+    """
+    scheme, _, token = request.headers.get("authorization", "").partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        return False
+    try:
+        payload = decode_jwt(token)
+    except jwt.InvalidTokenError:
+        return False
+    # Refresh-токен не должен открывать доступ как access (как в get_current_user).
+    if payload.get("type") == REFRESH_TOKEN_TYPE:
+        return False
+    subject = str(payload.get("sub", ""))
+    if not subject.isdigit():
+        return False
+    try:
+        async with db_helper.session_factory() as session:
+            user = await get_user_by_id(session, int(subject))
+    except Exception as exc:  # noqa: BLE001 - проверка не должна ронять запрос
+        logger.warning("Не удалось проверить администратора по токену: %s", exc)
+        return False
+    return user is not None and user.is_active and (user.is_admin or user.is_superuser)
 
 
 async def resolve_user_from_websocket(websocket: WebSocket) -> User | None:

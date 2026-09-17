@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api_v1.auth.utils import get_current_superuser
+from api_v1.auth.utils import get_current_superuser, request_from_admin
 from core import maintenance
 from core.models import User, db_helper
 from core.rate_limit import client_ip, enforce_limit
@@ -48,6 +48,14 @@ class MaintenanceResponse(BaseModel):
     message: str
     #: Когда режим переключили в текущее состояние.
     since: datetime | None = None
+    #: Настоящее состояние режима, если смотреть глазами администратора.
+    #:
+    #: Администратору `enabled` отдаём `false`, чтобы приложение перед ним не
+    #: закрывалось ТЕМ ЖЕ ответом, который получает обычный пользователь: иначе
+    #: кэшированный клиент (старая PWA, ещё не обновлённое приложение Android),
+    #: который о своей роли ничего не знает, показал бы заглушку администратору.
+    #: Панель техработ читает именно это поле.
+    actual_enabled: bool | None = None
 
 
 class MaintenanceUpdateRequest(BaseModel):
@@ -98,6 +106,10 @@ async def maintenance_status(
 
     Доступен без входа: приложение показывает экран техработ ещё до авторизации,
     а сам запрос работает и когда весь остальной API отвечает 503.
+
+    Запрос с токеном администратора получает `enabled=false` (настоящее состояние
+    — в `actual_enabled`): администратор работает в приложении во время техработ,
+    и заглушка не должна его закрывать даже в клиенте, который о ролях не знает.
     """
     await enforce_limit(
         scope="system:maintenance-status",
@@ -106,7 +118,15 @@ async def maintenance_status(
         window_seconds=60,
         detail="Слишком много запросов. Попробуйте позже.",
     )
-    return _to_response(await maintenance.read_state(session))
+    state = await maintenance.read_state(session)
+    response = _to_response(state)
+    if state.enabled and await request_from_admin(request):
+        # Администратора заглушка не касается: пусть клиент (даже старый, который
+        # про роли не знает) получит «режим выключен», а настоящее состояние —
+        # в `actual_enabled`, по нему панель покажет переключатель правильно.
+        response.enabled = False
+        response.actual_enabled = True
+    return response
 
 
 @router.put(

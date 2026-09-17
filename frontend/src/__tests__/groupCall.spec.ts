@@ -106,3 +106,44 @@ describe('состав участников в интерфейсе', () => {
     expect(store).toMatch(/if \(this\.status !== 'active' && this\.status !== 'outgoing'\) return/)
   })
 })
+describe('разговор не рвётся из-за неподключившихся', () => {
+  it('отказ одного участника не завершает групповой звонок', () => {
+    // Раньше `call-decline` вызывал общий `_cleanup()`: звонок обрывался у всех,
+    // как только кто-то один не взял трубку.
+    const decline = store.slice(
+      store.indexOf("case 'call-decline'"),
+      store.indexOf("case 'call-end'")
+    )
+    expect(decline).toMatch(/this\.isGroup && this\.status === 'active'/)
+    expect(decline).toMatch(/this\._dropParticipant\(from\)/)
+  })
+
+  it('выход одного участника убирает только его плитку', () => {
+    const end = store.slice(
+      store.indexOf("case 'call-end'"),
+      store.indexOf("case 'call-ended-elsewhere'")
+    )
+    expect(end).toMatch(/this\._dropParticipant\(from\)/)
+    // Звонок завершается только когда в нём никого не осталось.
+    expect(end).toMatch(/participants\.length === 0/)
+  })
+
+  it('ушедший убирается вместе со своей связью', () => {
+    expect(store).toMatch(/this\._dropLink\(peerId\)[\s\S]{0,120}filter/)
+  })
+
+  it('Lимит попыток ICE считается на связь, а не на весь звонок', () => {
+    // Один собеседник мог так и не подключиться: его неудачи не должны
+    // израсходовать лимит у остальных (иначе «связь потеряна» для всех).
+    expect(store).toMatch(/link\.iceRestartAttempts >= ICE_RESTART_MAX_ATTEMPTS/)
+    expect(store).toMatch(/if \(!this\._hasLiveLink\(\)\)/)
+  })
+
+  it('наблюдатель медиа в группе довольствуется живой связью', () => {
+    expect(store).toMatch(/results\.some\(Boolean\)/)
+  })
+
+  it('если никто не ответил — так и говорим', () => {
+    expect(store).toMatch(/this\.notice = this\.isGroup \? 'Никто не ответил'/)
+  })
+})

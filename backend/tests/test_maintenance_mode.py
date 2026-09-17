@@ -138,6 +138,9 @@ async def test_off_by_default(api: _ApiCtx) -> None:
         "enabled": False,
         "message": maintenance.DEFAULT_MESSAGE,
         "since": None,
+        # Поле для администратора: у остальных оно приходит как null и клиентом
+        # игнорируется (`actual_enabled ?? enabled`).
+        "actual_enabled": None,
     }
 
 
@@ -306,3 +309,51 @@ async def test_broken_token_does_not_open_access(api: _ApiCtx) -> None:
         "/api/v1/chats/", headers={"Authorization": "Bearer not-a-token"}
     )
     assert fake.status_code == 503, fake.text
+
+
+async def test_admin_does_not_see_the_screen(api: _ApiCtx) -> None:
+    """Администратору публичный статус говорит «режим выключен».
+
+    Иначе заглушка вылезала бы и у него — в том числе в старом клиенте (кэш PWA,
+    ещё не обновлённое приложение Android), который о ролях ничего не знает:
+    решение «показывать ли экран» он принимает по этому самому ответу. Настоящее
+    состояние сервер отдаёт отдельным полем — по нему админская панель рисует
+    переключатель.
+    """
+    admin = await api.make_user(admin=True)
+    token = await api.token_for(admin)
+    await api.switch(enabled=True)
+
+    response = await api.client.get(
+        "/api/v1/system/maintenance/", headers=api.auth(token)
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["enabled"] is False
+    assert body["actual_enabled"] is True
+
+
+async def test_owner_sees_real_state_too(api: _ApiCtx) -> None:
+    """Владелец получает то же: он тоже работает во время техработ."""
+    owner = await api.make_user(owner=True)
+    token = await api.token_for(owner)
+    await api.switch(enabled=True)
+
+    body = (
+        await api.client.get("/api/v1/system/maintenance/", headers=api.auth(token))
+    ).json()
+    assert (body["enabled"], body["actual_enabled"]) == (False, True)
+
+
+async def test_regular_user_gets_plain_status(api: _ApiCtx) -> None:
+    """Обычному пользователю заглушку показываем: `enabled=true`, без лишних полей."""
+    regular = await api.make_user()
+    token = await api.token_for(regular)
+    await api.switch(enabled=True)
+
+    body = (
+        await api.client.get("/api/v1/system/maintenance/", headers=api.auth(token))
+    ).json()
+    assert body["enabled"] is True
+    # Настоящее состояние — только у админов; у остальных поля нет (или null).
+    assert body.get("actual_enabled") is None

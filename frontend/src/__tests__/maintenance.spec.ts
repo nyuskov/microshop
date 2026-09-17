@@ -33,6 +33,9 @@ const backendViews = readFileSync(
 )
 const backendMain = readFileSync(resolve(process.cwd(), '../backend/main.py'), 'utf8')
 const backendCore = readFileSync(resolve(process.cwd(), '../backend/core/maintenance.py'), 'utf8')
+// Проверка «запрос от администратора» живёт в общем модуле: её используют и
+// заглушка техработ, и публичный статус (чтобы админ не видел экран).
+const backendAuth = readFileSync(resolve(process.cwd(), '../backend/api_v1/auth/utils.py'), 'utf8')
 
 describe('экран технических работ', () => {
   it('это полноэкранная заглушка поверх приложения в стиле остальных ошибок', () => {
@@ -70,7 +73,8 @@ describe('экран технических работ', () => {
     expect(utils).toMatch(/export function setMaintenanceExempt/)
     expect(app).toContain('setMaintenanceExempt')
     expect(app).toMatch(/watch\(\(\) => authStore\.isAdmin, setMaintenanceExempt/)
-    expect(backendMain).toMatch(/user\.is_admin or user\.is_superuser/)
+    expect(backendAuth).toMatch(/user\.is_admin or user\.is_superuser/)
+    expect(backendMain).toMatch(/if await request_from_admin\(request\)/)
   })
 })
 
@@ -132,5 +136,16 @@ describe('рубильник в админской панели', () => {
     // Текст на экране задаётся администратором, предел совпадает с серверным.
     expect(settings).toMatch(/MESSAGE_MAX_LENGTH = 300/)
     expect(backendViews).toMatch(/MESSAGE_MAX_LENGTH = 300/)
+  })
+  it('заглушку не показывает администратору даже старый клиент', () => {
+    // Сервер отдаёт администратору `enabled=false`, а настоящее состояние — в
+    // `actual_enabled`: клиент принимает решение по первому полю, поэтому
+    // кэшированное приложение (старая PWA, Android) тоже не закроет ему вход.
+    expect(backendViews).toMatch(/state\.enabled and await request_from_admin\(request\)/)
+    expect(backendViews).toMatch(/response\.enabled = False/)
+    expect(backendViews).toMatch(/response\.actual_enabled = True/)
+    // Панель техработ при этом обязана показывать НАСТОЯЩЕЕ состояние.
+    expect(service).toContain('realMaintenanceEnabled')
+    expect(settings).toContain('realMaintenanceEnabled(status)')
   })
 })
