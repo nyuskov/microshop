@@ -1627,6 +1627,9 @@ export const useCallStore = defineStore('call', {
           to_user_id: targetId,
           call_id: this.callId ?? '',
           sharing,
+          // В каком режиме продолжается звонок: собеседник вернёт аудио-интерфейс,
+          // если показ экрана закончился в аудиозвонке.
+          kind: sharing ? 'video' : this.kind,
           ...(this.isGroup ? { group: true, chat_id: this.groupChatId ?? undefined } : {})
         })
       }
