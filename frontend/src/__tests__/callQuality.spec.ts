@@ -2,13 +2,24 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 
 import {
+  AUDIO_BITRATE_BAD,
+  AUDIO_BITRATE_FAIR,
+  AUDIO_BITRATE_GOOD,
   AUDIO_OPUS_PARAMS,
+  SCREEN_BITRATE,
   VIDEO_BITRATE_BAD,
   VIDEO_BITRATE_FAIR,
   VIDEO_BITRATE_GOOD,
+  VIDEO_FRAMERATE_BAD,
+  VIDEO_FRAMERATE_GOOD,
+  audioBitrateFor,
+  jitterTargetsFor,
+  qualityStepFor,
   tuneOpusSdp,
   tunedDescription,
-  videoBitrateFor
+  videoBitrateFor,
+  videoFramerateFor,
+  videoScaleFor
 } from '@/stores/call/quality'
 import type { CallDiagnostics } from '@/utils/callStats'
 
@@ -42,6 +53,13 @@ const diagnostics = (patch: Partial<CallDiagnostics>): CallDiagnostics => ({
   relayProtocol: '',
   rttMs: 40,
   lossPercent: 0,
+  remoteLossPercent: 0,
+  availableOutgoingKbps: 0,
+  qualityLimitation: '',
+  jitterBufferDelayMs: 0,
+  framesDropped: 0,
+  freezeCount: 0,
+  nackCount: 0,
   jitterMs: 5,
   inboundKbps: 0,
   outboundKbps: 0,
@@ -60,8 +78,9 @@ describe('параметры Opus в SDP', () => {
 
   it('НЕ включает DTX: экономия тишины слышна щелчками на стыках фраз', () => {
     expect(AUDIO_OPUS_PARAMS).not.toContain('usedtx')
-    // 20 мс пакетирование (по умолчанию) — меньше пакетов на плохом канале.
-    expect(AUDIO_OPUS_PARAMS).not.toContain('minptime')
+    // 20 мс пакетирование: мельче — больше пакетов и больше потерь на канале.
+    expect(AUDIO_OPUS_PARAMS).toContain('minptime=20')
+    expect(AUDIO_OPUS_PARAMS).not.toContain('minptime=10')
   })
 
   it('подменяет существующий fmtp и сохраняет структуру SDP', () => {
@@ -113,6 +132,42 @@ describe('битрейт видео по качеству сети', () => {
   })
 })
 
+describe('ступени для звука, разрешения и кадров', () => {
+  it('сужает звук на потерях: мелкие пакеты теряются реже', () => {
+    expect(audioBitrateFor(diagnostics({}))).toBe(AUDIO_BITRATE_GOOD)
+    expect(audioBitrateFor(diagnostics({ lossPercent: 3 }))).toBe(AUDIO_BITRATE_FAIR)
+    expect(audioBitrateFor(diagnostics({ lossPercent: 12 }))).toBe(AUDIO_BITRATE_BAD)
+  })
+
+  it('учитывает потери НАШЕГО потока, о которых сообщил собеседник', () => {
+    // Приём чистый, но у собеседника пропадает каждый десятый пакет — это наш аплинк.
+    expect(qualityStepFor(diagnostics({ remoteLossPercent: 10 }))).toBe('bad')
+    expect(videoScaleFor(diagnostics({ remoteLossPercent: 3 }))).toBe(1.5)
+  })
+
+  it('ужимает картинку при плохой связи', () => {
+    expect(videoScaleFor(diagnostics({}))).toBe(1)
+    expect(videoScaleFor(diagnostics({ lossPercent: 3 }))).toBe(1.5)
+    expect(videoScaleFor(diagnostics({ lossPercent: 12 }))).toBe(2)
+    expect(videoFramerateFor(diagnostics({}))).toBe(VIDEO_FRAMERATE_GOOD)
+    expect(videoFramerateFor(diagnostics({ lossPercent: 12 }))).toBe(VIDEO_FRAMERATE_BAD)
+  })
+
+  it('понижает ступень по доступной полосе, даже когда потерь нет', () => {
+    expect(qualityStepFor(diagnostics({ availableOutgoingKbps: 150 }))).toBe('bad')
+    expect(qualityStepFor(diagnostics({ availableOutgoingKbps: 300 }))).toBe('fair')
+    expect(qualityStepFor(diagnostics({ availableOutgoingKbps: 2000 }))).toBe('good')
+  })
+
+  it('буфер воспроизведения растёт вместе с дрожанием', () => {
+    expect(jitterTargetsFor(null)).toEqual({ audioMs: 50, videoMs: 200 })
+    expect(jitterTargetsFor(diagnostics({ jitterMs: 30 })).audioMs).toBe(80)
+    // Очень большое дрожание не должно раздувать буфер бесконечно.
+    expect(jitterTargetsFor(diagnostics({ jitterMs: 900 })).audioMs).toBe(140)
+    expect(jitterTargetsFor(diagnostics({ jitterMs: 900 })).videoMs).toBe(700)
+  })
+})
+
 describe('настройка отправки в сторе', () => {
   it('локальные описания уходят с настроенным Opus', () => {
     // Иначе параметры помехоустойчивости не попадут ни в offer, ни в answer.
@@ -120,9 +175,33 @@ describe('настройка отправки в сторе', () => {
     expect((store.match(/tunedDescription\(/g) ?? []).length).toBeGreaterThanOrEqual(6)
   })
 
-  it('битрейт подстраивается по статистике и не дёргается зря', () => {
-    expect(store).toMatch(/videoBitrateFor\(diagnostics\)/)
-    expect(store).toMatch(/if \(target === runtime\.videoBitrate\) return/)
+  it('настройки применяются к КАЖДОЙ связи по её статистике', () => {
+    // В группе качество у собеседников разное: общая ступень резала бы видео
+    // всем по худшему, а на телефоне важна суммарная отправка.
+    expect(store).toMatch(/runtime\.linkQuality\.set\(link\.peerId, diagnostics\)/)
+    expect(store).toMatch(/_applyLinkTuning\(link, diagnostics\)/)
+  })
+
+  it('видео уступает разговору при долгой плохой связи', () => {
+    expect(store).toMatch(/badQualityStreak >= VIDEO_PAUSE_BAD_POLLS/)
+    expect(store).toMatch(/goodQualityStreak >= VIDEO_RESUME_GOOD_POLLS/)
+    expect(store).toContain('runtime.pausedVideoSenders')
+  })
+
+  it('буфер приёмников настраивается после согласования', () => {
+    expect(store).toMatch(/tuneReceivers\(link\.pc, jitterTargetsFor/)
+  })
+
+  it('показ экрана не режется ступенями сети', () => {
+    expect(store).toMatch(/videoBitrate: SCREEN_BITRATE/)
+    expect(store).toMatch(/screen: true/)
+    expect(SCREEN_BITRATE).toBeGreaterThan(VIDEO_BITRATE_GOOD)
+  })
+
+  it('камера, которую не отдали, не отменяет звонок', () => {
+    // Раньше это был отказ от звонка — хотя разговаривать было можно.
+    expect(store).toContain('acquireLocalMedia')
+    expect(store).toContain('_applyAcquiredKind')
   })
 
   it('подсказки кодеку ставятся на локальный поток', () => {

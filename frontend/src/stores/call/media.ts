@@ -1,5 +1,6 @@
 import { ICE_SERVERS as CONFIG_ICE_SERVERS, WS_ORIGIN } from '@/config'
 import { fetchIceServers } from '@/services/iceServers'
+import type { MicProcessing } from '@/utils/callDevices'
 
 import { WS_PATH } from './constants'
 import type { CallKind } from './types'
@@ -15,16 +16,90 @@ export const VIDEO_CONSTRAINTS: MediaTrackConstraints = {
   frameRate: { ideal: 24, max: 30 }
 }
 
+/**
+ * Захват для группового звонка: плитка маленькая, а поток уходит КАЖДОМУ
+ * участнику («mesh»). Меньший захват экономит и процессор телефона, и
+ * исходящую полосу втрое.
+ */
+export const GROUP_VIDEO_CONSTRAINTS: MediaTrackConstraints = {
+  width: { ideal: 480, max: 640 },
+  height: { ideal: 360, max: 480 },
+  frameRate: { ideal: 20, max: 24 }
+}
+
+/**
+ * «Лестница» запасных форматов камеры.
+ *
+ * Камера может не уметь 640×480@24 — вместо отказа от видеозвонка пробуем
+ * формат проще. Это частая причина «не удалось получить доступ к камере» на
+ * дешёвых Android и при занятой камере (её отдаёт другое приложение в меньшем
+ * разрешении).
+ */
+export const VIDEO_FALLBACKS: MediaTrackConstraints[] = [
+  VIDEO_CONSTRAINTS,
+  {
+    width: { ideal: 480, max: 640 },
+    height: { ideal: 360, max: 480 },
+    frameRate: { ideal: 20, max: 24 }
+  },
+  {
+    width: { ideal: 320, max: 480 },
+    height: { ideal: 240, max: 360 },
+    frameRate: { ideal: 15, max: 20 }
+  }
+]
+
+/** Поля констрейнтов, которых может ещё не быть в типах этой версии TS. */
+type ExtendedTrackConstraints = MediaTrackConstraints & {
+  voiceIsolation?: boolean
+  /** Желаемая задержка захвата, с (по спецификации — секунды). */
+  latency?: number | { ideal?: number; max?: number }
+}
+
+/** Режим обработки микрофона объявлен рядом с настройками звонка. */
+export type { MicProcessing }
+
 // Аудиоконстрейнт: эхоподавление, шумодав и автоматический уровень — как в
 // обычном разговоре. Обработку задаём явно: на части устройств браузерные
 // значения по умолчанию дают «плавающую» громкость и гулкий звук.
 // Моно: речь стерео не требует, а полусумма двух каналов на телефонах часто
 // звучит тише и с фазовыми артефактами.
-export const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
+export const AUDIO_CONSTRAINTS: ExtendedTrackConstraints = {
   echoCancellation: true,
   noiseSuppression: true,
   autoGainControl: true,
-  channelCount: 1
+  channelCount: 1,
+  // 48 кГц — «родная» частота Opus: ресемплинг не нужен, голос чище.
+  sampleRate: { ideal: 48000 },
+  // Минимальная задержка захвата: она складывается с задержкой буфера вывода.
+  latency: { ideal: 0.01 },
+  // Выделение голоса из шума (Chrome 116+). Незнакомые констрейнты браузеры
+  // игнорируют по спецификации, поэтому строка безопасна и для Safari.
+  voiceIsolation: true
+}
+
+/**
+ * Констрейнты звука под выбранный режим обработки.
+ *
+ * Автоуровень (`autoGainControl`) оставляем в обоих режимах — без него тихий
+ * голос теряется. Выключается только шумодав: на части телефонов он делает
+ * голос «роботом», и переключение даёт человеку выбор.
+ */
+export function micProcessingConstraints(mode: MicProcessing): MediaTrackConstraints {
+  return mode === 'natural' ? { noiseSuppression: false } : { noiseSuppression: true }
+}
+
+/** Готовые констрейнты звука: устройство + режим обработки. */
+export function audioConstraints(
+  micId?: string,
+  mode: MicProcessing = 'clean'
+): ExtendedTrackConstraints {
+  const constraints: ExtendedTrackConstraints = {
+    ...AUDIO_CONSTRAINTS,
+    ...micProcessingConstraints(mode)
+  }
+  if (micId) constraints.deviceId = { exact: micId }
+  return constraints
 }
 
 // Демонстрация экрана: чёткость важнее плавности (текст мелкий), поэтому 15 fps.
@@ -46,7 +121,11 @@ export async function loadIceConfiguration(): Promise<RTCConfiguration> {
   iceConfiguration = {
     iceServers: servers,
     // Кандидаты собираем заранее — соединение поднимается на секунду-две быстрее.
-    iceCandidatePoolSize: 2,
+    iceCandidatePoolSize: 4,
+    // Все потоки идут по одному транспорту (меньше ICE-проверок и пересогласований),
+    // а RTCP обязательно мультиплексируется с RTP.
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require',
     ...(relayOnly ? { iceTransportPolicy: 'relay' as RTCIceTransportPolicy } : {})
   }
   return iceConfiguration
@@ -143,18 +222,103 @@ export function swapTrackInStream(
   }
 }
 
-/** Медиа-констрейнты с учётом выбранного в настройках устройства. */
-export function mediaConstraints(
-  kind: CallKind,
+/** Что можно попросить при захвате медиа для звонка. */
+export interface MediaConstraintOptions {
+  /** Групповой звонок: захват видео поменьше (поток уходит каждому). */
+  group?: boolean
+  /** Режим обработки микрофона. */
+  micProcessing?: MicProcessing
+}
+
+/**
+ * Ошибка, после которой перебирать форматы бессмысленно.
+ *
+ * Запрет доступа и «устройство занято» не зависят от разрешения: повторный
+ * запрос только покажет человеку лишний диалог и снова завершится отказом.
+ */
+function isFatalCaptureError(error: unknown): boolean {
+  const name = error instanceof Error ? error.name : ''
+  return (
+    name === 'NotAllowedError' ||
+    name === 'SecurityError' ||
+    name === 'NotReadableError' ||
+    name === 'AbortError'
+  )
+}
+
+/**
+ * Захват камеры с «планом Б»: полный формат → проще → ещё проще.
+ *
+ * Устройство из настроек требуем только в первой попытке: если внешнюю камеру
+ * выдернули или выбрали ту, которой уже нет, лучше взять любую другую, чем
+ * остаться без видео.
+ */
+export async function acquireCameraStream(
   cameraId?: string,
-  micId?: string
-): MediaStreamConstraints {
-  const audio: MediaTrackConstraints = { ...AUDIO_CONSTRAINTS }
-  if (micId) audio.deviceId = { exact: micId }
-  if (kind !== 'video') return { audio, video: false }
-  const video: MediaTrackConstraints = { ...VIDEO_CONSTRAINTS }
-  if (cameraId) video.deviceId = { exact: cameraId }
-  return { audio, video }
+  options: MediaConstraintOptions = {}
+): Promise<MediaStream> {
+  const ladder = options.group
+    ? [GROUP_VIDEO_CONSTRAINTS, ...VIDEO_FALLBACKS.slice(1)]
+    : VIDEO_FALLBACKS
+  let lastError: unknown = null
+  for (const [index, constraints] of ladder.entries()) {
+    const video: MediaTrackConstraints = { ...constraints }
+    if (cameraId && index === 0) video.deviceId = { exact: cameraId }
+    try {
+      return await navigator.mediaDevices.getUserMedia({ video })
+    } catch (error) {
+      lastError = error
+      if (isFatalCaptureError(error)) throw error
+    }
+  }
+  throw lastError ?? new Error('нет видеодорожки')
+}
+
+/** Итог захвата медиа: поток и режим, в котором звонок реально может идти. */
+export interface AcquiredMedia {
+  stream: MediaStream
+  /** 'audio', если камера не подошла и звонок продолжается без видео. */
+  kind: CallKind
+  /** Почему не вышло с камерой (для подписи в интерфейсе). */
+  videoFailed?: unknown
+}
+
+/**
+ * Захват медиа для звонка: звук обязателен, видео — по возможности.
+ *
+ * Когда камеру так и не отдали (нет устройства, занята, формат не поддержан),
+ * звонок НЕ срывается: возвращаем поток только со звуком и вид `audio`, чтобы
+ * интерфейс перешёл в голосовой режим. Раньше это был отказ от звонка, хотя
+ * разговаривать человек мог.
+ */
+export async function acquireLocalMedia(
+  kind: CallKind,
+  options: MediaConstraintOptions & { cameraId?: string; micId?: string } = {}
+): Promise<AcquiredMedia> {
+  const { cameraId, micId, group, micProcessing } = options
+  const audio = audioConstraints(micId, micProcessing)
+  if (kind !== 'video') {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio, video: false })
+    return { stream, kind: 'audio' }
+  }
+  const ladder = group ? [GROUP_VIDEO_CONSTRAINTS, ...VIDEO_FALLBACKS.slice(1)] : VIDEO_FALLBACKS
+  let lastError: unknown = null
+  for (const [index, constraints] of ladder.entries()) {
+    const video: MediaTrackConstraints = { ...constraints }
+    if (cameraId && index === 0) video.deviceId = { exact: cameraId }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio, video })
+      if (stream.getVideoTracks().length > 0) return { stream, kind: 'video' }
+      lastError = lastError ?? new Error('нет видеодорожки')
+    } catch (error) {
+      lastError = error
+      if (isFatalCaptureError(error)) throw error
+    }
+  }
+  // Камера не далась — звонок без видео, но со звуком. Если и микрофон
+  // недоступен, эта попытка бросит ошибку: тогда отказ от звонка оправдан.
+  const stream = await navigator.mediaDevices.getUserMedia({ audio, video: false })
+  return { stream, kind: 'audio', videoFailed: lastError }
 }
 
 /**

@@ -20,15 +20,23 @@ import {
   chooseDeviceId,
   groupDevices,
   readCallDevices,
-  writeCallDevices
+  writeCallDevices,
+  type MicProcessing
 } from '@/utils/callDevices'
 
 import {
   applyTrackHints,
+  audioBitrateFor,
+  jitterTargetsFor,
+  SCREEN_BITRATE,
+  SCREEN_FRAMERATE,
+  tuneReceivers,
   tuneSenders,
   tunedDescription,
   videoBitrateFor,
-  VIDEO_BITRATE_FAIR
+  videoFramerateFor,
+  videoScaleFor,
+  type SenderTuning
 } from './call/quality'
 import { screenShareNotice, screenShareSupport } from './call/screenShare'
 import {
@@ -47,15 +55,19 @@ import {
   MEDIA_WATCHDOG_INTERVAL_MS,
   MEDIA_WATCHDOG_MAX_RESTARTS,
   RING_OUT_TIMEOUT_MS,
-  STATS_POLL_INTERVAL_MS
+  STATS_POLL_INTERVAL_MS,
+  VIDEO_PAUSE_BAD_POLLS,
+  VIDEO_RESUME_GOOD_POLLS
 } from './call/constants'
 import {
-  AUDIO_CONSTRAINTS,
+  GROUP_VIDEO_CONSTRAINTS,
   SCREEN_CONSTRAINTS,
   VIDEO_CONSTRAINTS,
+  acquireCameraStream,
+  acquireLocalMedia,
+  audioConstraints,
   hasLiveTrack,
   loadIceConfiguration,
-  mediaConstraints,
   mediaErrorMessage,
   remoteMediaFlowing,
   setRelayOnly,
@@ -106,6 +118,15 @@ interface CallState {
   videoOn: boolean
   /** Показываю свой экран собеседнику. */
   screenSharing: boolean
+  /**
+   * Видео приостановлено из-за плохой связи (автоматически, для звука).
+   *
+   * Состояние показываем в интерфейсе и сообщаем собеседнику как «камера
+   * выключена», иначе он видел бы «сломанную» картинку.
+   */
+  videoPausedForNetwork: boolean
+  /** Режим обработки микрофона: шумодав («чистый голос») или естественный звук. */
+  micProcessing: MicProcessing
   /** Микрофон собеседника (по его сигналу `call-media-state`). */
   peerMicOn: boolean
   /** Идёт ли видео от собеседника (камера или показ экрана). */
@@ -162,6 +183,8 @@ const DEFAULT_STATE: CallState = {
   micOn: true,
   videoOn: true,
   screenSharing: false,
+  videoPausedForNetwork: false,
+  micProcessing: 'clean',
   peerMicOn: true,
   peerVideoOn: true,
   diagnostics: null,
@@ -389,6 +412,9 @@ export const useCallStore = defineStore('call', {
     _flushCandidates(peerId: number): void {
       const link = this._linkFor(peerId)
       if (!link || !link.pc.remoteDescription) return
+      // Как только появилось удалённое описание, у приёмников есть дорожки —
+      // ставим им цель буфера воспроизведения (меньше буфер — меньше задержка).
+      tuneReceivers(link.pc, jitterTargetsFor(runtime.linkQuality.get(peerId) ?? null))
       const list = runtime.pendingCandidates.get(peerId)
       if (!list || list.length === 0) return
       runtime.pendingCandidates.delete(peerId)
@@ -404,6 +430,11 @@ export const useCallStore = defineStore('call', {
       // Голос участника (если он уже был подключён к выводу) больше не звучит:
       // иначе в микшере оставалась бы «мёртвая» дорожка.
       unwireRemoteOutput(link.remoteStream)
+      // Передатчики ушедшего участника больше не понадобятся: держать их в
+      // списке «приостановленных» нельзя — вернуть им видео было бы некуда.
+      runtime.pausedVideoSenders = runtime.pausedVideoSenders.filter((sender) =>
+        link.pc.getSenders().includes(sender)
+      )
       try {
         link.pc.close()
       } catch {
@@ -1193,10 +1224,14 @@ export const useCallStore = defineStore('call', {
 
       try {
         this._restoreSavedDevices()
-        const stream = await navigator.mediaDevices.getUserMedia(
-          mediaConstraints(kind, this.selectedCamera, this.selectedMic)
-        )
+        const { stream, kind: effectiveKind } = await acquireLocalMedia(kind, {
+          cameraId: this.selectedCamera,
+          micId: this.selectedMic,
+          group: true,
+          micProcessing: this.micProcessing
+        })
         runtime.localMedia = stream
+        this._applyAcquiredKind(kind, effectiveKind)
         runtime.isCaller = true
         // Соединение с каждым участником (медиа добавляется внутри `_offerToPeer`).
         for (const target of targets) await this._offerToPeer(target.id)
@@ -1250,10 +1285,13 @@ export const useCallStore = defineStore('call', {
       try {
         this._restoreSavedDevices()
         const ice = await loadIceConfiguration()
-        const stream = await navigator.mediaDevices.getUserMedia(
-          mediaConstraints(kind, this.selectedCamera, this.selectedMic)
-        )
+        const { stream, kind: effectiveKind } = await acquireLocalMedia(kind, {
+          cameraId: this.selectedCamera,
+          micId: this.selectedMic,
+          micProcessing: this.micProcessing
+        })
         runtime.localMedia = stream
+        this._applyAcquiredKind(kind, effectiveKind)
         applyTrackHints(stream)
         const link = this._newLink(peer.id, ice)
         stream.getTracks().forEach((track) => link.pc.addTrack(track, stream))
@@ -1299,10 +1337,13 @@ export const useCallStore = defineStore('call', {
       try {
         this._restoreSavedDevices()
         const ice = await loadIceConfiguration()
-        const stream = await navigator.mediaDevices.getUserMedia(
-          mediaConstraints(kind, this.selectedCamera, this.selectedMic)
-        )
+        const { stream, kind: effectiveKind } = await acquireLocalMedia(kind, {
+          cameraId: this.selectedCamera,
+          micId: this.selectedMic,
+          micProcessing: this.micProcessing
+        })
         runtime.localMedia = stream
+        this._applyAcquiredKind(kind, effectiveKind)
         applyTrackHints(stream)
         const link = this._newLink(peerId, ice)
         stream.getTracks().forEach((track) => link.pc.addTrack(track, stream))
@@ -1554,10 +1595,9 @@ export const useCallStore = defineStore('call', {
         // а не только что начатый.
         if (this.seconds % CALL_TOUCH_EVERY_SECONDS === 0) this.rememberCall()
       }, 1000)
-      // Настраиваем отправку: битрейт видео, приоритет звука, FEC (см.
-      // `stores/call/quality.ts`). Дальше битрейт подстраивается по статистике.
+      // Настраиваем отправку: битрейт и разрешение видео, приоритет звука, FEC
+      // (см. `stores/call/quality.ts`). Дальше ступени подстраиваются по статистике.
       this._tuneMedia()
-      void this._capVideoBitrate()
       // Пока звонок идёт — помним о нём: перезагрузка страницы не должна его терять.
       this.rememberCall()
       // Проверяем, что медиа действительно пошло (иначе чёрный экран и тишина,
@@ -1604,7 +1644,9 @@ export const useCallStore = defineStore('call', {
           call_id: this.callId,
           mic_on: this.micOn,
           // Показ экрана тоже идёт как видео — для собеседника картинка есть.
-          video_on: this.videoOn || this.screenSharing,
+          // А приостановленное из-за связи видео — нет: собеседник должен
+          // видеть аватар, а не «замершую» картинку.
+          video_on: this.screenSharing || (this.videoOn && !this.videoPausedForNetwork),
           ...(this.isGroup ? { group: true, chat_id: this.groupChatId ?? undefined } : {})
         })
       }
@@ -1615,39 +1657,160 @@ export const useCallStore = defineStore('call', {
      * Зовётся и по таймеру, и вручную из панели «Диагностика звонка».
      */
     async refreshDiagnostics(): Promise<void> {
-      // В группе качество считаем по первой живой связи: общей картины по
-      // нескольким собеседникам всё равно не получить, а решение о битрейте
-      // нужно одно — оно влияет на всю отправку.
+      // Панель диагностики и индикатор качества показывают «основную» связь
+      // (в 1:1 — единственную): одной общей картины по нескольким собеседникам
+      // всё равно не бывает.
       const pc = this._primaryLink()?.pc
-      if (!pc || typeof pc.getStats !== 'function') return
-      try {
-        const report = await pc.getStats()
-        const { diagnostics, sample } = collectDiagnostics(report, pc, runtime.statsSample)
-        runtime.statsSample = sample
-        this.diagnostics = diagnostics
-        void this._adaptVideoBitrate(diagnostics)
-      } catch {
-        /* статистика может быть недоступна — звонку не мешаем */
+      if (pc && typeof pc.getStats === 'function') {
+        try {
+          const report = await pc.getStats()
+          const { diagnostics, sample } = collectDiagnostics(report, pc, runtime.statsSample)
+          runtime.statsSample = sample
+          this.diagnostics = diagnostics
+        } catch {
+          /* статистика может быть недоступна — звонку не мешаем */
+        }
+      }
+      await this._tuneLinksByStats()
+      this._adaptNetworkVideo(this.diagnostics)
+    },
+
+    /**
+     * Подстраивает настройки КАЖДОЙ связи по её собственной статистике.
+     *
+     * Так нужно ради групповых звонков («mesh»): у одного собеседника сеть
+     * хорошая, у другого — нет. Одна общая ступень резала бы видео всем по
+     * худшему, а для телефона важна именно суммарная отправка.
+     */
+    async _tuneLinksByStats(): Promise<void> {
+      if (this.status !== 'active') return
+      for (const link of [...runtime.links.values()]) {
+        if (typeof link.pc.getStats !== 'function') continue
+        try {
+          const report = await link.pc.getStats()
+          const { diagnostics, sample } = collectDiagnostics(
+            report,
+            link.pc,
+            runtime.statsSamples.get(link.peerId) ?? null
+          )
+          runtime.statsSamples.set(link.peerId, sample)
+          runtime.linkQuality.set(link.peerId, diagnostics)
+          // Пока читали статистику, участник мог выйти.
+          if (this._linkFor(link.peerId) !== link) continue
+          await this._applyLinkTuning(link, diagnostics)
+        } catch {
+          /* статистику не получить — оставляем прежние настройки связи */
+        }
       }
     },
 
     /**
-     * Подстраивает битрейт видео под качество сети.
+     * Применяет ступени к одной связи.
      *
-     * Потери и дрожание — это и есть «плохо слышно» на междугородних звонках:
-     * канал занят видео, и звук уезжает вместе с ним. Поэтому при ухудшении
-     * связи видео режется ступенями, а когда сеть выровнялась — возвращается.
-     * Битрейт меняем только при смене ступени: дёргать `setParameters` на каждом
-     * опросе (раз в пару секунд) незачем.
+     * `diagnostics` — её статистика; `null` значит «ещё не мерили»: тогда битрейт
+     * берём средний, а разрешение и частоту кадров НЕ трогаем (ухудшать картинку
+     * без доказательств нельзя).
      */
-    async _adaptVideoBitrate(diagnostics: CallDiagnostics | null): Promise<void> {
-      if (this.status !== 'active' || this.screenSharing) return
-      const target = videoBitrateFor(diagnostics)
-      if (target === runtime.videoBitrate) return
-      runtime.videoBitrate = target
-      for (const link of [...runtime.links.values()]) {
-        void tuneSenders(link.pc, target)
+    async _applyLinkTuning(link: PeerLink, diagnostics: CallDiagnostics | null): Promise<void> {
+      await tuneSenders(link.pc, this._senderTuning(diagnostics))
+      tuneReceivers(link.pc, jitterTargetsFor(diagnostics))
+      // Видео могло быть приостановлено ещё до появления этой связи.
+      if (this.videoPausedForNetwork) await this._pauseVideoOnLink(link)
+    },
+
+    /** Ступени качества для передатчиков одной связи. */
+    _senderTuning(diagnostics: CallDiagnostics | null): SenderTuning {
+      if (this.screenSharing) {
+        return {
+          audioBitrate: audioBitrateFor(diagnostics),
+          videoBitrate: SCREEN_BITRATE,
+          scale: 1,
+          framerate: SCREEN_FRAMERATE,
+          screen: true
+        }
       }
+      return {
+        audioBitrate: audioBitrateFor(diagnostics),
+        videoBitrate: videoBitrateFor(diagnostics),
+        // Без замеров картинку не ухудшаем: ступени включатся после первой статистики.
+        scale: diagnostics ? videoScaleFor(diagnostics) : 1,
+        framerate: diagnostics ? videoFramerateFor(diagnostics) : 0
+      }
+    },
+
+    /**
+     * Приостанавливает видео, если связь долго не тянет.
+     *
+     * Одних ступеней битрейта и разрешения хватает не всегда: при потерях 8 %+ и
+     * дрожании видео добивает и без того узкий канал, и звук начинает рваться.
+     * Тогда честнее временно остаться без картинки, но сохранить разговор.
+     */
+    _adaptNetworkVideo(diagnostics: CallDiagnostics | null): void {
+      // Показ экрана человек включает осознанно и ненадолго — его не трогаем.
+      if (this.kind !== 'video' || this.screenSharing || this.status !== 'active') {
+        runtime.badQualityStreak = 0
+        runtime.goodQualityStreak = 0
+        return
+      }
+      const loss = Math.max(diagnostics?.lossPercent ?? 0, diagnostics?.remoteLossPercent ?? 0)
+      const bad =
+        loss >= 8 || (diagnostics?.jitterMs ?? 0) >= 90 || (diagnostics?.rttMs ?? 0) >= 600
+      runtime.badQualityStreak = bad ? runtime.badQualityStreak + 1 : 0
+      runtime.goodQualityStreak = bad ? 0 : runtime.goodQualityStreak + 1
+      if (!this.videoPausedForNetwork && runtime.badQualityStreak >= VIDEO_PAUSE_BAD_POLLS) {
+        void this.pauseVideoForNetwork()
+      } else if (
+        this.videoPausedForNetwork &&
+        runtime.goodQualityStreak >= VIDEO_RESUME_GOOD_POLLS
+      ) {
+        void this.resumeVideoForNetwork()
+      }
+    },
+
+    /** Временно перестать отправлять видео (связь не тянет): звук важнее. */
+    async pauseVideoForNetwork(): Promise<void> {
+      if (this.status !== 'active' || this.kind !== 'video' || this.screenSharing) return
+      if (this.videoPausedForNetwork) return
+      this.videoPausedForNetwork = true
+      runtime.badQualityStreak = 0
+      runtime.goodQualityStreak = 0
+      for (const link of [...runtime.links.values()]) await this._pauseVideoOnLink(link)
+      // Собеседник видит аватар, а не «замершую» картинку.
+      this._sendMediaState()
+      this.notice = 'Связь слабая — видео приостановлено, чтобы не пропадал звук'
+    },
+
+    /** Снимает с видео-передатчиков дорожку и запоминает их, чтобы вернуть. */
+    async _pauseVideoOnLink(link: PeerLink): Promise<void> {
+      for (const sender of link.pc.getSenders()) {
+        if (sender.track?.kind !== 'video') continue
+        if (runtime.pausedVideoSenders.includes(sender)) continue
+        runtime.pausedVideoSenders.push(sender)
+        try {
+          await sender.replaceTrack(null)
+        } catch {
+          /* соединение уже закрывается — не мешаем */
+        }
+      }
+    },
+
+    /** Возвращает видео после улучшения связи (или когда человек включил камеру). */
+    async resumeVideoForNetwork(): Promise<void> {
+      this.videoPausedForNetwork = false
+      runtime.badQualityStreak = 0
+      runtime.goodQualityStreak = 0
+      const track = runtime.localMedia?.getVideoTracks()[0] ?? null
+      const senders = runtime.pausedVideoSenders
+      runtime.pausedVideoSenders = []
+      if (track) {
+        track.enabled = this.videoOn
+        await Promise.all(
+          senders.map((sender) => sender.replaceTrack(track).catch(() => undefined))
+        )
+      }
+      this._sendMediaState()
+      // Ступени могли устареть, пока видео стояло.
+      this._tuneMedia()
     },
 
     _startStatsPolling() {
@@ -1674,6 +1837,7 @@ export const useCallStore = defineStore('call', {
         callId: this.callId,
         peerId: this.peerId,
         kind: this.kind,
+        isGroup: this.isGroup,
         startedAt: Date.now() - this.seconds * 1000,
         touchedAt: Date.now()
       })
@@ -1696,10 +1860,14 @@ export const useCallStore = defineStore('call', {
       try {
         this._restoreSavedDevices()
         const ice = await loadIceConfiguration()
-        const stream = await navigator.mediaDevices.getUserMedia(
-          mediaConstraints(stored.kind, this.selectedCamera, this.selectedMic)
-        )
+        const { stream, kind: effectiveKind } = await acquireLocalMedia(stored.kind, {
+          cameraId: this.selectedCamera,
+          micId: this.selectedMic,
+          group: Boolean(stored.isGroup),
+          micProcessing: this.micProcessing
+        })
         runtime.localMedia = stream
+        this._applyAcquiredKind(stored.kind, effectiveKind)
         const link = this._newLink(stored.peerId, ice)
         stream.getTracks().forEach((track) => link.pc.addTrack(track, stream))
         runtime.isCaller = false
@@ -1749,29 +1917,16 @@ export const useCallStore = defineStore('call', {
     },
 
     /**
-     * Ограничивает битрейт отправляемого видео под текущее качество сети.
+     * Настраивает отправку медиа: битрейт и разрешение видео, приоритеты,
+     * помехоустойчивость звука (см. `stores/call/quality.ts`). Зовётся при
+     * поднятии связи, смене показа экрана и когда состав связей изменился.
      *
-     * Точное значение выбирает `_adaptVideoBitrate` по статистике; здесь —
-     * применение к связям (в группе связей несколько, у каждой свой передатчик).
-     */
-    async _capVideoBitrate(): Promise<void> {
-      const bitrate = runtime.videoBitrate || VIDEO_BITRATE_FAIR
-      await Promise.all(
-        [...runtime.links.values()].map((link) =>
-          tuneSenders(link.pc, bitrate, { screen: this.screenSharing })
-        )
-      )
-    },
-
-    /**
-     * Настраивает отправку медиа: битрейт видео, приоритеты, помехоустойчивость
-     * звука (см. `stores/call/quality.ts`). Зовётся при поднятии связи и когда
-     * состав связей изменился.
+     * Для каждой связи берём её последнюю статистику: настройки не должны
+     * «прыгать» в средние в ожидании следующего опроса.
      */
     _tuneMedia(links = [...runtime.links.values()]) {
-      const bitrate = runtime.videoBitrate || VIDEO_BITRATE_FAIR
       for (const link of links) {
-        void tuneSenders(link.pc, bitrate, { screen: this.screenSharing })
+        void this._applyLinkTuning(link, runtime.linkQuality.get(link.peerId) ?? null)
       }
     },
 
@@ -1807,6 +1962,11 @@ export const useCallStore = defineStore('call', {
       runtime.localMedia?.getVideoTracks().forEach((track) => {
         track.enabled = this.videoOn
       })
+      // Человек включил камеру сам — его решение важнее авто-паузы по связи.
+      if (this.videoOn && this.videoPausedForNetwork) {
+        void this.resumeVideoForNetwork()
+        return
+      }
       this._sendMediaState()
     },
 
@@ -1816,6 +1976,21 @@ export const useCallStore = defineStore('call', {
       if (!this.selectedCamera) this.selectedCamera = saved.camera ?? ''
       if (!this.selectedMic) this.selectedMic = saved.mic ?? ''
       if (!this.selectedSpeaker) this.selectedSpeaker = saved.speaker ?? ''
+      // Режим обработки микрофона — тоже настройка устройства: запоминаем между звонками.
+      if (saved.micProcessing) this.micProcessing = saved.micProcessing
+    },
+
+    /**
+     * Переводит звонок в голосовой режим, если камера не далась.
+     *
+     * Раньше в этом случае звонок отменялся целиком — хотя разговаривать было
+     * можно. Теперь сообщаем причину и продолжаем без видео.
+     */
+    _applyAcquiredKind(requested: CallKind, actual: CallKind) {
+      if (requested === actual) return
+      this.kind = 'audio'
+      this.videoOn = false
+      this.notice = 'Камера недоступна — звонок продолжается без видео'
     },
 
     /* ---------------- Демонстрация экрана ---------------- */
@@ -1881,11 +2056,15 @@ export const useCallStore = defineStore('call', {
         runtime.localMedia.addTrack(track)
         this.screenSharing = true
         this.videoOn = true
+        // Показ экрана отменяет авто-паузу видео: дорожку экрана гасить нельзя, а
+        // запомненные «приостановленные» передатчики теперь заняты ею.
+        this.videoPausedForNetwork = false
+        runtime.pausedVideoSenders = []
         // Интерфейс становится видео-режимом: видно превью экрана и картинку собеседника.
         this.kind = 'video'
         this._sendScreenStatus(true)
         this._sendMediaState()
-        void this._capVideoBitrate()
+        this._tuneMedia()
       } catch {
         // Отказ от выбора окна в диалоге браузера — не ошибка.
         runtime.screenTrack = null
@@ -1946,9 +2125,7 @@ export const useCallStore = defineStore('call', {
     async _restoreCamera(senders: RTCRtpSender[]) {
       if (runtime.links.size === 0) return
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: this._videoConstraints()
-        })
+        const stream = await acquireCameraStream(this.selectedCamera, { group: this.isGroup })
         const track = stream.getVideoTracks()[0]
         if (!track) throw new Error('нет видеодорожки')
         swapTrackInStream(runtime.localMedia, track, 'video')
@@ -2056,7 +2233,9 @@ export const useCallStore = defineStore('call', {
     },
 
     _videoConstraints(): MediaTrackConstraints {
-      const constraints: MediaTrackConstraints = { ...VIDEO_CONSTRAINTS }
+      // В группе захват меньше: поток уходит каждому участнику («mesh»).
+      const base = this.isGroup ? GROUP_VIDEO_CONSTRAINTS : VIDEO_CONSTRAINTS
+      const constraints: MediaTrackConstraints = { ...base }
       if (this.selectedCamera) constraints.deviceId = { exact: this.selectedCamera }
       return constraints
     },
@@ -2071,9 +2250,7 @@ export const useCallStore = defineStore('call', {
         .filter((item): item is RTCRtpSender => Boolean(item))
       if (senders.length === 0) return
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: this._videoConstraints()
-        })
+        const stream = await acquireCameraStream(deviceId, { group: this.isGroup })
         const track = stream.getVideoTracks()[0]
         if (!track) return
         runtime.localMedia?.getVideoTracks().forEach((old) => {
@@ -2096,27 +2273,65 @@ export const useCallStore = defineStore('call', {
       this.selectedMic = deviceId
       writeCallDevices({ mic: deviceId })
       if (this.status !== 'active') return
+      const ok = await this._replaceMicrophone(audioConstraints(deviceId, this.micProcessing))
+      if (!ok) this.notice = 'Не удалось переключить микрофон'
+    },
+
+    /**
+     * Сменить режим обработки микрофона: «чистый голос» (шумодав) или естественный.
+     *
+     * Смена режима — это НОВЫЙ запрос микрофона: констрейнты обработки задаются
+     * только при захвате, на лету их не поменять. Поэтому режим меняется тем же
+     * путём, что и устройство микрофона.
+     */
+    async setMicProcessing(mode: MicProcessing) {
+      if (this.micProcessing === mode) return
+      const previous = this.micProcessing
+      this.micProcessing = mode
+      writeCallDevices({ micProcessing: mode })
+      if (this.status !== 'active') return
+      const ok = await this._replaceMicrophone(audioConstraints(this.selectedMic, mode))
+      if (!ok) {
+        // Не вышло — возвращаем прежний режим, чтобы подпись в интерфейсе не врала.
+        this.micProcessing = previous
+        writeCallDevices({ micProcessing: previous })
+        this.notice = 'Не удалось изменить обработку звука'
+      }
+    },
+
+    /**
+     * Меняет дорожку микрофона во всех связях.
+     *
+     * Старую дорожку гасим ТОЛЬКО после того, как новая встала на место: иначе
+     * неудачная смена устройства или режима оставляла звонок без звука вообще.
+     */
+    async _replaceMicrophone(constraints: MediaTrackConstraints): Promise<boolean> {
       const senders = [...runtime.links.values()]
         .map((link) => link.pc.getSenders().find((item) => item.track?.kind === 'audio'))
         .filter((item): item is RTCRtpSender => Boolean(item))
-      if (senders.length === 0) return
+      if (senders.length === 0) return true
+      let track: MediaStreamTrack | null = null
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { ...AUDIO_CONSTRAINTS, deviceId: { exact: deviceId } }
-        })
-        const track = stream.getAudioTracks()[0]
-        if (!track) return
-        runtime.localMedia?.getAudioTracks().forEach((old) => {
-          old.stop()
-          runtime.localMedia?.removeTrack(old)
-        })
-        if (!runtime.localMedia) runtime.localMedia = new MediaStream()
-        runtime.localMedia.addTrack(track)
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: constraints })
+        track = stream.getAudioTracks()[0] ?? null
+        if (!track) return false
         track.enabled = this.micOn
-        await Promise.all(senders.map((item) => item.replaceTrack(track).catch(() => undefined)))
+        await Promise.all(
+          senders.map((sender) => sender.replaceTrack(track).catch(() => undefined))
+        )
       } catch {
-        this.notice = 'Не удалось переключить микрофон'
+        track?.stop()
+        return false
       }
+      for (const old of runtime.localMedia?.getAudioTracks() ?? []) {
+        if (old === track) continue
+        old.stop()
+        runtime.localMedia?.removeTrack(old)
+      }
+      if (!runtime.localMedia) runtime.localMedia = new MediaStream()
+      runtime.localMedia.addTrack(track)
+      applyTrackHints(runtime.localMedia)
+      return true
     },
 
     /** Выбрать динамик (применит интерфейс через setSinkId, если браузер умеет). */
@@ -2271,6 +2486,12 @@ export const useCallStore = defineStore('call', {
       runtime.lastAnswerSdp = null
       runtime.iceRestartInFlight = false
       runtime.mediaWatchdogRestarts = 0
+      // Настройки связей и «пауза видео» относятся к прошедшему звонку.
+      runtime.statsSamples.clear()
+      runtime.linkQuality.clear()
+      runtime.pausedVideoSenders = []
+      runtime.badQualityStreak = 0
+      runtime.goodQualityStreak = 0
       this._clearAnswerRetry()
       this._clearMediaWatchdog()
       this._clearStatsPolling()
@@ -2278,7 +2499,12 @@ export const useCallStore = defineStore('call', {
       forgetActiveCall()
       // Код сверки относится к конкретному соединению: в новом звонке он другой.
       this.verificationCode = ''
-      this.$patch({ ...DEFAULT_STATE, connected: this.connected })
+      // Режим обработки микрофона — настройка человека, а не звонка: сохраняем.
+      this.$patch({
+        ...DEFAULT_STATE,
+        connected: this.connected,
+        micProcessing: this.micProcessing
+      })
     },
 
     /**

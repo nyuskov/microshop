@@ -21,6 +21,8 @@ export interface StoredCall {
   callId: string
   peerId: number
   kind: CallKind
+  /** Групповой звонок: после перезагрузки захват медиа берём «групповой». */
+  isGroup?: boolean
   /** Когда звонок стал активным — чтобы вернуть честный счётчик времени. */
   startedAt: number
   /**

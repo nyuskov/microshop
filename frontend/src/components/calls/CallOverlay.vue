@@ -149,6 +149,14 @@
                   <q-icon :name="icon('wifi_off')" size="12px" aria-hidden="true" />
                   Плохая связь
                 </span>
+                <span
+                  v-if="callStore.videoPausedForNetwork"
+                  class="call-badge fair"
+                  title="Связь слабая — видео приостановлено, чтобы не пропадал звук"
+                >
+                  <q-icon :name="icon('videocam_off')" size="12px" aria-hidden="true" />
+                  Видео приостановлено
+                </span>
               </div>
               <span v-if="callStore.peerScreenSharing" class="call-sharing">
                 <q-icon :name="icon('screen_share')" size="13px" aria-hidden="true" />
@@ -192,6 +200,14 @@
                   >
                     <q-icon :name="icon('wifi_off')" size="12px" aria-hidden="true" />
                     Плохая связь
+                  </span>
+                  <span
+                    v-if="callStore.videoPausedForNetwork"
+                    class="call-badge fair"
+                    title="Связь слабая — видео приостановлено (верните в меню «Ещё»)"
+                  >
+                    <q-icon :name="icon('videocam_off')" size="12px" aria-hidden="true" />
+                    Видео приостановлено
                   </span>
                 </div>
                 <span v-if="callStore.peerScreenSharing" class="call-sharing video">
@@ -265,6 +281,16 @@
                   <q-icon :name="icon(speakerOn ? 'volume_up' : 'volume_down')" size="20px" />
                   <span>{{ speakerOn ? 'Обычный режим' : 'Громкая связь' }}</span>
                   <q-icon v-if="speakerOn" :name="icon('check')" size="16px" class="more-mark" />
+                </button>
+                <!-- Видео могло «встать» само из-за плохой связи: возврат — решением человека. -->
+                <button
+                  v-if="callStore.videoPausedForNetwork"
+                  class="more-row"
+                  role="menuitem"
+                  @click="onResumeVideoRow"
+                >
+                  <q-icon :name="icon('videocam')" size="20px" />
+                  <span>Вернуть видео</span>
                 </button>
                 <button
                   v-if="canShareScreen || callStore.screenSharing"
@@ -409,6 +435,18 @@
                   />
                 </div>
 
+                <!-- Шумодав на части телефонов делает голос «роботом»: даём выбор. -->
+                <div class="settings-row">
+                  <span class="settings-label">Обработка звука</span>
+                  <SelectField
+                    :model-value="callStore.micProcessing"
+                    :options="micModeOptions"
+                    variant="call"
+                    aria-label="Обработка звука"
+                    @update:model-value="onMicModePick"
+                  />
+                </div>
+
                 <div v-if="callStore.speakers.length && canSelectSpeaker" class="settings-row">
                   <span class="settings-label">Звук</span>
                   <SelectField
@@ -478,8 +516,13 @@ let attachTimer: ReturnType<typeof setInterval> | undefined
 
 /** Есть ли у собеседника видеодорожка (нужно, чтобы переписать элемент при её появлении). */
 const remoteVideoTracks = ref(0)
-/** Показаны ли бейджи «микрофон выключен» / «плохая связь». */
-const hasCallBadges = computed(() => !callStore.peerMicOn || callStore.connectionQuality !== 'good')
+/** Показаны ли бейджи «микрофон выключен» / «плохая связь» / «видео приостановлено». */
+const hasCallBadges = computed(
+  () =>
+    !callStore.peerMicOn ||
+    callStore.connectionQuality !== 'good' ||
+    callStore.videoPausedForNetwork
+)
 
 /** Открыта ли панель «Диагностика звонка». */
 const diagnosticsOpen = ref(false)
@@ -502,6 +545,14 @@ const routeLabel = computed<string>(() => {
   return 'определяем…'
 })
 
+/** Что ограничивает отправку — понятными словами (см. `utils/callStats.ts`). */
+const limitationLabel = (value: string): string => {
+  if (value === 'bandwidth') return 'полоса'
+  if (value === 'cpu') return 'процессор'
+  if (value === 'other') return 'прочее'
+  return '—'
+}
+
 /** Строки панели диагностики — то, что полезно при разборе «нет звука». */
 const diagRows = computed<Array<{ label: string; value: string }>>(() => {
   const diag = callStore.diagnostics
@@ -511,9 +562,21 @@ const diagRows = computed<Array<{ label: string; value: string }>>(() => {
     { label: 'Маршрут', value: routeLabel.value },
     { label: 'Задержка', value: `${diag.rttMs} мс` },
     { label: 'Потери', value: `${diag.lossPercent}%` },
+    // Потери нашего потока у собеседника: на мобильной сети страдает именно отправка.
+    { label: 'Потери у собеседника', value: `${diag.remoteLossPercent}%` },
     { label: 'Дрожание', value: `${diag.jitterMs} мс` },
+    { label: 'Буфер воспроизведения', value: `${diag.jitterBufferDelayMs} мс` },
     { label: 'Приём', value: `${diag.inboundKbps} кбит/с` },
     { label: 'Отправка', value: `${diag.outboundKbps} кбит/с` },
+    {
+      label: 'Полоса (оценка)',
+      value: diag.availableOutgoingKbps > 0 ? `${diag.availableOutgoingKbps} кбит/с` : '—'
+    },
+    { label: 'Ограничивает', value: limitationLabel(diag.qualityLimitation) },
+    {
+      label: 'Видео теряется',
+      value: `${diag.freezeCount} заморозок · ${diag.framesDropped} кадров`
+    },
     { label: 'Кодеки', value: diag.codecs.join(', ') || '—' }
   ]
 })
@@ -657,6 +720,22 @@ const canSelectSpeaker = computed(
 const onCameraPick = (value: SelectValue) => void callStore.setCameraDevice(String(value))
 
 const onMicPick = (value: SelectValue) => void callStore.setMicDevice(String(value))
+
+/** Режимы обработки микрофона: шумодав или естественный звук. */
+const micModeOptions = [
+  { value: 'clean', label: 'Чистый голос' },
+  { value: 'natural', label: 'Естественный' }
+]
+
+/** Смена обработки звука (перезапрашивает микрофон — см. `setMicProcessing`). */
+const onMicModePick = (value: SelectValue) =>
+  void callStore.setMicProcessing(value === 'natural' ? 'natural' : 'clean')
+
+/** Вернуть видео, приостановленное из-за связи (решение человека важнее авто-паузы). */
+const onResumeVideoRow = () => {
+  moreOpen.value = false
+  void callStore.resumeVideoForNetwork()
+}
 
 const onSpeakerPick = (value: SelectValue) => void callStore.setSpeakerDevice(String(value))
 

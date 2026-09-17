@@ -96,6 +96,72 @@ describe('разбор статистики соединения', () => {
     expect(diagnostics.relayProtocol).toBe('')
     expect(diagnostics.codecs).toEqual([])
   })
+
+  it('видит потери НАШЕГО потока, ограничение отправки и буфер воспроизведения', () => {
+    const full = report([
+      [
+        'pair-1',
+        {
+          id: 'pair-1',
+          type: 'candidate-pair',
+          state: 'succeeded',
+          nominated: true,
+          localCandidateId: 'local-1',
+          availableOutgoingBitrate: 1_400_000
+        }
+      ],
+      ['local-1', { id: 'local-1', type: 'local-candidate', candidateType: 'host' }],
+      [
+        'in-video',
+        {
+          type: 'inbound-rtp',
+          mimeType: 'video/VP8',
+          bytesReceived: 1000,
+          packetsLost: 0,
+          packetsReceived: 100,
+          jitter: 0.01,
+          framesDropped: 3,
+          freezeCount: 2,
+          nackCount: 7,
+          jitterBufferDelay: 1.2,
+          jitterBufferEmittedCount: 60
+        }
+      ],
+      [
+        'out-video',
+        {
+          type: 'outbound-rtp',
+          mimeType: 'video/VP8',
+          bytesSent: 2000,
+          packetsSent: 1000,
+          qualityLimitationReason: 'cpu'
+        }
+      ],
+      [
+        'out-audio',
+        {
+          type: 'outbound-rtp',
+          mimeType: 'audio/opus',
+          bytesSent: 500,
+          packetsSent: 90,
+          qualityLimitationReason: 'none'
+        }
+      ],
+      // Отчёт собеседника: 100 наших пакетов до него не дошли.
+      ['remote-in', { type: 'remote-inbound-rtp', packetsLost: 100 }]
+    ])
+    const { diagnostics } = collectDiagnostics(full, peer, null, 0)
+
+    // 100 потерянных из 1190 отправленных = 8,4 % — это наш аплинк.
+    expect(diagnostics.remoteLossPercent).toBeCloseTo(8.4, 1)
+    expect(diagnostics.availableOutgoingKbps).toBe(1400)
+    expect(diagnostics.qualityLimitation).toBe('cpu')
+    // Буфер: 1.2 с задержки на 60 выданных кадров = 20 мс на кадр.
+    expect(diagnostics.jitterBufferDelayMs).toBe(20)
+    expect(diagnostics.framesDropped).toBe(3)
+    expect(diagnostics.freezeCount).toBe(2)
+    expect(diagnostics.nackCount).toBe(7)
+  })
 })
 
 describe('индикатор качества связи', () => {
@@ -106,6 +172,13 @@ describe('индикатор качества связи', () => {
     relayProtocol: '',
     rttMs: 40,
     lossPercent: 0,
+    remoteLossPercent: 0,
+    availableOutgoingKbps: 0,
+    qualityLimitation: '',
+    jitterBufferDelayMs: 0,
+    framesDropped: 0,
+    freezeCount: 0,
+    nackCount: 0,
     jitterMs: 5,
     inboundKbps: 32,
     outboundKbps: 32,
@@ -123,6 +196,12 @@ describe('индикатор качества связи', () => {
     expect(connectionQuality(withMetrics({ rttMs: 340 }))).toBe('fair')
     expect(connectionQuality(withMetrics({ lossPercent: 12 }))).toBe('bad')
     expect(connectionQuality(withMetrics({ rttMs: 900 }))).toBe('bad')
+  })
+
+  it('потери нашего потока у собеседника тоже портят индикатор', () => {
+    // Приём чистый, а наш аплинк теряет пакеты — собеседник слышит нас плохо.
+    expect(connectionQuality(withMetrics({ remoteLossPercent: 4 }))).toBe('fair')
+    expect(connectionQuality(withMetrics({ remoteLossPercent: 12 }))).toBe('bad')
   })
 
   it('краткая подпись объясняет, куда идёт медиа', () => {

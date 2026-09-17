@@ -1,4 +1,4 @@
-import type { StatsSample } from '@/utils/callStats'
+import type { CallDiagnostics, StatsSample } from '@/utils/callStats'
 
 import type { CallKind, SignalingMessage } from './types'
 
@@ -70,12 +70,25 @@ export interface CallSignalingRuntime {
    */
   pendingCandidates: Map<number, RTCIceCandidateInit[]>
   /**
-   * Битрейт отправляемого видео под текущее качество сети (бит/с).
+   * Замеры статистики по КАЖДОЙ связи: скорость считаем по своему интервалу.
    *
-   * Меняется ступенями по статистике (`_adaptVideoBitrate`), а не на каждом
-   * опросе: дёргать `setParameters` зря не нужно.
+   * В group-звонке («mesh») качество у собеседников разное, поэтому один общий
+   * замер не годится — по нему резали бы видео всем по худшему.
    */
-  videoBitrate: number
+  statsSamples: Map<number, StatsSample>
+  /** Последняя снятая диагностика по каждой связи (для настроек без опроса). */
+  linkQuality: Map<number, CallDiagnostics>
+  /**
+   * Отправители видео, у которых мы сняли дорожку из-за плохой связи.
+   *
+   * Держим их явно: после `replaceTrack(null)` найти такой передатчик по дорожке
+   * уже нельзя, и вернуть видео было бы нечем.
+   */
+  pausedVideoSenders: RTCRtpSender[]
+  /** Сколько опросов подряд связь «плохая» — по нему приостанавливаем видео. */
+  badQualityStreak: number
+  /** Сколько опросов подряд связь «хорошая» — по нему возвращаем видео. */
+  goodQualityStreak: number
   localMedia: MediaStream | null
   remoteMedia: MediaStream | null
   pendingOffer: PendingOffer | null
@@ -121,7 +134,6 @@ export const runtime: CallSignalingRuntime = {
   primaryPeerId: null,
   confirmedPeers: new Set<number>(),
   pendingCandidates: new Map<number, RTCIceCandidateInit[]>(),
-  videoBitrate: 0,
   localMedia: null,
   remoteMedia: null,
   pendingOffer: null,
@@ -146,7 +158,12 @@ export const runtime: CallSignalingRuntime = {
   mediaWatchdogBusy: false,
   iceRestartInFlight: false,
   statsTimer: undefined,
-  statsSample: null
+  statsSample: null,
+  statsSamples: new Map<number, StatsSample>(),
+  linkQuality: new Map<number, CallDiagnostics>(),
+  pausedVideoSenders: [],
+  badQualityStreak: 0,
+  goodQualityStreak: 0
 }
 
 export function sendRuntimeMessage(message: SignalingMessage): boolean {

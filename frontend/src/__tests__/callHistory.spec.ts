@@ -144,7 +144,9 @@ describe('фильтр и группировка', () => {
   })
 
   it('время сегодня — «ЧЧ:ММ», раньше — датой', () => {
-    const today = new Date(2026, 8, 17, 14, 5)
+    // Дату берём от «сегодня»: с жёстким 17.09.2026 тест протухал на следующий день.
+    const today = new Date()
+    today.setHours(14, 5, 0, 0)
     expect(callHistoryTime(call({ timestamp: today.toISOString() }))).toBe('14:05')
     // Для прошлых дней в строке чата времени нет (как в списке чатов) — «10 сент.».
     const earlier = new Date(2026, 8, 10, 9, 30)

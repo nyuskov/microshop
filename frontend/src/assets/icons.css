@@ -452,6 +452,10 @@
   content: '\E1A5 ';
 }
 
+.icon-video-off::before {
+  content: '\E1A6 ';
+}
+
 .icon-volume-1::before {
   content: '\E1AA ';
 }

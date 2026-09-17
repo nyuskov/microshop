@@ -10,7 +10,12 @@ export interface CallDeviceChoice {
   camera?: string
   mic?: string
   speaker?: string
+  /** Режим обработки микрофона: «чистый голос» (шумодав) или естественный. */
+  micProcessing?: MicProcessing
 }
+
+/** Режим обработки микрофона: «чистый голос» (шумодав) или естественный звук. */
+export type MicProcessing = 'clean' | 'natural'
 
 export const CALL_DEVICES_STORAGE_KEY = 'pismo_call_devices'
 
@@ -34,7 +39,13 @@ export function readCallDevices(): CallDeviceChoice {
     const value = parsed as Record<string, unknown>
     const pick = (key: string): string | undefined =>
       typeof value[key] === 'string' && value[key] ? (value[key] as string) : undefined
-    return { camera: pick('camera'), mic: pick('mic'), speaker: pick('speaker') }
+    const mode = value.micProcessing
+    return {
+      camera: pick('camera'),
+      mic: pick('mic'),
+      speaker: pick('speaker'),
+      micProcessing: mode === 'natural' || mode === 'clean' ? mode : undefined
+    }
   } catch {
     return {}
   }
