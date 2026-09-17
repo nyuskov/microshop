@@ -28,7 +28,12 @@ from api_v1.users.crud import get_user_by_id
 from core.models import db_helper
 
 from .manager import events_manager
-from .service import chat_member_ids, presence_peer_ids, presence_snapshot
+from .service import (
+    chat_member_ids,
+    dispatch_realtime,
+    presence_peer_ids,
+    presence_snapshot,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +69,7 @@ async def _broadcast_presence(
         "online": online,
         "last_seen": last_seen.isoformat() if last_seen is not None else None,
     }
-    await events_manager.broadcast(peer_ids, payload)
+    await dispatch_realtime(peer_ids, payload)
 
 
 async def _handle_client_event(user_id: int, data: Any) -> None:
@@ -87,7 +92,7 @@ async def _handle_client_event(user_id: int, data: Any) -> None:
     if user_id not in members:
         return
     recipients = [member_id for member_id in members if member_id != user_id]
-    await events_manager.broadcast(
+    await dispatch_realtime(
         recipients,
         {"type": event_type, "chat_id": chat_id, "user_id": user_id},
     )

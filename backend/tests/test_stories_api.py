@@ -335,10 +335,12 @@ async def test_reaction_notifies_author(
     events: list[tuple[int, dict]] = []
     tasks: list[tuple[str, tuple]] = []
 
-    class _Events:
-        async def send_to_user(self, user_id: int, payload: dict) -> bool:
+    async def dispatch(recipient_ids: list[int], payload: dict) -> bool:
+        # Реакция уходит автору через диспетчер событий (при нескольких
+        # процессах web — ещё и мост), поэтому мокаем именно его.
+        for user_id in recipient_ids:
             events.append((user_id, payload))
-            return True
+        return True
 
     class _Task:
         def __init__(self, name: str) -> None:
@@ -347,7 +349,7 @@ async def test_reaction_notifies_author(
         def delay(self, *args: object) -> None:
             tasks.append((self.name, args))
 
-    monkeypatch.setattr(stories_notify, "events_manager", _Events())
+    monkeypatch.setattr(stories_notify, "dispatch_realtime", dispatch)
     monkeypatch.setattr(stories_notify, "get_task", _Task)
 
     response = await api.client.post(

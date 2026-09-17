@@ -16,6 +16,35 @@
         </button>
       </div>
 
+      <!-- Расписание: тёмная вечером, светлая днём. Окно может идти через
+           полночь, а подпись говорит, действует ли оно прямо сейчас — иначе
+           непонятно, почему тема именно такая. -->
+      <div v-if="themeStore.scheduleActive" class="schedule-block">
+        <div class="schedule-times">
+          <div class="schedule-field">
+            <label for="ap-dark-from">Тёмная с</label>
+            <SelectField
+              id="ap-dark-from"
+              :model-value="themeStore.darkFrom"
+              :options="SCHEDULE_TIME_OPTIONS"
+              aria-label="Начало тёмной темы"
+              @update:model-value="onScheduleChange('from', $event)"
+            />
+          </div>
+          <div class="schedule-field">
+            <label for="ap-dark-to">до</label>
+            <SelectField
+              id="ap-dark-to"
+              :model-value="themeStore.darkTo"
+              :options="SCHEDULE_TIME_OPTIONS"
+              aria-label="Конец тёмной темы"
+              @update:model-value="onScheduleChange('to', $event)"
+            />
+          </div>
+        </div>
+        <p class="hint">{{ scheduleHint }}</p>
+      </div>
+
       <!-- Чёрный фон (AMOLED) — не четвёртая тема в ряду, а уточнение тёмной:
            на OLED-экране чёрный пиксель не светится. Поэтому тумблер, который
            гасится в светлой теме — там чёрный фон смысла не имеет. -->
@@ -154,7 +183,8 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import SelectField from '@/components/common/SelectField.vue'
 import { useThemeStore, fileToCompressedDataUrl } from '@/stores/theme'
 import {
   ACCENT_PRESETS,
@@ -163,14 +193,30 @@ import {
   WALLPAPER_PRESETS,
   type ThemeMode
 } from '@/stores/theme'
+import { scheduleSummary, scheduleTimeOptions } from '@/utils/themeSchedule'
 
 const themeStore = useThemeStore()
 
 const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
   { mode: 'light', label: 'Светлая', icon: 'light_mode' },
   { mode: 'dark', label: 'Тёмная', icon: 'dark_mode' },
-  { mode: 'system', label: 'Системная', icon: 'computer' }
+  { mode: 'system', label: 'Системная', icon: 'computer' },
+  { mode: 'schedule', label: 'По расписанию', icon: 'schedule' }
 ]
+
+/** Список времени для расписания: шаг час — точнее теме не нужно. */
+const SCHEDULE_TIME_OPTIONS = scheduleTimeOptions()
+
+/** Подпись под списками: окно и что действует сейчас. */
+const scheduleHint = computed(() => scheduleSummary(themeStore.darkFrom, themeStore.darkTo))
+
+/** Смена одной из границ: вторая остаётся как была. */
+const onScheduleChange = (edge: 'from' | 'to', value: string | number | null) => {
+  const minutes = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(minutes)) return
+  if (edge === 'from') themeStore.setDarkWindow(minutes, themeStore.darkTo)
+  else themeStore.setDarkWindow(themeStore.darkFrom, minutes)
+}
 
 const wallpaperInput = ref<HTMLInputElement | null>(null)
 const wallpaperError = ref('')
@@ -252,6 +298,33 @@ const onReset = () => {
   margin: 0;
   font-size: 12px;
   color: var(--ms-muted, #71808d);
+}
+
+/* Расписание тёмной темы: два списка времени и подпись под ними. */
+.schedule-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 2px 2px;
+}
+
+.schedule-times {
+  display: flex;
+  gap: 12px;
+}
+
+.schedule-field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.schedule-field label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ms-icon, #55636e);
 }
 
 /* Тумблер AMOLED: уточнение тёмной темы, поэтому в светлой он неактивен и

@@ -24,19 +24,23 @@ from collections.abc import Coroutine
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from api_v1.calls import crud as calls_crud
 from api_v1.chats.crud import get_private_chat_id_between
 from api_v1.events.service import notify_chat
 from api_v1.moderation import crud as moderation_crud
 from api_v1.push import crud as push_crud
 from core import rustore_push
+from core.amqp import publish_realtime_event, wait_for_delivery
 from core.config import settings
 from core.models import Message, User, db_helper
 
 from ..auth.utils import get_current_user, resolve_user_from_websocket
 from .manager import CALL_OVER_QUEUE_TTL_SECONDS, call_manager
+from .schemas import CallHistoryItem, CallHistoryResponse
 from .turn import ice_servers, turn_configured
 
 logger = logging.getLogger(__name__)
@@ -44,6 +48,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ws", tags=["Calls"])
 # REST-роутер звонков (для push-кнопки «Отклонить» из service worker).
 router_rest = APIRouter(prefix="/calls", tags=["Calls"])
+
+#: Сколько записей истории звонков отдаём за раз и сколько максимум попросить.
+CALL_HISTORY_PAGE = 50
+CALL_HISTORY_MAX = 100
 
 
 def _any_push_channel_configured() -> bool:
@@ -120,7 +128,7 @@ async def decline_call(
         "from_user_id": user.id,
         "reason": "declined",
     }
-    delivered = await call_manager.send_to_user(payload.to_user_id, envelope)
+    delivered = await _deliver_signal(payload.to_user_id, envelope)
     if not delivered:
         # Канал зовущего молчит (приложение в фоне, смена сети): придержим отказ
         # до подключения.
@@ -150,7 +158,7 @@ async def decline_call(
         "from_user_id": user.id,
         "reason": "declined",
     }
-    if not await call_manager.send_to_user(user.id, local_end):
+    if not await _deliver_signal(user.id, local_end):
         await call_manager.queue_message(
             user.id, local_end, CALL_OVER_QUEUE_TTL_SECONDS
         )
@@ -279,6 +287,46 @@ async def _persist_call_record(meta: dict[str, Any], state: str, duration: int) 
         logger.exception("Не удалось записать отметку о звонке")
 
 
+async def _deliver_signal(user_id: int, envelope: dict[str, Any]) -> bool:
+    """Отдаёт сигнальное сообщение абоненту — где бы он ни был подключён.
+
+    Сокет живёт в конкретном процессе web, а при нескольких процессах (деплой
+    «синий/зелёный», масштабирование) человек может быть на связи в ДРУГОМ
+    процессе. Поэтому после неудачной локальной попытки публикуем сигнал в мост и
+    ждём подтверждения доставки: его присылает тот процесс, который раздал сигнал
+    в живой сокет.
+
+    ``False`` — абонент нигде не подключён; вызывающий по этому признаку паркует
+    вызов или придерживает сообщение (поведение офлайн-абонента не меняется).
+    """
+    if await call_manager.send_to_user(user_id, envelope):
+        return True
+    try:
+        event_id = await publish_realtime_event(envelope, [user_id], ack_requested=True)
+    except Exception:  # noqa: BLE001 - без моста остаётся хотя бы локальная доставка
+        logger.exception("Не удалось отправить сигнал звонка через мост")
+        return False
+    return await wait_for_delivery(event_id)
+
+
+async def _deliver_to_devices(
+    user_id: int, envelope: dict[str, Any], *, exclude: WebSocket | None = None
+) -> None:
+    """Сообщение на остальные устройства человека (и за пределы процесса).
+
+    Локально исключаем соединение-источник (на нём действие уже выполнено), а в
+    мост отправляем всем: устройства того же человека могут быть подключены к
+    другому процессу web, и тогда они остались бы «звенеть». Пришедшее из моста
+    событие на устройстве-источнике безвредно: приложение сверяет номер вызова и
+    гасит только ещё не принятый вызов.
+    """
+    await call_manager.send_to_other_devices(user_id, envelope, exclude=exclude)
+    try:
+        await publish_realtime_event(envelope, [user_id])
+    except Exception:  # noqa: BLE001 - остальные устройства получат хотя бы локально
+        logger.exception("Не удалось разослать сигнал звонка по другим устройствам")
+
+
 async def _is_call_blocked(from_user_id: int, to_user_id: int) -> bool:
     """Блокировка между участниками звонка (в любую сторону).
 
@@ -318,7 +366,7 @@ async def _relay_message(
     # Ответили или отклонили на одном устройстве — на остальных устройствах
     # этого же человека звонок должен замолчать (там он тоже звенит).
     if message_type in ("call-answer", "call-decline"):
-        await call_manager.send_to_other_devices(
+        await _deliver_to_devices(
             from_user_id,
             {
                 "type": "call-ended-elsewhere",
@@ -360,7 +408,7 @@ async def _relay_message(
     if message_type in _CALL_TRACK_TYPES:
         await _track_call_event(message_type, from_user_id, to_user_id, data)
 
-    delivered = await call_manager.send_to_user(to_user_id, envelope)
+    delivered = await _deliver_signal(to_user_id, envelope)
     if delivered:
         # Доставлено — парковка для этого вызова больше не нужна.
         if message_type in ("call-cancel", "call-decline", "call-end"):
@@ -582,6 +630,28 @@ async def get_ice_servers(
     return IceServersResponse(
         ice_servers=servers,
         ttl=int(settings.turn_ttl_seconds) if turn_configured() else 0,
+    )
+
+
+@router_rest.get("/history/", response_model=CallHistoryResponse)
+async def call_history(
+    limit: int = Query(default=CALL_HISTORY_PAGE, ge=1, le=CALL_HISTORY_MAX),
+    offset: int = Query(default=0, ge=0),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> CallHistoryResponse:
+    """История звонков человека: записи по всем личным чатам, свежие первыми.
+
+    Отдельного хранилища нет: звонки — это системные сообщения `kind='call'`
+    (см. ``_persist_call_record``), а не своя таблица. Хранили бы отдельно —
+    записи разъезжались бы с лентой чата.
+    """
+    items, total = await calls_crud.get_call_history(
+        session, user_id=user.id, limit=limit, offset=offset
+    )
+    return CallHistoryResponse(
+        items=[CallHistoryItem.model_validate(item) for item in items],
+        total=total,
     )
 
 

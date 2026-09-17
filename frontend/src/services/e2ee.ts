@@ -19,6 +19,7 @@
  */
 
 import { api } from './api'
+import { canonicalKey, orderKeys, safetyCodeFromBytes, type SafetyCode } from '@/utils/safetyNumber'
 
 const STORE_PREFIX = 'pismo_e2ee_v1_'
 const PREFIX = 'e2ee1:'
@@ -225,6 +226,32 @@ export async function peerPublicKey(userId: number): Promise<string | null> {
   return jwk
 }
 
+/**
+ * Код проверки ключей (safety number) для личного чата.
+ *
+ * Считается от публичных ключей ОБОИХ участников в фиксированном порядке, так
+ * что у обоих получается один и тот же код: сравнили вслух — убедились, что
+ * сервер не подменил ключ (см. `utils/safetyNumber.ts`).
+ *
+ * Возвращает null, если ключа собеседника ещё нет: проверять нечего, пока он не
+ * зашёл в приложение.
+ */
+export async function safetyNumberWithPeer(
+  myUserId: number,
+  peerUserId: number
+): Promise<SafetyCode | null> {
+  if (!isE2eeAvailable()) return null
+  const peerJson = await peerPublicKey(peerUserId)
+  const myJson = await myPublicJwkJson(myUserId).catch(() => null)
+  const mine = canonicalKey(myJson)
+  const theirs = canonicalKey(peerJson)
+  if (!mine || !theirs) return null
+  const [first, second] = orderKeys(mine, theirs)
+  const bytes = te.encode(`${first}|${second}`)
+  const hash = await crypto.subtle.digest('SHA-512', bytes)
+  return safetyCodeFromBytes(new Uint8Array(hash))
+}
+
 /** Выводит AES-GCM ключ из ECDH(мой приватный, публичный собеседника) + HKDF. */
 async function deriveAesKeyWithPeer(
   myUserId: number,
@@ -268,8 +295,7 @@ async function deriveAesKeyWithPeer(
   }
 }
 
-/** AES-GCM ключ чата (общий секрет двух сторон), с кэшем по chat_id. */
-export async function chatAesKey(
+/** AES-GCM ключ чата (общий секрет двух сторон), с кэшем по chat_id. */ export async function chatAesKey(
   myUserId: number,
   peerUserId: number,
   chatId: number

@@ -93,10 +93,18 @@ class EventsConnectionManager:
                 logger.debug("Не удалось доставить событие пользователю %s", user_id)
         return delivered
 
-    async def broadcast(self, user_ids: list[int], payload: dict[str, Any]) -> None:
-        """Отправляет событие списку пользователей (без дублей по id)."""
+    async def broadcast(self, user_ids: list[int], payload: dict[str, Any]) -> bool:
+        """Отправляет событие списку пользователей (без дублей по id).
+
+        Возвращает ``True``, если доставлено хотя бы одному: по этому признаку
+        решается, публиковать ли событие в мост для других процессов web (см.
+        `api_v1/events/service.dispatch_realtime`).
+        """
+        delivered = False
         for user_id in dict.fromkeys(user_ids):
-            await self.send_to_user(user_id, payload)
+            if await self.send_to_user(user_id, payload):
+                delivered = True
+        return delivered
 
 
 events_manager = EventsConnectionManager()

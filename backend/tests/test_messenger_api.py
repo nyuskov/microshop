@@ -990,16 +990,19 @@ async def test_reading_chat_notifies_own_other_devices(
     chat = await api.private_chat(t1, u2.id)
     await api.send(t1, chat["id"], "привет")
 
-    self_events: list[dict] = []
-    peer_events: list[dict] = []
+    events: list[dict] = []
 
     class Recorder:
         async def send_to_user(self, user_id: int, payload: dict) -> bool:
-            self_events.append({"user_id": user_id, **payload})
+            events.append({"user_id": user_id, **payload})
             return True
 
-        async def broadcast(self, user_ids: list[int], payload: dict) -> None:
-            peer_events.append({"user_ids": list(user_ids), **payload})
+        async def broadcast(self, user_ids: list[int], payload: dict) -> bool:
+            # Событие «своим устройствам» и собеседнику идёт одним путём —
+            # через диспетчер (при нескольких процессах web это ещё и мост).
+            for user_id in user_ids:
+                events.append({"user_id": user_id, **payload})
+            return True
 
     monkeypatch.setattr(events_service, "events_manager", Recorder())
 
@@ -1010,9 +1013,9 @@ async def test_reading_chat_notifies_own_other_devices(
         "user_id": u2.id,
         "type": "chat.read-self",
         "chat_id": chat["id"],
-    } in self_events
+    } in events
     # И собеседнику — про чтение (галочки у отправителя), как и раньше.
-    assert any(event.get("type") == "chat.read" for event in peer_events)
+    assert any(event.get("type") == "chat.read" for event in events)
 
 
 async def test_reading_empty_chat_sends_no_self_event(
@@ -1031,8 +1034,8 @@ async def test_reading_empty_chat_sends_no_self_event(
             self_events.append({"user_id": user_id, **payload})
             return True
 
-        async def broadcast(self, user_ids: list[int], payload: dict) -> None:
-            return None
+        async def broadcast(self, user_ids: list[int], payload: dict) -> bool:
+            return False
 
     monkeypatch.setattr(events_service, "events_manager", Recorder())
 

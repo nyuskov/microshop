@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from api_v1.events.manager import events_manager
+from api_v1.events.service import dispatch_realtime
 from api_v1.users.crud import display_name
 from core.celery_app import get_task
 from core.models import Story, User
@@ -40,7 +40,7 @@ async def notify_reaction(*, story: Story, reactor: User, emoji: str) -> None:
         "name": display_name(reactor),
     }
     try:
-        await events_manager.send_to_user(story.user_id, payload)
+        await dispatch_realtime([story.user_id], payload)
     except Exception:  # noqa: BLE001 - сокет не должен ронять саму реакцию
         logger.exception(
             "Не удалось отправить событие о реакции на историю %s", story.id

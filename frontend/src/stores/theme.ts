@@ -1,12 +1,19 @@
 import { defineStore } from 'pinia'
 
-/** Режим темы: светлая / тёмная / по системе.
+import {
+  isDarkBySchedule,
+  msUntilScheduleChange,
+  SCHEDULE_DEFAULT_END,
+  SCHEDULE_DEFAULT_START
+} from '@/utils/themeSchedule'
+
+/** Режим темы: светлая / тёмная / по системе / по расписанию.
  *
  * `amoled` — не выбор пользователя в ряду тем, а уточнение тёмной («чёрный
  * фон»): его включает флаг `amoled`, а в `currentTheme` попадает уже готовое
  * значение для атрибута `data-theme`. */
 export type Theme = 'light' | 'dark' | 'amoled'
-export type ThemeMode = 'light' | 'dark' | 'system'
+export type ThemeMode = 'light' | 'dark' | 'system' | 'schedule'
 
 export interface AccentPreset {
   key: string
@@ -132,6 +139,9 @@ interface AppearanceState {
   mode: ThemeMode
   /** Чёрный фон (AMOLED) — усилие тёмной темы, а не отдельная тема. */
   amoled: boolean
+  /** Границы расписания тёмной темы — минуты от полуночи (см. `utils/themeSchedule.ts`). */
+  darkFrom: number
+  darkTo: number
   accentKey: string
   bubbleKey: string
   textSizeKey: string
@@ -144,12 +154,17 @@ const DEFAULT_STATE: Omit<AppearanceState, 'isSidebarCollapsed'> = {
   currentTheme: 'dark',
   mode: DEFAULT_MODE,
   amoled: false,
+  darkFrom: SCHEDULE_DEFAULT_START,
+  darkTo: SCHEDULE_DEFAULT_END,
   accentKey: 'green',
   bubbleKey: 'green',
   textSizeKey: 'normal',
   wallpaperKey: 'default',
   wallpaperCustom: null
 }
+
+/** Будильник смены темы по расписанию. Живёт вне стора: таймер не состояние UI. */
+let scheduleTimer: number | null = null
 
 function loadAppearance(): Partial<AppearanceState> {
   try {
@@ -213,6 +228,9 @@ export const useThemeStore = defineStore('theme', {
      * теме, поэтому тумблер AMOLED гасится в светлой. */
     darkActive: (state): boolean => state.currentTheme !== 'light',
 
+    /** Тема выбирается расписанием (тёмная вечером, светлая днём). */
+    scheduleActive: (state): boolean => state.mode === 'schedule',
+
     /** CSS-фон окна сообщений с учётом пресета или загруженного фото. */
     wallpaperCss: (state): string => {
       if (state.wallpaperKey === 'custom' && state.wallpaperCustom) {
@@ -227,7 +245,17 @@ export const useThemeStore = defineStore('theme', {
     /** Применяет текущие настройки оформления к документу. */
     applyAppearance() {
       const prefersDark = systemPrefersDark()
-      const base: Theme = this.mode === 'system' ? (prefersDark ? 'dark' : 'light') : this.mode
+      const bySchedule = isDarkBySchedule(new Date(), this.darkFrom, this.darkTo)
+      const base: Theme =
+        this.mode === 'system'
+          ? prefersDark
+            ? 'dark'
+            : 'light'
+          : this.mode === 'schedule'
+            ? bySchedule
+              ? 'dark'
+              : 'light'
+            : this.mode
       // Чёрный фон — только для тёмной схемы: в светлой флаг не должен менять
       // атрибут `data-theme`, иначе получится чёрное окно со светлыми токенами.
       const resolved: Theme = base === 'dark' && this.amoled ? 'amoled' : base
@@ -256,6 +284,7 @@ export const useThemeStore = defineStore('theme', {
         themeColor.setAttribute('content', hex)
       }
       this.saveAppearance()
+      this.planScheduleCheck()
     },
 
     saveAppearance() {
@@ -265,6 +294,8 @@ export const useThemeStore = defineStore('theme', {
           JSON.stringify({
             mode: this.mode,
             amoled: this.amoled,
+            darkFrom: this.darkFrom,
+            darkTo: this.darkTo,
             accentKey: this.accentKey,
             bubbleKey: this.bubbleKey,
             textSizeKey: this.textSizeKey,
@@ -287,6 +318,19 @@ export const useThemeStore = defineStore('theme', {
 
     setThemeMode(mode: ThemeMode) {
       this.mode = mode
+      this.applyAppearance()
+    },
+
+    /**
+     * Границы расписания тёмной темы (минуты от полуночи).
+     *
+     * Применяем сразу: пользователь выбрал время и хочет видеть результат, а не
+     * гадать, почему тема не сменилась (например, выставил окно 22:00–07:00
+     * вечером — она станет тёмной тут же).
+     */
+    setDarkWindow(from: number, to: number) {
+      this.darkFrom = from
+      this.darkTo = to
       this.applyAppearance()
     },
 
@@ -340,12 +384,48 @@ export const useThemeStore = defineStore('theme', {
     resetAppearance() {
       this.mode = DEFAULT_MODE
       this.amoled = DEFAULT_STATE.amoled
+      this.darkFrom = DEFAULT_STATE.darkFrom
+      this.darkTo = DEFAULT_STATE.darkTo
       this.accentKey = DEFAULT_STATE.accentKey
       this.bubbleKey = DEFAULT_STATE.bubbleKey
       this.textSizeKey = DEFAULT_STATE.textSizeKey
       this.wallpaperKey = DEFAULT_STATE.wallpaperKey
       this.wallpaperCustom = DEFAULT_STATE.wallpaperCustom
       this.applyAppearance()
+    },
+
+    /**
+     * Будильник на границу окна расписания: ровно в 22:00 или 07:00 тема
+     * перерисовывается. Опрашивать время каждую минуту не нужно — это лишняя
+     * работа в фоне, особенно на телефоне.
+     */
+    planScheduleCheck() {
+      if (typeof window === 'undefined') return
+      if (scheduleTimer !== null) {
+        window.clearTimeout(scheduleTimer)
+        scheduleTimer = null
+      }
+      if (this.mode !== 'schedule') return
+      const wait = msUntilScheduleChange(new Date(), this.darkFrom, this.darkTo)
+      if (!wait) return
+      scheduleTimer = window.setTimeout(() => {
+        scheduleTimer = null
+        this.applyAppearance()
+      }, wait)
+    },
+
+    /**
+     * Пересчёт темы при возврате к приложению.
+     *
+     * Телефон в фоне замораживает таймеры, поэтому после долгой блокировки экрана
+     * будильник мог не сработать — при возврате считаем заново, не дожидаясь
+     * следующей границы.
+     */
+    watchSchedule() {
+      if (typeof document === 'undefined' || !document.addEventListener) return
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') this.applyAppearance()
+      })
     },
 
     initializeTheme() {
@@ -364,6 +444,7 @@ export const useThemeStore = defineStore('theme', {
       }
       this.applyAppearance()
       this._watchSystemTheme()
+      this.watchSchedule()
     },
 
     _watchSystemTheme() {

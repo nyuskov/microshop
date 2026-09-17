@@ -127,9 +127,9 @@
                 <q-icon :name="icon('screen_share')" size="13px" aria-hidden="true" />
                 Собеседник показывает экран
               </span>
-              <span class="call-e2ee" title="Медиа защищено сквозным шифрованием (DTLS-SRTP)">
+              <span class="call-e2ee" :title="callStore.callRouteHint">
                 <q-icon :name="icon('lock')" size="11px" aria-hidden="true" />
-                Сквозное шифрование
+                {{ callStore.callRouteLabel }}
               </span>
             </template>
 
@@ -171,12 +171,9 @@
                   <q-icon :name="icon('screen_share')" size="12px" aria-hidden="true" />
                   Собеседник показывает экран
                 </span>
-                <span
-                  class="call-e2ee video"
-                  title="Медиа защищено сквозным шифрованием (DTLS-SRTP)"
-                >
+                <span class="call-e2ee video" :title="callStore.callRouteHint">
                   <q-icon :name="icon('lock')" size="10px" aria-hidden="true" />
-                  Сквозное шифрование
+                  {{ callStore.callRouteLabel }}
                 </span>
               </div>
             </div>
@@ -297,6 +294,36 @@
                     class="more-mark"
                   />
                 </button>
+                <!-- Код сверки: сервер ведёт сигналинг, поэтому теоретически мог бы
+                   свести с третьим участником. Код считается из сертификатов
+                   обеих сторон — сравнив его вслух, это можно исключить. -->
+                <button
+                  class="more-row"
+                  :class="{ on: verifyOpen }"
+                  role="menuitem"
+                  @click="onVerifyRow"
+                >
+                  <q-icon :name="icon('verified_user')" size="20px" />
+                  <span>Код сверки</span>
+                  <q-icon v-if="verifyOpen" :name="icon('check')" size="16px" class="more-mark" />
+                </button>
+              </div>
+
+              <!-- Панель кода сверки: те же 6 цифр у обоих участников. -->
+              <div v-if="verifyOpen" class="call-verify">
+                <p v-if="!callStore.verificationCode" class="diagnostics-hint">
+                  Код появится, когда соединение установится.
+                </p>
+                <template v-else>
+                  <div class="verify-code" aria-label="Код сверки">
+                    {{ formatVerificationCode(callStore.verificationCode) }}
+                  </div>
+                </template>
+                <p class="verify-hint">
+                  Сравните код с собеседником вслух — по телефону или голосом. Совпал — разговор
+                  идёт именно между вами, сервер в середине отсутствует. Код меняется у каждого
+                  нового звонка: сверять надо каждый раз.
+                </p>
               </div>
 
               <!-- Панель диагностики соединения -->
@@ -403,6 +430,7 @@ import { mediaUrl } from '@/services/chatService'
 import SelectField from '@/components/common/SelectField.vue'
 import type { SelectValue } from '@/utils/select'
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
+import { formatVerificationCode } from '@/utils/callVerification'
 
 const callStore = useCallStore()
 
@@ -423,6 +451,8 @@ const hasCallBadges = computed(() => !callStore.peerMicOn || callStore.connectio
 
 /** Открыта ли панель «Диагностика звонка». */
 const diagnosticsOpen = ref(false)
+/** Открыта ли панель «Код сверки». */
+const verifyOpen = ref(false)
 const copiedDiagnostics = ref(false)
 let copyTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -497,11 +527,12 @@ const moreOpen = ref(false)
 const popoversEl = ref<HTMLElement | null>(null)
 const moreBtnEl = ref<HTMLElement | null>(null)
 
-/** Закрыть всё открытое поверх звонка (меню, устройства, диагностика). */
+/** Закрыть всё открытое поверх звонка (меню, устройства, диагностика, код). */
 const closePanels = () => {
   moreOpen.value = false
   settingsOpen.value = false
   diagnosticsOpen.value = false
+  verifyOpen.value = false
 }
 
 /**
@@ -526,6 +557,7 @@ const toggleMore = () => {
   if (moreOpen.value) {
     settingsOpen.value = false
     diagnosticsOpen.value = false
+    verifyOpen.value = false
   }
 }
 
@@ -541,6 +573,7 @@ const onScreenRow = () => {
 
 const onDevicesRow = () => {
   diagnosticsOpen.value = false
+  verifyOpen.value = false
   settingsOpen.value = !settingsOpen.value
   moreOpen.value = false
 }
@@ -548,8 +581,18 @@ const onDevicesRow = () => {
 const onDiagnosticsRow = () => {
   settingsOpen.value = false
   moreOpen.value = false
+  verifyOpen.value = false
   diagnosticsOpen.value = !diagnosticsOpen.value
   if (diagnosticsOpen.value) void callStore.refreshDiagnostics()
+}
+
+/** Пункт «Код сверки»: показывает код (и заодно пересчитывает его). */
+const onVerifyRow = () => {
+  settingsOpen.value = false
+  moreOpen.value = false
+  diagnosticsOpen.value = false
+  verifyOpen.value = !verifyOpen.value
+  if (verifyOpen.value) void callStore.refreshVerificationCode()
 }
 
 /** Есть ли смысл в «окне поверх других»: нужен видеоряд и поддержка PiP. */
@@ -721,6 +764,7 @@ watch(
       speakerOn.value = false
       settingsOpen.value = false
       diagnosticsOpen.value = false
+      verifyOpen.value = false
       copiedDiagnostics.value = false
       moreOpen.value = false
     }
@@ -1097,6 +1141,42 @@ onBeforeUnmount(() => {
 
 .call-badge.bad {
   background: rgba(244, 67, 54, 0.3);
+}
+
+/* ---------- Код сверки звонка ---------- */
+/* Панель в том же слое, что диагностика: показывает 6 цифр, одинаковых у обоих
+   участников. Крупно и с разрядкой — код диктуют вслух. */
+.call-verify {
+  position: absolute;
+  bottom: 108px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(340px, calc(100vw - 32px));
+  padding: 12px 14px;
+  background: rgba(16, 22, 30, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+}
+
+.verify-code {
+  font-family: var(--ms-font-mono, monospace);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-align: center;
+  color: #fff;
+}
+
+.verify-hint {
+  margin: 0;
+  font-size: var(--ms-fs-xs);
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.76);
 }
 
 /* ---------- Панель диагностики звонка ---------- */

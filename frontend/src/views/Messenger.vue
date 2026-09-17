@@ -66,6 +66,7 @@
         @create-group="openCreateGroup"
         @create-channel="openCreateChannel"
         @open-blocked="moderationOverlaysRef?.openBlocked()"
+        @open-calls="callsOpen = true"
       />
     </q-drawer>
 
@@ -423,6 +424,15 @@
     @toggle="toggleFolderForPicker"
   />
 
+  <!-- История звонков: записи всех личных чатов, фильтр «Пропущенные»,
+       «Перезвонить» тем же типом звонка. -->
+  <CallHistoryDialog
+    v-if="callsOpen"
+    @close="callsOpen = false"
+    @open-chat="openChatFromCalls"
+    @call-back="callBackFromHistory"
+  />
+
   <!-- Информация о чате/группе, создание группы и удаление чата — состояние
        этих диалогов живёт в отдельном компоненте (v-model у трёх «назад»-флагов). -->
   <MessengerChatOverlays
@@ -627,6 +637,7 @@ import { inviteTokenFromPath } from '@/utils/groupInvite'
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import { effectiveFile, messageSnippet, optimizeImageFile } from '@/utils/media'
+import type { CallHistoryItem } from '@/utils/callHistory'
 import { deleteDraft, fetchDrafts, putDraft } from '@/services/drafts'
 import { fetchChannel, fetchPostsMeta, markPostViewed } from '@/services/channelService'
 import { type Section } from '@/utils/mobileNav'
@@ -698,6 +709,10 @@ const ChatFoldersDialog = defineAsyncComponent(
 )
 const ChatFolderPicker = defineAsyncComponent(
   () => import('@/components/messenger/ChatFolderPicker.vue')
+)
+// История звонков — отдельный экран, чанк подгружается по открытию меню «Звонки».
+const CallHistoryDialog = defineAsyncComponent(
+  () => import('@/components/messenger/CallHistoryDialog.vue')
 )
 // Информация о чате/группе: на широком экране — правая панель (см. railVisible),
 // на остальных — модалка внутри MessengerChatOverlays. Компоненты те же, поэтому
@@ -1112,8 +1127,7 @@ const {
   prune: pruneFolders
 } = useChatFolders(currentUserId)
 
-const foldersOpen = ref(false)
-/** Чаты, для которых открыт выбор папок (null — диалог закрыт). */
+const foldersOpen = ref(false) /** Чаты, для которых открыт выбор папок (null — диалог закрыт). */
 const folderPickerChatIds = ref<number[] | null>(null)
 
 /** Подпись в диалоге выбора: название чата или «3 чата». */
@@ -1585,6 +1599,37 @@ const startVideoCall = () => {
 const startCall = (kind: 'audio' | 'video') => {
   if (kind === 'video') startVideoCall()
   else startVoiceCall()
+}
+
+// ---------- История звонков ----------
+// Записи о звонках лежат в чатах системными сообщениями; отдельный экран
+// собирает их в одну ленту (меню «⋯» → «Звонки»).
+const callsOpen = ref(false)
+
+/** Позвонить тем же типом, каким был звонок в записи. */
+const startCallWithPeer = (peer: ChatUser, kind: 'audio' | 'video') => {
+  void callStore.startCall(
+    {
+      id: peer.id,
+      name: displayName(peer),
+      // В экране звонка аватар — кружок: берём миниатюру, если она есть.
+      avatarUrl: peer.avatar_thumb_url ?? peer.avatar_url ?? null
+    },
+    kind
+  )
+}
+
+/** «Перезвонить» из истории: собеседника берём из самой записи (чат уже есть). */
+const callBackFromHistory = (item: CallHistoryItem) => {
+  if (!item.peer) return
+  callsOpen.value = false
+  startCallWithPeer(item.peer, item.call_kind === 'video' ? 'video' : 'audio')
+}
+
+/** Переход из записи в чат собеседника (посмотреть переписку). */
+const openChatFromCalls = (item: CallHistoryItem) => {
+  callsOpen.value = false
+  void selectChat(item.chat_id)
 }
 
 /** Задаваемый собеседником текст-статус (для шапки личного чата). */

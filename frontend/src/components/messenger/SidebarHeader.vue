@@ -166,7 +166,7 @@ import { avatarStyle, initials } from '@/utils/user'
 import StoriesStrip from '@/components/stories/StoriesStrip.vue'
 
 export interface SettingsAction {
-  key: 'group' | 'channel' | 'blocked'
+  key: 'calls' | 'group' | 'channel' | 'blocked'
   label: string
   icon: string
 }
@@ -201,6 +201,7 @@ const emit = defineEmits<{
   (e: 'to-contacts'): void
   (e: 'to-chats'): void
   (e: 'open-profile'): void
+  (e: 'open-calls'): void
   (e: 'create-group'): void
   (e: 'create-channel'): void
   (e: 'open-blocked'): void
@@ -217,6 +218,8 @@ const toggleSettingsMenu = () => {
 // Пункты верхнего меню «⋯». Служебные разделы (разбор жалоб и т.п.) здесь
 // больше не живут: они собраны в админской «шестерёнке» внизу панели.
 const settingsActions = computed<SettingsAction[]>(() => [
+  // «Звонки» — первым: это то, что человек ищет чаще, чем создание новых сущностей.
+  { key: 'calls', label: 'Звонки', icon: 'call' },
   { key: 'group', label: 'Новая группа', icon: 'group_add' },
   { key: 'channel', label: 'Новый канал', icon: 'campaign' },
   { key: 'blocked', label: 'Заблокированные', icon: 'block' }
@@ -224,6 +227,7 @@ const settingsActions = computed<SettingsAction[]>(() => [
 
 const runSettingsAction = (action: SettingsAction) => {
   settingsMenuOpen.value = false
+  if (action.key === 'calls') emit('open-calls')
   if (action.key === 'group') emit('create-group')
   if (action.key === 'channel') emit('create-channel')
   if (action.key === 'blocked') emit('open-blocked')

@@ -10,12 +10,35 @@ from typing import Any
 from sqlalchemy import distinct, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.amqp import publish_realtime_event
 from core.config import settings
 from core.models import ChatMute, User, user_chat_association_table
 
 from .manager import events_manager
 
 logger = logging.getLogger(__name__)
+
+
+async def dispatch_realtime(recipient_ids: list[int], payload: dict[str, Any]) -> bool:
+    """Раздаёт событие пользователям: своим сокетам и другим процессам web.
+
+    Зачем мост: сокеты живут в конкретном процессе, и при нескольких процессах
+    web событие, отправленное в одном, не нашло бы абонента, подключённого к
+    другому (он «не получает сообщения», хотя на связи). Поэтому событие всегда
+    идёт и в fanout моста — остальные процессы раздадут его своим сокетам.
+
+    Дубли исключены меткой процесса: свой же событие из очереди отбрасывается
+    (`core/amqp.RealtimeBridgeConsumer`). Возвращаем результат ЛОКАЛЬНОЙ доставки:
+    нужен только для отладки и тестов.
+    """
+    delivered = await events_manager.broadcast(recipient_ids, payload)
+    if not recipient_ids:
+        return delivered
+    try:
+        await publish_realtime_event(payload, recipient_ids)
+    except Exception:  # noqa: BLE001 - без моста событие дойдёт хотя бы своим
+        logger.exception("Не удалось опубликовать событие в мост")
+    return delivered
 
 
 async def chat_member_ids(session: AsyncSession, chat_id: int) -> list[int]:
@@ -75,9 +98,7 @@ async def notify_chat_read_elsewhere(user_id: int, chat_id: int) -> None:
     непрочитанного висел, пока не перезагрузишь страницу, хотя чат уже прочитан
     на компьютере.
     """
-    await events_manager.send_to_user(
-        user_id, {"type": "chat.read-self", "chat_id": chat_id}
-    )
+    await dispatch_realtime([user_id], {"type": "chat.read-self", "chat_id": chat_id})
 
 
 async def muted_user_ids(session: AsyncSession, chat_id: int) -> set[int]:
@@ -104,7 +125,7 @@ async def notify_chat(
     """
     members = await chat_member_ids(session, chat_id)
     recipients = [user_id for user_id in members if user_id != exclude_user_id]
-    await events_manager.broadcast(recipients, payload)
+    await dispatch_realtime(recipients, payload)
     if not push:
         return
 
@@ -146,4 +167,4 @@ def _maybe_enqueue_message_push(
 
 async def notify_user(user_id: int, payload: dict[str, Any]) -> bool:
     """Отправляет событие одному пользователю (если он на связи)."""
-    return await events_manager.send_to_user(user_id, payload)
+    return await dispatch_realtime([user_id], payload)

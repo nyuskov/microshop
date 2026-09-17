@@ -18,8 +18,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.chats.crud import get_member_role
-from api_v1.events.manager import events_manager
-from api_v1.events.service import notify_chat
+from api_v1.events.service import dispatch_realtime, notify_chat
 from core.models import (
     ChannelComment,
     ChannelPostView,
@@ -438,8 +437,8 @@ async def set_admin(
         .values(role=new_role)
     )
     await session.commit()
-    await events_manager.send_to_user(
-        target_id,
+    await dispatch_realtime(
+        [target_id],
         {
             "type": "channel.role",
             "chat_id": chat.id,
@@ -530,8 +529,8 @@ async def add_comment(
     # Автору поста (владельцу/админу) — тихое событие: комментарий должен
     # появиться сразу, но push на каждый комментарий не шлём (иначе спам).
     if post.user_id != user_id:
-        await events_manager.send_to_user(
-            post.user_id,
+        await dispatch_realtime(
+            [post.user_id],
             {
                 "type": "channel.comment",
                 "chat_id": chat.id,
@@ -714,8 +713,8 @@ async def review_suggestion(
     await session.commit()
 
     # Автору предложки — тихое событие: по нему в интерфейсе виден исход.
-    await events_manager.send_to_user(
-        suggestion.author_id,
+    await dispatch_realtime(
+        [suggestion.author_id],
         {
             "type": "channel.suggestion-reviewed",
             "chat_id": chat.id,
@@ -736,7 +735,7 @@ async def _notify_chat_admins(
         user_chat_association_table.c.role.in_((ROLE_CREATOR, ROLE_ADMIN)),
     )
     for user_id in (await session.execute(stmt)).scalars().all():
-        await events_manager.send_to_user(user_id, payload)
+        await dispatch_realtime([user_id], payload)
 
 
 async def users_by_ids(session: AsyncSession, ids: list[int]) -> list[User]:

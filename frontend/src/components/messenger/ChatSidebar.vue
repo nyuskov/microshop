@@ -30,6 +30,7 @@
       @create-group="emit('create-group')"
       @create-channel="emit('create-channel')"
       @open-blocked="emit('open-blocked')"
+      @open-calls="emit('open-calls')"
     />
 
     <!-- Истории и поиск под шапкой. Порядок как в Telegram: первой выезжает
@@ -285,6 +286,8 @@ const emit = defineEmits<{
   (e: 'create-channel'): void
   /** Открыть список заблокированных пользователей. */
   (e: 'open-blocked'): void
+  /** История звонков (пункт меню «⋯» в шапке панели). */
+  (e: 'open-calls'): void
   /** Открыть админскую панель (приглашения, жалобы) — только администраторы. */
   (e: 'open-admin'): void
 }>()

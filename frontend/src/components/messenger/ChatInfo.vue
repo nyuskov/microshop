@@ -88,6 +88,12 @@
             @update:model-value="onToggleE2ee"
           />
         </div>
+        <!-- Проверка ключей: показывает одинаковый у обоих участников код. Так
+             проверяемое утверждение «сервер не читает» можно подтвердить лично. -->
+        <button v-if="e2eeEnabled" class="ci-verify" type="button" @click="safetyOpen = true">
+          <q-icon :name="icon('verified_user')" size="18px" />
+          <span>Проверить шифрование</span>
+        </button>
       </div>
 
       <div v-if="images.length || mediaHasMore" class="ci-section">
@@ -150,6 +156,15 @@
 
     <!-- Диалог «Добавить в контакты / Имя контакта» -->
     <ContactNameDialog v-if="peer && !isSelfChat" v-model="contactDialogOpen" :user="peer" />
+
+    <!-- Сверка ключей шифрования (safety number) -->
+    <SafetyNumberDialog
+      v-if="safetyOpen && peer"
+      :my-user-id="currentUserId"
+      :peer-id="peer.id"
+      :peer-name="chatPeerTitle(chat, currentUserId)"
+      @close="safetyOpen = false"
+    />
   </q-card>
 </template>
 
@@ -161,6 +176,7 @@ import { mediaUrl } from '@/config'
 import { fetchChatMedia } from '@/services/chatService'
 import { getErrorMessage } from '@/services/errors'
 import ContactNameDialog from '@/components/messenger/ContactNameDialog.vue'
+import SafetyNumberDialog from '@/components/messenger/SafetyNumberDialog.vue'
 import { useContactsStore } from '@/stores/contacts'
 import { avatarStyle, avatarUrlOf, chatPeer, chatPeerTitle, initials } from '@/utils/user'
 import { formatBytes, formatMsgTime } from '@/utils/format'
@@ -195,6 +211,9 @@ const emit = defineEmits<{
 const onToggleE2ee = (val: boolean | string | null) => {
   emit('toggle-e2ee', val === true || val === 'true')
 }
+
+/** Открыт экран сверки ключей (safety number). */
+const safetyOpen = ref(false)
 
 const peer = computed<ChatUser | undefined>(() => chatPeer(props.chat, props.currentUserId))
 
@@ -536,5 +555,24 @@ watch(
   font-size: 12px;
   line-height: 1.35;
   color: var(--ms-muted, #71808d);
+}
+
+/* Кнопка проверки ключей: спокойная строка под описанием шифрования. */
+.ci-verify {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--ms-border, #dfe4e8);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ms-accent, #2a5885);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.ci-verify:hover {
+  background: var(--ms-surface-2, #f3f5f7);
 }
 </style>

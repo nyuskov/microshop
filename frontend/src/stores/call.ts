@@ -10,6 +10,13 @@ import {
   type ConnectionQuality
 } from '@/utils/callStats'
 import {
+  callRoute,
+  callVerificationCode,
+  routeHint,
+  routeLabel,
+  type CallRoute
+} from '@/utils/callVerification'
+import {
   chooseDeviceId,
   groupDevices,
   readCallDevices,
@@ -90,6 +97,12 @@ interface CallState {
   reconnecting: boolean
   /** Собеседник показывает экран. */
   peerScreenSharing: boolean
+  /**
+   * Код сверки звонка: его считают оба участника из отпечатков сертификатов
+   * DTLS-SRTP и сравнивают вслух (см. `utils/callVerification.ts`). Пусто —
+   * соединение ещё не установилось, сверять нечего.
+   */
+  verificationCode: string
   /** Свои устройства (по мнению браузера) и выбранные среди них. */
   cameras: MediaDeviceInfo[]
   microphones: MediaDeviceInfo[]
@@ -120,6 +133,8 @@ const DEFAULT_STATE: CallState = {
   peerVideoOn: true,
   diagnostics: null,
   peerScreenSharing: false,
+  /** Код сверки звонка (6 цифр), одинаковый у обоих участников. */
+  verificationCode: '',
   /** Теряли связь и восстанавливаем: в оверлее показываем «Переподключаемся…». */
   reconnecting: false,
   cameras: [],
@@ -153,6 +168,12 @@ export const useCallStore = defineStore('call', {
     canSwitchDevices: (state) => state.status === 'active',
     /** Качество связи для индикатора («Плохая связь»). */
     connectionQuality: (state): ConnectionQuality => qualityOf(state.diagnostics),
+    /** Куда идёт медиа: напрямую или через наш релей (бейдж в звонке). */
+    callRoute: (state): CallRoute => callRoute(state.diagnostics?.candidateType),
+    /** Подпись маршрута для бейджа. */
+    callRouteLabel: (state): string => routeLabel(callRoute(state.diagnostics?.candidateType)),
+    /** Пояснение к бейджу маршрута (в `title`). */
+    callRouteHint: (state): string => routeHint(callRoute(state.diagnostics?.candidateType)),
     /** Короткая расшифровка диагностики (для панели и подписи). */
     diagnosticsSummary: (state): string => summaryOf(state.diagnostics),
     formattedTime: (state): string => {
@@ -918,6 +939,30 @@ export const useCallStore = defineStore('call', {
       // статистику соединения (индикатор качества и панель диагностики).
       this._sendMediaState()
       this._startStatsPolling()
+      // И код сверки: он считается из отпечатков сертификатов обеих сторон — до
+      // подключения брать нечего.
+      void this.refreshVerificationCode()
+    },
+
+    /**
+     * Считает код сверки звонка из SDP обеих сторон.
+     *
+     * Код должен совпасть у обоих участников, поэтому берём отпечатки из
+     * локального И удалённого SDP и сортируем их. Проверять есть смысл только
+     * во время разговора — до этого соединения нет.
+     */
+    async refreshVerificationCode(): Promise<void> {
+      const pc = runtime.peerConnection
+      if (!pc || this.status !== 'active') return
+      try {
+        this.verificationCode =
+          (await callVerificationCode(
+            pc.localDescription?.sdp ?? null,
+            pc.remoteDescription?.sdp ?? null
+          )) ?? ''
+      } catch {
+        /* WebCrypto может быть недоступен — звонку это не мешает */
+      }
     },
 
     /** Сообщает собеседнику состояние своего микрофона и камеры. */
@@ -1513,6 +1558,8 @@ export const useCallStore = defineStore('call', {
       this._clearStatsPolling()
       // Звонок завершён осознанно — поднимать его после перезагрузки не нужно.
       forgetActiveCall()
+      // Код сверки относится к конкретному соединению: в новом звонке он другой.
+      this.verificationCode = ''
       this.$patch({ ...DEFAULT_STATE, connected: this.connected })
     },
 
