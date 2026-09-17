@@ -13,7 +13,9 @@
     </div>
 
     <template v-else>
-      <!-- Фильтры списка: быстро отсечь непрочитанное, личные или группы -->
+      <!-- Фильтры списка: быстро отсечь непрочитанное, личные или группы.
+           Ряд листается (папки могут не влезать): колесом мыши, свайпом и
+           перетаскиванием мышью — см. utils/hScroll.ts. -->
       <div
         v-if="!props.selectionMode"
         ref="filtersEl"
@@ -23,27 +25,60 @@
         aria-label="Фильтр чатов"
         @scroll.passive="updateFilterEdges"
         @wheel.passive="onFiltersWheel"
+        @pointerdown="onFiltersPointerDown"
+        @pointermove="onFiltersPointerMove"
+        @pointerup="onFiltersPointerUp"
+        @pointercancel="onFiltersPointerUp"
+        @pointerleave="onFiltersPointerUp"
       >
         <button
           v-for="filter in props.filters"
           :key="filter.key"
           type="button"
           class="chat-filter"
-          :class="{ active: props.filter === filter.key }"
+          :class="{ active: props.filter === filter.key, folder: isFolderKey(filter.key) }"
+          :data-filter="filter.key"
           role="tab"
           :aria-selected="props.filter === filter.key"
-          @click="emit('update:filter', filter.key)"
+          :aria-label="folderHint(filter.key) || undefined"
+          @click="onFilterClick(filter.key)"
+          @contextmenu.prevent="manageFolder(filter.key)"
+          @pointerdown="onFilterDown(filter.key)"
+          @pointerup="cancelFilterHold"
+          @pointerleave="cancelFilterHold"
+          @pointercancel="cancelFilterHold"
         >
+          <q-icon
+            v-if="isFolderKey(filter.key)"
+            :name="icon('folder')"
+            size="15px"
+            aria-hidden="true"
+          />
           {{ filter.title }}
           <span v-if="filterCount(filter.key)" class="chat-filter-count">
             {{ filterCount(filter.key) > 99 ? '99+' : filterCount(filter.key) }}
           </span>
         </button>
+        <!-- Создание папки: папок нет — это первый вход, папки есть — рядом с ними. -->
+        <button
+          type="button"
+          class="chat-filter chat-filter-add"
+          title="Новая папка"
+          aria-label="Новая папка чатов"
+          @click="emit('create-folder')"
+        >
+          <q-icon :name="icon('add')" size="16px" />
+        </button>
       </div>
 
       <div class="section-label">Недавние</div>
       <div v-if="!props.chats.length" class="empty-hint">
-        Найдите пользователя по логину или телефону и начните переписку
+        <template v-if="isFolderKey(props.filter)">
+          В папке пока нет чатов — добавьте их через «В папку» в меню чата.
+        </template>
+        <template v-else>
+          Найдите пользователя по логину или телефону и начните переписку
+        </template>
       </div>
       <div
         v-else
@@ -182,8 +217,15 @@
  */
 import { icon } from '@/utils/icons'
 import type { Chat } from '@/types'
-import { onMounted, nextTick, ref, watch } from 'vue'
-import { canScrollX, scrollEdges, wheelScrollLeft } from '@/utils/hScroll'
+import { onBeforeUnmount, onMounted, nextTick, ref, watch } from 'vue'
+import { FOLDER_FILTER_PREFIX } from '@/utils/chatFolders'
+import {
+  canScrollX,
+  DRAG_THRESHOLD_PX,
+  dragScrollLeft,
+  scrollEdges,
+  wheelScrollLeft
+} from '@/utils/hScroll'
 import { avatarStyle, initials } from '@/utils/user'
 import { formatChatTime } from '@/utils/format'
 import {
@@ -228,10 +270,47 @@ const emit = defineEmits<{
   /** Клик по строке: обычное открытие чата или отметка в режиме выделения. */
   (e: 'row-click', chatId: number): void
   (e: 'update:filter', key: string): void
+  /** Создать новую папку чатов (кнопка «+» в ряду фильтров). */
+  (e: 'create-folder'): void
+  /** Открыть управление папкой (долгий тап или правый клик по чипу папки). */
+  (e: 'manage-folder', id: string): void
   (e: 'row-pointer-down', chatId: number): void
   (e: 'row-pointer-up'): void
   (e: 'row-pointer-cancel'): void
 }>()
+
+// ---------- Чипы папок ----------
+// Фильтр папки приходит как `folder:<id>`: по этому префиксу отличаем свои папки
+// от базовых чипов (и рисуем иконку). Управление папкой — долгий тап (телефон)
+// или правый клик (десктоп): отдельной кнопки на маленьком чипе не поместить.
+const FOLDER_HOLD_MS = 500
+const isFolderKey = (key: string): boolean => key.startsWith(FOLDER_FILTER_PREFIX)
+const folderHint = (key: string): string =>
+  isFolderKey(key) ? 'Папка чатов: долгий тап — изменить' : ''
+
+let folderHoldTimer: number | undefined
+const cancelFilterHold = () => {
+  if (folderHoldTimer !== undefined) {
+    window.clearTimeout(folderHoldTimer)
+    folderHoldTimer = undefined
+  }
+}
+
+const onFilterDown = (key: string) => {
+  cancelFilterHold()
+  if (!isFolderKey(key)) return
+  folderHoldTimer = window.setTimeout(() => {
+    folderHoldTimer = undefined
+    emit('manage-folder', key.slice(FOLDER_FILTER_PREFIX.length))
+  }, FOLDER_HOLD_MS)
+}
+
+const manageFolder = (key: string) => {
+  cancelFilterHold()
+  if (isFolderKey(key)) emit('manage-folder', key.slice(FOLDER_FILTER_PREFIX.length))
+}
+
+onBeforeUnmount(cancelFilterHold)
 
 /**
  * Число в счётчике на чипе.
@@ -254,10 +333,11 @@ const savedStyle: Record<string, string> = {
 const isSelected = (chatId: number): boolean => props.selectedIds.includes(chatId)
 const isMutedOf = (chatId: number): boolean => props.mutedChatIds?.includes(chatId) ?? false
 
-// Ряд фильтров на узких экранах шире панели (шесть чипов не влезают в 320–390 px),
-// поэтому: (1) колесо мыши прокручивает его вбок — иначе до правого края мышью
-// не добраться; (2) затухания по краям показываем только там, где правда есть
-// скрытое — статичная маска прятала текст чипа в конце прокрутки.
+// Ряд фильтров на узких экранах шире панели (шесть базовых чипов не влезают в
+// 320–390 px), а папок может быть до десяти — поэтому ряд листается четырьмя
+// способами: колесом мыши, свайпом пальцем, стрелками у краёв и перетаскиванием
+// мышью. Затухания по краям показываем только там, где правда есть скрытое —
+// статичная маска прятала текст чипа в конце прокрутки.
 const filtersEl = ref<HTMLElement | null>(null)
 const filterEdges = ref<{ start: boolean; end: boolean }>({ start: false, end: false })
 
@@ -273,12 +353,69 @@ const onFiltersWheel = (event: WheelEvent) => {
   el.scrollLeft = wheelScrollLeft(el, event.deltaX, event.deltaY)
 }
 
-// Число чипов меняется («Архив» появляется после первой архивации, а с ним и
-// переполнение) — пересчитываем края, не дожидаясь прокрутки.
+// Перетаскивание мышью: на десктопе это самый понятный способ подвинуть ряд.
+// Клик по чипу после протяжки не срабатывает (иначе «прокрутил» = «выбрал папку»).
+let dragStartX = 0
+let dragStartLeft = 0
+let dragging = false
+let suppressClick = false
+
+const onFiltersPointerDown = (event: PointerEvent) => {
+  if (event.pointerType !== 'mouse') return
+  const el = filtersEl.value
+  if (!el || !canScrollX(el)) return
+  dragStartX = event.clientX
+  dragStartLeft = el.scrollLeft
+  dragging = false
+}
+
+const onFiltersPointerMove = (event: PointerEvent) => {
+  if (event.pointerType !== 'mouse') return
+  const el = filtersEl.value
+  if (!el || event.buttons === 0) return
+  const dx = event.clientX - dragStartX
+  if (!dragging && Math.abs(dx) < DRAG_THRESHOLD_PX) return
+  dragging = true
+  suppressClick = true
+  el.scrollLeft = dragScrollLeft(el, dragStartLeft, dx)
+}
+
+const onFiltersPointerUp = () => {
+  dragging = false
+  cancelFilterHold()
+  // Клик приходит сразу после pointerup: гасим его и снимаем флаг к следующему.
+  if (suppressClick) window.setTimeout(() => (suppressClick = false), 0)
+}
+
+/** Клик по чипу: фильтр, но не после перетаскивания ряда. */
+const onFilterClick = (key: string) => {
+  if (suppressClick) return
+  emit('update:filter', key)
+  // Выбранная папка должна быть видна — догоняем её, если она уехала за край.
+  void nextTick(() => scrollActiveFilterIntoView(key))
+}
+
+/** Показывает активный чип в ряду (после выбора папки или смены фильтра). */
+const scrollActiveFilterIntoView = (key: string) => {
+  const el = filtersEl.value
+  if (!el) return
+  const chip = el.querySelector<HTMLElement>(`[data-filter="${key}"]`)
+  chip?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+}
+
+// Число чипов меняется («Архив» появляется после первой архивации, папка — после
+// создания), а с ним и переполнение — пересчитываем края, не дожидаясь прокрутки.
 onMounted(() => void nextTick(updateFilterEdges))
 watch(
   () => props.filters.length,
   () => void nextTick(updateFilterEdges)
+)
+
+// Фильтр сменили не только кликом (горячие клавиши, удаление папки) — тоже
+// показываем активный чип.
+watch(
+  () => props.filter,
+  (key) => void nextTick(() => scrollActiveFilterIntoView(key))
 )
 </script>
 
@@ -291,6 +428,7 @@ watch(
   flex-direction: column;
 }
 
+/* Ряд чипов: листается мышью и пальцем, поэтому курсор-«рука». */
 .chat-filters {
   display: flex;
   gap: 4px;
@@ -349,6 +487,23 @@ watch(
   background: var(--ms-accent-soft);
   color: var(--ms-accent);
   font-weight: 600;
+}
+
+/* Чип папки: иконка показывает, что это своя папка, а не базовый фильтр. */
+.chat-filter.folder {
+  border: 1px solid var(--ms-border);
+}
+
+.chat-filter-add {
+  padding: 4px 7px;
+  border: 1px dashed var(--ms-border);
+  background: transparent;
+  color: var(--ms-muted-2);
+}
+
+.chat-filter-add:hover {
+  color: var(--ms-text);
+  border-color: var(--ms-accent-border);
 }
 
 /* Сам чип компактный (шесть фильтров должны влезать в 320–390 px), а область

@@ -38,6 +38,14 @@
         <q-icon :name="icon('archive')" size="20px" />
       </button>
       <button
+        class="icon-btn"
+        title="В папку"
+        aria-label="Добавить выбранные чаты в папку"
+        @click="emit('bulk-folders')"
+      >
+        <q-icon :name="icon('folder')" size="20px" />
+      </button>
+      <button
         class="icon-btn danger"
         title="Удалить выбранные"
         aria-label="Удалить выбранные"
@@ -182,6 +190,8 @@ const emit = defineEmits<{
   (e: 'bulk-mute'): void
   (e: 'bulk-pin'): void
   (e: 'bulk-archive'): void
+  /** Добавить выбранные чаты в папку (открывает выбор папок). */
+  (e: 'bulk-folders'): void
   (e: 'bulk-delete'): void
   (e: 'toggle-select-all'): void
   (e: 'toggle-stories-expand'): void

@@ -204,6 +204,10 @@
   content: '\E0D1 ';
 }
 
+.icon-folder::before {
+  content: '\E0D7 ';
+}
+
 .icon-forward::before {
   content: '\E229 ';
 }

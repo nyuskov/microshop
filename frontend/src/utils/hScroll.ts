@@ -39,3 +39,16 @@ export const wheelScrollLeft = (el: ScrollableX, deltaX: number, deltaY: number)
   const max = Math.max(0, el.scrollWidth - el.clientWidth)
   return Math.min(max, Math.max(0, el.scrollLeft + delta))
 }
+
+/**
+ * Позиция ряда при перетаскивании мышью.
+ *
+ * Тянем содержимое влево (`dx` < 0) — смотрим вправо, поэтому знак обратный.
+ */
+export const dragScrollLeft = (el: ScrollableX, startLeft: number, dx: number): number => {
+  const max = Math.max(0, el.scrollWidth - el.clientWidth)
+  return Math.min(max, Math.max(0, startLeft - dx))
+}
+
+/** Порог, после которого движение мышью — перетаскивание, а не клик по чипу. */
+export const DRAG_THRESHOLD_PX = 6

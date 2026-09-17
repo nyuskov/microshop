@@ -133,6 +133,8 @@ export const ICON_MAP: Record<string, string> = {
   // Архив: «короб с крышкой». В Lucide такого глифа нет, нарисован вручную —
   // см. DRAWN_GLYPHS ниже и assets/icons-drawn.css.
   archive: 'archive',
+  // Папки чатов: свой список диалогов с ручным порядком.
+  folder: 'folder',
   mic: 'mic',
   mic_off: 'mic-off',
   volume_up: 'volume-2',

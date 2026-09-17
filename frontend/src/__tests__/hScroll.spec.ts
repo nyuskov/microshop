@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { canScrollX, scrollEdges, wheelScrollLeft } from '@/utils/hScroll'
+import {
+  canScrollX,
+  DRAG_THRESHOLD_PX,
+  dragScrollLeft,
+  scrollEdges,
+  wheelScrollLeft
+} from '@/utils/hScroll'
 
 /**
  * Прокрутка горизонтального ряда (чипы фильтров) мышью.
@@ -63,5 +69,19 @@ describe('wheelScrollLeft', () => {
 
   it('на влезающем ряду прокрутка остаётся нулевой', () => {
     expect(wheelScrollLeft(row({ scrollWidth: 378 }), 0, 60)).toBe(0)
+  })
+})
+
+describe('прокрутка мышью (папки не влезают в ряд)', () => {
+  it('перетаскивание двигает содержимое за курсором', () => {
+    // Тянем влево (dx<0) — смотрим вправо.
+    expect(dragScrollLeft(row({}), 0, -40)).toBe(40)
+    expect(dragScrollLeft(row({}), 0, 40)).toBe(0)
+    expect(dragScrollLeft(row({ scrollLeft: 50 }), 50, -100)).toBe(55)
+  })
+
+  it('порог отличает перетаскивание от клика по чипу', () => {
+    // Без порога дрожание мыши выбирало бы папку вместо открытия списка.
+    expect(DRAG_THRESHOLD_PX).toBeGreaterThan(0)
   })
 })

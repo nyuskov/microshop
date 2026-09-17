@@ -83,6 +83,11 @@
             <q-icon :name="icon('volume_up')" size="19px" />
             <span>Звук уведомлений</span>
           </button>
+          <!-- Папки: свои списки чатов с ручным порядком (настройка устройства). -->
+          <button class="ms-dropdown-item" @click="runChatAction('folders')">
+            <q-icon :name="icon('folder')" size="19px" />
+            <span>В папку…</span>
+          </button>
           <!-- Статистика: сколько писали, когда и кто активнее (считает сервер). -->
           <button class="ms-dropdown-item" @click="runChatAction('stats')">
             <q-icon :name="icon('bar_chart')" size="19px" />
@@ -175,6 +180,8 @@ const emit = defineEmits<{
   (e: 'open-chat-sound'): void
   /** Статистика чата: сообщения по дням, участники, вложения. */
   (e: 'open-chat-stats'): void
+  /** Папки чатов: отметить, в каких папках виден этот чат. */
+  (e: 'open-chat-folders'): void
   /** Запретить/разрешить звонки от собеседника (мягкая блокировка). */
   (e: 'toggle-calls-block'): void
   /** Жалоба на собеседника (модерация UGC, требование RuStore). */
@@ -233,11 +240,12 @@ const toggleChatMenu = () => {
 }
 
 const runChatAction = (
-  action: 'search' | 'archive' | 'sound' | 'stats' | 'calls' | 'report' | 'block'
+  action: 'search' | 'archive' | 'folders' | 'sound' | 'stats' | 'calls' | 'report' | 'block'
 ) => {
   chatMenuOpen.value = false
   if (action === 'search') emit('toggle-search')
   if (action === 'archive') emit('toggle-archive')
+  if (action === 'folders') emit('open-chat-folders')
   if (action === 'sound') emit('open-chat-sound')
   if (action === 'stats') emit('open-chat-stats')
   if (action === 'calls') emit('toggle-calls-block')

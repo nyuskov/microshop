@@ -41,6 +41,7 @@
         :pinned-chat-ids="pinnedChatIds"
         :muted-chat-ids="mutedChatIds"
         :archived-chat-ids="archivedChatIds"
+        :chat-folders="chatFolders"
         :drafts="draftsByChatId"
         :self-name="selfName"
         :self-avatar-url="selfAvatarUrl"
@@ -51,6 +52,9 @@
         @bulk-mute="bulkSetMuted"
         @bulk-pin="bulkSetPinned"
         @bulk-archive="bulkSetArchived"
+        @bulk-folders="openSelectedFolders"
+        @create-folder="openFolderManager()"
+        @manage-folder="manageFolder"
         @bulk-delete="chatOverlaysRef?.openBulkDelete($event)"
         @to-contacts="openContacts"
         @open-story="openStory"
@@ -154,6 +158,7 @@
             @toggle-archive="toggleCurrentChatArchive"
             @open-chat-sound="chatSoundOpen = true"
             @open-chat-stats="chatStatsOpen = true"
+            @open-chat-folders="openChatFolders"
             @toggle-calls-block="toggleSelectedPeerCalls"
             @report-chat="openReportForPeer"
             @block-chat="blockSelectedPeer"
@@ -392,6 +397,31 @@
     @close="chatStatsOpen = false"
   />
 
+  <!-- Папки чатов: свои списки с ручным порядком (настройка устройства) -->
+  <ChatFoldersDialog
+    v-if="foldersOpen"
+    :folders="chatFolders"
+    :chats="chats"
+    :current-user-id="currentUserId"
+    @close="foldersOpen = false"
+    @create="createChatFolder"
+    @rename="renameChatFolder"
+    @remove="deleteChatFolder"
+    @toggle-chat="toggleFolderChat"
+    @move-chat="moveFolderChatChat"
+  />
+
+  <!-- Отметить папки для чата/чатов (меню чата, панель выделения, поиск) -->
+  <ChatFolderPicker
+    v-if="folderPickerChatIds"
+    :folders="chatFolders"
+    :chat-ids="folderPickerChatIds"
+    :target="folderPickerTarget"
+    @close="folderPickerChatIds = null"
+    @create="createFolderWithChats"
+    @toggle="toggleFolderForPicker"
+  />
+
   <!-- Информация о чате/группе, создание группы и удаление чата — состояние
        этих диалогов живёт в отдельном компоненте (v-model у трёх «назад»-флагов). -->
   <MessengerChatOverlays
@@ -607,6 +637,7 @@ import { useRealtimeSync } from '@/composables/useRealtimeSync'
 import { useRecordButton } from '@/composables/useRecordButton'
 import { useCallSession } from '@/composables/useCallSession'
 import { useChatNavigation } from '@/composables/useChatNavigation'
+import { useChatFolders } from '@/composables/useChatFolders'
 import { useChatUnreadState } from '@/composables/useChatUnreadState'
 import { useForward } from '@/composables/useForward'
 import { useMediaRecording } from '@/composables/useMediaRecording'
@@ -658,6 +689,14 @@ const ChatSoundDialog = defineAsyncComponent(
 )
 const ChatStatsDialog = defineAsyncComponent(
   () => import('@/components/messenger/ChatStatsDialog.vue')
+)
+// Папки чатов: управление составом и выбор папок для чата — отдельные чанки
+// (нужны только когда человек сам открыл папки).
+const ChatFoldersDialog = defineAsyncComponent(
+  () => import('@/components/messenger/ChatFoldersDialog.vue')
+)
+const ChatFolderPicker = defineAsyncComponent(
+  () => import('@/components/messenger/ChatFolderPicker.vue')
 )
 // Информация о чате/группе: на широком экране — правая панель (см. railVisible),
 // на остальных — модалка внутри MessengerChatOverlays. Компоненты те же, поэтому
@@ -1055,6 +1094,104 @@ const selectedChatArchived = computed<boolean>(
 const toggleCurrentChatArchive = () => {
   const chat = selectedChat.value
   if (chat !== null) toggleChatArchived(chat.id)
+}
+
+// ---------- Папки чатов (личная настройка вида, хранится локально) ----------
+// Зачем: список чатов растёт, и базовых фильтров уже мало. Папка — свой список
+// конкретных чатов с ручным порядком (как в Telegram). Хранится на устройстве
+// (`pismo_chat_folders`), как архив и пины: сервер о папках не знает.
+const {
+  folders: chatFolders,
+  create: createFolderRaw,
+  rename: renameFolderRaw,
+  remove: removeFolderRaw,
+  toggleChat: toggleFolderChatRaw,
+  setChats: setFolderChatsRaw,
+  moveChat: moveFolderChatRaw,
+  prune: pruneFolders
+} = useChatFolders(currentUserId)
+
+const foldersOpen = ref(false)
+/** Чаты, для которых открыт выбор папок (null — диалог закрыт). */
+const folderPickerChatIds = ref<number[] | null>(null)
+
+/** Подпись в диалоге выбора: название чата или «3 чата». */
+const folderPickerTarget = computed<string>(() => {
+  const ids = folderPickerChatIds.value ?? []
+  if (ids.length === 1) {
+    const id = ids[0] as number
+    const chat = chats.value.find((item) => item.id === id)
+    return chat ? chatTitle(chat, currentUserId.value) : 'Чат'
+  }
+  return `${ids.length} ${ids.length === 1 ? 'чат' : ids.length < 5 ? 'чата' : 'чатов'}`
+})
+
+/** Чаты, которых больше нет, из папок убираем (список чатов уже загружен). */
+watch(
+  chats,
+  (list) => {
+    if (list.length) pruneFolders(list.map((chat) => chat.id))
+  },
+  { immediate: true }
+)
+
+/** Диалог управления папками: из чипа «+» (создание) или по долгому тапу. */
+const openFolderManager = () => {
+  foldersOpen.value = true
+}
+
+const manageFolder = (_id: string) => {
+  // Управление одной папкой живёт в том же диалоге: он открывается на списке,
+  // а нужная папка раскрывается тапом. Долгий тап по чипу — короткий путь сюда.
+  foldersOpen.value = true
+}
+
+const createChatFolder = (name: string) => {
+  const id = createFolderRaw(name)
+  if (id) Notify.create({ message: `Папка «${name.trim()}» создана`, timeout: 2000 })
+}
+
+const renameChatFolder = (id: string, name: string) => renameFolderRaw(id, name)
+
+const deleteChatFolder = (id: string) => {
+  const folder = chatFolders.value.find((item) => item.id === id)
+  removeFolderRaw(id)
+  // Активный фильтр мог смотреть в удалённую папку — вернёмся к «Все»
+  // (сайдбар сделает это сам, когда список чипов изменится).
+  foldersOpen.value = false
+  if (folder) Notify.create({ message: `Папка «${folder.name}» удалена`, timeout: 2000 })
+}
+
+const toggleFolderChat = (id: string, chatId: number) => toggleFolderChatRaw(id, chatId)
+
+const moveFolderChatChat = (id: string, chatId: number, delta: -1 | 1) =>
+  moveFolderChatRaw(id, chatId, delta)
+
+/** Меню чата → «В папку…»: выбор папок для открытого чата. */
+const openChatFolders = () => {
+  const chat = selectedChat.value
+  if (chat !== null) folderPickerChatIds.value = [chat.id]
+}
+
+/** Панель выделения → «В папку»: выбрать папки сразу для нескольких чатов. */
+const openSelectedFolders = (ids: number[]) => {
+  if (ids.length) folderPickerChatIds.value = [...ids]
+}
+
+/** Клик по папке в диалоге выбора: сразу добавляем/убираем все выбранные чаты. */
+const toggleFolderForPicker = (id: string, inside: boolean) => {
+  const ids = folderPickerChatIds.value
+  if (!ids?.length) return
+  setFolderChatsRaw(id, ids, inside)
+}
+
+/** Создать папку прямо из диалога выбора — сразу с этими чатами. */
+const createFolderWithChats = (name: string) => {
+  const ids = folderPickerChatIds.value ?? []
+  const id = createFolderRaw(name, ids[0])
+  if (!id) return
+  if (ids.length > 1) setFolderChatsRaw(id, ids, true)
+  Notify.create({ message: `Папка «${name.trim()}» создана`, timeout: 2000 })
 }
 
 // ---------- Замьюченные чаты (без push-уведомлений; mute хранится на сервере) ----------

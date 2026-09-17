@@ -17,6 +17,7 @@
       @bulk-mute="onBulkMute"
       @bulk-pin="onBulkPin"
       @bulk-archive="onBulkArchive"
+      @bulk-folders="emit('bulk-folders', [...selectedIds])"
       @bulk-delete="onBulkDelete"
       @toggle-select-all="toggleSelectAll"
       @toggle-stories-expand="toggleStoriesExpand"
@@ -115,7 +116,9 @@
               :handle-scroll="onChatsScroll"
               :handle-touch-start="onListTouchStart"
               :handle-touch-move="onListTouchMove"
-              @update:filter="chatFilter = $event as ChatFilterKey"
+              @update:filter="chatFilter = $event as ChatFilterValue"
+              @create-folder="emit('create-folder')"
+              @manage-folder="emit('manage-folder', $event)"
               @row-click="onRowClick"
               @row-pointer-down="onRowPointerDown"
               @row-pointer-up="onRowPointerUp"
@@ -199,8 +202,15 @@ import {
   CHAT_FILTERS,
   chatMatchesFilter,
   isChatArchived,
-  type ChatFilterKey
+  type ChatFilterValue
 } from '@/utils/chatFilters'
+import {
+  folderById,
+  folderChats,
+  folderFilter,
+  FOLDER_FILTER_PREFIX,
+  type ChatFolder
+} from '@/utils/chatFolders'
 import { usePhoneImport } from '@/composables/usePhoneImport'
 import { useSlideDown } from '@/composables/useSlideDown'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
@@ -238,6 +248,8 @@ const props = defineProps<{
   mutedChatIds?: number[]
   /** id чатов в архиве (архив хранится локально, как пины). */
   archivedChatIds?: number[]
+  /** Папки чатов пользователя: свои списки с ручным порядком (локально). */
+  chatFolders?: ChatFolder[]
   /** Сохранённые черновики по id чата (показываются в превью). */
   drafts?: Record<number, string>
   /** Имя и аватар текущего пользователя (кнопка «Настройки профиля»). */
@@ -260,7 +272,13 @@ const emit = defineEmits<{
   (e: 'bulk-mute', chatIds: number[], muted: boolean): void
   (e: 'bulk-pin', chatIds: number[], pinned: boolean): void
   (e: 'bulk-archive', chatIds: number[], archived: boolean): void
+  /** Добавить выбранные чаты в папку (открывает выбор папок). */
+  (e: 'bulk-folders', chatIds: number[]): void
   (e: 'bulk-delete', chatIds: number[]): void
+  /** Создать папку чатов (кнопка «+» в ряду фильтров). */
+  (e: 'create-folder'): void
+  /** Управление папкой (долгий тап по её чипу). */
+  (e: 'manage-folder', id: string): void
   /** Открыть диалог «Новая группа». */
   (e: 'create-group'): void
   /** Открыть диалог «Новый канал». */
@@ -526,7 +544,15 @@ watch([() => props.view, () => props.selectedChatId], () => {
 })
 
 /** Фильтры списка чатов — в utils/chatFilters.ts (там же правило про архив). */
-const chatFilter = ref<ChatFilterKey>('all')
+const chatFilter = ref<ChatFilterValue>('all')
+
+/** Активная папка (null — выбран не папка). */
+const activeFolder = computed<ChatFolder | null>(() => {
+  const id = chatFilter.value.startsWith(FOLDER_FILTER_PREFIX)
+    ? chatFilter.value.slice(FOLDER_FILTER_PREFIX.length)
+    : null
+  return id === null ? null : folderById(props.chatFolders ?? [], id)
+})
 
 /** Сколько чатов с непрочитанными — счётчик на фильтре. */
 const unreadChatCount = computed(
@@ -550,25 +576,45 @@ const archivedUnreadCount = computed(
  * Чипы фильтров на экране.
  *
  * «Архив» показываем только когда там что-то есть (как в Telegram): пустой чип
- * лишь занимает место в ряду. Пять остальных видим всегда.
+ * лишь занимает место в ряду. Пять остальных видим всегда. Папки пользователя
+ * идут в том порядке, в каком их создали — это его собственный порядок.
  */
-const visibleFilters = computed(() =>
-  CHAT_FILTERS.filter((filter) => filter.key !== 'archived' || archivedCount.value > 0)
-)
+const visibleFilters = computed(() => [
+  ...CHAT_FILTERS.filter((filter) => filter.key !== 'archived' || archivedCount.value > 0),
+  ...(props.chatFolders ?? []).map((folder) => ({
+    key: folderFilter(folder.id),
+    title: folder.name
+  }))
+])
 
-/** Чаты после фильтра по чипам («Все», «Непрочитанные», «Личные» и т. д.). */
+/** Чаты после фильтра по чипам («Все», «Непрочитанные», папки и т. д.). */
 const filteredChats = computed<Chat[]>(() =>
-  props.chats.filter((chat) => chatMatchesFilter(chat, chatFilter.value, props.archivedChatIds))
+  props.chats.filter((chat) =>
+    chatMatchesFilter(chat, chatFilter.value, props.archivedChatIds, props.chatFolders)
+  )
 )
 
-// Чип «Архив» исчез (последний чат вынули) — возвращаемся к «Все», иначе список
-// остался бы пустым без единого видимого фильтра.
+// Чип «Архив» исчез (последний чат вынули), а папку удалили — возвращаемся к
+// «Все»: иначе список остался бы пустым без единого видимого фильтра.
 watch(archivedCount, (count) => {
   if (count === 0 && chatFilter.value === 'archived') chatFilter.value = 'all'
 })
 
-/** Чаты для показа: «Сохранённые сообщения», затем закреплённые, затем остальные. */
+watch(visibleFilters, (filters) => {
+  if (!filters.some((filter) => filter.key === chatFilter.value)) chatFilter.value = 'all'
+})
+
+/**
+ * Чаты для показа: «Сохранённые сообщения», затем закреплённые, затем остальные.
+ *
+ * В папке порядок ручной (`folder.chatIds`), а «Сохранённые сообщения» в папки не
+ * добавляются — человек задал этот список сам, и переставлять его пинами нельзя.
+ */
 const orderedChats = computed<Chat[]>(() => {
+  const folder = activeFolder.value
+  if (folder !== null) {
+    return folderChats(folder, filteredChats.value)
+  }
   const pinned = new Set(props.pinnedChatIds ?? [])
   const self = filteredChats.value.filter((chat) => chat.is_self)
   const others = filteredChats.value.filter((chat) => !chat.is_self)
