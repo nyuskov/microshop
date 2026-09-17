@@ -915,7 +915,7 @@ const emojiPickerFor = ref<number | null>(null)
 // Единое меню доп.контента поля ввода: 'emoji' | 'gif' | закрыто.
 const extrasTab = ref<'emoji' | 'stickers' | 'gif'>('emoji')
 const extrasPanel = ref<'none' | 'emoji' | 'stickers' | 'gif'>('none')
-const pinnedOpen = ref(true)
+const pinnedOpen = ref(false)
 /** Шторка закреплённых скрыта в этом чате (крестик); при переходе в чат — снова видна. */
 const pinnedHidden = ref(false)
 const highlightedMessageId = ref<number | null>(null)

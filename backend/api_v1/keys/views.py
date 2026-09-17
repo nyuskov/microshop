@@ -10,12 +10,17 @@
 32 байта) раздаётся участникам «обёртками» (``PUT/GET /keys/group/{chat_id}/``)
 — каждая обёртка зашифрована на общем секрете ECDH между раздавшим и
 получателем, поэтому сервер ключ группы вычислить не может.
+
+Для личных чатов с несколькими устройствами есть тот же механизм, но обёртки
+персональные для каждого УСТРОЙСТВА (``PUT/GET /keys/chat/{chat_id}/``): ключ
+чата раздаётся на телефон и на компьютер отдельно, иначе новое устройство
+читало бы только сообщения, отправленные после его входа (см. ``ChatDeviceKey``).
 """
 
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -23,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models import (
     Chat,
+    ChatDeviceKey,
     ChatGroupKey,
     DeviceKey,
     User,
@@ -303,3 +309,159 @@ async def put_group_keys(
 
     await session.commit()
     return {"count": len(payload.keys)}
+
+
+# --------------------------------------------------------------------------
+# Ключ чата по устройствам (E2EE в личных чатах, A5)
+# --------------------------------------------------------------------------
+
+
+class ChatDeviceKeyEntry(BaseModel):
+    """Обёртка ключа чата для одного устройства участника."""
+
+    user_id: int
+    #: Устройство получателя; `legacy` — устройство старого клиента.
+    device_id: str = Field(..., min_length=1, max_length=64)
+    wrapped_key: str = Field(..., min_length=1, max_length=8192)
+
+
+class PutChatDeviceKeysRequest(BaseModel):
+    """Набор обёрток: ``replace=true`` — сначала стереть прежние (ротация)."""
+
+    keys: list[ChatDeviceKeyEntry] = Field(..., min_length=1, max_length=256)
+    replace: bool = False
+    #: Моё устройство-раздатчик: получателю нужно знать, с чьим публичным
+    #: ключом повторять ECDH, чтобы открыть обёртку.
+    sender_device_id: str = Field(..., min_length=1, max_length=64)
+
+
+class ChatDeviceKeyResponse(BaseModel):
+    """Моя обёртка ключа чата для запрошенного устройства."""
+
+    chat_id: int
+    device_id: str
+    has_key: bool
+    wrapped_key: str | None = None
+    #: Чьё устройство раздало обёртку — с его публичным ключом повторяется ECDH.
+    wrapped_by_user_id: int | None = None
+    wrapped_by_device_id: str | None = None
+
+
+async def _member_ids(session: AsyncSession, chat_id: int) -> set[int]:
+    """Участники чата (пустое множество — чата нет или он чужой)."""
+    rows = await session.execute(
+        select(user_chat_association_table.c.user_id).where(
+            user_chat_association_table.c.chat_id == chat_id
+        )
+    )
+    return set(rows.scalars().all())
+
+
+@router.get("/chat/{chat_id}/", response_model=ChatDeviceKeyResponse)
+async def get_my_chat_key(
+    chat_id: int,
+    device_id: Annotated[str, Query(min_length=1, max_length=64)],
+    user: Annotated[User, Depends(get_current_user)],
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> ChatDeviceKeyResponse:
+    """Отдаёт МОЮ обёртку ключа чата для этого устройства.
+
+    Обёртку может открыть только само устройство: она зашифрована на общем
+    секрете ECDH с устройством, которое её раздало.
+    """
+    await _ensure_member(session, chat_id=chat_id, user_id=user.id)
+    row = await session.get(
+        ChatDeviceKey,
+        {"chat_id": chat_id, "user_id": user.id, "device_id": device_id},
+    )
+    if row is None:
+        return ChatDeviceKeyResponse(
+            chat_id=chat_id, device_id=device_id, has_key=False
+        )
+    return ChatDeviceKeyResponse(
+        chat_id=chat_id,
+        device_id=device_id,
+        has_key=True,
+        wrapped_key=row.wrapped_key,
+        wrapped_by_user_id=row.wrapped_by_user_id,
+        wrapped_by_device_id=row.wrapped_by_device_id,
+    )
+
+
+@router.put("/chat/{chat_id}/", status_code=200)
+async def put_chat_device_keys(
+    chat_id: int,
+    payload: PutChatDeviceKeysRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> dict[str, int]:
+    """Загружает обёртки ключа чата для устройств участников.
+
+    Раздавать может любой участник чата (как и в группах): ключ известен всем
+    участникам, а проверяется только то, что получатели — участники, а их
+    устройства действительно зарегистрированы (иначе обёртку некому открыть).
+    Обёртки для незарегистрированных устройств молча пропускаются.
+    """
+    await _ensure_member(session, chat_id=chat_id, user_id=user.id)
+
+    target_ids = {entry.user_id for entry in payload.keys}
+    member_ids = await _member_ids(session, chat_id)
+    if not member_ids or not target_ids <= member_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Можно раздать ключ только участникам чата",
+        )
+
+    # Устройства получателей: (user_id, device_id) — по ним и пишем обёртки.
+    known = set(
+        (
+            await session.execute(
+                select(DeviceKey.user_id, DeviceKey.device_id).where(
+                    DeviceKey.user_id.in_(target_ids)
+                )
+            )
+        )
+        .tuples()
+        .all()
+    )
+
+    stored = 0
+    if payload.replace:
+        await session.execute(
+            delete(ChatDeviceKey).where(ChatDeviceKey.chat_id == chat_id)
+        )
+
+    for entry in payload.keys:
+        if (entry.user_id, entry.device_id) not in known:
+            continue
+        stmt = pg_insert(ChatDeviceKey).values(
+            chat_id=chat_id,
+            user_id=entry.user_id,
+            device_id=entry.device_id,
+            wrapped_key=entry.wrapped_key,
+            wrapped_by_user_id=user.id,
+            wrapped_by_device_id=payload.sender_device_id,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[
+                ChatDeviceKey.chat_id,
+                ChatDeviceKey.user_id,
+                ChatDeviceKey.device_id,
+            ],
+            set_={
+                "wrapped_key": entry.wrapped_key,
+                "wrapped_by_user_id": user.id,
+                "wrapped_by_device_id": payload.sender_device_id,
+            },
+        )
+        await session.execute(stmt)
+        stored += 1
+
+    if stored == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ни одно из устройств получателей не зарегистрировано",
+        )
+
+    await session.commit()
+    return {"count": stored}

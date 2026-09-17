@@ -2,7 +2,9 @@
  * Сквозное шифрование: ключи на устройство, без forward secrecy.
  *
  * - На устройстве генерируется пара ECDH P-256 (WebCrypto); приватный JWK
- *   хранится в localStorage (per user), публичный — регистрируется на сервере.
+ *   хранится в localStorage (per user), публичный — регистрируется на сервере
+ *   вместе с идентификатором устройства (`utils/deviceId.ts`): у аккаунта
+ *   может быть несколько устройств, каждое со своим ключом (A5).
  * - Для личного чата из моего приватного ключа и публичного ключа собеседника
  *   вычисляется общий секрет ECDH, из него через HKDF-SHA256 выводится
  *   AES-GCM-ключ конкретного чата (info = "chat:<chat_id>").
@@ -13,13 +15,16 @@
  *   каждое сообщение), на сервер уходит `e2ee1:<iv_b64>:<data_b64>` + флаг
  *   encrypted. Файлы шифруются отдельным ключом, который лежит в конверте.
  *
- * Упрощения: один «текущий» ключ на пользователя; смена ключа собеседника
- * (новое устройство) делает старые сообщения нечитаемыми; forward secrecy
- * добавляется на следующем этапе (Double Ratchet).
+ * Упрощения: у аккаунта несколько ключей (по устройству), но ключ личного чата
+ * всё ещё выводится из общего секрета ДВУХ «текущих» ключей — поэтому новое
+ * устройство читает только новые сообщения; forward secrecy добавляется на
+ * следующем этапе (Double Ratchet).
  */
 
 import { api } from './api'
 import { canonicalKey, orderKeys, safetyCodeFromBytes, type SafetyCode } from '@/utils/safetyNumber'
+
+import { ownDeviceId } from '@/utils/deviceId'
 
 const STORE_PREFIX = 'pismo_e2ee_v1_'
 const PREFIX = 'e2ee1:'
@@ -191,6 +196,10 @@ export async function myPublicJwkJson(userId: number): Promise<string> {
 /**
  * Bootstrap после логина: гарантируем ключ и регистрируем публичный на сервере.
  * Возвращает true, если ключ готов и опубликован (можно шифровать исходящие).
+ *
+ * Публичный ключ уходит вместе с идентификатором ЭТОГО устройства: сервер
+ * хранит ключи по паре `(user_id, device_id)` (`backend/api_v1/keys/views.py`),
+ * поэтому вход с телефона больше не затирает ключ компьютера (A5).
  */
 export async function bootstrapE2ee(userId: number): Promise<boolean> {
   if (!isE2eeAvailable()) return false
@@ -198,13 +207,25 @@ export async function bootstrapE2ee(userId: number): Promise<boolean> {
   bootstrappedUserId = userId
   try {
     await api.put<{ ok: boolean }>('/keys/me/', {
-      public_key: await myPublicJwkJson(userId)
+      public_key: await myPublicJwkJson(userId),
+      device_id: myDeviceId(userId)
     })
     uploadOk = true
   } catch {
     uploadOk = false
   }
   return uploadOk
+}
+
+/**
+ * Идентификатор этого устройства для сервера.
+ *
+ * Если ключ E2EE в этом браузере уже есть, а метки устройства ещё нет — значит
+ * устройство заходило старым клиентом: остаёмся `legacy`, чтобы тот же ключ не
+ * превратился на сервере в «ещё одно устройство».
+ */
+export function myDeviceId(userId: number): string {
+  return ownDeviceId({ hasStoredKey: !!safeGet(storageKeyFor(userId)) })
 }
 
 /** Публичный JWK (JSON-строка) собеседника или null, если ключа нет. */
