@@ -6,6 +6,7 @@ import {
   collectDiagnostics,
   connectionQuality as qualityOf,
   diagnosticsSummary as summaryOf,
+  speakingNow,
   type CallDiagnostics,
   type ConnectionQuality
 } from '@/utils/callStats'
@@ -26,17 +27,15 @@ import {
 
 import {
   applyTrackHints,
-  audioBitrateFor,
+  initialSenderTuning,
   jitterTargetsFor,
-  SCREEN_BITRATE,
-  SCREEN_FRAMERATE,
+  qualityStepFor,
+  resolveStep,
+  senderTuningForStep,
   tuneReceivers,
   tuneSenders,
   tunedDescription,
-  videoBitrateFor,
-  videoFramerateFor,
-  videoScaleFor,
-  type SenderTuning
+  type QualityStep
 } from './call/quality'
 import { screenShareNotice, screenShareSupport } from './call/screenShare'
 import {
@@ -54,6 +53,7 @@ import {
   MEDIA_WATCHDOG_FAILURES_BEFORE_RESTART,
   MEDIA_WATCHDOG_INTERVAL_MS,
   MEDIA_WATCHDOG_MAX_RESTARTS,
+  QUALITY_STEP_COOLDOWN_MS,
   RING_OUT_TIMEOUT_MS,
   STATS_POLL_INTERVAL_MS,
   VIDEO_PAUSE_BAD_POLLS,
@@ -442,6 +442,9 @@ export const useCallStore = defineStore('call', {
       }
       runtime.links.delete(peerId)
       runtime.pendingCandidates.delete(peerId)
+      runtime.statsSamples.delete(peerId)
+      runtime.linkQuality.delete(peerId)
+      runtime.linkSteps.delete(peerId)
       if (runtime.primaryPeerId === peerId) {
         const next = [...runtime.links.values()][0]
         runtime.primaryPeerId = next?.peerId ?? null
@@ -503,7 +506,8 @@ export const useCallStore = defineStore('call', {
           micOn: true,
           videoOn: this.kind === 'video',
           screenSharing: false,
-          connected: false
+          connected: false,
+          speaking: false
         })
       }
       // Ушедшие из звонка: закрываем им соединения и убираем плитку. Убираем
@@ -953,7 +957,8 @@ export const useCallStore = defineStore('call', {
                 micOn: true,
                 videoOn: message.kind === 'video',
                 screenSharing: false,
-                connected: false
+                connected: false,
+                speaking: false
               }
             ]
           })
@@ -1207,7 +1212,8 @@ export const useCallStore = defineStore('call', {
           micOn: true,
           videoOn: kind === 'video',
           screenSharing: false,
-          connected: false
+          connected: false,
+          speaking: false
         })),
         micOn: true,
         videoOn: true,
@@ -1266,7 +1272,8 @@ export const useCallStore = defineStore('call', {
             micOn: true,
             videoOn: kind === 'video',
             screenSharing: false,
-            connected: false
+            connected: false,
+            speaking: false
           }
         ],
         micOn: true,
@@ -1695,9 +1702,19 @@ export const useCallStore = defineStore('call', {
           )
           runtime.statsSamples.set(link.peerId, sample)
           runtime.linkQuality.set(link.peerId, diagnostics)
-          // Пока читали статистику, участник мог выйти.
+          const step = this._effectiveStep(link.peerId, diagnostics)
+          // Пока читали статистику, участник мог выйти — тогда его плитки уже нет.
           if (this._linkFor(link.peerId) !== link) continue
-          await this._applyLinkTuning(link, diagnostics)
+          // Кто говорит: по уровню звука его дорожек (в группе это единственный
+          // надёжный признак — дорожки есть у всех, а молчащие не звучат).
+          const participant = this.participants.find((item) => item.id === link.peerId)
+          if (participant) {
+            const speaking = speakingNow(diagnostics.audioLevel, participant.speaking)
+            if (speaking !== participant.speaking) {
+              this._patchParticipant(link.peerId, { speaking })
+            }
+          }
+          await this._applyLinkTuning(link, step)
         } catch {
           /* статистику не получить — оставляем прежние настройки связи */
         }
@@ -1705,37 +1722,39 @@ export const useCallStore = defineStore('call', {
     },
 
     /**
-     * Применяет ступени к одной связи.
+     * Действующая ступень связи с гистерезисом.
      *
-     * `diagnostics` — её статистика; `null` значит «ещё не мерили»: тогда битрейт
-     * берём средний, а разрешение и частоту кадров НЕ трогаем (ухудшать картинку
-     * без доказательств нельзя).
+     * Ухудшение применяем сразу (звук важнее красоты), улучшение — только выждав
+     * паузу: на границе порогов ступень иначе «дышит» каждый опрос, и картинка то
+     * расширяется, то ужимается.
      */
-    async _applyLinkTuning(link: PeerLink, diagnostics: CallDiagnostics | null): Promise<void> {
-      await tuneSenders(link.pc, this._senderTuning(diagnostics))
-      tuneReceivers(link.pc, jitterTargetsFor(diagnostics))
-      // Видео могло быть приостановлено ещё до появления этой связи.
-      if (this.videoPausedForNetwork) await this._pauseVideoOnLink(link)
+    _effectiveStep(peerId: number, diagnostics: CallDiagnostics): QualityStep {
+      const next = qualityStepFor(diagnostics)
+      const previous = runtime.linkSteps.get(peerId)
+      const step = previous
+        ? resolveStep(previous.step, next, Date.now() - previous.at, QUALITY_STEP_COOLDOWN_MS)
+        : next
+      if (!previous || step !== previous.step) {
+        runtime.linkSteps.set(peerId, { step, at: Date.now() })
+      }
+      return step
     },
 
-    /** Ступени качества для передатчиков одной связи. */
-    _senderTuning(diagnostics: CallDiagnostics | null): SenderTuning {
-      if (this.screenSharing) {
-        return {
-          audioBitrate: audioBitrateFor(diagnostics),
-          videoBitrate: SCREEN_BITRATE,
-          scale: 1,
-          framerate: SCREEN_FRAMERATE,
-          screen: true
-        }
-      }
-      return {
-        audioBitrate: audioBitrateFor(diagnostics),
-        videoBitrate: videoBitrateFor(diagnostics),
-        // Без замеров картинку не ухудшаем: ступени включатся после первой статистики.
-        scale: diagnostics ? videoScaleFor(diagnostics) : 1,
-        framerate: diagnostics ? videoFramerateFor(diagnostics) : 0
-      }
+    /**
+     * Применяет настройки к одной связи.
+     *
+     * `step` — действующая ступень этой связи; без неё (связь только что создана
+     * и статистики ещё нет) берём «начальные» настройки: битрейт средний, а
+     * разрешение и частоту кадров НЕ ухудшаем.
+     */
+    async _applyLinkTuning(link: PeerLink, step: QualityStep | undefined): Promise<void> {
+      const tuning = step
+        ? senderTuningForStep(step, this.screenSharing)
+        : initialSenderTuning(this.screenSharing)
+      await tuneSenders(link.pc, tuning)
+      tuneReceivers(link.pc, jitterTargetsFor(runtime.linkQuality.get(link.peerId) ?? null))
+      // Видео могло быть приостановлено ещё до появления этой связи.
+      if (this.videoPausedForNetwork) await this._pauseVideoOnLink(link)
     },
 
     /**
@@ -1926,7 +1945,7 @@ export const useCallStore = defineStore('call', {
      */
     _tuneMedia(links = [...runtime.links.values()]) {
       for (const link of links) {
-        void this._applyLinkTuning(link, runtime.linkQuality.get(link.peerId) ?? null)
+        void this._applyLinkTuning(link, runtime.linkSteps.get(link.peerId)?.step)
       }
     },
 
@@ -2489,6 +2508,7 @@ export const useCallStore = defineStore('call', {
       // Настройки связей и «пауза видео» относятся к прошедшему звонку.
       runtime.statsSamples.clear()
       runtime.linkQuality.clear()
+      runtime.linkSteps.clear()
       runtime.pausedVideoSenders = []
       runtime.badQualityStreak = 0
       runtime.goodQualityStreak = 0

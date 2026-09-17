@@ -1,5 +1,7 @@
 import type { CallDiagnostics, StatsSample } from '@/utils/callStats'
 
+import type { QualityStep } from './quality'
+
 import type { CallKind, SignalingMessage } from './types'
 
 export interface PendingOffer {
@@ -78,6 +80,13 @@ export interface CallSignalingRuntime {
   statsSamples: Map<number, StatsSample>
   /** Последняя снятая диагностика по каждой связи (для настроек без опроса). */
   linkQuality: Map<number, CallDiagnostics>
+  /**
+   * Действующая ступень качества по каждой связи и когда она сменилась.
+   *
+   * Нужна для гистерезиса: ухудшение применяем сразу, а улучшение — только
+   * выждав паузу, иначе ступень «дышит» на границе порогов.
+   */
+  linkSteps: Map<number, { step: QualityStep; at: number }>
   /**
    * Отправители видео, у которых мы сняли дорожку из-за плохой связи.
    *
@@ -161,6 +170,7 @@ export const runtime: CallSignalingRuntime = {
   statsSample: null,
   statsSamples: new Map<number, StatsSample>(),
   linkQuality: new Map<number, CallDiagnostics>(),
+  linkSteps: new Map<number, { step: QualityStep; at: number }>(),
   pausedVideoSenders: [],
   badQualityStreak: 0,
   goodQualityStreak: 0

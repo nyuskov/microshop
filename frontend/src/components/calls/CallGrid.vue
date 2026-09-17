@@ -4,7 +4,7 @@
       v-for="participant in callStore.participants"
       :key="participant.id"
       class="grid-tile"
-      :class="{ 'no-video': !showsVideo(participant.id) }"
+      :class="{ 'no-video': !showsVideo(participant.id), speaking: participant.speaking }"
     >
       <video
         v-if="showsVideo(participant.id)"
@@ -224,6 +224,19 @@ onBeforeUnmount(() => window.clearInterval(poll))
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/*
+ * Говорит: тонкое кольцо вокруг плитки.
+ *
+ * Именно `outline`, а не `border`: рамка меняет размеры — плитки соседей
+ * сдвигались бы при каждом слове. Признак берём из уровня звука его дорожек
+ * (`speaking` в сторе), а не из флага микрофона: микрофон есть у всех, а
+ * молчащие не звучат.
+ */
+.grid-tile.speaking {
+  outline: 2px solid var(--ms-accent);
+  outline-offset: -2px;
 }
 
 .grid-video {

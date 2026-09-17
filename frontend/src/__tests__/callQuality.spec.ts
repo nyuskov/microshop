@@ -7,21 +7,26 @@ import {
   AUDIO_BITRATE_GOOD,
   AUDIO_OPUS_PARAMS,
   SCREEN_BITRATE,
+  SCREEN_FRAMERATE,
   VIDEO_BITRATE_BAD,
   VIDEO_BITRATE_FAIR,
   VIDEO_BITRATE_GOOD,
   VIDEO_FRAMERATE_BAD,
   VIDEO_FRAMERATE_GOOD,
   audioBitrateFor,
+  initialSenderTuning,
   jitterTargetsFor,
   qualityStepFor,
+  resolveStep,
+  senderTuningForStep,
+  stepRank,
   tuneOpusSdp,
   tunedDescription,
   videoBitrateFor,
   videoFramerateFor,
   videoScaleFor
 } from '@/stores/call/quality'
-import type { CallDiagnostics } from '@/utils/callStats'
+import { speakingNow, type CallDiagnostics } from '@/utils/callStats'
 
 /**
  * Качество звонка на плохой сети (междугородние разговоры).
@@ -32,6 +37,7 @@ import type { CallDiagnostics } from '@/utils/callStats'
  */
 const source = (path: string): string => readFileSync(path, 'utf8')
 const store = source('src/stores/call.ts')
+const qualitySource = source('src/stores/call/quality.ts')
 const output = source('src/stores/call/output.ts')
 const grid = source('src/components/calls/CallGrid.vue')
 
@@ -60,6 +66,7 @@ const diagnostics = (patch: Partial<CallDiagnostics>): CallDiagnostics => ({
   framesDropped: 0,
   freezeCount: 0,
   nackCount: 0,
+  audioLevel: 0,
   jitterMs: 5,
   inboundKbps: 0,
   outboundKbps: 0,
@@ -179,7 +186,10 @@ describe('настройка отправки в сторе', () => {
     // В группе качество у собеседников разное: общая ступень резала бы видео
     // всем по худшему, а на телефоне важна суммарная отправка.
     expect(store).toMatch(/runtime\.linkQuality\.set\(link\.peerId, diagnostics\)/)
-    expect(store).toMatch(/_applyLinkTuning\(link, diagnostics\)/)
+    expect(store).toMatch(/_applyLinkTuning\(link, step\)/)
+    // Ступень берётся с гистерезисом, а не «в лоб» из статистики.
+    expect(store).toMatch(/_effectiveStep\(link\.peerId, diagnostics\)/)
+    expect(store).toContain('resolveStep(')
   })
 
   it('видео уступает разговору при долгой плохой связи', () => {
@@ -193,8 +203,8 @@ describe('настройка отправки в сторе', () => {
   })
 
   it('показ экрана не режется ступенями сети', () => {
-    expect(store).toMatch(/videoBitrate: SCREEN_BITRATE/)
-    expect(store).toMatch(/screen: true/)
+    expect(qualitySource).toMatch(/videoBitrate: SCREEN_BITRATE/)
+    expect(qualitySource).toMatch(/screen: true/)
     expect(SCREEN_BITRATE).toBeGreaterThan(VIDEO_BITRATE_GOOD)
   })
 
@@ -206,6 +216,58 @@ describe('настройка отправки в сторе', () => {
 
   it('подсказки кодеку ставятся на локальный поток', () => {
     expect(store).toContain('applyTrackHints(stream)')
+  })
+})
+
+describe('гистерезис ступеней', () => {
+  it('ухудшение применяется сразу: звук важнее красоты', () => {
+    expect(resolveStep('good', 'bad', 0, 15_000)).toBe('bad')
+    expect(resolveStep('fair', 'bad', 0, 15_000)).toBe('bad')
+  })
+
+  it('улучшение — только выждав паузу', () => {
+    // Иначе на границе порогов ступень «дышит» каждый опрос (раз в 5 с).
+    expect(resolveStep('bad', 'good', 5_000, 15_000)).toBe('bad')
+    expect(resolveStep('bad', 'fair', 14_000, 15_000)).toBe('bad')
+    expect(resolveStep('bad', 'good', 15_000, 15_000)).toBe('good')
+  })
+
+  it('та же ступень — ничего не меняем, порядок ступеней задан', () => {
+    expect(resolveStep('fair', 'fair', 0, 15_000)).toBe('fair')
+    expect(stepRank('good')).toBeGreaterThan(stepRank('fair'))
+    expect(stepRank('fair')).toBeGreaterThan(stepRank('bad'))
+  })
+
+  it('настройки передатчиков собираются из ступени', () => {
+    const bad = senderTuningForStep('bad')
+    expect(bad.videoBitrate).toBe(VIDEO_BITRATE_BAD)
+    expect(bad.audioBitrate).toBe(AUDIO_BITRATE_BAD)
+    expect(bad.scale).toBe(2)
+    expect(bad.framerate).toBe(VIDEO_FRAMERATE_BAD)
+    // Показ экрана ступеням не подчиняется, но звук сужается вместе со связью.
+    const screen = senderTuningForStep('bad', true)
+    expect(screen.videoBitrate).toBe(SCREEN_BITRATE)
+    expect(screen.framerate).toBe(SCREEN_FRAMERATE)
+    expect(screen.scale).toBe(1)
+    expect(screen.audioBitrate).toBe(AUDIO_BITRATE_BAD)
+  })
+
+  it('до первой статистики картинку не ухудшаем', () => {
+    const initial = initialSenderTuning()
+    expect(initial.videoBitrate).toBe(VIDEO_BITRATE_FAIR)
+    expect(initial.scale).toBe(1)
+    expect(initial.framerate).toBe(0)
+  })
+})
+
+describe('индикатор говорящего', () => {
+  it('два порога: иначе кольцо мигает на паузах между словами', () => {
+    expect(speakingNow(0.012, false)).toBe(true)
+    expect(speakingNow(0.012, true)).toBe(true)
+    // Между порогами: уже говорит — продолжаем, ещё молчит — не начинаем.
+    expect(speakingNow(0.006, true)).toBe(true)
+    expect(speakingNow(0.006, false)).toBe(false)
+    expect(speakingNow(0.0005, true)).toBe(false)
   })
 })
 

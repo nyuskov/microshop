@@ -61,4 +61,6 @@ export interface CallParticipant {
   screenSharing: boolean
   /** Соединение с участником установлено (по ICE). */
   connected: boolean
+  /** Сейчас говорит (по уровню звука его дорожек) — в сетке помечаем плитку. */
+  speaking: boolean
 }

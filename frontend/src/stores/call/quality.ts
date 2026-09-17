@@ -81,6 +81,27 @@ export const VIDEO_FRAMERATE_GOOD = 30
 export const VIDEO_FRAMERATE_FAIR = 24
 export const VIDEO_FRAMERATE_BAD = 15
 
+/** Целевые значения по ступеням связи: одна таблица — один источник правды. */
+const AUDIO_BITRATE_BY_STEP: Record<QualityStep, number> = {
+  good: AUDIO_BITRATE_GOOD,
+  fair: AUDIO_BITRATE_FAIR,
+  bad: AUDIO_BITRATE_BAD
+}
+
+const VIDEO_BITRATE_BY_STEP: Record<QualityStep, number> = {
+  good: VIDEO_BITRATE_GOOD,
+  fair: VIDEO_BITRATE_FAIR,
+  bad: VIDEO_BITRATE_BAD
+}
+
+const VIDEO_SCALE_BY_STEP: Record<QualityStep, number> = { good: 1, fair: 1.5, bad: 2 }
+
+const VIDEO_FRAMERATE_BY_STEP: Record<QualityStep, number> = {
+  good: VIDEO_FRAMERATE_GOOD,
+  fair: VIDEO_FRAMERATE_FAIR,
+  bad: VIDEO_FRAMERATE_BAD
+}
+
 /**
  * Переписывает SDP: включает помехоустойчивые параметры Opus.
  *
@@ -164,18 +185,12 @@ export function qualityStepFor(diagnostics: CallDiagnostics | null): QualityStep
 
 /** Целевой битрейт видео по текущему качеству связи. */
 export function videoBitrateFor(diagnostics: CallDiagnostics | null): number {
-  const step = qualityStepFor(diagnostics)
-  if (step === 'bad') return VIDEO_BITRATE_BAD
-  if (step === 'fair') return VIDEO_BITRATE_FAIR
-  return VIDEO_BITRATE_GOOD
+  return VIDEO_BITRATE_BY_STEP[qualityStepFor(diagnostics)]
 }
 
 /** Целевой битрейт звука по текущему качеству связи. */
 export function audioBitrateFor(diagnostics: CallDiagnostics | null): number {
-  const step = qualityStepFor(diagnostics)
-  if (step === 'bad') return AUDIO_BITRATE_BAD
-  if (step === 'fair') return AUDIO_BITRATE_FAIR
-  return AUDIO_BITRATE_GOOD
+  return AUDIO_BITRATE_BY_STEP[qualityStepFor(diagnostics)]
 }
 
 /**
@@ -186,18 +201,37 @@ export function audioBitrateFor(diagnostics: CallDiagnostics | null): number {
  * более чистую картинку. На показ экрана не влияет (там всегда 1).
  */
 export function videoScaleFor(diagnostics: CallDiagnostics | null): number {
-  const step = qualityStepFor(diagnostics)
-  if (step === 'bad') return 2
-  if (step === 'fair') return 1.5
-  return 1
+  return VIDEO_SCALE_BY_STEP[qualityStepFor(diagnostics)]
 }
 
 /** Предел кадров/с для камеры по качеству связи. */
 export function videoFramerateFor(diagnostics: CallDiagnostics | null): number {
-  const step = qualityStepFor(diagnostics)
-  if (step === 'bad') return VIDEO_FRAMERATE_BAD
-  if (step === 'fair') return VIDEO_FRAMERATE_FAIR
-  return VIDEO_FRAMERATE_GOOD
+  return VIDEO_FRAMERATE_BY_STEP[qualityStepFor(diagnostics)]
+}
+
+/** Порядок ступеней: чем больше, тем лучше связь. */
+export function stepRank(step: QualityStep): number {
+  if (step === 'good') return 2
+  if (step === 'fair') return 1
+  return 0
+}
+
+/**
+ * Решает, применять ли новую ступень.
+ *
+ * Ухудшение — сразу: звук важнее красоты картинки. Улучшение — только выждав
+ * паузу: на границе порогов ступень иначе «дышит» каждый опрос статистики (раз в
+ * 5 с), и картинка то расширяется, то ужимается.
+ */
+export function resolveStep(
+  current: QualityStep,
+  next: QualityStep,
+  sinceChangeMs: number,
+  cooldownMs: number
+): QualityStep {
+  if (next === current) return current
+  if (stepRank(next) < stepRank(current)) return next
+  return sinceChangeMs >= cooldownMs ? next : current
 }
 
 /** Целевые задержки буфера воспроизведения (мс). */
@@ -234,10 +268,61 @@ export interface SenderTuning {
   videoBitrate: number
   /** Во сколько раз уменьшать разрешение (1 — полное). */
   scale: number
-  /** Предел кадров/с для видео. */
+  /** Предел кадров/с для видео (0 — не задавать). */
   framerate: number
   /** Идёт показ экрана: свои битрейт, кадры, деградация и разрешение. */
   screen?: boolean
+}
+
+/**
+ * Настройки передатчиков для ступени связи.
+ *
+ * Показ экрана — отдельный режим: он ступеням не подчиняется (текст должен
+ * оставаться читаемым), но звук продолжает сужаться вместе со связью — в
+ * разговоре важен именно он.
+ */
+export function senderTuningForStep(step: QualityStep, screen = false): SenderTuning {
+  const audioBitrate = AUDIO_BITRATE_BY_STEP[step]
+  if (screen) {
+    return {
+      audioBitrate,
+      videoBitrate: SCREEN_BITRATE,
+      scale: 1,
+      framerate: SCREEN_FRAMERATE,
+      screen: true
+    }
+  }
+  return {
+    audioBitrate,
+    videoBitrate: VIDEO_BITRATE_BY_STEP[step],
+    scale: VIDEO_SCALE_BY_STEP[step],
+    framerate: VIDEO_FRAMERATE_BY_STEP[step]
+  }
+}
+
+/**
+ * Настройки до первой статистики: битрейт средний, картинку НЕ ухудшаем.
+ *
+ * Ужимать разрешение без доказательств нельзя: первый опрос приходит через
+ * несколько секунд после начала разговора, а портить картинку «на всякий
+ * случай» незачем.
+ */
+export function initialSenderTuning(screen = false): SenderTuning {
+  if (screen) {
+    return {
+      audioBitrate: AUDIO_BITRATE_GOOD,
+      videoBitrate: SCREEN_BITRATE,
+      scale: 1,
+      framerate: SCREEN_FRAMERATE,
+      screen: true
+    }
+  }
+  return {
+    audioBitrate: AUDIO_BITRATE_GOOD,
+    videoBitrate: VIDEO_BITRATE_FAIR,
+    scale: 1,
+    framerate: 0
+  }
 }
 
 /**

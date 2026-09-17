@@ -50,6 +50,13 @@ export interface CallDiagnostics {
   freezeCount: number
   /** Сколько раз переспрашивали потерянные пакеты (NACK). */
   nackCount: number
+  /**
+   * Уровень звука собеседника (0…1, по данным `inbound-rtp`).
+   *
+   * По нему показываем, кто говорит: в групповом звонке это единственный
+   * надёжный признак — голосовые дорожки есть у всех, но молчащие не звучат.
+   */
+  audioLevel: number
   /** Скорость приёма, кбит/с (между опросами). */
   inboundKbps: number
   /** Скорость отправки, кбит/с (между опросами). */
@@ -142,6 +149,7 @@ export function collectDiagnostics(
   let framesDropped = 0
   let freezeCount = 0
   let nackCount = 0
+  let audioLevel = 0
   let qualityLimitation = ''
   const codecs = new Set<string>()
 
@@ -156,6 +164,8 @@ export function collectDiagnostics(
       framesDropped += num(stat, 'framesDropped')
       freezeCount += num(stat, 'freezeCount')
       nackCount += num(stat, 'nackCount')
+      // Уровень звука есть только у аудиодорожек; берём самую громкую из них.
+      audioLevel = Math.max(audioLevel, num(stat, 'audioLevel'))
       const mime = str(stat, 'mimeType')
       if (mime) codecs.add(mime)
     } else if (stat.type === 'outbound-rtp') {
@@ -196,6 +206,7 @@ export function collectDiagnostics(
       framesDropped,
       freezeCount,
       nackCount,
+      audioLevel: Math.round(audioLevel * 1000) / 1000,
       jitterMs: Math.round(jitterSeconds * 1000),
       inboundKbps: kbps(bytesReceived, previous?.bytesReceived ?? 0),
       outboundKbps: kbps(bytesSent, previous?.bytesSent ?? 0),
@@ -250,4 +261,26 @@ export function diagnosticsSummary(diagnostics: CallDiagnostics | null): string 
         : 'напрямую'
   const loss = diagnostics.lossPercent > 0 ? `, потери ${diagnostics.lossPercent}%` : ''
   return `${route} · ${diagnostics.rttMs} мс${loss}`
+}
+
+/**
+ * Порог «говорит» по уровню звука.
+ *
+ * Chrome отдаёт `audioLevel` в пределах 0…1: тишина — около 0.0005, речь —
+ * 0.02 и выше. Порог низкий, потому что важен не громкий голос, а сам факт
+ * речи у микрофона.
+ */
+export const SPEAKING_LEVEL_ON = 0.01
+
+/** Порог «замолчал» — ниже, чем «говорит»: иначе кольцо мигает на паузах между словами. */
+export const SPEAKING_LEVEL_OFF = 0.004
+
+/**
+ * Говорит ли человек сейчас.
+ *
+ * Два порога (включение выше выключения) — простейший гистерезис: речь
+ * прерывистая, и с одним порогом индикатор дёргался бы несколько раз в секунду.
+ */
+export function speakingNow(level: number, wasSpeaking: boolean): boolean {
+  return wasSpeaking ? level > SPEAKING_LEVEL_OFF : level >= SPEAKING_LEVEL_ON
 }

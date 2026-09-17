@@ -45,7 +45,8 @@ const audioReport = (bytesReceived: number) =>
         bytesReceived,
         packetsLost: 5,
         packetsReceived: 995,
-        jitter: 0.012
+        jitter: 0.012,
+        audioLevel: 0.023
       }
     ],
     ['out-audio', { type: 'outbound-rtp', mimeType: 'audio/opus', bytesSent: 15000 }]
@@ -61,6 +62,8 @@ describe('разбор статистики соединения', () => {
     expect(diagnostics.rttMs).toBe(42)
     expect(diagnostics.lossPercent).toBeCloseTo(0.5, 5)
     expect(diagnostics.jitterMs).toBe(12)
+    // Уровень звука — по нему показываем, кто говорит.
+    expect(diagnostics.audioLevel).toBe(0.023)
     expect(diagnostics.codecs).toEqual(['audio/opus'])
     // Без предыдущего замера скорость неизвестна — не врём нулём «все пропало».
     expect(diagnostics.inboundKbps).toBe(0)
@@ -179,6 +182,7 @@ describe('индикатор качества связи', () => {
     framesDropped: 0,
     freezeCount: 0,
     nackCount: 0,
+    audioLevel: 0,
     jitterMs: 5,
     inboundKbps: 32,
     outboundKbps: 32,
