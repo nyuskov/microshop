@@ -100,6 +100,13 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(minute=7),
         "options": {"queue": "microshop"},
     },
+    # Парковка вызова и недоставленный сигналинг живут минуты и удаляются при
+    # чтении; задача — страховка для строк «молчащих» абонентов.
+    "prune-call-signals": {
+        "task": "tasks.call_tasks.prune_call_signals",
+        "schedule": crontab(minute="*/5"),
+        "options": {"queue": "microshop"},
+    },
     # Еженедельная чистка журнала безопасности (записи старше 180 дней).
     "prune-security-events-weekly": {
         "task": "tasks.security_tasks.prune_security_events",

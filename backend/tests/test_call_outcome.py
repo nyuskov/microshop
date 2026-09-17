@@ -107,7 +107,7 @@ def test_elsewhere_reason(message_type: str, data: dict, expected: str) -> None:
 
 
 async def test_other_devices_told_truth_and_notification_closed(
-    monkeypatch: pytest.MonkeyPatch,
+    call_signals, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Отказ «не смог ответить» уходит другим устройствам честно.
 
@@ -116,6 +116,9 @@ async def test_other_devices_told_truth_and_notification_closed(
     """
     from api_v1.calls import views as calls_views
 
+    # Парковка и очередь сигналинга живут в БД (см. `api_v1/calls/store.py`):
+    # абоненты должны существовать — на них ссылаются внешние ключи.
+    await call_signals.seed([1, 2, 7, 42])
     delivered: list[dict] = []
     finished: list[tuple[int, object]] = []
 
@@ -158,11 +161,13 @@ async def test_other_devices_told_truth_and_notification_closed(
 
 
 async def test_cancelled_call_closes_ring_notification(
-    monkeypatch: pytest.MonkeyPatch,
+    call_signals, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Зовущий отменил вызов — у абонента уведомление тоже закрывается."""
     from api_v1.calls import views as calls_views
 
+    # Отмена для офлайн-абонента придерживается в очереди сигналинга (БД).
+    await call_signals.seed([1, 2])
     finished: list[tuple[int, object]] = []
 
     async def fake_send_to_user(user_id: int, payload: dict) -> bool:

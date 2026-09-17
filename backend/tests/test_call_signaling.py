@@ -9,8 +9,35 @@
 import time
 
 import pytest
+import pytest_asyncio
 
 from api_v1.calls.views import RELAY_MESSAGE_TYPES, _track_call_event
+
+#: Участники этих тестов: парковка и очередь ссылаются на `user` по внешнему
+#: ключу, поэтому пользователей нужно создать в тестовой БД.
+_TEST_USER_IDS = (
+    5,
+    7,
+    9,
+    1101,
+    1103,
+    1105,
+    1107,
+    1109,
+    1401,
+    1402,
+    1701,
+    1703,
+    1705,
+    1706,
+)
+
+
+@pytest_asyncio.fixture
+async def call_db(call_signals):
+    """Участники тестов + тестовое хранилище сигналинга (см. `conftest`)."""
+    await call_signals.seed(_TEST_USER_IDS)
+    return call_signals.factory
 
 
 def test_relay_whitelist_covers_call_flow() -> None:
@@ -45,7 +72,7 @@ def test_relay_whitelist_covers_call_rejoin() -> None:
     assert "call-rejoin" in RELAY_MESSAGE_TYPES
 
 
-async def test_track_call_event_ignores_unknown_types() -> None:
+async def test_track_call_event_ignores_unknown_types(call_db) -> None:
     """Новые типы не должны ломать запись истории звонков (и не создавать её)."""
     # Пересогласование приходит с чужим/отсутствующим call_id — обработчик обязан
     # молча выйти, а не упасть.
@@ -55,7 +82,7 @@ async def test_track_call_event_ignores_unknown_types() -> None:
 
 
 async def test_call_push_skipped_when_call_already_over(
-    monkeypatch: pytest.MonkeyPatch,
+    call_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Push о звонке ставим только пока вызов «висит».
 
@@ -105,7 +132,7 @@ async def test_call_push_skipped_when_call_already_over(
     assert len(sent) == 1
 
 
-async def test_has_pending_offer_filters_by_call_id() -> None:
+async def test_has_pending_offer_filters_by_call_id(call_db) -> None:
     """Парковка проверяется по конкретному вызову (и не путает разные звонки)."""
     from api_v1.calls.manager import call_manager
 
@@ -156,7 +183,7 @@ def test_relay_whitelist_covers_media_state() -> None:
     assert "call-media-state" in RELAY_MESSAGE_TYPES
 
 
-async def test_message_goes_to_all_user_devices() -> None:
+async def test_message_goes_to_all_user_devices(call_db) -> None:
     """Сообщение уходит на ВСЕ устройства человека: телефон, компьютер, второе окно."""
     from api_v1.calls.manager import call_manager
 
@@ -176,7 +203,7 @@ async def test_message_goes_to_all_user_devices() -> None:
         await call_manager.disconnect(1701, desktop)
 
 
-async def test_dead_device_is_forgotten() -> None:
+async def test_dead_device_is_forgotten(call_db) -> None:
     """Мёртвое соединение выкидываем, чтобы оно не «съедало» доставку.
 
     Иначе звонок считался бы доставленным устройству, которое спит, и не был бы
@@ -204,7 +231,7 @@ async def test_dead_device_is_forgotten() -> None:
         await call_manager.disconnect(1703, alive)
 
 
-async def test_answer_on_one_device_silences_others() -> None:
+async def test_answer_on_one_device_silences_others(call_db) -> None:
     """Ответили на телефоне — на компьютере в этот же момент звонок замолкает.
 
     Звонок звонит на все устройства сразу, поэтому остальные надо остановить: иначе
@@ -260,7 +287,7 @@ async def test_answer_on_one_device_silences_others() -> None:
         await call_manager.disconnect(1706, desktop)
 
 
-async def test_relay_queues_answer_while_caller_offline() -> None:
+async def test_relay_queues_answer_while_caller_offline(call_db) -> None:
     """Ответ на звонок не теряется, если у зовущего на секунду отвалился канал.
 
     Иначе у зовущего звонок продолжает звонить, хотя собеседник уже нажал
@@ -291,7 +318,7 @@ async def test_relay_queues_answer_while_caller_offline() -> None:
     assert await call_manager.take_queued_messages(1101) == []
 
 
-async def test_relay_queues_ice_candidates() -> None:
+async def test_relay_queues_ice_candidates(call_db) -> None:
     """ICE-кандидаты тоже придерживаются: без них медиа не поднимется."""
     from api_v1.calls import views as calls_views
     from api_v1.calls.manager import call_manager
@@ -310,7 +337,7 @@ async def test_relay_queues_ice_candidates() -> None:
     assert [item["type"] for item in queued] == ["ice-candidate"]
 
 
-async def test_queued_signaling_is_delivered_on_connect() -> None:
+async def test_queued_signaling_is_delivered_on_connect(call_db) -> None:
     """Абонент вернулся в сеть — придержанный сигналинг уходит ему сразу."""
     from api_v1.calls.manager import call_manager
 
@@ -327,7 +354,7 @@ async def test_queued_signaling_is_delivered_on_connect() -> None:
 
 
 async def test_expired_queued_signaling_is_dropped(
-    monkeypatch: pytest.MonkeyPatch,
+    call_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Протухшее сообщение не доставляем: звонок давно кончился."""
     from api_v1.calls import manager as calls_manager
@@ -338,7 +365,9 @@ async def test_expired_queued_signaling_is_dropped(
     assert await calls_manager.call_manager.take_queued_messages(1107) == []
 
 
-async def test_queued_signaling_is_capped(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_queued_signaling_is_capped(
+    call_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Очередь ограничена: «мёртвый» сокет не должен копить сообщения бесконечно."""
     from api_v1.calls import manager as calls_manager
 
@@ -353,7 +382,7 @@ async def test_queued_signaling_is_capped(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 async def test_closed_app_can_be_called_and_answers_later(
-    monkeypatch: pytest.MonkeyPatch,
+    call_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Полный путь «звонок в закрытое приложение».
 
@@ -406,7 +435,9 @@ async def test_closed_app_can_be_called_and_answers_later(
         await call_manager.discard_pending_offer(1402, "call-cold")
 
 
-async def test_blocked_pair_cannot_call(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_blocked_pair_cannot_call(
+    call_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Заблокированный не дозвонится: вызов не паркуем и push не шлём.
 
     Зовущему отвечаем как при недоступности — о самом факте блокировки не сообщаем,
@@ -486,7 +517,7 @@ def test_parked_offer_outlives_caller_ring() -> None:
 
 
 async def test_offline_call_is_parked_without_push_channels(
-    monkeypatch: pytest.MonkeyPatch,
+    call_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Вызов паркуем и без push-канала: уведомления выключены — звонок всё равно ждёт.
 
@@ -539,7 +570,7 @@ async def test_offline_call_is_parked_without_push_channels(
 
 
 async def test_offline_call_with_push_subscription_is_notified(
-    monkeypatch: pytest.MonkeyPatch,
+    call_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Есть подписка — вызов паркуем и ставим push «Вам звонят…»."""
     from api_v1.calls import views as calls_views
@@ -599,7 +630,7 @@ async def test_offline_call_with_push_subscription_is_notified(
 
 
 async def test_call_over_is_queued_for_offline_peer(
-    monkeypatch: pytest.MonkeyPatch,
+    call_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """«Звонок закончился» придерживается для абонента без канала.
 

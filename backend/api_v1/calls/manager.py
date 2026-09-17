@@ -14,10 +14,11 @@ ICE-candidates, отмена/сброс/завершение) между дву�
 
 import asyncio
 import logging
-import time
 from typing import Any
 
 from fastapi import WebSocket
+
+from . import store as signal_store
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +49,6 @@ class CallConnectionManager:
     def __init__(self) -> None:
         self._connections: dict[int, set[WebSocket]] = {}
         self._lock = asyncio.Lock()
-        # Припаркованные входящие вызовы для офлайн-абонентов: user_id -> offer.
-        self._pending_offers: dict[int, dict[str, Any]] = {}
-        # Недоставленный сигналинг (ответ на звонок, ICE-кандидаты): user_id -> [msg].
-        self._queued_messages: dict[int, list[dict[str, Any]]] = {}
 
     async def connect(self, user_id: int, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -159,22 +156,18 @@ class CallConnectionManager:
         в аккаунт занимают время, и вызов обязан дождаться, пока человек откроет
         приложение. Если парковка истечёт раньше окна зовущего, абонент будет
         отвечать на уже завершённый вызов.
+
+        Само хранилище — в БД (см. ``api_v1/calls/store.py``): при нескольких
+        процессах web абонент может подключиться к другому процессу, и парковка из
+        памяти была бы потеряна.
         """
-        async with self._lock:
-            parked = dict(offer)
-            parked["_expires_at"] = time.monotonic() + ttl_seconds
-            self._pending_offers[callee_id] = parked
+        await signal_store.park_offer(
+            callee_id, offer.get("call_id"), dict(offer), ttl_seconds
+        )
 
     async def take_pending_offer(self, user_id: int) -> dict[str, Any] | None:
         """Забирает припаркованный offer (если он ещё не истёк)."""
-        async with self._lock:
-            offer = self._pending_offers.pop(user_id, None)
-        if offer is None:
-            return None
-        if offer.get("_expires_at", 0) < time.monotonic():
-            return None
-        offer.pop("_expires_at", None)
-        return offer
+        return await signal_store.take_pending_offer(user_id)
 
     async def has_pending_offer(self, user_id: int, call_id: str | None = None) -> bool:
         """Есть ли у пользователя ещё «висящий» входящий вызов (не истёк).
@@ -182,24 +175,11 @@ class CallConnectionManager:
         Нужно, чтобы не слать push о звонке, которого уже нет: отменили, или
         абонент сам подключился и забрал offer (``take_pending_offer``).
         """
-        async with self._lock:
-            offer = self._pending_offers.get(user_id)
-        if offer is None:
-            return False
-        if offer.get("_expires_at", 0) < time.monotonic():
-            return False
-        if call_id and offer.get("call_id") != call_id:
-            return False
-        return True
+        return await signal_store.has_pending_offer(user_id, call_id)
 
     async def discard_pending_offer(self, callee_id: int, call_id: str | None) -> None:
         """Убирает парковку, если она относится к указанному вызову."""
-        if not call_id:
-            return
-        async with self._lock:
-            offer = self._pending_offers.get(callee_id)
-            if offer is not None and offer.get("call_id") == call_id:
-                self._pending_offers.pop(callee_id, None)
+        await signal_store.discard_pending_offer(callee_id, call_id)
 
     async def queue_message(
         self,
@@ -214,44 +194,17 @@ class CallConnectionManager:
         зовущего звонок продолжает звонить, хотя собеседник уже нажал «Ответить».
 
         ``ttl_seconds`` — свой срок жизни для сообщения (см.
-        ``CALL_OVER_QUEUE_TTL_SECONDS``).
+        ``CALL_OVER_QUEUE_TTL_SECONDS``). Хранится в БД по той же причине, что и
+        парковка.
         """
         ttl = QUEUED_MESSAGE_TTL_SECONDS if ttl_seconds is None else ttl_seconds
-        async with self._lock:
-            self._prune_queued_locked()
-            queue = self._queued_messages.setdefault(user_id, [])
-            entry = dict(payload)
-            entry["_expires_at"] = time.monotonic() + ttl
-            queue.append(entry)
-            if len(queue) > MAX_QUEUED_MESSAGES:
-                del queue[0 : len(queue) - MAX_QUEUED_MESSAGES]
+        await signal_store.queue_signal(
+            user_id, dict(payload), ttl, max_messages=MAX_QUEUED_MESSAGES
+        )
 
     async def take_queued_messages(self, user_id: int) -> list[dict[str, Any]]:
         """Отдаёт придержанные сообщения абонента (просроченные выбрасывает)."""
-        async with self._lock:
-            queue = self._queued_messages.pop(user_id, [])
-        now = time.monotonic()
-        fresh: list[dict[str, Any]] = []
-        for entry in queue:
-            if entry.get("_expires_at", 0) < now:
-                continue
-            entry.pop("_expires_at", None)
-            fresh.append(entry)
-        return fresh
-
-    def _prune_queued_locked(self) -> None:
-        """Чистит истёкшие очереди (иначе они копились бы для «молчащих» абонентов)."""
-        now = time.monotonic()
-        for user_id in list(self._queued_messages):
-            alive = [
-                entry
-                for entry in self._queued_messages[user_id]
-                if entry.get("_expires_at", 0) >= now
-            ]
-            if alive:
-                self._queued_messages[user_id] = alive
-            else:
-                del self._queued_messages[user_id]
+        return await signal_store.take_queued_signals(user_id)
 
 
 call_manager = CallConnectionManager()
