@@ -7,14 +7,14 @@
       :class="{ 'no-video': !showsVideo(participant.id), speaking: participant.speaking }"
     >
       <video
-        v-if="showsVideo(participant.id)"
         :ref="(el) => setVideoEl(participant.id, el)"
         class="grid-video"
+        :class="{ 'grid-video-hidden': !showsVideo(participant.id) }"
         autoplay
         playsinline
         :muted="viaWebAudio"
       ></video>
-      <div v-else class="grid-avatar">
+      <div v-if="!showsVideo(participant.id)" class="grid-avatar">
         <q-icon
           :name="icon(ringing(participant.id) ? 'call' : 'person')"
           size="34px"
@@ -246,10 +246,23 @@ onBeforeUnmount(() => window.clearInterval(poll))
   background: var(--ms-call-bg);
 }
 
+/*
+ * Видео нет (камера выключена или звонок аудио), но элемент из разметки НЕ
+ * убираем: только привязанный к элементу поток Chrome отдаёт в Web Audio
+ * (проверено живьём 18.09.2026) — без него не будет ни звука, ни измерения
+ * уровня речи для кольца «говорит». Поэтому прячем его визуально.
+ */
+.grid-video-hidden {
+  opacity: 0;
+}
+
 .grid-avatar {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   color: var(--ms-muted);
 }

@@ -82,18 +82,24 @@
                Сетка живёт внутри общего слоя вместе с плашкой и кнопками: в
                групповом звонке это три строки друг под другом — плашка и кнопки
                не ложатся на плитки и не закрывают их кнопки. -->
-          <!-- Видео собеседника (звук — Web Audio или фолбэк элемента).
-               Когда камера выключена, видеопотока нет: показываем аватар и
-               подпись, а не чёрный прямоугольник. -->
+          <!-- Удалённый поток — РОВНО ОДИН элемент, и он ВСЕГДА в разметке.
+               Элемент нужен не только картинке: только привязанный к элементу
+               поток Chrome отдаёт в Web Audio (проверено живьём 18.09.2026 —
+               без элемента звук не доходит вовсе, и мы его не измеряем).
+               Поэтому в аудио-звонке элемент остаётся (невидимым), а когда
+               камера собеседника выключена — на месте картинки аватар. -->
           <video
-            v-if="!callStore.isGroup && callStore.kind === 'video' && callStore.peerVideoOn"
+            v-if="!callStore.isGroup"
             ref="remoteVideoEl"
             class="remote-video"
+            :class="{ 'remote-hidden': !remoteVideoVisible }"
             autoplay
             playsinline
           ></video>
+          <!-- Камера собеседника выключена: аватар вместо чёрного прямоугольника.
+               В аудио-звонке этот блок не нужен — там аватар рисует `.active-ui`. -->
           <div
-            v-if="!callStore.isGroup && callStore.kind === 'video' && !callStore.peerVideoOn"
+            v-if="!callStore.isGroup && callStore.kind === 'video' && !remoteVideoVisible"
             class="peer-video-off"
           >
             <span class="call-avatar huge" :style="avatarStyle(displayName)">
@@ -106,10 +112,9 @@
               />
               <template v-else>{{ displayNameInitials }}</template>
             </span>
+            <!-- В аудиозвонке это норма, подпись нужна только видеозвонку. -->
             <p class="peer-video-off-text">Камера собеседника выключена</p>
           </div>
-          <!-- Аудио-звонок: элемент для воспроизведения/фолбэка (mute задаётся в коде) -->
-          <audio v-if="callStore.kind === 'audio'" ref="remoteAudioEl" autoplay playsinline></audio>
 
           <div
             class="active-ui"
@@ -511,7 +516,6 @@ import { formatVerificationCode } from '@/utils/callVerification'
 const callStore = useCallStore()
 
 const remoteVideoEl = ref<HTMLVideoElement | null>(null)
-const remoteAudioEl = ref<HTMLAudioElement | null>(null)
 const localVideoEl = ref<HTMLVideoElement | null>(null)
 /** Доступен ли в этом окружении захват экрана (иначе пункт меню скрыт). */
 const canShareScreen = screenShareSupport() === 'ok'
@@ -519,6 +523,11 @@ const canShareScreen = screenShareSupport() === 'ok'
 const noticeVisible = ref(false)
 let noticeTimer: ReturnType<typeof setTimeout> | undefined
 let attachTimer: ReturnType<typeof setInterval> | undefined
+
+/** Видно ли картинку собеседника (иначе элемент невидим, но звук остаётся). */
+const remoteVideoVisible = computed<boolean>(
+  () => callStore.kind === 'video' && callStore.peerVideoOn
+)
 
 /** Есть ли у собеседника видеодорожка (нужно, чтобы переписать элемент при её появлении). */
 const remoteVideoTracks = ref(0)
@@ -720,7 +729,9 @@ const canPictureInPicture = computed(
     document.pictureInPictureEnabled === true &&
     callStore.status === 'active' &&
     !callStore.screenSharing &&
-    (callStore.kind === 'video' || callStore.peerScreenSharing)
+    // Элемент теперь есть всегда, поэтому проверяем именно КАРТИНКУ: без
+    // видеодорожки браузер откажет в мини-окне.
+    (remoteVideoVisible.value || callStore.peerScreenSharing)
 )
 
 /** Свернуть разговор в плавающее окно (картинка в картинке). */
@@ -778,15 +789,15 @@ const speakerOptions = computed(() =>
 /** Направляет звук на выбранный динамик (Safari/iOS не поддерживают — молча пропускаем). */
 const applySink = () => {
   if (!canSelectSpeaker.value || !callStore.selectedSpeaker) return
-  const parent = remoteVideoEl.value ?? remoteAudioEl.value
+  const parent = remoteVideoEl.value
   type SinkCapable = HTMLMediaElement & { setSinkId?: (id: string) => Promise<void> }
   const el = parent as SinkCapable | null
   if (!el?.setSinkId) return
   void el.setSinkId(callStore.selectedSpeaker).catch(() => undefined)
 }
 
-const fallbackEl = (): HTMLMediaElement | null =>
-  callStore.kind === 'video' ? remoteVideoEl.value : remoteAudioEl.value
+/** Элемент вывода звука: удалённый поток всегда привязан к нему. */
+const fallbackEl = (): HTMLMediaElement | null => remoteVideoEl.value
 
 const applySpeaker = () => {
   if (callStore.outputReady()) {
@@ -838,43 +849,33 @@ let lastRemoteVideoTracks = 0
 
 const attachStreams = () => {
   const remote = callStore.getRemoteStream()
-  const isVideo = callStore.kind === 'video'
 
   // Пытаемся держать Web Audio запущенным; если он не готов — звук идёт
   // напрямую через элемент (фолбэк), чтобы звонок не был немым.
   callStore.resumeOutput()
   const viaWeb = callStore.outputReady()
 
-  if (isVideo) {
-    const remoteVideo = remoteVideoEl.value
-    const videoTracks = remote ? remote.getVideoTracks().length : 0
-    remoteVideoTracks.value = videoTracks
-    if (remoteVideo) {
-      const needsBind =
-        remoteVideo.srcObject !== remote ||
-        // Видеотрек мог прийти позже аудио — пере-привязываем, чтобы «проснуться».
-        (videoTracks > 0 &&
-          videoTracks !== lastRemoteVideoTracks &&
-          remoteVideo.srcObject === remote)
-      if (needsBind) {
-        remoteVideo.srcObject = null
-        remoteVideo.srcObject = remote
-      }
-      // Web Audio играет звук → глушим элемент (только картинка); иначе — фолбэк.
-      remoteVideo.muted = viaWeb
-      ensurePlaying(remoteVideo)
+  // Один и тот же элемент и для видео, и для звука: аудио-дорожка играется
+  // `<video>` не хуже `<audio>`, а лишняя сущность означала бы два пути вывода
+  // для одного потока (и «двойной звук», который мы уже ловили).
+  const remoteVideo = remoteVideoEl.value
+  const videoTracks = remote ? remote.getVideoTracks().length : 0
+  remoteVideoTracks.value = videoTracks
+  if (remoteVideo) {
+    const needsBind =
+      remoteVideo.srcObject !== remote ||
+      // Видеотрек мог прийти позже аудио — пере-привязываем, чтобы «проснуться».
+      (videoTracks > 0 && videoTracks !== lastRemoteVideoTracks && remoteVideo.srcObject === remote)
+    if (needsBind) {
+      remoteVideo.srcObject = null
+      remoteVideo.srcObject = remote
     }
-    lastRemoteVideoTracks = videoTracks
+    // Web Audio играет звук → глушим элемент (он остаётся ради картинки и ради
+    // того, чтобы Chrome вообще отдавал поток в Web Audio); иначе — фолбэк.
+    remoteVideo.muted = viaWeb
+    ensurePlaying(remoteVideo)
   }
-
-  const audioEl = remoteAudioEl.value
-  if (audioEl) {
-    if (audioEl.srcObject !== remote) {
-      audioEl.srcObject = remote
-    }
-    audioEl.muted = viaWeb
-    ensurePlaying(audioEl)
-  }
+  lastRemoteVideoTracks = videoTracks
 
   const local = callStore.getLocalStream()
   if (localVideoEl.value && localVideoEl.value.srcObject !== local) {
@@ -1108,6 +1109,14 @@ onBeforeUnmount(() => {
   height: 100%;
   object-fit: cover;
   background: #000;
+}
+
+/* Показывать нечего (аудио-звонок или камера выключена): элемент остаётся в
+   разметке и продолжает держать звук, но не занимает экран. */
+.remote-video.remote-hidden {
+  opacity: 0;
+  pointer-events: none;
+  background: transparent;
 }
 
 .active-ui {

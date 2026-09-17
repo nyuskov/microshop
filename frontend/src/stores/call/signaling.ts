@@ -98,6 +98,8 @@ export interface CallSignalingRuntime {
   badQualityStreak: number
   /** Сколько опросов подряд связь «хорошая» — по нему возвращаем видео. */
   goodQualityStreak: number
+  /** Таймер обновления признака «говорит» (уровень звука собеседников). */
+  speakingTimer: number | undefined
   localMedia: MediaStream | null
   remoteMedia: MediaStream | null
   pendingOffer: PendingOffer | null
@@ -173,7 +175,8 @@ export const runtime: CallSignalingRuntime = {
   linkSteps: new Map<number, { step: QualityStep; at: number }>(),
   pausedVideoSenders: [],
   badQualityStreak: 0,
-  goodQualityStreak: 0
+  goodQualityStreak: 0,
+  speakingTimer: undefined
 }
 
 export function sendRuntimeMessage(message: SignalingMessage): boolean {

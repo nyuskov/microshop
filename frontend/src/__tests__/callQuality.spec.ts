@@ -30,6 +30,7 @@ import {
   videoScaleFor
 } from '@/stores/call/quality'
 import { speakingNow, type CallDiagnostics } from '@/utils/callStats'
+import { rmsLevel } from '@/stores/call/output'
 
 /**
  * Качество звонка на плохой сети (междугородние разговоры).
@@ -43,6 +44,7 @@ const store = source('src/stores/call.ts')
 const qualitySource = source('src/stores/call/quality.ts')
 const output = source('src/stores/call/output.ts')
 const grid = source('src/components/calls/CallGrid.vue')
+const overlay = source('src/components/calls/CallOverlay.vue')
 
 /** Минимальное SDP с Opus — как его отдаёт браузер. */
 const SDP = [
@@ -315,9 +317,27 @@ describe('индикатор говорящего', () => {
 describe('звук собеседников не дублируется и не теряется', () => {
   it('в микшере держатся ВСЕ собеседники, а не последний', () => {
     // Раньше новый поток заменял прежний: в группе слышно было только одного.
-    expect(output).toMatch(/callOutputSources\.push\(source\)/)
+    expect(output).toMatch(/callOutputs\.push\(/)
     expect(output).toMatch(/export function unwireRemoteOutput/)
     expect(output).not.toMatch(/callOutputSource\b(?!s)/)
+  })
+
+  it('уровень речи измеряем сами: при выводе через Web Audio Chrome его не считает', () => {
+    // Проверено живьём 18.09.2026: тон 0,5 — вывод элементом даёт audioLevel 0,506,
+    // а тот же звук через Web Audio — 0. Поэтому «кто говорит» считаем сами.
+    expect(output).toMatch(/createAnalyser\(\)/)
+    expect(output).toMatch(/export function remoteLevels/)
+    // Анализатор — ДО громкости: мерим пришедший звук, а не свою выкрученную громкость.
+    expect(output).toMatch(/source\.connect\(analyser\)/)
+    expect(output).toMatch(/analyser\.connect\(callOutputGain\)/)
+  })
+
+  it('уровень звука отдаётся по каждому собеседнику', () => {
+    expect(store).toMatch(/wireRemoteOutput\(stream, peerId\)/)
+    expect(store).toMatch(/remoteLevels\(\)/)
+    // Обновляем часто (статистика идёт раз в 5 с — кольцо не успевало бы).
+    expect(store).toMatch(/SPEAKING_POLL_INTERVAL_MS/)
+    expect(store).toMatch(/speakingNow\(level, participant\.speaking\)/)
   })
 
   it('громкость меняется плавно: мгновенная смена щёлкает', () => {
@@ -334,5 +354,38 @@ describe('звук собеседников не дублируется и не 
 
   it('ушедший участник убирается из микшера', () => {
     expect(store).toContain('unwireRemoteOutput(link.remoteStream)')
+  })
+})
+
+describe('измерение уровня речи', () => {
+  it('RMS: тишина — ноль, тон амплитуды 0,5 — около 0,35', () => {
+    // Та же шкала 0…1, что у Chrome (`audioLevel` тона 0,5 ≈ 0,5), поэтому
+    // пороги speakingNow (0,01/0,004) подходят и нашему измерению.
+    expect(rmsLevel(new Float32Array(0))).toBe(0)
+    expect(rmsLevel(new Float32Array(256))).toBe(0)
+    const samples = new Float32Array(1024)
+    for (let index = 0; index < samples.length; index += 1) {
+      samples[index] = 0.5 * Math.sin(index * 0.1)
+    }
+    expect(rmsLevel(samples)).toBeCloseTo(0.354, 2)
+  })
+})
+
+describe('удалённый поток всегда привязан к элементу', () => {
+  it('в сетке элемент есть у каждой плитки, даже когда видео нет', () => {
+    // Только привязанный к элементу поток Chrome отдаёт в Web Audio (проверено
+    // живьём 18.09.2026): без этого в аудио-группе не было бы ни звука, ни
+    // измерения уровня для кольца «говорит».
+    expect(grid).toMatch(/'grid-video-hidden': !showsVideo\(participant\.id\)/)
+    expect(grid).not.toMatch(/<video\s+v-if="showsVideo/)
+  })
+
+  it('в одиночном звонке элемент один и не убирается из разметки', () => {
+    expect(overlay).toMatch(/class="remote-video"/)
+    expect(overlay).toMatch(/'remote-hidden': !remoteVideoVisible/)
+    // Отдельного `<audio>` для того же потока быть не должно: два пути вывода
+    // для одного потока — это «двойной звук», который уже ловили.
+    expect(overlay).not.toContain('remoteAudioEl')
+    expect(overlay).not.toMatch(/<audio\s/)
   })
 })

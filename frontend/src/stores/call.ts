@@ -57,6 +57,7 @@ import {
   MEDIA_WATCHDOG_MAX_RESTARTS,
   QUALITY_STEP_COOLDOWN_MS,
   RING_OUT_TIMEOUT_MS,
+  SPEAKING_POLL_INTERVAL_MS,
   STATS_POLL_INTERVAL_MS,
   VIDEO_PAUSE_BAD_POLLS,
   VIDEO_RESUME_GOOD_POLLS
@@ -79,6 +80,7 @@ import {
 } from './call/media'
 import {
   ensureCallOutput,
+  remoteLevels,
   remoteOutputReady,
   setRemoteOutputVolume,
   teardownCallOutput,
@@ -1638,6 +1640,9 @@ export const useCallStore = defineStore('call', {
       // статистику соединения (индикатор качества и панель диагностики).
       this._sendMediaState()
       this._startStatsPolling()
+      // «Кто говорит» — отдельным частым опросом: статистика идёт раз в 5 с, а
+      // кольцо на плитке должно загораться почти сразу.
+      this._startSpeakingPolling()
       // И код сверки: он считается из отпечатков сертификатов обеих сторон — до
       // подключения брать нечего.
       void this.refreshVerificationCode()
@@ -1732,15 +1737,6 @@ export const useCallStore = defineStore('call', {
           // Для интерфейса: своя статистика на каждого участника (в группе «плохо
           // слышно» относится к конкретному собеседнику, а не к звонку целиком).
           this.peerDiagnostics = { ...this.peerDiagnostics, [link.peerId]: diagnostics }
-          // Кто говорит: по уровню звука его дорожек (в группе это единственный
-          // надёжный признак — дорожки есть у всех, а молчащие не звучат).
-          const participant = this.participants.find((item) => item.id === link.peerId)
-          if (participant) {
-            const speaking = speakingNow(diagnostics.audioLevel, participant.speaking)
-            if (speaking !== participant.speaking) {
-              this._patchParticipant(link.peerId, { speaking })
-            }
-          }
           await this._applyLinkTuning(link, step)
         } catch {
           /* статистику не получить — оставляем прежние настройки связи */
@@ -1782,6 +1778,48 @@ export const useCallStore = defineStore('call', {
       tuneReceivers(link.pc, jitterTargetsFor(runtime.linkQuality.get(link.peerId) ?? null))
       // Видео могло быть приостановлено ещё до появления этой связи.
       if (this.videoPausedForNetwork) await this._pauseVideoOnLink(link)
+    },
+
+    /**
+     * Обновляет признак «говорит» по уровню звука собеседников.
+     *
+     * Уровень берём у Web Audio (`remoteLevels` — свой анализатор на каждого),
+     * а не из `audioLevel` статистики: Chrome считает его только когда звук
+     * выводится ЭЛЕМЕНТОМ, а в групповом звонке плитки заглушены и звук играет
+     * Web Audio — там `audioLevel` нулевой (проверено живьём 18.09.2026). Если
+     * Web Audio не запущен, звук как раз идёт через элемент — тогда статистика
+     * работает и служит фолбэком.
+     */
+    _updateSpeaking() {
+      // Признак нужен только там, где видны плитки других участников.
+      if (this.status !== 'active' || this.participants.length < 2) return
+      const viaWebAudio = remoteOutputReady()
+      const levels = viaWebAudio ? remoteLevels() : new Map<number, number>()
+      for (const participant of [...this.participants]) {
+        const level = viaWebAudio
+          ? (levels.get(participant.id) ?? 0)
+          : (this.peerDiagnostics[participant.id]?.audioLevel ?? 0)
+        const speaking = speakingNow(level, participant.speaking)
+        if (speaking !== participant.speaking) {
+          this._patchParticipant(participant.id, { speaking })
+        }
+      }
+    },
+
+    _startSpeakingPolling() {
+      this._stopSpeakingPolling()
+      if (typeof window === 'undefined') return
+      runtime.speakingTimer = window.setInterval(
+        () => this._updateSpeaking(),
+        SPEAKING_POLL_INTERVAL_MS
+      )
+    },
+
+    _stopSpeakingPolling() {
+      if (runtime.speakingTimer !== undefined) {
+        window.clearInterval(runtime.speakingTimer)
+        runtime.speakingTimer = undefined
+      }
     },
 
     /**
@@ -2544,6 +2582,7 @@ export const useCallStore = defineStore('call', {
       this._clearAnswerRetry()
       this._clearMediaWatchdog()
       this._clearStatsPolling()
+      this._stopSpeakingPolling()
       // Звонок завершён осознанно — поднимать его после перезагрузки не нужно.
       forgetActiveCall()
       // Код сверки относится к конкретному соединению: в новом звонке он другой.
@@ -2650,7 +2689,7 @@ export const useCallStore = defineStore('call', {
         event.track.onmute = () => this._refreshPeerMedia(peerId)
         event.track.onended = () => this._refreshPeerMedia(peerId)
         // Звук собеседника — через Web Audio (не зависит от element.volume).
-        wireRemoteOutput(stream)
+        wireRemoteOutput(stream, peerId)
       }
     }
   }
