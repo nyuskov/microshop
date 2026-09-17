@@ -145,9 +145,7 @@ export async function tuneSenders(
         // а не частота кадров (иначе картинка «замирает»). У показа экрана
         // наоборот — важнее читаемость текста. `getParameters()` это поле у
         // Chrome не отдаёт, поэтому выставляем безусловно.
-        params.degradationPreference = options.screen
-          ? 'maintain-resolution'
-          : 'maintain-framerate'
+        params.degradationPreference = options.screen ? 'maintain-resolution' : 'maintain-framerate'
         await sender.setParameters(params)
       }
     } catch {
