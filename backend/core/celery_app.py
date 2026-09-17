@@ -4,7 +4,8 @@
 
 * ``celery -A core.celery_app worker``  — воркер исполняет фоновые задачи;
 * ``celery -A core.celery_app beat``     — планировщик периодических задач
-  (сейчас — очистка «осиротевших» файлов в media);
+  (очистка «осиротевших» файлов в media, уборка историй и сигналинга; состав
+  зависит от настроек — см. ``build_beat_schedule``);
 * web-процесс FastAPI импортирует это приложение, чтобы отправлять задачи
   (``get_task(...).delay(...)``) и — отдельно — слушать мост realtime-событий
   воркера (см. ``api_v1/events/bridge.py``).
@@ -78,42 +79,57 @@ celery_app.conf.update(
     beat_schedule_filename="/tmp/celerybeat-schedule",
 )
 
+
 # Периодические задачи (celery beat). Каждая задача просто объявляется; сам
 # обработчик живёт в tasks.<module>.
-celery_app.conf.beat_schedule = {
-    # Ежедневная очистка файлов media, на которые нет ссылок в БД.
-    "cleanup-orphan-media-daily": {
-        "task": "tasks.media_tasks.cleanup_orphan_media",
-        "schedule": crontab(hour=4, minute=0),
-        "options": {"queue": "microshop"},
-    },
+#
+# Собираем расписание функцией, а не литералом: часть задач имеет смысл только
+# при определённой настройке, и «висеть» в расписании впустую они не должны —
+# beat всё равно шлёт тик, и в логе воркера каждые несколько секунд появляется
+# бесполезная строка «succeeded in 0.0001s: None» (см. TELEGRAM_POLL_ENABLED).
+def build_beat_schedule(config: Any) -> dict[str, dict[str, Any]]:
+    """Расписание периодических задач для настроек ``config``."""
+    schedule: dict[str, dict[str, Any]] = {
+        # Ежедневная очистка файлов media, на которые нет ссылок в БД.
+        "cleanup-orphan-media-daily": {
+            "task": "tasks.media_tasks.cleanup_orphan_media",
+            "schedule": crontab(hour=4, minute=0),
+            "options": {"queue": "microshop"},
+        },
+        # Уборка просроченных историй (24 часа): раз в час, чтобы в БД не копилось.
+        "delete-expired-stories-hourly": {
+            "task": "tasks.story_tasks.delete_expired_stories",
+            "schedule": crontab(minute=7),
+            "options": {"queue": "microshop"},
+        },
+        # Парковка вызова и недоставленный сигналинг живут минуты и удаляются при
+        # чтении; задача — страховка для строк «молчащих» абонентов.
+        "prune-call-signals": {
+            "task": "tasks.call_tasks.prune_call_signals",
+            "schedule": crontab(minute="*/5"),
+            "options": {"queue": "microshop"},
+        },
+        # Еженедельная чистка журнала безопасности (записи старше 180 дней).
+        "prune-security-events-weekly": {
+            "task": "tasks.security_tasks.prune_security_events",
+            "schedule": crontab(day_of_week="sun", hour=4, minute=30),
+            "options": {"queue": "microshop"},
+        },
+    }
     # Поллинг обычного Telegram-бота: привязка чатов (/start bind_...) —
-    # резервный канал доставки OTP. Работает, только если задан бот-токен.
-    "telegram-poll-updates": {
-        "task": "tasks.telegram.telegram_poll_updates",
-        "schedule": timedelta(seconds=settings.telegram_poll_interval_seconds),
-        "options": {"queue": "microshop"},
-    },
-    # Уборка просроченных историй (24 часа): раз в час, чтобы в БД не копилось.
-    "delete-expired-stories-hourly": {
-        "task": "tasks.story_tasks.delete_expired_stories",
-        "schedule": crontab(minute=7),
-        "options": {"queue": "microshop"},
-    },
-    # Парковка вызова и недоставленный сигналинг живут минуты и удаляются при
-    # чтении; задача — страховка для строк «молчащих» абонентов.
-    "prune-call-signals": {
-        "task": "tasks.call_tasks.prune_call_signals",
-        "schedule": crontab(minute="*/5"),
-        "options": {"queue": "microshop"},
-    },
-    # Еженедельная чистка журнала безопасности (записи старше 180 дней).
-    "prune-security-events-weekly": {
-        "task": "tasks.security_tasks.prune_security_events",
-        "schedule": crontab(day_of_week="sun", hour=4, minute=30),
-        "options": {"queue": "microshop"},
-    },
-}
+    # резервный канал доставки OTP. Нужен только если бот настроен и опрос
+    # вообще разрешён: без маршрута до api.telegram.org задача ничего не
+    # получает (см. `telegram_poll_enabled` в core/config.py).
+    if config.telegram_poll_enabled and config.telegram_bot_token:
+        schedule["telegram-poll-updates"] = {
+            "task": "tasks.telegram.telegram_poll_updates",
+            "schedule": timedelta(seconds=config.telegram_poll_interval_seconds),
+            "options": {"queue": "microshop"},
+        }
+    return schedule
+
+
+celery_app.conf.beat_schedule = build_beat_schedule(settings)
 
 
 class TaskEnvelope:

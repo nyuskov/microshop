@@ -256,6 +256,15 @@ class Settings(BaseSettings):
     )
     # Как часто воркер опрашивает бота на новые /start (сек).
     telegram_poll_interval_seconds: int = 5
+    # Опрашивать ли бота вообще (celery beat кладёт задачу только при True).
+    # Зачем выключатель: задача бесполезна там, где до api.telegram.org нет
+    # маршрута (на проде он закрыт) — она всё равно ничего не получает, а beat
+    # каждые `telegram_poll_interval_seconds` шлёт тик и в логе появляется
+    # строка «succeeded in 0.0001s: None». Токен бота при этом не трогаем:
+    # он ещё нужен доставке кода в уже привязанный чат (tasks/otp_tasks.py).
+    telegram_poll_enabled: bool = Field(
+        default=True, validation_alias="TELEGRAM_POLL_ENABLED"
+    )
     # Срок жизни кода привязки Telegram (сек).
     telegram_bind_link_ttl_seconds: int = 600
 

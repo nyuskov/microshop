@@ -160,6 +160,9 @@ services:
       # Поллер привязки Telegram (работу делает beat).
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}
+      # false — опрос выключен целиком: задачи нет в расписании beat (нужно там,
+      # где до api.telegram.org нет маршрута, иначе пустой тик каждые 5 секунд).
+      - TELEGRAM_POLL_ENABLED=${TELEGRAM_POLL_ENABLED:-true}
     depends_on:
       rabbitmq:
         condition: service_healthy

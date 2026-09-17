@@ -143,6 +143,10 @@ services:
       - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/microshop
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
       - RABBITMQ_URL=amqp://${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}@rabbitmq:5672/
+      # Опрос обычного Telegram-бота: нужен только там, где есть маршрут до
+      # api.telegram.org. false — задачи нет в расписании beat вообще.
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_POLL_ENABLED=${TELEGRAM_POLL_ENABLED:-true}
     depends_on:
       rabbitmq:
         condition: service_healthy

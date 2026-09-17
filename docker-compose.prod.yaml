@@ -229,6 +229,9 @@ services:
       # Поллер обычного бота (привязка Telegram) работает в beat.
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      # Опрос бота выключается целиком: false — задачи нет в расписании (нужно там,
+      # где до api.telegram.org нет маршрута — иначе beat шлёт пустой тик каждые 5 с).
+      TELEGRAM_POLL_ENABLED: ${TELEGRAM_POLL_ENABLED:-true}
     depends_on:
       rabbitmq:
         condition: service_healthy
