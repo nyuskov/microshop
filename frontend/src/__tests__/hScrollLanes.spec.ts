@@ -52,6 +52,18 @@ describe('общий механизм прокрутки лент', () => {
     expect(file).toContain('@pointermove=')
     expect(file).toContain('fade-end')
   })
+
+  it.each(lanes)('%s (%s) отдаёт свой элемент composable', (path) => {
+    // Грабля: обработчики в разметке есть, а элемент в composable не передан —
+    // тогда перетаскивание мышью и затухания краёв молча не делают ничего, и
+    // лента выглядит непрокручиваемой (ровно так и случилось в панели эмодзи).
+    const file = source(path)
+    const destructured = /el:\s*([A-Za-z0-9_]+)\s*,/.exec(file)?.[1] ?? null
+    const spread = /:ref="([A-Za-z0-9_]+)\.el"/.exec(file)?.[1] ?? null
+    expect(destructured ?? spread, 'элемент не передан в useHScroll').toBeTruthy()
+    if (destructured) expect(file).toContain(`ref="${destructured}"`)
+    if (spread) expect(file).toContain(`...${spread}`)
+  })
 })
 
 describe('полосы не отбирают жесты у списка', () => {

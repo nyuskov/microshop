@@ -186,7 +186,7 @@
           </div>
           <div
             v-if="panelSections.length"
-            ref="panelStripEl"
+            :ref="panelStrip.el"
             class="panel-strip"
             :class="{ 'fade-start': panelStripEdges.start, 'fade-end': panelStripEdges.end }"
             role="tablist"
@@ -542,11 +542,14 @@ const panelSections = computed<PanelSectionItem[]>(() =>
 
 // ---------- Лента значков: переход к секции и подсветка текущей ----------
 const panelScrollEl = ref<HTMLElement | null>(null)
-const panelStripEl = ref<HTMLElement | null>(null)
 const activeSection = ref<string>('')
 
+// Элемент ленты отдаём composable целиком (`:ref="panelStrip.el"`): без привязки
+// он работает «вслепую» — перетаскивание мышью и затухания краёв молча не делают
+// ничего, и лента кажется непрокручиваемой.
 const {
   edges: panelStripEdges,
+  reveal: revealStripItem,
   refresh: panelStripRefresh,
   ...panelStrip
 } = useHScroll(() => panelSections.value.length)
@@ -568,11 +571,7 @@ const JUMP_SETTLE_MS = 600
 let spyMutedUntil = 0
 
 /** Активный значок держим на виду: лента длиннее, чем влезает в полосу. */
-const centerActiveStripItem = () => {
-  panelStripEl.value
-    ?.querySelector<HTMLElement>('.panel-strip-item.active')
-    ?.scrollIntoView({ block: 'nearest', inline: 'center' })
-}
+const centerActiveStripItem = () => revealStripItem('.panel-strip-item.active')
 
 /** Секция на экране: последняя, чей верх уже дошёл до верха контейнера. */
 const onPanelScroll = () => {
