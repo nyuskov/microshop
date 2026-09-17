@@ -93,6 +93,17 @@
             <q-icon :name="icon('bar_chart')" size="19px" />
             <span>Статистика чата</span>
           </button>
+          <!-- Показ/скрытие шторки закреплённых: единственное место с этим
+               действием — отдельной кнопки в шапке нет, чтобы не дублировать. -->
+          <button
+            v-if="hasPinned"
+            class="ms-dropdown-item"
+            :class="{ on: !pinnedHidden }"
+            @click="runChatAction('pinned')"
+          >
+            <q-icon :name="icon(pinnedHidden ? 'push_pin' : 'visibility')" size="19px" />
+            <span>{{ pinnedHidden ? 'Показать закреплённые' : 'Скрыть закреплённые' }}</span>
+          </button>
           <!-- Жалоба и блокировка — требования RuStore для UGC-приложений.
                Доступны только в личных диалогах (в группе нет одного собеседника,
                там жалуются на конкретное сообщение через его действия).
@@ -165,6 +176,10 @@ const props = defineProps<{
   blocked?: boolean
   /** Запрещены ли только звонки («не звони мне, но писать можно»). */
   callsBlocked?: boolean
+  /** Есть ли в чате закреплённые сообщения (есть что показывать). */
+  hasPinned?: boolean
+  /** Скрыта ли шторка закреплённых — нужна кнопка, чтобы вернуть её обратно. */
+  pinnedHidden?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -188,6 +203,8 @@ const emit = defineEmits<{
   (e: 'report-chat'): void
   /** Блокировка собеседника. */
   (e: 'block-chat'): void
+  /** Скрыть или показать шторку закреплённых (пункт меню «⋯»). */
+  (e: 'toggle-pinned'): void
 }>()
 
 /** Личный диалог с собеседником (не группа и не «Сохранённые сообщения»). */
@@ -240,7 +257,8 @@ const toggleChatMenu = () => {
 }
 
 const runChatAction = (
-  action: 'search' | 'archive' | 'folders' | 'sound' | 'stats' | 'calls' | 'report' | 'block'
+  action:
+    'search' | 'archive' | 'folders' | 'sound' | 'stats' | 'calls' | 'report' | 'block' | 'pinned'
 ) => {
   chatMenuOpen.value = false
   if (action === 'search') emit('toggle-search')
@@ -248,6 +266,7 @@ const runChatAction = (
   if (action === 'folders') emit('open-chat-folders')
   if (action === 'sound') emit('open-chat-sound')
   if (action === 'stats') emit('open-chat-stats')
+  if (action === 'pinned') emit('toggle-pinned')
   if (action === 'calls') emit('toggle-calls-block')
   if (action === 'report') emit('report-chat')
   if (action === 'block') emit('block-chat')

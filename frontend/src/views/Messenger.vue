@@ -151,6 +151,8 @@
             :blocked="peerFullyBlocked"
             :calls-blocked="peerCallsBlocked"
             :e2ee="selectedChatE2ee"
+            :has-pinned="pinnedRows.length > 0"
+            :pinned-hidden="pinnedHidden"
             @back="goBackToList"
             @toggle-search="toggleInlineSearch"
             @open-info="openChatInfo"
@@ -163,6 +165,7 @@
             @toggle-calls-block="toggleSelectedPeerCalls"
             @report-chat="openReportForPeer"
             @block-chat="blockSelectedPeer"
+            @toggle-pinned="togglePinnedBar"
           />
 
           <!-- Поиск по сообщениям -->
@@ -178,11 +181,12 @@
 
           <!-- Закреплённые сообщения -->
           <PinnedBar
-            v-if="pinnedRows.length"
+            v-if="pinnedRows.length && !pinnedHidden"
             v-model:open="pinnedOpen"
             :rows="pinnedRows"
             @scroll-to="scrollToPinnedMessage"
             @close-popups="closePopups"
+            @close="pinnedHidden = true"
           />
 
           <!-- Сообщения -->
@@ -912,6 +916,8 @@ const emojiPickerFor = ref<number | null>(null)
 const extrasTab = ref<'emoji' | 'stickers' | 'gif'>('emoji')
 const extrasPanel = ref<'none' | 'emoji' | 'stickers' | 'gif'>('none')
 const pinnedOpen = ref(true)
+/** Шторка закреплённых скрыта в этом чате (крестик); при переходе в чат — снова видна. */
+const pinnedHidden = ref(false)
 const highlightedMessageId = ref<number | null>(null)
 let highlightTimer: number | undefined
 
@@ -2148,6 +2154,8 @@ const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {
   void prepareChatE2ee(chatId)
   messages.value = []
   pinnedMessages.value = []
+  // В другом чате шторка закреплённых показывается снова.
+  pinnedHidden.value = false
   clearPendingUploads()
   inlineQuery.value = ''
   inlineSearchOpen.value = false
@@ -3202,6 +3210,18 @@ const scrollToPinnedMessage = async (messageId: number) => {
   highlightTimer = window.setTimeout(() => {
     highlightedMessageId.value = null
   }, 2400)
+}
+
+/**
+ * Скрывает/показывает шторку закреплённых.
+ * Скрытие — личное дело пользователя (крестик или пункт меню), но оно не должно
+ * быть безвозвратным: вернуть шторку можно кнопкой-булавкой в шапке чата или тем
+ * же пунктом меню «⋯» → «Показать закреплённые». При показе список раскрываем,
+ * иначе пользователь увидит свёрнутую строку без содержимого.
+ */
+const togglePinnedBar = () => {
+  pinnedHidden.value = !pinnedHidden.value
+  if (!pinnedHidden.value) pinnedOpen.value = true
 }
 
 // ---------- Поиск по сообщениям ----------
