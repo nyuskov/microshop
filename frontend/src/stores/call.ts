@@ -7,6 +7,7 @@ import {
   connectionQuality as qualityOf,
   diagnosticsSummary as summaryOf,
   speakingNow,
+  worstQuality,
   type CallDiagnostics,
   type ConnectionQuality
 } from '@/utils/callStats'
@@ -32,6 +33,7 @@ import {
   qualityStepFor,
   resolveStep,
   senderTuningForStep,
+  shouldPauseForQuality,
   tuneReceivers,
   tuneSenders,
   tunedDescription,
@@ -104,6 +106,8 @@ import type {
 // Публичный контракт стора звонков остаётся прежним: всё это по-прежнему
 // импортируется из `@/stores/call`, хотя живёт в соседних модулях `stores/call/`.
 export { screenShareNotice, screenShareSupport } from './call/screenShare'
+// Строка о связи с участником — для панели диагностики группового звонка.
+export { peerQualityLine } from './call/quality'
 export type { CallKind, CallPeer, CallStatus, ScreenShareSupport } from './call/types'
 /* ============================== Store ============================== */
 
@@ -133,6 +137,14 @@ interface CallState {
   peerVideoOn: boolean
   /** Последняя снятая статистика соединения (качество связи и диагностика). */
   diagnostics: CallDiagnostics | null
+  /**
+   * Статистика по КАЖДОМУ участнику (только для интерфейса).
+   *
+   * В групповом звонке «плохо слышно» относится к конкретному собеседнику, а не
+   * к звонку целиком: в панели диагностики показываем связь с каждым, а бейдж
+   * «Плохая связь» загорается по худшей из связей.
+   */
+  peerDiagnostics: Record<number, CallDiagnostics>
   /** Теряли связь и восстанавливаем (смена сети): показываем «Переподключаемся…». */
   reconnecting: boolean
   /** Собеседник показывает экран. */
@@ -188,6 +200,7 @@ const DEFAULT_STATE: CallState = {
   peerMicOn: true,
   peerVideoOn: true,
   diagnostics: null,
+  peerDiagnostics: {},
   peerScreenSharing: false,
   /** Код сверки звонка (6 цифр), одинаковый у обоих участников. */
   verificationCode: '',
@@ -227,7 +240,13 @@ export const useCallStore = defineStore('call', {
     /** Можно ли переключать камеру/микрофон по ходу звонка. */
     canSwitchDevices: (state) => state.status === 'active',
     /** Качество связи для индикатора («Плохая связь»). */
-    connectionQuality: (state): ConnectionQuality => qualityOf(state.diagnostics),
+    connectionQuality: (state): ConnectionQuality => {
+      // В группе ориентируемся на ХУДШУЮ связь: если один собеседник нас не
+      // слышит, показать «всё хорошо» — значит соврать. Кто именно страдает,
+      // видно в панели диагностики (строка на каждого участника).
+      const perPeer = Object.values(state.peerDiagnostics).map((item) => qualityOf(item))
+      return perPeer.length > 0 ? worstQuality(perPeer) : qualityOf(state.diagnostics)
+    },
     /** Куда идёт медиа: напрямую или через наш релей (бейдж в звонке). */
     callRoute: (state): CallRoute => callRoute(state.diagnostics?.candidateType),
     /** Подпись маршрута для бейджа. */
@@ -445,6 +464,11 @@ export const useCallStore = defineStore('call', {
       runtime.statsSamples.delete(peerId)
       runtime.linkQuality.delete(peerId)
       runtime.linkSteps.delete(peerId)
+      if (this.peerDiagnostics[peerId]) {
+        const rest = { ...this.peerDiagnostics }
+        delete rest[peerId]
+        this.peerDiagnostics = rest
+      }
       if (runtime.primaryPeerId === peerId) {
         const next = [...runtime.links.values()][0]
         runtime.primaryPeerId = next?.peerId ?? null
@@ -1679,7 +1703,7 @@ export const useCallStore = defineStore('call', {
         }
       }
       await this._tuneLinksByStats()
-      this._adaptNetworkVideo(this.diagnostics)
+      this._adaptNetworkVideo()
     },
 
     /**
@@ -1705,6 +1729,9 @@ export const useCallStore = defineStore('call', {
           const step = this._effectiveStep(link.peerId, diagnostics)
           // Пока читали статистику, участник мог выйти — тогда его плитки уже нет.
           if (this._linkFor(link.peerId) !== link) continue
+          // Для интерфейса: своя статистика на каждого участника (в группе «плохо
+          // слышно» относится к конкретному собеседнику, а не к звонку целиком).
+          this.peerDiagnostics = { ...this.peerDiagnostics, [link.peerId]: diagnostics }
           // Кто говорит: по уровню звука его дорожек (в группе это единственный
           // надёжный признак — дорожки есть у всех, а молчащие не звучат).
           const participant = this.participants.find((item) => item.id === link.peerId)
@@ -1763,17 +1790,19 @@ export const useCallStore = defineStore('call', {
      * Одних ступеней битрейта и разрешения хватает не всегда: при потерях 8 %+ и
      * дрожании видео добивает и без того узкий канал, и звук начинает рваться.
      * Тогда честнее временно остаться без картинки, но сохранить разговор.
+     *
+     * Решение принимаем по ВСЕМ связям (`shouldPauseForQuality`): плохая связь с
+     * одним собеседником не повод гасить картинку остальным — им мы отправляем
+     * своим потоком, и ступени у связей свои.
      */
-    _adaptNetworkVideo(diagnostics: CallDiagnostics | null): void {
+    _adaptNetworkVideo(): void {
       // Показ экрана человек включает осознанно и ненадолго — его не трогаем.
       if (this.kind !== 'video' || this.screenSharing || this.status !== 'active') {
         runtime.badQualityStreak = 0
         runtime.goodQualityStreak = 0
         return
       }
-      const loss = Math.max(diagnostics?.lossPercent ?? 0, diagnostics?.remoteLossPercent ?? 0)
-      const bad =
-        loss >= 8 || (diagnostics?.jitterMs ?? 0) >= 90 || (diagnostics?.rttMs ?? 0) >= 600
+      const bad = shouldPauseForQuality([...runtime.linkSteps.values()].map((item) => item.step))
       runtime.badQualityStreak = bad ? runtime.badQualityStreak + 1 : 0
       runtime.goodQualityStreak = bad ? 0 : runtime.goodQualityStreak + 1
       if (!this.videoPausedForNetwork && runtime.badQualityStreak >= VIDEO_PAUSE_BAD_POLLS) {

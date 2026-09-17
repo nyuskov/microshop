@@ -394,6 +394,12 @@
                     <span class="diag-value">{{ row.value }}</span>
                   </div>
                 </template>
+                <!-- Групповой звонок: связь с КАЖДЫМ участником — панель отвечает
+                     на вопрос «кто именно меня не слышит». -->
+                <div v-for="row in peerDiagRows" :key="`peer-${row.label}`" class="diag-row">
+                  <span class="diag-label">{{ row.label }}</span>
+                  <span class="diag-value">{{ row.value }}</span>
+                </div>
                 <div class="diag-actions">
                   <button class="diag-btn" @click="copyDiagnostics">
                     <q-icon
@@ -494,7 +500,7 @@
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { screenShareSupport, useCallStore } from '@/stores/call'
+import { peerQualityLine, screenShareSupport, useCallStore } from '@/stores/call'
 import { mediaUrl } from '@/services/chatService'
 import CallGrid from '@/components/calls/CallGrid.vue'
 import SelectField from '@/components/common/SelectField.vue'
@@ -581,11 +587,28 @@ const diagRows = computed<Array<{ label: string; value: string }>>(() => {
   ]
 })
 
+/**
+ * Строки по каждому участнику — только в групповом звонке.
+ *
+ * В 1:1 это те же цифры, что и выше; в группе «плохо слышно» относится к
+ * конкретному собеседнику, поэтому показываем связь с каждым: панель отвечает
+ * на вопрос «кто именно меня не слышит».
+ */
+const peerDiagRows = computed<Array<{ label: string; value: string }>>(() => {
+  if (!callStore.isGroup) return []
+  return callStore.participants.map((participant) => ({
+    label: participant.name,
+    value: peerQualityLine(callStore.peerDiagnostics[participant.id] ?? null)
+  }))
+})
+
 /** Текст отчёта для копирования в поддержку/чат. */
 const diagnosticsText = computed<string>(() =>
   [
     `Звонок: ${callStore.kind === 'video' ? 'видео' : 'аудио'}, ${callStore.formattedTime}`,
     ...diagRows.value.map((row) => `${row.label}: ${row.value}`),
+    // В группе — по строке на участника: «плохо слышно» относится к конкретному.
+    ...peerDiagRows.value.map((row) => `Участник ${row.label}: ${row.value}`),
     `Итого: ${callStore.diagnosticsSummary}`
   ].join('\n')
 )

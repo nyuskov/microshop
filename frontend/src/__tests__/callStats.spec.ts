@@ -10,6 +10,7 @@ import {
   collectDiagnostics,
   connectionQuality,
   diagnosticsSummary,
+  worstQuality,
   type CallDiagnostics,
   type StatsSample
 } from '@/utils/callStats'
@@ -233,6 +234,14 @@ describe('индикатор качества связи', () => {
         withMetrics({ candidateType: 'relay', relayProtocol: 'tls', lossPercent: 2 })
       )
     ).toBe('через релей (tls) · 40 мс, потери 2%')
+  })
+
+  it('в группе индикатор берёт ХУДШУЮ связь', () => {
+    // Иначе «всё хорошо», пока один собеседник нас не слышит.
+    expect(worstQuality(['good', 'good'])).toBe('good')
+    expect(worstQuality(['good', 'fair'])).toBe('fair')
+    expect(worstQuality(['fair', 'bad', 'good'])).toBe('bad')
+    expect(worstQuality([])).toBe('good')
   })
 
   it('образец замера совместим с повторным вызовом', () => {

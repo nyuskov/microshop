@@ -16,9 +16,12 @@ import {
   audioBitrateFor,
   initialSenderTuning,
   jitterTargetsFor,
+  peerQualityLine,
   qualityStepFor,
   resolveStep,
   senderTuningForStep,
+  shouldPauseForQuality,
+  stepLabel,
   stepRank,
   tuneOpusSdp,
   tunedDescription,
@@ -198,6 +201,13 @@ describe('настройка отправки в сторе', () => {
     expect(store).toContain('runtime.pausedVideoSenders')
   })
 
+  it('в группе решение о паузе принимается по ВСЕМ связям', () => {
+    // Плохая связь с одним собеседником не повод гасить картинку остальным.
+    expect(store).toMatch(/shouldPauseForQuality\(\[\.\.\.runtime\.linkSteps\.values\(\)\]/)
+    // И своя статистика на каждого участника — для панели диагностики.
+    expect(store).toMatch(/\[link\.peerId\]: diagnostics/)
+  })
+
   it('буфер приёмников настраивается после согласования', () => {
     expect(store).toMatch(/tuneReceivers\(link\.pc, jitterTargetsFor/)
   })
@@ -257,6 +267,37 @@ describe('гистерезис ступеней', () => {
     expect(initial.videoBitrate).toBe(VIDEO_BITRATE_FAIR)
     expect(initial.scale).toBe(1)
     expect(initial.framerate).toBe(0)
+  })
+})
+
+describe('деградация и диагностика в группе', () => {
+  it('видео гасим, только когда плохо большинству связей', () => {
+    // В 1:1 связь одна — плохо ей, значит плохо и звонку.
+    expect(shouldPauseForQuality(['bad'])).toBe(true)
+    // Двое: один в метро — второй не должен терять картинку.
+    expect(shouldPauseForQuality(['bad', 'good'])).toBe(false)
+    expect(shouldPauseForQuality(['bad', 'bad'])).toBe(true)
+    // Трое: двое плохих — это уже похоже на нашу собственную сеть.
+    expect(shouldPauseForQuality(['bad', 'bad', 'good'])).toBe(true)
+    expect(shouldPauseForQuality(['bad', 'good', 'good'])).toBe(false)
+    // Статистики ещё нет — гасить нечего и незачем.
+    expect(shouldPauseForQuality([])).toBe(false)
+  })
+
+  it('строка о связи с участником объясняет, кто и почему страдает', () => {
+    expect(peerQualityLine(null)).toBe('нет данных')
+    expect(peerQualityLine(diagnostics({}))).toBe('задержка 40 мс · ступень: хорошая')
+    // `remoteLossPercent` — потери НАШЕГО потока у собеседника: «нас не слышно».
+    expect(peerQualityLine(diagnostics({ remoteLossPercent: 9 }))).toBe(
+      'задержка 40 мс · наш поток: потери 9% · ступень: плохая'
+    )
+    expect(peerQualityLine(diagnostics({ lossPercent: 3 }))).toContain('приём: потери 3%')
+  })
+
+  it('ступени называются по-человечески', () => {
+    expect(stepLabel('good')).toBe('хорошая')
+    expect(stepLabel('fair')).toBe('средняя')
+    expect(stepLabel('bad')).toBe('плохая')
   })
 })
 

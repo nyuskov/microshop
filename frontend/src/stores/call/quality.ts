@@ -234,6 +234,43 @@ export function resolveStep(
   return sinceChangeMs >= cooldownMs ? next : current
 }
 
+/**
+ * Пора ли приостанавливать видео — смотрим на ВСЕ связи.
+ *
+ * В групповом звонке плохая связь с одним собеседником (он в метро, у него 2G)
+ * не повод гасить картинку остальным: каждому мы отправляем своим потоком, и
+ * ступени у связей свои, так что хорошие связи продолжают получать видео. Гасим,
+ * только когда плохо БОЛЬШИНСТВУ — это уже похоже на нашу собственную сеть.
+ */
+export function shouldPauseForQuality(steps: QualityStep[]): boolean {
+  if (steps.length === 0) return false
+  return steps.filter((step) => step === 'bad').length > steps.length / 2
+}
+
+/** Ступень качества словами (для панели диагностики). */
+export function stepLabel(step: QualityStep): string {
+  if (step === 'bad') return 'плохая'
+  if (step === 'fair') return 'средняя'
+  return 'хорошая'
+}
+
+/**
+ * Одна строка о связи с участником — для панели диагностики в групповом звонке.
+ *
+ * `remoteLossPercent` — потери НАШЕГО потока на стороне собеседника: по ним
+ * видно, что «нас плохо слышно», хотя у нас самих приём чистый.
+ */
+export function peerQualityLine(diagnostics: CallDiagnostics | null): string {
+  if (!diagnostics) return 'нет данных'
+  const parts = [`задержка ${diagnostics.rttMs} мс`]
+  if (diagnostics.lossPercent > 0) parts.push(`приём: потери ${diagnostics.lossPercent}%`)
+  if (diagnostics.remoteLossPercent > 0) {
+    parts.push(`наш поток: потери ${diagnostics.remoteLossPercent}%`)
+  }
+  parts.push(`ступень: ${stepLabel(qualityStepFor(diagnostics))}`)
+  return parts.join(' · ')
+}
+
 /** Целевые задержки буфера воспроизведения (мс). */
 export interface JitterTargets {
   audioMs: number

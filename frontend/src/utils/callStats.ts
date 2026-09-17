@@ -270,6 +270,13 @@ export function connectionQuality(diagnostics: CallDiagnostics | null): Connecti
   return 'good'
 }
 
+/** Худшее из качеств связи: в группе показываем именно его. */
+export function worstQuality(values: ConnectionQuality[]): ConnectionQuality {
+  if (values.includes('bad')) return 'bad'
+  if (values.includes('fair')) return 'fair'
+  return 'good'
+}
+
 /** Короткая подпись для бейджа: куда идёт медиа и как оно себя чувствует. */
 export function diagnosticsSummary(diagnostics: CallDiagnostics | null): string {
   if (!diagnostics) return ''
