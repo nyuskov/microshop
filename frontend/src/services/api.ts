@@ -2,6 +2,7 @@ import axios from 'axios'
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios'
 
 import { API_BASE_URL } from '@/config'
+import { maintenanceMessageOf, showMaintenance } from '@/utils/maintenance'
 
 /**
  * Единый axios-клиент для API мессенджера.
@@ -102,6 +103,15 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const config = error.config as (InternalAxiosRequestConfig & { _retried?: boolean }) | undefined
     const status = error.response?.status
+    // Режим технических работ: сервер отвечает 503 с кодом `maintenance` на любой
+    // запрос. Показываем полноэкранную заглушку и молчим: «повторить» тут
+    // нечего — режим снимает администратор, а приложение само проверяет статус
+    // (см. useMaintenanceWatch).
+    const maintenanceText = maintenanceMessageOf(error)
+    if (maintenanceText) {
+      showMaintenance(maintenanceText)
+      return Promise.reject(error)
+    }
     // Сессия отозвана сервером или аккаунт заморожен: refresh не поможет —
     // сообщаем стору (он почистит токены и покажет экран входа/разморозки).
     const lost = authLostReasonOf(error)

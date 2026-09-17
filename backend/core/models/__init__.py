@@ -2,6 +2,7 @@ __all__ = [
     "Base",
     "DatabaseHelper",
     "db_helper",
+    "AppSetting",
     "Chat",
     "ChatGroupKey",
     "ChatInvite",
@@ -36,6 +37,7 @@ __all__ = [
     "user_chat_association_table",
 ]
 
+from .app_setting import AppSetting  # noqa: F401
 from .base import Base  # noqa: F401
 from .channel import ChannelComment, ChannelPostView, ChannelSuggestion  # noqa: F401
 from .chat import Chat, user_chat_association_table  # noqa: F401

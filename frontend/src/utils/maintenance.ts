@@ -1,0 +1,80 @@
+/**
+ * Режим технических работ: глобальное состояние экрана-заглушки.
+ *
+ * Пока сервис сознательно недоступен (обновление, миграция, разбор инцидента),
+ * человек должен видеть понятное «идут технические работы», а не сыпать ошибками
+ * и полупустыми списками. Включает и выключает режим администратор из админской
+ * панели, а фронтенд узнаёт о нём двумя путями:
+ *
+ *  - из ответа 503 с кодом `maintenance` (так отвечает любой запрос к API);
+ *  - из публичного статуса, который опрашивает `useMaintenanceWatch`.
+ *
+ * Модуль намеренно без внешних зависимостей (только `vue`): его импортирует
+ * `services/api.ts`, а тот не должен тянуть за собой сервисы запросов — иначе
+ * получается цикл импортов.
+ */
+
+import { ref } from 'vue'
+
+/** Код в `detail.code` ответа 503: по нему отличаем техработы от аварии. */
+export const MAINTENANCE_CODE = 'maintenance'
+
+/** Текст по умолчанию: его показываем, если сервер своего не прислал. */
+export const DEFAULT_MAINTENANCE_TEXT = 'Скоро вернёмся.'
+
+/** Показывает ли приложение экран технических работ прямо сейчас. */
+export const maintenanceActive = ref(false)
+
+/** Текст на экране техработ (задаёт администратор, иначе текст по умолчанию). */
+export const maintenanceText = ref(DEFAULT_MAINTENANCE_TEXT)
+
+/**
+ * Администратор сервиса: ему экран НЕ показываем.
+ *
+ * Сервер пускает администратора во время техработ (иначе режим было бы нечем
+ * выключить), поэтому и приложение не должно закрываться перед ним: он войдёт,
+ * откроет админскую панель и снимет режим. Значение ставит `App.vue`, следя за
+ * признаком администратора в сторе авторизации (сам модуль его не импортирует,
+ * чтобы не получить цикл: `services/api.ts` → `utils/maintenance.ts` → стор → тот
+ * же `services/api.ts`).
+ */
+let viewerIsAdmin = false
+
+/** Отметить, что за экраном работает администратор (или он вышел из аккаунта). */
+export function setMaintenanceExempt(value: boolean): void {
+  viewerIsAdmin = value
+  if (value && maintenanceActive.value) hideMaintenance()
+}
+
+/**
+ * Текст техработ из ответа сервера — или `null`, если это не техработы.
+ *
+ * Проверка структурная (без `axios`), чтобы модуль оставался «листовым»: важно
+ * отличать именно наш 503 с кодом, а не любую ошибку сервера — иначе экран
+ * техработ вылезал бы и при аварии API.
+ */
+export function maintenanceMessageOf(error: unknown): string | null {
+  const response = (error as { response?: { status?: number; data?: { detail?: unknown } } } | null)
+    ?.response
+  if (!response || response.status !== 503) return null
+
+  const detail = response.data?.detail
+  if (!detail || typeof detail !== 'object') return null
+  if ((detail as { code?: unknown }).code !== MAINTENANCE_CODE) return null
+
+  const message = (detail as { message?: unknown }).message
+  return typeof message === 'string' && message.trim() ? message : DEFAULT_MAINTENANCE_TEXT
+}
+
+/** Включает экран технических работ (администратору — не показываем). */
+export function showMaintenance(message?: string | null): void {
+  if (viewerIsAdmin) return
+  maintenanceText.value = message?.trim() ? message : DEFAULT_MAINTENANCE_TEXT
+  maintenanceActive.value = true
+}
+
+/** Убирает экран технических работ (режим выключили). */
+export function hideMaintenance(): void {
+  maintenanceActive.value = false
+  maintenanceText.value = DEFAULT_MAINTENANCE_TEXT
+}

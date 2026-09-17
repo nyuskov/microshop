@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
-import { reactive, ref, watch, computed, nextTick } from 'vue'
+import { reactive, ref, watch, computed, nextTick, defineAsyncComponent } from 'vue'
 import { useAuthStore, type AuthSession as AuthSessionRow } from '@/stores/auth'
 import { getErrorMessage } from '@/services/errors'
 import { parseServerTime } from '@/utils/format'
@@ -58,6 +58,16 @@ const props = withDefaults(
 )
 
 const authStore = useAuthStore()
+
+/**
+ * Раздел «Технические работы» грузится отдельным чанком: он нужен только
+ * владельцу сервиса и лишь тогда, когда тот его откроет, а чанк профиля с ним
+ * внутри выходил за бюджет размера (проверка `check-bundle-size.mjs`). Так же
+ * подгружаются служебные диалоги модерации.
+ */
+const MaintenanceSettings = defineAsyncComponent(
+  () => import('@/components/messenger/MaintenanceSettings.vue')
+)
 
 const LANGUAGES = [
   { code: 'ru', name: 'Русский' },
@@ -178,6 +188,7 @@ type SettingsSection =
   | 'link'
   | 'admin'
   | 'invites'
+  | 'maintenance'
   | 'appearance'
   | 'about'
 
@@ -189,12 +200,12 @@ interface SettingsRow {
 }
 
 /**
- * Пункт админского экрана: «invites» — реальный раздел настроек, а «reports» —
- * команда (жалобы живут в своём диалоге, см. MessengerModerationOverlays), на
- * неё родитель открывает диалог через emit.
+ * Пункт админского экрана: «invites» и «maintenance» — реальные разделы
+ * настроек, а «reports» — команда (жалобы живут в своём диалоге, см.
+ * MessengerModerationOverlays), на неё родитель открывает диалог через emit.
  */
 interface AdminRow {
-  key: 'invites' | 'reports'
+  key: 'invites' | 'maintenance' | 'reports'
   icon: string
   title: string
   desc: string
@@ -231,6 +242,12 @@ const ADMIN_ROWS: AdminRow[] = [
     icon: 'person_add',
     title: 'Приглашения',
     desc: 'Ссылки на регистрацию для новых людей'
+  },
+  {
+    key: 'maintenance',
+    icon: 'warning',
+    title: 'Технические работы',
+    desc: 'Закрыть приложение на время обновления'
   },
   {
     key: 'reports',
@@ -323,17 +340,19 @@ const openAdmin = () => {
  * обычного раздела — к списку настроек. Ведём себя как «назад» в приложении,
  * а не всегда выкидываем на главный экран.
  */
+const ADMIN_SECTIONS: SettingsSection[] = ['invites', 'maintenance']
+
 const backToSections = () => {
-  section.value = section.value === 'invites' ? 'admin' : 'root'
+  section.value = ADMIN_SECTIONS.includes(section.value) ? 'admin' : 'root'
 }
 
 /** Нажатие в админском списке: раздел или команда (жалобы — отдельный диалог). */
 const openAdminRow = (key: AdminRow['key']) => {
-  if (key === 'invites') {
-    section.value = 'invites'
+  if (key === 'reports') {
+    emit('open-moderation')
     return
   }
-  emit('open-moderation')
+  section.value = key
 }
 
 // Родителю (Messenger) нужно знать, открыт ли РАЗДЕЛ настроек: тогда «назад»
@@ -1140,6 +1159,12 @@ const onNotificationsToggle = async (val: boolean) => {
       <!-- Приглашения (только владелец сервиса): ссылки на регистрацию. -->
       <div v-if="section === 'invites'" class="settings-embed">
         <InvitesSettings />
+      </div>
+
+      <!-- Технические работы (только владелец сервиса): рубильник, который
+           закрывает приложение всем, кроме администратора. -->
+      <div v-if="section === 'maintenance'" class="settings-embed">
+        <MaintenanceSettings />
       </div>
 
       <transition name="fade">

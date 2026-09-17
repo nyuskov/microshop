@@ -80,6 +80,9 @@ describe('админские разделы отделены от обычных
     expect(userRows).not.toContain("key: 'invites'")
     expect(adminRows).toContain("key: 'invites'")
     expect(adminRows).toContain("key: 'reports'")
+    // Служебные рубильники (техработы) — тоже только здесь.
+    expect(userRows).not.toContain("key: 'maintenance'")
+    expect(adminRows).toContain("key: 'maintenance'")
   })
 
   it('админский экран рисуется по section === "admin"', () => {
@@ -88,7 +91,12 @@ describe('админские разделы отделены от обычных
   })
 
   it('«назад» из админского раздела возвращает к админскому списку', () => {
-    expect(profile).toMatch(/section\.value = section\.value === 'invites' \? 'admin' : 'root'/)
+    // Разделов внутри админской панели несколько (приглашения, техработы),
+    // поэтому возврат смотрит на список, а не на одно значение.
+    expect(profile).toMatch(
+      /const ADMIN_SECTIONS: SettingsSection\[\] = \['invites', 'maintenance'\]/
+    )
+    expect(profile).toMatch(/ADMIN_SECTIONS\.includes\(section\.value\) \? 'admin' : 'root'/)
   })
 
   it('на админском экране нет внутренней шапки со стрелкой «к разделам»', () => {

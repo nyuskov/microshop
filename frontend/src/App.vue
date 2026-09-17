@@ -1,13 +1,24 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { applyServiceWorkerUpdate, registerServiceWorker } from '@/services/pwa'
 import { useVisualViewport } from '@/composables/useVisualViewport'
+import { useMaintenanceWatch } from '@/composables/useMaintenanceWatch'
+import { useAuthStore } from '@/stores/auth'
 import OfflineBanner from '@/components/common/OfflineBanner.vue'
 import ExternalLinkDialog from '@/components/common/ExternalLinkDialog.vue'
 import FatalErrorScreen from '@/components/common/FatalErrorScreen.vue'
+import MaintenanceScreen from '@/components/common/MaintenanceScreen.vue'
+import { setMaintenanceExempt } from '@/utils/maintenance'
 
 // Высота с учётом экранной клавиатуры — нужна всему приложению (и логину тоже).
 useVisualViewport()
+
+// Режим технических работ: пока он включён, вместо приложения — экран-заглушка
+// (включает его администратор из админской панели). Администратору экран не
+// показываем: иначе он не смог бы вернуться в панель и выключить режим.
+const authStore = useAuthStore()
+watch(() => authStore.isAdmin, setMaintenanceExempt, { immediate: true })
+useMaintenanceWatch()
 
 const updateAvailable = ref(false)
 let reloading = false
@@ -43,6 +54,8 @@ onBeforeUnmount(() => {
   <OfflineBanner />
   <!-- Подтверждение перехода на внешний сайт (окно одно на всё приложение) -->
   <ExternalLinkDialog />
+  <!-- Плановые технические работы: сервис отвечает 503, приложение закрыто -->
+  <MaintenanceScreen />
   <!-- Фатальная ошибка приложения: вместо белого экрана — понятное сообщение -->
   <FatalErrorScreen />
   <router-view></router-view>
