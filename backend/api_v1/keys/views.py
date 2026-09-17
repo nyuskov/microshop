@@ -12,6 +12,7 @@
 получателем, поэтому сервер ключ группы вычислить не может.
 """
 
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -40,15 +41,31 @@ class PutMyKeyRequest(BaseModel):
     """Публичная часть ключа устройства (JWK), загружаемая на сервер."""
 
     public_key: str = Field(..., min_length=1, max_length=4096)
+    #: Идентификатор устройства (клиент генерирует и хранит у себя). Старые
+    #: клиенты его не присылают — тогда ключ пишется в строку `legacy`.
+    device_id: str = Field(default="legacy", min_length=1, max_length=64)
+
+
+class DeviceKeyItem(BaseModel):
+    """Один публичный ключ устройства."""
+
+    device_id: str
+    public_key: str
+    changed_at: str | None = None
 
 
 class KeyResponse(BaseModel):
     user_id: int
     has_key: bool
+    #: Ключ «основного» устройства (самое свежее обновление) — поле оставлено для
+    #: совместимости: старый клиент шифрует только на него.
     public_key: str | None = None
     # Когда ключ последний раз менялся — собеседник по этому полю видит, что
     # устройство сменилось (и может предупредить о риске перехвата).
     changed_at: str | None = None
+    #: Все устройства аккаунта: по ним шифруются обёртки ключа чата, чтобы
+    #: переписку читали и телефон, и компьютер, а не только последнее вошедшее.
+    devices: list[DeviceKeyItem] = []
 
 
 @router.put("/me/", status_code=200)
@@ -65,11 +82,20 @@ async def put_my_key(
     смене пишем в журнал и уведомляем владельца — письмом и push.
     """
     row = (
-        await session.execute(select(DeviceKey).where(DeviceKey.user_id == user.id))
+        await session.execute(
+            select(DeviceKey).where(
+                DeviceKey.user_id == user.id,
+                DeviceKey.device_id == payload.device_id,
+            )
+        )
     ).scalar_one_or_none()
     changed = row is not None and row.public_key != payload.public_key
     if row is None:
-        row = DeviceKey(user_id=user.id, public_key=payload.public_key)
+        row = DeviceKey(
+            user_id=user.id,
+            device_id=payload.device_id,
+            public_key=payload.public_key,
+        )
         session.add(row)
     else:
         row.public_key = payload.public_key
@@ -106,20 +132,43 @@ async def get_user_key(
     Публичные ключи E2EE не являются секретом, поэтому доступны любому
     авторизованному пользователю.
     """
-    row = (
-        await session.execute(select(DeviceKey).where(DeviceKey.user_id == user_id))
-    ).scalar_one_or_none()
-    if row is None:
+    rows = (
+        (
+            await session.execute(
+                select(DeviceKey)
+                .where(DeviceKey.user_id == user_id)
+                .order_by(DeviceKey.updated_at.desc(), DeviceKey.id.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rows:
         return KeyResponse(user_id=user_id, has_key=False, public_key=None)
-    changed_at = as_utc(row.updated_at)
+    main = rows[0]
+    changed_at = as_utc(main.updated_at)
     return KeyResponse(
         user_id=user_id,
         has_key=True,
-        public_key=row.public_key,
+        public_key=main.public_key,
         # Собеседник сравнивает ключ с тем, что видел раньше: расхождение —
         # повод предупредить человека (возможен перехват после угона аккаунта).
         changed_at=changed_at.isoformat() if changed_at is not None else None,
+        devices=[
+            DeviceKeyItem(
+                device_id=row.device_id,
+                public_key=row.public_key,
+                changed_at=_iso_or_none(row.updated_at),
+            )
+            for row in rows
+        ],
     )
+
+
+def _iso_or_none(value: datetime | None) -> str | None:
+    """Время в ISO (UTC) или None: `updated_at` может прийти пустым у старых строк."""
+    moment = as_utc(value)
+    return moment.isoformat() if moment is not None else None
 
 
 # --------------------------------------------------------------------------

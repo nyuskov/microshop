@@ -529,7 +529,7 @@ Push показывает текст прямо на экране блокиро
 - `otp_codes` — OTP-коды телефонов (хеш кода, попытки, срок); `refresh_sessions` — refresh-токены с отзывом/ротацией.
 - `chat_invites` — ссылки-приглашения в группы (токен, срок годности, лимит
   входов, отзыв);
-- `device_keys` — публичный ключ E2EE на устройство; `chat_group_keys` — обёртки ключа группы (по строке на участника: ключ группы, зашифрованный на общем секрете с `wrapped_by`); `push_subscriptions` — Web Push-подписки; `rustore_push_tokens` — токены RuStore Push; `chat_mutes` — «без уведомлений» (PK `user_id+chat_id`); `telegram_bind_links` — коды привязки Telegram; `message_drafts` — черновики сообщений (PK `user_id+chat_id`, текст в том же виде, что в сообщении: в E2EE-чате это шифротекст).
+- `device_keys` — публичный ключ E2EE устройства; строка идентифицируется парой `(user_id, device_id)` (несколько устройств на аккаунт, миграция `c4d5e6f7a8b9`); `chat_group_keys` — обёртки ключа группы (по строке на участника: ключ группы, зашифрованный на общем секрете с `wrapped_by`); `push_subscriptions` — Web Push-подписки; `rustore_push_tokens` — токены RuStore Push; `chat_mutes` — «без уведомлений» (PK `user_id+chat_id`); `telegram_bind_links` — коды привязки Telegram; `message_drafts` — черновики сообщений (PK `user_id+chat_id`, текст в том же виде, что в сообщении: в E2EE-чате это шифротекст).
 - `user_blocks` — блокировки 1-1 (уникальная пара `blocker_id+blocked_id`, `messages_allowed` — вид блокировки); `user_reports` — жалобы (`reporter_id`, `reported_id`, `reason`, `comment`, контекст `chat_id`/`message_id`, `status`, `note`, `created_at`, `reviewed_at`).
 - `pending_call_offers` — припаркованный входящий вызов (PK `user_id`, `call_id`, `payload` JSONB, `expires_at`); `queued_call_signals` — недоставленный сигналинг (`user_id`, `payload` JSONB, `expires_at`). Обе — технические, живут минуты; зачем в БД — в разделе про realtime.
 - Legacy-таблицы `post`/`product`/`order`/`group` — **удалены** (миграция `f6a7b8c9d0e1`); моделей нет.
@@ -591,7 +591,8 @@ Push показывает текст прямо на экране блокиро
 51. `2026_09_16_1000-c9d0e1f2a3b4` — тихие часы в профиле (`quiet_hours_*`)
 52. `2026_09_16_1400-f5a6b7c8d9e0` — мягкая блокировка: `user_blocks.messages_allowed`
 53. `2026_09_16_1600-a6b7c8d9e0f1` — текст сообщения в уведомлении (`profile.notification_preview`)
-54. `2026_09_17_1900-f9a0b1c2d3e4` — парковка вызова и очередь сигналинга (`pending_call_offers`, `queued_call_signals`) — **голова**
+54. `2026_09_17_1900-f9a0b1c2d3e4` — парковка вызова и очередь сигналинга (`pending_call_offers`, `queued_call_signals`)
+55. `2026_09_17_2000-c4d5e6f7a8b9` — несколько устройств на аккаунт (`device_keys.device_id`) — **голова**
 
 Применение: `cd backend && poetry run alembic upgrade head`. В docker-стеке миграции выполняются автоматически при старте контейнера `web`.
 
