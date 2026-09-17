@@ -209,8 +209,29 @@ describe('панели списка чатов', () => {
   it('прокрутка списка вверх сжимает обе панели', () => {
     const scroll = sidebar.slice(sidebar.indexOf('const onChatsScroll'))
     const body = scroll.slice(0, scroll.indexOf('const PULL_EXPAND_PX'))
-    expect(body).toContain('setStoriesExpanded(false)')
-    expect(body).toContain('closeSearch()')
+    expect(body).toContain('collapseTopPanels()')
+    // Порядок обратный раскрытию (сначала истории, потом поиск) — в одном месте,
+    // чтобы прокрутка и жест по касанию сжимали панели одинаково.
+    const collapse = sidebar.slice(sidebar.indexOf('const collapseTopPanels'))
+    const collapseBody = collapse.slice(0, collapse.indexOf('const canScroll'))
+    expect(collapseBody).toContain('setStoriesExpanded(false)')
+    expect(collapseBody).toContain('closeSearch()')
+  })
+
+  it('смахнуть вверх прячет панели даже когда список не прокручивается', () => {
+    // Короткий список (мало чатов) не даёт событий скролла вообще, поэтому жест,
+    // построенный на прокрутке, молча не работал: именно так «пропадало»
+    // сокрытие поиска, открытого без историй (они-то и добавляли список высоты,
+    // после которой появлялась прокрутка). Смах вверх ловим по касанию — но
+    // только когда прокрутки нет: иначе это обычное листание списка.
+    const move = sidebar.slice(sidebar.indexOf('const onListTouchMove'))
+    const body = move.slice(0, move.indexOf('\n}'))
+    expect(body).toContain('SWIPE_COLLAPSE_PX')
+    expect(body).toContain('!canScroll(el)')
+    expect(body).toContain('collapseTopPanels()')
+    expect(sidebar).toMatch(
+      /const canScroll = \(el: HTMLElement\): boolean =>[\s\S]{0,80}scrollHeight/
+    )
   })
 
   it('содержимое панелей едет от шапки вниз и обратно вверх', () => {

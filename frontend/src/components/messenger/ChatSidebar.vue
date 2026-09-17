@@ -302,6 +302,28 @@ const setStoriesExpanded = (value: boolean) => {
 
 const toggleStoriesExpand = () => setStoriesExpanded(!storiesExpanded.value)
 
+/**
+ * Сжимает верхние панели на один шаг — в порядке, обратном раскрытию: сначала
+ * истории (они раскрываются вторым шагом), потом поле поиска.
+ *
+ * Возвращает `true`, если что-то сжалось: по этому признаку жест расходуется
+ * целиком, а не сжимает обе панели одним движением.
+ */
+const collapseTopPanels = (): boolean => {
+  if (storiesExpanded.value) {
+    setStoriesExpanded(false)
+    return true
+  }
+  if (searchOpen.value) {
+    closeSearch()
+    return true
+  }
+  return false
+}
+
+/** Есть ли что прокручивать: у короткого списка событий скролла не будет вовсе. */
+const canScroll = (el: HTMLElement): boolean => el.scrollHeight - el.clientHeight > 1
+
 // Копим движение в пределах шага: без этого микро-дрожание скролла мигало бы полосой.
 const STORIES_SCROLL_STEP = 24
 let storiesScrollAcc = 0
@@ -331,13 +353,7 @@ const onChatsScroll = (el: HTMLElement) => {
     storiesScrollAcc = Math.max(-step, Math.min(step, storiesScrollAcc + delta))
     if (storiesScrollAcc >= step) {
       storiesScrollAcc = 0
-      // Слои сжимаются в обратном порядке раскрытия: сначала истории (они
-      // раскрываются вторым шагом), потом поле поиска.
-      if (storiesExpanded.value) {
-        setStoriesExpanded(false)
-        return
-      }
-      if (searchOpen.value) closeSearch()
+      collapseTopPanels()
     }
   })
 }
@@ -346,11 +362,17 @@ const onChatsScroll = (el: HTMLElement) => {
  * Протяжка списка вниз у самого верха раскрывает панели под шапкой — как в
  * Telegram, по шагам: первое движение открывает поле поиска, следующее (уже
  * сильнее) — полосу историй над ним. За одно касание делаем только один шаг,
- * поэтому «второй» требует отдельной протяжки.
+ * поэтому «второй» требует отдельной протяжки. Обратное движение (смахнуть
+ * вверх) так же по шагам сжимает их — об этом ниже.
  */
 const PULL_EXPAND_PX = 48
 /** Порог для историй выше: они раскрываются вторым, более сильным движением. */
 const PULL_STORIES_PX = 96
+/**
+ * Порог обратного движения — «смахнуть вверх, чтобы убрать панели». Он ниже,
+ * чем у протяжки вниз: это жест «убрать с дороги», он должен срабатывать легко.
+ */
+const SWIPE_COLLAPSE_PX = 32
 let pullStartY = 0
 let pullUsed = false
 const onListTouchStart = (event: TouchEvent) => {
@@ -361,6 +383,16 @@ const onListTouchMove = (event: TouchEvent, el: HTMLElement) => {
   if (pullUsed || el.scrollTop > 0) return
   const y = event.touches[0]?.clientY ?? 0
   const distance = y - pullStartY
+  // Смахнуть вверх — убрать панели. Ловим по касанию ТОЛЬКО когда прокрутки
+  // нет: у короткого списка (мало чатов) событий скролла не бывает вообще, и
+  // жест, построенный на прокрутке, молча не работал бы — именно так «пропадало»
+  // сокрытие поиска, открытого без историй. Когда прокрутка есть, это обычное
+  // листание списка, и панели сжимает его обработчик (`onChatsScroll`).
+  if (distance <= -SWIPE_COLLAPSE_PX && !canScroll(el)) {
+    pullUsed = true
+    collapseTopPanels()
+    return
+  }
   if (!searchOpen.value) {
     if (distance < PULL_EXPAND_PX) return
     pullUsed = true
