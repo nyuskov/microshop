@@ -46,6 +46,7 @@ docker-образов. Если интерпретатор не в `PATH`: `PY=/
 | `node scripts/check-docs-links.mjs` | битые локальные ссылки в README и `docs/*.md` | markdown их не валидирует; после переезда документов ссылки гниют тихо |
 | `node scripts/check-dead-css.mjs` | ищет классы из `<style>`, которых нет ни в разметке, ни в скриптах | есть ложные срабатывания: класс собирается из строки (`error-screen--${tone}`), смотреть глазами |
 | `frontend/scripts/build_icons.py` + `fetch_icons.py` | собирают урезанный шрифт иконок и `src/assets/icons.css` | качают исходники Lucide, нужен venv с fonttools/brotli |
+| `node frontend/scripts/qa-call-media.mjs` | медиа-тракт звонка в настоящем Chrome: констрейнты захвата, политики ICE, мунж Opus (согласование не ломается), ступени `setParameters`, буферы приёмников, кодеки через `codecId`, уровень речи своим анализатором | нужен Chrome с фейковыми устройствами и поднятый dev-фронтенд (`https://localhost:5173`); так найдены баги, невидимые в jsdom |
 | `backend/scripts/cleanup_orphan_media.py` | файлы в `media/`, на которые нет ссылок в БД (по умолчанию dry-run) | нужен доступ к прод-медиа |
 | `backend/scripts/make_avatar_thumbs.py` | достраивает миниатюры 128px у старых аватаров | разовая операция на проде |
 
