@@ -118,7 +118,7 @@ describe('связки в интерфейсе', () => {
 
   it('в меню доп. контента есть вкладка «Стикеры»', () => {
     expect(composer).toContain("emit('set-extras-tab', 'stickers')")
-    expect(composer).toContain('class="stickers-panel"')
+    expect(composer).toContain('stickers-panel')
     expect(composer).toContain('Стикер уходит сразу')
   })
 

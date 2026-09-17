@@ -185,6 +185,7 @@
 import { icon } from '@/utils/icons'
 import { computed, ref } from 'vue'
 import SelectField from '@/components/common/SelectField.vue'
+import { confirmDialog } from '@/utils/appDialogs'
 import { useThemeStore, fileToCompressedDataUrl } from '@/stores/theme'
 import {
   ACCENT_PRESETS,
@@ -241,10 +242,14 @@ const onWallpaperFile = async (event: Event) => {
   }
 }
 
-const onReset = () => {
-  if (window.confirm('Сбросить все настройки оформления?')) {
-    themeStore.resetAppearance()
-  }
+const onReset = async () => {
+  const agreed = await confirmDialog({
+    title: 'Сбросить все настройки оформления?',
+    message: 'Тема, обои, размер текста и акцентный цвет вернутся к значениям по умолчанию.',
+    okLabel: 'Сбросить',
+    danger: true
+  })
+  if (agreed) themeStore.resetAppearance()
 }
 </script>
 

@@ -160,56 +160,15 @@
             GIF
           </button>
         </div>
-        <div v-if="extrasPanel === 'emoji'" class="emoji-panel">
-          <!-- Полоска значков: недавние и категории эмодзи. Лента листается
-               колесом и перетаскиванием (мышь) и свайпом. -->
-          <div
-            ref="emojiCatsEl"
-            class="emoji-cats"
-            :class="{ 'fade-start': emojiCatsEdges.start, 'fade-end': emojiCatsEdges.end }"
-            role="tablist"
-            aria-label="Категории эмодзи"
-            @scroll.passive="emojiCatsRefresh"
-            @wheel.passive="emojiCats.onWheel"
-            @pointerdown="emojiCats.onPointerDown"
-            @pointermove="emojiCats.onPointerMove"
-            @pointerup="emojiCats.onPointerUp"
-            @pointerleave="emojiCats.onPointerUp"
-            @pointercancel="emojiCats.onPointerUp"
-          >
-            <button
-              v-for="tab in emojiTabs"
-              :key="tab.key"
-              type="button"
-              class="emoji-cat"
-              :class="{ active: emojiTab === tab.key }"
-              role="tab"
-              :title="tab.title"
-              :aria-label="tab.title"
-              :aria-selected="emojiTab === tab.key"
-              @click="emojiTab = tab.key"
-            >
-              {{ tab.icon }}
-            </button>
-          </div>
-          <p v-if="!emojiItems.length" class="emoji-hint">
-            Здесь появятся те, что вы выбирали последними.
-          </p>
-          <div v-else class="extras-grid">
-            <button
-              v-for="emoji in emojiItems"
-              :key="emoji"
-              class="emoji-option"
-              @click="pickEmoji(emoji)"
-            >
-              {{ emoji }}
-            </button>
-          </div>
-        </div>
-        <div v-else-if="extrasPanel === 'stickers'" class="stickers-panel">
-          <!-- Стикеры: мои картинки (тап — сразу сообщение) и «крупные»
-               эмодзи. Управление паками — за кнопкой с шестерёнкой. -->
-          <div class="stickers-bar">
+        <div
+          v-if="extrasPanel === 'emoji' || extrasPanel === 'stickers'"
+          class="media-panel"
+          :class="extrasPanel === 'stickers' ? 'stickers-panel' : 'emoji-panel'"
+        >
+          <!-- Панель как в Telegram: сверху лента значков (категории эмодзи или
+               паки стикеров), ниже — содержимое столбиком. Лента служит быстрым
+               переходом к секции и подсвечивает ту, что сейчас на экране. -->
+          <div v-if="extrasPanel === 'stickers'" class="stickers-bar">
             <span class="stickers-hint">Стикер уходит сразу — как сообщение.</span>
             <button type="button" class="stickers-tool" @click="pickStickers">
               <q-icon :name="icon('image')" size="16px" />
@@ -226,65 +185,77 @@
             </button>
           </div>
           <div
-            ref="stickerCatsEl"
-            class="emoji-cats"
-            :class="{ 'fade-start': stickerCatsEdges.start, 'fade-end': stickerCatsEdges.end }"
+            v-if="panelSections.length"
+            ref="panelStripEl"
+            class="panel-strip"
+            :class="{ 'fade-start': panelStripEdges.start, 'fade-end': panelStripEdges.end }"
             role="tablist"
-            aria-label="Паки стикеров"
-            @scroll.passive="stickerCatsRefresh"
-            @wheel.passive="stickerCats.onWheel"
-            @pointerdown="stickerCats.onPointerDown"
-            @pointermove="stickerCats.onPointerMove"
-            @pointerup="stickerCats.onPointerUp"
-            @pointerleave="stickerCats.onPointerUp"
-            @pointercancel="stickerCats.onPointerUp"
+            :aria-label="extrasPanel === 'emoji' ? 'Категории эмодзи' : 'Паки стикеров'"
+            @scroll.passive="panelStripRefresh"
+            @wheel.passive="panelStrip.onWheel"
+            @pointerdown="panelStrip.onPointerDown"
+            @pointermove="panelStrip.onPointerMove"
+            @pointerup="panelStrip.onPointerUp"
+            @pointerleave="panelStrip.onPointerUp"
+            @pointercancel="panelStrip.onPointerUp"
           >
             <button
-              v-for="tab in stickerTabs"
-              :key="tab.key"
+              v-for="section in panelSections"
+              :key="section.key"
               type="button"
-              class="emoji-cat"
-              :class="{ active: stickerTab === tab.key }"
+              class="panel-strip-item"
+              :class="{ active: activeSection === section.key }"
               role="tab"
-              :aria-selected="stickerTab === tab.key"
-              @click="stickerTab = tab.key"
+              :title="section.title"
+              :aria-label="section.title"
+              :aria-selected="activeSection === section.key"
+              @click="jumpToSection(section.key)"
             >
-              {{ tab.title }}
+              <img v-if="section.imageUrl" :src="section.imageUrl" alt="" loading="lazy" />
+              <template v-else>{{ section.icon }}</template>
             </button>
           </div>
-          <p
-            v-if="!currentStickerTab?.images.length && !currentStickerTab?.emojis.length"
-            class="emoji-hint"
-          >
-            Здесь появятся стикеры, которые вы отправляли последними. Свои картинки добавляются
-            кнопкой «Добавить»: PNG, WebP или GIF до 512 КБ.
-          </p>
-          <div v-else-if="currentStickerTab?.kind === 'image'" class="extras-grid stickers-grid">
-            <button
-              v-for="sticker in currentStickerTab.images"
-              :key="sticker.id"
-              class="sticker-option sticker-image"
-              title="Отправить стикер"
-              aria-label="Отправить стикер"
-              @click="sendImageSticker(sticker)"
+          <div ref="panelScrollEl" class="panel-scroll" @scroll.passive="onPanelScroll">
+            <PanelSection
+              v-for="section in panelSections"
+              :key="section.key"
+              :section-key="section.key"
+              :title="section.title"
+              :count="section.images.length || section.emojis.length"
             >
-              <img :src="mediaUrl(sticker.file_url)" alt="" loading="lazy" />
-            </button>
+              <div v-if="section.images.length" class="extras-grid stickers-grid">
+                <button
+                  v-for="image in section.images"
+                  :key="image.url"
+                  class="sticker-option sticker-image"
+                  :title="`Отправить: ${image.alt}`"
+                  :aria-label="`Отправить стикер ${image.alt}`"
+                  @click="tapImage(image)"
+                >
+                  <img :src="image.url" alt="" loading="lazy" />
+                </button>
+              </div>
+              <div v-else-if="section.emojis.length" class="extras-grid stickers-grid">
+                <button
+                  v-for="emoji in section.emojis"
+                  :key="emoji"
+                  class="sticker-option"
+                  :title="`Отправить ${emoji}`"
+                  :aria-label="`Отправить ${emoji}`"
+                  @click="section.kind === 'emoji-pick' ? pickEmoji(emoji) : sendSticker(emoji)"
+                >
+                  {{ emoji }}
+                </button>
+              </div>
+              <p v-else class="emoji-hint">
+                {{ section.emptyHint ?? 'Здесь пока пусто.' }}
+              </p>
+            </PanelSection>
+            <p v-if="!panelSections.length" class="emoji-hint">Загружаем…</p>
           </div>
-          <div v-else class="extras-grid stickers-grid">
-            <button
-              v-for="sticker in currentStickerTab?.emojis ?? []"
-              :key="sticker"
-              class="sticker-option"
-              :title="`Отправить ${sticker}`"
-              :aria-label="`Отправить стикер ${sticker}`"
-              @click="sendSticker(sticker)"
-            >
-              {{ sticker }}
-            </button>
-          </div>
-          <!-- Скрытый input: файлы уходят в текущий пак (см. onStickersSelected). -->
+          <!-- Скрытый input: файлы уходят в первый пак (см. onStickersSelected). -->
           <input
+            v-if="extrasPanel === 'stickers'"
             ref="stickerInput"
             class="sr-only-input"
             type="file"
@@ -327,6 +298,9 @@ import type { EmojiCategory } from '@/utils/emojiCatalog'
 import { mediaUrl } from '@/config'
 import { useStickersStore } from '@/stores/stickers'
 import { STICKER_ACCEPT, type StickerItem } from '@/services/stickers'
+import { useHScroll } from '@/composables/useHScroll'
+import PanelSection from '@/components/messenger/PanelSection.vue'
+import { STANDARD_STICKER_PACKS } from '@/utils/standardStickers'
 /**
  * Диалог «Мои стикеры» грузим лениво: он нужен только тем, кто открывает
  * панель стикеров и нажимает «Паки», а в основном чанке это лишние килобайты
@@ -335,7 +309,6 @@ import { STICKER_ACCEPT, type StickerItem } from '@/services/stickers'
 const StickerPacksDialog = defineAsyncComponent(
   () => import('@/components/messenger/StickerPacksDialog.vue')
 )
-import { useHScroll } from '@/composables/useHScroll'
 import VoiceRecorderBar from '@/components/media/VoiceRecorderBar.vue'
 import GifPicker from '@/components/media/GifPicker.vue'
 import type { RecordedMedia } from '@/services/recorder'
@@ -370,14 +343,10 @@ const hasText = computed(() => newMessage.value.trim().length > 0)
 // ---------- Эмодзи: категории и недавние ----------
 const stickersStore = useStickersStore()
 
-/** Ключ служебной вкладки «Недавние»: остальные — категории каталога. */
-const RECENT_KEY = 'recent'
-
 /** Диалог «Мои стикеры» (паки, загрузка, порядок). */
 const stickerPacksOpen = ref(false)
 
 const emojiRecent = ref<string[]>(readRecentEmoji(globalThis.localStorage))
-const emojiTab = ref<string>(emojiRecent.value.length ? RECENT_KEY : '')
 
 /**
  * Каталог эмодзи (~1900 символов) подгружаем динамическим импортом при первом
@@ -404,47 +373,259 @@ const ensureEmojiCategories = async (): Promise<void> => {
   await emojiCategoriesLoading
 }
 
-/**
- * Вкладки панели: недавние и все группы эмодзи.
- *
- * Без персональных «паков»: эмодзи одинаков у всех, а паками человек только
- * путался бы, собирая нужные темы вручную. Значок вкладки — эмодзи группы,
- * поэтому подписи не нужны: они остаются в `title` для подсказки и скринридера.
- */
-const emojiTabs = computed(() => [
-  { key: RECENT_KEY, title: 'Недавние', icon: '🕒', items: emojiRecent.value },
-  ...emojiCategories.value.map((category) => ({
-    key: category.key,
-    title: category.title,
-    icon: category.icon,
-    items: category.items
-  }))
-])
-const emojiItems = computed(
-  () => emojiTabs.value.find((tab) => tab.key === emojiTab.value)?.items ?? []
-)
-
-// Панель могла «потерять» текущую вкладку: например, очистили недавние.
-watch(emojiTabs, (tabs) => {
-  if (tabs.some((tab) => tab.key === emojiTab.value)) return
-  emojiTab.value = tabs[0]?.key ?? ''
-})
-
-// Панель открыли — грузим каталог и ставим вкладку по умолчанию (недавние,
-// если они есть, иначе первую группу).
+// Панель открыли — грузим каталог (для обеих панелей: эмодзи и стикеров).
 watch(
   () => props.extrasPanel,
   (panel) => {
-    if (panel !== 'emoji') return
-    void ensureEmojiCategories().then(() => {
-      if (!emojiTab.value) {
-        emojiTab.value = emojiRecent.value.length
-          ? RECENT_KEY
-          : (emojiCategories.value[0]?.key ?? '')
-      }
-    })
+    if (panel === 'emoji' || panel === 'stickers') void ensureEmojiCategories()
+    // Библиотеку стикеров тянем только когда открыли панель стикеров: у тех,
+    // кто ими не пользуется, лишнего запроса не будет.
+    if (panel === 'stickers') void stickersStore.load()
   },
   { immediate: true }
+)
+
+/**
+ * Одна секция панели: заголовок в столбике и значок в ленте.
+ *
+ * `kind` решает, что делает тап по элементу: эмодзи вставляется в текст
+ * (`emoji-pick`), а стикер и «крупный» эмодзи сразу уходят сообщением.
+ */
+interface PanelSectionItem {
+  key: string
+  title: string
+  kind: 'emoji-pick' | 'emoji-send' | 'sticker-send'
+  /** Значок для ленты: эмодзи категории или 🕒 у «Недавних». */
+  icon: string
+  /** Превью пака в ленте (первый стикер) — вместо значка. */
+  imageUrl: string | null
+  emojis: string[]
+  images: PanelImage[]
+  /** Что сказать, если секция пуста (иначе — общая строка). */
+  emptyHint?: string
+}
+
+/**
+ * Картинка-стикер в панели: своя (с сервера) или стандартная (ассет приложения).
+ *
+ * Отправка у них одна и та же — скачать байты и уйти сообщением с
+ * `sticker=true`, поэтому различаем только источник ссылки: серверный стикер
+ * идёт через `mediaUrl`, стандартный — как статический файл приложения.
+ */
+interface PanelImage {
+  url: string
+  alt: string
+  /** Id серверного стикера: по нему помним «Недавние» и мime. */
+  sticker?: StickerItem
+}
+
+/** Стикер с сервера → картинка панели (лежит в `media/`, отдаётся через API). */
+const mediaImage = (sticker: StickerItem): PanelImage => ({
+  url: mediaUrl(sticker.file_url),
+  alt: 'Стикер',
+  sticker
+})
+
+/** Стандартный стикер приложения → картинка панели (статический файл). */
+const standardImages = (key: string): PanelImage[] =>
+  (STANDARD_STICKER_PACKS.find((pack) => pack.key === key)?.stickers ?? []).map((sticker) => ({
+    url: sticker.url,
+    alt: sticker.label
+  }))
+
+/** Тап по картинке: уходит сообщением (стандартная — теми же байтами). */
+const tapImage = (image: PanelImage) => {
+  if (image.sticker) {
+    stickersStore.rememberRecent(image.sticker.id)
+    emit('send-sticker-image', {
+      url: image.url,
+      mime: image.sticker.mime_type ?? 'image/webp'
+    })
+    return
+  }
+  emit('send-sticker-image', { url: image.url, mime: 'image/png' })
+}
+
+/** Категории эмодзи со значком для ленты (без «Недавних» — он отдельно). */
+const emojiCategorySections = computed<PanelSectionItem[]>(() =>
+  emojiCategories.value.map((category) => ({
+    key: `emoji:${category.key}`,
+    title: category.title,
+    kind: 'emoji-pick' as const,
+    icon: category.icon,
+    imageUrl: null,
+    emojis: category.items,
+    images: []
+  }))
+)
+
+/** Секции панели эмодзи: недавние (если есть) и все категории. */
+const emojiPanelSections = computed<PanelSectionItem[]>(() => [
+  ...(emojiRecent.value.length
+    ? [
+        {
+          key: 'emoji:recent',
+          title: 'Недавние',
+          kind: 'emoji-pick' as const,
+          icon: '🕒',
+          imageUrl: null,
+          emojis: emojiRecent.value,
+          images: []
+        }
+      ]
+    : []),
+  ...emojiCategorySections.value
+])
+
+/** Секции панели стикеров: недавние, мои паки и «крупные» эмодзи. */
+const stickerPanelSections = computed<PanelSectionItem[]>(() => [
+  // Стандартные наборы приложения — первыми: они есть у всех и не требуют
+  // ничего добавлять. Это наши картинки из `public/`, а не библиотека человека.
+  ...STANDARD_STICKER_PACKS.map((pack) => {
+    const images = standardImages(pack.key)
+    return {
+      key: `standard:${pack.key}`,
+      title: pack.title,
+      kind: 'sticker-send' as const,
+      icon: '🎨',
+      imageUrl: images[0]?.url ?? null,
+      emojis: [],
+      images
+    }
+  }),
+  ...(stickersStore.recent.length
+    ? [
+        {
+          key: 'sticker:recent',
+          title: 'Недавние',
+          kind: 'sticker-send' as const,
+          icon: '🕒',
+          imageUrl: mediaUrl(stickersStore.recent[0]?.file_url ?? '') ?? null,
+          emojis: [],
+          images: stickersStore.recent.map(mediaImage)
+        }
+      ]
+    : []),
+  ...stickersStore.packs.map((pack) => ({
+    key: `sticker:pack:${pack.id}`,
+    title: pack.title,
+    kind: 'sticker-send' as const,
+    icon: '🖼️',
+    imageUrl: pack.stickers[0] ? (mediaUrl(pack.stickers[0].file_url) ?? null) : null,
+    emojis: [],
+    images: pack.stickers.map(mediaImage),
+    emptyHint: 'В паке пусто. Добавьте картинки кнопкой «Добавить».'
+  })),
+  ...(emojiStickerRecent.value.length
+    ? [
+        {
+          key: 'emoji-send:recent',
+          title: 'Недавние эмодзи',
+          kind: 'emoji-send' as const,
+          icon: '🕒',
+          imageUrl: null,
+          emojis: emojiStickerRecent.value,
+          images: []
+        }
+      ]
+    : []),
+  ...emojiCategorySections.value.map((section) => ({
+    ...section,
+    kind: 'emoji-send' as const
+  }))
+])
+
+/** Секции открытой панели (эмодзи или стикеров). */
+const panelSections = computed<PanelSectionItem[]>(() =>
+  props.extrasPanel === 'stickers' ? stickerPanelSections.value : emojiPanelSections.value
+)
+
+// ---------- Лента значков: переход к секции и подсветка текущей ----------
+const panelScrollEl = ref<HTMLElement | null>(null)
+const panelStripEl = ref<HTMLElement | null>(null)
+const activeSection = ref<string>('')
+
+const {
+  edges: panelStripEdges,
+  refresh: panelStripRefresh,
+  ...panelStrip
+} = useHScroll(() => panelSections.value.length)
+
+/** Отступ, при котором секция считается «текущей» (её заголовок у верха). */
+const SECTION_ACTIVE_OFFSET = 12
+
+/** Сколько ждём после перехода, прежде чем снова верить прокрутке. */
+const JUMP_SETTLE_MS = 600
+
+/**
+ * До какого времени подсветку не пересчитывать.
+ *
+ * Нужно из-за плавной прокрутки: пока панель едет к выбранной секции, события
+ * прокрутки успевают «пролистать» все промежуточные категории, и подсветка
+ * мигает по пути. Поэтому после тапа держим выбранную секцию подсвеченной, а
+ * пересчёт по экрану возвращаем, когда прокрутка встала.
+ */
+let spyMutedUntil = 0
+
+/** Активный значок держим на виду: лента длиннее, чем влезает в полосу. */
+const centerActiveStripItem = () => {
+  panelStripEl.value
+    ?.querySelector<HTMLElement>('.panel-strip-item.active')
+    ?.scrollIntoView({ block: 'nearest', inline: 'center' })
+}
+
+/** Секция на экране: последняя, чей верх уже дошёл до верха контейнера. */
+const onPanelScroll = () => {
+  if (performance.now() < spyMutedUntil) return
+  const container = panelScrollEl.value
+  if (!container) return
+  const sections = Array.from(container.querySelectorAll<HTMLElement>('[data-section]'))
+  let current = panelSections.value[0]?.key ?? ''
+  for (const section of sections) {
+    if (section.offsetTop - container.scrollTop <= SECTION_ACTIVE_OFFSET) {
+      current = section.dataset.section ?? current
+    } else {
+      break
+    }
+  }
+  if (current !== activeSection.value) {
+    activeSection.value = current
+    centerActiveStripItem()
+  }
+}
+
+/**
+ * Переход к секции по тапу в ленте (как в Telegram: значок = якорь).
+ *
+ * Считаем позицию от контейнера (`scrollTo`), а не через `scrollIntoView`: тот
+ * прокручивает все вложенные контейнеры и мог дёрнуть сам список чатов.
+ * После перехода пересчитываем подсветку ещё раз: содержимое секций
+ * монтируется лениво, и «на глаз» позиция в момент тапа ещё неточная.
+ */
+const jumpToSection = (key: string) => {
+  const container = panelScrollEl.value
+  const section = container?.querySelector<HTMLElement>(`[data-section="${key}"]`)
+  if (!container || !section) return
+  activeSection.value = key
+  spyMutedUntil = performance.now() + JUMP_SETTLE_MS
+  centerActiveStripItem()
+  container.scrollTo({ top: section.offsetTop, behavior: 'smooth' })
+  globalThis.setTimeout(() => {
+    spyMutedUntil = 0
+    onPanelScroll()
+  }, JUMP_SETTLE_MS)
+}
+
+// Панель открыли или переключили — начинаем с начала и подсвечиваем первую секцию.
+watch(
+  () => props.extrasPanel,
+  async (panel) => {
+    if (panel !== 'emoji' && panel !== 'stickers') return
+    await nextTick()
+    if (panelScrollEl.value) panelScrollEl.value.scrollTop = 0
+    activeSection.value = panelSections.value[0]?.key ?? ''
+    panelStripRefresh()
+  }
 )
 
 /** Вставляет эмодзи и запоминает его для раздела «Недавние». */
@@ -459,92 +640,10 @@ const pickEmoji = (emoji: string) => {
 }
 
 // ---------- Стикеры: тап = отправить ----------
-// Вкладка панели: либо мои картинки (стикеры), либо «крупные» эмодзи-стикеры.
-type StickerTab = {
-  key: string
-  title: string
-  kind: 'image' | 'emoji'
-  images: StickerItem[]
-  emojis: string[]
-}
-
 const emojiStickerRecent = ref<string[]>(readRecentStickers(globalThis.localStorage))
-const stickerTab = ref<string>(RECENT_KEY)
 
-const stickerTabs = computed<StickerTab[]>(() => {
-  const tabs: StickerTab[] = [
-    { key: RECENT_KEY, title: 'Недавние', kind: 'image', images: stickersStore.recent, emojis: [] }
-  ]
-  for (const pack of stickersStore.packs) {
-    tabs.push({
-      key: `pack:${pack.id}`,
-      title: pack.title,
-      kind: 'image',
-      images: pack.stickers,
-      emojis: []
-    })
-  }
-  if (emojiStickerRecent.value.length) {
-    tabs.push({
-      key: 'emoji-recent',
-      title: 'Эмодзи',
-      kind: 'emoji',
-      images: [],
-      emojis: emojiStickerRecent.value
-    })
-  }
-  for (const category of emojiCategories.value) {
-    tabs.push({
-      key: `emoji:${category.key}`,
-      title: category.title,
-      kind: 'emoji',
-      images: [],
-      emojis: category.items
-    })
-  }
-  return tabs
-})
-
-const currentStickerTab = computed(
-  () => stickerTabs.value.find((tab) => tab.key === stickerTab.value) ?? stickerTabs.value[0]
-)
-
-watch(stickerTabs, (tabs) => {
-  if (tabs.some((tab) => tab.key === stickerTab.value)) return
-  stickerTab.value = tabs[0]?.key ?? RECENT_KEY
-})
-
-/** Пак, в который уйдёт загрузка: текущая вкладка, иначе первый пак. */
-const uploadPackId = computed<number | null>(() => {
-  const key = currentStickerTab.value?.key ?? ''
-  if (key.startsWith('pack:')) return Number(key.slice(5))
-  return stickersStore.packs[0]?.id ?? null
-})
-
-// Библиотеку стикеров тянем только когда панель открыли: у тех, кто стикерами
-// не пользуется, лишнего запроса не будет.
-watch(
-  () => props.extrasPanel,
-  (panel) => {
-    if (panel === 'stickers') {
-      // Каталог нужен и в панели стикеров: там эмодзи-стикеры идут вкладками.
-      void ensureEmojiCategories()
-      void stickersStore.load()
-    }
-  },
-  { immediate: true }
-)
-
-/**
- * Отправляет стикер-картинку сообщением.
- *
- * Сервер отдаёт стикер как файл, а сообщение отправляется теми же байтами с
- * ``sticker=true`` — поэтому здесь только достаём картинку и просим отправить.
- */
-const sendImageSticker = (sticker: StickerItem) => {
-  stickersStore.rememberRecent(sticker.id)
-  emit('send-sticker-image', sticker)
-}
+/** Пак, в который уйдёт загрузка: первый пак человека (если он есть). */
+const uploadPackId = computed<number | null>(() => stickersStore.packs[0]?.id ?? null)
 
 /** Отправляет эмодзи-стикер (крупный эмодзи) и запоминает его в «Недавние». */
 const sendSticker = (sticker: string) => {
@@ -590,30 +689,11 @@ const onStickersSelected = (event: Event) => {
         emit('sticker-error', `Не добавились: ${failed.join('; ')}`)
         return
       }
-      stickerTab.value = `pack:${packId}`
     } catch (cause) {
       emit('sticker-error', cause instanceof Error ? cause.message : 'Не удалось добавить стикер')
     }
   })()
 }
-
-// ---------- Ленты вкладок: одна прокрутка на все ----------
-// Вкладок (недавние + категории) больше, чем влезает в полосу: без прокрутки
-// последние уезжали за край и были недоступны — особенно в веб-версии, где нет
-// свайпа. Ленты эмодзи и стикеров показываются по очереди, поэтому у каждой
-// свой экземпляр прокрутки.
-const {
-  el: emojiCatsEl,
-  edges: emojiCatsEdges,
-  refresh: emojiCatsRefresh,
-  ...emojiCats
-} = useHScroll(() => emojiTabs.value.length)
-const {
-  el: stickerCatsEl,
-  edges: stickerCatsEdges,
-  refresh: stickerCatsRefresh,
-  ...stickerCats
-} = useHScroll(() => stickerTabs.value.length)
 
 const emit = defineEmits<{
   (e: 'send-text'): void
@@ -632,8 +712,13 @@ const emit = defineEmits<{
   (e: 'append-emoji', emoji: string): void
   /** Стикер-эмодзи: отправить сразу отдельным сообщением. */
   (e: 'send-sticker', sticker: string): void
-  /** Стикер-картинка: отправить её как сообщение (kind='sticker'). */
-  (e: 'send-sticker-image', sticker: StickerItem): void
+  /**
+   * Стикер-картинка: отправить её как сообщение (kind='sticker').
+   *
+   * Передаём готовую ссылку и тип: у своих стикеров это файл с сервера, у
+   * стандартных — статический ассет приложения. Родителю разница не важна.
+   */
+  (e: 'send-sticker-image', payload: { url: string; mime: string }): void
   /** Сообщение об ошибке добавления стикера (показывает родитель). */
   (e: 'sticker-error', message: string): void
 }>()
@@ -1133,35 +1218,62 @@ watch(newMessage, () => {
   color: var(--ms-accent);
 }
 
-/* Полоска значков: «Недавние» и категории эмодзи. */
-.emoji-cats {
+/* Панели доп.контента (как в Telegram): лента значков сверху, содержимое —
+   столбиком по секциям. Лента даёт быстрый переход, столбик — видно всё. */
+.media-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.panel-strip {
   display: flex;
   gap: 4px;
   overflow-x: auto;
-  padding-bottom: 6px;
+  padding-bottom: 4px;
   scrollbar-width: none;
 }
 
-.emoji-cats::-webkit-scrollbar {
+.panel-strip::-webkit-scrollbar {
   display: none;
 }
 
-.emoji-cat {
+.panel-strip-item {
   flex: 0 0 auto;
-  padding: 3px 7px;
-  border: none;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  /* Рамка есть всегда, меняется только её цвет: иначе значок при выборе
+     дёргается на пиксель и «прыгает» в ленте. */
+  border: 1px solid transparent;
   border-radius: 10px;
   background: var(--ms-surface-2);
-  color: var(--ms-muted);
-  font: inherit;
   font-size: var(--ms-fs-lg);
-  line-height: 1.2;
+  line-height: 1;
   cursor: pointer;
-  white-space: nowrap;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
-.emoji-cat.active {
+.panel-strip-item img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.panel-strip-item.active {
   background: var(--ms-accent-soft);
+  border-color: var(--ms-accent-border);
+}
+
+.panel-scroll {
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .emoji-hint {
@@ -1174,8 +1286,6 @@ watch(newMessage, () => {
   display: grid;
   grid-template-columns: repeat(8, 32px);
   gap: 2px;
-  max-height: 240px;
-  overflow-y: auto;
 }
 
 /* GIF внутри единого меню: выключаем собственное абсолютное позиционирование */
@@ -1199,8 +1309,6 @@ watch(newMessage, () => {
 
 /* Панель стикеров: крупные плитки, тап = отправка. */
 .stickers-panel {
-  display: flex;
-  flex-direction: column;
   gap: 6px;
 }
 

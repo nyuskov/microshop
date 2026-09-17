@@ -3,6 +3,7 @@ import { icon } from '@/utils/icons'
 import { reactive, ref, watch, computed, nextTick, defineAsyncComponent } from 'vue'
 import { useAuthStore, type AuthSession as AuthSessionRow } from '@/stores/auth'
 import { getErrorMessage } from '@/services/errors'
+import { askTextDialog, confirmDialog } from '@/utils/appDialogs'
 import { parseServerTime } from '@/utils/format'
 import { removeAvatar, uploadAvatar } from '@/services/api'
 import { mediaUrl } from '@/services/chatService'
@@ -752,13 +753,24 @@ const startFreeze = async () => {
   if (freezeBusy.value) return
   let password: string | undefined
   if (authStore.user?.password_set) {
-    const entered = window.prompt('Введите пароль, чтобы заморозить аккаунт')
+    const entered = await askTextDialog({
+      title: 'Заморозка аккаунта',
+      message:
+        'Подтвердите паролем — так «заморозить» аккаунт не сможет тот, кто получил доступ к вашей сессии.',
+      label: 'Пароль',
+      type: 'password',
+      okLabel: 'Продолжить',
+      isValid: (value) => value.length > 0
+    })
     if (entered === null) return
     password = entered
   }
-  const confirmed = window.confirm(
-    'Заморозить аккаунт? Все устройства выйдут, вход будет закрыт до разморозки кодом из письма.'
-  )
+  const confirmed = await confirmDialog({
+    title: 'Заморозить аккаунт?',
+    message: 'Все устройства выйдут, вход будет закрыт до разморозки кодом из письма.',
+    okLabel: 'Заморозить',
+    danger: true
+  })
   if (!confirmed) return
   freezeBusy.value = true
   freezeError.value = ''

@@ -18,7 +18,7 @@ const source = (path: string) => readFileSync(path, 'utf8')
 
 const lanes = [
   ['src/components/messenger/ChatList.vue', 'чипы фильтров и папки'],
-  ['src/components/messenger/MessageComposer.vue', 'категории эмодзи и стикеров'],
+  ['src/components/messenger/MessageComposer.vue', 'лента категорий эмодзи и паков'],
   ['src/components/stories/StoriesStrip.vue', 'полоса историй'],
   ['src/components/media/GifPicker.vue', 'быстрые запросы GIF'],
   ['src/components/channels/ChannelInfoDialog.vue', 'вкладки карточки канала']
@@ -59,5 +59,34 @@ describe('полосы не отбирают жесты у списка', () => 
     // Иначе докрутка ленты у края уводила бы список чатов.
     const list = source('src/components/messenger/ChatList.vue')
     expect(list).toContain('overscroll-behavior-x: contain')
+  })
+})
+
+describe('панели эмодзи и стикеров — лента плюс столбик', () => {
+  it('лента значков ведёт к секциям, содержимое лежит столбиком', () => {
+    // Как в Telegram: полоса значков (категории эмодзи, паки стикеров) служит
+    // быстрым переходом, а содержимое идёт вертикальным списком секций —
+    // вкладок, которые прячут всё, кроме одной категории, больше нет.
+    const composer = source('src/components/messenger/MessageComposer.vue')
+    expect(composer).toContain('class="panel-strip"')
+    expect(composer).toContain('jumpToSection')
+    expect(composer).toContain('class="panel-scroll"')
+    expect(composer).toContain('<PanelSection')
+    expect(composer).toContain('data-section')
+  })
+
+  it('лента подсвечивает секцию, которая сейчас на экране', () => {
+    const composer = source('src/components/messenger/MessageComposer.vue')
+    expect(composer).toContain('onPanelScroll')
+    expect(composer).toContain("querySelectorAll<HTMLElement>('[data-section]')")
+    expect(composer).toContain('panel-strip-item.active')
+  })
+
+  it('содержимое секции монтируется лениво — только дойдя до экрана', () => {
+    const section = source('src/components/messenger/PanelSection.vue')
+    expect(section).toContain('useVisibleOnce(')
+    expect(section).toContain('v-if="visible"')
+    // По этому атрибуту лента находит секцию и прокручивает к ней.
+    expect(section).toContain(':data-section="sectionKey"')
   })
 })

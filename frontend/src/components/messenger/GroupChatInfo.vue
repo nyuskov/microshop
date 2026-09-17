@@ -308,6 +308,7 @@ import type { Chat, ChatDetail, ChatMember, GroupInvite } from '@/types'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import { optimizeAvatarFile } from '@/utils/media'
 import { inviteLinkFor } from '@/utils/groupInvite'
+import { confirmDialog } from '@/utils/appDialogs'
 import { mediaUrl } from '@/config'
 
 const props = defineProps<{
@@ -657,7 +658,14 @@ const runMemberAction = async (action: MemberAction, member: ChatMember) => {
   error.value = ''
   if (action.key === 'kick') {
     const name = displayName(member)
-    if (!window.confirm(`Исключить ${name} из группы?`)) return
+    const agreed = await confirmDialog({
+      title: `Исключить ${name} из группы?`,
+      message:
+        'Человек перестанет получать сообщения группы. Вернуть его можно повторным приглашением.',
+      okLabel: 'Исключить',
+      danger: true
+    })
+    if (!agreed) return
     busy.value = true
     try {
       await removeGroupMember(props.chat.id, member.id)
@@ -692,7 +700,13 @@ const runMemberAction = async (action: MemberAction, member: ChatMember) => {
 
 // ---------- Выход / удаление группы ----------
 const leaveGroup = async () => {
-  if (!window.confirm('Покинуть группу? Вы перестанете получать её сообщения.')) return
+  const agreed = await confirmDialog({
+    title: 'Покинуть группу?',
+    message: 'Вы перестанете получать её сообщения.',
+    okLabel: 'Покинуть',
+    danger: true
+  })
+  if (!agreed) return
   busy.value = true
   error.value = ''
   try {
@@ -706,9 +720,13 @@ const leaveGroup = async () => {
 }
 
 const deleteGroup = async () => {
-  if (!window.confirm('Удалить группу для всех участников? Это действие нельзя отменить.')) {
-    return
-  }
+  const agreed = await confirmDialog({
+    title: 'Удалить группу для всех участников?',
+    message: 'Это действие нельзя отменить: история и участники удалятся у всех.',
+    okLabel: 'Удалить',
+    danger: true
+  })
+  if (!agreed) return
   busy.value = true
   error.value = ''
   try {

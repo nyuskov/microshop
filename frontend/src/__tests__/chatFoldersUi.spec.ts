@@ -90,8 +90,9 @@ describe('диалоги папок', () => {
     expect(manager).toContain("(e: 'move-chat', id: string, chatId: number, delta: -1 | 1): void")
     expect(manager).toContain("emit('rename', id, name)")
     expect(manager).toContain('Удалить папку')
-    // Удаление подтверждаем: папка — результат ручной работы.
-    expect(manager).toContain('window.confirm(')
+    // Удаление подтверждаем: папка — результат ручной работы. Окно — модальное
+    // (`utils/appDialogs.ts`), а не штатное окно браузера.
+    expect(manager).toContain('confirmDialog({')
   })
 
   it('выбор папок для чата применяется сразу', () => {

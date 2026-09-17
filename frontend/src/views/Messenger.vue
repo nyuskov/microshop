@@ -649,7 +649,8 @@ import { deleteDraft, fetchDrafts, putDraft } from '@/services/drafts'
 import { fetchChannel, fetchPostsMeta, markPostViewed } from '@/services/channelService'
 import { type Section } from '@/utils/mobileNav'
 import { mediaUrl } from '@/config'
-import { stickerFromMessage, type StickerItem } from '@/services/stickers'
+import { confirmDialog } from '@/utils/appDialogs'
+import { stickerFromMessage } from '@/services/stickers'
 import { useStickersStore } from '@/stores/stickers'
 import { chatIdFromUrl, isReplyLaunch, readStoredSection, storeSection } from '@/utils/chatUrl'
 import { haptic } from '@/utils/haptics'
@@ -2420,24 +2421,25 @@ const makeStickerFromMessage = async (message: Message) => {
 }
 
 /**
- * Отправляет стикер-картинку отдельным сообщением (тап в панели «Стикеры»).
+ * Отправляет стикер-картинку сообщением (тап в панели «Стикеры»).
  *
- * Стикер уже лежит на сервере (человек загрузил его в свой пак), поэтому
- * скачиваем байты и отправляем их тем же путём, что обычное вложение, только с
- * ``sticker=true``: сообщение получает ``kind='sticker'`` и рисуется без пузыря.
+ * Стикер скачиваем по ссылке и отправляем теми же байтами, что обычное
+ * вложение, только с ``sticker=true``: сообщение получает ``kind='sticker'`` и
+ * рисуется без пузыря. Ссылка приходит готовая — свои стикеры лежат на сервере
+ * (`media/`), стандартные — ассеты приложения (`public/stickers/`).
  * В E2EE-чате байты сначала шифруются — как и любое другое вложение.
  */
-const sendStickerImage = async (sticker: StickerItem) => {
+const sendStickerImage = async (image: { url: string; mime: string }) => {
   const chatId = selectedChatId.value
   if (chatId === null || sending.value) return
   sending.value = true
   sendError.value = ''
   try {
-    const response = await fetch(mediaUrl(sticker.file_url))
+    const response = await fetch(image.url)
     if (!response.ok) throw new Error('Не удалось прочитать стикер')
     const blob = await response.blob()
     const file = new File([blob], 'sticker.webp', {
-      type: sticker.mime_type || blob.type || 'image/webp'
+      type: image.mime || blob.type || 'image/webp'
     })
     const aes = await chatKeyOf(selectedChat.value)
     const payload = aes ? await encryptFileForChat(aes, file, '') : null
@@ -2948,7 +2950,13 @@ const bulkDeleteMessages = async () => {
     exitMessageSelection()
     return
   }
-  if (!window.confirm(`Удалить выбранные сообщения (${own.length})?`)) return
+  const agreed = await confirmDialog({
+    title: `Удалить выбранные сообщения (${own.length})?`,
+    message: 'Удалятся и у собеседника — вернуть их нельзя.',
+    okLabel: 'Удалить',
+    danger: true
+  })
+  if (!agreed) return
   exitMessageSelection()
   for (const message of own) {
     try {
@@ -3305,7 +3313,13 @@ const {
 })
 
 const deleteMessageOf = async (message: Message) => {
-  if (!window.confirm('Удалить это сообщение?')) return
+  const agreed = await confirmDialog({
+    title: 'Удалить это сообщение?',
+    message: 'Оно исчезнет и у собеседника.',
+    okLabel: 'Удалить',
+    danger: true
+  })
+  if (!agreed) return
   try {
     await deleteMessage(message.id)
     removeMessageFromThread(message.id)

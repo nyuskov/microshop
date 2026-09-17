@@ -144,6 +144,7 @@ import { computed, ref, watch } from 'vue'
 import { icon } from '@/utils/icons'
 import type { Chat } from '@/types'
 import { chatTitle } from '@/utils/user'
+import { confirmDialog } from '@/utils/appDialogs'
 import {
   FOLDER_NAME_MAX,
   MAX_CHAT_FOLDERS,
@@ -244,10 +245,16 @@ const addFolder = () => {
 }
 
 /** Удаление с подтверждением: папка — результат ручной работы, терять жалко. */
-const removeFolder = (id: string) => {
+const removeFolder = async (id: string) => {
   const folder = props.folders.find((item) => item.id === id)
   if (!folder) return
-  if (!window.confirm(`Удалить папку «${folder.name}»? Чаты останутся на месте.`)) return
+  const agreed = await confirmDialog({
+    title: `Удалить папку «${folder.name}»?`,
+    message: 'Чаты останутся на месте — удалится только сам список.',
+    okLabel: 'Удалить',
+    danger: true
+  })
+  if (!agreed) return
   editingId.value = null
   emit('remove', id)
 }

@@ -82,23 +82,16 @@
             >
               <q-icon :name="icon('keyboard_arrow_down')" size="18px" />
             </button>
-            <!-- Удаление подтверждаем на месте: штатные окна браузера не
-                 используем — они выбиваются из интерфейса приложения. -->
+            <!-- Удаление подтверждаем общим модальным окном: штатные окна
+                 браузера в приложении не используем. -->
             <button
-              v-if="pendingDelete !== pack.id"
               type="button"
               class="pack-icon-btn danger"
               aria-label="Удалить пак"
-              @click="pendingDelete = pack.id"
+              @click="removePack(pack)"
             >
               <q-icon :name="icon('delete')" size="18px" />
             </button>
-            <template v-else>
-              <button type="button" class="pack-ask danger" @click="removePack(pack.id)">
-                Удалить пак?
-              </button>
-              <button type="button" class="pack-ask" @click="pendingDelete = null">Нет</button>
-            </template>
           </div>
 
           <div v-if="pack.stickers.length" class="pack-grid">
@@ -135,7 +128,8 @@ import { nextTick, ref } from 'vue'
 
 import { mediaUrl } from '@/config'
 import { useStickersStore } from '@/stores/stickers'
-import { MAX_STICKER_BYTES, STICKER_ACCEPT } from '@/services/stickers'
+import { MAX_STICKER_BYTES, STICKER_ACCEPT, type StickerPack } from '@/services/stickers'
+import { confirmDialog } from '@/utils/appDialogs'
 import { icon } from '@/utils/icons'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -148,7 +142,6 @@ const store = useStickersStore()
 const creating = ref(false)
 const newPackTitle = ref('')
 const newPackInput = ref<HTMLInputElement | null>(null)
-const pendingDelete = ref<number | null>(null)
 const error = ref('')
 
 const startNewPack = (): void => {
@@ -185,11 +178,20 @@ const rename = (packId: number, event: Event): void => {
   })
 }
 
-const removePack = (packId: number): void => {
-  pendingDelete.value = null
-  void store.removePack(packId).catch((cause: unknown) => {
-    error.value = cause instanceof Error ? cause.message : 'Не удалось удалить пак'
+const removePack = async (pack: StickerPack): Promise<void> => {
+  const agreed = await confirmDialog({
+    title: `Удалить пак «${pack.title}»?`,
+    message: `${pack.stickers.length} стикеров исчезнут из библиотеки. Отправленные сообщения со стикерами останутся.`,
+    okLabel: 'Удалить',
+    danger: true
   })
+  if (!agreed) return
+  try {
+    await store.removePack(pack.id)
+    error.value = ''
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'Не удалось удалить пак'
+  }
 }
 
 const removeSticker = (stickerId: number): void => {
@@ -208,6 +210,12 @@ const pickFiles = (packId: number): void => {
   fileInput.value?.click()
 }
 
+/**
+ * Загружает выбранные картинки в пак.
+ *
+ * Ошибки копим и показываем одним сообщением: обычно так грузят несколько
+ * стикеров сразу, и разбираться с пятью отдельными окнами было бы мучением.
+ */
 const onFiles = (event: Event): void => {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
