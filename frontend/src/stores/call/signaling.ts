@@ -8,14 +8,44 @@ export interface PendingOffer {
   sdp: string
 }
 
+/**
+ * Одно соединение звонка: с каждым участником — своё.
+ *
+ * В личном разговоре связь одна, в групповом их столько, сколько собеседников
+ * («mesh»: 4 участника — 3 связи). Раньше в сторе жил ровно один
+ * `peerConnection`, и второй собеседник был невозможен.
+ */
+export interface PeerLink {
+  peerId: number
+  pc: RTCPeerConnection
+  /** Поток собеседника: его камера/микрофон (в сетке — отдельная плитка). */
+  remoteStream: MediaStream | null
+  /** Последний отправленный ему ответ: повторяем, если сигналинг отвалился. */
+  lastAnswerSdp: string | null
+  /** Перезапуск ICE уже идёт — не дублируем при шторме состояний. */
+  iceRestartInFlight: boolean
+}
+
 export interface CallSignalingRuntime {
   socket: WebSocket | null
+  /**
+   * Соединение «основного» собеседника (в 1:1 — единственное).
+   *
+   * Это доступ к `links` для одиночного разговора: код, которому нужен именно
+   * собеседник (диагностика, бейдж маршрута), обращается сюда, а всё сетевое
+   * (`addTrack`, пересогласование, показ экрана) идёт по всем связям сразу.
+   */
   peerConnection: RTCPeerConnection | null
+  /** Связи со всеми участниками звонка: ключ — id пользователя. */
+  links: Map<number, PeerLink>
+  /** Чей `pc` сейчас в `peerConnection` (для 1:1 и одиночных подписок). */
+  primaryPeerId: number | null
   localMedia: MediaStream | null
   remoteMedia: MediaStream | null
   pendingOffer: PendingOffer | null
   screenTrack: MediaStreamTrack | null
-  screenSender: RTCRtpSender | null
+  /** Отправители видео, которым подменена дорожка экрана (по одному на связь). */
+  screenSenders: RTCRtpSender[]
   shareReturnKind: CallKind
   renegotiateSeq: number
   incomingTimer: number | undefined
@@ -38,14 +68,26 @@ export interface CallSignalingRuntime {
   statsSample: StatsSample | null
 }
 
+/** Связь с участником по его id (создаётся лениво). */
+export function linkOf(peerId: number): PeerLink | undefined {
+  return runtime.links.get(peerId)
+}
+
+/** Все связи звонка: в 1:1 одна, в групповом — по одной на собеседника. */
+export function links(): PeerLink[] {
+  return [...runtime.links.values()]
+}
+
 export const runtime: CallSignalingRuntime = {
   socket: null,
   peerConnection: null,
+  links: new Map<number, PeerLink>(),
+  primaryPeerId: null,
   localMedia: null,
   remoteMedia: null,
   pendingOffer: null,
   screenTrack: null,
-  screenSender: null,
+  screenSenders: [],
   shareReturnKind: 'video',
   renegotiateSeq: 0,
   incomingTimer: undefined,

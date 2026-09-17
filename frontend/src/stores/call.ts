@@ -61,6 +61,7 @@ import {
 } from './call/output'
 import { startRingtone, stopRingtone } from './call/ringtone'
 import { runtime, sendRuntimeMessage } from './call/signaling'
+import type { PeerLink } from './call/signaling'
 import {
   CALL_REJOIN_TIMEOUT_MS,
   CALL_TOUCH_EVERY_SECONDS,
@@ -68,7 +69,13 @@ import {
   forgetActiveCall,
   rememberActiveCall
 } from './call/session'
-import type { CallKind, CallPeer, CallStatus, SignalingMessage } from './call/types'
+import type {
+  CallKind,
+  CallParticipant,
+  CallPeer,
+  CallStatus,
+  SignalingMessage
+} from './call/types'
 
 // Публичный контракт стора звонков остаётся прежним: всё это по-прежнему
 // импортируется из `@/stores/call`, хотя живёт в соседних модулях `stores/call/`.
@@ -117,6 +124,12 @@ interface CallState {
   ringOutTimer: number | undefined
   /** Сколько раз повторили уже принятый/идущий вызов (чтобы погасить уведомление). */
   ignoredCallOffers: number
+  /** Групповой звонок «mesh»: участников может быть до четырёх. */
+  isGroup: boolean
+  /** id группового чата (для сигналинга и подписи). */
+  groupChatId: number | null
+  /** Участники группового звонка (в 1:1 — один, собеседник). */
+  participants: CallParticipant[]
 }
 
 const DEFAULT_STATE: CallState = {
@@ -148,7 +161,10 @@ const DEFAULT_STATE: CallState = {
   notice: '',
   secondsTimer: undefined,
   ringOutTimer: undefined,
-  ignoredCallOffers: 0
+  ignoredCallOffers: 0,
+  isGroup: false,
+  groupChatId: null,
+  participants: []
 }
 
 function makeCallId(): string {
@@ -216,7 +232,7 @@ export const useCallStore = defineStore('call', {
           }
           runtime.socketRetryDeadline = 0
           runtime.iceRestartAttempts = 0
-          if (runtime.peerConnection) this._scheduleIceRestart(ICE_RETRY_DELAY_MS)
+          if (runtime.links.size > 0) this._scheduleIceRestart(ICE_RETRY_DELAY_MS)
           // Отвечающая сторона: повторяем ответ — пока канал был закрыт, он мог
           // «уйти в никуда», и зовущий всё ещё звонит.
           if (this.status === 'active' && !runtime.isCaller) this._resendAnswer()
@@ -271,7 +287,10 @@ export const useCallStore = defineStore('call', {
         if (Date.now() >= runtime.socketRetryDeadline) {
           this.reconnecting = false
           runtime.socketRetryDeadline = 0
-          if (runtime.peerConnection && runtime.peerConnection.iceConnectionState === 'connected') {
+          const alive = [...runtime.links.values()].some(
+            (link) => link.pc.iceConnectionState === 'connected'
+          )
+          if (alive) {
             return
           }
           this._forceEnd('Связь потеряна — звонок завершён')
@@ -279,6 +298,75 @@ export const useCallStore = defineStore('call', {
         }
         this._scheduleSocketRetry()
       }, LINK_RETRY_MS)
+    },
+
+    // ---------- Связи с участниками (личный и групповой звонок) ----------
+    //
+    // В личном разговоре связь одна, в групповом («mesh») — по одной на каждого
+    // собеседника: медиа идёт напрямую, поэтому сервер пересылает SDP/ICE
+    // конкретному человеку, а клиент раскладывает их по связям.
+
+    /** Связь с участником (или null, если её ещё нет). */
+    _linkFor(peerId: number | null): PeerLink | null {
+      if (peerId === null) return null
+      return runtime.links.get(peerId) ?? null
+    },
+
+    /** Связь «основного» собеседника: в 1:1 — единственная. */
+    _primaryLink(): PeerLink | null {
+      return this._linkFor(runtime.primaryPeerId) ?? this._linkFor(this.peerId)
+    },
+
+    /**
+     * Создаёт соединение с участником и запоминает его.
+     * `primary` — сделать эту связь «основной» (её видит одиночный интерфейс:
+     * диагностика, бейдж маршрута; в группе основным остаётся первый).
+     */
+    _newLink(peerId: number, ice: RTCConfiguration, primary = true): PeerLink {
+      const pc = new RTCPeerConnection(ice)
+      const link: PeerLink = {
+        peerId,
+        pc,
+        remoteStream: null,
+        lastAnswerSdp: null,
+        iceRestartInFlight: false
+      }
+      runtime.links.set(peerId, link)
+      if (primary || runtime.primaryPeerId === null) {
+        runtime.primaryPeerId = peerId
+        runtime.peerConnection = pc
+      }
+      this._wirePeerConnection(peerId, pc)
+      return link
+    },
+
+    /** Убирает связь участника (он вышел или звонок закончился). */
+    _dropLink(peerId: number): void {
+      const link = runtime.links.get(peerId)
+      if (!link) return
+      try {
+        link.pc.close()
+      } catch {
+        /* соединение могло уже закрыться */
+      }
+      runtime.links.delete(peerId)
+      if (runtime.primaryPeerId === peerId) {
+        const next = [...runtime.links.values()][0]
+        runtime.primaryPeerId = next?.peerId ?? null
+        runtime.peerConnection = next?.pc ?? null
+      }
+    },
+
+    /** Выполняет действие над каждой связью (медиа, пересогласование, ICE). */
+    _eachLink(action: (link: PeerLink) => void): void {
+      for (const link of [...runtime.links.values()]) action(link)
+    },
+
+    /** Обновляет участника в списке интерфейса (в 1:1 список из одного). */
+    _patchParticipant(peerId: number, patch: Partial<Omit<CallParticipant, 'id'>>): void {
+      const index = this.participants.findIndex((item) => item.id === peerId)
+      if (index === -1) return
+      this.participants.splice(index, 1, { ...this.participants[index], ...patch })
     },
 
     /** Состояние ICE: перезапуск при смене сети и завершение, если не вышло. */
@@ -321,11 +409,14 @@ export const useCallStore = defineStore('call', {
       if (runtime.iceRecoveryTimer !== undefined) window.clearTimeout(runtime.iceRecoveryTimer)
       runtime.iceRecoveryTimer = window.setTimeout(() => {
         runtime.iceRecoveryTimer = undefined
-        const pc = runtime.peerConnection
-        if (!pc) return
-        const state = pc.iceConnectionState
-        if (state === 'connected' || state === 'completed') return
-        void this._restartIce(pc)
+        // Перезапускаем все соединения, у которых связь не поднялась: в группе
+        // проблема с одним участником не должна ждать остальных.
+        for (const link of [...runtime.links.values()]) {
+          const state = link.pc.iceConnectionState
+          if (state === 'connected' || state === 'completed') continue
+          void this._restartIce(link.pc)
+          return
+        }
       }, delay)
     },
 
@@ -359,11 +450,12 @@ export const useCallStore = defineStore('call', {
      */
     async _checkMediaFlow() {
       if (this.status !== 'active' || runtime.mediaWatchdogBusy) return
-      const pc = runtime.peerConnection
-      if (!pc) {
+      const link = this._primaryLink()
+      if (!link) {
         this._clearMediaWatchdog()
         return
       }
+      const pc = link.pc
       runtime.mediaWatchdogBusy = true
       const flowing = await (async () => {
         try {
@@ -373,7 +465,7 @@ export const useCallStore = defineStore('call', {
         }
       })()
       // Пока читали статистику, звонок мог закончиться или соединение — замениться.
-      if (this.status !== 'active' || pc !== runtime.peerConnection) return
+      if (this.status !== 'active' || this._linkFor(link.peerId) !== link) return
       if (flowing) {
         // Медиа пошло. Если для этого не понадобилось ни одного перезапуска —
         // сеть в порядке, снимаем пометку «в прошлый раз помогал только релей».
@@ -405,7 +497,8 @@ export const useCallStore = defineStore('call', {
 
     /** Перезапуск ICE: собираем адреса на новых интерфейсах и пересогласуем SDP. */
     async _restartIce(connection: RTCPeerConnection) {
-      if (this.status !== 'active' || connection !== runtime.peerConnection) return
+      const link = [...runtime.links.values()].find((item) => item.pc === connection)
+      if (this.status !== 'active' || !link) return
       // Перезапуск уже идёт: второй только сожжёт попытки (см. наблюдатель медиа).
       if (runtime.iceRestartInFlight) return
       if (runtime.iceRestartAttempts >= ICE_RESTART_MAX_ATTEMPTS) {
@@ -420,12 +513,13 @@ export const useCallStore = defineStore('call', {
         pc.restartIce?.()
         const offer = await pc.createOffer({ iceRestart: true })
         await pc.setLocalDescription(offer)
-        if (connection !== runtime.peerConnection || this.status !== 'active') return
+        if (this._linkFor(link.peerId) !== link || this.status !== 'active') return
         sendMessage({
           type: 'call-renegotiate',
-          to_user_id: this.peerId ?? 0,
+          to_user_id: link.peerId,
           call_id: this.callId ?? '',
-          sdp: offer.sdp ?? ''
+          sdp: offer.sdp ?? '',
+          ...(this.isGroup ? { group: true, chat_id: this.groupChatId ?? undefined } : {})
         })
       } catch {
         /* не получилось — попробуем ещё раз по таймеру */
@@ -530,11 +624,12 @@ export const useCallStore = defineStore('call', {
           break
         }
         case 'call-answer': {
-          if (this.status === 'outgoing' && this.callId === callId && runtime.peerConnection) {
+          const link = this._linkFor(message.from_user_id ?? this.peerId)
+          if (this.status === 'outgoing' && this.callId === callId && link) {
             if (message.sdp) {
               // Повторный ответ (страховка отвечающей стороны) не должен ронять
               // обработку: первый уже применён, второй просто игнорируем.
-              void runtime.peerConnection
+              void link.pc
                 .setRemoteDescription({ type: 'answer', sdp: message.sdp })
                 .catch(() => undefined)
             }
@@ -544,23 +639,24 @@ export const useCallStore = defineStore('call', {
         }
         case 'ice-candidate': {
           const candidate = message.candidate
-          if (runtime.peerConnection && candidate && this.callId === callId) {
-            void runtime.peerConnection
-              .addIceCandidate(new RTCIceCandidate(candidate))
-              .catch(() => undefined)
+          const link = this._linkFor(message.from_user_id ?? this.peerId)
+          if (link && candidate && this.callId === callId) {
+            void link.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => undefined)
           }
           break
         }
         case 'call-renegotiate': {
           // Собеседник меняет медиа (демонстрация экрана/смена устройства):
-          // отвечаем своим SDP-ответом.
-          if (!runtime.peerConnection || this.callId !== callId || !message.sdp) return
-          void this._answerRenegotiate(message.sdp)
+          // отвечаем своим SDP-ответом — ему, а не всем сразу.
+          const link = this._linkFor(message.from_user_id ?? this.peerId)
+          if (!link || this.callId !== callId || !message.sdp) return
+          void this._answerRenegotiate(link.peerId, message.sdp)
           break
         }
         case 'call-renegotiate-answer': {
-          if (!runtime.peerConnection || this.callId !== callId || !message.sdp) return
-          void runtime.peerConnection
+          const link = this._linkFor(message.from_user_id ?? this.peerId)
+          if (!link || this.callId !== callId || !message.sdp) return
+          void link.pc
             .setRemoteDescription({ type: 'answer', sdp: message.sdp })
             .catch(() => undefined)
           break
@@ -570,9 +666,11 @@ export const useCallStore = defineStore('call', {
           // ICE-адреса, а его прежний SDP мёртв. Связь жива только у нас,
           // поэтому пересогласуемся заново: для него это выглядит как короткое
           // «Переподключаемся…», а не как сброшенный звонок.
-          if (this.status !== 'active' || this.callId !== callId || !runtime.peerConnection) return
+          if (this.status !== 'active' || this.callId !== callId || runtime.links.size === 0) return
           runtime.iceRestartAttempts = 0
-          void this._restartIce(runtime.peerConnection)
+          for (const link of [...runtime.links.values()]) {
+            void this._restartIce(link.pc)
+          }
           break
         }
         case 'call-screen': {
@@ -696,13 +794,12 @@ export const useCallStore = defineStore('call', {
           mediaConstraints(kind, this.selectedCamera, this.selectedMic)
         )
         runtime.localMedia = stream
-        runtime.peerConnection = new RTCPeerConnection(ice)
-        this._wirePeerConnection(runtime.peerConnection)
-        stream.getTracks().forEach((track) => runtime.peerConnection?.addTrack(track, stream))
+        const link = this._newLink(peer.id, ice)
+        stream.getTracks().forEach((track) => link.pc.addTrack(track, stream))
 
         runtime.isCaller = true
-        const offer = await runtime.peerConnection.createOffer()
-        await runtime.peerConnection.setLocalDescription(offer)
+        const offer = await link.pc.createOffer()
+        await link.pc.setLocalDescription(offer)
         sendMessage({
           type: 'call-offer',
           to_user_id: peer.id,
@@ -745,15 +842,15 @@ export const useCallStore = defineStore('call', {
           mediaConstraints(kind, this.selectedCamera, this.selectedMic)
         )
         runtime.localMedia = stream
-        runtime.peerConnection = new RTCPeerConnection(ice)
-        this._wirePeerConnection(runtime.peerConnection)
-        stream.getTracks().forEach((track) => runtime.peerConnection?.addTrack(track, stream))
-        await runtime.peerConnection.setRemoteDescription({ type: 'offer', sdp: offerSdp })
-        const answer = await runtime.peerConnection.createAnswer()
-        await runtime.peerConnection.setLocalDescription(answer)
+        const link = this._newLink(peerId, ice)
+        stream.getTracks().forEach((track) => link.pc.addTrack(track, stream))
+        await link.pc.setRemoteDescription({ type: 'offer', sdp: offerSdp })
+        const answer = await link.pc.createAnswer()
+        await link.pc.setLocalDescription(answer)
         runtime.isCaller = false
         this.kind = kind
         runtime.lastAnswerSdp = answer.sdp ?? null
+        link.lastAnswerSdp = answer.sdp ?? null
         sendMessage({
           type: 'call-answer',
           to_user_id: peerId,
@@ -952,7 +1049,7 @@ export const useCallStore = defineStore('call', {
      * во время разговора — до этого соединения нет.
      */
     async refreshVerificationCode(): Promise<void> {
-      const pc = runtime.peerConnection
+      const pc = this._primaryLink()?.pc
       if (!pc || this.status !== 'active') return
       try {
         this.verificationCode =
@@ -965,17 +1062,21 @@ export const useCallStore = defineStore('call', {
       }
     },
 
-    /** Сообщает собеседнику состояние своего микрофона и камеры. */
+    /** Сообщает собеседникам состояние своего микрофона и камеры. */
     _sendMediaState() {
       if (this.status !== 'active' || !this.callId) return
-      sendMessage({
-        type: 'call-media-state',
-        to_user_id: this.peerId ?? 0,
-        call_id: this.callId,
-        mic_on: this.micOn,
-        // Показ экрана тоже идёт как видео — для собеседника картинка есть.
-        video_on: this.videoOn || this.screenSharing
-      })
+      const targets = this.isGroup ? this.participants.map((item) => item.id) : [this.peerId ?? 0]
+      for (const targetId of targets) {
+        sendMessage({
+          type: 'call-media-state',
+          to_user_id: targetId,
+          call_id: this.callId,
+          mic_on: this.micOn,
+          // Показ экрана тоже идёт как видео — для собеседника картинка есть.
+          video_on: this.videoOn || this.screenSharing,
+          ...(this.isGroup ? { group: true, chat_id: this.groupChatId ?? undefined } : {})
+        })
+      }
     },
 
     /**
@@ -983,7 +1084,7 @@ export const useCallStore = defineStore('call', {
      * Зовётся и по таймеру, и вручную из панели «Диагностика звонка».
      */
     async refreshDiagnostics(): Promise<void> {
-      const pc = runtime.peerConnection
+      const pc = this._primaryLink()?.pc
       if (!pc || typeof pc.getStats !== 'function') return
       try {
         const report = await pc.getStats()
@@ -1045,9 +1146,8 @@ export const useCallStore = defineStore('call', {
           mediaConstraints(stored.kind, this.selectedCamera, this.selectedMic)
         )
         runtime.localMedia = stream
-        runtime.peerConnection = new RTCPeerConnection(ice)
-        this._wirePeerConnection(runtime.peerConnection)
-        stream.getTracks().forEach((track) => runtime.peerConnection?.addTrack(track, stream))
+        const link = this._newLink(stored.peerId, ice)
+        stream.getTracks().forEach((track) => link.pc.addTrack(track, stream))
         runtime.isCaller = false
         this.$patch({
           status: 'active',
@@ -1085,31 +1185,32 @@ export const useCallStore = defineStore('call', {
       runtime.rejoinTimer = window.setTimeout(() => {
         runtime.rejoinTimer = undefined
         if (this.status !== 'active' || !this.reconnecting) return
-        const pc = runtime.peerConnection
-        if (pc && (pc.iceConnectionState === 'connected' || pc.connectionState === 'connected')) {
-          return
-        }
+        const alive = [...runtime.links.values()].some(
+          (link) =>
+            link.pc.iceConnectionState === 'connected' || link.pc.connectionState === 'connected'
+        )
+        if (alive) return
         this._forceEnd('Собеседник недоступен — звонок завершён')
       }, CALL_REJOIN_TIMEOUT_MS)
     },
 
     /** Ограничивает битрейт отправляемого видео (~300 Кбит/с). */
     async _capVideoBitrate(): Promise<void> {
-      try {
-        const sender = runtime.peerConnection
-          ?.getSenders()
-          .find((s) => s.track && s.track.kind === 'video')
-        if (!sender) return
-        const params = sender.getParameters()
-        if (!params.encodings || params.encodings.length === 0) {
-          params.encodings = [{}]
+      for (const link of [...runtime.links.values()]) {
+        try {
+          const sender = link.pc.getSenders().find((s) => s.track && s.track.kind === 'video')
+          if (!sender) continue
+          const params = sender.getParameters()
+          if (!params.encodings || params.encodings.length === 0) {
+            params.encodings = [{}]
+          }
+          params.encodings.forEach((encoding) => {
+            encoding.maxBitrate = 300_000
+          })
+          await sender.setParameters(params)
+        } catch {
+          /* ограничение битрейта — не критично */
         }
-        params.encodings.forEach((encoding) => {
-          encoding.maxBitrate = 300_000
-        })
-        await sender.setParameters(params)
-      } catch {
-        /* ограничение битрейта — не критично */
       }
     },
 
@@ -1169,7 +1270,7 @@ export const useCallStore = defineStore('call', {
     },
 
     async _startScreenShare() {
-      if (!runtime.peerConnection || this.screenSharing) return
+      if (runtime.links.size === 0 || this.screenSharing) return
       const support = screenShareSupport()
       if (support !== 'ok') {
         // Причина может быть в http, в мобильном браузере или в самом браузере —
@@ -1185,21 +1286,24 @@ export const useCallStore = defineStore('call', {
         // Кнопка «Остановить показ» в самом браузере (плашка Chrome/Safari).
         track.onended = () => this.stopScreenShare()
 
-        const sender = runtime.peerConnection
-          .getSenders()
-          .find((item) => item.track?.kind === 'video')
         // Каким был звонок до показа: видеозвонок вернёт камеру, аудиозвонок — уберёт
         // видеолинию и останется аудио (см. `kindAfterScreenShare`).
         runtime.shareReturnKind = kindAfterScreenShare(this.kind)
-        if (sender) {
-          // Видеозвонок: подменяем дорожку без пересогласования.
-          await sender.replaceTrack(track)
-          runtime.screenSender = sender
-        } else {
-          // Аудиозвонок: добавляем видео-линию — нужен новый SDP.
-          runtime.screenSender = runtime.peerConnection.addTrack(track, stream)
-          await this._renegotiate()
+        runtime.screenSenders = []
+        let needsRenegotiate = false
+        for (const link of [...runtime.links.values()]) {
+          const sender = link.pc.getSenders().find((item) => item.track?.kind === 'video')
+          if (sender) {
+            // Видеозвонок: подменяем дорожку без пересогласования.
+            await sender.replaceTrack(track).catch(() => undefined)
+            runtime.screenSenders.push(sender)
+          } else {
+            // Аудиозвонок: добавляем видео-линию — нужен новый SDP для каждого.
+            runtime.screenSenders.push(link.pc.addTrack(track, stream))
+            needsRenegotiate = true
+          }
         }
+        if (needsRenegotiate) await this._renegotiate()
         // Гасим камеру на время показа (вернём при остановке) и показываем экран в превью.
         runtime.localMedia?.getVideoTracks().forEach((camera) => {
           camera.stop()
@@ -1217,6 +1321,7 @@ export const useCallStore = defineStore('call', {
       } catch {
         // Отказ от выбора окна в диалоге браузера — не ошибка.
         runtime.screenTrack = null
+        runtime.screenSenders = []
         this.notice = ''
       }
     },
@@ -1224,12 +1329,13 @@ export const useCallStore = defineStore('call', {
     /** Останавливает показ экрана и возвращает звонок к прежнему виду. */
     stopScreenShare() {
       const track = runtime.screenTrack
-      const sender =
-        runtime.screenSender ??
-        runtime.peerConnection?.getSenders().find((item) => item.track?.kind === 'video') ??
-        null
+      const senders = runtime.screenSenders.length
+        ? runtime.screenSenders
+        : [...runtime.links.values()]
+            .map((link) => link.pc.getSenders().find((item) => item.track?.kind === 'video'))
+            .filter((item): item is RTCRtpSender => Boolean(item))
       runtime.screenTrack = null
-      runtime.screenSender = null
+      runtime.screenSenders = []
       if (track) {
         track.onended = null
         track.stop()
@@ -1244,12 +1350,12 @@ export const useCallStore = defineStore('call', {
         // возвращаемся в аудио (интерфейс и у собеседника тоже).
         this.kind = 'audio'
         this.videoOn = false
-        void this._dropVideoLine(sender)
+        void Promise.all(senders.map((item) => this._dropVideoLine(item)))
         this._sendScreenStatus(false)
         this._sendMediaState()
         return
       }
-      void this._restoreCamera(sender)
+      void this._restoreCamera(senders)
       this._sendScreenStatus(false)
       this._sendMediaState()
     },
@@ -1269,10 +1375,8 @@ export const useCallStore = defineStore('call', {
     },
 
     /** Возвращает камеру после показа экрана (или отключает видео-линию, если не удалось). */
-    async _restoreCamera(sender: RTCRtpSender | null) {
-      if (!runtime.peerConnection) return
-      const target =
-        sender ?? runtime.peerConnection.getSenders().find((item) => item.track?.kind === 'video')
+    async _restoreCamera(senders: RTCRtpSender[]) {
+      if (runtime.links.size === 0) return
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: this._videoConstraints()
@@ -1281,11 +1385,16 @@ export const useCallStore = defineStore('call', {
         if (!track) throw new Error('нет видеодорожки')
         swapTrackInStream(runtime.localMedia, track, 'video')
         track.enabled = this.videoOn
-        if (target) await target.replaceTrack(track)
-        else runtime.peerConnection.addTrack(track, runtime.localMedia ?? new MediaStream([track]))
+        if (senders.length) {
+          await Promise.all(senders.map((item) => item.replaceTrack(track).catch(() => undefined)))
+        } else {
+          this._eachLink((link) => {
+            link.pc.addTrack(track, runtime.localMedia ?? new MediaStream([track]))
+          })
+        }
       } catch {
         // Камера недоступна — просто перестаём отправлять видео, звонок продолжается.
-        if (target) await target.replaceTrack(null).catch(() => undefined)
+        await Promise.all(senders.map((item) => item.replaceTrack(null).catch(() => undefined)))
         this.videoOn = false
       }
     },
@@ -1302,40 +1411,50 @@ export const useCallStore = defineStore('call', {
       })
     },
 
-    /** Ответ на пересогласование от собеседника. */
-    async _answerRenegotiate(sdp: string) {
-      if (!runtime.peerConnection) return
+    /** Ответ на пересогласование от конкретного участника. */
+    async _answerRenegotiate(peerId: number, sdp: string) {
+      const link = this._linkFor(peerId)
+      if (!link) return
       try {
-        await runtime.peerConnection.setRemoteDescription({ type: 'offer', sdp })
-        const answer = await runtime.peerConnection.createAnswer()
-        await runtime.peerConnection.setLocalDescription(answer)
+        await link.pc.setRemoteDescription({ type: 'offer', sdp })
+        const answer = await link.pc.createAnswer()
+        await link.pc.setLocalDescription(answer)
         sendMessage({
           type: 'call-renegotiate-answer',
-          to_user_id: this.peerId ?? 0,
+          to_user_id: peerId,
           call_id: this.callId ?? '',
-          sdp: answer.sdp ?? ''
+          sdp: answer.sdp ?? '',
+          ...(this.isGroup ? { group: true, chat_id: this.groupChatId ?? undefined } : {})
         })
       } catch {
         /* пересогласование не удалось — звонок продолжается как есть */
       }
     },
 
-    /** Инициирует пересогласование SDP (после добавления видео-линии). */
+    /**
+     * Инициирует пересогласование SDP (после добавления видео-линии).
+     *
+     * В группе — каждому участнику отдельно: у каждого своё соединение, и
+     * общий SDP им не подходит.
+     */
     async _renegotiate() {
-      if (!runtime.peerConnection) return
+      if (runtime.links.size === 0) return
       const seq = ++runtime.renegotiateSeq
-      try {
-        const offer = await runtime.peerConnection.createOffer()
-        await runtime.peerConnection.setLocalDescription(offer)
-        if (seq !== runtime.renegotiateSeq) return
-        sendMessage({
-          type: 'call-renegotiate',
-          to_user_id: this.peerId ?? 0,
-          call_id: this.callId ?? '',
-          sdp: offer.sdp ?? ''
-        })
-      } catch {
-        /* без пересогласования видео не появится, но звонок жив */
+      for (const link of [...runtime.links.values()]) {
+        try {
+          const offer = await link.pc.createOffer()
+          await link.pc.setLocalDescription(offer)
+          if (seq !== runtime.renegotiateSeq) return
+          sendMessage({
+            type: 'call-renegotiate',
+            to_user_id: link.peerId,
+            call_id: this.callId ?? '',
+            sdp: offer.sdp ?? '',
+            ...(this.isGroup ? { group: true, chat_id: this.groupChatId ?? undefined } : {})
+          })
+        } catch {
+          /* Пересогласование не удалось — звонок продолжается как есть. */
+        }
       }
     },
 
@@ -1373,10 +1492,10 @@ export const useCallStore = defineStore('call', {
       this.selectedCamera = deviceId
       writeCallDevices({ camera: deviceId })
       if (this.status !== 'active' || this.screenSharing || this.kind !== 'video') return
-      const sender = runtime.peerConnection
-        ?.getSenders()
-        .find((item) => item.track?.kind === 'video')
-      if (!sender || !runtime.peerConnection) return
+      const senders = [...runtime.links.values()]
+        .map((link) => link.pc.getSenders().find((item) => item.track?.kind === 'video'))
+        .filter((item): item is RTCRtpSender => Boolean(item))
+      if (senders.length === 0) return
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: this._videoConstraints()
@@ -1390,7 +1509,9 @@ export const useCallStore = defineStore('call', {
         if (!runtime.localMedia) runtime.localMedia = new MediaStream()
         runtime.localMedia.addTrack(track)
         track.enabled = this.videoOn
-        await sender.replaceTrack(track)
+        // Всем участникам одна и та же новая дорожка (mesh: у каждого своё
+        // соединение, но источник медиа один — моя камера).
+        await Promise.all(senders.map((item) => item.replaceTrack(track).catch(() => undefined)))
       } catch {
         this.notice = 'Не удалось переключить камеру'
       }
@@ -1401,10 +1522,10 @@ export const useCallStore = defineStore('call', {
       this.selectedMic = deviceId
       writeCallDevices({ mic: deviceId })
       if (this.status !== 'active') return
-      const sender = runtime.peerConnection
-        ?.getSenders()
-        .find((item) => item.track?.kind === 'audio')
-      if (!sender) return
+      const senders = [...runtime.links.values()]
+        .map((link) => link.pc.getSenders().find((item) => item.track?.kind === 'audio'))
+        .filter((item): item is RTCRtpSender => Boolean(item))
+      if (senders.length === 0) return
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: { ...AUDIO_CONSTRAINTS, deviceId: { exact: deviceId } }
@@ -1418,7 +1539,7 @@ export const useCallStore = defineStore('call', {
         if (!runtime.localMedia) runtime.localMedia = new MediaStream()
         runtime.localMedia.addTrack(track)
         track.enabled = this.micOn
-        await sender.replaceTrack(track)
+        await Promise.all(senders.map((item) => item.replaceTrack(track).catch(() => undefined)))
       } catch {
         this.notice = 'Не удалось переключить микрофон'
       }
@@ -1520,15 +1641,25 @@ export const useCallStore = defineStore('call', {
         runtime.screenTrack.stop()
         runtime.screenTrack = null
       }
-      runtime.screenSender = null
+      runtime.screenSenders = []
       runtime.shareReturnKind = 'video'
       runtime.renegotiateSeq += 1
-      if (runtime.peerConnection) {
-        runtime.peerConnection.onicecandidate = null
-        runtime.peerConnection.ontrack = null
-        runtime.peerConnection.close()
-        runtime.peerConnection = null
+      // Групповой звонок: закрываем ВСЕ соединения, а не только основное.
+      for (const link of [...runtime.links.values()]) {
+        link.pc.onicecandidate = null
+        link.pc.ontrack = null
+        try {
+          link.pc.close()
+        } catch {
+          /* уже закрыто */
+        }
       }
+      runtime.links.clear()
+      runtime.primaryPeerId = null
+      runtime.peerConnection = null
+      this.isGroup = false
+      this.groupChatId = null
+      this.participants = []
       stopAllTracks(runtime.localMedia)
       stopAllTracks(runtime.remoteMedia)
       teardownCallOutput()
@@ -1563,23 +1694,31 @@ export const useCallStore = defineStore('call', {
       this.$patch({ ...DEFAULT_STATE, connected: this.connected })
     },
 
-    _wirePeerConnection(connection: RTCPeerConnection) {
+    _wirePeerConnection(peerId: number, connection: RTCPeerConnection) {
       // Смена сети: следим за состоянием ICE и при необходимости перезапускаем.
       connection.oniceconnectionstatechange = () => this._handleIceState(connection)
       connection.onconnectionstatechange = () => {
-        if (connection.connectionState === 'connected' && this.status === 'outgoing') {
-          // Собеседник принял звонок: подтверждение могло не дойти — доводим
-          // состояние по факту соединения.
-          this._becomeActive()
+        if (connection.connectionState === 'connected') {
+          this._patchParticipant(peerId, { connected: true })
+          if (this.status === 'outgoing') {
+            // Собеседник принял звонок: подтверждение могло не дойти — доводим
+            // состояние по факту соединения (в группе — по первому соединению).
+            this._becomeActive()
+          }
+        }
+        if (connection.connectionState === 'closed' || connection.connectionState === 'failed') {
+          this._patchParticipant(peerId, { connected: false })
         }
       }
       connection.onicecandidate = (event) => {
         if (event.candidate) {
           sendMessage({
             type: 'ice-candidate',
-            to_user_id: this.peerId ?? 0,
+            // Кандидаты уходят КОНКРЕТНОМУ участнику: в групповом звонке у нас
+            // своё соединение с каждым, и in общий адрес их слать нельзя.
+            to_user_id: peerId,
             call_id: this.callId ?? '',
-            candidate: event.candidate.toJSON()
+            ...(this.isGroup ? { group: true, chat_id: this.groupChatId ?? undefined } : {})
           })
         }
       }
@@ -1588,10 +1727,15 @@ export const useCallStore = defineStore('call', {
         // последним событием (иначе на части браузеров остаётся только аудио
         // или только видео — видео собеседника «не видно»).
         const incoming = event.streams && event.streams[0]
-        let stream = runtime.remoteMedia
+        const link = this._linkFor(peerId)
+        let stream = link?.remoteStream ?? null
         if (!stream) {
           stream = new MediaStream()
-          runtime.remoteMedia = stream
+          if (link) link.remoteStream = stream
+          // Одиночный интерфейс (1:1) читает поток из runtime.remoteMedia.
+          if (runtime.remoteMedia === null || runtime.links.size <= 1) {
+            runtime.remoteMedia = stream
+          }
         }
         if (incoming && incoming !== stream) {
           incoming.getTracks().forEach((track) => {
@@ -1603,6 +1747,11 @@ export const useCallStore = defineStore('call', {
         if (!stream.getTracks().includes(event.track)) {
           stream.addTrack(event.track)
         }
+        // Обновляем признаки «есть видео/звук» — плитка участника в сетке.
+        this._patchParticipant(peerId, {
+          videoOn: stream.getVideoTracks().length > 0,
+          micOn: stream.getAudioTracks().length > 0
+        })
         // Звук собеседника — через Web Audio (не зависит от element.volume).
         wireRemoteOutput(stream)
       }

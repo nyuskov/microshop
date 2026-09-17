@@ -26,6 +26,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.calls import crud as calls_crud
@@ -36,7 +37,7 @@ from api_v1.push import crud as push_crud
 from core import rustore_push
 from core.amqp import publish_realtime_event, wait_for_delivery
 from core.config import settings
-from core.models import Message, User, db_helper
+from core.models import Chat, Message, User, db_helper, user_chat_association_table
 
 from ..auth.utils import get_current_user, resolve_user_from_websocket
 from .manager import CALL_OVER_QUEUE_TTL_SECONDS, call_manager
@@ -233,6 +234,97 @@ async def _track_call_event(
         await _persist_call_record(meta, "missed", 0)
 
 
+# ---------- Групповой звонок «mesh» (до 4 участников) ----------
+#
+# Схема полносвязная: каждый участник держит отдельное соединение с каждым
+# (3–4 человека — это 6 пар максимум, SFU на таких числах не нужен). Сервер
+# остаётся ретранслятором: клиент адресует SDP конкретному участнику
+# (`to_user_id`), а `group=true` в offer сообщает, что вызов общий для чата.
+#
+# Что сервер обязан проверить сам (клиенту нельзя доверять): что чат
+# групповой, что оба участника в нём состоят и что в звонке не больше
+# четырёх человек. Из-за лимита растёт трафик и нагрузка на слабых телефонах,
+# поэтому пятый получает «занято», ещё не начиная соединяться.
+
+#: Предел участников группового звонка.
+MAX_GROUP_CALL_PARTICIPANTS = 4
+
+#: Кто в каком групповом звонке: `call_id` -> участники. Живёт в памяти
+#: процесса, как и ``_active_calls``: сигналинг идёт через живые сокеты.
+_group_calls: dict[str, set[int]] = {}
+
+
+async def _group_chat_member_ids(chat_id: int) -> set[int] | None:
+    """Участники группового чата; ``None`` — чата нет или он не групповой.
+
+    Ошибка БД не должна ронять сигналинг: считаем, что проверить не удалось, и
+    звонок не пропускаем (как и с блокировками — важнее не сломать связь).
+    """
+    try:
+        async with db_helper.session_factory() as session:
+            chat = await session.get(Chat, chat_id)
+            if chat is None or not chat.is_group:
+                return None
+            rows = await session.execute(
+                select(user_chat_association_table.c.user_id).where(
+                    user_chat_association_table.c.chat_id == chat_id
+                )
+            )
+            return set(rows.scalars().all())
+    except Exception:  # noqa: BLE001 - проверка чата не роняет сигналинг
+        logger.exception("Не удалось проверить участников группового чата")
+        return None
+
+
+async def _admit_group_call(
+    data: dict[str, Any], from_user_id: int, to_user_id: int
+) -> tuple[bool, str]:
+    """Можно ли позвать человека в этот групповой звонок.
+
+    Возвращает ``(можно, причина_отказа)``. Причина — для сообщения зовущему:
+    «full» (в звонке уже четверо) или «forbidden» (чата нет / не участник).
+    """
+    raw_chat_id = data.get("chat_id")
+    try:
+        chat_id = int(raw_chat_id)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False, "forbidden"
+
+    members = await _group_chat_member_ids(chat_id)
+    if members is None or from_user_id not in members or to_user_id not in members:
+        return False, "forbidden"
+
+    call_id = str(data.get("call_id") or "")
+    if not call_id:
+        return False, "forbidden"
+
+    participants = _group_calls.setdefault(call_id, set())
+    # Место зовущего считается занятым: он уже в звонке, даже если это его
+    # первый offer в этом наборе.
+    if (
+        to_user_id not in participants
+        and len(participants) >= MAX_GROUP_CALL_PARTICIPANTS
+    ):
+        return False, "full"
+
+    participants.add(from_user_id)
+    participants.add(to_user_id)
+    return True, ""
+
+
+def _leave_group_call(data: dict[str, Any], user_id: int) -> None:
+    """Убирает участника из группового звонка (завершил/отклонил/отменил)."""
+    call_id = str(data.get("call_id") or "")
+    if not call_id:
+        return
+    participants = _group_calls.get(call_id)
+    if participants is None:
+        return
+    participants.discard(user_id)
+    if not participants:
+        _group_calls.pop(call_id, None)
+
+
 def _decline_state(data: dict[str, Any]) -> str:
     """Исход звонка по отказному сообщению (``call-decline``).
 
@@ -407,6 +499,27 @@ async def _relay_message(
 
     if message_type in _CALL_TRACK_TYPES:
         await _track_call_event(message_type, from_user_id, to_user_id, data)
+
+    # Групповой звонок «mesh»: пускаем только участников группы и не больше
+    # четырёх человек. Проверку делает сервер — клиенту тут доверять нельзя
+    # (иначе чужой чат или пятый участник получили бы сигналинг).
+    if data.get("group"):
+        if message_type == "call-offer":
+            allowed, reason = await _admit_group_call(data, from_user_id, to_user_id)
+            if not allowed:
+                await call_manager.send_to_user(
+                    from_user_id,
+                    {
+                        "type": "call-unavailable",
+                        "call_id": data.get("call_id"),
+                        "to_user_id": to_user_id,
+                        "from_user_id": to_user_id,
+                        "reason": reason,
+                    },
+                )
+                return
+        elif message_type in ("call-end", "call-cancel", "call-decline"):
+            _leave_group_call(data, from_user_id)
 
     delivered = await _deliver_signal(to_user_id, envelope)
     if delivered:
