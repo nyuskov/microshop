@@ -1640,6 +1640,26 @@ const startCall = (kind: 'audio' | 'video') => {
   else startVoiceCall()
 }
 
+/**
+ * Пока идёт групповой звонок, держим в сторе звонка имена участников: состав
+ * сервер отдаёт только идентификаторами, и без этого в плитках было «@29».
+ */
+watch(
+  () => [callStore.isGroup, callStore.callId, selectedChat.value?.id],
+  () => {
+    const chat = selectedChat.value
+    if (!callStore.isGroup || !chat || chat.id !== callStore.groupChatId) return
+    callStore.rememberPeerNames(
+      chat.users.map((user) => ({
+        id: user.id,
+        name: displayName(user),
+        avatarUrl: user.avatar_thumb_url ?? user.avatar_url ?? null
+      }))
+    )
+  },
+  { immediate: true }
+)
+
 // ---------- История звонков ----------
 // Записи о звонках лежат в чатах системными сообщениями; отдельный экран
 // собирает их в одну ленту (меню «⋯» → «Звонки»).

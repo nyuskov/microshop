@@ -76,6 +76,19 @@ function hasTurnServer(servers: RTCIceServer[]): boolean {
 }
 
 /**
+ * Идёт ли от потока живая дорожка нужного типа.
+ *
+ * У удалённой дорожки признак `muted` снимается только когда пошли данные:
+ * поэтому решать «есть ли видео у собеседника» надо по живой дорожке, а не по
+ * флагу из сигналинга (тот приходит отдельным сообщением и может отставать).
+ */
+export function hasLiveTrack(stream: MediaStream, kind: 'audio' | 'video'): boolean {
+  return stream
+    .getTracks()
+    .some((track) => track.kind === kind && track.readyState === 'live' && !track.muted)
+}
+
+/**
  * Понятный текст ошибки доступа к камере/микрофону.
  *
  * Советы в разных случаях разные: запрет в браузере, нет устройства, «занято

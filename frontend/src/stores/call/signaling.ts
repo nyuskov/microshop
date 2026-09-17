@@ -48,6 +48,23 @@ export interface CallSignalingRuntime {
   links: Map<number, PeerLink>
   /** Чей `pc` сейчас в `peerConnection` (для 1:1 и одиночных подписок). */
   primaryPeerId: number | null
+  /**
+   * Кто из участников уже подтверждён сервером (`call-peers`).
+   *
+   * Нужно, чтобы не путать «ещё не подключился» с «вышел»: из списка убираем
+   * только тех, кто был подтверждён и исчез, а приглашённых, до которых offer
+   * ещё не дошёл, оставляем плиткой «Звоним…».
+   */
+  confirmedPeers: Set<number>
+  /**
+   * Кандидаты ICE, пришедшие раньше, чем появилось соединение с их отправителем.
+   *
+   * Зовущий собирает адреса сразу после своего offer — то есть пока у абонента
+   * только звонит телефон и соединения ещё нет. Без этой памяти такие кандидаты
+   * терялись, ICE оставался в состоянии `new`, и разговор не поднимался вовсе
+   * (медиа не идёт, видно только своё видео).
+   */
+  pendingCandidates: Map<number, RTCIceCandidateInit[]>
   localMedia: MediaStream | null
   remoteMedia: MediaStream | null
   pendingOffer: PendingOffer | null
@@ -91,6 +108,8 @@ export const runtime: CallSignalingRuntime = {
   peerConnection: null,
   links: new Map<number, PeerLink>(),
   primaryPeerId: null,
+  confirmedPeers: new Set<number>(),
+  pendingCandidates: new Map<number, RTCIceCandidateInit[]>(),
   localMedia: null,
   remoteMedia: null,
   pendingOffer: null,

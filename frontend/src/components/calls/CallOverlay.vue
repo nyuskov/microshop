@@ -43,14 +43,16 @@
                вызов. Ждать, пока поднимут все трубки, не нужно: как только
                ответит первый, разговор начнётся, остальные присоединятся. -->
           <template v-if="callStore.isGroup">
-            <CallGrid @drop="callStore.dropPeer" />
-            <div class="group-ringing">
-              <p class="call-subtitle">Звоним…</p>
-              <div class="call-controls incoming-controls">
+            <div class="group-stage">
+              <!-- Та же верхняя строка, что и в разговоре: подпись слева,
+                   кнопка отмены справа. Плитки ниже — их кнопки сброса видны. -->
+              <div class="group-ringing">
+                <p class="call-subtitle">Звоним…</p>
                 <button class="ctl-btn danger big" title="Отменить" @click="callStore.cancelCall()">
                   <q-icon :name="icon('call_end')" size="28px" />
                 </button>
               </div>
+              <CallGrid @drop="callStore.dropPeer" />
             </div>
           </template>
           <div v-else class="call-card">
@@ -76,8 +78,10 @@
 
         <template v-else-if="callStore.status === 'active'">
           <!-- Групповой звонок «mesh»: видео и звук идут от каждого участника
-               напрямую, поэтому показываем сетку плиток, а не одного человека. -->
-          <CallGrid v-if="callStore.isGroup" @drop="callStore.dropPeer" />
+               напрямую, поэтому показываем сетку плиток, а не одного человека.
+               Сетка живёт внутри общего слоя вместе с плашкой и кнопками: в
+               групповом звонке это три строки друг под другом — плашка и кнопки
+               не ложатся на плитки и не закрывают их кнопки. -->
           <!-- Видео собеседника (звук — Web Audio или фолбэк элемента).
                Когда камера выключена, видеопотока нет: показываем аватар и
                подпись, а не чёрный прямоугольник. -->
@@ -107,7 +111,10 @@
           <!-- Аудио-звонок: элемент для воспроизведения/фолбэка (mute задаётся в коде) -->
           <audio v-if="callStore.kind === 'audio'" ref="remoteAudioEl" autoplay playsinline></audio>
 
-          <div class="active-ui" :class="{ audio: callStore.kind === 'audio' }">
+          <div
+            class="active-ui"
+            :class="{ audio: callStore.kind === 'audio', group: callStore.isGroup }"
+          >
             <!-- Аудио-режим: аватар поверх фона -->
             <template v-if="callStore.kind === 'audio'">
               <span class="call-avatar huge" :style="avatarStyle(displayName)">
@@ -197,6 +204,10 @@
                 </span>
               </div>
             </div>
+
+            <!-- Групповой звонок: сетка плиток — своя строка между плашкой и
+                 кнопками. -->
+            <CallGrid v-if="callStore.isGroup" @drop="callStore.dropPeer" />
 
             <!-- Локальное превью (видео) -->
             <video
@@ -873,23 +884,57 @@ onBeforeUnmount(() => {
 }
 
 /*
- * Групповой исходящий вызов: сетка участников + подпись «Звоним…» под ней.
- * Ждать всех не нужно — разговор начинается с первым ответившим.
+ * Групповой звонок: плашка, сетка плиток и кнопки — три строки друг под другом.
+ * Раньше плашка была слоем поверх плиток и закрывала у верхних кнопку сброса,
+ * а панель кнопок ложилась на низ плиток.
  */
-.group-ringing {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 24px;
+.group-stage {
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 10px;
-  pointer-events: none;
+  width: 100%;
+  height: 100%;
+  padding: 12px 12px 8px;
 }
 
-.group-ringing .call-controls {
-  pointer-events: auto;
+.active-ui.group {
+  gap: 8px;
+  padding: 12px 12px 8px;
+}
+
+.group-stage .call-grid,
+.active-ui.group .call-grid {
+  flex: 1 1 0;
+  /* Перебиваем `height: 100%` из самой сетки: с ним она растягивалась на весь
+     экран и вылезала под плашку и под кнопки. */
+  height: auto;
+  min-height: 0;
+}
+
+/* Плашка вызова — та же строка, что и плашка разговора: подпись слева,
+   отмена справа. */
+.group-ringing {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  flex: 0 0 auto;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 16px;
+  padding: 10px 16px;
+  backdrop-filter: blur(6px);
+}
+
+.active-ui.group .active-controls,
+.group-stage .group-ringing {
+  position: static;
+  flex: 0 0 auto;
+}
+
+/* Своя картинка уже есть плиткой «Вы» — второе превью только закрывало плитки. */
+.active-ui.group .local-video {
+  display: none;
 }
 
 .call-avatar {
@@ -968,8 +1013,11 @@ onBeforeUnmount(() => {
   inset: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
+  /* Сверху вниз: плашка с именем и маршрутом — своя верхняя строка (не поверх
+     картинки и не поверх кнопок), дальше — сетка/аватар, внизу — кнопки. */
+  justify-content: flex-start;
   flex-direction: column;
+  padding: 12px;
 }
 
 .active-ui.audio {
@@ -977,10 +1025,12 @@ onBeforeUnmount(() => {
 }
 
 .video-hud {
-  position: absolute;
-  top: 20px;
-  left: 20px;
-  right: 20px;
+  /* Отдельная верхняя строка, а не плавающее окно: у краёв лежат кнопки
+     (сброс участника в плитке сверху, отключение звонка снизу) — плашка их
+     больше не загораживает. */
+  position: static;
+  width: 100%;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 12px;

@@ -565,7 +565,17 @@ async def _relay_message(
             # Кто-то из участников сбрасывает того, кто так и не поднял трубку:
             # выкидываем его из состава и гасим у него окно вызова (сам он этого
             # сообщения не увидит — оно адресовано тому, кого сбрасывают).
-            if from_user_id in _group_calls.get(str(data.get("call_id") or ""), set()):
+            # Сбрасывать может любой участник ЧАТА, а не только инициатор: в
+            # разговоре это обычное дело («этот больше не нужен»).
+            call_id = str(data.get("call_id") or "")
+            chat_id = int(data.get("chat_id") or 0)
+            members = await _group_chat_member_ids(chat_id)
+            if (
+                call_id
+                and members
+                and from_user_id in members
+                and to_user_id in _group_calls.get(call_id, set())
+            ):
                 _leave_group_call(data, to_user_id)
                 await call_manager.send_to_user(
                     to_user_id,

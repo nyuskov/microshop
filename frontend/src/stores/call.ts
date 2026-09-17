@@ -44,6 +44,7 @@ import {
   AUDIO_CONSTRAINTS,
   SCREEN_CONSTRAINTS,
   VIDEO_CONSTRAINTS,
+  hasLiveTrack,
   loadIceConfiguration,
   mediaConstraints,
   mediaErrorMessage,
@@ -131,6 +132,14 @@ interface CallState {
   groupChatId: number | null
   /** Участники группового звонка (в 1:1 — один, собеседник). */
   participants: CallParticipant[]
+  /**
+   * Запомненные имена участников (id → имя и аватар).
+   *
+   * Состав звонка сервер отдаёт только идентификаторами (`call-peers`), поэтому
+   * без этой памяти в плитках появлялись «@29» вместо «Сергей». Наполняет
+   * `Messenger` — он знает участников чата.
+   */
+  peerNames: Record<number, { name: string; avatarUrl?: string | null }>
 }
 
 const DEFAULT_STATE: CallState = {
@@ -165,7 +174,8 @@ const DEFAULT_STATE: CallState = {
   ignoredCallOffers: 0,
   isGroup: false,
   groupChatId: null,
-  participants: []
+  participants: [],
+  peerNames: {}
 }
 
 function makeCallId(): string {
@@ -342,6 +352,39 @@ export const useCallStore = defineStore('call', {
       return link
     },
 
+    /**
+     * Добавляет кандидата участника, а если применять ещё некуда — откладывает.
+     *
+     * Кандидаты зовущего приходят, пока у нас только звонит телефон: соединение
+     * создаётся при ответе. Раньше такие кандидаты молча выбрасывались, ICE
+     * оставался в состоянии `new`, и разговор не поднимался вовсе — собеседников
+     * не было слышно и видно (только собственное видео).
+     */
+    _addCandidate(peerId: number, candidate: RTCIceCandidateInit): void {
+      const link = this._linkFor(peerId)
+      // Требовать удалённое описание беспокоит и обратный случай: у зовущего
+      // кандидаты абонента приходят раньше, чем применён его ответ.
+      if (!link || !link.pc.remoteDescription) {
+        const list = runtime.pendingCandidates.get(peerId) ?? []
+        list.push(candidate)
+        runtime.pendingCandidates.set(peerId, list)
+        return
+      }
+      void link.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => undefined)
+    },
+
+    /** Отдаёт соединению отложенные кандидаты — после применения SDP собеседника. */
+    _flushCandidates(peerId: number): void {
+      const link = this._linkFor(peerId)
+      if (!link || !link.pc.remoteDescription) return
+      const list = runtime.pendingCandidates.get(peerId)
+      if (!list || list.length === 0) return
+      runtime.pendingCandidates.delete(peerId)
+      for (const candidate of list) {
+        void link.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => undefined)
+      }
+    },
+
     /** Убирает связь участника (он вышел или звонок закончился). */
     _dropLink(peerId: number): void {
       const link = runtime.links.get(peerId)
@@ -352,6 +395,7 @@ export const useCallStore = defineStore('call', {
         /* соединение могло уже закрыться */
       }
       runtime.links.delete(peerId)
+      runtime.pendingCandidates.delete(peerId)
       if (runtime.primaryPeerId === peerId) {
         const next = [...runtime.links.values()][0]
         runtime.primaryPeerId = next?.peerId ?? null
@@ -372,6 +416,26 @@ export const useCallStore = defineStore('call', {
     },
 
     /**
+     * Запоминает имена участников чата: по ним подписываем плитки звонка.
+     * Вызывается из чата, когда звонок идёт (состав сервер отдаёт без имён).
+     */
+    rememberPeerNames(entries: { id: number; name: string; avatarUrl?: string | null }[]): void {
+      for (const entry of entries) {
+        this.peerNames[entry.id] = { name: entry.name, avatarUrl: entry.avatarUrl ?? null }
+      }
+      // Уже показанные плитки тоже обновляем: иначе до пересборки состава
+      // оставались бы «@29» и без аватара.
+      for (const participant of this.participants) {
+        const known = this.peerNames[participant.id]
+        if (!known || participant.name === known.name) continue
+        this._patchParticipant(participant.id, {
+          name: known.name,
+          avatarUrl: known.avatarUrl
+        })
+      }
+    },
+
+    /**
      * Приводит состав группового звонка к списку с сервера и достраивает связи.
      *
      * «Mesh» требует соединения «каждый с каждым», но двум сторонам нельзя
@@ -385,22 +449,29 @@ export const useCallStore = defineStore('call', {
       const known = new Set(this.participants.map((item) => item.id))
       const fresh = peers.filter((id) => id !== myId && !known.has(id))
       for (const id of fresh) {
+        const known = this.peerNames[id]
         this.participants.push({
           id,
-          name: `@${id}`,
-          avatarUrl: null,
+          name: known?.name ?? `@${id}`,
+          avatarUrl: known?.avatarUrl ?? null,
           micOn: true,
           videoOn: this.kind === 'video',
           screenSharing: false,
           connected: false
         })
       }
-      // Ушедшие из звонка: закрываем им соединения и убираем плитку.
+      // Ушедшие из звонка: закрываем им соединения и убираем плитку. Убираем
+      // ТОЛЬКО тех, кто был подтверждён сервером и исчез из состава: иначе
+      // приглашённый, до которого offer ещё не дошёл (`startGroupCall` зовёт их
+      // по очереди, и это занимает секунды), пропадал бы из сетки — и заодно
+      // исчезала кнопка «сбросить» у него.
       for (const item of [...this.participants]) {
         if (peers.includes(item.id)) continue
+        if (!runtime.confirmedPeers.has(item.id)) continue
         this._dropLink(item.id)
         this.participants = this.participants.filter((row) => row.id !== item.id)
       }
+      runtime.confirmedPeers = new Set(peers)
       if (chatId !== null) this.groupChatId = chatId
       // Пока звонок не принят (входящий) — соединения не поднимаем: медиа ещё
       // не разрешено, а собеседники решили бы, что мы уже в разговоре.
@@ -469,6 +540,7 @@ export const useCallStore = defineStore('call', {
         const answer = await link.pc.createAnswer()
         await link.pc.setLocalDescription(answer)
         link.lastAnswerSdp = answer.sdp ?? null
+        this._flushCandidates(peerId)
         sendMessage({
           type: 'call-answer',
           to_user_id: peerId,
@@ -825,6 +897,7 @@ export const useCallStore = defineStore('call', {
               // обработку: первый уже применён, второй просто игнорируем.
               void answerLink.pc
                 .setRemoteDescription({ type: 'answer', sdp: message.sdp })
+                .then(() => this._flushCandidates(answerLink.peerId))
                 .catch(() => undefined)
             }
             if (this.status === 'outgoing') this._becomeActive()
@@ -836,9 +909,10 @@ export const useCallStore = defineStore('call', {
         }
         case 'ice-candidate': {
           const candidate = message.candidate
-          const link = this._linkFor(message.from_user_id ?? this.peerId)
-          if (link && candidate && this.callId === callId) {
-            void link.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => undefined)
+          if (candidate && this.callId === callId) {
+            // В группе адрес приходит от конкретного участника; в 1:1 — без
+            // отправителя, значит от собеседника.
+            this._addCandidate(message.from_user_id ?? this.peerId ?? 0, candidate)
           }
           break
         }
@@ -855,6 +929,7 @@ export const useCallStore = defineStore('call', {
           if (!link || this.callId !== callId || !message.sdp) return
           void link.pc
             .setRemoteDescription({ type: 'answer', sdp: message.sdp })
+            .then(() => this._flushCandidates(link.peerId))
             .catch(() => undefined)
           break
         }
@@ -928,8 +1003,15 @@ export const useCallStore = defineStore('call', {
           // В группе отказ одного — не конец разговора: он просто не участвует.
           // Раньше здесь вызывался общий `_cleanup()`, и звонок обрывался у ВСЕХ
           // — именно так выглядела «потеря связи, когда подключились не все».
-          if (this.isGroup && this.status === 'active') {
+          // Важно и для статуса «звоним»: пока никто не ответил, отказ одного
+          // участника закрывал экран звонка у инициатора, хотя остальные ещё
+          // звенели.
+          if (this.isGroup) {
             this._dropParticipant(from)
+            if (this.participants.length === 0) {
+              this._cleanup()
+              this.notice = 'Никто не ответил'
+            }
             break
           }
           if (this.status === 'outgoing') {
@@ -945,9 +1027,9 @@ export const useCallStore = defineStore('call', {
         }
         case 'call-end': {
           if (this.callId !== callId) break
-          // В группе «звонок завершён» от одного участника значит, что вышел
-          // именно он: остальные продолжают разговаривать.
-          if (this.isGroup && this.status === 'active') {
+          // В группе «завершение» от одного участника значит, что вышел именно
+          // он: остальные продолжают звонить или разговаривать.
+          if (this.isGroup) {
             this._dropParticipant(from)
             if (this.participants.length === 0) {
               this._cleanup()
@@ -1167,6 +1249,7 @@ export const useCallStore = defineStore('call', {
         this.kind = kind
         runtime.lastAnswerSdp = answer.sdp ?? null
         link.lastAnswerSdp = answer.sdp ?? null
+        this._flushCandidates(peerId)
         sendMessage({
           type: 'call-answer',
           to_user_id: peerId,
@@ -1805,6 +1888,7 @@ export const useCallStore = defineStore('call', {
         await link.pc.setRemoteDescription({ type: 'offer', sdp })
         const answer = await link.pc.createAnswer()
         await link.pc.setLocalDescription(answer)
+        this._flushCandidates(peerId)
         sendMessage({
           type: 'call-renegotiate-answer',
           to_user_id: peerId,
@@ -2052,6 +2136,8 @@ export const useCallStore = defineStore('call', {
         }
       }
       runtime.links.clear()
+      runtime.confirmedPeers.clear()
+      runtime.pendingCandidates.clear()
       runtime.primaryPeerId = null
       runtime.peerConnection = null
       this.isGroup = false
@@ -2091,6 +2177,31 @@ export const useCallStore = defineStore('call', {
       this.$patch({ ...DEFAULT_STATE, connected: this.connected })
     },
 
+    /**
+     * Пересчитывает «есть видео/звук» по живым дорожкам потока участника.
+     *
+     * Зовётся по событиям самой дорожки (`mute`/`unmute`/`ended`): у удалённого
+     * трека они приходят уже после первого кадра, и без перерисовки плитка
+     * оставалась с аватаром, хотя видео собеседника шло.
+     */
+    _refreshPeerMedia(peerId: number): void {
+      const stream = this._linkFor(peerId)?.remoteStream
+      if (!stream) return
+      this._patchParticipant(peerId, {
+        videoOn: hasLiveTrack(stream, 'video'),
+        micOn: stream.getAudioTracks().length > 0
+      })
+    },
+
+    /**
+     * Идёт ли от участника живое видео — по этому признаку плитка показывает
+     * картинку, а не аватар.
+     */
+    remoteHasVideo(peerId: number): boolean {
+      const stream = runtime.links.get(peerId)?.remoteStream
+      return stream ? hasLiveTrack(stream, 'video') : false
+    },
+
     _wirePeerConnection(peerId: number, connection: RTCPeerConnection) {
       // Смена сети: следим за состоянием ICE и при необходимости перезапускаем.
       connection.oniceconnectionstatechange = () => this._handleIceState(connection)
@@ -2111,6 +2222,10 @@ export const useCallStore = defineStore('call', {
         if (event.candidate) {
           sendMessage({
             type: 'ice-candidate',
+            // Без самого адреса сообщение бессмысленно: собеседник не узнает,
+            // куда слать медиа, ICE останется в состоянии `new` и разговор не
+            // поднимется вовсе (видно только своё видео, звука нет).
+            candidate: event.candidate.toJSON(),
             // Кандидаты уходят КОНКРЕТНОМУ участнику: в групповом звонке у нас
             // своё соединение с каждым, и in общий адрес их слать нельзя.
             to_user_id: peerId,
@@ -2149,6 +2264,12 @@ export const useCallStore = defineStore('call', {
           videoOn: stream.getVideoTracks().length > 0,
           micOn: stream.getAudioTracks().length > 0
         })
+        // У удалённой дорожки признак `muted` снимается только когда пойдут
+        // данные. Без этих событий плитка так и оставалась с аватаром, хотя
+        // видео уже шло — «у откликнувшихся видно только своё видео».
+        event.track.onunmute = () => this._refreshPeerMedia(peerId)
+        event.track.onmute = () => this._refreshPeerMedia(peerId)
+        event.track.onended = () => this._refreshPeerMedia(peerId)
         // Звук собеседника — через Web Audio (не зависит от element.volume).
         wireRemoteOutput(stream)
       }

@@ -23,14 +23,14 @@
           {{ ringing(participant.id) ? 'Звоним…' : participant.name }}
         </span>
       </div>
-      <!-- Не поднял трубку — его можно сбросить, не дожидаясь, пока он ответит
-           (разговор с остальными уже идёт). -->
+      <!-- Сброс участника: не поднял трубку — прекращаем вызов; уже в разговоре —
+           убираем из звонка. Раньше кнопка была только у «звонящей» плитки, и
+           отменить звонок конкретному собеседнику было нельзя. -->
       <button
-        v-if="ringing(participant.id)"
         class="grid-drop"
         type="button"
-        :title="`Сбросить вызов: ${participant.name}`"
-        :aria-label="`Сбросить вызов: ${participant.name}`"
+        :title="`${ringing(participant.id) ? 'Сбросить вызов' : 'Убрать из звонка'}: ${participant.name}`"
+        :aria-label="`${ringing(participant.id) ? 'Сбросить вызов' : 'Убрать из звонка'}: ${participant.name}`"
         @click.stop="emit('drop', participant.id)"
       >
         <q-icon :name="icon('call_end')" size="18px" />
@@ -120,12 +120,15 @@ const ringing = (peerId: number): boolean => {
   return !participant.connected
 }
 
-/** Идёт ли от участника видео (камера или показ экрана). */
-const showsVideo = (peerId: number): boolean => {
-  const participant = callStore.participants.find((item) => item.id === peerId)
-  if (!participant) return false
-  return participant.videoOn && callStore.remoteStreamOf(peerId) !== null
-}
+/**
+ * Идёт ли от участника видео.
+ *
+ * Решает стор по ЖИВОМУ видеотреку в его потоке, а не по флагу `videoOn` из
+ * сигналинга: флаг приходит отдельным сообщением и может запаздывать (или
+ * сбрасываться при переподключении), из-за чего плитка оставалась с аватаром,
+ * хотя видео уже шло — «видно только своё».
+ */
+const showsVideo = (peerId: number): boolean => callStore.remoteHasVideo(peerId)
 
 const localVideo = computed<boolean>(
   () => callStore.screenSharing || (callStore.videoOn && callStore.kind === 'video')

@@ -26,6 +26,7 @@ const source = (path: string): string => readFileSync(path, 'utf8')
 const store = source('src/stores/call.ts')
 const constants = source('src/stores/call/constants.ts')
 const grid = source('src/components/calls/CallGrid.vue')
+const media = source('src/stores/call/media.ts')
 const overlay = source('src/components/calls/CallOverlay.vue')
 const messenger = source('src/views/Messenger.vue')
 const backendViews = source('../backend/api_v1/calls/views.py')
@@ -114,7 +115,7 @@ describe('разговор не рвётся из-за неподключивш�
       store.indexOf("case 'call-decline'"),
       store.indexOf("case 'call-end'")
     )
-    expect(decline).toMatch(/this\.isGroup && this\.status === 'active'/)
+    expect(decline).toMatch(/if \(this\.isGroup\)/)
     expect(decline).toMatch(/this\._dropParticipant\(from\)/)
   })
 
@@ -184,8 +185,11 @@ describe('разговор начинается, не дожидаясь все�
       overlay.indexOf("status === 'outgoing'"),
       overlay.indexOf("status === 'active'")
     )
-    expect(outgoing).toMatch(/v-if="callStore\.isGroup"[\s\S]{0,80}<CallGrid[^>]*\/>/)
+    // Плашка вызова и сетка — отдельные строки: плашка сверху, плитки под ней
+    // (раньше плашка лежала поверх плиток и закрывала кнопки сброса).
+    expect(outgoing).toMatch(/v-if="callStore\.isGroup"[\s\S]{0,900}<CallGrid[^>]*\/>/)
     expect(outgoing).toContain('Звоним…')
+    expect(outgoing).toMatch(/class="group-stage"/)
   })
 
   it('плитка неподключившегося показывает, что у него идёт вызов', () => {
@@ -196,7 +200,8 @@ describe('разговор начинается, не дожидаясь все�
 describe('сброс неподключившихся', () => {
   it('у плитки «Звоним…» есть кнопка сброса', () => {
     expect(grid).toContain('grid-drop')
-    expect(grid).toMatch(/v-if="ringing\(participant\.id\)"/)
+    // Кнопка есть у любой чужой плитки: и у «звоним», и у уже подключившейся.
+    expect(grid).toMatch(/class="grid-drop"/)
     expect(grid).toContain("emit('drop', participant.id)")
   })
 
@@ -214,7 +219,7 @@ describe('сброс неподключившихся', () => {
   it('сервер убирает из состава именно сброшенного', () => {
     expect(backendViews).toContain('"call-drop"')
     expect(backendViews).toMatch(
-      /message_type == "call-drop"[\s\S]{0,600}_leave_group_call\(data, to_user_id\)/
+      /message_type == "call-drop"[\s\S]{0,900}_leave_group_call\(data, to_user_id\)/
     )
   })
 
@@ -222,5 +227,51 @@ describe('сброс неподключившихся', () => {
     // Иначе остальные продолжают звонить, хотя разговор уже закончился.
     expect(store).toMatch(/const targets = this\._callTargets\(\)/)
     expect(store).toMatch(/return this\.participants\.map\(\(item\) => item\.id\)/)
+  })
+})
+
+describe('видео участников', () => {
+  it('плитка показывает видео по живому треку, а не по флагу сигналинга', () => {
+    // Флаг `videoOn` приходит отдельным сообщением и может отставать, из-за чего
+    // видео собеседника не показывалось вовсе: решает живая дорожка потока.
+    expect(grid).toContain('callStore.remoteHasVideo(peerId)')
+    expect(media).toContain('export function hasLiveTrack')
+    expect(media).toMatch(/track\.readyState === 'live' && !track\.muted/)
+    expect(grid).not.toMatch(/showsVideo[\s\S]{0,200}participant\.videoOn/)
+  })
+
+  it('признак видео обновляется, когда дорожка снялась с mute', () => {
+    // Иначе плитка навсегда оставалась с аватаром, хотя видео уже шло.
+    expect(store).toMatch(/event\.track\.onunmute = \(\) => this\._refreshPeerMedia/)
+    expect(store).toMatch(/event\.track\.onmute = \(\) => this\._refreshPeerMedia/)
+  })
+
+  it('в сообщении о кандидате уходит сам кандидат', () => {
+    // Без него ICE не поднимается вовсе: собеседник не знает, куда слать медиа.
+    expect(store).toMatch(
+      /type: 'ice-candidate'[\s\S]{0,700}candidate: event\.candidate\.toJSON\(\)/
+    )
+  })
+
+  it('кандидаты, пришедшие до соединения, откладываются, а не теряются', () => {
+    expect(store).toContain('_addCandidate')
+    expect(store).toContain('_flushCandidates')
+    expect(store).toMatch(/runtime\.pendingCandidates\.get\(peerId\)/)
+  })
+})
+
+describe('имена участников', () => {
+  it('стор помнит имена, которые знает только чат', () => {
+    // Состав звонка сервер отдаёт идентификаторами — иначе в плитках «@29».
+    expect(store).toContain('peerNames')
+    expect(store).toMatch(/this\.peerNames\[entry\.id\] = \{ name: entry\.name/)
+    expect(store).toMatch(/const known = this\.peerNames\[id\]/)
+    expect(store).toContain('rememberPeerNames')
+  })
+
+  it('чат передаёт имена, пока групповой звонок идёт', () => {
+    expect(messenger).toContain('callStore.rememberPeerNames(')
+    expect(messenger).toMatch(/chat\.users\.map/)
+    expect(messenger).toMatch(/avatar_thumb_url \?\? user\.avatar_url/)
   })
 })
