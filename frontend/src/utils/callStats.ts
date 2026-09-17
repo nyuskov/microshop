@@ -137,6 +137,26 @@ export function collectDiagnostics(
   const localCandidate = pair ? byId.get(str(pair, 'localCandidateId')) : undefined
   const rttMs = pair ? Math.round(num(pair, 'currentRoundTripTime') * 1000) : 0
 
+  // Имена кодеков лежат ОТДЕЛЬНЫМИ записями (`codec`), а в потоках — только
+  // ссылка на них (`codecId`): поля `mimeType` у `inbound-rtp`/`outbound-rtp` в
+  // текущем Chrome уже нет. Именно поэтому список кодеков раньше был пустым
+  // (проверено живьём в Chrome 18.09.2026 — в панели диагностики стояло «—»).
+  const codecNames = new Map<string, string>()
+  for (const stat of stats) {
+    if (stat.type !== 'codec') continue
+    const id = str(stat, 'id')
+    const mime = str(stat, 'mimeType')
+    if (id && mime) codecNames.set(id, mime)
+  }
+
+  /** Имя кодека потока: сначала своё поле, потом — через `codecId`. */
+  const codecName = (stat: RawStat): string => {
+    const mime = str(stat, 'mimeType')
+    if (mime) return mime
+    const codecId = str(stat, 'codecId')
+    return codecId ? (codecNames.get(codecId) ?? '') : ''
+  }
+
   let bytesReceived = 0
   let bytesSent = 0
   let packetsLost = 0
@@ -166,7 +186,7 @@ export function collectDiagnostics(
       nackCount += num(stat, 'nackCount')
       // Уровень звука есть только у аудиодорожек; берём самую громкую из них.
       audioLevel = Math.max(audioLevel, num(stat, 'audioLevel'))
-      const mime = str(stat, 'mimeType')
+      const mime = codecName(stat)
       if (mime) codecs.add(mime)
     } else if (stat.type === 'outbound-rtp') {
       bytesSent += num(stat, 'bytesSent')
@@ -174,7 +194,7 @@ export function collectDiagnostics(
       // «Хуже» — это cpu и bandwidth: они прямо мешают отправлять видео.
       const reason = str(stat, 'qualityLimitationReason')
       if (reasonPreference(reason) > reasonPreference(qualityLimitation)) qualityLimitation = reason
-      const mime = str(stat, 'mimeType')
+      const mime = codecName(stat)
       if (mime) codecs.add(mime)
     } else if (stat.type === 'remote-inbound-rtp') {
       // Отчёт собеседника о НАШЕМ потоке: его потери — это наш аплинк.

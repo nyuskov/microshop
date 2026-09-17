@@ -165,6 +165,23 @@ describe('разбор статистики соединения', () => {
     expect(diagnostics.freezeCount).toBe(2)
     expect(diagnostics.nackCount).toBe(7)
   })
+
+  it('имена кодеков берёт через `codecId`: у потоков поля `mimeType` больше нет', () => {
+    // Проверено живьём в Chrome (18.09.2026): у `inbound-rtp`/`outbound-rtp` есть
+    // только `kind` и ссылка на запись `codec` — из-за этого в панели диагностики
+    // вместо кодеков стояло «—».
+    const viaCodecId = report([
+      ['codec-audio', { id: 'codec-audio', type: 'codec', mimeType: 'audio/opus' }],
+      [
+        'in-audio',
+        { type: 'inbound-rtp', kind: 'audio', codecId: 'codec-audio', packetsReceived: 10 }
+      ],
+      ['out-video', { type: 'outbound-rtp', kind: 'video', codecId: 'codec-video' }]
+    ])
+    const { diagnostics } = collectDiagnostics(viaCodecId, peer, null, 0)
+
+    expect(diagnostics.codecs).toEqual(['audio/opus'])
+  })
 })
 
 describe('индикатор качества связи', () => {
