@@ -1,6 +1,6 @@
 """Pydantic-схемы чатов."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -78,6 +78,43 @@ class ChatE2eeUpdate(BaseModel):
     """Переключение типа чата (обычный/зашифрованный)."""
 
     enabled: bool
+
+
+class ChatStatsDay(BaseModel):
+    """Сообщений за день (дни без сообщений не приходят — клиент рисует нули)."""
+
+    date: date
+    count: int
+
+
+class ChatStatsSender(BaseModel):
+    """Участник в «топе по сообщениям»."""
+
+    user_id: int
+    #: Пустая строка — аккаунт удалён (клиент показывает «Участник»).
+    name: str
+    count: int
+
+
+class ChatStatsMedia(BaseModel):
+    """Сколько вложений каждого типа (как во вкладках галереи чата)."""
+
+    image: int = 0
+    video: int = 0
+    audio: int = 0
+    file: int = 0
+
+
+class ChatStats(BaseModel):
+    """Статистика чата: итоги, активность по дням, топ участников и медиа."""
+
+    messages_total: int
+    first_at: datetime | None = None
+    last_at: datetime | None = None
+    #: Разбивка по дням за последние 30 дней (в поясе зрителя).
+    days: list[ChatStatsDay] = []
+    media: ChatStatsMedia = ChatStatsMedia()
+    top_senders: list[ChatStatsSender] = []
 
 
 class GroupCreate(BaseModel):

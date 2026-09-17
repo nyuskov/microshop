@@ -42,6 +42,15 @@ export type RealtimeEvent =
     }
   | { type: 'typing'; chat_id: number; user_id: number }
   | { type: 'typing-stop'; chat_id: number; user_id: number }
+  // Моя история получила реакцию: автор обновляет счётчики и узнаёт об этом
+  // голосом (когда приложение закрыто — приходит push).
+  | {
+      type: 'story.reaction'
+      story_id: number
+      emoji: string
+      user_id: number
+      name: string
+    }
   // Каналы: состав и роли, комментарии под постом, предложенные посты.
   | { type: 'channel.subscribers'; chat_id: number }
   | { type: 'channel.role'; chat_id: number; user_id?: number; role?: string }

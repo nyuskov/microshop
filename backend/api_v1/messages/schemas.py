@@ -9,6 +9,8 @@ class MessageCreate(BaseModel):
     text: str = ""
     chat_id: int
     reply_to_id: int | None = None
+    #: Ответ на историю: сообщение получает плашку с превью медиа истории.
+    reply_to_story_id: int | None = None
     encrypted: bool = False
 
 
@@ -63,6 +65,18 @@ class ForwardedFrom(BaseModel):
     chat_id: int | None = None
 
 
+class StoryReply(BaseModel):
+    """Плашка «Ответ на историю»: снимок медиа истории на момент ответа.
+
+    Медиа хранится в самом сообщении, поэтому плашка живёт и после удаления
+    истории (через сутки); ``id`` тогда становится ``None``.
+    """
+
+    id: int | None = None
+    media_url: str | None = None
+    mime_type: str | None = None
+
+
 class Message(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -89,3 +103,4 @@ class Message(BaseModel):
     file: MessageFile | None = None
     reactions: list[ReactionSummary] = Field(default_factory=list)
     forwarded_from: ForwardedFrom | None = None
+    reply_to_story: StoryReply | None = None

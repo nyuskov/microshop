@@ -130,7 +130,10 @@
                     draft: draftOf(chat, props.drafts) !== null
                   }"
                 >
-                  <template v-if="isChatTyping(chat, props.typingChatIds)">печатает…</template>
+                  <template v-if="isChatTyping(chat, props.typingChatIds)">
+                    <span class="sr-only">печатает</span>
+                    <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                  </template>
                   <template v-else-if="draftOf(chat, props.drafts)">
                     Черновик: {{ draftOf(chat, props.drafts) }}
                   </template>

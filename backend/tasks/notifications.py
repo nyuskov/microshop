@@ -3,6 +3,7 @@
 ``send_email`` — транспорт служебных писем (уведомления о смене пароля,
 входе с нового устройства и т.п.; текст формирует api_v1/security_notifications).
 ``send_message_push`` — push о новых сообщениях (Web Push + RuStore).
+``send_story_reaction_push`` — push автору истории, которой поставили реакцию.
 ``enqueue_generic_notification`` — точка для уведомлений о непрочитанных и
 подобных сценариев.
 
@@ -589,6 +590,91 @@ async def _web_push_to_subscriptions(
         )
         await session.commit()
         logger.info("Удалено устаревших push-подписок: %s", len(stale_ids))
+
+
+@celery_app.task(
+    name="tasks.notifications.send_story_reaction_push",
+    bind=True,
+    max_retries=2,
+    default_retry_delay=5,
+    soft_time_limit=60,
+)
+def send_story_reaction_push(
+    self, author_id: int, reactor_id: int, emoji: str, story_id: int
+) -> None:
+    """Push автору истории о новой реакции (Web Push + RuStore).
+
+    Задачу ставит ``api_v1.stories.notify`` только когда реакция ПОЯВИЛАСЬ:
+    снятие своей реакции — не новость для автора. Тихие часы уважаем: история
+    живёт сутки, а счётчик реакции автор увидит в панели «Аудитория».
+    """
+    if not _web_push_configured() and not rustore_push.is_configured():
+        return
+    run_async(_send_story_reaction_push_async(author_id, reactor_id, emoji, story_id))
+
+
+async def _send_story_reaction_push_async(
+    author_id: int, reactor_id: int, emoji: str, story_id: int
+) -> None:
+    engine = make_engine()
+    session = make_session(engine)
+    try:
+        if not await _awake_ids(session, [author_id], is_call=False):
+            return
+
+        reactor = await session.get(User, reactor_id)
+        # Личное имя контакта важнее публичного: если автор записал человека как
+        # «Мама», именно это имя и должно быть в уведомлении.
+        names = await contact_names_for(
+            session, owner_ids=[author_id], peer_id=reactor_id
+        )
+        title = names.get(author_id) or (
+            _display_name(reactor) if reactor is not None else "Новая реакция"
+        )
+        body = f"{emoji} Реакция на вашу историю"
+        data = {
+            "type": "story_reaction",
+            "story_id": story_id,
+            "emoji": emoji,
+            "peer_id": reactor_id,
+        }
+
+        await _send_rustore_push(
+            session,
+            [author_id],
+            _rustore_message(
+                title=title,
+                body=body,
+                channel_id=PUSH_CHANNEL_MESSAGES,
+                data=data,
+            ),
+        )
+
+        if not _web_push_configured():
+            return
+        stmt = select(PushSubscription).where(PushSubscription.user_id == author_id)
+        subscriptions = list((await session.execute(stmt)).scalars().all())
+        if not subscriptions:
+            return
+        payload = json.dumps(
+            {
+                "title": title,
+                "body": body,
+                "icon": _push_icon(reactor),
+                "badge": PUSH_BADGE,
+                # Уведомления об одной истории заменяют друг друга: колонка
+                # «❤️ Реакция на вашу историю» из пяти строк не нужна.
+                "tag": f"pismo-story-{story_id}",
+                "data": data,
+            },
+            ensure_ascii=False,
+        )
+        await _web_push_to_subscriptions(
+            session, subscriptions, payload, PUSH_TTL_MESSAGE, PUSH_HEADERS_MESSAGE
+        )
+    finally:
+        await session.close()
+        await engine.dispose()
 
 
 @celery_app.task(

@@ -15,7 +15,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from core.models import StoryView, User, UserBlock
+from core.models import Profile, StoryView, User, UserBlock
 
 pytestmark = pytest.mark.skipif(
     os.getenv("TEST_DATABASE_URL") is None,
@@ -314,6 +314,140 @@ async def test_react_toggles_and_counts(api: _ApiCtx) -> None:
     async with api.factory() as session:
         total = await session.scalar(text("SELECT count(*) FROM story_reactions"))
     assert total == 0
+
+
+@pytest.mark.asyncio
+async def test_reaction_notifies_author(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """О поставленной реакции автор узнаёт: событие в сокет и задача push.
+
+    Снятие реакции автора не касается: панель эмодзи тапают часто, и
+    уведомление на каждый тап превратилось бы в спам.
+    """
+    from api_v1.stories import notify as stories_notify
+
+    author = await api.make_user()
+    viewer = await api.make_user()
+    story = (await api.publish(await api.token_for(author))).json()
+    viewer_token = await api.token_for(viewer)
+
+    events: list[tuple[int, dict]] = []
+    tasks: list[tuple[str, tuple]] = []
+
+    class _Events:
+        async def send_to_user(self, user_id: int, payload: dict) -> bool:
+            events.append((user_id, payload))
+            return True
+
+    class _Task:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def delay(self, *args: object) -> None:
+            tasks.append((self.name, args))
+
+    monkeypatch.setattr(stories_notify, "events_manager", _Events())
+    monkeypatch.setattr(stories_notify, "get_task", _Task)
+
+    response = await api.client.post(
+        f"/api/v1/stories/{story['id']}/react/",
+        json={"emoji": "❤️"},
+        headers=api.auth(viewer_token),
+    )
+    assert response.status_code == 200, response.text
+
+    assert [user_id for user_id, _payload in events] == [author.id]
+    payload = events[0][1]
+    assert payload["type"] == "story.reaction"
+    assert payload["story_id"] == story["id"]
+    assert payload["emoji"] == "❤️"
+    assert payload["user_id"] == viewer.id
+    # Имя нужно подсказке в приложении: своей панели его взять негде.
+    assert payload["name"]
+
+    assert tasks == [
+        (stories_notify.REACTION_PUSH_TASK, (author.id, viewer.id, "❤️", story["id"]))
+    ]
+
+    # Повторный тап тем же эмодзи снимает реакцию — и никаких уведомлений.
+    again = await api.client.post(
+        f"/api/v1/stories/{story['id']}/react/",
+        json={"emoji": "❤️"},
+        headers=api.auth(viewer_token),
+    )
+    assert again.status_code == 200, again.text
+    assert len(events) == 1
+    assert len(tasks) == 1
+
+
+@pytest.mark.asyncio
+async def test_story_reaction_push_names_reactor(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Push о реакции: заголовок — имя того, кто отреагировал, тело — эмодзи."""
+    from tasks import notifications
+
+    author = await api.make_user()
+    reactor = await api.make_user()
+    story = (await api.publish(await api.token_for(author))).json()
+
+    async with api.factory() as session:
+        row = await session.get(User, reactor.id)
+        assert row is not None
+        row.first_name = "Иван"
+        await session.commit()
+
+    sent: list[tuple[list[int], dict]] = []
+
+    async def _fake_rustore(
+        session: object, user_ids: list[int], message: dict
+    ) -> None:
+        sent.append((user_ids, message))
+
+    class _Engine:
+        async def dispose(self) -> None:
+            return None
+
+    monkeypatch.setattr(notifications, "_send_rustore_push", _fake_rustore)
+    monkeypatch.setattr(notifications, "_web_push_configured", lambda: False)
+    monkeypatch.setattr(notifications, "make_engine", _Engine)
+    monkeypatch.setattr(notifications, "make_session", lambda engine: api.factory())
+
+    await notifications._send_story_reaction_push_async(
+        author.id, reactor.id, "🔥", story["id"]
+    )
+
+    assert len(sent) == 1
+    user_ids, message = sent[0]
+    assert user_ids == [author.id]
+    assert message["notification"]["title"] == "Иван"
+    assert message["notification"]["body"] == "🔥 Реакция на вашу историю"
+    assert message["data"]["type"] == "story_reaction"
+    assert message["data"]["story_id"] == str(story["id"])
+
+    # Ночь у автора: push не будим, счётчик реакции дождётся утра.
+    sent.clear()
+    async with api.factory() as session:
+        session.add(
+            Profile(
+                user_id=author.id,
+                quiet_hours_enabled=True,
+                quiet_hours_start=23 * 60,
+                quiet_hours_end=8 * 60,
+                quiet_hours_offset=0,
+            )
+        )
+        await session.commit()
+    monkeypatch.setattr(
+        notifications,
+        "utc_now",
+        lambda: datetime(2026, 9, 17, 2, 0, tzinfo=timezone.utc),
+    )
+    await notifications._send_story_reaction_push_async(
+        author.id, reactor.id, "🔥", story["id"]
+    )
+    assert sent == []
 
 
 @pytest.mark.asyncio

@@ -79,6 +79,7 @@ async def create_new_message(
         text=message.text,
         user_id=user.id,
         reply_to_id=message.reply_to_id,
+        reply_to_story_id=message.reply_to_story_id,
         encrypted=message.encrypted,
     )
 

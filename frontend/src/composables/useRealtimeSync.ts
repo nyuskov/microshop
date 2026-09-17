@@ -32,6 +32,8 @@ export interface RealtimeSyncOptions {
   onChatRemoved?: (chatId: number) => void
   /** Я сам прочитал этот чат на другом устройстве — погасить значок. */
   onChatReadElsewhere?: (chatId: number) => void
+  /** На мою историю поставили реакцию (автор узнаёт об этом в сети). */
+  onStoryReaction?: (event: Extract<RealtimeEvent, { type: 'story.reaction' }>) => void
 }
 
 export function useRealtimeSync(options: RealtimeSyncOptions) {
@@ -109,6 +111,10 @@ export function useRealtimeSync(options: RealtimeSyncOptions) {
       case 'chat.read-self':
         // Я прочитал этот чат на другом устройстве — убираем непрочитанное здесь.
         options.onChatReadElsewhere?.(event.chat_id)
+        return
+      case 'story.reaction':
+        // Своих реакций здесь не бывает: сервер шлёт событие только автору истории.
+        options.onStoryReaction?.(event)
         return
       // Каналы: подписка/роли, комментарии и предложки. Все события тихие —
       // достаточно перечитать список чатов и открытый тред (счётчики постов).

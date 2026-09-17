@@ -86,6 +86,21 @@ class Message(IdIntPkMixin, Base):
     # Почему скрыто: причина жалоб/решение модератора — показывается автору.
     hidden_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # Ответ на историю: ссылка на неё (история истекает и удаляется — тогда
+    # ссылка обнуляется, сообщение остаётся) и снимок медиа для плашки
+    # «Ответ на историю» в переписке. Снимок рядом, а не через join: плашка
+    # должна работать и после удаления истории — приём тот же, что у
+    # пересланных сообщений (forwarded_sender_*).
+    reply_to_story_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stories.id", ondelete="SET NULL"), nullable=True
+    )
+    reply_to_story_media_url: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    reply_to_story_mime_type: Mapped[str | None] = mapped_column(
+        String(120), nullable=True
+    )
+
     # Вложение (файл/изображение)
     file_name: Mapped[str | None] = mapped_column(String(255))
     file_url: Mapped[str | None] = mapped_column(String(255))

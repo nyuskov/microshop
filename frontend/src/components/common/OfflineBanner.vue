@@ -1,52 +1,76 @@
 <template>
-  <transition name="offline-fade">
+  <transition name="offline-slide">
     <div
-      v-if="!online || justRestored"
+      v-if="bannerVisible"
       class="offline-banner"
-      :class="{ restored: online }"
+      :class="{ restored: online && !syncing, connecting: online && syncing }"
       role="status"
       aria-live="polite"
     >
-      <q-icon :name="icon(online ? 'wifi' : 'wifi_off')" size="17px" aria-hidden="true" />
-      <span>{{ online ? 'Связь восстановлена' : 'Нет подключения к интернету' }}</span>
+      <q-icon :name="icon(iconName)" size="17px" aria-hidden="true" />
+      <span>{{ text }}</span>
       <span v-if="!online" class="offline-hint">Сообщения отправятся, когда связь вернётся</span>
     </div>
   </transition>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+
 import { icon } from '@/utils/icons'
 import { useOnlineStatus } from '@/composables/useOnlineStatus'
 
-const { online, justRestored } = useOnlineStatus()
+const { online, justRestored, syncing, bannerVisible } = useOnlineStatus()
+
+/**
+ * Что показывает плашка:
+ *  - нет связи — «нет подключения» (серая);
+ *  - связь вернулась и мы добираем данные — «Соединение…» (как в Telegram);
+ *  - данные добраны — «Связь восстановлена» (зелёная) на пару секунд.
+ */
+const text = computed(() => {
+  if (!online.value) return 'Нет подключения к интернету'
+  if (syncing.value) return 'Соединение…'
+  if (justRestored.value) return 'Связь восстановлена'
+  return ''
+})
+
+const iconName = computed(() => {
+  if (!online.value) return 'wifi_off'
+  if (syncing.value) return 'refresh'
+  return 'wifi'
+})
 </script>
 
 <style scoped>
-/* Плашка снизу по центру: сверху уже висит баннер обновления PWA. */
+/* Полоса во всю ширину сверху — как «Соединение…» в Telegram: её нельзя не
+   заметить, и она не перекрывает поле ввода сообщения. */
 .offline-banner {
   position: fixed;
-  left: 50%;
-  bottom: 16px;
-  transform: translateX(-50%);
-  z-index: 19000;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 21000;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  max-width: calc(100vw - 24px);
   box-sizing: border-box;
   background: #2b333c;
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
-  padding: 8px 14px;
+  padding: calc(6px + env(safe-area-inset-top, 0px)) 12px 6px;
   font-size: 13px;
   font-weight: 600;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
 }
 
 .offline-banner.restored {
   background: #2ea25e;
-  border-color: transparent;
+}
+
+/* «Соединение…» — спокойный цвет: связь уже есть, идёт догрузка. */
+.offline-banner.connecting {
+  background: #3a4550;
 }
 
 .offline-hint {
@@ -64,23 +88,38 @@ const { online, justRestored } = useOnlineStatus()
   }
 }
 
-.offline-fade-enter-active,
-.offline-fade-leave-active {
+/* Иконка «идёт соединение» крутится, пока добираем данные. */
+.offline-banner.connecting .q-icon {
+  animation: offline-spin 1.4s linear infinite;
+}
+
+@keyframes offline-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.offline-slide-enter-active,
+.offline-slide-leave-active {
   transition:
     opacity 0.18s ease,
     transform 0.18s ease;
 }
 
-.offline-fade-enter-from,
-.offline-fade-leave-to {
+.offline-slide-enter-from,
+.offline-slide-leave-to {
   opacity: 0;
-  transform: translateX(-50%) translateY(8px);
+  transform: translateY(-100%);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .offline-fade-enter-active,
-  .offline-fade-leave-active {
+  .offline-slide-enter-active,
+  .offline-slide-leave-active {
     transition: none;
+  }
+
+  .offline-banner.connecting .q-icon {
+    animation: none;
   }
 }
 </style>

@@ -86,6 +86,26 @@
         <span class="quote-text">{{ quote.text }}</span>
       </div>
 
+      <!-- Ответ на историю: снимок медиа истории (живёт и после её удаления). -->
+      <div v-if="storyReply" class="story-reply">
+        <span class="story-reply-thumb">
+          <img
+            v-if="storyReplyThumb && !storyReplyIsVideo"
+            :src="storyReplyThumb"
+            alt=""
+            loading="lazy"
+            decoding="async"
+          />
+          <q-icon
+            v-else
+            :name="icon(storyReplyIsVideo ? 'videocam' : 'image')"
+            size="16px"
+            aria-hidden="true"
+          />
+        </span>
+        <span class="story-reply-text">Ответ на историю</span>
+      </div>
+
       <!-- Вложение — в MessageAttachment.vue (там же расшифровка E2EE). -->
       <MessageAttachment
         :message="message"
@@ -141,7 +161,14 @@
     </div>
 
     <!-- Реакции -->
-    <div v-if="message.reactions.length" class="reactions" @click.stop @pointerdown.stop>
+    <TransitionGroup
+      v-if="message.reactions.length"
+      name="reaction"
+      tag="div"
+      class="reactions"
+      @click.stop
+      @pointerdown.stop
+    >
       <button
         v-for="reaction in message.reactions"
         :key="reaction.emoji"
@@ -151,7 +178,7 @@
       >
         {{ reaction.emoji }}<span class="reaction-count">{{ reaction.count }}</span>
       </button>
-    </div>
+    </TransitionGroup>
 
     <!-- Действия при наведении (появляются ПОД сообщением).
          Рисуем только у строк, которые уже доходили до экрана: 4 иконки Quasar
@@ -324,6 +351,19 @@ const forwardLabel = computed<string | null>(() => {
   const name = forwarded.sender_name?.trim()
   return name ? `Переслано от ${name}` : 'Переслано'
 })
+
+/** Плашка «Ответ на историю» (null, если это обычное сообщение). */
+const storyReply = computed(() => props.message.reply_to_story ?? null)
+
+/** Миниатюра истории: путь к нашему файлу, поэтому через `mediaUrl`. */
+const storyReplyThumb = computed<string>(() => {
+  const url = storyReply.value?.media_url
+  return url ? mediaUrl(url) : ''
+})
+
+const storyReplyIsVideo = computed<boolean>(() =>
+  Boolean(storyReply.value?.mime_type?.startsWith('video/'))
+)
 
 const emit = defineEmits<{
   (e: 'quote-click'): void
@@ -915,6 +955,43 @@ const onDoubleTap = (): void => {
   text-overflow: ellipsis;
 }
 
+/* Плашка «Ответ на историю»: миниатюра + подпись, вид как у цитаты. */
+.story-reply {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: color-mix(in srgb, var(--ms-icon) 8%, transparent);
+  border-left: 3px solid var(--ms-accent);
+  border-radius: 6px;
+  padding: 4px 9px 4px 6px;
+  margin-bottom: 5px;
+  min-width: 120px;
+}
+
+.story-reply-thumb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--ms-surface-2);
+  color: var(--ms-muted-2);
+  flex: none;
+}
+
+.story-reply-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.story-reply-text {
+  font-size: 12.5px;
+  color: var(--ms-muted);
+}
+
 /* Вложения переехали в MessageAttachment.vue вместе с разметкой и стилями. */
 
 /* Общие круглые кнопки (геометрия — в assets/appearance.css) */
@@ -928,6 +1005,35 @@ const onDoubleTap = (): void => {
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 3px;
+}
+
+/* Появление и исчезновение чипа: реакция «выпрыгивает» на месте, без прыжка
+   соседей. Первичная отрисовка ленты не анимируется — TransitionGroup без
+   `appear` трогает только те чипы, что появились/исчезли после монтирования. */
+.reaction-enter-active {
+  animation: reaction-pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.reaction-leave-active {
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+
+.reaction-leave-to {
+  opacity: 0;
+  transform: scale(0.6);
+}
+
+@keyframes reaction-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .reaction-chip {

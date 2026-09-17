@@ -176,6 +176,25 @@ export function quickReactions(
   return result
 }
 
+/** Куда ведёт тап по сцене просмотрщика. */
+export type StoryTapZone = 'previous' | 'reaction' | 'next'
+
+/** Доля ширины сцены, отданная зонам «назад» и «вперёд» (как в разметке зон). */
+const TAP_ZONE_EDGE_RATIO = 0.32
+
+/**
+ * Зона тапа: левый и правый края листают, центр ставит быструю реакцию.
+ *
+ * Края заняты стрелками листания (они видны на экране), поэтому мгновенная
+ * реакция живёт в центре — один тап делает одно действие, а листать можно ещё
+ * и свайпом.
+ */
+export function storyTapZone(ratio: number): StoryTapZone {
+  if (ratio < TAP_ZONE_EDGE_RATIO) return 'previous'
+  if (ratio > 1 - TAP_ZONE_EDGE_RATIO) return 'next'
+  return 'reaction'
+}
+
 /* ---------------- Аудитория своей истории ---------------- */
 
 /** Секция списка в панели аудитории: эмодзи (или просмотры) и люди. */

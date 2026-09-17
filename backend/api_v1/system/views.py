@@ -1,6 +1,6 @@
-"""Служебные эндпоинты: режим технических работ.
+"""Служебные эндпоинты: проверка связи и режим технических работ.
 
-Оба эндпоинта работают и во время самих техработ (см. ``maintenance_guard`` в
+Эндпоинты работают и во время самих техработ (см. ``maintenance_guard`` в
 ``main.py``): статус нужен приложению, чтобы понять, что показывать, а
 переключатель — администратору, чтобы режим выключить (иначе это можно было бы
 сделать только по ssh).
@@ -9,12 +9,16 @@
 при возвращении на вкладку и раз в 30 секунд), поэтому у него собственный
 IP-лимит: 30-секундный опрос с запасом укладывается в лимит даже для нескольких
 открытых вкладок.
+
+Отдельный ``/ping/`` — самый дешёвый маяк связи: клиент проверяет по нему, есть
+ли интернет, пока плашка «нет сети» висит (раз в 2 секунды). Поэтому он не
+трогает базу, не требует авторизации и не расходует лимит статуса техработ.
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
@@ -57,6 +61,28 @@ def _to_response(state: maintenance.MaintenanceState) -> MaintenanceResponse:
     return MaintenanceResponse(
         enabled=state.enabled, message=state.message, since=state.since
     )
+
+
+class PingResponse(BaseModel):
+    """Ответ маяка связи."""
+
+    ok: bool = True
+    #: Время сервера: заодно видно, что ответил именно наш бэкенд.
+    server_time: datetime
+
+
+@router.get(
+    "/ping/",
+    response_model=PingResponse,
+    summary="Проверка связи (публичный маяк)",
+)
+async def ping() -> PingResponse:
+    """Отвечает мгновенно, без базы и авторизации.
+
+    Клиент считает связь восстановленной, как только получил любой ответ отсюда;
+    ошибка сети (или таймаут) означает, что интернета по-прежнему нет.
+    """
+    return PingResponse(server_time=datetime.now(timezone.utc))
 
 
 @router.get(

@@ -28,6 +28,13 @@ interface StoriesState {
   reactionsPrimary: number
 }
 
+/**
+ * Текущая загрузка ленты. Ждать её должны все, кто её запросил: раньше
+ * повторный вызов `load()` выходил сразу, и код холодного старта по push
+ * (`openStoryFromPush`) успевал проверить ещё пустую ленту и не найти историю.
+ */
+let feedLoad: Promise<void> | null = null
+
 export const useStoriesStore = defineStore('stories', {
   state: (): StoriesState => ({
     groups: [],
@@ -53,20 +60,25 @@ export const useStoriesStore = defineStore('stories', {
   actions: {
     /** Загружает ленту (тихо: при ошибке показываем прошлые данные). */
     async load(): Promise<void> {
-      if (this.loading) return
-      this.loading = true
-      try {
-        const feed = await fetchStories()
-        this.groups = feed.groups
-        this.reactionKinds = feed.reactionKinds
-        this.reactionsPrimary = feed.reactionsPrimary
-        this.error = ''
-        this.loaded = true
-      } catch (error) {
-        this.error = getErrorMessage(error, 'Не удалось загрузить истории')
-      } finally {
-        this.loading = false
-      }
+      // Уже грузим — отдаём тот же промис: вызывающий дождётся свежей ленты.
+      if (feedLoad) return feedLoad
+      feedLoad = (async () => {
+        this.loading = true
+        try {
+          const feed = await fetchStories()
+          this.groups = feed.groups
+          this.reactionKinds = feed.reactionKinds
+          this.reactionsPrimary = feed.reactionsPrimary
+          this.error = ''
+          this.loaded = true
+        } catch (error) {
+          this.error = getErrorMessage(error, 'Не удалось загрузить истории')
+        } finally {
+          this.loading = false
+          feedLoad = null
+        }
+      })()
+      return feedLoad
     },
 
     /** Публикует историю и обновляет ленту. */

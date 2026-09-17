@@ -1,5 +1,7 @@
 """CRUD-операции для чатов."""
 
+from datetime import datetime, timedelta, timezone
+
 from fastapi import HTTPException, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from api_v1.events.service import notify_chat, notify_user
 from api_v1.moderation import crud as moderation_crud
+from api_v1.users.crud import display_name
 from core.models import (
     Chat,
     ChatGroupKey,
@@ -16,6 +19,12 @@ from core.models import (
     user_chat_association_table,
 )
 from core.models.associations import ROLE_ADMIN, ROLE_CREATOR, ROLE_MEMBER
+from core.timeutils import as_utc
+
+#: За сколько дней статистика чата отдаёт разбивку по дням (итоги — за всё время).
+STATS_DAYS = 30
+#: Сколько участников показываем в «топе по сообщениям».
+STATS_TOP_SENDERS = 5
 
 
 async def get_chat_with_users(session: AsyncSession, chat_id: int) -> Chat | None:
@@ -301,6 +310,108 @@ async def get_muted_chat_ids(
     )
     result = await session.execute(stmt)
     return set(result.scalars().all())
+
+
+async def _sender_names(session: AsyncSession, user_ids: list[int]) -> dict[int, str]:
+    """Имена участников по id — для «топа по сообщениям»."""
+    if not user_ids:
+        return {}
+    rows = (
+        (await session.execute(select(User).where(User.id.in_(user_ids))))
+        .scalars()
+        .all()
+    )
+    return {user.id: display_name(user) for user in rows}
+
+
+async def chat_stats(
+    session: AsyncSession, *, chat_id: int, offset_minutes: int = 0
+) -> dict:
+    """Статистика переписки: сколько писали, когда, кто активнее и что за медиа.
+
+    Скрытые модерацией сообщения не считаем — они под вопросом и в «статистике
+    чата» выглядели бы как обычная активность.
+
+    Дни считаются по поясу зрителя (`offset_minutes`, как в тихих часах):
+    сервер живёт в UTC, а без сдвига вечерние сообщения попадали бы в «следующий
+    день», и график врал бы на несколько часов.
+    """
+    # Импорт внутри функции: messages/crud уже импортирует этот модуль, и на
+    # уровне модуля получился бы цикл.
+    from api_v1.messages.crud import media_kind_expr
+
+    scope = (Message.chat_id == chat_id, Message.hidden_at.is_(None))
+
+    total = await session.scalar(
+        select(func.count()).select_from(Message).where(*scope)
+    )
+    bounds = (
+        await session.execute(
+            select(func.min(Message.timestamp), func.max(Message.timestamp)).where(
+                *scope
+            )
+        )
+    ).one()
+
+    # make_interval(years, months, weeks, days, hours, mins) — 6 аргументов.
+    local_time = Message.timestamp + func.make_interval(0, 0, 0, 0, 0, offset_minutes)
+    # Колонка времени сообщения — naive (без зоны), значит и порог сравниваем
+    # с naive UTC: aware-значение asyncpg отвергает.
+    since = (datetime.now(timezone.utc) - timedelta(days=STATS_DAYS - 1)).replace(
+        tzinfo=None
+    )
+    # Группируем по самому выражению (а не по алиасу): в PostgreSQL `GROUP BY day`
+    # для выражения с алиасом не находит колонку и запрос падает.
+    day_expr = func.date(local_time)
+    days = (
+        await session.execute(
+            select(day_expr.label("day"), func.count().label("total"))
+            .where(*scope, Message.timestamp >= since)
+            .group_by(day_expr)
+            .order_by(day_expr)
+        )
+    ).all()
+
+    media_kind = media_kind_expr()
+    media_rows = (
+        await session.execute(
+            select(media_kind.label("kind"), func.count())
+            .where(*scope, Message.file_url.isnot(None))
+            .group_by(media_kind)
+        )
+    ).all()
+
+    senders = (
+        await session.execute(
+            select(Message.user_id, func.count().label("total"))
+            .where(*scope)
+            .group_by(Message.user_id)
+            .order_by(func.count().desc())
+            .limit(STATS_TOP_SENDERS)
+        )
+    ).all()
+    names = await _sender_names(session, [row[0] for row in senders])
+
+    media = {"image": 0, "video": 0, "audio": 0, "file": 0}
+    for kind, count in media_rows:
+        media[str(kind)] = int(count)
+
+    return {
+        "messages_total": int(total or 0),
+        "first_at": as_utc(bounds[0]),
+        "last_at": as_utc(bounds[1]),
+        "days": [{"date": day, "count": int(count)} for day, count in days],
+        "media": media,
+        "top_senders": [
+            {
+                "user_id": user_id,
+                # Пустое имя — участник удалил аккаунт; клиент покажет «Участник».
+                "name": names.get(user_id, ""),
+                "count": int(count),
+            }
+            for user_id, count in senders
+        ],
+    }
 
 
 async def set_chat_muted(

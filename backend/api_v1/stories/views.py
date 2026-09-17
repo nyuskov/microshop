@@ -19,6 +19,7 @@ from core.upload_guard import (
 )
 
 from . import crud
+from .notify import notify_reaction
 from .reactions import (
     STORY_REACTION_KINDS,
     STORY_REACTIONS_PRIMARY,
@@ -147,10 +148,14 @@ async def react_to_story(
             detail="На свою историю реагировать нельзя",
         )
 
-    await crud.toggle_reaction(
+    added = await crud.toggle_reaction(
         session, story_id=story_id, user_id=user.id, emoji=payload.emoji
     )
     await session.commit()
+    # Уведомляем автора только о ПОЯВИВШЕЙСЯ реакции: снятие своей — не новость,
+    # а push на каждый тап превратил бы панель эмодзи в спам-машину.
+    if added:
+        await notify_reaction(story=story, reactor=user, emoji=payload.emoji)
     # Сессии проекта живут с expire_on_commit=False, поэтому `story` не нужно
     # перечитывать — но состояния (просмотры, реакции) считаем уже после коммита.
     return await crud.story_item(session, story=story, viewer_id=user.id)

@@ -31,7 +31,11 @@
         <span v-if="statusPill" class="chat-status-pill">{{ statusPill }}</span>
       </div>
       <div class="chat-subtitle">
-        <span class="chat-subtitle-text">{{ subtitle }}</span>
+        <template v-if="peerTyping">
+          <span class="sr-only">печатает</span>
+          <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        </template>
+        <span v-else class="chat-subtitle-text">{{ subtitle }}</span>
       </div>
     </div>
     <div class="chat-header-actions">
@@ -72,6 +76,17 @@
           <button class="ms-dropdown-item" @click="runChatAction('archive')">
             <q-icon :name="icon('archive')" size="19px" />
             <span>{{ archived ? 'Из архива' : 'В архив' }}</span>
+          </button>
+          <!-- Звук уведомлений этого чата: настройка УСТРОЙСТВА (localStorage) —
+               на телефоне и на компьютере она может быть разной. -->
+          <button class="ms-dropdown-item" @click="runChatAction('sound')">
+            <q-icon :name="icon('volume_up')" size="19px" />
+            <span>Звук уведомлений</span>
+          </button>
+          <!-- Статистика: сколько писали, когда и кто активнее (считает сервер). -->
+          <button class="ms-dropdown-item" @click="runChatAction('stats')">
+            <q-icon :name="icon('bar_chart')" size="19px" />
+            <span>Статистика чата</span>
           </button>
           <!-- Жалоба и блокировка — требования RuStore для UGC-приложений.
                Доступны только в личных диалогах (в группе нет одного собеседника,
@@ -133,6 +148,8 @@ const props = defineProps<{
   showBack: boolean
   /** «В сети» ли собеседник (точка на аватаре). */
   peerOnline: boolean
+  /** Печатает ли собеседник: подпись заменяется анимированными точками. */
+  peerTyping?: boolean
   /** Включено ли сквозное шифрование в этом чате (показываем 🔒). */
   e2ee?: boolean
   /** Закреплён ли этот чат в списке диалогов. */
@@ -154,6 +171,10 @@ const emit = defineEmits<{
   (e: 'toggle-pin'): void
   /** В архив или обратно. */
   (e: 'toggle-archive'): void
+  /** Выбор звука уведомлений этого чата (настройка устройства). */
+  (e: 'open-chat-sound'): void
+  /** Статистика чата: сообщения по дням, участники, вложения. */
+  (e: 'open-chat-stats'): void
   /** Запретить/разрешить звонки от собеседника (мягкая блокировка). */
   (e: 'toggle-calls-block'): void
   /** Жалоба на собеседника (модерация UGC, требование RuStore). */
@@ -211,10 +232,14 @@ const toggleChatMenu = () => {
   chatMenuOpen.value = !chatMenuOpen.value
 }
 
-const runChatAction = (action: 'search' | 'archive' | 'calls' | 'report' | 'block') => {
+const runChatAction = (
+  action: 'search' | 'archive' | 'sound' | 'stats' | 'calls' | 'report' | 'block'
+) => {
   chatMenuOpen.value = false
   if (action === 'search') emit('toggle-search')
   if (action === 'archive') emit('toggle-archive')
+  if (action === 'sound') emit('open-chat-sound')
+  if (action === 'stats') emit('open-chat-stats')
   if (action === 'calls') emit('toggle-calls-block')
   if (action === 'report') emit('report-chat')
   if (action === 'block') emit('block-chat')

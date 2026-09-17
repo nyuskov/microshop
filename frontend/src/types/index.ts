@@ -72,6 +72,14 @@ export interface ForwardedFrom {
   chat_id: number | null
 }
 
+/** Плашка «Ответ на историю»: снимок медиа истории на момент ответа. */
+export interface StoryReplyPreview {
+  /** `null` — история уже удалена (снимок медиа при этом остался). */
+  id: number | null
+  media_url: string | null
+  mime_type: string | null
+}
+
 /**
  * Карточка внешней ссылки из сообщения (превью сайта, как в Telegram).
  *
@@ -236,6 +244,12 @@ export interface Message {
   reactions: ReactionSummary[]
   forwarded_from: ForwardedFrom | null
   /**
+   * Пометка «ответ на историю»: снимок медиа истории на момент ответа. Медиа
+   * хранится в самом сообщении, поэтому плашка живёт и после удаления истории
+   * (тогда `id` — `null`).
+   */
+  reply_to_story?: StoryReplyPreview | null
+  /**
    * Скрыто модерацией до разбора (авто после 3 жалоб или решением модератора).
    * Такое сообщение видит только автор — с пометкой «скрыто до проверки»;
    * остальным оно не приходит вовсе (см. api_v1/moderation/service.py).
@@ -248,6 +262,8 @@ export interface CreateMessageRequest {
   text: string
   chat_id: number
   reply_to_id?: number | null
+  /** Ответ на историю: автору в личный чат, с плашкой и превью медиа. */
+  reply_to_story_id?: number | null
   encrypted?: boolean
 }
 

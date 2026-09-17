@@ -18,7 +18,7 @@
  */
 
 const CACHE_PREFIX = 'pismo-v'
-const CACHE_VERSION = 27
+const CACHE_VERSION = 28
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 // Кэш медиа живёт отдельно: обновление версии приложения не сбрасывает картинки.
 const MEDIA_CACHE_PREFIX = 'pismo-media-v'
@@ -277,7 +277,9 @@ async function handlePush(event) {
     icon: absoluteUrl(payload.icon || '/icons/icon-192.png'),
     badge: absoluteUrl(payload.badge || '/icons/badge-96.png'),
     data,
-    tag: callId ? 'call-' + callId : chatId ? 'chat-' + chatId : undefined
+    // `payload.tag` приходит от сервера для уведомлений об истории (у них нет
+    // ни чата, ни звонка): одна история — один тег, уведомления не копятся.
+    tag: payload.tag || (callId ? 'call-' + callId : chatId ? 'chat-' + chatId : undefined)
   }
   // Входящий звонок (приложение закрыто/в фоне): держим уведомление на экране,
   // со звуком и вибрацией (как входящий вызов), с кнопкой «Ответить».
@@ -559,6 +561,21 @@ self.addEventListener('notificationclick', (event) => {
           }
         }
         await self.clients.openWindow('/?security=1')
+        return
+      }
+
+      // Реакция на мою историю: открываем приложение на этой истории — там
+      // автор сразу видит счётчики и панель «кто смотрел».
+      if (data.type === 'story_reaction') {
+        const storyId = Number(data.story_id || 0) || null
+        for (const client of windows) {
+          if ('focus' in client) {
+            client.focus()
+            client.postMessage({ type: 'open-story', story_id: storyId })
+            return
+          }
+        }
+        await self.clients.openWindow(storyId ? '/?story=' + encodeURIComponent(storyId) : '/')
         return
       }
 

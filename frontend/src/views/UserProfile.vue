@@ -26,6 +26,7 @@ import {
 import { disableNativePush, enableNativePush, isNativeApp } from '@/services/nativePush'
 import { fetchStorageInfo, formatBytes, type StorageInfo } from '@/services/storage'
 import { clearAppCache, readDeviceCache, type DeviceCacheInfo } from '@/utils/deviceCache'
+import { isMessageSoundEnabled, setMessageSoundEnabled } from '@/utils/sounds'
 import {
   deviceLabelOf,
   fetchSecurityLog,
@@ -305,6 +306,18 @@ const onPrivacyToggle = async () => {
  */
 const onPreviewToggle = async () => {
   await updateProfile()
+}
+
+/**
+ * Звук сообщений — настройка УСТРОЙСТВА (как тип звонка), поэтому она живёт в
+ * localStorage и сохраняется сразу: на телефоне и на компьютере человек может
+ * хотеть разное, а на сервер это знание не нужно.
+ */
+const messageSoundEnabled = ref(isMessageSoundEnabled())
+
+const onMessageSoundToggle = (val: boolean) => {
+  setMessageSoundEnabled(val)
+  messageSoundEnabled.value = val
 }
 const currentSectionTitle = computed(() => {
   if (section.value === 'admin') return 'Администрирование'
@@ -1351,6 +1364,21 @@ const onNotificationsToggle = async (val: boolean) => {
               keep-color
               :disable="!profileForm.notifications_enabled"
               @update:model-value="onPreviewToggle"
+            />
+          </div>
+
+          <!-- Звук в приложении: настройка устройства (как тип звонка), поэтому
+               живёт в localStorage, а не в профиле на сервере. -->
+          <div class="toggle-row">
+            <div class="toggle-text">
+              <span class="toggle-name">Звук сообщений</span>
+              <span class="toggle-desc"> Короткий звук в приложении; на этом устройстве </span>
+            </div>
+            <q-toggle
+              v-model="messageSoundEnabled"
+              color="primary"
+              keep-color
+              @update:model-value="onMessageSoundToggle"
             />
           </div>
 

@@ -17,6 +17,7 @@ from core.models import (
     Chat,
     Message,
     MessageReaction,
+    Story,
     User,
     user_chat_association_table,
 )
@@ -90,7 +91,7 @@ def _media_kind_of(message: Message) -> str:
     return "file"
 
 
-def _media_kind_expr():
+def media_kind_expr():
     """SQL-выражение типа вложения (то же правило, что в ``_media_kind_of``)."""
     mime = func.coalesce(func.lower(Message.mime_type), "")
     ext = func.coalesce(func.lower(Message.file_name), "")
@@ -178,6 +179,23 @@ def _forwarded_payload(message: Message) -> dict | None:
     }
 
 
+def _story_reply_payload(message: Message) -> dict | None:
+    """Плашка «ответ на историю» либо None для обычных сообщений.
+
+    Медиа берём из снимка в самом сообщении: истории живут сутки, а сообщение
+    остаётся — и плашка должна остаться осмысленной (как снимок отправителя у
+    пересланных). ``id`` может обнулиться (история удалена) — плашка всё равно
+    показывается по снимку.
+    """
+    if message.reply_to_story_id is None and not message.reply_to_story_media_url:
+        return None
+    return {
+        "id": message.reply_to_story_id,
+        "media_url": message.reply_to_story_media_url,
+        "mime_type": message.reply_to_story_mime_type,
+    }
+
+
 def message_to_dict(message: Message, user_id: int) -> dict:
     """Преобразует сообщение (с загруженными реакциями) в словарь для API."""
     # Скрытое модерацией сообщение автор видит с пометкой «скрыто до проверки»
@@ -205,6 +223,7 @@ def message_to_dict(message: Message, user_id: int) -> dict:
         "file": _file_payload(message),
         "reactions": _reactions_payload(message.reactions, user_id),
         "forwarded_from": _forwarded_payload(message),
+        "reply_to_story": _story_reply_payload(message),
     }
 
 
@@ -238,6 +257,7 @@ def message_basic_to_dict(message: Message) -> dict:
         "file": None if hidden else _file_payload(message),
         "reactions": [],
         "forwarded_from": None if hidden else _forwarded_payload(message),
+        "reply_to_story": None if hidden else _story_reply_payload(message),
     }
 
 
@@ -353,15 +373,27 @@ async def send_text_message(
     text: str,
     user_id: int,
     reply_to_id: int | None = None,
+    reply_to_story_id: int | None = None,
     encrypted: bool = False,
 ) -> dict:
-    """Отправляет текстовое сообщение (опционально — E2EE-шифротекст)."""
+    """Отправляет текстовое сообщение (опционально — E2EE-шифротекст).
+
+    ``reply_to_story_id`` — ответ на историю: сообщение уходит автору истории,
+    а рядом со снимком медиа остаётся плашка «Ответ на историю» (снимок
+    переживёт удаление истории).
+    """
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
     # В канале писать в ленту могут только владелец и админы.
     await ensure_can_post(session, chat_id, user_id)
     await _ensure_not_blocked(session, chat_id=chat_id, user_id=user_id)
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
+
+    story: Story | None = None
+    if reply_to_story_id is not None:
+        story = await _validate_story_reply(
+            session, chat_id=chat_id, story_id=reply_to_story_id, user_id=user_id
+        )
 
     # «Обычный» чат (E2EE выключен) не принимает шифротекст — пишем как есть,
     # чтобы превью/уведомления оставались читаемыми (сервер видит текст).
@@ -377,6 +409,9 @@ async def send_text_message(
         user_id=user_id,
         reply_to_id=reply_to_id,
         encrypted=encrypted,
+        reply_to_story_id=story.id if story is not None else None,
+        reply_to_story_media_url=story.media_url if story is not None else None,
+        reply_to_story_mime_type=story.mime_type if story is not None else None,
     )
     session.add(message)
     await session.commit()
@@ -471,6 +506,42 @@ async def _validate_reply(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Нельзя ответить на это сообщение",
         )
+
+
+async def _validate_story_reply(
+    session: AsyncSession, *, chat_id: int, story_id: int, user_id: int
+) -> Story:
+    """Проверяет, что ответ на историю адресован её автору в этом чате.
+
+    Три правила: история существует и ещё не истекла (отвечать в пустоту
+    бессмысленно), отвечает не её автор (себе не отвечают) и автор истории —
+    участник именно этого чата (иначе пометка вела бы к чужому человеку).
+
+    Истёкшую историю отклоняем, хотя в ленте её уже нет: клиент мог держать
+    просмотрщик открытым до срока.
+    """
+    story = await session.get(Story, story_id)
+    if story is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="История не найдена",
+        )
+    if story.expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="История больше не доступна",
+        )
+    if story.user_id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Это ваша история",
+        )
+    if not await is_user_chat_member(session, chat_id=chat_id, user_id=story.user_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ответ на историю отправляется автору в личный чат",
+        )
+    return story
 
 
 async def list_chat_messages(
@@ -633,7 +704,7 @@ async def list_chat_media(
     if before_id is not None:
         stmt = stmt.where(Message.id < before_id)
     if kind is not None:
-        stmt = stmt.where(_media_kind_expr() == kind)
+        stmt = stmt.where(media_kind_expr() == kind)
 
     page_size = limit if limit is not None else DEFAULT_MEDIA_PAGE_SIZE
     stmt = stmt.order_by(Message.id.desc()).limit(page_size)

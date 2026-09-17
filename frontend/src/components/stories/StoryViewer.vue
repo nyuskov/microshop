@@ -59,7 +59,7 @@
     </div>
 
     <!-- Медиа истории -->
-    <div class="viewer-stage">
+    <div class="viewer-stage" @pointerup="onStageTap">
       <img
         v-if="!isVideo"
         :src="mediaUrl(current.story.media_url)"
@@ -79,11 +79,31 @@
         @timeupdate="onVideoProgress"
       ></video>
 
+      <!-- Вспышки быстрых реакций: «сердечко» вылетает из точки тапа по центру. -->
+      <span
+        v-for="burst in bursts"
+        :key="burst.id"
+        class="reaction-burst"
+        :style="{ left: `${burst.x}px`, top: `${burst.y}px` }"
+        aria-hidden="true"
+        >{{ burst.emoji }}</span
+      >
+
       <!-- Зоны «назад/вперёд» -->
-      <button class="viewer-zone left" type="button" title="Предыдущая" @click.stop="previous">
+      <button
+        class="viewer-zone left"
+        type="button"
+        title="Предыдущая"
+        @click.stop="onZoneClick($event, 'left')"
+      >
         <q-icon :name="icon('chevron_left')" size="30px" />
       </button>
-      <button class="viewer-zone right" type="button" title="Следующая" @click.stop="next">
+      <button
+        class="viewer-zone right"
+        type="button"
+        title="Следующая"
+        @click.stop="onZoneClick($event, 'right')"
+      >
         <q-icon :name="icon('chevron_right')" size="30px" />
       </button>
     </div>
@@ -134,6 +154,33 @@
       </div>
 
       <p v-if="current.story.caption" class="viewer-caption">{{ current.story.caption }}</p>
+
+      <!-- Ответ текстом: уходит автору сообщением в личный чат (как в Instagram).
+           На своей истории поля нет — себе не отвечают. -->
+      <form
+        v-if="!current.isMine"
+        class="viewer-reply"
+        @submit.prevent="sendReply"
+        @pointerdown.stop
+      >
+        <input
+          v-model="replyText"
+          class="viewer-reply-input"
+          type="text"
+          maxlength="500"
+          :placeholder="`Ответить ${authorName}…`"
+          aria-label="Ответить на историю"
+          @keydown.stop
+        />
+        <button
+          class="viewer-reply-btn"
+          type="submit"
+          title="Отправить ответ"
+          :disabled="!replyText.trim()"
+        >
+          <q-icon :name="icon('send')" size="20px" />
+        </button>
+      </form>
       <p v-if="current.isMine" class="viewer-views">
         <button class="viewer-views-btn" type="button" @click.stop="openAudience()">
           <q-icon :name="icon('visibility')" size="14px" /> {{ current.story.views }}
@@ -223,6 +270,7 @@ import {
   nextStory,
   previousStory,
   quickReactions,
+  storyTapZone,
   type FlatStory
 } from '@/utils/stories'
 
@@ -233,6 +281,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
+  /** Ответ на историю текстом: родитель отправляет его автору в личный чат. */
+  (e: 'reply', payload: { storyId: number; authorId: number; text: string }): void
 }>()
 
 /**: Сколько показывать картинку, если это не видео. */
@@ -402,6 +452,65 @@ const onPointerCancel = () => {
   resumeAfterHold()
 }
 
+/* ---------------- Быстрая реакция (тап по центру) ---------------- */
+
+/**
+ * Первый эмодзи набора — «сердечко» быстрого отклика, как в Instagram.
+ * Набор задаёт сервер, поэтому панель и мгновенная реакция не разъедутся.
+ */
+const quickEmoji = computed(() => stories.reactionKinds[0] ?? '❤️')
+
+/** Вспышки: эмодзи, вылетающие из точки тапа. */
+const bursts = ref<{ id: number; emoji: string; x: number; y: number }[]>([])
+let burstSeq = 0
+
+/** Показывает вспышку реакции в точке тапа (координаты — внутри сцены). */
+const spawnBurst = (emoji: string, x: number, y: number) => {
+  const id = ++burstSeq
+  bursts.value = [...bursts.value, { id, emoji, x, y }]
+  window.setTimeout(() => {
+    bursts.value = bursts.value.filter((burst) => burst.id !== id)
+  }, 800)
+}
+
+/** Ставит «сердечко» на историю — вызывается тапом по центру сцены. */
+const quickReact = (x: number, y: number) => {
+  const entry = current.value
+  // На своей истории реакции не ставят (сервер её отклонит) — и вспышки нет.
+  if (!entry || entry.isMine) return
+  spawnBurst(quickEmoji.value, x, y)
+  void stories.react(entry.story.id, quickEmoji.value)
+}
+
+/**
+ * Тап по сцене: по краям — назад/вперёд, по центру — быстрая реакция.
+ *
+ * Жест один и тот же — одиночный тап (двойной тап человеку неочевиден): края
+ * заняты стрелками листания, поэтому центр отдан реакции, а листать можно ещё
+ * свайпом. Свайпы и удержание сюда не попадают — это жесты корневого
+ * обработчика.
+ */
+const onStageTap = (event: PointerEvent) => {
+  if (gestureAxis !== 'none' || dragX.value !== 0 || dragY.value !== 0) return
+  const stage = event.currentTarget as HTMLElement | null
+  if (!stage) return
+  const rect = stage.getBoundingClientRect()
+  const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5
+  const zone = storyTapZone(ratio)
+  if (zone === 'previous') previous()
+  else if (zone === 'next') next()
+  else quickReact(event.clientX - rect.left, event.clientY - rect.top)
+}
+
+/**
+ * Клик по зоне от клавиатуры и скринридера листает сразу: координат у него нет,
+ * поэтому его разбирает не `onStageTap` (мышь и палец приходят с `detail > 0`).
+ */ const onZoneClick = (event: MouseEvent, direction: 'left' | 'right') => {
+  if (event.detail !== 0) return
+  if (direction === 'left') previous()
+  else next()
+}
+
 /** Подгружает соседние кадры, чтобы перелистывание было без «мигания». */
 const preloadNeighbours = () => {
   const entry = current.value
@@ -495,6 +604,24 @@ const onReact = (emoji: string): void => {
   void stories.react(entry.story.id, emoji)
 }
 
+/* ---------------- Ответ текстом ---------------- */
+
+/**
+ * Текст ответа. Отправляет его родитель (`emit('reply')`): у него есть доступ
+ * к личному чату автора, шифрованию E2EE и очереди «Ждёт сети» — дублировать
+ * эту логику в просмотрщике нельзя.
+ */
+const replyText = ref('')
+
+const sendReply = (): void => {
+  const entry = current.value
+  const text = replyText.value.trim()
+  if (!entry || entry.isMine || !text) return
+  emit('reply', { storyId: entry.story.id, authorId: entry.author.id, text })
+  // Поле чистим сразу: ответ отправляется оптимистично, как обычное сообщение.
+  replyText.value = ''
+}
+
 /* ---------------- Аудитория своей истории ---------------- */
 
 /** Панель «кто смотрел» открыта (только для своей истории). */
@@ -527,12 +654,16 @@ const openAudience = async (): Promise<void> => {
   audienceOpen.value = true
   // Повторное открытие по той же истории — показываем уже загруженное.
   if (audienceStoryId === entry.story.id && audience.value) return
+  await loadAudience(entry.story.id)
+}
 
+/** Перечитывает аудиторию истории (для открытой панели — после реакции). */
+const loadAudience = async (storyId: number): Promise<void> => {
   audienceLoading.value = true
   audienceError.value = ''
   try {
-    audience.value = await fetchStoryAudience(entry.story.id)
-    audienceStoryId = entry.story.id
+    audience.value = await fetchStoryAudience(storyId)
+    audienceStoryId = storyId
   } catch (error) {
     audience.value = null
     audienceStoryId = null
@@ -541,6 +672,19 @@ const openAudience = async (): Promise<void> => {
     audienceLoading.value = false
   }
 }
+
+// Пришла реакция (событие по сокету → лента перечитана): панель «Аудитория»
+// держит данные в кэше на время просмотра, поэтому обновляем её, только если
+// она открыта на той же истории — иначе автор увидит старый список.
+watch(
+  () => stories.groups,
+  () => {
+    const entry = current.value
+    if (audienceOpen.value && entry && audienceStoryId === entry.story.id) {
+      void loadAudience(entry.story.id)
+    }
+  }
+)
 
 const closeAudience = (): void => {
   audienceOpen.value = false
@@ -573,6 +717,10 @@ watch(currentId, () => {
   progress.value = 0
   // Панель реакций у каждой истории своя — свёрнутый вид по умолчанию.
   expanded.value = false
+  // Вспышка реакции относится к прошлой истории — на новой её быть не должно.
+  bursts.value = []
+  // Недописанный ответ тоже не переносим на следующую историю.
+  replyText.value = ''
   // Аудитория тоже про конкретную историю: закрываем и забываем загруженное.
   audienceOpen.value = false
   audience.value = null
@@ -807,6 +955,35 @@ watch(flat, (list) => {
   opacity: 0.9;
 }
 
+/* Вспышка быстрой реакции: эмодзи вылетает из точки тапа. */
+.reaction-burst {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 46px;
+  line-height: 1;
+  pointer-events: none;
+  animation: story-burst 0.7s ease-out forwards;
+}
+
+@keyframes story-burst {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4);
+  }
+  25% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -150%) scale(1.05);
+  }
+}
+
 .viewer-caption {
   margin: 0 auto;
   max-width: 34rem;
@@ -842,6 +1019,62 @@ watch(flat, (list) => {
 
 .viewer-views-label {
   opacity: 0.75;
+}
+
+/* ---------- Ответ на историю ---------- */
+.viewer-reply {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 34rem;
+  margin: 10px auto 0;
+  /* Поле перехватывает жесты показа: набор текста не листает истории. */
+  touch-action: manipulation;
+}
+
+.viewer-reply-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font: inherit;
+  font-size: 14.5px;
+  padding: 8px 14px;
+}
+
+.viewer-reply-input::placeholder {
+  color: inherit;
+  opacity: 0.6;
+}
+
+.viewer-reply-input:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.7);
+  outline-offset: 1px;
+}
+
+.viewer-reply-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: inherit;
+  cursor: pointer;
+}
+
+.viewer-reply-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.viewer-reply-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 /* ---------- Панель «Аудитория истории» ---------- */

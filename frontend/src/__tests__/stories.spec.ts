@@ -18,6 +18,7 @@ import {
   previousStory,
   quickReactions,
   reactionTotal,
+  storyTapZone,
   toggleReaction
 } from '@/utils/stories'
 
@@ -251,5 +252,20 @@ describe('audienceViewsHint', () => {
 
   it('без просмотров', () => {
     expect(audienceViewsHint(0, 0)).toBe('Всего: 0 просмотров')
+  })
+})
+
+describe('зоны тапа', () => {
+  it('левая и правая кромки листают историю', () => {
+    expect(storyTapZone(0)).toBe('previous')
+    expect(storyTapZone(0.31)).toBe('previous')
+    expect(storyTapZone(0.69)).toBe('next')
+    expect(storyTapZone(1)).toBe('next')
+  })
+
+  it('центр ставит быструю реакцию', () => {
+    expect(storyTapZone(0.32)).toBe('reaction')
+    expect(storyTapZone(0.5)).toBe('reaction')
+    expect(storyTapZone(0.67)).toBe('reaction')
   })
 })

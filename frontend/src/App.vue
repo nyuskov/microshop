@@ -5,6 +5,7 @@ import { useVisualViewport } from '@/composables/useVisualViewport'
 import { useMaintenanceWatch } from '@/composables/useMaintenanceWatch'
 import { useAuthStore } from '@/stores/auth'
 import OfflineBanner from '@/components/common/OfflineBanner.vue'
+import { useOnlineStatus } from '@/composables/useOnlineStatus'
 import ExternalLinkDialog from '@/components/common/ExternalLinkDialog.vue'
 import FatalErrorScreen from '@/components/common/FatalErrorScreen.vue'
 import MaintenanceScreen from '@/components/common/MaintenanceScreen.vue'
@@ -19,6 +20,10 @@ useVisualViewport()
 const authStore = useAuthStore()
 watch(() => authStore.isAdmin, setMaintenanceExempt, { immediate: true })
 useMaintenanceWatch()
+
+// Связь: пока сверху висит плашка «нет сети»/«Соединение…», баннер обновления
+// сдвигается вниз, иначе они перекрыли бы друг друга.
+const { bannerVisible: connectionBannerVisible } = useOnlineStatus()
 
 const updateAvailable = ref(false)
 let reloading = false
@@ -46,7 +51,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="updateAvailable" class="pwa-update-bar" role="status">
+  <div
+    v-if="updateAvailable"
+    class="pwa-update-bar"
+    :class="{ shifted: connectionBannerVisible }"
+    role="status"
+  >
     <span class="pwa-update-text">Доступна новая версия приложения</span>
     <button type="button" class="pwa-update-btn" @click="onUpdateClick">Обновить</button>
   </div>
@@ -79,6 +89,10 @@ onBeforeUnmount(() => {
   padding: 8px 10px 8px 14px;
   box-shadow: var(--ms-shadow-pop);
   box-sizing: border-box;
+}
+
+.pwa-update-bar.shifted {
+  top: 44px;
 }
 
 .pwa-update-text {

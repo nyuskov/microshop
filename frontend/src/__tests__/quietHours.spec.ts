@@ -9,6 +9,7 @@ import {
   formatMinutes,
   formatOffset,
   isEmptyWindow,
+  isQuietHoursNow,
   localUtcOffsetMinutes,
   quietHoursSummary,
   timeOptions
@@ -124,6 +125,64 @@ describe('часовой пояс', () => {
     expect(formatOffset(-240)).toBe('UTC−04:00')
     expect(formatOffset(330)).toBe('UTC+05:30')
     expect(formatOffset(0)).toBe('UTC+00:00')
+  })
+})
+
+describe('isQuietHoursNow: тихо ли прямо сейчас', () => {
+  /** UTC-момент → местное время получателя считается по `quiet_hours_offset`. */
+  const at = (iso: string) => new Date(iso)
+
+  it('выключенные тихие часы — не тихо никогда', () => {
+    expect(isQuietHoursNow(null, at('2026-09-17T23:00:00Z'))).toBe(false)
+    expect(
+      isQuietHoursNow({ quiet_hours_enabled: false, quiet_hours_start: 0, quiet_hours_end: 1380 })
+    ).toBe(false)
+  })
+
+  it('окно через полночь (23:00–08:00, Москва)', () => {
+    const settings = {
+      quiet_hours_enabled: true,
+      quiet_hours_start: QUIET_DEFAULT_START,
+      quiet_hours_end: QUIET_DEFAULT_END,
+      quiet_hours_offset: 180
+    }
+    // 02:00 по Москве (23:00 UTC) — тихо, 12:00 (09:00 UTC) — нет.
+    expect(isQuietHoursNow(settings, at('2026-09-17T23:00:00Z'))).toBe(true)
+    expect(isQuietHoursNow(settings, at('2026-09-17T09:00:00Z'))).toBe(false)
+    // Границы окна: ровно 23:00 — уже тихо, ровно 08:00 — уже нет.
+    expect(isQuietHoursNow(settings, at('2026-09-17T20:00:00Z'))).toBe(true)
+    expect(isQuietHoursNow(settings, at('2026-09-17T05:00:00Z'))).toBe(false)
+  })
+
+  it('окно внутри одних суток (тихий час днём)', () => {
+    const settings = {
+      quiet_hours_enabled: true,
+      quiet_hours_start: 13 * 60,
+      quiet_hours_end: 17 * 60,
+      quiet_hours_offset: 0
+    }
+    expect(isQuietHoursNow(settings, at('2026-09-17T14:00:00Z'))).toBe(true)
+    expect(isQuietHoursNow(settings, at('2026-09-17T18:00:00Z'))).toBe(false)
+  })
+
+  it('совпавшие границы — тишины нет (иначе было бы 24 часа)', () => {
+    expect(
+      isQuietHoursNow(
+        {
+          quiet_hours_enabled: true,
+          quiet_hours_start: 0,
+          quiet_hours_end: 0,
+          quiet_hours_offset: 0
+        },
+        at('2026-09-17T14:00:00Z')
+      )
+    ).toBe(false)
+  })
+
+  it('без сдвига берёт пояс устройства', () => {
+    const settings = { quiet_hours_enabled: true, quiet_hours_start: 0, quiet_hours_end: 1380 }
+    // 00:00–23:00 по поясу устройства: 12:00 UTC почти везде внутри окна.
+    expect(isQuietHoursNow(settings, at('2026-09-17T12:00:00Z'))).toBe(true)
   })
 })
 

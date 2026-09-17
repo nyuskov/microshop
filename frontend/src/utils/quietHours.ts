@@ -75,6 +75,44 @@ export const quietHoursSummary = (options: {
  */
 export const localUtcOffsetMinutes = (date = new Date()): number => -date.getTimezoneOffset()
 
+/**
+ * Настройки тихих часов, которых достаточно для решения «сейчас тихо».
+ * Сервер хранит те же поля в профиле (см. `core/quiet_hours.py`).
+ */
+export interface QuietHoursSettings {
+  quiet_hours_enabled?: boolean
+  quiet_hours_start?: number
+  quiet_hours_end?: number
+  quiet_hours_offset?: number
+}
+
+/**
+ * Попадает ли текущий момент в окно тишины у этого человека.
+ *
+ * Нужно для звука в приложении: push глушит сервер, а «блип» внутри страницы
+ * решает клиент — и он обязан считать то же самое, иначе в тихие часы телефон
+ * всё равно звенит, пока приложение открыто.
+ *
+ * Логика та же, что на сервере: окно может идти через полночь, а совпавшие
+ * границы означают «окна нет» (иначе получилось бы 24 часа тишины).
+ */
+export const isQuietHoursNow = (
+  settings: QuietHoursSettings | null | undefined,
+  now = new Date()
+): boolean => {
+  if (!settings?.quiet_hours_enabled) return false
+  const start = settings.quiet_hours_start ?? QUIET_DEFAULT_START
+  const end = settings.quiet_hours_end ?? QUIET_DEFAULT_END
+  if (start === end) return false
+  const offset = settings.quiet_hours_offset ?? localUtcOffsetMinutes(now)
+  // Местное время получателя в минутах от полуночи (та же арифметика, что на сервере).
+  const local = now.getUTCHours() * 60 + now.getUTCMinutes() + offset
+  const minutes = ((local % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY
+  return crossesMidnight(start, end)
+    ? minutes >= start || minutes < end
+    : minutes >= start && minutes < end
+}
+
 /** Подпись часового пояса для подсказки: «UTC+03:00». */
 export const formatOffset = (offsetMinutes: number): string => {
   const sign = offsetMinutes < 0 ? '−' : '+'

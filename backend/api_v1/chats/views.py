@@ -10,6 +10,7 @@ from api_v1.chats.schemas import (
     ChatDetail,
     ChatE2eeUpdate,
     ChatMemberSchema,
+    ChatStats,
     ChatUserSchema,
     GroupCreate,
     GroupMembersAdd,
@@ -311,6 +312,31 @@ async def update_group_info(
         description=payload.description,
     )
     return await _serialize_chat_full(session, chat, user.id)
+
+
+@router.get("/{chat_id}/stats/", response_model=ChatStats)
+async def get_chat_stats(
+    chat_id: int,
+    offset_minutes: int = Query(default=0, ge=-12 * 60, le=14 * 60),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> ChatStats:
+    """Статистика переписки: итоги, активность по дням, топ участников, медиа.
+
+    Доступна только участникам чата: это производная от переписки, и чужому
+    она не нужна. Пояс (`offset_minutes`) присылает клиент — он один знает
+    местное время, а без сдвига «сообщений по дням» показало бы вечерние
+    сообщения как ночные.
+    """
+    if not await crud.is_user_chat_member(session, chat_id=chat_id, user_id=user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Статистика видна только участникам чата",
+        )
+    stats = await crud.chat_stats(
+        session, chat_id=chat_id, offset_minutes=offset_minutes
+    )
+    return ChatStats(**stats)
 
 
 @router.post("/{chat_id}/members/", response_model=ChatSchema)

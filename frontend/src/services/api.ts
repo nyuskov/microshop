@@ -2,6 +2,8 @@ import axios from 'axios'
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios'
 
 import { API_BASE_URL } from '@/config'
+import { isNetworkError } from '@/services/errors'
+import { reportConnectionAlive, reportConnectionLost } from '@/composables/useOnlineStatus'
 import { maintenanceMessageOf, showMaintenance } from '@/utils/maintenance'
 
 /**
@@ -99,7 +101,12 @@ function shouldAutoRefresh(url: string | undefined): boolean {
 
 // --- Авто-refresh access-токена при 401 и повтор исходного запроса ---
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Любой ответ доказывает, что связь есть: плашка «нет сети» гаснет сразу,
+    // не дожидаясь следующей проверки маяком.
+    reportConnectionAlive()
+    return response
+  },
   async (error: AxiosError) => {
     const config = error.config as (InternalAxiosRequestConfig & { _retried?: boolean }) | undefined
     const status = error.response?.status
@@ -118,6 +125,11 @@ api.interceptors.response.use(
     if (lost) {
       authLostHandler?.(lost.reason, lost.message)
       return Promise.reject(error)
+    }
+    // Запрос не дошёл: показываем «нет подключения» сразу, а не через секунды,
+    // пока отработает маяк. Отменённые запросы (навигация) сюда не относятся.
+    if (isNetworkError(error) && error.code !== 'ERR_CANCELED') {
+      reportConnectionLost()
     }
     if (
       status === 401 &&

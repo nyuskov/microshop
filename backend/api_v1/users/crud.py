@@ -114,6 +114,22 @@ def canonical_phone(raw: str) -> str:
     return digits
 
 
+def display_name(user: User) -> str:
+    """Отображаемое имя: «Имя Фамилия», иначе логин.
+
+    То же имя уходит в уведомления (push и realtime-подсказки), поэтому
+    правило должно быть одно — иначе в списке чатов и в уведомлении человек
+    выглядит по-разному.
+    """
+    if user.first_name and user.last_name:
+        return f"{user.first_name} {user.last_name}"
+    if user.first_name:
+        return user.first_name
+    if user.last_name:
+        return user.last_name
+    return user.username
+
+
 async def get_users_by_phones(
     session: AsyncSession,
     phones: list[str],

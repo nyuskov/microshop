@@ -148,6 +148,8 @@ export const ICON_MAP: Record<string, string> = {
 
   // Прочее
   auto_stories: 'book-open',
+  // Статистика чата: столбики (в Lucide это `chart-column`).
+  bar_chart: 'chart-column',
   palette: 'palette',
   dark_mode: 'moon',
   light_mode: 'sun',

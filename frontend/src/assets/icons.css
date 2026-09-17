@@ -88,6 +88,10 @@
   content: '\E064 ';
 }
 
+.icon-chart-column::before {
+  content: '\E2A3 ';
+}
+
 .icon-check::before {
   content: '\E06C ';
 }

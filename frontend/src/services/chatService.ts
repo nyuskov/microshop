@@ -1,6 +1,7 @@
 export { mediaUrl } from '@/config'
 
 import { api } from './api'
+import { localUtcOffsetMinutes } from '@/utils/quietHours'
 import { uploadPercent } from '@/utils/upload'
 import type {
   Chat,
@@ -37,6 +38,48 @@ export interface UserLinkPreview {
 
 /** Сколько ждём загрузку вложения (обычные запросы живут 15 с). */
 export const ATTACHMENT_UPLOAD_TIMEOUT_MS = 120_000
+
+export interface ChatStatsDay {
+  /** Локальная дата дня (`2026-09-17`) — уже со сдвигом пояса устройства. */
+  date: string
+  count: number
+}
+
+export interface ChatStatsSender {
+  user_id: number
+  /** Пустая строка — аккаунт удалён. */
+  name: string
+  count: number
+}
+
+export interface ChatStatsMedia {
+  image: number
+  video: number
+  audio: number
+  file: number
+}
+
+export interface ChatStats {
+  messages_total: number
+  first_at: string | null
+  last_at: string | null
+  days: ChatStatsDay[]
+  media: ChatStatsMedia
+  top_senders: ChatStatsSender[]
+}
+
+/**
+ * Статистика чата.
+ *
+ * Сдвиг пояса считает клиент (сервер живёт в UTC): без него «сообщений по дням»
+ * показывало бы вечерние сообщения как ночные.
+ */
+export const fetchChatStats = async (chatId: number): Promise<ChatStats> => {
+  const response = await api.get<ChatStats>(`/chats/${chatId}/stats/`, {
+    params: { offset_minutes: localUtcOffsetMinutes() }
+  })
+  return response.data
+}
 
 /** Возвращает чаты текущего пользователя с последними сообщениями. */
 export const fetchMyChats = async (): Promise<Chat[]> => {
@@ -215,12 +258,14 @@ export const sendNewMessage = async (
   chatId: number,
   text: string,
   replyToId?: number | null,
-  encrypted = false
+  encrypted = false,
+  replyToStoryId?: number | null
 ): Promise<Message> => {
   const payload: CreateMessageRequest = {
     chat_id: chatId,
     text,
     reply_to_id: replyToId ?? null,
+    reply_to_story_id: replyToStoryId ?? null,
     encrypted
   }
   const response = await api.post<Message>('/messages/', payload)

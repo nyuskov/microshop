@@ -88,11 +88,13 @@ async def add_request_id_and_log_slow(request: Request, call_next):
 
 #: Адреса, до которых заглушка НЕ доходит: проверки живости (иначе мониторинг
 #: принял бы плановые работы за упавший сервис), сам рубильник (статус +
-#: переключение) и эндпоинты входа — владелец должен суметь войти и выключить
-#: режим, а не искать ssh.
+#: переключение), маяк связи (по нему клиент отличает «нет сети» от «техработы»)
+#: и эндпоинты входа — владелец должен суметь войти и выключить режим, а не
+#: искать ssh.
 MAINTENANCE_EXEMPT_PREFIXES = (
     f"{settings.api_v1_prefix}/health",
     f"{settings.api_v1_prefix}/system/maintenance",
+    f"{settings.api_v1_prefix}/system/ping",
     f"{settings.api_v1_prefix}/auth/",
     f"{settings.api_v1_prefix}/jwt/",
 )

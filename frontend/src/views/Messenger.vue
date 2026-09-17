@@ -140,6 +140,7 @@
             :show-call-button="isPrivateChat(selectedChat)"
             :show-back="isPhone"
             :peer-online="selectedChatPeerOnline"
+            :peer-typing="isPeerTyping(selectedChat.id)"
             :pinned="selectedChatPinned"
             :archived="selectedChatArchived"
             :blocked="peerFullyBlocked"
@@ -151,6 +152,8 @@
             @start-call="startCall"
             @toggle-pin="toggleCurrentChatPin"
             @toggle-archive="toggleCurrentChatArchive"
+            @open-chat-sound="chatSoundOpen = true"
+            @open-chat-stats="chatStatsOpen = true"
             @toggle-calls-block="toggleSelectedPeerCalls"
             @report-chat="openReportForPeer"
             @block-chat="blockSelectedPeer"
@@ -365,12 +368,28 @@
     </q-card>
   </q-dialog>
 
-  <!-- Истории: полноэкранный просмотр -->
+  <!-- История: полноэкранный просмотр -->
   <StoryViewer
     v-if="openStoryId !== null"
     :groups="storiesStore.groups"
     :start-story-id="openStoryId"
     @close="openStoryId = null"
+    @reply="replyToStory"
+  />
+
+  <!-- Звук уведомлений выбранного чата (настройка устройства) -->
+  <ChatSoundDialog
+    v-if="chatSoundOpen && selectedChat"
+    :chat-id="selectedChat.id"
+    :chat-title="chatTitle(selectedChat, currentUserId)"
+    @close="chatSoundOpen = false"
+  />
+
+  <!-- Статистика чата: сообщения по дням, участники, вложения -->
+  <ChatStatsDialog
+    v-if="chatStatsOpen && selectedChat"
+    :chat-id="selectedChat.id"
+    @close="chatStatsOpen = false"
   />
 
   <!-- Информация о чате/группе, создание группы и удаление чата — состояние
@@ -594,6 +613,11 @@ import { useMediaRecording } from '@/composables/useMediaRecording'
 import { useLightbox } from '@/composables/useLightbox'
 import { useNativeShare } from '@/composables/useNativeShare'
 import { useFileDrop } from '@/composables/useFileDrop'
+import {
+  ONLINE_RESTORED_EVENT,
+  setConnectionSyncing,
+  useOnlineStatus
+} from '@/composables/useOnlineStatus'
 import ChatSidebar from '@/components/messenger/ChatSidebar.vue'
 import ChatHeader from '@/components/messenger/ChatHeader.vue'
 import ChatPlaceholder from '@/components/messenger/ChatPlaceholder.vue'
@@ -629,6 +653,12 @@ const GroupInviteDialog = defineAsyncComponent(
 // Диалоги модерации (требования RuStore) — в MessengerModerationOverlays.vue.
 // Просмотрщик историй — открывается по клику на историю.
 const StoryViewer = defineAsyncComponent(() => import('@/components/stories/StoryViewer.vue'))
+const ChatSoundDialog = defineAsyncComponent(
+  () => import('@/components/messenger/ChatSoundDialog.vue')
+)
+const ChatStatsDialog = defineAsyncComponent(
+  () => import('@/components/messenger/ChatStatsDialog.vue')
+)
 // Информация о чате/группе: на широком экране — правая панель (см. railVisible),
 // на остальных — модалка внутри MessengerChatOverlays. Компоненты те же, поэтому
 // содержимое не расходится между панелью и диалогом.
@@ -638,6 +668,8 @@ import { useCallStore } from '@/stores/call'
 import { useContactsStore } from '@/stores/contacts'
 import { useRealtimeStore } from '@/stores/realtime'
 import { useStoriesStore } from '@/stores/stories'
+import { isQuietHoursNow } from '@/utils/quietHours'
+import { chatSoundKey, playIncomingMessageSound } from '@/utils/sounds'
 import {
   disablePushNotifications,
   enablePushNotifications,
@@ -674,6 +706,10 @@ const profileRef = ref<ProfileHandle | null>(null)
 const showChatInfoModal = ref(false)
 const showGroupInfoModal = ref(false)
 const showCreateGroupModal = ref(false)
+/** Открыт диалог «Звук уведомлений» выбранного чата. */
+const chatSoundOpen = ref(false)
+/** Открыт диалог «Статистика чата». */
+const chatStatsOpen = ref(false)
 // Каналы: создание, подписка по ссылке, комментарии под постом и настройки —
 // состояние этих диалогов живёт в отдельном компоненте (см. ниже).
 /** Карточка открытого канала (шапка: число подписчиков, роль, настройки). */
@@ -2346,7 +2382,7 @@ const flushOutbox = async (onlyId?: string) => {
   if (uid === null) return
   const items = outboxItems.value.filter((item) => !onlyId || item.id === onlyId)
   for (const item of items) {
-    if (!onlyId && !navigator.onLine) return
+    if (!onlyId && !online.value) return
     outboxSending.value = [...outboxSending.value, item.id]
     try {
       const { wireText, encrypted } = await buildWireText(item.chatId, item.text)
@@ -2400,8 +2436,24 @@ const dropOutboxItem = (localId: number) => {
 /** Раз в 20 секунд пробуем дослать то, что застряло (если браузер думает, что сеть есть). */
 const OUTBOX_RETRY_MS = 20_000
 
-const onNetworkOnline = () => {
-  void flushOutbox()
+// ---------- Догрузка, когда связь вернулась ----------
+/**
+ * Связь вернулась: досылаем застрявшее и добираем то, что пропустили за время
+ * обрыва (список чатов, открытая переписка, лента историй). Пока это идёт, плашка
+ * сверху пишет «Соединение…» — человек видит, что приложение работает.
+ */
+const onConnectionRestored = async () => {
+  setConnectionSyncing(true)
+  try {
+    await Promise.all([
+      flushOutbox(),
+      refreshChatsQuiet(),
+      refreshOpenThreadQuiet(),
+      storiesStore.load()
+    ])
+  } finally {
+    setConnectionSyncing(false)
+  }
 }
 
 const startOutboxTimer = () => {
@@ -3160,19 +3212,105 @@ const {
 const liveAnnouncement = ref('')
 let announcementTimer: ReturnType<typeof setTimeout> | undefined
 
-const announceIncomingMessage = (chatId: number) => {
-  // В открытом чате сообщение и так видно — не мешаем лишней речью.
-  if (chatId === selectedChatId.value && !document.hidden) return
-  const chat = chats.value.find((item) => item.id === chatId)
-  const who = chat ? chatTitle(chat, currentUserId.value) : ''
-  liveAnnouncement.value = who ? `Новое сообщение: ${who}` : 'Новое сообщение'
+/** Озвучивает событие скринридеру (текст гаснет сам, иначе повтор не слышен). */
+const announceLiveMessage = (text: string) => {
+  liveAnnouncement.value = text
   if (announcementTimer !== undefined) window.clearTimeout(announcementTimer)
-  // Сбрасываем текст, иначе следующее такое же сообщение не произнесётся.
   announcementTimer = window.setTimeout(() => {
     liveAnnouncement.value = ''
     announcementTimer = undefined
   }, 4000)
 }
+
+const announceIncomingMessage = (chatId: number) => {
+  // В открытом чате сообщение и так видно — не мешаем лишней речью.
+  if (chatId === selectedChatId.value && !document.hidden) return
+  const chat = chats.value.find((item) => item.id === chatId)
+  const who = chat ? chatTitle(chat, currentUserId.value) : ''
+  announceLiveMessage(who ? `Новое сообщение: ${who}` : 'Новое сообщение')
+}
+
+/**
+ * Стоит ли молчать о новом сообщении (звук в приложении).
+ *
+ * Мьют чата — это «не беспокоить» целиком, а не только про push: если человек
+ * заглушил чат, звук в приложении тоже не нужен. В открытом и активном чате
+ * сообщение и так перед глазами, поэтому не звеним. Тихие часы считаем те же,
+ * что и сервер (`utils/quietHours.ts`): push он глушит, а «блип» внутри
+ * страницы решает клиент — и обязан считать так же, иначе ночью всё равно звенит.
+ */
+const shouldSilenceMessageSound = (chatId: number): boolean => {
+  if (mutedChatIds.value.includes(chatId)) return true
+  if (chatId === selectedChatId.value && document.hasFocus()) return true
+  return isQuietHoursNow(authStore.current_user?.profile)
+}
+
+/** Входящее сообщение от собеседника: звук (если уместно) и озвучивание. */
+const handleIncomingMessage = (chatId: number) => {
+  if (!shouldSilenceMessageSound(chatId)) {
+    // У чата может быть свой звук («Без звука» в диалоге «Звук уведомлений»).
+    playIncomingMessageSound(chatSoundKey(chatId) ?? 'default')
+  }
+  announceIncomingMessage(chatId)
+}
+
+/**
+ * Реакция на мою историю: автор узнаёт о ней, пока приложение открыто.
+ *
+ * Тихо обновляем ленту (счётчики в панели реакций и в «Аудитории»), а незрячему
+ * пользователю объявляем голосом: всплывающих тостов в приложении намеренно нет
+ * (история всё равно уже на экране), push приходит, когда приложение закрыто.
+ */
+const handleStoryReaction = (event: { name: string; emoji: string }) => {
+  void storiesStore.load()
+  announceLiveMessage(`${event.name}: реакция на вашу историю`)
+}
+
+/**
+ * Ответ на историю текстом: уходит сообщением в личный чат автора.
+ *
+ * Просмотрщик при этом не закрываем — человек продолжает листать истории, как
+ * в Instagram. Чат открываем молча (по необходимости создаём), сообщение несёт
+ * снимок истории: `reply_to_story_id`, чтобы собеседник видел, на что отвечают.
+ */
+const replyToStory = async (payload: { storyId: number; authorId: number; text: string }) => {
+  try {
+    const chat = await openPrivateChat(payload.authorId)
+    upsertChat(chat)
+    // Шифрование — по тому же правилу, что и обычная отправка: только если
+    // у обеих сторон есть ключи (e2ee_enabled). Иначе текст уходит открытым.
+    let wireText = payload.text
+    let wireEncrypted = false
+    const aes = await chatKeyOf(chat)
+    if (aes) {
+      wireText = await encryptText(aes, payload.text)
+      wireEncrypted = true
+    }
+    const message = await sendNewMessage(chat.id, wireText, null, wireEncrypted, payload.storyId)
+    if (wireEncrypted) {
+      // В ленте показываем открытый текст; шифротекст живёт на сервере.
+      message.text = payload.text
+      message.encrypted = false
+    }
+    // Дописываем в ленту только если этот чат уже открыт — иначе хватит тоста.
+    if (selectedChatId.value === chat.id) {
+      messages.value = appendMessage(messages.value, message)
+      scrollToBottom()
+    }
+    void refreshChatsQuiet()
+    haptic()
+    Notify.create({ message: 'Ответ отправлен', timeout: 2000 })
+  } catch (error) {
+    Notify.create({
+      message: getErrorMessage(error, 'Не удалось отправить ответ'),
+      color: 'negative',
+      timeout: 3000
+    })
+  }
+}
+
+// Связь (для очереди «Ждёт сети»): состояние общее с плашкой «нет подключения».
+const { online } = useOnlineStatus()
 
 const { start: startRealtime, stop: stopRealtime } = useRealtimeSync({
   isAuthenticated: () => authStore.isAuthenticated,
@@ -3185,8 +3323,9 @@ const { start: startRealtime, stop: stopRealtime } = useRealtimeSync({
   onTypingStop: clearPeerTyping,
   onChatsSync: refreshChatsQuiet,
   onThreadSync: refreshOpenThreadQuiet,
-  onMessageNew: announceIncomingMessage,
-  onChatRemoved: handleChatRemoved
+  onMessageNew: handleIncomingMessage,
+  onChatRemoved: handleChatRemoved,
+  onStoryReaction: handleStoryReaction
 })
 
 // ---------- Отправка индикатора «печатает…» ----------
@@ -3215,6 +3354,23 @@ watch(newMessage, (value) => {
 const openStory = (storyId: number) => {
   pushMobileNav()
   openStoryId.value = storyId
+}
+
+/**
+ * Открывает историю из push-уведомления: сначала добираем ленту.
+ *
+ * Просмотрщик ищет историю в уже загруженных группах, поэтому без свежей ленты
+ * окно открылось бы пустым — это самое неприятное, что можно показать по тапу
+ * в уведомлении.
+ */
+const openStoryFromPush = async (storyId: number) => {
+  const known = () =>
+    storiesStore.groups.some((group) => group.items.some((item) => item.id === storyId))
+  if (!storiesStore.loaded) await storiesStore.load()
+  // Лента могла устареть: приложение работало давно, а история только что
+  // появилась. Один догоняющий запрос — и показываем то, ради чего открыли.
+  if (!known()) await storiesStore.load()
+  if (known()) openStory(storyId)
 }
 
 const openContacts = () => switchSection('contacts')
@@ -3850,7 +4006,7 @@ onMounted(async () => {
   window.addEventListener('visibilitychange', handleVisibilityForUnread)
   window.addEventListener('popstate', onAppPopState)
   // Связь вернулась — досылаем то, что застряло без сети.
-  window.addEventListener('online', onNetworkOnline)
+  window.addEventListener(ONLINE_RESTORED_EVENT, onConnectionRestored)
   // Собеседник сменил ключ шифрования — предупреждаем один раз на каждый ключ.
   unsubscribePeerKey = onPeerKeyChanged((change) => {
     accountOverlaysRef.value?.openPeerKeyChanged(change)
@@ -3896,6 +4052,12 @@ onMounted(async () => {
         if (replyLaunchRequested) void focusComposer()
       })
     }
+  }
+
+  // Холодный старт по push о реакции на историю: открываем просмотрщик.
+  const storyParam = launchParams.get('story')
+  if (storyParam && /^\d+$/.test(storyParam)) {
+    void openStoryFromPush(Number(storyParam))
   }
 
   // Страховка: если чат открыть не удалось (нет сети, чат удалён), не держим
@@ -3986,6 +4148,8 @@ const handleWindowMessage = (event: MessageEvent) => {
     peer_id?: number | null
     /** Причина завершения звонка (для `call-cancelled`). */
     reason?: string | null
+    /** История из push о реакции на неё. */
+    story_id?: number | null
   } | null
   if (!data) return
   if (data.type === 'mark-chat-read' && typeof data.chat_id === 'number') {
@@ -3997,6 +4161,11 @@ const handleWindowMessage = (event: MessageEvent) => {
       // Кнопка «Ответить»: после открытия чата сразу ставим курсор в поле ввода.
       if (data.reply === true) void focusComposer()
     })
+    return
+  }
+  if (data.type === 'open-story' && typeof data.story_id === 'number') {
+    // Тап по уведомлению о реакции: показываем автору его историю со счётчиками.
+    void openStoryFromPush(data.story_id)
     return
   }
   if (data.type === 'call-cancelled') {
@@ -4059,7 +4228,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('visibilitychange', handleVisibilityForPresence)
   window.removeEventListener('visibilitychange', handleVisibilityForUnread)
   window.removeEventListener('popstate', onAppPopState)
-  window.removeEventListener('online', onNetworkOnline)
+  window.removeEventListener(ONLINE_RESTORED_EVENT, onConnectionRestored)
   unsubscribePeerKey?.()
   unsubscribePeerKey = null
   if (outboxTimer !== undefined) {
