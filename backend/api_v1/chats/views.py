@@ -7,14 +7,18 @@ from api_v1.auth.utils import get_current_user, touch_last_seen
 from api_v1.chats import crud
 from api_v1.chats.schemas import Chat as ChatSchema
 from api_v1.chats.schemas import (
+    ChatBanSchema,
     ChatDetail,
     ChatE2eeUpdate,
     ChatMemberSchema,
     ChatStats,
     ChatUserSchema,
+    GroupBanCreate,
     GroupCreate,
     GroupMembersAdd,
+    GroupMuteUpdate,
     GroupRoleUpdate,
+    GroupSlowModeUpdate,
     GroupUpdate,
     PrivateChatCreate,
 )
@@ -62,6 +66,7 @@ def _serialize_chat(
         "e2ee_enabled": chat.e2ee_enabled,
         "is_self": chat.is_self,
         "is_group": chat.is_group,
+        "slow_mode_seconds": chat.slow_mode_seconds,
         "is_channel": chat.is_channel,
         "channel_username": chat.channel_username,
         "is_public": chat.is_public,
@@ -283,17 +288,35 @@ async def get_chat_detail(
         session=session, chat_id=chat_id, user_id=user.id
     )
     base = _serialize_chat(chat, {}, {}, set(), my_role=my_role or "member")
+    return ChatDetail(**await _with_members(session, chat, base))
 
+
+async def _with_members(session: AsyncSession, chat: Chat, base: dict) -> dict:
+    """Дополняет карточку чата участниками: роль и мут каждого.
+
+    Общий код для чтения карточки и для действий, которые её меняют (мут, бан):
+    клиент получает в ответ ту же карточку и обновляет список участников без
+    отдельного запроса.
+    """
+    if not chat.is_group:
+        return {**base, "members": []}
+    rows = await crud.get_chat_members(session=session, chat_id=chat.id)
+    # Создатель — всегда первым, затем админы и участники.
+    rank = {"creator": 0, "admin": 1, "member": 2}
+    rows.sort(key=lambda item: (rank.get(item[1], 3), item[0].id))
     members: list[ChatMemberSchema] = []
-    if chat.is_group:
-        rows = await crud.get_chat_members(session=session, chat_id=chat_id)
-        # Создатель — всегда первым, затем админы и участники.
-        rank = {"creator": 0, "admin": 1, "member": 2}
-        rows.sort(key=lambda item: (rank.get(item[1], 3), item[0].id))
-        for member_user, role in rows:
-            payload = ChatUserSchema.model_validate(member_user).model_dump()
-            members.append(ChatMemberSchema(**payload, role=role))
-    return ChatDetail(**base, members=members)
+    for member_user, role, muted_until in rows:
+        payload = ChatUserSchema.model_validate(member_user).model_dump()
+        members.append(ChatMemberSchema(**payload, role=role, muted_until=muted_until))
+    return {**base, "members": members}
+
+
+async def _serialize_group_detail(
+    session: AsyncSession, chat: Chat, user_id: int
+) -> ChatDetail:
+    """Карточка группы с участниками, их ролями и мутами."""
+    base = await _serialize_chat_full(session, chat, user_id)
+    return ChatDetail(**await _with_members(session, chat, base))
 
 
 @router.patch("/{chat_id}/", response_model=ChatSchema)
@@ -425,6 +448,133 @@ async def set_group_member_role(
         role=payload.role,
     )
     return None
+
+
+@router.post(
+    "/{chat_id}/members/{user_id}/mute/",
+    response_model=ChatDetail,
+)
+async def mute_group_member(
+    chat_id: int,
+    user_id: int,
+    payload: GroupMuteUpdate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Мут участника на N минут (None/0 — снять). Ответ — карточка группы."""
+    await _ensure_group(await crud.get_chat_with_users(session, chat_id))
+    await crud.set_member_mute(
+        session=session,
+        chat_id=chat_id,
+        actor_id=user.id,
+        user_id=user_id,
+        minutes=payload.minutes,
+    )
+    chat = await crud.get_chat_with_users(session, chat_id)
+    if chat is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось загрузить группу",
+        )
+    return await _serialize_group_detail(session, chat, user.id)
+
+
+@router.post("/{chat_id}/members/{user_id}/ban/", response_model=ChatDetail)
+async def ban_group_member(
+    chat_id: int,
+    user_id: int,
+    payload: GroupBanCreate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Банит участника: исключает и закрывает вход обратно."""
+    await _ensure_group(await crud.get_chat_with_users(session, chat_id))
+    await crud.ban_group_member(
+        session=session,
+        chat_id=chat_id,
+        actor_id=user.id,
+        user_id=user_id,
+        reason=payload.reason,
+    )
+    chat = await crud.get_chat_with_users(session, chat_id)
+    if chat is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось загрузить группу",
+        )
+    return await _serialize_group_detail(session, chat, user.id)
+
+
+@router.delete(
+    "/{chat_id}/bans/{user_id}/",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def unban_chat_member(
+    chat_id: int,
+    user_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Снимает бан: человек может вернуться по ссылке. Участником не становится."""
+    await _ensure_group(await crud.get_chat_with_users(session, chat_id))
+    await crud.unban_group_member(
+        session=session, chat_id=chat_id, actor_id=user.id, user_id=user_id
+    )
+    return None
+
+
+@router.get("/{chat_id}/bans/", response_model=list[ChatBanSchema])
+async def get_chat_ban_list(
+    chat_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Бан-лист группы (видят создатель и админы)."""
+    await _ensure_group(await crud.get_chat_with_users(session, chat_id))
+    actor_role = await crud.get_member_role(
+        session=session, chat_id=chat_id, user_id=user.id
+    )
+    if actor_role not in ("creator", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Бан-лист виден админам группы",
+        )
+    bans = await crud.get_chat_bans(session, chat_id)
+    return [
+        ChatBanSchema(
+            id=ban.id,
+            user_id=ban.user_id,
+            user=(
+                ChatUserSchema.model_validate(ban.user)
+                if ban.user is not None
+                else None
+            ),
+            reason=ban.reason,
+            banned_at=ban.banned_at,
+        )
+        for ban in bans
+    ]
+
+
+@router.patch("/{chat_id}/slow-mode/", response_model=ChatSchema)
+async def set_chat_slow_mode(
+    chat_id: int,
+    payload: GroupSlowModeUpdate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Медленный режим группы: сколько секунд участник ждёт между сообщениями."""
+    await _ensure_group(await crud.get_chat_with_users(session, chat_id))
+    await crud.set_slow_mode(
+        session=session, chat_id=chat_id, actor_id=user.id, seconds=payload.seconds
+    )
+    chat = await crud.get_chat_with_users(session, chat_id)
+    if chat is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось загрузить группу",
+        )
+    return await _serialize_chat_full(session, chat, user.id)
 
 
 @router.post("/{chat_id}/avatar/", response_model=ChatSchema)

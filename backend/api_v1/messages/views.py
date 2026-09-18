@@ -162,6 +162,9 @@ async def create_attachment_message(
         scope="messages:upload",
         limit=settings.message_upload_limit_per_minute,
     )
+    # Анти-флуд проверяем ДО чтения тела: молчащему участнику незачем гнать
+    # мегабайты на сервер, чтобы получить отказ в конце.
+    await crud.ensure_can_write(session, chat_id=chat_id, user_id=user.id)
     content = await request.body()
     if not content:
         raise HTTPException(

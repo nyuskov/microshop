@@ -32,6 +32,8 @@ class ChatMemberSchema(ChatUserSchema):
 
     role: str = "member"
     joined_at: datetime | None = None
+    #: До какого времени участник в муте (None — не в муте).
+    muted_until: datetime | None = None
 
 
 class Chat(BaseModel):
@@ -48,6 +50,8 @@ class Chat(BaseModel):
     is_self: bool = False
     # Групповой ли это чат.
     is_group: bool = False
+    # Медленный режим группы: пауза между сообщениями участника (0 — выключен).
+    slow_mode_seconds: int = 0
     # Канал: читают подписчики, публикуют владелец и админы (см. api_v1/channels).
     is_channel: bool = False
     # Публичный адрес канала (`/c/<channel_username>`); None — приватный.
@@ -142,6 +146,36 @@ class GroupRoleUpdate(BaseModel):
     """Назначение/снятие админа (только создатель)."""
 
     role: Literal["admin", "member"]
+
+
+class GroupMuteUpdate(BaseModel):
+    """Мут участника (анти-флуд)."""
+
+    #: На сколько минут. None или 0 — снять мут. Больше недели не даём:
+    #: для «навсегда» есть бан.
+    minutes: int | None = Field(default=None, ge=0, le=7 * 24 * 60)
+
+
+class GroupBanCreate(BaseModel):
+    """Бан участника: исключение с закрытым входом обратно."""
+
+    reason: str | None = Field(default=None, max_length=200)
+
+
+class GroupSlowModeUpdate(BaseModel):
+    """Медленный режим группы: пауза между сообщениями участника."""
+
+    seconds: int = Field(..., ge=0, le=60 * 60)
+
+
+class ChatBanSchema(BaseModel):
+    """Строка бан-листа группы (видна админам)."""
+
+    id: int
+    user_id: int
+    user: ChatUserSchema | None = None
+    reason: str | None = None
+    banned_at: datetime
 
 
 class GroupInviteCreate(BaseModel):

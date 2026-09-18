@@ -189,7 +189,7 @@
             @pointermove="onReactionHoldMove"
             @pointerup="cancelReactionHold"
             @pointercancel="cancelReactionHold"
-            @contextmenu.prevent="openReactionUsers(reaction.emoji, $event)"
+            @contextmenu.stop.prevent="onReactionContext(reaction.emoji, $event)"
           >
             <span class="reaction-emoji" aria-hidden="true">{{ reaction.emoji }}</span>
             <!-- Пока отметивших мало — лица вместо числа (как в Telegram). -->
@@ -760,6 +760,19 @@ const cancelReactionHold = (): void => {
 const openReactionUsers = (emoji: string, event: Event): void => {
   if (event.currentTarget instanceof HTMLElement) reactionAnchor = event.currentTarget
   emit('open-reactions', emoji, reactionAnchor)
+}
+
+/**
+ * Контекстное меню на чипе реакции.
+ *
+ * На телефоне удержание приходит ДВУМЯ событиями: нашим таймером и системным
+ * `contextmenu` — список открываем один раз (по таймеру). Всплытие гасим на
+ * уровне чипа: у строки свой `contextmenu` для листа действий, и без этого на
+ * удержании открывались два окна сразу.
+ */
+const onReactionContext = (emoji: string, event: Event): void => {
+  if (reactionHoldHandled) return
+  openReactionUsers(emoji, event)
 }
 
 const startReactionHold = (emoji: string, event: PointerEvent): void => {

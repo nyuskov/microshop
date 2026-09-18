@@ -5,6 +5,7 @@ import { localUtcOffsetMinutes } from '@/utils/quietHours'
 import { uploadPercent } from '@/utils/upload'
 import type {
   Chat,
+  ChatBanEntry,
   ChatDetail,
   ChatMediaItem,
   ChatMediaKind,
@@ -144,6 +145,52 @@ export const setGroupMemberRole = async (
   role: 'admin' | 'member'
 ): Promise<void> => {
   await api.patch(`/chats/${chatId}/members/${userId}/role/`, { role })
+}
+
+/**
+ * Мут участника: minutes — на сколько минут (null — снять).
+ *
+ * Возвращает карточку группы: список участников на экране обновляется без
+ * второго запроса.
+ */
+export const muteGroupMember = async (
+  chatId: number,
+  userId: number,
+  minutes: number | null
+): Promise<ChatDetail> => {
+  const response = await api.post<ChatDetail>(`/chats/${chatId}/members/${userId}/mute/`, {
+    minutes
+  })
+  return response.data
+}
+
+/** Бан участника: исключает и закрывает вход обратно (даже по ссылке). */
+export const banGroupMember = async (
+  chatId: number,
+  userId: number,
+  reason?: string
+): Promise<ChatDetail> => {
+  const response = await api.post<ChatDetail>(`/chats/${chatId}/members/${userId}/ban/`, {
+    reason: reason ?? null
+  })
+  return response.data
+}
+
+/** Снимает бан: человек сможет вернуться, но участником не становится. */
+export const unbanGroupMember = async (chatId: number, userId: number): Promise<void> => {
+  await api.delete(`/chats/${chatId}/bans/${userId}/`)
+}
+
+/** Бан-лист группы (видят создатель и админы). */
+export const fetchGroupBans = async (chatId: number): Promise<ChatBanEntry[]> => {
+  const response = await api.get<ChatBanEntry[]>(`/chats/${chatId}/bans/`)
+  return response.data
+}
+
+/** Медленный режим группы: пауза между сообщениями участника (0 — выключен). */
+export const setGroupSlowMode = async (chatId: number, seconds: number): Promise<Chat> => {
+  const response = await api.patch<Chat>(`/chats/${chatId}/slow-mode/`, { seconds })
+  return response.data
 }
 
 /** Загружает аватар группы (raw-байты, ext — расширение файла). */

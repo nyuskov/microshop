@@ -6,6 +6,7 @@ __all__ = [
     "PendingCallOffer",
     "QueuedCallSignal",
     "Chat",
+    "ChatBan",
     "ChatGroupKey",
     "ChatDeviceKey",
     "ChatInvite",
@@ -49,6 +50,7 @@ from .base import Base  # noqa: F401
 from .call_signal import PendingCallOffer, QueuedCallSignal  # noqa: F401
 from .channel import ChannelComment, ChannelPostView, ChannelSuggestion  # noqa: F401
 from .chat import Chat, user_chat_association_table  # noqa: F401
+from .chat_ban import ChatBan  # noqa: F401
 from .chat_device_key import ChatDeviceKey  # noqa: F401
 from .chat_group_key import ChatGroupKey  # noqa: F401
 from .chat_invite import ChatInvite  # noqa: F401

@@ -10,7 +10,12 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
 from api_v1.channels.crud import ensure_can_post
-from api_v1.chats.crud import is_group_chat, is_user_chat_member, mark_group_chat_read
+from api_v1.chats.crud import (
+    ensure_can_write,
+    is_group_chat,
+    is_user_chat_member,
+    mark_group_chat_read,
+)
 from api_v1.events.service import notify_chat, notify_chat_read_elsewhere
 from api_v1.moderation import crud as moderation_crud
 from core.models import (
@@ -391,6 +396,8 @@ async def send_text_message(
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
     # В канале писать в ленту могут только владелец и админы.
     await ensure_can_post(session, chat_id, user_id)
+    # Анти-флуд: мут, бан и медленный режим группы.
+    await ensure_can_write(session, chat_id=chat_id, user_id=user_id)
     await _ensure_not_blocked(session, chat_id=chat_id, user_id=user_id)
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
@@ -462,6 +469,9 @@ async def send_attachment_message(
     (см. `api_v1/stickers` — панель стикеров шлёт так свои картинки).
     """
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
+    # Анти-флуд: мут, бан и медленный режим группы (иначе ограничение текста
+    # обходилось бы «отправить картинкой»).
+    await ensure_can_write(session, chat_id=chat_id, user_id=user_id)
     await _ensure_not_blocked(session, chat_id=chat_id, user_id=user_id)
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
@@ -898,6 +908,8 @@ async def forward_message(
     # Отправитель должен состоять и в исходном, и в целевом чате.
     await _ensure_chat_member_or_404(session, chat_id=source.chat_id, user_id=user_id)
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
+    # Анти-флуд целевой группы: пересылка — такое же сообщение.
+    await ensure_can_write(session, chat_id=chat_id, user_id=user_id)
     await _ensure_not_blocked(session, chat_id=chat_id, user_id=user_id)
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)

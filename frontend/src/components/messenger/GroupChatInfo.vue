@@ -230,6 +230,34 @@
             </div>
           </div>
 
+          <!-- Мут: длительность выбирается пресетами (как в Telegram) -->
+          <div v-if="muteTarget" class="gi-add-panel">
+            <div class="gi-panel-title">Замутить {{ displayName(muteTarget) }}</div>
+            <div class="gi-presets">
+              <button
+                v-for="option in MUTE_OPTIONS"
+                :key="option.minutes"
+                type="button"
+                class="gi-preset"
+                :disabled="busy"
+                @click="applyMute(option.minutes)"
+              >
+                {{ option.label }}
+              </button>
+            </div>
+            <div class="gi-add-actions">
+              <button class="gi-btn ghost" @click="muteTarget = null">Отмена</button>
+              <button
+                v-if="isMuted(muteTarget)"
+                class="gi-btn danger"
+                :disabled="busy"
+                @click="applyMute(null)"
+              >
+                Снять мут
+              </button>
+            </div>
+          </div>
+
           <div class="gi-members">
             <div v-for="member in detail.members" :key="member.id" class="gi-member">
               <span class="avatar" :style="avatarStyle(displayName(member))">
@@ -253,6 +281,7 @@
               <span class="gi-role" :class="'role-' + member.role">{{
                 roleLabel(member.role)
               }}</span>
+              <span v-if="isMuted(member)" class="gi-muted">в муте</span>
               <span v-if="memberActions(member).length" class="gi-member-actions">
                 <button
                   v-for="action in memberActions(member)"
@@ -268,6 +297,46 @@
               </span>
             </div>
           </div>
+        </div>
+
+        <!-- Анти-флуд: медленный режим и бан-лист (видят создатель и админы) -->
+        <div v-if="canManage" class="gi-section">
+          <h4 class="gi-title">Анти-флуд</h4>
+          <div class="gi-row">
+            <span class="gi-row-label">Медленный режим</span>
+            <span class="gi-row-value">{{ slowModeLabel }}</span>
+            <button class="gi-btn ghost" :disabled="busy" @click="slowPanelOpen = !slowPanelOpen">
+              Изменить
+            </button>
+          </div>
+          <p class="gi-hint">
+            Участники ждут паузу между сообщениями; админов режим не ограничивает.
+          </p>
+          <div v-if="slowPanelOpen" class="gi-presets">
+            <button
+              v-for="option in SLOW_MODE_OPTIONS"
+              :key="option.seconds"
+              type="button"
+              class="gi-preset"
+              :class="{ on: slowMode === option.seconds }"
+              :disabled="busy"
+              @click="applySlowMode(option.seconds)"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+
+          <div v-if="bans.length" class="gi-bans">
+            <div class="gi-bans-title">Забаненные — {{ bans.length }}</div>
+            <div v-for="ban in bans" :key="ban.id" class="gi-ban-row">
+              <span class="gi-ban-name">{{ banName(ban) }}</span>
+              <span v-if="ban.reason" class="gi-ban-reason">{{ ban.reason }}</span>
+              <button class="gi-btn ghost" :disabled="busy" @click="unban(ban)">Разбанить</button>
+            </div>
+            <p class="gi-hint">Забаненный не вернётся по ссылке, пока вы не снёте бан.</p>
+          </div>
+
+          <div v-if="error" class="gi-error">{{ error }}</div>
         </div>
 
         <!-- Действия с группой -->
@@ -292,19 +361,24 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import {
   addGroupMembers,
+  banGroupMember,
   createGroupInvite,
   deleteChat,
   fetchChatDetail,
+  fetchGroupBans,
   fetchGroupInvites,
+  muteGroupMember,
   removeGroupAvatar,
   removeGroupMember,
   revokeGroupInvite,
   setGroupMemberRole,
+  setGroupSlowMode,
+  unbanGroupMember,
   updateGroupInfo,
   uploadGroupAvatar,
   type SearchUserResult
 } from '@/services/chatService'
-import type { Chat, ChatDetail, ChatMember, GroupInvite } from '@/types'
+import type { Chat, ChatBanEntry, ChatDetail, ChatMember, GroupInvite } from '@/types'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import { optimizeAvatarFile } from '@/utils/media'
 import { inviteLinkFor } from '@/utils/groupInvite'
@@ -354,6 +428,129 @@ const descInput = ref('')
 const addPanelOpen = ref(false)
 const addQuery = ref('')
 const addSelected = ref<Set<number>>(new Set())
+
+// ---------- Анти-флуд: мут, бан и медленный режим ----------
+// Пресеты как в Telegram: у мута — длительность, у режима — пауза. Свободный
+// ввод минут здесь только мешал бы: выбирают быстро и с телефона.
+const MUTE_OPTIONS = [
+  { minutes: 5, label: '5 минут' },
+  { minutes: 60, label: '1 час' },
+  { minutes: 8 * 60, label: '8 часов' },
+  { minutes: 24 * 60, label: '24 часа' },
+  { minutes: 7 * 24 * 60, label: '7 дней' }
+]
+
+const SLOW_MODE_OPTIONS = [
+  { seconds: 0, label: 'Выкл' },
+  { seconds: 10, label: '10 сек' },
+  { seconds: 30, label: '30 сек' },
+  { seconds: 60, label: '1 мин' },
+  { seconds: 5 * 60, label: '5 мин' },
+  { seconds: 15 * 60, label: '15 мин' },
+  { seconds: 60 * 60, label: '1 час' }
+]
+
+/** Участник, которому выбираем мут (null — панель закрыта). */
+const muteTarget = ref<ChatMember | null>(null)
+const slowPanelOpen = ref(false)
+const bans = ref<ChatBanEntry[]>([])
+
+/** Мут действует, пока не истёк срок: истёкший не показываем как «в муте». */
+const isMuted = (member: ChatMember): boolean => {
+  if (!member.muted_until) return false
+  return new Date(member.muted_until).getTime() > Date.now()
+}
+
+const slowMode = computed<number>(() => props.chat.slow_mode_seconds ?? 0)
+const slowModeLabel = computed<string>(
+  () =>
+    SLOW_MODE_OPTIONS.find((option) => option.seconds === slowMode.value)?.label ??
+    `${slowMode.value} сек`
+)
+
+/** Имя забаненного: сервер может не отдать данные удалённого аккаунта. */
+const banName = (ban: ChatBanEntry): string =>
+  ban.user ? displayName(ban.user) : `Пользователь #${ban.user_id}`
+
+const loadBans = async () => {
+  try {
+    bans.value = await fetchGroupBans(props.chat.id)
+  } catch {
+    // Бан-лист — дополнительная информация: без него карточка остаётся рабочей.
+    bans.value = []
+  }
+}
+
+const applyMute = async (minutes: number | null) => {
+  const member = muteTarget.value
+  if (!member || busy.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    // Ответ — вся карточка группы: список участников и метки «в муте» свежие.
+    detail.value = await muteGroupMember(props.chat.id, member.id, minutes)
+    muteTarget.value = null
+  } catch (err) {
+    error.value = getErrorMessage(err, 'Не удалось изменить мут')
+  } finally {
+    busy.value = false
+  }
+}
+
+const applyBan = async (member: ChatMember) => {
+  const name = displayName(member)
+  const agreed = await confirmDialog({
+    title: `Забанить ${name}?`,
+    message:
+      'Человек будет исключён и не сможет вернуться по ссылке-приглашению, пока бан не снимут.',
+    okLabel: 'Забанить',
+    danger: true
+  })
+  if (!agreed || busy.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    detail.value = await banGroupMember(props.chat.id, member.id)
+    await loadBans()
+    emit('updated')
+    // Забаненный не должен читать новые сообщения — ключ группы выпускаем заново.
+    emit('members-changed', true)
+  } catch (err) {
+    error.value = getErrorMessage(err, 'Не удалось забанить участника')
+  } finally {
+    busy.value = false
+  }
+}
+
+const unban = async (ban: ChatBanEntry) => {
+  if (busy.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    await unbanGroupMember(props.chat.id, ban.user_id)
+    await loadBans()
+  } catch (err) {
+    error.value = getErrorMessage(err, 'Не удалось снять бан')
+  } finally {
+    busy.value = false
+  }
+}
+
+const applySlowMode = async (seconds: number) => {
+  if (busy.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    await setGroupSlowMode(props.chat.id, seconds)
+    slowPanelOpen.value = false
+    // Родитель перечитает чаты: у чата появится новый `slow_mode_seconds`.
+    emit('updated')
+  } catch (err) {
+    error.value = getErrorMessage(err, 'Не удалось изменить медленный режим')
+  } finally {
+    busy.value = false
+  }
+}
 
 // ---------- Ссылка-приглашение ----------
 // Создатель или админ делает ссылку и отправляет её другу; тот открывает
@@ -491,7 +688,10 @@ const load = async () => {
     detail.value = await fetchChatDetail(props.chat.id)
     nameInput.value = detail.value.name
     descInput.value = detail.value.description || ''
-    if (canManage.value) void loadInvites()
+    if (canManage.value) {
+      void loadInvites()
+      void loadBans()
+    }
   } catch (err) {
     error.value = getErrorMessage(err, 'Не удалось загрузить информацию о группе')
   } finally {
@@ -503,6 +703,9 @@ watch(
   () => props.chat.id,
   () => {
     addPanelOpen.value = false
+    // Панели анти-флуда тоже закрываем: они про прошлый чат.
+    muteTarget.value = null
+    slowPanelOpen.value = false
     void load()
   }
 )
@@ -648,6 +851,13 @@ const memberActions = (member: ChatMember): MemberAction[] => {
   if (!self && !targetIsCreator && canManage.value) {
     if (isCreator.value || member.role === 'member') {
       actions.push({ key: 'kick', title: 'Исключить', icon: 'person_remove', danger: true })
+      // Анти-флуд доступен там же, где исключение: обычно это одно решение.
+      actions.push(
+        isMuted(member)
+          ? { key: 'unmute', title: 'Снять мут', icon: 'notifications' }
+          : { key: 'mute', title: 'Замутить', icon: 'notifications_off' }
+      )
+      actions.push({ key: 'ban', title: 'Забанить', icon: 'block', danger: true })
     }
   }
   return actions
@@ -656,6 +866,21 @@ const memberActions = (member: ChatMember): MemberAction[] => {
 const runMemberAction = async (action: MemberAction, member: ChatMember) => {
   if (busy.value) return
   error.value = ''
+  if (action.key === 'mute') {
+    // Длительность выбирается отдельной панелью: сразу мутить на 24 часа —
+    // частый промах, а «на 5 минут» — типичный случай.
+    muteTarget.value = member
+    return
+  }
+  if (action.key === 'unmute') {
+    muteTarget.value = member
+    await applyMute(null)
+    return
+  }
+  if (action.key === 'ban') {
+    await applyBan(member)
+    return
+  }
   if (action.key === 'kick') {
     const name = displayName(member)
     const agreed = await confirmDialog({
@@ -1187,6 +1412,117 @@ const deleteGroup = async () => {
 
 .gi-role.role-member {
   display: none;
+}
+
+/* Метка «в муте»: видно, почему человек не пишет (снимается сама по времени). */
+.gi-muted {
+  font-size: var(--ms-fs-xs);
+  font-weight: 600;
+  color: var(--ms-warn);
+  background: var(--ms-warn-bg);
+  border-radius: 8px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+
+/* Заголовок панели анти-флуда (выбор длительности мута). */
+.gi-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ms-text, #141d26);
+}
+
+/* Пресеты (длительность мута, пауза медленного режима) — кнопки-таблетки. */
+.gi-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gi-preset {
+  border: 1px solid var(--ms-border, #e2e6ea);
+  background: var(--ms-surface, #fff);
+  color: var(--ms-text, #141d26);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: var(--ms-fs-sm);
+  font-family: var(--ms-font), sans-serif;
+  cursor: pointer;
+}
+
+.gi-preset.on {
+  background: var(--ms-accent-soft, #e3f2e5);
+  color: var(--ms-accent, #2ea25e);
+  font-weight: 600;
+}
+
+.gi-preset:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Строка настройки: подпись слева, значение и кнопка справа. */
+.gi-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.gi-row-label {
+  font-size: 13px;
+  color: var(--ms-text, #141d26);
+}
+
+.gi-row-value {
+  margin-left: auto;
+  font-size: var(--ms-fs-sm);
+  font-weight: 600;
+  color: var(--ms-accent, #2ea25e);
+}
+
+.gi-hint {
+  margin: 6px 0 0;
+  font-size: var(--ms-fs-xs);
+  color: var(--ms-muted, #71808d);
+}
+
+.gi-bans {
+  margin-top: 12px;
+}
+
+.gi-bans-title {
+  font-size: var(--ms-fs-sm);
+  font-weight: 600;
+  color: var(--ms-text, #141d26);
+}
+
+.gi-ban-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.gi-ban-name {
+  font-size: 13px;
+  color: var(--ms-text, #141d26);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gi-ban-reason {
+  font-size: var(--ms-fs-xs);
+  color: var(--ms-muted, #71808d);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gi-ban-row .gi-btn {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .gi-member-actions {

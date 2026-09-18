@@ -22,6 +22,9 @@ ROLE_MEMBER = "member"
 #   * last_read_message_id — курсор прочтения участника в групповом чате
 #     (последний прочитанный id сообщения). Используется для подсчёта
 #     непрочитанных в группах (в личных чатах — отдельный флаг Message.is_read).
+#   * muted_until — до какого времени участник молчит (анти-флуд, см.
+#     api_v1/chats/crud.py::ensure_can_write). NULL — не в муте. Снятие — по
+#     времени (отдельной строки «снять мут» не нужно).
 user_chat_association_table = Table(
     "chat_user_association",
     Base.metadata,
@@ -53,5 +56,11 @@ user_chat_association_table = Table(
         "last_read_message_id",
         Integer,
         nullable=True,
+    ),
+    Column(
+        "muted_until",
+        DateTime(timezone=False),
+        nullable=True,
+        comment="До какого времени участник не может писать (NULL — не в муте)",
     ),
 )

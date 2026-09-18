@@ -278,6 +278,13 @@ async def join_group_by_invite(
         # Уже внутри: лимит ссылки не тратим — просто сообщаем, какой чат открыть.
         return {"chat_id": chat.id, "name": chat.name}
 
+    # Забанен — вход закрыт, сколько бы ссылок ни прислали.
+    if await crud.is_chat_banned(session, chat_id=chat.id, user_id=user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Вы забанены в этой группе",
+        )
+
     # Для нового участника ссылка обязана быть действующей.
     _ensure_invite_active(invite)
 

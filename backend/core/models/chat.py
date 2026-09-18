@@ -49,6 +49,12 @@ class Chat(IdIntPkMixin, Base):
     )
     # Описание группы (видно в карточке чата).
     description: Mapped[str | None] = mapped_column(nullable=True)
+    # Медленный режим группы: сколько секунд участник ждёт между сообщениями
+    # (0 — выключен). Админов и создателя не ограничивает (см.
+    # api_v1/chats/crud.py::ensure_can_write).
+    slow_mode_seconds: Mapped[int] = mapped_column(
+        default=0, server_default="0", nullable=False
+    )
     # Создатель группового чата (не null для групп). Удаляется (SET NULL), если
     # аккаунт создателя удалили, — группа при этом продолжает жить.
     creator_id: Mapped[int | None] = mapped_column(

@@ -142,6 +142,8 @@ export interface Chat {
   member_count?: number
   /** Роль текущего пользователя: creator / admin / member. */
   my_role?: 'creator' | 'admin' | 'member' | string
+  /** Медленный режим группы: пауза между сообщениями участника (0 — выключен). */
+  slow_mode_seconds?: number
   /** Создатель группы. */
   creator_id?: number | null
 }
@@ -149,6 +151,23 @@ export interface Chat {
 /** Участник чата с ролью (для карточки группы). */
 export interface ChatMember extends ChatUser {
   role: 'creator' | 'admin' | 'member' | string
+  /** До какого времени участник в муте (ISO-время; null — не в муте). */
+  muted_until?: string | null
+}
+
+/**
+ * Запись бан-листа группы (GET /chats/{id}/bans/).
+ *
+ * Бан — не то же самое, что исключение: исключённый возвращается по ссылке,
+ * а забаненный — нет, пока бан не снимут.
+ */
+export interface ChatBanEntry {
+  id: number
+  user_id: number
+  /** Данные забаненного (может не прийти, если аккаунт удалили). */
+  user?: ChatUser | null
+  reason?: string | null
+  banned_at?: string | null
 }
 
 /** Карточка канала (GET /channels/{id}/, поиск, превью по ссылке). */

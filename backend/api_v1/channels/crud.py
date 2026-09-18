@@ -24,6 +24,7 @@ from core.models import (
     ChannelPostView,
     ChannelSuggestion,
     Chat,
+    ChatBan,
     Message,
     User,
     user_chat_association_table,
@@ -339,6 +340,15 @@ async def join_channel(session: AsyncSession, *, chat: Chat, user_id: int) -> No
     role = await get_role(session, chat.id, user_id)
     if role is not None:
         return
+    # Забаненный подписаться не может: иначе бан в канале ничего не значил.
+    banned = await session.scalar(
+        select(ChatBan.id).where(ChatBan.chat_id == chat.id, ChatBan.user_id == user_id)
+    )
+    if banned is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Вы забанены в этом канале",
+        )
     await session.execute(
         user_chat_association_table.insert(),
         [{"chat_id": chat.id, "user_id": user_id, "role": ROLE_MEMBER}],

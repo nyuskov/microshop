@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -12,6 +12,7 @@ from api_v1.moderation import crud as moderation_crud
 from api_v1.users.crud import display_name
 from core.models import (
     Chat,
+    ChatBan,
     ChatGroupKey,
     ChatMute,
     Message,
@@ -619,10 +620,14 @@ async def get_my_roles(
 
 async def get_chat_members(
     session: AsyncSession, chat_id: int
-) -> list[tuple[User, str]]:
-    """Возвращает участников чата вместе с их ролями (в порядке вступления)."""
+) -> list[tuple[User, str, datetime | None]]:
+    """Участники чата с ролями и мутом (в порядке вступления)."""
     stmt = (
-        select(User, user_chat_association_table.c.role)
+        select(
+            User,
+            user_chat_association_table.c.role,
+            user_chat_association_table.c.muted_until,
+        )
         .join(
             user_chat_association_table,
             user_chat_association_table.c.user_id == User.id,
@@ -631,7 +636,7 @@ async def get_chat_members(
         .order_by(user_chat_association_table.c.joined_at)
     )
     result = await session.execute(stmt)
-    return [(user, role) for user, role in result.all()]
+    return [(user, role, muted_until) for user, role, muted_until in result.all()]
 
 
 async def create_group_chat(
@@ -710,6 +715,23 @@ async def add_group_members(
     to_add = [uid for uid in to_add if uid in found]
     if not to_add:
         return []
+
+    # Забаненных не добавляем: бан снимают отдельным действием, иначе он
+    # обходился бы «добавлю снова». Остальных в списке не блокируем — при
+    # добавлении сразу нескольких человек одно имя не должно ломать всю пачку.
+    banned_result = await session.execute(
+        select(ChatBan.user_id).where(
+            ChatBan.chat_id == chat_id, ChatBan.user_id.in_(to_add)
+        )
+    )
+    banned = set(banned_result.scalars().all())
+    if banned:
+        to_add = [uid for uid in to_add if uid not in banned]
+    if not to_add:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Пользователь забанен в этой группе — сначала снимите бан",
+        )
 
     max_message_id = await session.scalar(
         select(func.max(Message.id)).where(Message.chat_id == chat_id)
@@ -946,3 +968,287 @@ async def mark_group_chat_read(
     )
     await session.commit()
     return True
+
+
+# ---------- Анти-флуд: мут участника, бан-лист, медленный режим ----------
+
+#: Самый долгий мут — неделя. «Навсегда» в группе не нужен: для этого есть бан.
+MAX_MUTE_MINUTES = 7 * 24 * 60
+#: Самый медленный режим — час.
+MAX_SLOW_MODE_SECONDS = 60 * 60
+
+
+async def get_member_muted_until(
+    session: AsyncSession, *, chat_id: int, user_id: int
+) -> datetime | None:
+    """До какого времени участник молчит (None — не в муте)."""
+    return await session.scalar(
+        select(user_chat_association_table.c.muted_until).where(
+            user_chat_association_table.c.chat_id == chat_id,
+            user_chat_association_table.c.user_id == user_id,
+        )
+    )
+
+
+async def _ensure_can_punish(
+    session: AsyncSession, *, chat_id: int, actor_id: int, user_id: int
+) -> None:
+    """Проверяет право ограничивать участника (мут/бан).
+
+    Правила те же, что у исключения: может создатель или админ, но не над
+    создателем и не над равным по роли админом. Себя ограничивать тоже нельзя —
+    это почти всегда промах по кнопке.
+    """
+    if user_id == actor_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Это действие не применяется к себе",
+        )
+
+    actor_role = await get_member_role(session, chat_id=chat_id, user_id=actor_id)
+    if actor_role not in (ROLE_CREATOR, ROLE_ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Недостаточно прав для ограничения участников",
+        )
+
+    target_role = await get_member_role(session, chat_id=chat_id, user_id=user_id)
+    if target_role is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не состоит в группе",
+        )
+    if target_role == ROLE_CREATOR:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Создателя группы ограничить нельзя",
+        )
+    if actor_role == ROLE_ADMIN and target_role == ROLE_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Админ не может ограничивать другого админа",
+        )
+
+
+async def set_member_mute(
+    session: AsyncSession,
+    *,
+    chat_id: int,
+    actor_id: int,
+    user_id: int,
+    minutes: int | None,
+) -> datetime | None:
+    """Ставит мут на ``minutes`` минут (None или 0 — снимает).
+
+    Мут не уведомляет участника отдельно: он получит понятную ошибку при
+    попытке написать (см. ``ensure_can_write``), а чат обновится тем же
+    ``chat.updated``, что и остальные изменения группы.
+    """
+    await _ensure_can_punish(
+        session, chat_id=chat_id, actor_id=actor_id, user_id=user_id
+    )
+    if minutes is not None and minutes > MAX_MUTE_MINUTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Максимальный мут — неделя",
+        )
+
+    until = (
+        None
+        if not minutes
+        else (datetime.now(timezone.utc) + timedelta(minutes=minutes)).replace(
+            tzinfo=None
+        )
+    )
+    await session.execute(
+        user_chat_association_table.update()
+        .where(
+            user_chat_association_table.c.chat_id == chat_id,
+            user_chat_association_table.c.user_id == user_id,
+        )
+        .values(muted_until=until)
+    )
+    await session.commit()
+    await notify_chat(
+        session,
+        chat_id=chat_id,
+        payload={
+            "type": "chat.updated",
+            "chat_id": chat_id,
+            "user_id": user_id,
+            "action": "muted" if until else "unmuted",
+        },
+    )
+    return until
+
+
+async def get_chat_bans(session: AsyncSession, chat_id: int) -> list[ChatBan]:
+    """Список банов группы (для админов)."""
+    result = await session.execute(
+        select(ChatBan)
+        .where(ChatBan.chat_id == chat_id)
+        .options(selectinload(ChatBan.user))
+        .order_by(ChatBan.banned_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def is_chat_banned(session: AsyncSession, *, chat_id: int, user_id: int) -> bool:
+    """Забанен ли пользователь в этом чате."""
+    found = await session.scalar(
+        select(ChatBan.id).where(ChatBan.chat_id == chat_id, ChatBan.user_id == user_id)
+    )
+    return found is not None
+
+
+async def ban_group_member(
+    session: AsyncSession,
+    *,
+    chat_id: int,
+    actor_id: int,
+    user_id: int,
+    reason: str | None = None,
+) -> None:
+    """Исключает участника и закрывает ему вход обратно.
+
+    Сначала бан, потом исключение: если упадёт исключение, в списке банов
+    останется лишняя строка (её видно админам и легко снять), а вот обратный
+    порядок оставил бы человека исключённым без бана — то есть вернувшимся по
+    первой же ссылке.
+    """
+    await _ensure_can_punish(
+        session, chat_id=chat_id, actor_id=actor_id, user_id=user_id
+    )
+
+    existing = await session.scalar(
+        select(ChatBan).where(ChatBan.chat_id == chat_id, ChatBan.user_id == user_id)
+    )
+    if existing is None:
+        session.add(
+            ChatBan(
+                chat_id=chat_id,
+                user_id=user_id,
+                banned_by_id=actor_id,
+                reason=(reason or "").strip() or None,
+            )
+        )
+    else:
+        existing.banned_by_id = actor_id
+        existing.reason = (reason or "").strip() or None
+    await session.commit()
+
+    # Исключение поверх бана: сначала закрываем вход, потом выкидываем.
+    if await get_member_role(session, chat_id=chat_id, user_id=user_id) is not None:
+        await kick_group_member(
+            session, chat_id=chat_id, actor_id=actor_id, user_id=user_id
+        )
+
+
+async def unban_group_member(
+    session: AsyncSession, *, chat_id: int, actor_id: int, user_id: int
+) -> None:
+    """Снимает бан (админ/создатель). Участником человек не становится."""
+    actor_role = await get_member_role(session, chat_id=chat_id, user_id=actor_id)
+    if actor_role not in (ROLE_CREATOR, ROLE_ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Недостаточно прав для снятия бана",
+        )
+    await session.execute(
+        delete(ChatBan).where(ChatBan.chat_id == chat_id, ChatBan.user_id == user_id)
+    )
+    await session.commit()
+
+
+async def set_slow_mode(
+    session: AsyncSession, *, chat_id: int, actor_id: int, seconds: int
+) -> int:
+    """Задаёт медленный режим группы (0 — выключить). Админ/создатель."""
+    actor_role = await get_member_role(session, chat_id=chat_id, user_id=actor_id)
+    if actor_role not in (ROLE_CREATOR, ROLE_ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Недостаточно прав для настройки медленного режима",
+        )
+    if seconds < 0 or seconds > MAX_SLOW_MODE_SECONDS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Медленный режим — от 0 до 3600 секунд",
+        )
+    await session.execute(
+        update(Chat).where(Chat.id == chat_id).values(slow_mode_seconds=seconds)
+    )
+    await session.commit()
+    await notify_chat(
+        session,
+        chat_id=chat_id,
+        payload={
+            "type": "chat.updated",
+            "chat_id": chat_id,
+            "action": "slow_mode",
+            "slow_mode_seconds": seconds,
+        },
+    )
+    return seconds
+
+
+async def ensure_can_write(
+    session: AsyncSession, *, chat_id: int, user_id: int
+) -> None:
+    """Пускает ли группа писать прямо сейчас (мут, бан, медленный режим).
+
+    Вызывается на всех путях отправки — текст, вложение, пересылка: иначе
+    ограничение обходится «отправить картинкой».
+
+    Админов и создателя не ограничивает ничего: они и ставят правила, а мут
+    «самому себе» — почти всегда промах по кнопке в списке участников.
+    """
+    chat = await session.scalar(select(Chat).where(Chat.id == chat_id))
+    # В личных чатах и «Сохранённых» мутов и медленного режима нет.
+    if chat is None or not chat.is_group:
+        return
+
+    role = await get_member_role(session, chat_id=chat_id, user_id=user_id)
+    if role in (ROLE_CREATOR, ROLE_ADMIN):
+        return
+
+    if await is_chat_banned(session, chat_id=chat_id, user_id=user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Вы забанены в этой группе",
+        )
+
+    muted_until = await get_member_muted_until(
+        session, chat_id=chat_id, user_id=user_id
+    )
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if muted_until is not None and muted_until > now:
+        left = int((muted_until - now).total_seconds() // 60) + 1
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Вы в муте ещё примерно {left} мин",
+        )
+
+    slow_mode = int(chat.slow_mode_seconds or 0)
+    if slow_mode <= 0:
+        return
+
+    last_sent = await session.scalar(
+        select(func.max(Message.timestamp)).where(
+            Message.chat_id == chat_id, Message.user_id == user_id
+        )
+    )
+    if last_sent is None:
+        return
+    last_sent_utc = as_utc(last_sent)
+    if last_sent_utc is None:
+        return
+    waited = (now - last_sent_utc.replace(tzinfo=None)).total_seconds()
+    if waited < slow_mode:
+        # Секунды — в заголовок Retry-After: клиент показывает таймер, а не
+        # «попробуйте позже».
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Медленный режим: подождите {int(slow_mode - waited) + 1} с",
+            headers={"Retry-After": str(int(slow_mode - waited) + 1)},
+        )

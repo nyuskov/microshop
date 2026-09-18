@@ -331,7 +331,9 @@ describe('жесты на чипе реакции (стражи разметки
   it('тап ставит свою реакцию, а удержание открывает список', () => {
     expect(messageRow).toContain('@click="onReactionClick(reaction.emoji)"')
     expect(messageRow).toContain('@pointerdown="startReactionHold(reaction.emoji, $event)"')
-    expect(messageRow).toContain('@contextmenu.prevent="openReactionUsers(reaction.emoji, $event)"')
+    expect(messageRow).toContain(
+      '@contextmenu.stop.prevent="onReactionContext(reaction.emoji, $event)"'
+    )
     expect(messageRow).toContain(
       "(e: 'open-reactions', emoji: string, anchor: HTMLElement | null): void"
     )
@@ -346,6 +348,15 @@ describe('жесты на чипе реакции (стражи разметки
     // и флаг остался взведённым — съедал следующий тап по реакции.
     const start = messageRow.slice(messageRow.indexOf('const startReactionHold'))
     expect(start).toContain('reactionHoldHandled = false')
+  })
+
+  it('на мобильном удержание не открывает ещё и меню сообщения', () => {
+    // У строки свой `contextmenu` (лист действий). На телефоне удержание даёт
+    // и наш таймер, и системный contextmenu: без гашения всплытия на чипе
+    // открывались два окна сразу.
+    expect(messageRow).toContain('@contextmenu.stop.prevent="onReactionContext')
+    const context = messageRow.slice(messageRow.indexOf('const onReactionContext'))
+    expect(context).toContain('if (reactionHoldHandled) return')
   })
 
   it('удержание отменяется сдвигом указателя, а не выходом за чип', () => {
