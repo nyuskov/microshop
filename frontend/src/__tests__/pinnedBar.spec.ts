@@ -63,6 +63,57 @@ describe('шапка шторки закреплённых', () => {
   })
 })
 
+describe('закреплённые: выделение тоном, без рамок', () => {
+  const thread = stripComments(source('src/components/messenger/MessageThread.vue'))
+
+  it('шторка закреплённых отбивается фоном, а не линией', () => {
+    const barRule = ruleBody(barCss, '.pinned-bar')
+    expect(barRule).toContain('background: var(--ms-pinned-bg)')
+    expect(barRule).not.toContain('border')
+  })
+
+  it('переход к закреплённому — полоса во всю ширину чата, под сообщениями', () => {
+    const band = ruleBody(thread, '.highlight-band')
+    expect(band).toContain('left: 0')
+    expect(band).toContain('right: 0')
+    // Ровный полупрозрачный тон, а не градиент: полоса не зависит от стороны
+    // сообщения и не «плывёт» по яркости.
+    expect(band).toContain('color-mix(')
+    expect(band).toContain('transparent')
+    expect(band).not.toContain('gradient')
+    // Строка уже пузыря, поэтому полоса живёт в обёртке ленты и тянется на всю
+    // её ширину, а высоту берёт у строки.
+    expect(thread).toContain('class="highlight-band"')
+    expect(thread).toContain('getBoundingClientRect')
+    expect(thread).toContain('data-message-id')
+    // Сообщения — выше полос: фон пузыря не подсвечиваем.
+    expect(ruleBody(thread, '.messages-scroll')).toContain('z-index: 1')
+    // Рамкой больше не подсвечиваем.
+    expect(thread).not.toContain('box-shadow: 0 0 0 3px')
+  })
+
+  it('выделенные сообщения светятся той же полосой, но держатся', () => {
+    const selected = ruleBody(thread, '.highlight-band.selected')
+    expect(selected).toContain('animation: none')
+    expect(selected).toContain('opacity: 1')
+    // Тон тот же, что у вспышки перехода: своего фона (тем более градиента)
+    // для выделения не заводим.
+    expect(selected).not.toContain('background')
+    // Полосы собираются по выбору и по вспышке перехода.
+    expect(thread).toContain('props.selectedMessageIds')
+    expect(thread).toContain('flashMessageId')
+    // Рамка выбранного сообщения убрана из строки.
+    const row = stripComments(source('src/components/messenger/MessageRow.vue'))
+    expect(row).not.toContain('.msg.selected .msg-bubble')
+  })
+
+  it('без анимаций полоса остаётся видимой', () => {
+    const reduce = thread.slice(thread.indexOf('prefers-reduced-motion'))
+    expect(reduce).toContain('.highlight-band')
+    expect(reduce).toContain('opacity: 1')
+  })
+})
+
 describe('поведение шторки', () => {
   it('заголовок раскрывает и сворачивает список, стрелка поворачивается', () => {
     expect(bar).toContain('open = !open')

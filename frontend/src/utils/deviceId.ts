@@ -88,8 +88,22 @@ export const ownDeviceId = (options: OwnDeviceIdOptions = {}): string => {
   if (cached) return cached
 
   const stored = safeGet(DEVICE_ID_STORAGE_KEY)
-  if (isValidDeviceId(stored)) {
+  if (isValidDeviceId(stored) && stored !== LEGACY_DEVICE_ID) {
     cached = stored as string
+    return cached
+  }
+
+  if (stored === LEGACY_DEVICE_ID) {
+    // `legacy` успели получить и НЕ старые устройства: метка ставилась уже после
+    // генерации ключа, поэтому свежая установка тоже считалась «прежним
+    // клиентом» (порядок исправлен в `services/e2ee.ts::bootstrapE2ee`).
+    // Оставлять такую метку нельзя: два устройства делили бы одну строку ключа и
+    // затирали бы друг друга — то есть ровно та проблема, ради которой делалось
+    // A5. Переводим на свой идентификатор; у по-настоящему старого ключа
+    // появится лишняя строка с ТЕМ ЖЕ публичным ключом — это безобидно.
+    const migrated = newDeviceId()
+    safeSet(DEVICE_ID_STORAGE_KEY, migrated)
+    cached = migrated
     return cached
   }
 

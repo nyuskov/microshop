@@ -166,32 +166,50 @@
       <!-- Карточка внешней ссылки (превью сайта, как в Telegram) -->
       <LinkPreviewCard v-if="linkPreview" :preview="linkPreview" />
 
-      <span class="msg-meta">
-        <span v-if="message.edited_at" class="msg-edited" title="изменено">изменено</span>
-        <span class="msg-time">{{ formatMsgTime(message.timestamp) }}</span>
-        <span v-if="isOwn" class="msg-ticks" :class="{ read: message.is_read }">✓✓</span>
-      </span>
-    </div>
+      <!-- Реакции — внутри пузыря, на его фоне (как в Telegram): чипы стоят в
+           нижнем ряду рядом со временем, а не отдельной строкой под пузырём. -->
+      <div class="msg-footer">
+        <TransitionGroup
+          v-if="message.reactions.length"
+          name="reaction"
+          tag="div"
+          class="reactions"
+          @click.stop
+          @pointerdown.stop
+        >
+          <button
+            v-for="reaction in message.reactions"
+            :key="reaction.emoji"
+            class="reaction-chip"
+            :class="{ mine: reaction.reacted_by_me, fresh: isFresh(reaction.emoji) }"
+            :title="`${reaction.emoji} ${reaction.count} · нажмите, чтобы поставить, удержите — кто поставил`"
+            :aria-label="`${reaction.emoji} ${reaction.count}. Кто поставил`"
+            @click="onReactionClick(reaction.emoji)"
+            @pointerdown="startReactionHold(reaction.emoji, $event)"
+            @pointermove="onReactionHoldMove"
+            @pointerup="cancelReactionHold"
+            @pointercancel="cancelReactionHold"
+            @contextmenu.prevent="openReactionUsers(reaction.emoji, $event)"
+          >
+            <span class="reaction-emoji" aria-hidden="true">{{ reaction.emoji }}</span>
+            <!-- Пока отметивших мало — лица вместо числа (как в Telegram). -->
+            <span v-if="facesOf(reaction.emoji).length" class="reaction-faces" aria-hidden="true">
+              <span v-for="face in facesOf(reaction.emoji)" :key="face.id" class="reaction-face">
+                <img v-if="face.url" :src="face.url" alt="" loading="lazy" decoding="async" />
+                <template v-else>{{ face.initials.charAt(0) }}</template>
+              </span>
+            </span>
+            <span v-else class="reaction-count">{{ reaction.count }}</span>
+          </button>
+        </TransitionGroup>
 
-    <!-- Реакции -->
-    <TransitionGroup
-      v-if="message.reactions.length"
-      name="reaction"
-      tag="div"
-      class="reactions"
-      @click.stop
-      @pointerdown.stop
-    >
-      <button
-        v-for="reaction in message.reactions"
-        :key="reaction.emoji"
-        class="reaction-chip"
-        :class="{ mine: reaction.reacted_by_me }"
-        @click="emit('toggle-reaction', reaction.emoji)"
-      >
-        {{ reaction.emoji }}<span class="reaction-count">{{ reaction.count }}</span>
-      </button>
-    </TransitionGroup>
+        <span class="msg-meta">
+          <span v-if="message.edited_at" class="msg-edited" title="изменено">изменено</span>
+          <span class="msg-time">{{ formatMsgTime(message.timestamp) }}</span>
+          <span v-if="isOwn" class="msg-ticks" :class="{ read: message.is_read }">✓✓</span>
+        </span>
+      </div>
+    </div>
 
     <!-- Действия при наведении (появляются ПОД сообщением).
          Рисуем только у строк, которые уже доходили до экрана: 4 иконки Quasar
@@ -249,14 +267,14 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
-import { computed, ref } from 'vue'
-import type { Message } from '@/types'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import type { ChatUser, Message } from '@/types'
 import { mediaUrl } from '@/config'
 import { lastQuickReaction } from '@/utils/reactions'
 import { emojiLayout, type EmojiLayout } from '@/utils/emoji'
 import { haptic, HAPTIC_HOLD } from '@/utils/haptics'
 import { formatMsgTime } from '@/utils/format'
-import { avatarStyle, initials } from '@/utils/user'
+import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import { highlightQuery, splitMessageText } from '@/utils/mentions'
 import { followLink } from '@/composables/useExternalLinkGuard'
 import { useVisibleOnce } from '@/composables/useVisibleOnce'
@@ -381,6 +399,11 @@ const props = defineProps<{
    * Пусто — обычный показ (поиск закрыт).
    */
   searchQuery?: string
+  /**
+   * Участники чата: по ним в чипах реакций рисуются аватарки отметивших.
+   * Нет списка — показываем число, как раньше.
+   */
+  members?: ChatUser[]
 }>()
 
 /** Текст плашки «Переслано от …» (null, если сообщение не переслано). */
@@ -415,6 +438,12 @@ const emit = defineEmits<{
   (e: 'toggle-emoji-picker'): void
   (e: 'set-reply'): void
   (e: 'toggle-reaction', emoji: string): void
+  /**
+   * Удержание (или правый клик) по реакции: показать, кто её поставил.
+   *
+   * `anchor` — сам чип: список открывается рядом с ним, а не по центру экрана.
+   */
+  (e: 'open-reactions', emoji: string, anchor: HTMLElement | null): void
   (e: 'toggle-pin'): void
   (e: 'copy'): void
   (e: 'edit'): void
@@ -631,6 +660,150 @@ const onDoubleTap = (): void => {
   haptic()
   emit('toggle-reaction', lastQuickReaction())
 }
+
+// ---------------------------------------------------------------------------
+// Реакции: тап ставит/снимает свою, удержание (или правый клик) — «кто поставил».
+// ---------------------------------------------------------------------------
+
+/** Сколько держать, чтобы открылся список поставивших (как долгое нажатие в чатах). */
+const REACTION_HOLD_MS = 450
+
+/**
+ * Сдвиг указателя, после которого удержание считаем не удержанием, а жестом
+ * прокрутки: у чипа есть горизонтальный скролл строки реакций.
+ */
+const REACTION_HOLD_SLOP = 12
+
+/** Длительность анимации появления реакции (совпадает с CSS-кешфреймами). */
+const REACTION_SHOT_MS = 520
+
+/** Аватарок в чипе не больше трёх: дальше уже каша из лиц. */
+const CHIP_FACES_MAX = 3
+
+interface ReactionFace {
+  id: number
+  url?: string
+  initials: string
+}
+
+/**
+ * Лица отметивших для чипов реакции.
+ *
+ * Пока людей мало, аватарки полезнее числа: «👍 2» читается как счётчик, а лица
+ * сразу отвечают на вопрос «кто». Как только их больше трёх, разглядеть лица
+ * всё равно нельзя — возвращаем счётчик.
+ */
+const reactionFaces = computed<Record<string, ReactionFace[]>>(() => {
+  const map: Record<string, ReactionFace[]> = {}
+  for (const reaction of props.message.reactions ?? []) {
+    const ids = reaction.user_ids ?? []
+    if (!ids.length || ids.length > CHIP_FACES_MAX) continue
+    map[reaction.emoji] = ids.map((id) => {
+      const member = props.members?.find((item) => item.id === id)
+      if (!member) return { id, initials: '?' }
+      return { id, url: avatarUrlOf(member), initials: initials(displayName(member)) }
+    })
+  }
+  return map
+})
+
+const facesOf = (emoji: string): ReactionFace[] => reactionFaces.value[emoji] ?? []
+
+/**
+ * Реакции, которым сейчас играет «выстрел» — по росту счётчика.
+ *
+ * Считаем именно рост, а не появление чипа: своё действие видно, и когда
+ * реакцию поставил собеседник.
+ */
+const freshReactions = ref<string[]>([])
+let freshTimer: ReturnType<typeof setTimeout> | undefined
+let knownReactionCounts = new Map<string, number>(
+  (props.message.reactions ?? []).map((item) => [item.emoji, item.count])
+)
+
+watch(
+  () => props.message.reactions,
+  (list) => {
+    const next = new Map<string, number>()
+    const grown: string[] = []
+    for (const item of list ?? []) {
+      next.set(item.emoji, item.count)
+      if (item.count > (knownReactionCounts.get(item.emoji) ?? 0)) grown.push(item.emoji)
+    }
+    knownReactionCounts = next
+    if (!grown.length) return
+    freshReactions.value = grown
+    if (freshTimer !== undefined) globalThis.clearTimeout(freshTimer)
+    freshTimer = globalThis.setTimeout(() => {
+      freshTimer = undefined
+      freshReactions.value = []
+    }, REACTION_SHOT_MS)
+  }
+)
+
+const isFresh = (emoji: string): boolean => freshReactions.value.includes(emoji)
+
+let reactionHoldTimer: ReturnType<typeof setTimeout> | undefined
+let reactionHoldHandled = false
+let reactionHoldOrigin: { x: number; y: number } | undefined
+/** Чип, к которому привязываем список «кто поставил». */
+let reactionAnchor: HTMLElement | null = null
+
+const cancelReactionHold = (): void => {
+  reactionHoldOrigin = undefined
+  if (reactionHoldTimer === undefined) return
+  globalThis.clearTimeout(reactionHoldTimer)
+  reactionHoldTimer = undefined
+}
+
+/** Правый клик (мышь) по чипу — тот же список, что по удержанию. */
+const openReactionUsers = (emoji: string, event: Event): void => {
+  if (event.currentTarget instanceof HTMLElement) reactionAnchor = event.currentTarget
+  emit('open-reactions', emoji, reactionAnchor)
+}
+
+const startReactionHold = (emoji: string, event: PointerEvent): void => {
+  cancelReactionHold()
+  // Флаг — про клик ЭТОГО нажатия. Прошлое удержание могло открыть список, и
+  // заканчивающий его клик ушёл на подложку диалога, а не в чип: тогда флаг
+  // остался бы висеть и съел следующий тап по реакции.
+  reactionHoldHandled = false
+  if (event.currentTarget instanceof HTMLElement) reactionAnchor = event.currentTarget
+  // Точку запоминаем сразу: отменять удержание по «вышли за элемент» нельзя —
+  // от ховера появляется панель действий, строка сдвигается, и курсор
+  // оказывается вне чипа при неподвижном пальце.
+  reactionHoldOrigin = { x: event.clientX, y: event.clientY }
+  reactionHoldTimer = globalThis.setTimeout(() => {
+    reactionHoldTimer = undefined
+    reactionHoldOrigin = undefined
+    // Клик, которым закончится это же нажатие, не должен ещё и снимать реакцию.
+    reactionHoldHandled = true
+    haptic(HAPTIC_HOLD)
+    emit('open-reactions', emoji, reactionAnchor)
+  }, REACTION_HOLD_MS)
+}
+
+const onReactionHoldMove = (event: PointerEvent): void => {
+  if (reactionHoldTimer === undefined || reactionHoldOrigin === undefined) return
+  const shift = Math.hypot(
+    event.clientX - reactionHoldOrigin.x,
+    event.clientY - reactionHoldOrigin.y
+  )
+  if (shift > REACTION_HOLD_SLOP) cancelReactionHold()
+}
+
+const onReactionClick = (emoji: string): void => {
+  if (reactionHoldHandled) {
+    reactionHoldHandled = false
+    return
+  }
+  emit('toggle-reaction', emoji)
+}
+
+onBeforeUnmount(() => {
+  cancelReactionHold()
+  if (freshTimer !== undefined) globalThis.clearTimeout(freshTimer)
+})
 </script>
 
 <style scoped>
@@ -1075,12 +1248,26 @@ const onDoubleTap = (): void => {
   color: var(--ms-danger);
 }
 
+/* Нижний ряд пузыря: реакции слева, время справа — одной строкой, как в
+   Telegram. Когда реакций нет, время прижимается вправо и вид не меняется. */
+.msg-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 2px var(--ms-space-2);
+  margin-top: 2px;
+}
+
+.msg-footer .msg-meta {
+  margin-top: 0;
+  margin-left: auto;
+}
+
 /* Реакции */
 .reactions {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 3px;
+  gap: var(--ms-space-1);
 }
 
 /* Появление и исчезновение чипа: реакция «выпрыгивает» на месте, без прыжка
@@ -1112,27 +1299,113 @@ const onDoubleTap = (): void => {
   }
 }
 
+/* Эмодзи в сообщении — прежнего размера (в окне «кто отметил» те же эмодзи
+   крупнее: там они и есть содержание). */
+.reaction-emoji {
+  font-size: var(--ms-fs-md);
+  line-height: 1;
+}
+
 .reaction-chip {
-  border: 1px solid var(--ms-border);
-  background: var(--ms-surface);
+  position: relative;
+  /* Подложка из поверхности пузыря, а не своя краска: чип лежит НА пузыре, и
+     своя заливка на своей же (синей у исходящих) выглядела бы заплаткой. */
+  background: color-mix(in srgb, var(--ms-surface) 82%, transparent);
   color: var(--ms-text);
-  font-size: 13px;
-  border-radius: 14px;
-  padding: 2px 8px;
+  border: none;
+  border-radius: var(--ms-radius-sm);
+  padding: 4px 9px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 5px;
 }
 
+/* «Моя» реакция выделяется полупрозрачным тоном, без рамки: рамка вокруг чипа
+   читалась как вторая граница пузыря, а градиент — как чужой элемент. */
 .reaction-chip.mine {
-  background: var(--ms-accent-soft);
-  border-color: var(--ms-accent-border);
+  background: color-mix(in srgb, var(--ms-accent) 20%, transparent);
+  color: var(--ms-text-strong);
 }
 
 .reaction-count {
   font-size: var(--ms-fs-xs);
   font-weight: 600;
+}
+
+/* Лица отметивших в чипе: чуть внахлёст, как стопка аватарок в Telegram. */
+.reaction-faces {
+  display: inline-flex;
+  align-items: center;
+}
+
+.reaction-face {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: inline-grid;
+  place-items: center;
+  font-size: var(--ms-fs-sm);
+  font-weight: 700;
+  color: var(--ms-on-accent);
+  background: var(--ms-accent);
+  border: 1px solid var(--ms-surface);
+}
+
+.reaction-face + .reaction-face {
+  margin-left: -6px;
+}
+
+.reaction-face img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Только что поставленная реакция: эмодзи «выстреливает» из чипа, вокруг
+   расходится ореол полупрозрачным тоном (рамки нет — выделяем цветом, не
+   границей). Класс снимается таймером (REACTION_SHOT_MS), поэтому анимация
+   играет один раз на каждое новое нажатие. */
+.reaction-chip.fresh .reaction-emoji {
+  display: inline-block;
+  animation: reaction-shot 0.5s cubic-bezier(0.2, 1.1, 0.3, 1.2);
+}
+
+.reaction-chip.fresh::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ms-accent) 26%, transparent);
+  pointer-events: none;
+  animation: reaction-glow 0.5s ease-out;
+}
+
+@keyframes reaction-shot {
+  0% {
+    transform: scale(0.3) rotate(-18deg);
+  }
+  45% {
+    transform: scale(1.6) rotate(10deg);
+  }
+  70% {
+    transform: scale(0.92) rotate(-4deg);
+  }
+  100% {
+    transform: scale(1) rotate(0);
+  }
+}
+
+@keyframes reaction-glow {
+  from {
+    opacity: 0.9;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.4);
+  }
 }
 
 .row-selector {
@@ -1176,27 +1449,5 @@ const onDoubleTap = (): void => {
   z-index: 4;
   cursor: pointer;
   border-radius: 14px;
-}
-
-.msg.selected .msg-bubble {
-  box-shadow: 0 0 0 2px var(--ms-accent, #2ea25e);
-}
-
-/* Подсветка сообщения при переходе из закреплённых/поиска */
-.msg-highlight .msg-bubble {
-  animation: msg-highlight-pulse 2.4s ease 1;
-}
-
-@keyframes msg-highlight-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-  }
-  15% {
-    box-shadow: 0 0 0 3px var(--ms-accent, #2ea25e);
-  }
-  55% {
-    box-shadow: 0 0 0 3px var(--ms-accent, #2ea25e);
-  }
 }
 </style>

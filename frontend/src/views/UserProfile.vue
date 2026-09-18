@@ -71,6 +71,14 @@ const MaintenanceSettings = defineAsyncComponent(
   () => import('@/components/messenger/MaintenanceSettings.vue')
 )
 
+/**
+ * Диалог резервной копии ключа шифрования — тоже ленивый: нужен редко, а чанк
+ * профиля с ним внутри выходит за бюджет (`check-bundle-size.mjs`).
+ */
+const E2eeBackupDialog = defineAsyncComponent(
+  () => import('@/components/messenger/E2eeBackupDialog.vue')
+)
+
 const LANGUAGES = [
   { code: 'ru', name: 'Русский' },
   { code: 'en', name: 'English' },
@@ -864,6 +872,9 @@ const doLogout = async () => {
 
 // ---------- Удаление аккаунта (требование RuStore/152-ФЗ) ----------
 const showDeleteAccount = ref(false)
+
+// ---------- Резервная копия ключа шифрования (F2) ----------
+const showE2eeBackup = ref(false)
 
 /** Аккаунт удалён на сервере: чистим локальную сессию и закрываем профиль. */
 const onAccountDeleted = async () => {
@@ -1918,6 +1929,22 @@ const onNotificationsToggle = async (val: boolean) => {
               пароль и нажмите «Выйти на всех устройствах».
             </p>
           </div>
+
+          <!-- Резервная копия ключа шифрования: ключ живёт только в этом браузере -->
+          <div class="sessions-block">
+            <div class="sessions-head">
+              <span class="sessions-title">Ключ шифрования</span>
+              <button type="button" class="sessions-refresh" @click="showE2eeBackup = true">
+                <q-icon :name="icon('lock_reset')" size="16px" />
+                Резервная копия
+              </button>
+            </div>
+            <p class="sessions-hint">
+              Ключ сквозного шифрования хранится только в этом браузере: переустановка приложения
+              или потеря телефона уносят с собой переписку зашифрованных чатов. Сохраните копию
+              ключа — она вернёт доступ на новом устройстве.
+            </p>
+          </div>
         </section>
 
         <!-- Сообщения -->
@@ -1977,6 +2004,13 @@ const onNotificationsToggle = async (val: boolean) => {
       v-if="showDeleteAccount"
       @close="showDeleteAccount = false"
       @deleted="onAccountDeleted"
+    />
+
+    <!-- Резервная копия ключа шифрования (F2) -->
+    <E2eeBackupDialog
+      v-if="showE2eeBackup"
+      :my-user-id="authStore.current_user?.id ?? null"
+      @close="showE2eeBackup = false"
     />
   </div>
 </template>

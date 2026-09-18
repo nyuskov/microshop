@@ -62,7 +62,6 @@
 
     /* Закреплённые сообщения */
     --ms-pinned-bg: #fffdf4;
-    --ms-pinned-border: #efe4c8;
     --ms-pinned-icon: #a8851f;
     --ms-pinned-text: #8a7320;
     --ms-pinned-chip-bg: #f3e6b8;
@@ -193,7 +192,6 @@ html[data-theme='amoled'] {
     --ms-mark-bg: rgba(255, 255, 255, 0.14);
 
     --ms-pinned-bg: #201d14;
-    --ms-pinned-border: #3a3420;
     --ms-pinned-icon: #e0c15a;
     --ms-pinned-text: #cdb86b;
     --ms-pinned-chip-bg: #37321f;

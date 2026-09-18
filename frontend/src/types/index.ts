@@ -60,6 +60,8 @@ export interface ReactionSummary {
   emoji: string
   count: number
   reacted_by_me: boolean
+  /** Кто поставил (id): имена клиент берёт из участников чата. */
+  user_ids?: number[]
 }
 
 /** Данные плашки «Переслано от …» (снимок на момент пересылки). */

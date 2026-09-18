@@ -1,6 +1,7 @@
 /* Доступность: уважение prefers-reduced-motion.
    Отключаем анимации/переходы для пользователей, которые их не переносят.
-   Для подсветки сообщения (msg-highlight) остаётся контрастная рамка. */
+   Подсветку перехода к закреплённому (полоса в ленте, см. MessageThread.vue)
+   такой пользователь получает сразу — своё правило есть в самом компоненте. */
 
 @media (prefers-reduced-motion: reduce) {
 
@@ -11,10 +12,6 @@
         animation-iteration-count: 1 !important;
         transition-duration: 0.001ms !important;
         scroll-behavior: auto !important;
-    }
-
-    .msg-highlight {
-        box-shadow: 0 0 0 3px var(--ms-accent, #3aa6e0) !important;
     }
 }
 

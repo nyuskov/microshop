@@ -31,6 +31,7 @@ const COMPONENT_STYLES: Readonly<Record<string, readonly string[]>> = {
   'q-card-section': ['components/card/QCard.sass'],
   'q-card-actions': ['components/card/QCard.sass'],
   'q-dialog': ['components/dialog/QDialog.sass'],
+  'q-menu': ['components/menu/QMenu.sass'],
   // У QLayout/QDrawer/QPageContainer один файл стилей на всех:
   // отдельных sass у drawer и page-container в пакете нет.
   'q-layout': ['components/layout/QLayout.sass'],

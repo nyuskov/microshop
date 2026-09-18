@@ -1,5 +1,18 @@
 <template>
-  <div class="thread-wrap">
+  <div ref="wrapRef" class="thread-wrap">
+    <!-- Полосы подсветки: вспышка перехода к закреплённому/из поиска и
+         выделенные сообщения. Рисуются во всю ширину чата и ПОД сообщениями
+         (фон пузыря не подсвечиваем). Позицию считает скрипт по координатам
+         строки: сама строка уже пузыря (max-width 60%), поэтому растянуть
+         полосу по ней нельзя — рисуем уровнем выше. -->
+    <div
+      v-for="band in bands"
+      :key="band.key"
+      class="highlight-band"
+      :class="{ selected: band.selected }"
+      :style="{ top: `${band.top}px`, height: `${band.height}px` }"
+      aria-hidden="true"
+    ></div>
     <div
       ref="containerRef"
       class="messages-scroll"
@@ -44,6 +57,7 @@
               :selectable="item.row.message.kind !== 'call'"
               :author-name="authorNameFor(item.row, item.index)"
               :series="seriesFor(item.index)"
+              :members="members"
               @quote-click="emit('quote-click', item.row.message)"
               @select-start="emit('select-start', item.row.message)"
               @toggle-select="emit('toggle-select', item.row.message)"
@@ -51,6 +65,10 @@
               @toggle-emoji-picker="emit('toggle-emoji-picker', item.row.message)"
               @set-reply="emit('set-reply', item.row.message)"
               @toggle-reaction="emit('toggle-reaction', item.row.message, $event)"
+              @open-reactions="
+                (emoji: string, anchor: HTMLElement | null) =>
+                  emit('open-reactions', item.row.message, emoji, anchor)
+              "
               @toggle-pin="emit('toggle-pin', item.row.message)"
               @copy="emit('copy', item.row.message)"
               @edit="emit('edit', item.row.message)"
@@ -255,6 +273,8 @@ const emit = defineEmits<{
   (e: 'toggle-emoji-picker', message: Message): void
   (e: 'set-reply', message: Message): void
   (e: 'toggle-reaction', message: Message, emoji: string): void
+  /** Кто поставил реакцию: открыть список на этом сообщении и эмодзи. */
+  (e: 'open-reactions', message: Message, emoji: string, anchor: HTMLElement | null): void
   (e: 'toggle-pin', message: Message): void
   (e: 'copy', message: Message): void
   (e: 'edit', message: Message): void
@@ -276,6 +296,93 @@ const emit = defineEmits<{
 }>()
 
 const containerRef = ref<HTMLElement | null>(null)
+/** Обёртка ленты: в ней рисуется полоса подсветки перехода к сообщению. */
+const wrapRef = ref<HTMLElement | null>(null)
+
+/** Сколько горит вспышка перехода к закреплённому/из поиска. */
+const HIGHLIGHT_BAND_MS = 2400
+
+/**
+ * Полоса подсветки в ленте.
+ *
+ * Одна механика на две задачи: вспышка перехода к сообщению (гаснет сама) и
+ * подсветка выбранных сообщений (горит, пока выбраны) — как в Telegram,
+ * градиентом во всю ширину чата.
+ */
+interface ThreadBand {
+  key: string
+  top: number
+  height: number
+  selected: boolean
+}
+
+const bands = ref<ThreadBand[]>([])
+/** Сообщение, к которому только что перешли (вспышка) — иначе null. */
+const flashMessageId = ref<number | null>(null)
+let flashTimer: ReturnType<typeof setTimeout> | undefined
+
+/**
+ * Пересчитывает полосы по живым координатам строк.
+ *
+ * Обёртка ленты без отступов, поэтому `left/right: 0` у полосы — это ровно
+ * ширина панели чата. Позицию и высоту берём у строки: так полоса остаётся на
+ * сообщении и после догрузки истории.
+ */
+const measureBands = (): void => {
+  const wrap = wrapRef.value
+  const container = containerRef.value
+  if (!wrap || !container) {
+    bands.value = []
+    return
+  }
+  const wrapBox = wrap.getBoundingClientRect()
+  const collect = (ids: number[], selected: boolean): ThreadBand[] =>
+    ids.flatMap((id) => {
+      const row = container.querySelector<HTMLElement>(`[data-message-id="${id}"]`)
+      if (!row) return []
+      const box = row.getBoundingClientRect()
+      return [
+        {
+          key: `${selected ? 'sel' : 'flash'}-${id}`,
+          top: box.top - wrapBox.top,
+          height: box.height,
+          selected
+        }
+      ]
+    })
+  const flash = flashMessageId.value === null ? [] : [flashMessageId.value]
+  bands.value = [...collect(flash, false), ...collect(props.selectedMessageIds, true)]
+}
+
+const startFlashBand = (messageId: number): void => {
+  flashMessageId.value = messageId
+  measureBands()
+  // Лента может доехать до строки уже после этой записи — пересчитываем на кадре.
+  if (typeof globalThis.requestAnimationFrame === 'function') {
+    globalThis.requestAnimationFrame(measureBands)
+  }
+  if (flashTimer !== undefined) globalThis.clearTimeout(flashTimer)
+  flashTimer = globalThis.setTimeout(() => {
+    flashTimer = undefined
+    flashMessageId.value = null
+    measureBands()
+  }, HIGHLIGHT_BAND_MS)
+}
+
+watch(
+  () => props.highlightedMessageId,
+  (id) => {
+    if (id === null) {
+      flashMessageId.value = null
+      measureBands()
+      return
+    }
+    startFlashBand(id)
+  }
+)
+
+// Выбор сообщений меняется на каждом клике — полосы пересобираем сразу.
+watch(() => props.selectedMessageIds, measureBands)
 
 // ---------- Скелетоны загрузки ----------
 /** Сколько «пустых» пузырей рисуем, пока грузятся сообщения. */
@@ -426,6 +533,8 @@ const seriesFor = (index: number): SeriesKind => seriesKindFor(props.rows, index
 const onScroll = () => {
   const container = containerRef.value
   if (container && container.scrollTop < 80) emit('reach-top')
+  // Лента едет вместе с сообщениями — полосы подсветки едут с ней.
+  if (bands.value.length) measureBands()
   updateScrollState()
 }
 
@@ -577,6 +686,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   postObserver?.disconnect()
   postObserver = null
+  if (flashTimer !== undefined) globalThis.clearTimeout(flashTimer)
 })
 </script>
 
@@ -589,6 +699,46 @@ onBeforeUnmount(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* Полоса подсветки перехода к закреплённому/из поиска и выбранных сообщений.
+   Рисуется в обёртке ленты (у неё нет отступов), поэтому left/right: 0 — это
+   ровно ширина панели чата, а не узкая строка сообщения. Заливка ровная и
+   полупрозрачная — без градиента и без направленной «стороны». */
+.highlight-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--ms-accent) 14%, transparent);
+  animation: highlight-band-flash 2.4s ease 1;
+}
+
+/* Выбранное сообщение: тот же тон, только горит постоянно, пока выбрано.
+   Рамки вокруг пузыря больше нет — выделение читается фоном. */
+.highlight-band.selected {
+  animation: none;
+  opacity: 1;
+}
+
+@keyframes highlight-band-flash {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  12%,
+  60% {
+    opacity: 1;
+  }
+}
+
+/* Пользователю, который выключил анимации, полоса нужна сразу и целиком. */
+@media (prefers-reduced-motion: reduce) {
+  .highlight-band {
+    animation: none;
+    opacity: 1;
+  }
 }
 
 /* Визуально скрытый текст для скринридеров. */
@@ -605,6 +755,9 @@ onBeforeUnmount(() => {
 }
 
 .messages-scroll {
+  position: relative;
+  /* Выше полосы подсветки: подсвечиваем строку, а не фон сообщений. */
+  z-index: 1;
   flex: 1;
   min-height: 0; /* чтобы лента скроллилась внутри, а не растягивала панель */
   overflow-y: auto;

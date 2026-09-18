@@ -217,11 +217,12 @@
           </div>
           <div ref="panelScrollEl" class="panel-scroll" @scroll.passive="onPanelScroll">
             <PanelSection
-              v-for="section in panelSections"
+              v-for="(section, index) in panelSections"
               :key="section.key"
               :section-key="section.key"
               :title="section.title"
               :count="section.images.length || section.emojis.length"
+              :force="index <= forcedSectionsUpTo"
             >
               <div v-if="section.images.length" class="extras-grid stickers-grid">
                 <button
@@ -557,31 +558,76 @@ const {
 /** Отступ, при котором секция считается «текущей» (её заголовок у верха). */
 const SECTION_ACTIVE_OFFSET = 12
 
-/** Сколько ждём после перехода, прежде чем снова верить прокрутке. */
-const JUMP_SETTLE_MS = 600
+/**
+ * Тишина в событиях прокрутки = переход закончился.
+ *
+ * Фиксированная пауза тут не годится: плавная прокрутка длинной панели (в
+ * каталоге эмодзи это тысячи пикселей) идёт заметно больше секунды, и если вернуть
+ * подсветку раньше, она успевает проехаться по промежуточным категориям.
+ */
+const JUMP_QUIET_MS = 150
 
 /**
- * До какого времени подсветку не пересчитывать.
+ * Куда едет программная прокрутка (переход по ленте); `null` — панель двигает
+ * человек.
  *
- * Нужно из-за плавной прокрутки: пока панель едет к выбранной секции, события
- * прокрутки успевают «пролистать» все промежуточные категории, и подсветка
- * мигает по пути. Поэтому после тапа держим выбранную секцию подсвеченной, а
- * пересчёт по экрану возвращаем, когда прокрутка встала.
+ * Пока едем, подсветку не пересчитываем: события прокрутки «пролистывают»
+ * промежуточные категории, и активный значок мигал бы по пути.
  */
-let spyMutedUntil = 0
+let jumpTargetTop: number | null = null
+let jumpQuietTimer: ReturnType<typeof setTimeout> | undefined
+
+/** Отменяет работу прошлого перехода, если тапнули по другому значку. */
+let jumpSeq = 0
+
+/**
+ * Индекс последней секции, которую показываем не дожидаясь экрана (`PanelSection`
+ * с `force`).
+ *
+ * Нужен для перехода по ленте: пока секции выше цели ленивые, их высота
+ * неизвестна — посчитать позицию нельзя, и переход уезжал мимо (заголовок за
+ * верхом, а у короткой группы и весь набор). Показываем всё до цели, считаем
+ * позицию — и прокрутка встаёт ровно на заголовок; секции ниже остаются ленивыми.
+ */
+const forcedSectionsUpTo = ref(-1)
 
 /** Активный значок держим на виду: лента длиннее, чем влезает в полосу. */
 const centerActiveStripItem = () => revealStripItem('.panel-strip-item.active')
 
+/**
+ * Верх секции внутри контейнера прокрутки, в пикселях от начала содержимого.
+ *
+ * Считаем по прямоугольникам, а не через `offsetTop`: `offsetTop` отмеряется от
+ * ближайшего позиционированного предка, а им для секций был `.extras-menu` — над
+ * списком лежат вкладки «Эмодзи/Стикеры/GIF», полоса «Добавить/Паки» и лента
+ * значков. Переход уезжал вниз ровно на их высоту: заголовок оставался за
+ * верхом, а короткая группа («Недавние», небольшой пак) не попадала на экран.
+ */
+const sectionOffsetTop = (container: HTMLElement, section: HTMLElement): number =>
+  section.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
+
 /** Секция на экране: последняя, чей верх уже дошёл до верха контейнера. */
 const onPanelScroll = () => {
-  if (performance.now() < spyMutedUntil) return
   const container = panelScrollEl.value
   if (!container) return
+  if (jumpTargetTop !== null) {
+    // Доехали — возвращаем подсветку к обычному расчёту по экрану.
+    if (Math.abs(jumpTargetTop - container.scrollTop) <= 1) {
+      jumpTargetTop = null
+    } else {
+      // Ещё едем (или встали там, куда смогли): ждём тишины в прокрутке.
+      globalThis.clearTimeout(jumpQuietTimer)
+      jumpQuietTimer = globalThis.setTimeout(() => {
+        jumpTargetTop = null
+        onPanelScroll()
+      }, JUMP_QUIET_MS)
+      return
+    }
+  }
   const sections = Array.from(container.querySelectorAll<HTMLElement>('[data-section]'))
   let current = panelSections.value[0]?.key ?? ''
   for (const section of sections) {
-    if (section.offsetTop - container.scrollTop <= SECTION_ACTIVE_OFFSET) {
+    if (sectionOffsetTop(container, section) <= container.scrollTop + SECTION_ACTIVE_OFFSET) {
       current = section.dataset.section ?? current
     } else {
       break
@@ -596,23 +642,30 @@ const onPanelScroll = () => {
 /**
  * Переход к секции по тапу в ленте (как в Telegram: значок = якорь).
  *
- * Считаем позицию от контейнера (`scrollTo`), а не через `scrollIntoView`: тот
+ * Ведём прокрутку самого контейнера (`scrollTo`), а не `scrollIntoView`: тот
  * прокручивает все вложенные контейнеры и мог дёрнуть сам список чатов.
- * После перехода пересчитываем подсветку ещё раз: содержимое секций
- * монтируется лениво, и «на глаз» позиция в момент тапа ещё неточная.
+ *
+ * Секции до цели показываем заранее и только потом считаем позицию: ленивая
+ * секция выше — это неотрисованное содержимое, то есть неизвестная высота,
+ * из-за которой переход и уезжал.
  */
-const jumpToSection = (key: string) => {
+const jumpToSection = async (key: string) => {
   const container = panelScrollEl.value
-  const section = container?.querySelector<HTMLElement>(`[data-section="${key}"]`)
-  if (!container || !section) return
+  const index = panelSections.value.findIndex((section) => section.key === key)
+  if (!container || index < 0) return
+  const seq = ++jumpSeq
   activeSection.value = key
-  spyMutedUntil = performance.now() + JUMP_SETTLE_MS
+  forcedSectionsUpTo.value = index
+  await nextTick()
+  if (seq !== jumpSeq) return
+  const target = container.querySelector<HTMLElement>(`[data-section="${key}"]`)
+  if (!target) return
   centerActiveStripItem()
-  container.scrollTo({ top: section.offsetTop, behavior: 'smooth' })
-  globalThis.setTimeout(() => {
-    spyMutedUntil = 0
-    onPanelScroll()
-  }, JUMP_SETTLE_MS)
+  jumpTargetTop = sectionOffsetTop(container, target)
+  container.scrollTo({ top: jumpTargetTop, behavior: 'smooth' })
+  // Первый «тик» перехода: если уже стоим на месте, закончим сразу, иначе
+  // заведём отсчёт тишины (дальше его продлевают события прокрутки).
+  onPanelScroll()
 }
 
 // Панель открыли или переключили — начинаем с начала и подсвечиваем первую секцию.
@@ -620,6 +673,11 @@ watch(
   () => props.extrasPanel,
   async (panel) => {
     if (panel !== 'emoji' && panel !== 'stickers') return
+    // Незаконченный переход прошлой панели не должен тянуть прокрутку назад.
+    jumpSeq += 1
+    jumpTargetTop = null
+    globalThis.clearTimeout(jumpQuietTimer)
+    forcedSectionsUpTo.value = -1
     await nextTick()
     if (panelScrollEl.value) panelScrollEl.value.scrollTop = 0
     activeSection.value = panelSections.value[0]?.key ?? ''

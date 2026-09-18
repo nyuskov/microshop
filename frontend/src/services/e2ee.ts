@@ -5,26 +5,31 @@
  *   хранится в localStorage (per user), публичный — регистрируется на сервере
  *   вместе с идентификатором устройства (`utils/deviceId.ts`): у аккаунта
  *   может быть несколько устройств, каждое со своим ключом (A5).
- * - Для личного чата из моего приватного ключа и публичного ключа собеседника
- *   вычисляется общий секрет ECDH, из него через HKDF-SHA256 выводится
- *   AES-GCM-ключ конкретного чата (info = "chat:<chat_id>").
- * - Для группового чата используется отдельный симметричный ключ группы
- *   (32 байта). Он раздаётся участникам «обёртками», зашифрованными парным
- *   ключом (`pair:<min>:<max>`); сервер обёрток не читает.
+ * - Для личного чата используется СИММЕТРИЧНЫЙ ключ чата, который раздаётся
+ *   «обёртками» на каждое устройство обоих участников (`chat_device_keys`):
+ *   поэтому переписку читают и телефон, и компьютер. Если обёртки ещё нет
+ *   (чат зашифрован старым клиентом), работает прежний ключ из общего секрета
+ *   двух «текущих» устройств — так читается старая история.
+ * - Для группового чата — тот же симметричный ключ группы (32 байта). Он
+ *   раздаётся участникам «обёртками», зашифрованными парным ключом
+ *   (`pair:<min>:<max>`); сервер обёрток не читает.
  * - Текст (и конверт вложения с его ключом) шифруется AES-GCM (случайный IV на
  *   каждое сообщение), на сервер уходит `e2ee1:<iv_b64>:<data_b64>` + флаг
  *   encrypted. Файлы шифруются отдельным ключом, который лежит в конверте.
  *
- * Упрощения: у аккаунта несколько ключей (по устройству), но ключ личного чата
- * всё ещё выводится из общего секрета ДВУХ «текущих» ключей — поэтому новое
- * устройство читает только новые сообщения; forward secrecy добавляется на
- * следующем этапе (Double Ratchet).
+ * Остаётся упрощение: нет forward secrecy (Double Ratchet) — ключ чата живёт,
+ * пока его не перераспределят.
  */
 
 import { api } from './api'
 import { canonicalKey, orderKeys, safetyCodeFromBytes, type SafetyCode } from '@/utils/safetyNumber'
 
-import { ownDeviceId } from '@/utils/deviceId'
+import {
+  ownDeviceId,
+  DEVICE_ID_STORAGE_KEY,
+  forgetOwnDeviceId,
+  isValidDeviceId
+} from '@/utils/deviceId'
 
 const STORE_PREFIX = 'pismo_e2ee_v1_'
 const PREFIX = 'e2ee1:'
@@ -44,8 +49,20 @@ const chatKeyCache = new Map<number, CryptoKey>() // chat_id -> AES-GCM ключ
 const pairKeyCache = new Map<string, CryptoKey>() // "min:max" -> AES-GCM ключ пары
 const groupRawCache = new Map<number, Uint8Array>() // chat_id -> сырой ключ группы
 const groupKeyCache = new Map<number, CryptoKey>() // chat_id -> AES-GCM ключ группы
+const devicesCache = new Map<number, DevicePublicKey[]>() // user_id -> устройства с ключами
+const pairDeviceKeyCache = new Map<string, CryptoKey>() // "min:max:device" -> ключ с конкретным устройством
+const chatRawCache = new Map<number, Uint8Array>() // chat_id -> сырой ключ ЛИЧНОГО чата
+const chatSymKeyCache = new Map<number, CryptoKey>() // chat_id -> AES-GCM ключ личного чата
+const refreshedChats = new Set<number>() // где обёртки уже обновляли в этой сессии
 let bootstrappedUserId: number | null = null
 let uploadOk = false
+
+/** Устройство аккаунта с его публичным ключом (`GET /keys/{user_id}/`). */
+export interface DevicePublicKey {
+  device_id: string
+  public_key: string
+  changed_at?: string | null
+}
 
 /** Длина ключа группы (AES-256) в байтах. */
 export const GROUP_KEY_BYTES = 32
@@ -203,12 +220,17 @@ export async function myPublicJwkJson(userId: number): Promise<string> {
  */
 export async function bootstrapE2ee(userId: number): Promise<boolean> {
   if (!isE2eeAvailable()) return false
+  // Метку устройства фиксируем ДО генерации ключа. Иначе свежая установка
+  // выглядела бы «старым клиентом» (ключ уже есть, метки нет) и получила бы
+  // `device_id = legacy` — тогда телефон и компьютер писали бы ключ в одну
+  // строку, то есть ровно та проблема, ради которой делалось A5.
+  const deviceId = myDeviceId(userId)
   await ensureDeviceKey(userId)
   bootstrappedUserId = userId
   try {
     await api.put<{ ok: boolean }>('/keys/me/', {
       public_key: await myPublicJwkJson(userId),
-      device_id: myDeviceId(userId)
+      device_id: deviceId
     })
     uploadOk = true
   } catch {
@@ -226,6 +248,66 @@ export async function bootstrapE2ee(userId: number): Promise<boolean> {
  */
 export function myDeviceId(userId: number): string {
   return ownDeviceId({ hasStoredKey: !!safeGet(storageKeyFor(userId)) })
+}
+
+/**
+ * Материал ключа ЭТОГО устройства — для резервной копии.
+ *
+ * Приватный ключ — это и есть доступ к переписке, поэтому он уходит только в
+ * зашифрованном виде (см. `services/e2eeBackup.ts`), никогда открытым текстом.
+ */
+export interface DeviceKeyMaterial {
+  /** Метка устройства: обёртки ключей чатов сделаны на пару (устройство, ключ). */
+  device_id: string
+  priv: JsonWebKey
+  pub: JsonWebKey
+}
+
+/** Ключ устройства как есть (приватный, публичный, метка) или null. */
+export async function myKeyMaterial(userId: number): Promise<DeviceKeyMaterial | null> {
+  if (!isE2eeAvailable()) return null
+  await ensureDeviceKey(userId)
+  const pub = pubJwkCache.get(userId)
+  const stored = safeGet(storageKeyFor(userId))
+  if (!pub || !stored) return null
+  try {
+    const parsed = JSON.parse(stored) as { priv?: JsonWebKey }
+    if (!parsed?.priv?.d) return null
+    return { device_id: myDeviceId(userId), priv: parsed.priv, pub }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Устанавливает ключ устройства из резервной копии (новое устройство).
+ *
+ * Метку устройства восстанавливаем вместе с ключом: обёртки ключей чатов сделаны
+ * на конкретное устройство, поэтому без метки восстановленный ключ историю не
+ * откроет. Нового устройства на сервере при этом не появляется — строка та же,
+ * просто с тем же ключом.
+ *
+ * Пару проверяем на согласованность: если публичная часть не та, что в приватном
+ * ключе, шифрование ломалось бы молча (сообщения уходили бы «в никуда»).
+ */
+export async function installKeyMaterial(
+  userId: number,
+  material: DeviceKeyMaterial
+): Promise<void> {
+  if (!isE2eeAvailable()) throw new Error('Шифрование в этом браузере недоступно')
+  const priv = await importPrivateJwk(material.priv)
+  const exported = (await crypto.subtle.exportKey('jwk', priv)) as JsonWebKey
+  if (!material.pub || exported.x !== material.pub.x || exported.y !== material.pub.y) {
+    throw new Error('Ключ в резервной копии повреждён: части не совпадают')
+  }
+  safeSet(storageKeyFor(userId), JSON.stringify({ priv: material.priv, pub: material.pub }))
+  if (isValidDeviceId(material.device_id)) {
+    safeSet(DEVICE_ID_STORAGE_KEY, material.device_id)
+  }
+  // Ключ другой — все выведенные ключи и метка устройства в кэше устарели.
+  forgetOwnDeviceId()
+  resetE2eeSession()
+  await ensureDeviceKey(userId)
 }
 
 /** Публичный JWK (JSON-строка) собеседника или null, если ключа нет. */
@@ -281,6 +363,20 @@ async function deriveAesKeyWithPeer(
 ): Promise<CryptoKey | null> {
   const peerJwkJson = await peerPublicKey(peerUserId)
   if (!peerJwkJson) return null
+  return deriveAesKeyWithJwk(myUserId, peerJwkJson, info)
+}
+
+/**
+ * То же, но публичный ключ собеседника задан явно (JWK, JSON-строка).
+ *
+ * Нужно обёрткам на КОНКРЕТНОЕ устройство: у аккаунта их несколько, и каждому
+ * соответствует свой публичный ключ.
+ */
+async function deriveAesKeyWithJwk(
+  myUserId: number,
+  peerJwkJson: string,
+  info: string
+): Promise<CryptoKey | null> {
   await ensureDeviceKey(myUserId)
   const myPriv = privCache.get(myUserId)
   if (!myPriv) return null
@@ -345,15 +441,52 @@ export async function pairwiseAesKey(
   return aes
 }
 
-/** Ключ чата: для группы — ключ группы, для личного — парный ключ чата. */
+/**
+ * Ключ чата для ШИФРОВАНИЯ.
+ *
+ * Группа — её собственный ключ. Личный чат — симметричный ключ из обёрток (A5:
+ * его читают все устройства обоих участников), а если обёртки ещё нет — прежний
+ * ключ из общего секрета двух «текущих» устройств: так продолжают работать чаты,
+ * зашифрованные до появления обёрток.
+ */
 export async function chatAesKeyFor(
   myUserId: number,
   chat: { id: number; is_group?: boolean; users: { id: number }[] }
 ): Promise<CryptoKey | null> {
   if (chat.is_group) return groupChatAesKey(myUserId, chat.id)
+  const symmetric = await personalChatKey(myUserId, chat.id)
+  if (symmetric) return symmetric
   const peer = chat.users.find((user) => user.id !== myUserId)
   if (!peer) return null
   return chatAesKey(myUserId, peer.id, chat.id)
+}
+
+/**
+ * Ключи, которыми МОЖЕТ быть зашифрован чат, в порядке проверки.
+ *
+ * Симметричный (многодевайсный) идёт первым, следом — прежний ключ из общего
+ * секрета: сообщение могло уйти с устройства, которое обёртки ещё не получило.
+ * Расшифровка перебирает их по очереди — иначе такие сообщения выглядели бы
+ * «замками».
+ */
+export async function chatDecryptKeysFor(
+  myUserId: number,
+  chat: { id: number; is_group?: boolean; users: { id: number }[] }
+): Promise<CryptoKey[]> {
+  const keys: CryptoKey[] = []
+  if (chat.is_group) {
+    const group = await groupChatAesKey(myUserId, chat.id)
+    if (group) keys.push(group)
+    return keys
+  }
+  const symmetric = await personalChatKey(myUserId, chat.id)
+  if (symmetric) keys.push(symmetric)
+  const peer = chat.users.find((user) => user.id !== myUserId)
+  if (peer) {
+    const legacy = await chatAesKey(myUserId, peer.id, chat.id)
+    if (legacy) keys.push(legacy)
+  }
+  return keys
 }
 
 /** Готов ли чат к E2EE сейчас: есть ключ собеседника (личный) или группы. */
@@ -572,6 +705,258 @@ export function clearGroupKeyCache(chatId?: number): void {
   groupKeyCache.delete(chatId)
 }
 
+// ---------------------------------------------------------------------------
+// Ключ ЛИЧНОГО чата на устройства (A5, этап 2)
+//
+// Раньше личный чат шифровался ключом из общего секрета двух «текущих» ключей
+// аккаунтов — второе устройство прочитать новые сообщения не могло. Теперь у
+// личного чата есть СИММЕТРИЧНЫЙ ключ (как у группы), а сервер хранит обёртки:
+// ключ, зашифрованный на общем секрете конкретной пары устройств
+// (`backend/core/models/chat_device_key.py`, `PUT /keys/chat/{chat_id}/`).
+// ---------------------------------------------------------------------------
+
+/** Все устройства пользователя с их публичными ключами (кэш на сессию). */
+export async function userDevices(userId: number): Promise<DevicePublicKey[]> {
+  const cached = devicesCache.get(userId)
+  if (cached) return cached
+  let devices: DevicePublicKey[] = []
+  try {
+    const response = await api.get<{
+      has_key: boolean
+      public_key?: string | null
+      devices?: DevicePublicKey[]
+    }>(`/keys/${userId}/`)
+    if (Array.isArray(response.data?.devices)) {
+      devices = response.data.devices.filter((item) => item?.device_id && item?.public_key)
+    } else if (response.data?.has_key && response.data.public_key) {
+      // Старый сервер отдаёт один ключ без списка устройств — считаем его одним.
+      devices = [{ device_id: 'legacy', public_key: response.data.public_key }]
+    }
+  } catch {
+    devices = []
+  }
+  devicesCache.set(userId, devices)
+  return devices
+}
+
+/**
+ * Парный ключ с КОНКРЕТНЫМ устройством собеседника.
+ *
+ * Именно им шифруется обёртка ключа чата: получатель повторит ECDH своим
+ * приватным ключом и публичным ключом раздатчика, поэтому обёртку откроет только
+ * та пара устройств, для которой она сделана.
+ */
+export async function pairwiseAesKeyWithDevice(
+  myUserId: number,
+  peerUserId: number,
+  peerDeviceId: string
+): Promise<CryptoKey | null> {
+  const cacheKey = `${Math.min(myUserId, peerUserId)}:${Math.max(myUserId, peerUserId)}:${peerDeviceId}`
+  const cached = pairDeviceKeyCache.get(cacheKey)
+  if (cached) return cached
+  const devices = await userDevices(peerUserId)
+  const jwk = devices.find((device) => device.device_id === peerDeviceId)?.public_key
+  if (!jwk) return null
+  const info = `${PAIR_INFO_PREFIX}${Math.min(myUserId, peerUserId)}:${Math.max(myUserId, peerUserId)}`
+  const key = await deriveAesKeyWithJwk(myUserId, jwk, info)
+  if (key) pairDeviceKeyCache.set(cacheKey, key)
+  return key
+}
+
+interface ChatDeviceKeyResponse {
+  chat_id: number
+  device_id: string
+  has_key: boolean
+  wrapped_key?: string | null
+  wrapped_by_user_id?: number | null
+  wrapped_by_device_id?: string | null
+}
+
+interface ChatKeyEntry {
+  user_id: number
+  device_id: string
+  wrapped_key: string
+}
+
+/**
+ * Сырой симметричный ключ личного чата из МОЕЙ обёртки.
+ *
+ * null — обёртки для этого устройства нет (меня ещё не включили в раздачу) или
+ * открыть её нечем: тогда чат шифруется прежним ключом из общего секрета.
+ */
+export async function chatRawKey(myUserId: number, chatId: number): Promise<Uint8Array | null> {
+  const cached = chatRawCache.get(chatId)
+  if (cached) return cached
+  let row: ChatDeviceKeyResponse | null
+  try {
+    row = (
+      await api.get<ChatDeviceKeyResponse>(`/keys/chat/${chatId}/`, {
+        params: { device_id: myDeviceId(myUserId) }
+      })
+    ).data
+  } catch {
+    return null
+  }
+  if (!row?.has_key || !row.wrapped_key) return null
+  if (!row.wrapped_by_user_id || !row.wrapped_by_device_id) return null
+  const wrapperKey = await pairwiseAesKeyWithDevice(
+    myUserId,
+    row.wrapped_by_user_id,
+    row.wrapped_by_device_id
+  )
+  if (!wrapperKey) return null
+  const raw = await decryptRaw(wrapperKey, row.wrapped_key)
+  if (!raw || raw.length !== GROUP_KEY_BYTES) return null
+  chatRawCache.set(chatId, raw)
+  return raw
+}
+
+/** AES-GCM ключ ЛИЧНОГО чата из обёрток (null — обёртки нет/не открылась). */
+async function personalChatKey(myUserId: number, chatId: number): Promise<CryptoKey | null> {
+  const cached = chatSymKeyCache.get(chatId)
+  if (cached) return cached
+  const raw = await chatRawKey(myUserId, chatId)
+  if (!raw) return null
+  const key = await importRawAesKey(raw)
+  chatSymKeyCache.set(chatId, key)
+  return key
+}
+
+/** Заворачивает ключ чата на все устройства участников и отправляет на сервер. */
+async function putChatKeyEntries(
+  myUserId: number,
+  chatId: number,
+  memberIds: number[],
+  raw: Uint8Array
+): Promise<{ stored: number; missing: number[] }> {
+  const entries: ChatKeyEntry[] = []
+  const missing: number[] = []
+  for (const memberId of memberIds) {
+    const devices = await userDevices(memberId)
+    if (devices.length === 0) {
+      missing.push(memberId)
+      continue
+    }
+    for (const device of devices) {
+      const key = await pairwiseAesKeyWithDevice(myUserId, memberId, device.device_id)
+      if (!key) {
+        missing.push(memberId)
+        continue
+      }
+      entries.push({
+        user_id: memberId,
+        device_id: device.device_id,
+        wrapped_key: await encryptRaw(key, raw)
+      })
+    }
+  }
+  if (entries.length === 0) return { stored: 0, missing }
+  try {
+    const response = await api.put<{ count: number }>(`/keys/chat/${chatId}/`, {
+      keys: entries,
+      // Никогда не удаляем чужие обёртки: у собеседника может быть тот же ключ,
+      // а без его строк переписка разъехалась бы (ключи у сторон разные).
+      replace: false,
+      sender_device_id: myDeviceId(myUserId)
+    })
+    return { stored: response.data?.count ?? 0, missing }
+  } catch {
+    // Сервер откажет, если ни одно устройство получателя не зарегистрировано:
+    // тогда просто остаёмся на прежнем ключе из общего секрета.
+    return { stored: 0, missing }
+  }
+}
+
+export interface ChatKeyDistributeResult {
+  /** Ключ, который раздали (или уже известный); null — раздавать нечего. */
+  raw: Uint8Array | null
+  /** Сколько обёрток сохранил сервер. */
+  stored: number
+  /** Участники без зарегистрированных устройств — им ключ не ушёл. */
+  missing: number[]
+}
+
+/**
+ * Раздаёт ключ ЛИЧНОГО чата на устройства всех участников.
+ *
+ * `create` — выпустить ключ, если у меня его ещё нет (это делает тот, кто
+ * включает шифрование в чате). Обёртки для новых устройств добавляются, уже
+ * существующие не удаляются — см. `putChatKeyEntries`.
+ */
+export async function distributeChatKey(
+  myUserId: number,
+  chatId: number,
+  memberIds: number[],
+  options: { create?: boolean } = {}
+): Promise<ChatKeyDistributeResult> {
+  // Список устройств берём свежий: с прошлого раза у участника мог появиться
+  // новый телефон, и обёртка нужна и для него.
+  for (const memberId of memberIds) devicesCache.delete(memberId)
+  const existing = await chatRawKey(myUserId, chatId)
+  const raw = existing ?? (options.create ? randomBytes(GROUP_KEY_BYTES) : null)
+  if (!raw) return { raw: null, stored: 0, missing: [] }
+  const { stored, missing } = await putChatKeyEntries(myUserId, chatId, memberIds, raw)
+  chatRawCache.set(chatId, raw)
+  chatSymKeyCache.set(chatId, await importRawAesKey(raw))
+  // Обёртки только что разошлись — повторный PUT при первом открытии чата не нужен.
+  refreshedChats.add(chatId)
+  return { raw, stored, missing }
+}
+
+/**
+ * Обновляет обёртки, чтобы новое устройство участника получило ключ чата.
+ *
+ * Устройство, у которого ключа ещё нет, раздать его не может — это делает тот, у
+ * кого ключ есть (как в группах). Хватает одного раза за сессию на чат: обёртки
+ * существующих устройств от этого не меняются, а появившееся устройство
+ * подхватится при следующем открытии чата.
+ */
+export async function refreshChatKeyWrappers(
+  myUserId: number,
+  chatId: number,
+  memberIds: number[]
+): Promise<void> {
+  if (refreshedChats.has(chatId)) return
+  refreshedChats.add(chatId)
+  for (const memberId of memberIds) devicesCache.delete(memberId)
+  const raw = await chatRawKey(myUserId, chatId)
+  if (!raw) return
+  await putChatKeyEntries(myUserId, chatId, memberIds, raw)
+}
+
+/**
+ * Сбрасывает кэш ключа ЛИЧНОГО чата.
+ *
+ * Нужен, когда расшифровать не удалось: ключ могли перераспределить с другого
+ * устройства (например, шифрование выключили и включили заново) — тогда обёртку
+ * и список устройств надо перечитать.
+ */
+export function clearChatKeyCache(chatId?: number): void {
+  if (chatId === undefined) {
+    chatRawCache.clear()
+    chatSymKeyCache.clear()
+    devicesCache.clear()
+    pairDeviceKeyCache.clear()
+    refreshedChats.clear()
+    return
+  }
+  chatRawCache.delete(chatId)
+  chatSymKeyCache.delete(chatId)
+  refreshedChats.delete(chatId)
+}
+
+/** Пробует расшифровать payload по очереди всеми ключами чата. */
+export async function decryptTextWithKeys(
+  keys: CryptoKey[],
+  payload: string
+): Promise<string | null> {
+  for (const key of keys) {
+    const plain = await decryptText(key, payload)
+    if (plain !== null) return plain
+  }
+  return null
+}
+
 /** Сбрасывает кэши сессии (ключи на диске сохраняются — история читается снова). */
 export function resetE2eeSession(): void {
   privCache.clear()
@@ -581,6 +966,11 @@ export function resetE2eeSession(): void {
   pairKeyCache.clear()
   groupRawCache.clear()
   groupKeyCache.clear()
+  devicesCache.clear()
+  pairDeviceKeyCache.clear()
+  chatRawCache.clear()
+  chatSymKeyCache.clear()
+  refreshedChats.clear()
   bootstrappedUserId = null
   uploadOk = false
 }

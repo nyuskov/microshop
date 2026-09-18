@@ -53,6 +53,9 @@ class ReactionSummary(BaseModel):
     emoji: str
     count: int
     reacted_by_me: bool = False
+    #: Кто поставил (id пользователей) — для списка «кто отреагировал». Имена
+    #: клиент берёт из участников чата, чтобы не дублировать их в каждом ответе.
+    user_ids: list[int] = Field(default_factory=list)
 
 
 class ForwardedFrom(BaseModel):

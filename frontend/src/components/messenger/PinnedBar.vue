@@ -77,8 +77,9 @@ const emit = defineEmits<{
   flex-direction: column;
   gap: 2px;
   padding: 6px 12px 6px 16px;
+  /* Шторку отбиваем тоном (`--ms-pinned-bg`), а не линией: рамка под ней
+     читалась как вторая граница шапки чата. */
   background: var(--ms-pinned-bg);
-  border-bottom: 1px solid var(--ms-pinned-border);
 }
 
 /* Строка шапки: всё по вертикальному центру одной строки высотой с кнопку.

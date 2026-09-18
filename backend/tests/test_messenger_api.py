@@ -285,21 +285,44 @@ async def test_reply_and_reactions(api: _ApiCtx) -> None:
     )
     assert put.status_code == 200, put.text
     reactions = put.json()["reactions"]
-    assert {"emoji": "👍", "count": 1, "reacted_by_me": True} in reactions
+    assert reactions == [
+        {"emoji": "👍", "count": 1, "reacted_by_me": True, "user_ids": [u2.id]}
+    ]
 
-    # u1 видит ту же реакцию с reacted_by_me=False.
+    # u1 видит ту же реакцию с reacted_by_me=False и тем же списком поставивших.
     listed = await api.list_messages(t1, chat["id"])
     base_view = next(m for m in listed if m["id"] == base["id"])
     thumbs = next(r for r in base_view["reactions"] if r["emoji"] == "👍")
     assert thumbs["count"] == 1 and thumbs["reacted_by_me"] is False
+    assert thumbs["user_ids"] == [u2.id]
 
-    # u2 снимает реакцию.
+    # u1 ставит ту же реакцию — в списке оба, счётчик 2 (список «кто отреагировал»).
+    both = await api.client.put(
+        f"/api/v1/messages/{base['id']}/reaction/",
+        json={"emoji": "👍"},
+        headers=api.auth(t1),
+    )
+    assert both.status_code == 200, both.text
+    summary = next(r for r in both.json()["reactions"] if r["emoji"] == "👍")
+    assert summary["count"] == 2
+    assert sorted(summary["user_ids"]) == sorted([u1.id, u2.id])
+
+    # u2 снимает реакцию — остаётся только реакция u1 (список поставивших сузился).
     delete = await api.client.delete(
         f"/api/v1/messages/{base['id']}/reaction/",
         headers=api.auth(t2),
     )
     assert delete.status_code == 200
-    assert delete.json()["reactions"] == []
+    left = next(r for r in delete.json()["reactions"] if r["emoji"] == "👍")
+    assert left["count"] == 1 and left["user_ids"] == [u1.id]
+
+    # u1 снимает свою — реакций не осталось.
+    cleared = await api.client.delete(
+        f"/api/v1/messages/{base['id']}/reaction/",
+        headers=api.auth(t1),
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["reactions"] == []
 
 
 # --- Закрепление сообщений -----------------------------------------------

@@ -221,6 +221,7 @@
             @toggle-emoji-picker="onToggleEmojiPicker"
             @set-reply="setReply"
             @toggle-reaction="toggleReaction"
+            @open-reactions="openReactionUsers"
             @toggle-pin="togglePinMessage"
             @copy="copyMessage"
             @edit="startEditMessage"
@@ -337,6 +338,17 @@
     :sending="forwardBusy"
     @close="cancelForward"
     @forward="sendForward"
+  />
+
+  <!-- Кто поставил реакцию (удержание или правый клик по чипу) -->
+  <ReactionUsersDialog
+    v-if="reactionUsersFor"
+    :reactions="reactionUsersFor.message.reactions"
+    :members="selectedChat?.users ?? []"
+    :my-user-id="currentUserId"
+    :initial-emoji="reactionUsersFor.emoji"
+    :anchor="reactionUsersFor.anchor"
+    @close="reactionUsersFor = null"
   />
 
   <!-- Содержимое, присланное из системного «Поделиться» Android -->
@@ -613,13 +625,17 @@ import {
   ENCRYPTED_FALLBACK,
   bootstrapE2ee,
   chatAesKeyFor,
-  decryptText,
+  chatDecryptKeysFor,
+  clearChatKeyCache,
+  decryptTextWithKeys,
+  distributeChatKey,
   distributeGroupKey,
   e2eeReadyForChat,
   encryptText,
   isE2eeAvailable,
   isEncryptedPayload,
   onPeerKeyChanged,
+  refreshChatKeyWrappers,
   resetE2eeSession
 } from '@/services/e2ee'
 import { encryptFileForChat, parseFileMeta } from '@/services/e2eeFiles'
@@ -729,6 +745,9 @@ const CallHistoryDialog = defineAsyncComponent(
 // содержимое не расходится между панелью и диалогом.
 const ChatInfo = defineAsyncComponent(() => import('@/components/messenger/ChatInfo.vue'))
 const GroupChatInfo = defineAsyncComponent(() => import('@/components/messenger/GroupChatInfo.vue'))
+const ReactionUsersDialog = defineAsyncComponent(
+  () => import('@/components/messenger/ReactionUsersDialog.vue')
+)
 import { useCallStore } from '@/stores/call'
 import { useContactsStore } from '@/stores/contacts'
 import { useRealtimeStore } from '@/stores/realtime'
@@ -1273,6 +1292,9 @@ const applyChatE2ee = async (chatId: number, enabled: boolean) => {
     await setChatE2ee(chatId, enabled)
     // В группе мало включить флаг: ключ нужно раздать участникам.
     if (enabled && isGroupChat(chat)) await distributeGroupKeys(chatId)
+    // В личном чате — тоже: симметричный ключ раздаётся на устройства обоих
+    // участников, иначе второе устройство не прочитает новые сообщения (A5).
+    if (enabled && isPrivateChat(chat)) await distributePersonalChatKey(chat)
     // Обновляем готовность ключа — от неё зависит замок в шапке.
     void prepareChatE2ee(chatId)
   } catch (error) {
@@ -1309,6 +1331,31 @@ const distributeGroupKeys = async (chatId: number, rotate = false): Promise<void
 const onGroupMembersChanged = (rotate: boolean) => {
   const chat = selectedChat.value
   if (chat !== null) void distributeGroupKeys(chat.id, rotate)
+}
+
+/**
+ * Раздаёт ключ ЛИЧНОГО чата на устройства обоих участников.
+ *
+ * `create` — выпустить ключ: в личном чате его создаёт тот, кто включает
+ * шифрование, а флаг `e2ee_enabled` меняется один раз на чат, поэтому две
+ * стороны не выпускают два разных ключа.
+ */
+const distributePersonalChatKey = async (chat: Chat, create = true): Promise<void> => {
+  const uid = currentUserId.value
+  if (uid === null || !e2eeMyKeyReady.value || !isPrivateChat(chat)) return
+  try {
+    const ids = chat.users.map((user) => user.id)
+    const { raw, missing } = await distributeChatKey(uid, chat.id, ids, { create })
+    if (missing.length > 0) {
+      console.warn(
+        'Ключ чата не удалось отдать всем устройствам (нет ключа устройства):',
+        missing.join(', ')
+      )
+    }
+    if (!raw) console.warn('Ключ чата не выпущен: обёртки для устройств не сохранились')
+  } catch (error) {
+    console.error('Не удалось раздать ключ чата:', getErrorMessage(error))
+  }
 }
 
 /** Обработчик переключателя типа чата в «Информации о чате». */
@@ -1490,13 +1537,25 @@ const e2eeMyKeyReady = ref(false)
 const e2eePeerReadyByChat = ref<Record<number, boolean>>({})
 
 /**
- * Ключ чата для шифрования/расшифровки: у личного чата — общий секрет двух
- * сторон, у группы — её собственный ключ. null = чат не зашифрован/ключей нет.
+ * Ключ чата для ШИФРОВАНИЯ: у личного чата — симметричный ключ из обёрток
+ * (A5: его читают все устройства обоих участников), у группы — её ключ.
+ * null = чат не зашифрован/ключей нет.
  */
 const chatKeyOf = async (chat: Chat | null): Promise<CryptoKey | null> => {
   const uid = currentUserId.value
   if (uid === null || !chat || !chat.e2ee_enabled || !e2eeMyKeyReady.value) return null
   return chatAesKeyFor(uid, chat)
+}
+
+/**
+ * Ключи для РАСШИФРОВКИ: их может быть два — симметричный из обёрток и прежний
+ * из общего секрета двух «текущих» устройств (сообщения, ушедшие с устройства,
+ * которое обёртки ещё не получило).
+ */
+const chatDecryptKeysOf = async (chat: Chat | null): Promise<CryptoKey[]> => {
+  const uid = currentUserId.value
+  if (uid === null || !chat || !chat.e2ee_enabled || !e2eeMyKeyReady.value) return []
+  return chatDecryptKeysFor(uid, chat)
 }
 
 /**
@@ -1518,6 +1577,15 @@ const prepareChatE2ee = async (chatId: number): Promise<void> => {
   const uid = currentUserId.value
   const chat = chats.value.find((c) => c.id === chatId) ?? selectedChat.value
   if (uid === null || !chat || !isE2eeAvailable()) return
+  // В личном зашифрованном чате обновляем обёртки: так ключ доходит до нового
+  // устройства собеседника (само оно раздать не может — у него ещё нет ключа).
+  if (chat.e2ee_enabled && isPrivateChat(chat) && e2eeMyKeyReady.value) {
+    await refreshChatKeyWrappers(
+      uid,
+      chat.id,
+      chat.users.map((user) => user.id)
+    )
+  }
   const ready = await e2eeReadyForChat(uid, chat)
   e2eePeerReadyByChat.value = {
     ...e2eePeerReadyByChat.value,
@@ -1536,24 +1604,48 @@ const selectedChatE2ee = computed<boolean>(() => {
 
 /**
  * Расшифровывает E2EE-сообщения списка «в памяти» (плоский текст не храним).
- * Если расшифровать нечем/нечем — подставляем заглушку, а не шифротекст.
+ * Если расшифровать нечем — подставляем заглушку, а не шифротекст.
+ *
+ * Список устройств участников меняется, а ключ чата могут перераспределить с
+ * другого устройства — тогда при неудаче один раз перечитываем обёртки и
+ * пробуем ещё раз, иначе переписка выглядела бы «замками» до перезапуска.
  */
 const applyDecryptMessages = async (chatId: number, list: Message[]): Promise<Message[]> => {
   const need = list.filter((m) => m.encrypted && isEncryptedPayload(m.text))
   if (need.length === 0) return list
   const chat = chats.value.find((c) => c.id === chatId) ?? selectedChat.value
-  const key = await chatKeyOf(chat)
+  let keys = await chatDecryptKeysOf(chat)
   const fallback = (m: Message): Message =>
     m.encrypted && isEncryptedPayload(m.text) ? { ...m, text: ENCRYPTED_FALLBACK } : m
-  if (!key) return list.map(fallback)
+  if (keys.length === 0) return list.map(fallback)
+
+  let decoded = await decodeEncryptedList(list, keys)
+  if (decoded.failed > 0 && chat !== null && !chat.is_group) {
+    clearChatKeyCache(chatId)
+    keys = await chatDecryptKeysOf(chat)
+    if (keys.length > 0) decoded = await decodeEncryptedList(list, keys)
+  }
+  // Заранее запускаем расшифровку вложений: к моменту отрисовки/лайтбокса
+  // картинки уже готовы (и грузятся один раз на сообщение).
+  preloadDecryptedMedia(decoded.out)
+  return decoded.out
+}
+
+/** Разбирает шифротекст списка ключами чата; `failed` — сколько не поддалось. */
+const decodeEncryptedList = async (
+  list: Message[],
+  keys: CryptoKey[]
+): Promise<{ out: Message[]; failed: number }> => {
   const out: Message[] = []
+  let failed = 0
   for (const m of list) {
     if (!m.encrypted || !isEncryptedPayload(m.text)) {
       out.push(m)
       continue
     }
-    const plain = await decryptText(key, m.text)
+    const plain = await decryptTextWithKeys(keys, m.text)
     if (plain === null) {
+      failed += 1
       out.push({ ...m, text: ENCRYPTED_FALLBACK })
       continue
     }
@@ -1567,10 +1659,7 @@ const applyDecryptMessages = async (chatId: number, list: Message[]): Promise<Me
       out.push({ ...m, text: plain, encrypted: false })
     }
   }
-  // Заранее запускаем расшифровку вложений: к моменту отрисовки/лайтбокса
-  // картинки уже готовы (и грузятся один раз на сообщение).
-  preloadDecryptedMedia(out)
-  return out
+  return { out, failed }
 }
 
 const isOwnMessage = (message: Message): boolean =>
@@ -2062,6 +2151,23 @@ const toggleReaction = async (message: Message, emoji: string) => {
   }
 }
 
+/**
+ * Кто поставил реакцию: открывается удержанием чипа (или правым кликом).
+ *
+ * Тап по реакции ставит/снимает СВОЮ — это привычное действие, поэтому список
+ * живёт на отдельном жесте.
+ */
+const reactionUsersFor = ref<{
+  message: Message
+  emoji: string
+  /** Чип, у которого открывается список (или null — тогда по центру). */
+  anchor: HTMLElement | null
+} | null>(null)
+
+const openReactionUsers = (message: Message, emoji: string, anchor: HTMLElement | null): void => {
+  reactionUsersFor.value = { message, emoji, anchor }
+}
+
 // ---------- Загрузка данных ----------
 
 /**
@@ -2222,6 +2328,7 @@ const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {
   clearReply()
   closeLightbox()
   showChatInfoModal.value = false
+  reactionUsersFor.value = null
   showGroupInfoModal.value = false
   // Канал: состояние прошлого канала больше не нужно.
   channelOverlaysRef.value?.closeAll()
@@ -3150,8 +3257,7 @@ const syncDraftsFromServer = async () => {
       let text = item.text
       if (isEncryptedPayload(text)) {
         const chat = chats.value.find((entry) => entry.id === item.chat_id) ?? null
-        const key = await chatKeyOf(chat)
-        const plain = key ? await decryptText(key, text) : null
+        const plain = await decryptTextWithKeys(await chatDecryptKeysOf(chat), text)
         if (plain === null) continue
         text = plain
       }
@@ -3226,6 +3332,7 @@ const removeDeletedChat = (chat: Chat) => {
     highlightedMessageId.value = null
     closeLightbox()
     showChatInfoModal.value = false
+    reactionUsersFor.value = null
     showGroupInfoModal.value = false
   }
 }

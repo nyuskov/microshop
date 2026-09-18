@@ -129,14 +129,20 @@ async def _chat_is_e2ee(session: AsyncSession, chat_id: int) -> bool:
 
 
 def _reactions_payload(reactions: list[MessageReaction], user_id: int) -> list[dict]:
-    """Агрегирует реакции по эмодзи."""
+    """Агрегирует реакции по эмодзи (со списком id поставивших)."""
     aggregated: dict[str, dict] = {}
     for reaction in reactions:
         item = aggregated.setdefault(
             reaction.emoji,
-            {"emoji": reaction.emoji, "count": 0, "reacted_by_me": False},
+            {
+                "emoji": reaction.emoji,
+                "count": 0,
+                "reacted_by_me": False,
+                "user_ids": [],
+            },
         )
         item["count"] += 1
+        item["user_ids"].append(reaction.user_id)
         if reaction.user_id == user_id:
             item["reacted_by_me"] = True
     return list(aggregated.values())

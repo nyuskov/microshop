@@ -94,10 +94,28 @@ describe('панели эмодзи и стикеров — лента плюс 
     expect(composer).toContain('panel-strip-item.active')
   })
 
+  it('переход к секции считает позицию внутри контейнера прокрутки', () => {
+    // Грабля: `offsetTop` отмеряется от ближайшего позиционированного предка, а им
+    // для секций был `.extras-menu` — над списком лежат вкладки, полоса
+    // «Добавить/Паки» и лента значков. Переход уезжал вниз ровно на их высоту:
+    // заголовок оставался за верхом, а короткая группа («Недавние», небольшой
+    // пак) не попадала на экран.
+    const composer = source('src/components/messenger/MessageComposer.vue')
+    expect(composer).toContain('sectionOffsetTop')
+    expect(composer).not.toContain('top: section.offsetTop')
+    // И до цели секции показываются заранее: у ленивой секции высота ещё
+    // неизвестна, из-за чего позиция для перехода и была неверной.
+    expect(composer).toContain('forcedSectionsUpTo')
+    expect(composer).toContain(':force="index <= forcedSectionsUpTo"')
+    expect(source('src/components/messenger/PanelSection.vue')).toContain('visible || force')
+  })
+
   it('содержимое секции монтируется лениво — только дойдя до экрана', () => {
     const section = source('src/components/messenger/PanelSection.vue')
     expect(section).toContain('useVisibleOnce(')
-    expect(section).toContain('v-if="visible"')
+    // Рисуем, когда секция дошла до экрана; исключение — `force`, по нему лента
+    // заранее показывает секции до цели, чтобы посчитать высоту для перехода.
+    expect(section).toContain('v-if="visible || force"')
     // По этому атрибуту лента находит секцию и прокручивает к ней.
     expect(section).toContain(':data-section="sectionKey"')
   })
