@@ -35,6 +35,7 @@ celery_app = Celery(
         "tasks.otp_tasks",
         "tasks.media_tasks",
         "tasks.story_tasks",
+        "tasks.call_tasks",
         "tasks.notifications",
         "tasks.security_tasks",
         "tasks.telegram",

@@ -1992,3 +1992,35 @@
 - Страж в `hScrollLanes.spec.ts`: для каждой ленты проверяем, что элемент
   действительно попадает в composable (`el: <имя>` + `ref="<имя>"` либо
   `:ref="<объект>.el"`), и что имя привязки совпадает с деструктурированным.
+
+# Задача уборки сигналинга звонков: модуль не попал в воркер (2026-09-18)
+
+### Симптом
+
+- В логе воркера раз в 5 минут: `Received unregistered task of type
+  'tasks.call_tasks.prune_call_signals'` + «The message has been ignored and
+  discarded».
+
+### Причина
+
+- Задача есть в расписании beat (`prune-call-signals` в `build_beat_schedule`) и
+  есть в коде (`tasks/call_tasks.py`), но модуль `tasks.call_tasks` не был
+  добавлен в список `include` приложения Celery (`core/celery_app.py`). Воркер
+  при старте импортирует только перечисленные модули, поэтому задачу не знает и
+  молча выбрасывает сообщение из очереди.
+- Миграции тут ни при чём: ошибка возникает на этапе **регистрации** задачи, до
+  любого обращения к БД. Таблицы `pending_call_offers`/`queued_call_signals`
+  создаёт миграция `f9a0b1c2d3e4`; если бы она была не накатана, в логе было бы
+  другое — `ProgrammingError: relation ... does not exist` уже внутри задачи.
+
+### Исправление
+
+- `core/celery_app.py`: в `include` добавлен `tasks.call_tasks`.
+- Страж
+  `tests/test_celery_schedule.py::test_beat_tasks_are_registered_in_worker`:
+  для каждой задачи из `build_beat_schedule` проверяет, что её модуль есть в
+  `celery_app.conf.include`. Раньше расхождение «расписание есть, модуль не
+  импортируется» ловилось только логом воркера на проде.
+- После выката перезапустить `worker` и `beat` (образ собирается из кода
+  бэкенда): `docker compose -f docker-compose.prod.yaml up -d --build worker
+  beat`.

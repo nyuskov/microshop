@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from core.celery_app import build_beat_schedule
+from core.celery_app import build_beat_schedule, celery_app
 from core.config import settings
 
 TELEGRAM_POLL = "telegram-poll-updates"
@@ -68,3 +68,19 @@ def test_real_settings_build_a_schedule() -> None:
     """Текущее окружение даёт рабочее расписание (дымовая проверка)."""
     schedule = build_beat_schedule(settings)
     assert "cleanup-orphan-media-daily" in schedule
+
+
+def test_beat_tasks_are_registered_in_worker() -> None:
+    """Модуль каждой задачи из расписания есть в ``include`` воркера.
+
+    Иначе beat шлёт задачу, а воркер её не знает: в логе появляется
+    «Received unregistered task of type ...», сообщение молча выбрасывается и
+    уборка не выполняется. Регрессия 2026-09-18: модуль ``tasks.call_tasks`` не
+    добавили в ``include`` вместе с задачей ``prune_call_signals``.
+    """
+    includes = set(celery_app.conf.include or ())
+    schedule = build_beat_schedule(settings)
+    assert schedule, "расписание не должно быть пустым"
+    for name, entry in schedule.items():
+        module = entry["task"].rsplit(".", 1)[0]
+        assert module in includes, f"{name}: модуля {module} нет в include воркера"
