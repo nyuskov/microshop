@@ -2444,3 +2444,12 @@
 - Id ревизии сначала совпал с чужой миграцией (`c7d8e9f0a1b2` уже занят
   `add_message_drafts`): alembic ругался «Cycle is detected in revisions».
   Ревизия переименована в `c8d9e0f1a2b4`.
+
+### Поправка
+
+- Сборка CI упала на стороже `tests/test_at_rest_texts.py`: новая колонка
+  `scheduled_messages.text` объявлена как `EncryptedText`, но её не было в
+  `TARGETS` скрипта перешифровки `scripts/encrypt_texts.py` — то есть текст
+  отложенных сообщений не попал бы в ротацию ключа «в покое». Добавлена цель, а
+  в тесте — построитель строки для неё (с `send_at` в naive UTC: колонка
+  `timestamp without time zone`).

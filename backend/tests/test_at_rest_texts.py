@@ -40,6 +40,7 @@ from core.models import (
     ModerationAction,
     Profile,
     RegistrationInvite,
+    ScheduledMessage,
     Story,
     User,
     UserReport,
@@ -123,6 +124,18 @@ async def _ensure_row(
             update(User)
             .where(User.id == world.owner.id)
             .values(**{target.column: SECRET})
+        )
+        await session.commit()
+        return
+    if name == "scheduled_messages.text":
+        session.add(
+            ScheduledMessage(
+                chat_id=world.chat.id,
+                user_id=world.owner.id,
+                text=SECRET,
+                # Колонка `send_at` — naive UTC (`timestamp without time zone`).
+                send_at=now.replace(tzinfo=None) + timedelta(hours=1),
+            )
         )
         await session.commit()
         return

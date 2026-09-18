@@ -65,6 +65,7 @@ from core.models import (  # noqa: E402
     ModerationAction,
     Profile,
     RegistrationInvite,
+    ScheduledMessage,
     Story,
     User,
     UserReport,
@@ -99,6 +100,13 @@ class Target:
 #: типом `EncryptedText`). Тест `tests/test_at_rest_texts.py` это сверяет.
 TARGETS: tuple[Target, ...] = (
     Target("messages", "text", Message, ("id",), "тексты сообщений"),
+    Target(
+        "scheduled_messages",
+        "text",
+        ScheduledMessage,
+        ("id",),
+        "отложенные сообщения",
+    ),
     Target(
         "message_drafts",
         "text",
