@@ -23,7 +23,6 @@ import {
 } from '@/services/nativeShare'
 import { getErrorMessage } from '@/services/errors'
 import { shareTargetFromSearch, withoutShareTargetParams } from '@/utils/shareTarget'
-import { chatTitle } from '@/utils/user'
 import type { Chat } from '@/types'
 
 export interface UseNativeShareOptions {
@@ -130,12 +129,6 @@ export function useNativeShare(options: UseNativeShareOptions): UseNativeShare {
     try {
       if (attached) await options.sendFile(chatId, attached, text)
       else await options.sendText(chatId, text)
-      const chat = options.chats().find((item) => item.id === chatId)
-      Notify.create({
-        message: 'Отправлено',
-        caption: chat ? `В чат «${chatTitle(chat, options.currentUserId())}»` : '',
-        timeout: 2500
-      })
       await options.refreshChats()
       if (options.selectedChatId() === chatId) await options.refreshThread()
       discard()

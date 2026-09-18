@@ -272,7 +272,6 @@ const publish = async () => {
     return
   }
   cancelPublish()
-  Notify.create({ message: 'История опубликована на 24 часа', timeout: 3000 })
 }
 </script>
 

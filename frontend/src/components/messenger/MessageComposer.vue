@@ -113,15 +113,41 @@
         </button>
         <span v-if="recordModeHint" class="record-mode-hint">{{ recordModeHint }}</span>
       </span>
-      <button
-        v-if="newMessage.trim()"
-        class="send-btn"
-        title="Отправить"
-        :disabled="sending"
-        @click="emit('send-text')"
-      >
-        <q-icon :name="icon('send')" size="18px" />
-      </button>
+      <!-- Обёртка нужна, чтобы меню привязалось к кнопке, а не ко всей строке -->
+      <span v-if="newMessage.trim()" class="send-wrap">
+        <button
+          class="send-btn"
+          title="Отправить. Удерживайте или нажмите правой кнопкой — отправить позже"
+          :disabled="sending"
+          @click="onSendClick"
+          @pointerdown="startScheduleHold"
+          @pointerup="cancelScheduleHold"
+          @pointerleave="cancelScheduleHold"
+          @pointercancel="cancelScheduleHold"
+          @contextmenu.prevent="openScheduleMenu"
+        >
+          <q-icon :name="icon('send')" size="18px" />
+        </button>
+        <!-- «Отправить позже»: варианты времени считаются от текущей минуты -->
+        <q-menu v-model="scheduleMenuOpen" anchor="top right" self="bottom right" no-parent-event>
+          <div class="attach-menu">
+            <button
+              v-for="preset in scheduleOptions"
+              :key="preset.label"
+              type="button"
+              class="attach-item"
+              @click="pickSchedule(preset)"
+            >
+              <q-icon :name="icon('schedule')" size="18px" />
+              <span>{{ preset.label }}</span>
+            </button>
+            <p class="attach-hint">
+              Сообщение уйдёт в назначенное время, даже если приложение закрыто. Текст останется
+              только текстом: вложения отложить нельзя.
+            </p>
+          </div>
+        </q-menu>
+      </span>
 
       <!-- Подсказка упоминаний: набрали @ — выбираем участника группы -->
       <div v-if="mentionOpen && mentionMatches.length" class="mention-panel" role="listbox">
@@ -302,7 +328,7 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
-import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { ChatUser, Message } from '@/types'
 import { messageSnippet } from '@/utils/media'
 import { applyMention, mentionBeforeCaret } from '@/utils/mentions'
@@ -320,6 +346,7 @@ import { mediaUrl } from '@/config'
 import { useStickersStore } from '@/stores/stickers'
 import { STICKER_ACCEPT, type StickerItem } from '@/services/stickers'
 import { useHScroll } from '@/composables/useHScroll'
+import { schedulePresets, scheduledSendAt, type SchedulePreset } from '@/utils/scheduledSend'
 import PanelSection from '@/components/messenger/PanelSection.vue'
 import { STANDARD_STICKER_PACKS } from '@/utils/standardStickers'
 /**
@@ -799,6 +826,8 @@ const emit = defineEmits<{
   (e: 'send-sticker-image', payload: { url: string; mime: string }): void
   /** Сообщение об ошибке добавления стикера (показывает родитель). */
   (e: 'sticker-error', message: string): void
+  /** «Отправить позже»: момент отправки в UTC (ISO), текст берёт родитель. */
+  (e: 'send-scheduled', sendAt: string): void
 }>()
 
 const attachInput = ref<HTMLInputElement | null>(null)
@@ -826,6 +855,60 @@ const onFileSelected = (event: Event) => {
   viewOncePick.value = false
   emit('file-selected', file, viewOnce)
 }
+
+// ---------- Отправить позже ----------
+// Меню живёт на самой кнопке отправки: обычный клик отправляет, удержание (на
+// телефоне) или правая кнопка (на компьютере) — предлагает время. Отдельной
+// кнопки нет: она бы дублировала основную и занимала место в строке ввода.
+
+/** Меню «отправить позже» и его пункты (считаются при каждом открытии). */
+const scheduleMenuOpen = ref(false)
+const scheduleOptions = ref<SchedulePreset[]>([])
+
+/** Сколько держать кнопку отправки, чтобы открылось меню времени. */
+const SCHEDULE_HOLD_MS = 450
+let scheduleHoldTimer: ReturnType<typeof setTimeout> | null = null
+/** Меню открылось удержанием — следующий клик отправлять не должен. */
+let scheduleHoldHandled = false
+
+/** Заполняет варианты времени заново: пункты зависят от текущего часа. */
+const openScheduleMenu = () => {
+  scheduleOptions.value = schedulePresets()
+  scheduleMenuOpen.value = scheduleOptions.value.length > 0
+}
+
+const cancelScheduleHold = () => {
+  if (scheduleHoldTimer !== null) {
+    clearTimeout(scheduleHoldTimer)
+    scheduleHoldTimer = null
+  }
+}
+
+const startScheduleHold = () => {
+  scheduleHoldHandled = false
+  cancelScheduleHold()
+  scheduleHoldTimer = setTimeout(() => {
+    scheduleHoldHandled = true
+    openScheduleMenu()
+  }, SCHEDULE_HOLD_MS)
+}
+
+/** Клик по кнопке отправки: после удержания он только закрывает меню. */
+const onSendClick = () => {
+  if (scheduleHoldHandled) {
+    scheduleHoldHandled = false
+    return
+  }
+  emit('send-text')
+}
+
+/** Выбрали время — отдаём момент отправки родителю (текст он берёт сам). */
+const pickSchedule = (preset: SchedulePreset) => {
+  scheduleMenuOpen.value = false
+  emit('send-scheduled', scheduledSendAt(preset.at))
+}
+
+onBeforeUnmount(cancelScheduleHold)
 
 // ---------- Вставка файла из буфера обмена ----------
 // Перетаскивание файлов живёт не здесь, а в `useFileDrop` (слушатели на окне):
@@ -1171,6 +1254,12 @@ watch(newMessage, () => {
   width: 0;
   height: 0;
   display: none;
+}
+
+/* Кнопка отправки вместе со своим меню «отправить позже» */
+.send-wrap {
+  position: relative;
+  display: inline-flex;
 }
 
 .send-btn {

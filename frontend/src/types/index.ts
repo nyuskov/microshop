@@ -294,6 +294,34 @@ export interface CreateMessageRequest {
   encrypted?: boolean
 }
 
+/**
+ * Отложенное сообщение («отправить позже»).
+ *
+ * Живёт на сервере, а не в браузере: очередь разбирает Celery beat, поэтому
+ * сообщение уйдёт и с закрытым приложением. Хранится только текст — вложение
+ * пришлось бы держать на диске до срока.
+ */
+export interface ScheduledMessage {
+  id: number
+  chat_id: number
+  user_id: number
+  text: string
+  encrypted: boolean
+  reply_to_id: number | null
+  /** Момент отправки (UTC, ISO) — таймер в клиенте не держим. */
+  send_at: string
+  created_at: string
+}
+
+/** Тело запроса на отложенную отправку. */
+export interface CreateScheduledMessageRequest {
+  chat_id: number
+  text: string
+  send_at: string
+  reply_to_id?: number | null
+  encrypted?: boolean
+}
+
 export interface OpenPrivateChatRequest {
   user_id: number
 }

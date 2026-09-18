@@ -9,13 +9,15 @@ import type {
   ChatDetail,
   ChatMediaItem,
   ChatMediaKind,
+  CreateScheduledMessageRequest,
   GroupInvite,
   GroupInvitePreview,
   GroupJoinResult,
   Message,
   CreateMessageRequest,
   CreateGroupRequest,
-  OpenPrivateChatRequest
+  OpenPrivateChatRequest,
+  ScheduledMessage
 } from '@/types'
 
 export interface SearchUserResult {
@@ -440,6 +442,27 @@ export const forwardMessage = async (
     reply_to_id: replyToId ?? null
   })
   return response.data
+}
+
+/** Ставит сообщение в очередь «отправить позже» (уйдёт и с закрытым приложением). */
+export const createScheduledMessage = async (
+  payload: CreateScheduledMessageRequest
+): Promise<ScheduledMessage> => {
+  const response = await api.post<ScheduledMessage>('/messages/scheduled/', payload)
+  return response.data
+}
+
+/** Свои отложенные сообщения: все или только по одному чату. */
+export const fetchScheduledMessages = async (chatId?: number): Promise<ScheduledMessage[]> => {
+  const response = await api.get<ScheduledMessage[]>('/messages/scheduled/', {
+    params: chatId === undefined ? {} : { chat_id: chatId }
+  })
+  return response.data
+}
+
+/** Отменяет свою отложенную отправку. */
+export const cancelScheduledMessage = async (scheduledId: number): Promise<void> => {
+  await api.delete(`/messages/scheduled/${scheduledId}/`)
 }
 
 /** Ищет пользователей по логину или номеру телефона. */

@@ -164,7 +164,6 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Notify } from 'quasar'
 
 import {
   approveSuggestion,
@@ -284,7 +283,6 @@ const save = async () => {
       username: isPublic.value ? username.value : null
     })
     emit('updated')
-    Notify.create({ type: 'positive', message: 'Канал сохранён' })
   } catch (err) {
     error.value = getErrorMessage(err)
   } finally {

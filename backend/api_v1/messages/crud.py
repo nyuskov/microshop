@@ -1,6 +1,7 @@
 """CRUD-операции для сообщений."""
 
-from datetime import datetime, timezone
+import logging
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import HTTPException, status
@@ -22,11 +23,14 @@ from core.models import (
     Chat,
     Message,
     MessageReaction,
+    ScheduledMessage,
     Story,
     User,
     user_chat_association_table,
 )
 from core.timeutils import as_utc
+
+logger = logging.getLogger(__name__)
 
 _NOT_MEMBER_DETAIL = "Вы не являетесь участником этого чата"
 _BLOCKED_DETAIL = "Нельзя отправить сообщение: пользователь недоступен"
@@ -1090,3 +1094,141 @@ async def _text_matches(
             break
     # Возвращаем в хронологическом порядке (старые → новые), как раньше.
     return sorted(matches, key=lambda item: (item.timestamp, item.id))
+
+
+# ---------- Отложенная отправка («отправить позже») ----------
+
+#: Насколько заранее можно назначить отправку: больше месяца — это уже не
+#: «отправь утром», а календарь.
+MAX_SCHEDULE_AHEAD = timedelta(days=30)
+#: Минимальный запас: назначить отправку «через секунду» нельзя — она бы ушла
+#: всё равно следующим проходом очереди (раз в минуту), и ожидание сбивало бы.
+MIN_SCHEDULE_AHEAD = timedelta(seconds=10)
+#: Сколько сообщений разбираем за один проход задачи.
+DUE_BATCH_SIZE = 200
+
+
+async def create_scheduled_message(
+    session: AsyncSession,
+    *,
+    chat_id: int,
+    user_id: int,
+    text: str,
+    send_at: datetime,
+    reply_to_id: int | None = None,
+    encrypted: bool = False,
+) -> ScheduledMessage:
+    """Ставит сообщение в очередь отложенных.
+
+    Проверяем ровно то, что нужно: пользователь в чате и время в разумных
+    границах. Права на отправку (мут, медленный режим) проверяются в момент
+    ОТПРАВКИ — к тому времени они могут измениться.
+    """
+    await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
+    if reply_to_id is not None:
+        await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
+
+    chat_e2ee = await session.scalar(
+        select(Chat.e2ee_enabled).where(Chat.id == chat_id)
+    )
+    # В «обычном» чате шифротекст не принимаем так же, как при обычной отправке.
+    if not chat_e2ee:
+        encrypted = False
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    send_at_utc = as_utc(send_at) or send_at
+    send_at_naive = send_at_utc.replace(tzinfo=None)
+    if send_at_naive < now + MIN_SCHEDULE_AHEAD:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Время отправки должно быть в будущем",
+        )
+    if send_at_naive > now + MAX_SCHEDULE_AHEAD:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Отложить можно не дальше чем на 30 дней",
+        )
+
+    message = ScheduledMessage(
+        chat_id=chat_id,
+        user_id=user_id,
+        text=text,
+        send_at=send_at_naive,
+        reply_to_id=reply_to_id,
+        encrypted=encrypted,
+    )
+    session.add(message)
+    await session.commit()
+    await session.refresh(message)
+    return message
+
+
+async def list_scheduled_messages(
+    session: AsyncSession, *, user_id: int, chat_id: int | None = None
+) -> list[ScheduledMessage]:
+    """Отложенные сообщения пользователя (все или по одному чату)."""
+    stmt = select(ScheduledMessage).where(ScheduledMessage.user_id == user_id)
+    if chat_id is not None:
+        stmt = stmt.where(ScheduledMessage.chat_id == chat_id)
+    stmt = stmt.order_by(ScheduledMessage.send_at)
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def cancel_scheduled_message(
+    session: AsyncSession, *, user_id: int, scheduled_id: int
+) -> None:
+    """Отменяет свою отложенную отправку."""
+    message = await session.get(ScheduledMessage, scheduled_id)
+    # Чужую запись не показываем как «не найдено»: иначе по ответу можно было бы
+    # перебирать чужие id.
+    if message is None or message.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Отложенное сообщение не найдено",
+        )
+    await session.delete(message)
+    await session.commit()
+
+
+async def send_due_scheduled_messages(
+    session: AsyncSession, *, limit: int = DUE_BATCH_SIZE
+) -> dict[str, int]:
+    """Отправляет всё, чему пришло время. Возвращает счётчики для лога.
+
+    Неудачу не оставляем «на потом»: если человек вышел из чата или его
+    замутили, отправка бессмысленна, а повтор каждую минуту превратился бы в
+    вечный цикл. Такие записи удаляем и пишем причину в лог.
+    """
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    result = await session.execute(
+        select(ScheduledMessage)
+        .where(ScheduledMessage.send_at <= now)
+        .order_by(ScheduledMessage.send_at)
+        .limit(limit)
+    )
+    due = list(result.scalars().all())
+    sent = 0
+    dropped = 0
+    for item in due:
+        try:
+            await send_text_message(
+                session,
+                chat_id=item.chat_id,
+                text=item.text,
+                user_id=item.user_id,
+                reply_to_id=item.reply_to_id,
+                encrypted=item.encrypted,
+            )
+            sent += 1
+        except HTTPException as exc:
+            dropped += 1
+            logger.info(
+                "Отложенное сообщение не отправлено (id=%s, чат=%s): %s",
+                item.id,
+                item.chat_id,
+                exc.detail,
+            )
+        await session.delete(item)
+    await session.commit()
+    return {"sent": sent, "dropped": dropped}

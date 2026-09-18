@@ -256,40 +256,48 @@
           </div>
 
           <!-- Панель ввода (композер) -->
-          <MessageComposer
-            v-else
-            ref="composerRef"
-            :chat-id="selectedChat.id"
-            v-model:new-message="newMessage"
-            :sending="sending"
-            :send-error="sendError"
-            :reply-target="replyTarget"
-            :reply-bar-name="replyBarName"
-            :editing-message="editingMessage"
-            :extras-panel="extrasPanel"
-            :voice-rec-open="voiceRecOpen"
-            :mention-members="selectedChat && isGroupChat(selectedChat) ? selectedChat.users : []"
-            :record-mode="recordMode"
-            :mic-holding="micHolding"
-            :record-mode-hint="recordModeHint"
-            @send-text="sendText"
-            @file-selected="onFileSelected"
-            @cancel-edit="cancelEditing"
-            @clear-reply="clearReply"
-            @voice-cancel="onVoiceCancel"
-            @voice-send="onVoiceSend"
-            @mic-down="onMicDown"
-            @mic-up="onMicUp"
-            @mic-cancel="onMicCancel"
-            @mic-click="onMicClick"
-            @toggle-extras="toggleExtras"
-            @set-extras-tab="setExtrasTab"
-            @gif-sent="onGifSent"
-            @append-emoji="appendEmoji"
-            @send-sticker="sendSticker"
-            @send-sticker-image="sendStickerImage"
-            @sticker-error="onStickerError"
-          />
+          <template v-else>
+            <!-- Отложенные сообщения этого чата: видны и отменяются до отправки -->
+            <ScheduledBar
+              :rows="scheduledMessages"
+              :decrypted="scheduledDecrypted"
+              @cancel="cancelScheduled"
+            />
+            <MessageComposer
+              ref="composerRef"
+              :chat-id="selectedChat.id"
+              v-model:new-message="newMessage"
+              :sending="sending"
+              :send-error="sendError"
+              :reply-target="replyTarget"
+              :reply-bar-name="replyBarName"
+              :editing-message="editingMessage"
+              :extras-panel="extrasPanel"
+              :voice-rec-open="voiceRecOpen"
+              :mention-members="selectedChat && isGroupChat(selectedChat) ? selectedChat.users : []"
+              :record-mode="recordMode"
+              :mic-holding="micHolding"
+              :record-mode-hint="recordModeHint"
+              @send-text="sendText"
+              @send-scheduled="scheduleSend"
+              @file-selected="onFileSelected"
+              @cancel-edit="cancelEditing"
+              @clear-reply="clearReply"
+              @voice-cancel="onVoiceCancel"
+              @voice-send="onVoiceSend"
+              @mic-down="onMicDown"
+              @mic-up="onMicUp"
+              @mic-cancel="onMicCancel"
+              @mic-click="onMicClick"
+              @toggle-extras="toggleExtras"
+              @set-extras-tab="setExtrasTab"
+              @gif-sent="onGifSent"
+              @append-emoji="appendEmoji"
+              @send-sticker="sendSticker"
+              @send-sticker-image="sendStickerImage"
+              @sticker-error="onStickerError"
+            />
+          </template>
         </template>
       </main>
 
@@ -499,7 +507,6 @@
   <MessengerModerationOverlays
     ref="moderationOverlaysRef"
     :is-admin="authStore.isAdmin"
-    @sent="onReportSent"
     @blocked-changed="onBlockedUsersChanged"
   />
 
@@ -629,7 +636,10 @@ import {
   setChatMuted,
   setChatE2ee,
   fetchGroupInvitePreview,
-  joinGroupByInvite
+  joinGroupByInvite,
+  createScheduledMessage,
+  fetchScheduledMessages,
+  cancelScheduledMessage
 } from '@/services/chatService'
 import {
   ENCRYPTED_FALLBACK,
@@ -637,6 +647,7 @@ import {
   chatAesKeyFor,
   chatDecryptKeysFor,
   clearChatKeyCache,
+  decryptText,
   decryptTextWithKeys,
   distributeChatKey,
   distributeGroupKey,
@@ -661,7 +672,8 @@ import type {
   ChannelCard,
   EncryptedFileMeta,
   GroupInvitePreview,
-  Message
+  Message,
+  ScheduledMessage
 } from '@/types'
 import { avatarUrlOf, chatPeer, chatTitle, displayName, isGroupChat } from '@/utils/user'
 import { usernameFromProfilePath } from '@/utils/profileLink'
@@ -706,6 +718,7 @@ import PinnedBar from '@/components/messenger/PinnedBar.vue'
 import MessageThread from '@/components/messenger/MessageThread.vue'
 import type { PendingRow } from '@/components/messenger/MessageThread.vue'
 import MessageComposer from '@/components/messenger/MessageComposer.vue'
+import ScheduledBar from '@/components/messenger/ScheduledBar.vue'
 import MessengerChannelOverlays from '@/views/MessengerChannelOverlays.vue'
 import MessengerChatOverlays from '@/views/MessengerChatOverlays.vue'
 import MessengerModerationOverlays from '@/views/MessengerModerationOverlays.vue'
@@ -1205,20 +1218,19 @@ const manageFolder = (_id: string) => {
   foldersOpen.value = true
 }
 
+// Успешные действия подтверждаем молча: папка появляется в списке чипов, и
+// всплывающая плашка поверх интерфейса тут только мешает.
 const createChatFolder = (name: string) => {
-  const id = createFolderRaw(name)
-  if (id) Notify.create({ message: `Папка «${name.trim()}» создана`, timeout: 2000 })
+  createFolderRaw(name)
 }
 
 const renameChatFolder = (id: string, name: string) => renameFolderRaw(id, name)
 
 const deleteChatFolder = (id: string) => {
-  const folder = chatFolders.value.find((item) => item.id === id)
   removeFolderRaw(id)
   // Активный фильтр мог смотреть в удалённую папку — вернёмся к «Все»
   // (сайдбар сделает это сам, когда список чипов изменится).
   foldersOpen.value = false
-  if (folder) Notify.create({ message: `Папка «${folder.name}» удалена`, timeout: 2000 })
 }
 
 const toggleFolderChat = (id: string, chatId: number) => toggleFolderChatRaw(id, chatId)
@@ -1250,7 +1262,6 @@ const createFolderWithChats = (name: string) => {
   const id = createFolderRaw(name, ids[0])
   if (!id) return
   if (ids.length > 1) setFolderChatsRaw(id, ids, true)
-  Notify.create({ message: `Папка «${name.trim()}» создана`, timeout: 2000 })
 }
 
 // ---------- Замьюченные чаты (без push-уведомлений; mute хранится на сервере) ----------
@@ -2401,6 +2412,8 @@ const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {
   void prepareChatE2ee(chatId)
   messages.value = []
   pinnedMessages.value = []
+  scheduledMessages.value = []
+  scheduledDecrypted.value = {}
   // В другом чате шторка закреплённых показывается снова.
   pinnedHidden.value = false
   clearPendingUploads()
@@ -2416,7 +2429,7 @@ const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {
   channelOverlaysRef.value?.closeAll()
   channelCard.value = null
   channelPostMeta.value = {}
-  await Promise.all([loadThreadLatest(chatId), loadPinned(chatId)])
+  await Promise.all([loadThreadLatest(chatId), loadPinned(chatId), loadScheduled(chatId)])
   // Канал: карточка для шапки и счётчики постов для загруженной части ленты.
   if (isChannelChat(chats.value.find((item) => item.id === chatId))) {
     void loadChannelCard(chatId)
@@ -2553,6 +2566,91 @@ const sendText = async () => {
   }
 }
 
+// ---------- Отложенная отправка («отправить позже») ----------
+// Очередь живёт на сервере: её разбирает Celery beat, поэтому сообщение уйдёт и
+// с закрытым приложением — таймер в браузере такого не даёт. Здесь только UI:
+// список отложенных в открытом чате и создание/отмена.
+
+/** Отложенные сообщения открытого чата (по возрастанию времени). */
+const scheduledMessages = ref<ScheduledMessage[]>([])
+/** Расшифрованные тексты отложенных (id → текст): в E2EE-чате на сервере шифр. */
+const scheduledDecrypted = ref<Record<number, string>>({})
+
+/**
+ * Подтягивает отложенные сообщения чата.
+ *
+ * В зашифрованном чате текст на сервере — шифротекст: расшифровываем его для
+ * предпросмотра, а если ключа ещё нет (или строку писал клиент другой версии) —
+ * список покажет «Зашифрованное сообщение» вместо мусора.
+ */
+const loadScheduled = async (chatId: number) => {
+  try {
+    const rows = await fetchScheduledMessages(chatId)
+    scheduledMessages.value = rows
+    const decrypted: Record<number, string> = {}
+    const aes = await chatKeyOf(selectedChat.value)
+    if (aes) {
+      for (const row of rows) {
+        if (!row.encrypted) continue
+        const text = await decryptText(aes, row.text)
+        if (text !== null) decrypted[row.id] = text
+      }
+    }
+    scheduledDecrypted.value = decrypted
+  } catch {
+    // Список отложенных — вспомогательный: без него чат работает как обычно.
+    scheduledMessages.value = []
+    scheduledDecrypted.value = {}
+  }
+}
+
+const scheduleSend = async (sendAt: string) => {
+  const chatId = selectedChatId.value
+  const text = newMessage.value.trim()
+  if (chatId === null || !text) return
+
+  sending.value = true
+  sendError.value = ''
+  try {
+    // Шифруем так же, как обычную отправку: открытый текст не должен уезжать на
+    // сервер, даже если сообщение уйдёт через час.
+    let wireText = text
+    let wireEncrypted = false
+    const aes = await chatKeyOf(selectedChat.value)
+    if (aes) {
+      wireText = await encryptText(aes, text)
+      wireEncrypted = true
+    }
+    await createScheduledMessage({
+      chat_id: chatId,
+      text: wireText,
+      send_at: sendAt,
+      reply_to_id: replyTarget.value?.id ?? null,
+      encrypted: wireEncrypted
+    })
+    newMessage.value = ''
+    clearDraftFor(chatId)
+    clearReply()
+    sendTypingStop(chatId)
+    await loadScheduled(chatId)
+  } catch (error) {
+    sendError.value = getErrorMessage(error, 'Не удалось отложить сообщение')
+  } finally {
+    sending.value = false
+  }
+}
+
+const cancelScheduled = async (scheduledId: number) => {
+  const chatId = selectedChatId.value
+  try {
+    await cancelScheduledMessage(scheduledId)
+  } catch (error) {
+    sendError.value = getErrorMessage(error, 'Не удалось отменить отправку')
+  } finally {
+    if (chatId !== null) await loadScheduled(chatId)
+  }
+}
+
 /**
  * Отправляет стикер (эмодзи) отдельным сообщением — тап в панели «Стикеры».
  *
@@ -2603,7 +2701,6 @@ const makeStickerFromMessage = async (message: Message) => {
     await stickerFromMessage(message.id)
     // Библиотека изменилась — панель стикеров должна увидеть новый стикер сразу.
     await stickerStore.load(true)
-    Notify.create({ message: 'Стикер добавлен в «Мои стикеры»', timeout: 2500 })
   } catch (error) {
     sendError.value = getErrorMessage(error, 'Не удалось добавить стикер')
   }
@@ -3871,7 +3968,6 @@ const replyToStory = async (payload: { storyId: number; authorId: number; text: 
     }
     void refreshChatsQuiet()
     haptic()
-    Notify.create({ message: 'Ответ отправлен', timeout: 2000 })
   } catch (error) {
     Notify.create({
       message: getErrorMessage(error, 'Не удалось отправить ответ'),
@@ -4368,10 +4464,6 @@ const confirmJoinInvite = async () => {
     invitePreview.value = null
     view.value = 'chats'
     await openChatThread(result.chat_id)
-    Notify.create({
-      message: `Вы в группе «${result.name}»`,
-      timeout: 3000
-    })
   } catch (error) {
     inviteJoinError.value = getErrorMessage(error, 'Не удалось войти в группу')
   } finally {
@@ -4460,11 +4552,6 @@ const blockPeer = async (userId: number) => {
       messages.value = []
     }
     await refreshChatsQuiet()
-    Notify.create({
-      message: 'Пользователь заблокирован',
-      caption: 'Снять блокировку: «⋯» в списке чатов → «Заблокированные»',
-      timeout: 4000
-    })
   } catch (error) {
     Notify.create({
       message: getErrorMessage(error, 'Не удалось заблокировать пользователя'),
@@ -4506,15 +4593,9 @@ const toggleSelectedPeerCalls = async () => {
       // Уже запрещено — возвращаем звонки (мягкую блокировку снимаем целиком).
       await unblockUser(userId)
       peerBlockState.value = { blocked: false, messagesAllowed: false }
-      Notify.create({ message: 'Звонки снова разрешены', timeout: 3000 })
     } else {
       const state = await blockUser(userId, { messagesAllowed: true })
       peerBlockState.value = state
-      Notify.create({
-        message: 'Звонки запрещены',
-        caption: 'Переписка остаётся: он может писать, но не дозвонится',
-        timeout: 4000
-      })
     }
   } catch (error) {
     Notify.create({
@@ -4531,7 +4612,6 @@ const unblockPeer = async (userId: number) => {
     await unblockUser(userId)
     peerBlockState.value = { blocked: false, messagesAllowed: false }
     await refreshChatsQuiet()
-    Notify.create({ message: 'Пользователь разблокирован', timeout: 3000 })
   } catch (error) {
     Notify.create({
       message: getErrorMessage(error, 'Не удалось снять блокировку'),
@@ -4539,15 +4619,6 @@ const unblockPeer = async (userId: number) => {
       timeout: 4000
     })
   }
-}
-
-/** Жалоба отправлена — жалобы разбирают модераторы. */
-const onReportSent = () => {
-  Notify.create({
-    message: 'Жалоба отправлена',
-    caption: 'Мы проверим её и примем меры',
-    timeout: 3000
-  })
 }
 
 /** Блокировка снята — диалог снова становится видимым. */

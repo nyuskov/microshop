@@ -41,6 +41,7 @@
 | `delete-expired-stories-hourly` | каждый час (:07) | удаляет истории старше 24 часов |
 | `prune-call-signals` | каждые 5 минут | страховка от «зависших» парковки вызова и очереди сигналинга |
 | `prune-security-events-weekly` | воскресенье, 04:30 | чистит журнал безопасности (записи старше 180 дней) |
+| `send-due-scheduled-messages` | каждую минуту | отправляет отложенные сообщения (`scheduled_messages`), чьё время пришло |
 | `telegram-poll-updates` | каждые `TELEGRAM_POLL_INTERVAL_SECONDS` (5 с) | long polling обычного Telegram-бота: ловит `/start bind_<код>` и привязывает чат к аккаунту (резервный канал OTP) |
 
 **Про `telegram-poll-updates`:** задача нужна только там, где есть маршрут до

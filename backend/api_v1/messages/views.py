@@ -13,13 +13,18 @@ from api_v1.messages.schemas import (
     ForwardMessageRequest,
 )
 from api_v1.messages.schemas import Message as MessageSchema
-from api_v1.messages.schemas import MessageCreate
+from api_v1.messages.schemas import (
+    MessageCreate,
+    ScheduledMessageCreate,
+    ScheduledMessageOut,
+)
 from core.celery_app import get_task
 from core.config import settings
 from core.media_quota import enforce_media_quota, media_usage
 from core.media_store import VIEW_ONCE_PREFIX, store_media
-from core.models import User, db_helper
+from core.models import ScheduledMessage, User, db_helper
 from core.rate_limit import enforce_limit
+from core.timeutils import as_utc
 from core.upload_guard import validate_attachment_upload
 
 router = APIRouter(
@@ -327,6 +332,77 @@ async def search_messages_endpoint(
         chat_id=chat_id,
         limit=limit,
     )
+
+
+# ---------- Отложенная отправка («отправить позже») ----------
+
+
+@router.post("/scheduled/", response_model=ScheduledMessageOut)
+async def create_scheduled(
+    payload: ScheduledMessageCreate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Ставит сообщение в очередь: уйдёт в назначенное время,
+    даже если приложение закрыто.
+
+    Права на отправку (мут, медленный режим) проверяются в момент ОТПРАВКИ: к
+    тому времени они могут измениться.
+    """
+    await _enforce_user_rate_limit(
+        user,
+        scope="messages:send",
+        limit=settings.message_send_limit_per_minute,
+    )
+    created = await crud.create_scheduled_message(
+        session=session,
+        chat_id=payload.chat_id,
+        user_id=user.id,
+        text=payload.text,
+        send_at=payload.send_at,
+        reply_to_id=payload.reply_to_id,
+        encrypted=payload.encrypted,
+    )
+    return _scheduled_payload(created)
+
+
+@router.get("/scheduled/", response_model=list[ScheduledMessageOut])
+async def list_scheduled(
+    chat_id: int | None = Query(default=None),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Свои отложенные сообщения (все или только по одному чату)."""
+    rows = await crud.list_scheduled_messages(session, user_id=user.id, chat_id=chat_id)
+    return [_scheduled_payload(row) for row in rows]
+
+
+@router.delete("/scheduled/{scheduled_id}/", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_scheduled(
+    scheduled_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Отменяет свою отложенную отправку."""
+    await crud.cancel_scheduled_message(
+        session, user_id=user.id, scheduled_id=scheduled_id
+    )
+    return None
+
+
+def _scheduled_payload(row: ScheduledMessage) -> dict:
+    """Отложенное сообщение в виде ответа API (времена — с пометкой UTC)."""
+    created_at = as_utc(row.created_at) or as_utc(row.send_at)
+    return {
+        "id": row.id,
+        "chat_id": row.chat_id,
+        "user_id": row.user_id,
+        "text": row.text,
+        "encrypted": row.encrypted,
+        "reply_to_id": row.reply_to_id,
+        "send_at": as_utc(row.send_at),
+        "created_at": created_at,
+    }
 
 
 @router.get("/{chat_id}/", response_model=list[MessageSchema])

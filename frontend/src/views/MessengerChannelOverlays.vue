@@ -181,12 +181,6 @@ const submitChannelSuggestion = async () => {
     await suggestPost(chatId, text)
     channelSuggestOpen.value = false
     channelSuggestText.value = ''
-    Notify.create({
-      type: 'positive',
-      message: 'Пост предложен',
-      caption: 'Владелец или админ канала увидит его в «Предложках»',
-      timeout: 4000
-    })
   } catch (error) {
     Notify.create({ type: 'negative', message: getErrorMessage(error), timeout: 4000 })
   } finally {

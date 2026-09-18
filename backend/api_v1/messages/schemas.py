@@ -20,6 +20,32 @@ class EditMessageRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=4000)
 
 
+class ScheduledMessageCreate(BaseModel):
+    """Отложенная отправка: текст и время, когда его отправить."""
+
+    chat_id: int
+    text: str = Field(..., min_length=1, max_length=4000)
+    #: Момент отправки (UTC, с явным смещением — как `timestamp` сообщений).
+    send_at: datetime
+    reply_to_id: int | None = None
+    encrypted: bool = False
+
+
+class ScheduledMessageOut(BaseModel):
+    """Отложенное сообщение для списка на клиенте."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    chat_id: int
+    user_id: int
+    text: str
+    encrypted: bool = False
+    reply_to_id: int | None = None
+    send_at: datetime
+    created_at: datetime
+
+
 class ForwardMessageRequest(BaseModel):
     """Переслать сообщение в другой чат."""
 

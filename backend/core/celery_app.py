@@ -38,6 +38,7 @@ celery_app = Celery(
         "tasks.call_tasks",
         "tasks.notifications",
         "tasks.security_tasks",
+        "tasks.scheduled_tasks",
         "tasks.telegram",
     ],
 )
@@ -108,6 +109,13 @@ def build_beat_schedule(config: Any) -> dict[str, dict[str, Any]]:
         "prune-call-signals": {
             "task": "tasks.call_tasks.prune_call_signals",
             "schedule": crontab(minute="*/5"),
+            "options": {"queue": "microshop"},
+        },
+        # Отложенные сообщения: раз в минуту, потому что время в них задаёт
+        # пользователь («отправь в 9:00»), и опоздание на минуту заметно.
+        "send-due-scheduled-messages": {
+            "task": "tasks.scheduled_tasks.send_due_scheduled_messages",
+            "schedule": crontab(minute="*"),
             "options": {"queue": "microshop"},
         },
         # Еженедельная чистка журнала безопасности (записи старше 180 дней).

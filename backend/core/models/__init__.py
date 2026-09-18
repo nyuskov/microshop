@@ -32,6 +32,7 @@ __all__ = [
     "RefreshSession",
     "RegistrationInvite",
     "RuStorePushToken",
+    "ScheduledMessage",
     "SecurityEvent",
     "Sticker",
     "StickerPack",
@@ -73,6 +74,7 @@ from .push_subscription import PushSubscription  # noqa: F401
 from .refresh_session import RefreshSession  # noqa: F401
 from .registration_invite import RegistrationInvite  # noqa: F401
 from .rustore_push_token import RuStorePushToken  # noqa: F401
+from .scheduled_message import ScheduledMessage  # noqa: F401
 from .security_event import SecurityEvent  # noqa: F401
 from .sticker import Sticker, StickerPack  # noqa: F401
 from .story import Story, StoryReaction, StoryView  # noqa: F401
