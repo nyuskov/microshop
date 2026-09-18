@@ -11,7 +11,9 @@
     <button class="round-btn" title="Ответить" @click="onReply">
       <q-icon :name="icon('reply')" size="20px" />
     </button>
-    <button class="round-btn" title="Переслать" @click="onForward">
+    <!-- Пересылку одноразового вложения не предлагаем: сервер её и так
+         запрещает, а кнопка обещала бы недоступное. -->
+    <button v-if="!message.view_once" class="round-btn" title="Переслать" @click="onForward">
       <q-icon :name="icon('forward')" size="20px" />
     </button>
     <button

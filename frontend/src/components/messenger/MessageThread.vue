@@ -78,6 +78,7 @@
               @delete="emit('delete', item.row.message)"
               @report="emit('report', item.row.message)"
               @open-image="emit('open-image', item.row.message)"
+              @open-view-once="emit('open-view-once', item.row.message)"
             />
             <!-- Пост канала: просмотры и переход к комментариям (как в Telegram). -->
             <div
@@ -289,6 +290,8 @@ const emit = defineEmits<{
   (e: 'drop-pending', localId: number): void
   (e: 'report', message: Message): void
   (e: 'open-image', message: Message): void
+  /** Просмотр одноразового вложения (файл сервер отдаст ровно один раз). */
+  (e: 'open-view-once', message: Message): void
   /** Пост канала просмотрен (счётчик просмотров растёт один раз). */
   (e: 'post-viewed', message: Message): void
   /** Открыть комментарии к посту канала. */

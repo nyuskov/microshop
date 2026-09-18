@@ -323,6 +323,9 @@ export const sendNewMessage = async (
  *
  * `sticker=true` помечает сообщение стикером (``kind='sticker'``): лента рисует
  * его без пузыря, крупно. Сервер принимает так только картинки.
+ *
+ * `viewOnce=true` — «посмотреть один раз»: сервер отдаст файл ровно один раз,
+ * дальше в ленте останется плашка «Просмотрено».
  */
 export const sendAttachmentMessage = async (
   chatId: number,
@@ -331,7 +334,8 @@ export const sendAttachmentMessage = async (
   replyToId?: number | null,
   onProgress?: (percent: number) => void,
   encrypted = false,
-  sticker = false
+  sticker = false,
+  viewOnce = false
 ): Promise<Message> => {
   const params: Record<string, string | number> = {
     chat_id: chatId,
@@ -341,6 +345,9 @@ export const sendAttachmentMessage = async (
   }
   if (sticker) {
     params.sticker = 'true'
+  }
+  if (viewOnce) {
+    params.view_once = 'true'
   }
   if (replyToId) {
     params.reply_to_id = replyToId

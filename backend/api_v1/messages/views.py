@@ -17,7 +17,7 @@ from api_v1.messages.schemas import MessageCreate
 from core.celery_app import get_task
 from core.config import settings
 from core.media_quota import enforce_media_quota, media_usage
-from core.media_store import store_media
+from core.media_store import VIEW_ONCE_PREFIX, store_media
 from core.models import User, db_helper
 from core.rate_limit import enforce_limit
 from core.upload_guard import validate_attachment_upload
@@ -144,6 +144,7 @@ async def create_attachment_message(
     mime: str | None = Query(default=None, max_length=120),
     encrypted: bool = Query(default=False),
     sticker: bool = Query(default=False),
+    view_once: bool = Query(default=False),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
@@ -186,10 +187,23 @@ async def create_attachment_message(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Стикер — это картинка",
         )
+    if sticker and view_once:
+        # Стикер живёт в наборе и показывается в панели — «сгорающий» набор не
+        # имеет смысла, и после просмотра в панели осталась бы дырка.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Стикер не может быть одноразовым",
+        )
     # Квота проверяется до записи на диск (см. core/media_quota.py).
     await enforce_media_quota(session, user_id=user.id, incoming_bytes=len(content))
 
-    file_url = store_media(content, Path(filename).suffix)
+    # Одноразовый файл помечаем префиксом имени: раздача медиа поймёт, что его
+    # нужно проверить в БД и выдать ровно один раз (см. api_v1/media/views.py).
+    file_url = store_media(
+        content,
+        Path(filename).suffix,
+        prefix=VIEW_ONCE_PREFIX if view_once else "",
+    )
     return await crud.send_attachment_message(
         session=session,
         chat_id=chat_id,
@@ -202,6 +216,7 @@ async def create_attachment_message(
         reply_to_id=reply_to_id,
         encrypted=encrypted,
         kind="sticker" if sticker else "text",
+        view_once=view_once,
     )
 
 

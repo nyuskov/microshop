@@ -104,6 +104,10 @@ class Message(BaseModel):
     call_duration: int | None = None
     call_caller_id: int | None = None
     file: MessageFile | None = None
+    # «Посмотреть один раз»: файл отдаётся ровно один раз (см. api_v1/media).
+    view_once: bool = False
+    # Одноразовое вложение уже открыли — в ленте останется плашка «Просмотрено».
+    view_once_opened: bool = False
     reactions: list[ReactionSummary] = Field(default_factory=list)
     forwarded_from: ForwardedFrom | None = None
     reply_to_story: StoryReply | None = None

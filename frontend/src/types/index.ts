@@ -17,7 +17,6 @@ export interface MessageFile {
   mime: string | null
   size: number | null
 }
-
 /** Вкладка галереи медиа чата. */
 export type ChatMediaKind = 'image' | 'video' | 'audio' | 'file'
 
@@ -277,6 +276,13 @@ export interface Message {
    */
   hidden?: boolean
   hidden_reason?: string | null
+  /**
+   * Одноразовое вложение («посмотреть один раз»): сервер отдаёт файл ровно
+   * один раз, дальше в ленте остаётся плашка «Просмотрено».
+   */
+  view_once?: boolean
+  /** Одноразовое вложение уже открыли (в том числе на другом устройстве). */
+  view_once_opened?: boolean
 }
 
 export interface CreateMessageRequest {

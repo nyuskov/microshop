@@ -119,6 +119,7 @@
         :row-visible="rowVisible"
         :sticker="isStickerMessage(message)"
         @open-image="emit('open-image')"
+        @open-view-once="emit('open-view-once')"
       />
 
       <!-- Очень длинные тексты показываем свёрнутыми: иначе одна «простыня»
@@ -455,6 +456,8 @@ const emit = defineEmits<{
   /** Жалоба на сообщение (модерация UGC, требование RuStore). */
   (e: 'report'): void
   (e: 'open-image'): void
+  /** Одноразовое вложение: открыть на просмотр (сервер отдаст файл один раз). */
+  (e: 'open-view-once'): void
 }>()
 
 // Превью ссылки из текста: только у обычных текстовых сообщений — у

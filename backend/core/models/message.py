@@ -107,6 +107,16 @@ class Message(IdIntPkMixin, Base):
     mime_type: Mapped[str | None] = mapped_column(String(120))
     file_size: Mapped[int | None]
 
+    # «Посмотреть один раз»: файл отдаётся ровно один раз, дальше сервер его не
+    # показывает (см. api_v1/media/views.py — там же удаление блоба).
+    view_once: Mapped[bool] = mapped_column(
+        default=False, server_default=func.false(), nullable=False
+    )
+    # Когда вложение открыли (null — ещё не открывали).
+    view_once_opened_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+
     user: Mapped["User"] = relationship(
         back_populates="messages",
         # У Message два FK на user (автор + автор пересылки) — уточняем связь.

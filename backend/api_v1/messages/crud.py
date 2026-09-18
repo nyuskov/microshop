@@ -232,6 +232,10 @@ def message_to_dict(message: Message, user_id: int) -> dict:
         "hidden": hidden,
         "hidden_reason": message.hidden_reason if hidden else None,
         "file": _file_payload(message),
+        "view_once": message.view_once,
+        # Вложение уже сгорело: клиент покажет плашку «Просмотрено» и не будет
+        # запрашивать файл (сервер ответит «истёк»).
+        "view_once_opened": message.view_once_opened_at is not None,
         "reactions": _reactions_payload(message.reactions, user_id),
         "forwarded_from": _forwarded_payload(message),
         "reply_to_story": _story_reply_payload(message),
@@ -457,6 +461,7 @@ async def send_attachment_message(
     reply_to_id: int | None = None,
     encrypted: bool = False,
     kind: str = "text",
+    view_once: bool = False,
 ) -> dict:
     """Отправляет сообщение с файлом-вложением.
 
@@ -467,6 +472,9 @@ async def send_attachment_message(
 
     ``kind='sticker'`` — картинка-стикер: сообщение рисуется без пузыря
     (см. `api_v1/stickers` — панель стикеров шлёт так свои картинки).
+
+    ``view_once=True`` — вложение сгорает после просмотра: сервер отдаст файл
+    один раз (см. ``api_v1/media/views.py``), дальше в ленте останется плашка.
     """
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
     # Анти-флуд: мут, бан и медленный режим группы (иначе ограничение текста
@@ -498,6 +506,7 @@ async def send_attachment_message(
         mime_type=mime_type,
         file_size=file_size,
         encrypted=encrypted,
+        view_once=view_once,
     )
     session.add(message)
     await session.commit()
@@ -711,6 +720,10 @@ async def list_chat_media(
     сервер не может ни показать картинку, ни определить её тип, а клиенту для
     расшифровки нужны сами сообщения — там галерея строится из загруженной
     истории.
+
+    Одноразовые вложения тоже не показываем: галерея отдаёт ссылки списком, а
+    каждый показ такой ссылки сжигает вложение (см. ``api_v1/media/views.py``) —
+    сетка превью выпила бы все «сгораемые» картинки чата разом.
     """
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
     if await _chat_is_e2ee(session, chat_id):
@@ -720,6 +733,7 @@ async def list_chat_media(
         Message.chat_id == chat_id,
         Message.file_name.is_not(None),
         Message.file_url.is_not(None),
+        Message.view_once.is_(False),
         _hide_filter(user_id),
     )
     if before_id is not None:
@@ -919,6 +933,13 @@ async def forward_message(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Сообщение скрыто до проверки модератором — пересылка недоступна",
+        )
+    # «Сгорающие» вложения не пересылаем: иначе одноразовость обходится одной
+    # пересылкой — копия уехала бы в другой чат и осталась там навсегда.
+    if source.view_once:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Одноразовое вложение переслать нельзя",
         )
     if source.encrypted:
         raise HTTPException(

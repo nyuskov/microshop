@@ -231,6 +231,7 @@
             @delete="deleteMessageOf"
             @report="openReportForMessage"
             @open-image="openImageFromMessage"
+            @open-view-once="openViewOnce"
           />
 
           <!-- Примечание E2EE (как в Telegram) над строкой ввода -->
@@ -562,6 +563,15 @@
   <VideoRecorderModal v-if="videoRecOpen" @close="onVideoCancel" @send="onVideoSend" />
 
   <!-- Просмотр изображений (lightbox) -->
+  <!-- Одноразовое вложение: своё окно (листать и скачивать нельзя) -->
+  <ViewOnceViewer
+    v-if="viewOnceView"
+    :url="viewOnceView.url"
+    :kind="viewOnceView.kind"
+    :name="viewOnceView.name"
+    @close="closeViewOnce"
+  />
+
   <ImageLightbox
     v-if="lightboxItems.length > 0 && lightboxIndex !== null"
     :images="lightboxItems"
@@ -715,6 +725,8 @@ const VideoRecorderModal = defineAsyncComponent(
   () => import('@/components/media/VideoRecorderModal.vue')
 )
 const ImageLightbox = defineAsyncComponent(() => import('@/components/media/ImageLightbox.vue'))
+/** Просмотр одноразового вложения: своё окно без листания и «Скачать». */
+const ViewOnceViewer = defineAsyncComponent(() => import('@/components/media/ViewOnceViewer.vue'))
 // Карточка приглашения нужна только по ссылке — отдельный чанк.
 const GroupInviteDialog = defineAsyncComponent(
   () => import('@/components/messenger/GroupInviteDialog.vue')
@@ -1397,6 +1409,75 @@ const lightboxUrlOf = (message: Message): string => {
 
 // Кадры, текущий индекс и листание — в composables/useLightbox.ts. Открытие
 // помечаем в истории приложения: лайтбокс закрывает системная «назад».
+
+// ---------- Одноразовые медиа («посмотреть один раз») ----------
+/** Открытое одноразовое вложение (null — окно закрыто). */
+const viewOnceView = ref<{
+  url: string
+  kind: 'image' | 'video' | 'file'
+  name: string
+} | null>(null)
+/** Открытые в этой сессии: плашка сразу показывает «Просмотрено». */
+const viewOnceOpened = reactive(new Set<number>())
+
+const viewOnceKindOf = (message: Message): 'image' | 'video' | 'file' => {
+  const mime = message.file?.mime ?? ''
+  if (mime.startsWith('image/')) return 'image'
+  if (mime.startsWith('video/')) return 'video'
+  return 'file'
+}
+
+/**
+ * Скачивает одноразовое вложение и отдаёт ссылку на содержимое.
+ *
+ * Для E2EE это расшифрованная копия (blob:), для обычного чата — тоже blob, а не
+ * адрес сервера: адрес можно перезапросить из истории браузера, а blob живёт
+ * только в этой вкладке и освобождается при закрытии.
+ */
+const fetchViewOnceUrl = async (message: Message): Promise<string | null> => {
+  const file = message.file
+  if (!file) return null
+  if (message.e2ee_file) {
+    // Расшифровка идёт тем же путём, что у обычных медиа: ждём готовности.
+    for (let i = 0; i < 100; i += 1) {
+      const ready = decryptedMediaFor(message)?.url
+      if (ready) return ready
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 100))
+    }
+    throw new Error('Расшифровка не завершилась')
+  }
+  const response = await fetch(mediaUrl(file.url))
+  if (!response.ok) throw new Error(`Сервер ответил ${response.status}`)
+  return URL.createObjectURL(await response.blob())
+}
+
+const openViewOnce = async (message: Message) => {
+  if (message.view_once_opened || viewOnceOpened.has(message.id)) return
+  sendError.value = ''
+  try {
+    const url = await fetchViewOnceUrl(message)
+    if (!url) return
+    pushMobileNav()
+    viewOnceOpened.add(message.id)
+    // Сервер уже отдал файл — в ленте показываем «Просмотрено».
+    message.view_once_opened = true
+    viewOnceView.value = {
+      url,
+      kind: viewOnceKindOf(message),
+      name: message.file?.name ?? 'Медиа'
+    }
+  } catch (error) {
+    sendError.value = getErrorMessage(error, 'Не удалось открыть одноразовое медиа')
+  }
+}
+
+const closeViewOnce = () => {
+  const current = viewOnceView.value
+  // Свою копию сразу отпускаем: одноразовое медиа не должно остаться в памяти.
+  if (current?.url.startsWith('blob:')) URL.revokeObjectURL(current.url)
+  viewOnceView.value = null
+}
+
 const {
   items: lightboxItems,
   index: lightboxIndex,
@@ -2327,6 +2408,7 @@ const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {
   inlineSearchOpen.value = false
   clearReply()
   closeLightbox()
+  closeViewOnce()
   showChatInfoModal.value = false
   reactionUsersFor.value = null
   showGroupInfoModal.value = false
@@ -2576,7 +2658,7 @@ const sendStickerImage = async (image: { url: string; mime: string }) => {
  * загрузка. На ошибке бросает исключение (почистив за собой временный пузырь) —
  * что показать пользователю, решает вызывающий: отправка одного файла или пачки.
  */
-const sendFileMessage = async (file: File) => {
+const sendFileMessage = async (file: File, viewOnce = false) => {
   const chatId = selectedChatId.value
   if (chatId === null) return
 
@@ -2607,7 +2689,10 @@ const sendFileMessage = async (file: File) => {
           setPendingProgress(localId, percent)
         }
       },
-      !!payload
+      !!payload,
+      // Стикером это не отправляем, а «посмотреть один раз» — флаг сообщения.
+      false,
+      viewOnce
     )
     if (payload) applyLocalFileEnvelope(message, payload.meta)
     removePendingUpload(localId)
@@ -2634,13 +2719,13 @@ const sendFileMessage = async (file: File) => {
  * модели сообщений нет). Подпись из поля ввода достаётся первому файлу: после
  * него поле очищается — ровно как при отправке одного файла.
  */
-const sendFiles = async (files: File[]) => {
+const sendFiles = async (files: File[], viewOnce = false) => {
   if (selectedChatId.value === null || files.length === 0) return
   sendError.value = ''
   const failures: string[] = []
   for (const file of files) {
     try {
-      await sendFileMessage(file)
+      await sendFileMessage(file, viewOnce)
     } catch (error) {
       // Один неудачный файл не отменяет остальные: копим причины и показываем
       // итог после всей пачки.
@@ -2654,8 +2739,8 @@ const sendFiles = async (files: File[]) => {
 }
 
 /** Кнопка «Прикрепить» и вставка картинки из буфера — всегда один файл. */
-const onFileSelected = (file: File) => {
-  void sendFiles([file])
+const onFileSelected = (file: File, viewOnce = false) => {
+  void sendFiles([file], viewOnce)
 }
 
 /**

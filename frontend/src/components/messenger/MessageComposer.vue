@@ -30,18 +30,38 @@
       @send="(payload) => emit('voice-send', payload)"
     />
     <div v-else class="input-row">
-      <button
-        v-if="!hasText"
-        class="round-btn"
-        title="Прикрепить файл"
-        @click="attachInput?.click()"
-      >
-        <q-icon :name="icon('attach_file')" size="20px" />
-      </button>
+      <!-- Обёртка нужна, чтобы меню привязалось к кнопке, а не ко всей строке -->
+      <span v-if="!hasText" class="attach-wrap">
+        <button
+          class="round-btn"
+          title="Прикрепить файл"
+          :aria-expanded="attachMenuOpen"
+          @click="attachMenuOpen = !attachMenuOpen"
+        >
+          <q-icon :name="icon('attach_file')" size="20px" />
+        </button>
+        <!-- Что именно прикрепляем: обычный файл или одноразовое медиа -->
+        <q-menu v-model="attachMenuOpen" anchor="top middle" self="bottom middle" no-parent-event>
+          <div class="attach-menu">
+            <button type="button" class="attach-item" @click="pickAttachment(false)">
+              <q-icon :name="icon('attach_file')" size="18px" />
+              <span>Файл или фото</span>
+            </button>
+            <button type="button" class="attach-item" @click="pickAttachment(true)">
+              <q-icon :name="icon('schedule')" size="18px" />
+              <span>Посмотреть один раз</span>
+            </button>
+            <p class="attach-hint">
+              Одноразовое медиа сгорит после первого просмотра: его нельзя переслать.
+            </p>
+          </div>
+        </q-menu>
+      </span>
       <input
         ref="attachInput"
         class="hidden-file"
         type="file"
+        :accept="viewOncePick ? 'image/*,video/*' : undefined"
         aria-label="Прикрепить файл"
         @change="onFileSelected"
       />
@@ -754,7 +774,8 @@ const onStickersSelected = (event: Event) => {
 
 const emit = defineEmits<{
   (e: 'send-text'): void
-  (e: 'file-selected', file: File): void
+  /** Файл выбран: `viewOnce` — «посмотреть один раз» (медиа сгорает). */
+  (e: 'file-selected', file: File, viewOnce?: boolean): void
   (e: 'cancel-edit'): void
   (e: 'clear-reply'): void
   (e: 'voice-cancel'): void
@@ -781,12 +802,29 @@ const emit = defineEmits<{
 }>()
 
 const attachInput = ref<HTMLInputElement | null>(null)
+/** Меню у кнопки вложения: обычный файл или «посмотреть один раз». */
+const attachMenuOpen = ref(false)
+/** Выбранный режим отправки: true — одноразовое медиа (фото/видео). */
+const viewOncePick = ref(false)
+
+/** Открывает выбор файла в нужном режиме (без режима «одноразово» — любой файл). */
+const pickAttachment = (viewOnce: boolean) => {
+  viewOncePick.value = viewOnce
+  attachMenuOpen.value = false
+  attachInput.value?.click()
+}
 
 const onFileSelected = (event: Event) => {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
-  if (file) emit('file-selected', file)
+  if (!file) return
+  // Одноразовым может быть только медиа: «сгорающий» документ/архив смысла не
+  // имеет, а в списке файлов он бы потом искался.
+  const viewOnce =
+    viewOncePick.value && (file.type.startsWith('image/') || file.type.startsWith('video/'))
+  viewOncePick.value = false
+  emit('file-selected', file, viewOnce)
 }
 
 // ---------- Вставка файла из буфера обмена ----------
@@ -1155,6 +1193,48 @@ watch(newMessage, () => {
 
 .hidden-file {
   display: none;
+}
+
+/* Кнопка вложения вместе со своим меню */
+.attach-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Меню вложения: обычный файл или одноразовое медиа */
+.attach-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--ms-space-1);
+  min-width: 210px;
+}
+
+.attach-item {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-2);
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: var(--ms-radius-sm);
+  background: transparent;
+  color: var(--ms-text);
+  font-family: var(--ms-font), sans-serif;
+  font-size: var(--ms-fs-base);
+  text-align: left;
+  cursor: pointer;
+}
+
+.attach-item:hover {
+  background: var(--ms-hover);
+}
+
+.attach-hint {
+  margin: var(--ms-space-1) var(--ms-space-2) var(--ms-space-2);
+  color: var(--ms-muted);
+  font-size: var(--ms-fs-xs);
+  line-height: 1.3;
 }
 
 /* Единое меню «Эмодзи / GIF» (над строкой ввода) */

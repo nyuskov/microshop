@@ -1,7 +1,29 @@
 <template>
   <template v-if="file">
+    <!-- Одноразовое медиа: содержимое НЕ грузим, пока не нажмут.
+         Сервер отдаёт такой файл ровно один раз, и любое превью сожгло бы
+         вложение ещё до просмотра. -->
     <button
-      v-if="isImageFile(file)"
+      v-if="viewOnce"
+      type="button"
+      class="attachment attachment-view-once"
+      :class="{ opened: viewOnceOpened }"
+      :disabled="viewOnceOpened"
+      :title="viewOnceOpened ? 'Вложение просмотрено' : 'Открыть (сгорит после просмотра)'"
+      @click.stop="emit('open-view-once')"
+    >
+      <q-icon :name="icon(viewOnceOpened ? 'done_all' : 'visibility')" size="22px" />
+      <span class="attachment-view-once-text">
+        <span class="attachment-name">
+          {{ viewOnceOpened ? 'Просмотрено' : viewOnceLabel }}
+        </span>
+        <span class="attachment-meta">
+          {{ viewOnceOpened ? 'Медиа больше недоступно' : 'Сгорит после открытия' }}
+        </span>
+      </span>
+    </button>
+    <button
+      v-else-if="isImageFile(file)"
       class="attachment attachment-image-btn"
       :class="{ sticker: props.sticker }"
       type="button"
@@ -105,7 +127,14 @@ const props = defineProps<{
   sticker?: boolean
 }>()
 
-const emit = defineEmits<{ (e: 'open-image'): void }>()
+const emit = defineEmits<{ (e: 'open-image'): void; (e: 'open-view-once'): void }>()
+
+/** Одноразовое вложение и его состояние (открыто — файла больше нет). */
+const viewOnce = computed(() => props.message.view_once === true)
+const viewOnceOpened = computed(() => props.message.view_once_opened === true)
+const viewOnceLabel = computed(() =>
+  (props.message.file?.mime ?? '').startsWith('video/') ? 'Одноразовое видео' : 'Одноразовое фото'
+)
 
 const mediaAbsolute = (path: string): string => mediaUrl(path)
 
@@ -190,6 +219,38 @@ const lockedLabel = computed<string>(() =>
 }
 
 /* Зашифрованное вложение, которое ещё не расшифровано (или не читается) */
+/* Плашка одноразового вложения: содержимого не видно, пока не нажмут —
+   поэтому это не превью, а карточка «открыть/просмотрено». */
+.attachment-view-once {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--ms-accent-soft);
+  color: var(--ms-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.attachment-view-once.opened {
+  background: var(--ms-surface-2);
+  color: var(--ms-muted);
+  cursor: default;
+}
+
+.attachment-view-once-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.attachment-view-once .attachment-meta {
+  color: var(--ms-muted);
+  font-size: var(--ms-fs-xs);
+}
+
 .attachment-locked {
   display: inline-flex;
   align-items: center;

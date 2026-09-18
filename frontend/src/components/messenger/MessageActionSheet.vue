@@ -49,7 +49,7 @@
           <q-icon :name="icon('reply')" size="18px" />
           <span>Ответить</span>
         </button>
-        <button class="ctx-item" @click="ctxAction('forward')">
+        <button v-if="!message.view_once" class="ctx-item" @click="ctxAction('forward')">
           <q-icon :name="icon('forward')" size="18px" />
           <span>Переслать</span>
         </button>
@@ -65,11 +65,15 @@
           <q-icon :name="icon('push_pin')" size="18px" />
           <span>{{ message.is_pinned ? 'Открепить' : 'Закрепить' }}</span>
         </button>
-        <button v-if="canSave" class="ctx-item" @click="ctxAction('save')">
+        <button v-if="canSave && !message.view_once" class="ctx-item" @click="ctxAction('save')">
           <q-icon :name="icon('bookmark')" size="18px" />
           <span>Сохранить в Сохранённые</span>
         </button>
-        <button v-if="canMakeSticker" class="ctx-item" @click="ctxAction('sticker')">
+        <button
+          v-if="canMakeSticker && !message.view_once"
+          class="ctx-item"
+          @click="ctxAction('sticker')"
+        >
           <q-icon :name="icon('add_reaction')" size="18px" />
           <span>В стикеры</span>
         </button>

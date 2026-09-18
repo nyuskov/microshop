@@ -22,13 +22,19 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+from datetime import datetime, timezone
 from email.utils import formatdate, parsedate_to_datetime
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.background import BackgroundTask
 
 from core import media_crypto
+from core.media_store import VIEW_ONCE_PREFIX, remove_media
+from core.models import Message, db_helper
 
 logger = logging.getLogger(__name__)
 
@@ -129,8 +135,29 @@ def _parse_range(value: str, total: int) -> tuple[int, int] | None:
 
 
 @router.api_route("/{name:path}", methods=["GET", "HEAD"])
-async def serve_media(request: Request, name: str) -> Response:
-    """Отдаёт файл из media целиком или запрошенный диапазон байт."""
+async def serve_media(
+    request: Request,
+    name: str,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> Response:
+    """Отдаёт файл из media целиком или запрошенный диапазон байт.
+
+    Одноразовое вложение (``messages.view_once``) отдаётся ровно один раз:
+    первый GET возвращает файл и удаляет блоб, дальше — «истёк». HEAD не
+    расходует просмотр: браузеры сами щупают файл перед загрузкой.
+    """
+    # В БД ходим ТОЛЬКО для одноразовых файлов (их имя помечено префиксом):
+    # обычная раздача картинок остаётся без запросов к базе.
+    view_once = (
+        await _view_once_state(session, name)
+        if name.startswith(VIEW_ONCE_PREFIX)
+        else None
+    )
+    if view_once is not None and view_once["opened"]:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Одноразовое вложение уже просмотрено",
+        )
     path = _resolve(name)
     try:
         stat = path.stat()
@@ -191,8 +218,43 @@ async def serve_media(request: Request, name: str) -> Response:
 
     if request.method == "HEAD":
         return Response(status_code=code, headers=headers)
-    return StreamingResponse(
+    if view_once is not None:
+        # Отметку ставим ДО отдачи: иначе два параллельных запроса оба увидели
+        # бы «ещё не открыто» и вложение выдали бы дважды.
+        await _mark_view_once_opened(session, message_id=view_once["message_id"])
+    response = StreamingResponse(
         media_crypto.iter_plaintext(path, start, end + 1),
         status_code=code,
         headers=headers,
     )
+    if view_once is not None:
+        # Блоб удаляем ПОСЛЕ отдачи: поток читает файл лениво, и удаление раньше
+        # оборвало бы уже начатый ответ.
+        response.background = BackgroundTask(remove_media, f"/media/{name}")
+    return response
+
+
+async def _view_once_state(session: AsyncSession, name: str) -> dict | None:
+    """Состояние одноразового вложения по имени файла (None — не одноразовое)."""
+    row = await session.execute(
+        select(Message.id, Message.view_once_opened_at).where(
+            Message.view_once.is_(True),
+            # file_url хранится как «/media/<имя>»; сравниваем по хвосту: имя из
+            # URL уже проверено (_resolve) и не содержит «..».
+            Message.file_url.like(f"%/{name}"),
+        )
+    )
+    found = row.first()
+    if found is None:
+        return None
+    return {"message_id": found[0], "opened": found[1] is not None}
+
+
+async def _mark_view_once_opened(session: AsyncSession, *, message_id: int) -> None:
+    """Помечает одноразовое вложение открытым (повторно не выдаётся)."""
+    await session.execute(
+        update(Message)
+        .where(Message.id == message_id, Message.view_once_opened_at.is_(None))
+        .values(view_once_opened_at=datetime.now(timezone.utc).replace(tzinfo=None))
+    )
+    await session.commit()

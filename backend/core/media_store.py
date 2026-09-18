@@ -17,8 +17,13 @@ from core.media_crypto import write_file
 
 MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
 
+#: Префикс имени файла одноразового вложения («посмотреть один раз»).
+#: По нему раздача медиа понимает, что файл нужно проверить в БД и выдать
+#: один раз, — иначе на каждый запрос картинки ходили бы в базу.
+VIEW_ONCE_PREFIX = "vo_"
 
-def store_media(content: bytes, suffix: str = "") -> str:
+
+def store_media(content: bytes, suffix: str = "", prefix: str = "") -> str:
     """Сохраняет файл в media-каталог и возвращает относительный URL.
 
     ``suffix`` — расширение вместе с точкой (``.jpg``). У загрузок оно берётся из
@@ -28,6 +33,18 @@ def store_media(content: bytes, suffix: str = "") -> str:
     ``core/media_crypto.py``); без ключа — как раньше, открытым.
     """
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-    stored_name = f"{uuid4().hex}{suffix.lower()}"
+    stored_name = f"{prefix}{uuid4().hex}{suffix.lower()}"
     write_file(MEDIA_DIR / stored_name, content)
     return f"/media/{stored_name}"
+
+
+def remove_media(url: str | None) -> None:
+    """Удаляет файл media по его URL (``/media/<имя>``).
+
+    Нужно одноразовым вложениям: после первого просмотра блоб стирается, и
+    повторно его не отдаст уже никто — ни через API, ни напрямую с диска.
+    Отсутствие файла — не ошибка: его могла убрать чистка «сирот».
+    """
+    if not url:
+        return
+    (MEDIA_DIR / Path(url).name).unlink(missing_ok=True)
