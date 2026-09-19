@@ -30,6 +30,21 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def _png(size: int = 64) -> bytes:
+    """Небольшая настоящая PNG-картинка.
+
+    Нужна там, где важны именно байты картинки («В стикеры»): стикер-хранилище
+    принимает только картинку, причём разумного размера — 1×1 не подходит.
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("RGBA", (size, size), (200, 30, 30, 255)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 class _ApiCtx:
     """Контекст API-теста: клиент, фабрика сессий и хелперы."""
 
@@ -3302,6 +3317,46 @@ async def test_media_quota_can_be_disabled(
     usage = await api.client.get("/api/v1/users/me/storage/", headers=api.auth(token))
     assert usage.json()["quota_bytes"] == 0
     assert usage.json()["percent"] == 0
+
+
+async def test_media_quota_counts_stickers_made_from_messages(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """«В стикеры» — это НОВЫЙ файл, а не вторая ссылка на вложение.
+
+    Сервер перекодирует картинку в стикер (например PNG → WebP), поэтому на диске
+    файл лежит отдельно и в квоте считается отдельно. Проверяем прирост, а не
+    конкретные байты: перекодирование — деталь реализации, а вот «стикер бесплатен»
+    — уже нет (на этом и спотыкались при разборе квоты).
+    """
+    from core import config
+
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    token = await api.token_for(u1)
+    chat = await api.private_chat(token, u2.id)
+
+    monkeypatch.setattr(config.settings, "media_quota_bytes", 1000)
+    uploaded = await api.client.post(
+        "/api/v1/messages/attachment/",
+        params={"chat_id": chat["id"], "filename": "pic.png", "mime": "image/png"},
+        content=_png(),
+        headers={**api.auth(token), "Content-Type": "application/octet-stream"},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    before = await api.client.get("/api/v1/users/me/storage/", headers=api.auth(token))
+    assert before.json()["files"] == 1
+
+    to_sticker = await api.client.post(
+        "/api/v1/stickers/from-message/",
+        json={"message_id": uploaded.json()["id"]},
+        headers=api.auth(token),
+    )
+    assert to_sticker.status_code == 201, to_sticker.text
+
+    after = await api.client.get("/api/v1/users/me/storage/", headers=api.auth(token))
+    assert after.json()["files"] == 2, "стикер — отдельный файл, он виден в квоте"
+    assert after.json()["used_bytes"] > before.json()["used_bytes"]
 
 
 # --- Модерация: авто-скрытие по жалобам и журнал --------------------------
