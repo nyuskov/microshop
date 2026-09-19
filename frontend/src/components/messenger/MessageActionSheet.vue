@@ -91,6 +91,11 @@
           <q-icon :name="icon('add_reaction')" size="18px" />
           <span>В стикеры</span>
         </button>
+        <!-- «Добавить весь набор» — как «Добавить стикеры» в Телеграме. -->
+        <button v-if="canAddSet" class="ctx-item" @click="ctxAction('add-set')">
+          <q-icon :name="icon('add')" size="18px" />
+          <span>Добавить набор{{ addSetTitle ? ` «${addSetTitle}»` : '' }}</span>
+        </button>
         <button v-if="isOwn && message.text" class="ctx-item" @click="ctxAction('edit')">
           <q-icon :name="icon('edit')" size="18px" />
           <span>Редактировать</span>
@@ -142,6 +147,10 @@ const props = defineProps<{
   canSave: boolean
   /** Можно ли сделать из сообщения стикер (только открытая картинка). */
   canMakeSticker?: boolean
+  /** У стикера из предустановленного набора, которого у человека ещё нет. */
+  canAddSet?: boolean
+  /** Название этого набора — попадает в подпись пункта меню. */
+  addSetTitle?: string
   /** Стоит ли напоминание об этом сообщении (меняет подпись пункта меню). */
   hasReminder?: boolean
   /**
@@ -166,6 +175,7 @@ const emit = defineEmits<{
   (e: 'save'): void
   /** «В стикеры»: картинка уходит в свои стикеры. */
   (e: 'make-sticker'): void
+  (e: 'add-set'): void
   (e: 'delete'): void
   (e: 'report'): void
   (e: 'toggle-pin'): void
@@ -261,6 +271,7 @@ const ctxAction = (
     | 'pin'
     | 'save'
     | 'sticker'
+    | 'add-set'
     | 'remind'
     | 'translate'
     | 'edit'
@@ -274,6 +285,7 @@ const ctxAction = (
   else if (action === 'pin') emit('toggle-pin')
   else if (action === 'save') emit('save')
   else if (action === 'sticker') emit('make-sticker')
+  else if (action === 'add-set') emit('add-set')
   else if (action === 'remind') emit('remind')
   else if (action === 'translate') emit('translate')
   else if (action === 'edit') emit('edit')

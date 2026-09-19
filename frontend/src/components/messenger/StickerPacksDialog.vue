@@ -100,6 +100,26 @@
               />
             </label>
             <span class="pack-count">{{ pack.stickers.length }} шт.</span>
+            <!-- Публикация набора (только владелец): он появится у всех в блоке
+                 «Наборы приложения», и любой добавит его себе целиком. -->
+            <button
+              v-if="authStore.isOwner"
+              type="button"
+              class="pack-icon-btn"
+              :class="{ published: pack.is_preset }"
+              :aria-pressed="Boolean(pack.is_preset)"
+              :aria-label="
+                pack.is_preset ? 'Снять набор с публикации' : 'Опубликовать набор для всех'
+              "
+              :title="
+                pack.is_preset
+                  ? 'Набор публичный: его видят все и могут добавить себе'
+                  : 'Опубликовать набор: его увидят все и смогут добавить себе'
+              "
+              @click="togglePreset(pack)"
+            >
+              <q-icon :name="icon('campaign')" size="18px" />
+            </button>
             <button
               type="button"
               class="pack-icon-btn"
@@ -163,6 +183,7 @@
 import { nextTick, ref } from 'vue'
 
 import { mediaUrl } from '@/config'
+import { useAuthStore } from '@/stores/auth'
 import { useStickersStore } from '@/stores/stickers'
 import { MAX_STICKER_BYTES, STICKER_ACCEPT, type StickerPack } from '@/services/stickers'
 import { STANDARD_STICKER_PACKS, type StandardStickerPack } from '@/utils/standardStickers'
@@ -172,10 +193,25 @@ import { icon } from '@/utils/icons'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
+/**
+ * Публикация набора (владелец): набор появится у всех в «Наборы приложения».
+ *
+ * Это серверная операция: предустановленные наборы приложения живут статикой, а
+ * вот авторские нужно положить на сервер — тогда их видно всем и «добавить весь
+ * набор» становится одним запросом копирования (файлы переиспользуются).
+ */
+const togglePreset = (pack: StickerPack): void => {
+  void store.setPackPreset(pack.id, !pack.is_preset).catch((cause: unknown) => {
+    error.value = cause instanceof Error ? cause.message : 'Не удалось изменить публикацию'
+  })
+}
+
 /** Название пака — как колонка в БД (`sticker_packs.title`). */
 const MAX_PACK_TITLE = 60
 
 const store = useStickersStore()
+/** Публиковать наборы может только владелец (`is_superuser`). */
+const authStore = useAuthStore()
 
 const creating = ref(false)
 const newPackTitle = ref('')
@@ -540,6 +576,11 @@ void store.load()
   flex: none;
   font-size: var(--ms-fs-sm);
   font-weight: 600;
+  color: var(--ms-accent);
+}
+
+/* Опубликованный набор: значок в акценте — видно, что он у всех. */
+.pack-icon-btn.published {
   color: var(--ms-accent);
 }
 </style>

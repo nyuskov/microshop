@@ -273,28 +273,18 @@
               <!-- Как в Телеграме: у набора есть «⋯», а в меню — «Добавить весь
                    набор». То же меню открывается удержанием стикера. -->
               <template #action>
-                <template v-if="standardSetOf(section.key)">
-                  <span
-                    v-if="importingSetKey === standardSetOf(section.key)?.key"
-                    class="set-progress"
-                  >
-                    {{ setImportLabel(standardSetOf(section.key)!) }}
+                <template v-if="staticSetKeyOf(section) || section.presetPackId">
+                  <span v-if="importingSetKey === staticSetKeyOf(section)" class="set-progress">
+                    {{ addButtonLabel(section) }}
                   </span>
-                  <span
-                    v-else-if="
-                      stickersStore.isStandardSetImported(standardSetOf(section.key)?.key ?? '')
-                    "
-                    class="set-done"
-                  >
-                    Добавлен
-                  </span>
+                  <span v-else-if="isSetAdded(section)" class="set-done">Добавлен</span>
                   <button
                     v-else
                     type="button"
                     class="section-more"
                     aria-haspopup="menu"
                     :aria-expanded="setMenuKey === section.key"
-                    :aria-label="`Действия с набором «${standardSetOf(section.key)?.title ?? ''}»`"
+                    :aria-label="`Действия с набором «${section.title}»`"
                     @click="toggleSetMenu(section.key)"
                   >
                     <q-icon :name="icon('more_horiz')" size="18px" />
@@ -305,7 +295,7 @@
                       type="button"
                       class="set-menu-item"
                       role="menuitem"
-                      @click="addStandardSetByKey(section.key)"
+                      @click="addSetFromPanel(section)"
                     >
                       <q-icon :name="icon('add')" size="16px" />
                       <span>Добавить весь набор</span>
@@ -324,7 +314,7 @@
                   class="sticker-option sticker-image"
                   :title="`Отправить: ${image.alt}`"
                   :aria-label="`Отправить стикер ${image.alt}`"
-                  @pointerdown="startStickerHold(section.key)"
+                  @pointerdown="startStickerHold(section)"
                   @pointerup="cancelStickerHold"
                   @pointerleave="cancelStickerHold"
                   @pointercancel="cancelStickerHold"
@@ -349,6 +339,18 @@
               <p v-else class="emoji-hint">
                 {{ section.emptyHint ?? 'Здесь пока пусто.' }}
               </p>
+              <!-- Широкая кнопка ПОД набором — как «ДОБАВИТЬ СТИКЕРЫ» в Телеграме:
+                   искать «⋯» не нужно, действие видно сразу. -->
+              <button
+                v-if="showAddButton(section)"
+                type="button"
+                class="set-add-wide"
+                :disabled="importingSetKey !== null"
+                @click="addSetFromPanel(section)"
+              >
+                <q-icon :name="icon('add')" size="16px" />
+                <span>{{ addButtonLabel(section) }}</span>
+              </button>
             </PanelSection>
             <p v-if="!panelSections.length" class="emoji-hint">Загружаем…</p>
           </div>
@@ -481,7 +483,12 @@ watch(
     if (panel === 'emoji' || panel === 'stickers') void ensureEmojiCategories()
     // Библиотеку стикеров тянем только когда открыли панель стикеров: у тех,
     // кто ими не пользуется, лишнего запроса не будет.
-    if (panel === 'stickers') void stickersStore.load()
+    if (panel === 'stickers') {
+      void stickersStore.load()
+      // Публичные наборы «могут меняться» (суперадмин публикует новые) — читаем
+      // их вместе с библиотекой, когда панель открывают.
+      void stickersStore.loadPresets()
+    }
   },
   { immediate: true }
 )
@@ -504,6 +511,11 @@ interface PanelSectionItem {
   images: PanelImage[]
   /** Что сказать, если секция пуста (иначе — общая строка). */
   emptyHint?: string
+  /**
+   * id ПУБЛИЧНОГО набора с сервера: по нему работает «Добавить весь набор»
+   * (один запрос копирования, без загрузки картинок).
+   */
+  presetPackId?: number
 }
 
 /**
@@ -518,6 +530,12 @@ interface PanelImage {
   alt: string
   /** Id серверного стикера: по нему помним «Недавние» и мime. */
   sticker?: StickerItem
+  /**
+   * Предустановленный набор и имя файла: уезжают в имени файла сообщения
+   * (`st-<набор>-<имя>.png`), чтобы у получателя в меню стикера появилось
+   * «Добавить набор» — см. `utils/presetStickers.ts`.
+   */
+  preset?: { setKey: string; name: string }
 }
 
 /** Стикер с сервера → картинка панели (лежит в `media/`, отдаётся через API). */
@@ -531,7 +549,8 @@ const mediaImage = (sticker: StickerItem): PanelImage => ({
 const standardImages = (key: string): PanelImage[] =>
   (STANDARD_STICKER_PACKS.find((pack) => pack.key === key)?.stickers ?? []).map((sticker) => ({
     url: sticker.url,
-    alt: sticker.label
+    alt: sticker.label,
+    preset: { setKey: key, name: sticker.name }
   }))
 
 /** Встроенные наборы по ключу секции панели: `standard:<key>` → набор. */
@@ -589,13 +608,12 @@ const STICKER_HOLD_MS = 480
 let holdTimer: number | null = null
 let holdFired = false
 
-const startStickerHold = (sectionKey: string): void => {
-  const set = standardSetOf(sectionKey)
-  if (!set || stickersStore.isStandardSetImported(set.key)) return
+const startStickerHold = (section: PanelSectionItem): void => {
+  if (!hasSetOf(section) || isSetAdded(section)) return
   holdFired = false
   holdTimer = window.setTimeout(() => {
     holdFired = true
-    setMenuKey.value = sectionKey
+    setMenuKey.value = section.key
   }, STICKER_HOLD_MS)
 }
 
@@ -615,15 +633,62 @@ const onStickerTap = (image: PanelImage): void => {
   tapImage(image)
 }
 
-const addStandardSetByKey = (sectionKey: string): void => {
+/** Ключ ВСТРОЕННОГО набора у секции (null — секция не про встроенный набор). */
+const staticSetKeyOf = (section: PanelSectionItem): string | null =>
+  standardSetOf(section.key)?.key ?? null
+
+/**
+ * У секции есть действие «добавить набор».
+ *
+ * Два источника: ВСТРОЕННЫЙ набор приложения (статика в `public/`, добавляется
+ * скачиванием картинок) и ПУБЛИЧНЫЙ набор с сервера (`presetPackId`, добавляется
+ * одним запросом копирования). Остальные секции — «Недавние», свои паки, эмодзи:
+ * добавлять в них нечего.
+ */
+const hasSetOf = (section: PanelSectionItem): boolean =>
+  section.presetPackId !== undefined || staticSetKeyOf(section) !== null
+
+/** Набор уже добавлен себе: встроенный — по отметке, серверный — по названию пака. */
+const isSetAdded = (section: PanelSectionItem): boolean => {
+  if (section.presetPackId !== undefined) {
+    return stickersStore.packs.some((pack) => pack.title === section.title)
+  }
+  const key = staticSetKeyOf(section)
+  return key !== null && stickersStore.isStandardSetImported(key)
+}
+
+/** Широкая кнопка под набором: набор есть и ещё не добавлен. */
+const showAddButton = (section: PanelSectionItem): boolean =>
+  hasSetOf(section) && !isSetAdded(section)
+
+/** Подпись кнопки: у встроенного набора виден прогресс импорта. */
+const addButtonLabel = (section: PanelSectionItem): string => {
+  const set = standardSetOf(section.key)
+  return set ? setImportLabel(set) : 'Добавить весь набор'
+}
+
+/**
+ * «Добавить весь набор» из панели.
+ *
+ * Серверный набор копируется ОДНИМ запросом (файлы переиспользуются), встроенный
+ * — импортом по картинкам. Меню «⋯» закрываем, ошибку отдаём наружу: родитель
+ * покажет её плашкой.
+ */
+const addSetFromPanel = (section: PanelSectionItem): void => {
   closeSetMenu()
-  const set = standardSetOf(sectionKey)
+  const presetPackId = section.presetPackId
+  if (presetPackId !== undefined) {
+    void stickersStore.addPreset(presetPackId).catch((cause: unknown) => {
+      emit('sticker-error', cause instanceof Error ? cause.message : 'Не удалось добавить набор')
+    })
+    return
+  }
+  const set = standardSetOf(section.key)
   if (!set) return
   void runSetImport(set).then((message) => {
     if (message) emit('sticker-error', message)
   })
 }
-
 /** Тап по картинке: уходит сообщением (стандартная — теми же байтами). */
 const tapImage = (image: PanelImage) => {
   if (image.sticker) {
@@ -634,7 +699,11 @@ const tapImage = (image: PanelImage) => {
     })
     return
   }
-  emit('send-sticker-image', { url: image.url, mime: 'image/png' })
+  emit('send-sticker-image', {
+    url: image.url,
+    mime: 'image/png',
+    preset: image.preset
+  })
 }
 
 /** Категории эмодзи со значком для ленты (без «Недавних» — он отдельно). */
@@ -684,6 +753,24 @@ const stickerPanelSections = computed<PanelSectionItem[]>(() => [
       images
     }
   }),
+  // Публичные (предустановленные) наборы с сервера: их ставит суперадмин, и
+  // любой человек добавляет набор себе ОДНИМ запросом (файлы переиспользуются).
+  // Свой же публичный набор не показываем — он уже есть ниже, среди своих паков.
+  ...stickersStore.presets
+    .filter((pack) => !stickersStore.packs.some((mine) => mine.title === pack.title))
+    .map((pack) => ({
+      key: `preset:${pack.id}`,
+      title: pack.title,
+      kind: 'sticker-send' as const,
+      icon: '🎨',
+      imageUrl: pack.stickers[0] ? mediaUrl(pack.stickers[0].file_url) : null,
+      emojis: [],
+      images: pack.stickers.map((sticker) => ({
+        url: mediaUrl(sticker.file_url),
+        alt: 'Стикер'
+      })),
+      presetPackId: pack.id
+    })),
   ...(stickersStore.recent.length
     ? [
         {
@@ -966,7 +1053,14 @@ const emit = defineEmits<{
    * Передаём готовую ссылку и тип: у своих стикеров это файл с сервера, у
    * стандартных — статический ассет приложения. Родителю разница не важна.
    */
-  (e: 'send-sticker-image', payload: { url: string; mime: string }): void
+  (
+    e: 'send-sticker-image',
+    payload: {
+      url: string
+      mime: string
+      preset?: { setKey: string; name: string }
+    }
+  ): void
   /** Сообщение об ошибке добавления стикера (показывает родитель). */
   (e: 'sticker-error', message: string): void
   /** «Отправить позже»: момент отправки в UTC (ISO), текст берёт родитель. */
@@ -1825,6 +1919,37 @@ watch(newMessage, () => {
   letter-spacing: 0;
   text-transform: none;
   color: var(--ms-muted-2);
+}
+
+/* Широкая кнопка «Добавить весь набор» под сеткой стикеров: то же действие, что
+   в меню «⋯», но его видно без поисков (в Телеграме это «ДОБАВИТЬ СТИКЕРЫ»). */
+.set-add-wide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ms-space-1);
+  width: 100%;
+  margin-top: var(--ms-space-2);
+  padding: 8px 10px;
+  border: 1px solid var(--ms-accent-border);
+  border-radius: var(--ms-radius-md);
+  background: var(--ms-accent-soft);
+  color: var(--ms-accent);
+  font: inherit;
+  font-size: var(--ms-fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.set-add-wide:hover:not(:disabled) {
+  background: var(--ms-hover);
+}
+
+.set-add-wide:disabled {
+  border-color: var(--ms-border);
+  background: var(--ms-surface-2);
+  color: var(--ms-muted-2);
+  cursor: default;
 }
 
 .sticker-option:hover {

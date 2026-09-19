@@ -26,6 +26,8 @@ class StickerPackOut(BaseModel):
     id: int
     title: str
     position: int = 0
+    #: Публичный (предустановленный) набор: его можно добавить себе целиком.
+    is_preset: bool = False
     stickers: list[StickerItem] = Field(default_factory=list)
 
 
@@ -46,6 +48,12 @@ class StickerPackUpdate(BaseModel):
 
     title: str | None = Field(default=None, max_length=MAX_PACK_TITLE)
     position: int | None = None
+
+
+class StickerPackPresetUpdate(BaseModel):
+    """Отметка «публичный набор» — ставит только суперадмин."""
+
+    is_preset: bool
 
 
 class StickerUpdate(BaseModel):

@@ -32,6 +32,73 @@ async def count_packs(session: AsyncSession, *, owner_id: int) -> int:
     return int(await session.scalar(stmt) or 0)
 
 
+async def get_presets(session: AsyncSession) -> list[StickerPack]:
+    """Публичные (предустановленные) наборы — их видно всем и можно добавить себе."""
+    stmt = (
+        select(StickerPack)
+        .where(StickerPack.is_preset.is_(True))
+        .options(selectinload(StickerPack.stickers))
+        .order_by(StickerPack.position, StickerPack.id)
+    )
+    return list(await session.scalars(stmt))
+
+
+async def get_pack_any(session: AsyncSession, *, pack_id: int) -> StickerPack | None:
+    """Пак по id БЕЗ проверки владельца.
+
+    Нужен только суперадмину (пометить публичным) и копированию публичного набора:
+    обычные ручки работают через ``get_pack`` с владельцем.
+    """
+    stmt = (
+        select(StickerPack)
+        .where(StickerPack.id == pack_id)
+        .options(selectinload(StickerPack.stickers))
+    )
+    return await session.scalar(stmt)
+
+
+async def set_preset(
+    session: AsyncSession, *, pack: StickerPack, is_preset: bool
+) -> StickerPack:
+    """Помечает набор публичным или снимает отметку."""
+    pack.is_preset = is_preset
+    await session.commit()
+    await session.refresh(pack, ["is_preset", "stickers"])
+    return pack
+
+
+async def copy_pack(
+    session: AsyncSession, *, source: StickerPack, owner_id: int, title: str
+) -> StickerPack:
+    """Копирует пак человеку, ПЕРЕИСПОЛЬЗУЯ файлы стикеров.
+
+    Файлы не загружаются заново: копия ссылается на те же ``file_url`` в
+    ``media/``. Поэтому «добавить набор» — один запрос (лимит частоты загрузок не
+    мешает) и место не тратится дважды (в квоте считается только загруженное
+    самим человеком, см. ``core/media_quota.py``).
+    """
+    position = await count_packs(session, owner_id=owner_id)
+    pack = StickerPack(
+        owner_id=owner_id, title=title, position=position, is_preset=False
+    )
+    session.add(pack)
+    await session.flush()
+    for sticker in source.stickers:
+        session.add(
+            Sticker(
+                pack_id=pack.id,
+                file_url=sticker.file_url,
+                file_name=sticker.file_name,
+                mime_type=sticker.mime_type,
+                file_size=sticker.file_size,
+                position=sticker.position,
+            )
+        )
+    await session.commit()
+    await session.refresh(pack, ["stickers"])
+    return pack
+
+
 async def get_pack(
     session: AsyncSession, *, owner_id: int, pack_id: int, with_stickers: bool = True
 ) -> StickerPack | None:

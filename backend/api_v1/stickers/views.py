@@ -17,7 +17,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api_v1.auth.utils import get_current_user
+from api_v1.auth.utils import get_current_superuser, get_current_user
 from api_v1.chats.crud import is_user_chat_member
 from core.config import settings
 from core.media_crypto import read_file
@@ -43,6 +43,7 @@ from .schemas import (
     StickerLibrary,
     StickerPackCreate,
     StickerPackOut,
+    StickerPackPresetUpdate,
     StickerPackUpdate,
     StickerUpdate,
 )
@@ -141,6 +142,60 @@ async def get_library(
     return StickerLibrary(packs=[StickerPackOut.model_validate(pack) for pack in packs])
 
 
+@router.get("/presets/", response_model=StickerLibrary)
+async def get_presets(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> StickerLibrary:
+    """Публичные (предустановленные) наборы — их можно добавить себе целиком.
+
+    Доступны всем: это и предустановленные наборы приложения, и авторские,
+    которые суперадмин пометил публичными (см. ``PUT /packs/{id}/preset/``).
+    """
+    packs = await crud.get_presets(session)
+    return StickerLibrary(packs=[StickerPackOut.model_validate(pack) for pack in packs])
+
+
+@router.post(
+    "/presets/{pack_id}/copy/",
+    response_model=StickerPackOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def copy_preset(
+    pack_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> StickerPackOut:
+    """«Добавить набор»: копия публичного набора в свою библиотеку.
+
+    Копируем ССЫЛКИ на файлы: новых загрузок нет совсем. Поэтому добавление
+    набора — один запрос (лимит частоты загрузок не мешает), а место не тратится
+    дважды: в квоте считается только загруженное самим человеком.
+    """
+    source = await crud.get_pack_any(session, pack_id=pack_id)
+    if source is None or not source.is_preset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Набор не найден"
+        )
+    if await crud.count_packs(session, owner_id=user.id) >= MAX_STICKER_PACKS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Больше {MAX_STICKER_PACKS} наборов не помещается — удалите лишний",
+        )
+    # Повторное добавление — не ошибка, но и дубль не нужен: говорим прямо, что
+    # набор уже есть (панель после этого покажет его у человека).
+    for pack in await crud.get_library(session, owner_id=user.id):
+        if pack.title == source.title:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Такой набор уже добавлен",
+            )
+    pack = await crud.copy_pack(
+        session, source=source, owner_id=user.id, title=source.title
+    )
+    return StickerPackOut.model_validate(pack)
+
+
 @router.post(
     "/packs/", response_model=StickerPackOut, status_code=status.HTTP_201_CREATED
 )
@@ -159,6 +214,27 @@ async def create_pack(
     pack = await crud.create_pack(
         session, owner_id=user.id, payload=payload, title=title
     )
+    return StickerPackOut.model_validate(pack)
+
+
+@router.put("/packs/{pack_id}/preset/", response_model=StickerPackOut)
+async def update_pack_preset(
+    pack_id: int,
+    payload: StickerPackPresetUpdate,
+    owner: User = Depends(get_current_superuser),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> StickerPackOut:
+    """Помечает набор публичным (или снимает отметку) — только суперадмин.
+
+    Публичный набор виден всем в ``GET /stickers/presets/`` и добавляется себе
+    одним запросом. Владелец пака при этом не меняется.
+    """
+    pack = await crud.get_pack_any(session, pack_id=pack_id)
+    if pack is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Набор не найден"
+        )
+    pack = await crud.set_preset(session, pack=pack, is_preset=payload.is_preset)
     return StickerPackOut.model_validate(pack)
 
 

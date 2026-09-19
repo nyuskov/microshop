@@ -230,6 +230,7 @@
             @forward="openForward"
             @save="saveMessageToSelf"
             @make-sticker="makeStickerFromMessage"
+            @add-set="addStickerSet"
             @delete="deleteMessageOf"
             @report="openReportForMessage"
             @open-image="openImageFromMessage"
@@ -684,6 +685,8 @@ import {
   releaseDecryptedMediaExcept
 } from '@/composables/useDecryptedMedia'
 import { usePeerBlocking } from '@/composables/usePeerBlocking'
+import { useStandardSetImport } from '@/composables/useStandardSetImport'
+import { presetSetOfFileName, presetStickerFileName } from '@/utils/presetStickers'
 import type {
   Chat,
   ChatUser,
@@ -2847,6 +2850,23 @@ const makeStickerFromMessage = async (message: Message) => {
 }
 
 /**
+ * «Добавить набор» из меню стикера — как «Добавить стикеры» в Телеграме.
+ *
+ * Набор узнаём по метке в имени файла (`utils/presetStickers.ts`): у сервера
+ * предустановленных наборов нет, он видит только картинку, поэтому имя файла и
+ * служит меткой. Свои стикеры человека метки не имеют — для них пункта нет.
+ */
+const { run: runStandardSetImport } = useStandardSetImport()
+
+const addStickerSet = (message: Message) => {
+  const set = presetSetOfFileName(message.file?.name ?? null)
+  if (!set) return
+  void runStandardSetImport(set).then((problem) => {
+    if (problem) sendError.value = problem
+  })
+}
+
+/**
  * Отправляет стикер-картинку сообщением (тап в панели «Стикеры»).
  *
  * Стикер скачиваем по ссылке и отправляем теми же байтами, что обычное
@@ -2855,7 +2875,11 @@ const makeStickerFromMessage = async (message: Message) => {
  * (`media/`), стандартные — ассеты приложения (`public/stickers/`).
  * В E2EE-чате байты сначала шифруются — как и любое другое вложение.
  */
-const sendStickerImage = async (image: { url: string; mime: string }) => {
+const sendStickerImage = async (image: {
+  url: string
+  mime: string
+  preset?: { setKey: string; name: string }
+}) => {
   const chatId = selectedChatId.value
   if (chatId === null || sending.value) return
   sending.value = true
@@ -2864,7 +2888,12 @@ const sendStickerImage = async (image: { url: string; mime: string }) => {
     const response = await fetch(image.url)
     if (!response.ok) throw new Error('Не удалось прочитать стикер')
     const blob = await response.blob()
-    const file = new File([blob], 'sticker.webp', {
+    // Имя файла несёт метку набора (`st-<набор>-<имя>.png`): по ней получатель
+    // сможет предложить «Добавить набор» — см. utils/presetStickers.ts.
+    const fileName = image.preset
+      ? presetStickerFileName(image.preset.setKey, image.preset.name)
+      : 'sticker.webp'
+    const file = new File([blob], fileName, {
       type: image.mime || blob.type || 'image/webp'
     })
     const aes = await chatKeyOf(selectedChat.value)

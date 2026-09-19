@@ -249,6 +249,8 @@
       :translation-label="translationLabel"
       :emoji-picker-open="emojiPickerOpen"
       :row-visible="rowVisible"
+      :can-add-set="canAddSet"
+      :add-set-title="addSetTitle"
       @toggle-emoji-picker="emit('toggle-emoji-picker')"
       @toggle-reaction="emit('toggle-reaction', $event)"
       @set-reply="emit('set-reply')"
@@ -257,6 +259,7 @@
       @edit="emit('edit')"
       @save="emit('save')"
       @make-sticker="emit('make-sticker')"
+      @add-set="emit('add-set')"
       @delete="emit('delete')"
       @report="emit('report')"
       @toggle-pin="emit('toggle-pin')"
@@ -277,6 +280,8 @@
       :selectable="selectable"
       :selection-mode="selectionMode"
       :emoji-picker-open="emojiPickerOpen"
+      :can-add-set="canAddSet"
+      :add-set-title="addSetTitle"
       @toggle-reaction="emit('toggle-reaction', $event)"
       @set-reply="emit('set-reply')"
       @forward="emit('forward')"
@@ -284,6 +289,7 @@
       @edit="emit('edit')"
       @save="emit('save')"
       @make-sticker="emit('make-sticker')"
+      @add-set="emit('add-set')"
       @delete="emit('delete')"
       @report="emit('report')"
       @toggle-pin="emit('toggle-pin')"
@@ -322,6 +328,8 @@ import {
   isRoundVideoOnly,
   isStickerMessage
 } from '@/utils/media'
+import { presetSetOfFileName } from '@/utils/presetStickers'
+import { importedSetPackId } from '@/utils/stickerSetImports'
 import type { SeriesKind } from '@/utils/thread'
 import LinkPreviewCard from '@/components/messenger/LinkPreviewCard.vue'
 import MessageActionSheet from '@/components/messenger/MessageActionSheet.vue'
@@ -551,6 +559,7 @@ const emit = defineEmits<{
   (e: 'save'): void
   /** «В стикеры»: скопировать картинку сообщения в свои стикеры. */
   (e: 'make-sticker'): void
+  (e: 'add-set'): void
   (e: 'delete'): void
   /** Жалоба на сообщение (модерация UGC, требование RuStore). */
   (e: 'report'): void
@@ -605,6 +614,26 @@ const canSave = computed<boolean>(() => props.message.kind !== 'call')
 
 /** «В стикеры» — только для открытых картинок (см. `canBecomeSticker`). */
 const canMakeSticker = computed<boolean>(() => canBecomeSticker(props.message))
+
+/**
+ * Стикер из предустановленного набора, которого у человека ещё нет: в меню
+ * появляется «Добавить набор» — как «Добавить стикеры» в Телеграме. Набор узнаём
+ * по метке в имени файла (`utils/presetStickers.ts`), потому что у сервера
+ * предустановленных наборов нет — он видит только картинку.
+ */
+const presetSet = computed(() => presetSetOfFileName(props.message.file?.name ?? null))
+/**
+ * Набор ещё не добавлен себе.
+ *
+ * Смотрим только отметку в localStorage (`utils/stickerSetImports.ts`), а не стор
+ * стикеров: строке сообщения не нужны ни список паков, ни запрос в сеть — зато
+ * `MessageRow` можно монтировать в тестах без Pinia. Отметку стор снимает сам,
+ * когда пак удаляют, поэтому «уже добавлен» не залипает навсегда.
+ */
+const canAddSet = computed(
+  () => presetSet.value !== null && importedSetPackId(presetSet.value.key) === null
+)
+const addSetTitle = computed(() => presetSet.value?.title ?? '')
 
 // ---------- Режим выделения сообщений (долгое нажатие; как в чатах) ----------
 let holdTimer: number | null = null

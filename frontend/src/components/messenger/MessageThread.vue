@@ -77,6 +77,7 @@
               @forward="emit('forward', item.row.message)"
               @save="emit('save', item.row.message)"
               @make-sticker="emit('make-sticker', item.row.message)"
+              @add-set="emit('add-set', item.row.message)"
               @delete="emit('delete', item.row.message)"
               @report="emit('report', item.row.message)"
               @open-image="emit('open-image', item.row.message)"
@@ -294,6 +295,7 @@ const emit = defineEmits<{
   (e: 'save', message: Message): void
   /** «В стикеры»: картинку сообщения копируем в свои стикеры. */
   (e: 'make-sticker', message: Message): void
+  (e: 'add-set', message: Message): void
   (e: 'delete', message: Message): void
   /** Повторить отправку стоящего в очереди сообщения. */
   (e: 'retry-pending', localId: number): void

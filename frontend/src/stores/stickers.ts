@@ -4,11 +4,14 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 
 import {
+  copyStickerPreset,
   createStickerPack,
   deleteSticker,
   deleteStickerPack,
   fetchStickerLibrary,
+  fetchStickerPresets,
   fetchStandardStickerFile,
+  setStickerPackPreset,
   updateStickerPack,
   uploadSticker,
   uploadRetryAfterSeconds,
@@ -22,54 +25,24 @@ import {
   STICKER_IMAGE_RECENT_LIMIT
 } from '@/utils/emoji'
 import type { StandardStickerPack } from '@/utils/standardStickers'
-
-/**
- * Какие встроенные наборы человек уже добавил себе: ключ набора → id пака.
- *
- * Отметка нужна, чтобы кнопка «Добавить набор» не предлагала добавить его
- * повторно (как в Телеграме: набор уже в коллекции). Храним именно отметку, а не
- * сверяем название пака: человек мог пак переименовать, и совпадение имён ничего
- * не значит. Если пак удалили — отметка перестаёт действовать, и набор можно
- * добавить заново.
- */
-const IMPORTED_SETS_KEY = 'pismo_sticker_imports'
+import { readImportedSets, writeImportedSets } from '@/utils/stickerSetImports'
 
 /** Сколько раз пережидаем лимит загрузок, прежде чем сдаться (10 файлов в минуту). */
 const UPLOAD_MAX_ATTEMPTS = 8
-
-const readImportedSets = (): Record<string, number> => {
-  try {
-    const raw = globalThis.localStorage?.getItem(IMPORTED_SETS_KEY)
-    const parsed: unknown = raw ? JSON.parse(raw) : null
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>).filter(
-        (entry): entry is [string, number] => typeof entry[1] === 'number'
-      )
-    )
-  } catch {
-    return {}
-  }
-}
 
 export const useStickersStore = defineStore('stickers', () => {
   const packs = ref<StickerPack[]>([])
   const loading = ref(false)
   const loaded = ref(false)
+  /** Публичные (предустановленные) наборы — их видно всем и можно добавить себе. */
+  const presets = ref<StickerPack[]>([])
   /** Недавние стикеры — по id: удалённый стикер исчезает из «Недавних» сам. */
   const recentIds = ref<number[]>(readRecentStickerIds(globalThis.localStorage))
 
   /** Встроенные наборы, которые человек уже добавил себе (ключ → id пака). */
   const importedSets = ref<Record<string, number>>(readImportedSets())
 
-  const persistImportedSets = (): void => {
-    try {
-      globalThis.localStorage?.setItem(IMPORTED_SETS_KEY, JSON.stringify(importedSets.value))
-    } catch {
-      // Приватный режим/переполнение: отметка не переживёт перезапуск —
-      // человек просто увидит кнопку «Добавить набор» ещё раз.
-    }
-  }
+  const persistImportedSets = (): void => writeImportedSets(importedSets.value)
 
   /**
    * Набор уже добавлен себе?
@@ -131,6 +104,38 @@ export const useStickersStore = defineStore('stickers', () => {
     const pack = await createStickerPack(title)
     packs.value = sortPacks([...packs.value, { ...pack, stickers: pack.stickers ?? [] }])
     return pack
+  }
+
+  /**
+   * Читает публичные наборы (их публикует суперадмин).
+   *
+   * Наборы — дополнение к библиотеке: не смогли прочитать (нет сети) — панель
+   * работает как обычно, просто без блока «Наборы приложения».
+   */
+  const loadPresets = async (): Promise<void> => {
+    try {
+      presets.value = sortPacks(await fetchStickerPresets())
+    } catch {
+      presets.value = []
+    }
+  }
+
+  /**
+   * «Добавить набор»: копия публичного набора в мою библиотеку.
+   *
+   * Сервер копирует ССЫЛКИ на файлы, поэтому это один быстрый запрос — без
+   * загрузки картинок и без лимита частоты загрузок.
+   */
+  const addPreset = async (packId: number): Promise<StickerPack> => {
+    const pack = await copyStickerPreset(packId)
+    packs.value = sortPacks([...packs.value, { ...pack, stickers: pack.stickers ?? [] }])
+    return pack
+  }
+
+  /** Публикация набора (только суперадмин): он станет виден всем для добавления. */
+  const setPackPreset = async (packId: number, isPreset: boolean): Promise<void> => {
+    replace(await setStickerPackPreset(packId, isPreset))
+    await loadPresets()
   }
 
   /** Переименование пака (пустое название сервер заменит на «Мои стикеры»). */
@@ -296,12 +301,16 @@ export const useStickersStore = defineStore('stickers', () => {
     packs,
     loading,
     loaded,
+    presets,
     recentIds,
     recent,
     all,
     isEmpty,
     stickerById,
     load,
+    loadPresets,
+    addPreset,
+    setPackPreset,
     createPack,
     renamePack,
     removePack,

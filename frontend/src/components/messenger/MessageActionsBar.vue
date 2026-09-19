@@ -59,6 +59,12 @@
         <q-icon :name="icon('add_reaction')" size="16px" />
         <span>В стикеры</span>
       </button>
+      <!-- «Добавить весь набор» — как «Добавить стикеры» в Телеграме: у стикера
+           из предустановленного набора, которого у человека ещё нет. -->
+      <button v-if="canAddSet" class="more-item" @click="emit('add-set')">
+        <q-icon :name="icon('add')" size="16px" />
+        <span>Добавить набор{{ addSetTitle ? ` «${addSetTitle}»` : '' }}</span>
+      </button>
       <!-- Жалоба на чужое сообщение — требование RuStore для UGC-приложений. -->
       <button v-if="!isOwn" class="more-item" @click="onReport">
         <q-icon :name="icon('flag')" size="16px" />
@@ -109,6 +115,10 @@ const props = defineProps<{
   canSave: boolean
   /** Можно ли сделать из сообщения стикер (только открытая картинка). */
   canMakeSticker?: boolean
+  /** У стикера из предустановленного набора, которого у человека ещё нет. */
+  canAddSet?: boolean
+  /** Название этого набора — попадает в подпись пункта меню. */
+  addSetTitle?: string
   /** Стоит ли напоминание об этом сообщении (меняет подпись пункта меню). */
   hasReminder?: boolean
   /**
@@ -132,6 +142,7 @@ const emit = defineEmits<{
   (e: 'save'): void
   /** «В стикеры»: картинка уходит в свои стикеры. */
   (e: 'make-sticker'): void
+  (e: 'add-set'): void
   (e: 'delete'): void
   (e: 'report'): void
   (e: 'toggle-pin'): void

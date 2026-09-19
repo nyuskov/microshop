@@ -1,18 +1,20 @@
-"""Рисует стандартные стикеры-реакции и пишет их каталог.
+"""Рисует предустановленные наборы стикеров и пишет их каталог.
 
 Зачем генерировать, а не взять готовый набор: чужие наборы (Telegram и любые
 другие) — это чужие картинки, их нельзя упаковывать в своё приложение (ни
 правами, ни форматами: `.tgs`/`.webm` мы не проигрываем). Поэтому рисуем свои:
-плашка в цвете акцента приложения и подпись — простые, читаемые в любом размере
-стикеры-реакции («Ок», «Спасибо», «Привет»).
+плашка в цвете набора и подпись — простые, читаемые в любом размере стикеры.
+
+Наборов несколько и они тематические («Реакции», «Работа», «Еда», «Праздники») —
+человек добавляет себе тот, который ему нужен.
 
 Что получается на выходе:
 
-1. `frontend/public/stickers/reactions/<имя>.png` — 512×512, прозрачный фон.
+1. `frontend/public/stickers/<набор>/<имя>.png` — 512×512, прозрачный фон.
    Раздаются как статические файлы приложения, поэтому сервер о них не знает:
    стикер уходит сообщением так же, как любой другой (клиент скачивает байты и
    отправляет их вложением с `sticker=true`).
-2. `frontend/src/utils/standardStickers.ts` — каталог: паки и имена файлов.
+2. `frontend/src/utils/standardStickers.ts` — каталог: наборы и имена файлов.
    Файл генерируется, править руками не нужно.
 
 Запуск (нужен Pillow и шрифт DejaVu с кириллицей):
@@ -22,12 +24,14 @@
 from __future__ import annotations
 
 import pathlib
+import subprocess
 from collections.abc import Iterable
 
 from PIL import Image, ImageDraw, ImageFont
 
 FRONTEND = pathlib.Path(__file__).resolve().parent.parent
-OUT_DIR = FRONTEND / "public/stickers/reactions"
+#: Папка наборов: у каждого пака своя (`public/stickers/<ключ>/`).
+OUT_ROOT = FRONTEND / "public/stickers"
 OUT_TS = FRONTEND / "src/utils/standardStickers.ts"
 
 SIZE = 512
@@ -65,7 +69,49 @@ PACKS: list[tuple[str, str, list[tuple[str, str, tuple[int, int, int]]]]] = [
             ("hug", "Обнимаю", (198, 60, 90)),
             ("congrats", "Поздравляю", AMBER),
         ],
-    )
+    ),
+    (
+        "work",
+        "Работа",
+        [
+            ("done", "Готово", ACCENT),
+            ("in_progress", "В работе", BLUE),
+            ("call_me", "Созвон", ACCENT),
+            ("meeting", "Встреча", BLUE),
+            ("deadline", "Дедлайн", (198, 60, 90)),
+            ("report", "Отчёт", GREY),
+            ("vacation", "В отпуске", AMBER),
+            ("question", "Вопрос", BLUE),
+        ],
+    ),
+    (
+        "food",
+        "Еда",
+        [
+            ("coffee", "Кофе", AMBER),
+            ("lunch", "Обед", ACCENT),
+            ("tea", "Чай", AMBER),
+            ("hungry", "Голоден", GREY),
+            ("tasty", "Вкусно", ACCENT),
+            ("pizza", "Пицца", (198, 60, 90)),
+            ("cake", "Торт", (198, 60, 90)),
+            ("bill", "Счёт", BLUE),
+        ],
+    ),
+    (
+        "holidays",
+        "Праздники",
+        [
+            ("happy_new_year", "С Новым годом", BLUE),
+            ("happy_birthday", "С днём рождения", (198, 60, 90)),
+            ("merry_christmas", "С Рождеством", ACCENT),
+            ("congratulations", "Поздравляю", AMBER),
+            ("hooray", "Ура", ACCENT),
+            ("gift", "Подарок", (198, 60, 90)),
+            ("party", "Праздник", AMBER),
+            ("thanks_again", "Спасибо!", BLUE),
+        ],
+    ),
 ]
 
 
@@ -153,10 +199,12 @@ def write_catalog(names: Iterable[tuple[str, str, str]]) -> None:
         lines.append(f"    title: '{title}',")
         lines.append("    stickers: [")
         for name, label, _ in stickers:
-            lines.append(
-                f"      {{ name: '{name}', url: '/stickers/{key}/{name}.png', "
-                f"label: '{label}' }},"
-            )
+            # Многострочно — так файл остаётся чистым для prettier (его проверяет CI).
+            lines.append("      {")
+            lines.append(f"        name: '{name}',")
+            lines.append(f"        url: '/stickers/{key}/{name}.png',")
+            lines.append(f"        label: '{label}'")
+            lines.append("      },")
         lines.append("    ]")
         lines.append("  },")
     lines.append("]")
@@ -164,18 +212,42 @@ def write_catalog(names: Iterable[tuple[str, str, str]]) -> None:
     OUT_TS.write_text("\n".join(lines), encoding="utf-8")
 
 
+def format_with_prettier() -> None:
+    """Приводит каталог к формату prettier.
+
+    Формат задаёт не генератор, а `.prettierrc` (100 символов, без хвостовых
+    запятых): короткие стикеры prettier оставляет одной строкой, длинные
+    разбивает. Повторять это правило в Python незачем — проще прогнать prettier,
+    иначе CI ругается на стиль сгенерированного файла.
+    """
+    prettier = FRONTEND / "node_modules/.bin/prettier"
+    if not prettier.exists():
+        print(
+            "prettier не найден — отформатируйте каталог вручную:\n"
+            "  pnpm exec prettier --write src/utils/standardStickers.ts"
+        )
+        return
+    subprocess.run([str(prettier), "--write", str(OUT_TS)], check=False)
+
+
 def main() -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
     written: list[tuple[str, str, str]] = []
     for key, _, stickers in PACKS:
+        # Отдельная папка на набор: так их и раздаёт `public/`, и так же
+        # собирается путь в каталоге (`/stickers/<ключ>/<имя>.png`).
+        out_dir = OUT_ROOT / key
+        out_dir.mkdir(parents=True, exist_ok=True)
         for name, label, color in stickers:
             image = draw_sticker(label, color)
-            path = OUT_DIR / f"{name}.png"
+            path = out_dir / f"{name}.png"
             image.save(path, format="PNG", optimize=True)
             written.append((key, name, label))
             print(f"{path.relative_to(FRONTEND)}  {path.stat().st_size // 1024} КБ")
     write_catalog(written)
-    print(f"Готово: {len(written)} стикеров, каталог {OUT_TS.relative_to(FRONTEND)}")
+    format_with_prettier()
+    print(
+        f"Готово: {len(written)} стикеров в {len(PACKS)} наборах, каталог {OUT_TS.relative_to(FRONTEND)}"
+    )
 
 
 if __name__ == "__main__":

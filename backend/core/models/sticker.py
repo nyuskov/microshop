@@ -20,17 +20,29 @@ from .mixins import IdIntPkMixin
 
 
 class StickerPack(IdIntPkMixin, Base):
-    """Набор стикеров одного человека."""
+    """Набор стикеров одного человека.
+
+    ``is_preset`` — «публичный» набор: его помечает суперадмин, и любой человек
+    может добавить набор себе целиком (``POST /stickers/presets/{id}/copy/``).
+    Так публикуются предустановленные наборы приложения и авторские наборы
+    (см. ``docs/frontend.md``): по сообщению пак не определить — при отправке
+    стикер уходит обычным вложением, — поэтому «добавить набор» возможно только
+    у того, что лежит на сервере как публичное.
+    """
 
     __tablename__ = "sticker_packs"
     __table_args__ = (
         # Список паков всегда берётся по владельцу и показывается по порядку.
         Index("ix_sticker_packs_owner_position", "owner_id", "position"),
+        # Предустановленные наборы показываются отдельно, всем и по порядку.
+        Index("ix_sticker_packs_preset_position", "is_preset", "position"),
     )
 
     owner_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(String(60))
     position: Mapped[int] = mapped_column(default=0, server_default="0")
+    #: Публичный набор: виден всем для добавления (ставит суперадмин).
+    is_preset: Mapped[bool] = mapped_column(default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

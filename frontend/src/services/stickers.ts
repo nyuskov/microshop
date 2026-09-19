@@ -34,6 +34,8 @@ export interface StickerPack {
   id: number
   title: string
   position: number
+  /** Публичный (предустановленный) набор: его можно добавить себе целиком. */
+  is_preset?: boolean
   stickers: StickerItem[]
 }
 
@@ -55,6 +57,35 @@ export const stickerFileName = (file: File): string => {
 export const fetchStickerLibrary = async (): Promise<StickerPack[]> => {
   const response = await api.get<{ packs?: StickerPack[] }>('/stickers/')
   return response.data.packs ?? []
+}
+
+/** Публичные (предустановленные) наборы: их видно всем и можно добавить себе. */
+export const fetchStickerPresets = async (): Promise<StickerPack[]> => {
+  const response = await api.get<{ packs?: StickerPack[] }>('/stickers/presets/')
+  return response.data.packs ?? []
+}
+
+/**
+ * «Добавить набор»: сервер копирует публичный набор в мою библиотеку.
+ *
+ * Один запрос без загрузки файлов (картинки переиспользуются), поэтому лимит
+ * частоты загрузок тут не мешает — в отличие от импорта встроенного набора,
+ * который скачивает и заливает каждую картинку по отдельности.
+ */
+export const copyStickerPreset = async (packId: number): Promise<StickerPack> => {
+  const response = await api.post<StickerPack>(`/stickers/presets/${packId}/copy/`)
+  return response.data
+}
+
+/** Отметка «публичный набор» — только суперадмин (остальным сервер ответит 403). */
+export const setStickerPackPreset = async (
+  packId: number,
+  isPreset: boolean
+): Promise<StickerPack> => {
+  const response = await api.put<StickerPack>(`/stickers/packs/${packId}/preset/`, {
+    is_preset: isPreset
+  })
+  return response.data
 }
 
 /** Создаёт пак (название по умолчанию подставит сервер). */

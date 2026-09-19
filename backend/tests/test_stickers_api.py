@@ -15,6 +15,7 @@ import os
 
 import pytest
 
+from core.models import User
 from tests.test_chat_media import PNG
 from tests.test_messenger_api import _ApiCtx  # noqa: E402
 from tests.test_messenger_api import api as api_fixture  # noqa: E402
@@ -81,6 +82,95 @@ async def _send_sticker(api: _ApiCtx, token: str, chat_id: int) -> dict:
     )
     assert response.status_code == 200, response.text
     return response.json()
+
+
+async def _presets(api: _ApiCtx, token: str) -> list[dict]:
+    """Публичные (предустановленные) наборы, доступные всем."""
+    response = await api.client.get(
+        "/api/v1/stickers/presets/", headers=api.auth(token)
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["packs"]
+
+
+async def _make_superuser(api: _ApiCtx) -> tuple[User, str]:
+    """Владелец (``is_superuser``) вместе с токеном: публиковать наборы может только он."""
+    owner = await api.make_user()
+    async with api.factory() as session:
+        row = await session.get(User, owner.id)
+        assert row is not None
+        row.is_superuser = True
+        await session.commit()
+    return owner, await api.token_for(owner)
+
+
+@needs_db
+async def test_presets_are_published_and_copied(api: _ApiCtx) -> None:
+    """Суперадмин публикует набор — другой человек добавляет его себе ЦЕЛИКОМ.
+
+    Копия обязана переиспользовать файлы: иначе «добавить набор» упиралось бы в
+    лимит частоты загрузок (10 файлов в минуту), а место тратилось бы дважды.
+    """
+    _, owner_token = await _make_superuser(api)
+    pack = await _create_pack(api, owner_token, "Котики")
+    sticker = await _upload_sticker(api, owner_token, pack["id"])
+
+    stranger = await api.make_user()
+    token = await api.token_for(stranger)
+    # Пока набор частный — чужим он не виден.
+    assert await _presets(api, token) == []
+
+    published = await api.client.put(
+        f"/api/v1/stickers/packs/{pack['id']}/preset/",
+        json={"is_preset": True},
+        headers=api.auth(owner_token),
+    )
+    assert published.status_code == 200, published.text
+    assert published.json()["is_preset"] is True
+
+    assert [p["title"] for p in await _presets(api, token)] == ["Котики"]
+
+    copied = await api.client.post(
+        f"/api/v1/stickers/presets/{pack['id']}/copy/", headers=api.auth(token)
+    )
+    assert copied.status_code == 201, copied.text
+    copy = copied.json()
+    assert copy["title"] == "Котики"
+    # Копия — обычный личный набор, а не второй публичный.
+    assert copy["is_preset"] is False
+    # Главное: файлы те же самые, новых загрузок не было.
+    assert [s["file_url"] for s in copy["stickers"]] == [sticker["file_url"]]
+    assert [p["title"] for p in await _library(api, token)] == ["Котики"]
+
+    # Повторное добавление — понятный отказ, а не второй такой же набор.
+    again = await api.client.post(
+        f"/api/v1/stickers/presets/{pack['id']}/copy/", headers=api.auth(token)
+    )
+    assert again.status_code == 409, again.text
+    assert len(await _library(api, token)) == 1
+
+
+@needs_db
+async def test_preset_rights(api: _ApiCtx) -> None:
+    """Обычный человек не публикует наборы, а копировать можно только публичные."""
+    author = await api.make_user()
+    author_token = await api.token_for(author)
+    pack = await _create_pack(api, author_token, "Личный")
+
+    stranger = await api.make_user()
+    token = await api.token_for(stranger)
+
+    forbidden = await api.client.put(
+        f"/api/v1/stickers/packs/{pack['id']}/preset/",
+        json={"is_preset": True},
+        headers=api.auth(token),
+    )
+    assert forbidden.status_code == 403, forbidden.text
+
+    missing = await api.client.post(
+        f"/api/v1/stickers/presets/{pack['id']}/copy/", headers=api.auth(token)
+    )
+    assert missing.status_code == 404, missing.text
 
 
 @needs_db
