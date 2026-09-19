@@ -19,6 +19,8 @@ import { reminderPresets, reminderSendAt } from '@/utils/reminders'
  *    напоминание «чатным» push'ем наравне с сообщением (см. sandbox ниже).
  */
 const messenger = readFileSync('src/views/Messenger.vue', 'utf8')
+/** Владелец темы напоминаний: списком и диалогом занимается composable. */
+const reminders = readFileSync('src/composables/useMessageReminders.ts', 'utf8')
 const service = readFileSync('src/services/chatService.ts', 'utf8')
 const bar = readFileSync('src/components/messenger/MessageActionsBar.vue', 'utf8')
 const sheet = readFileSync('src/components/messenger/MessageActionSheet.vue', 'utf8')
@@ -145,11 +147,14 @@ describe('подключение напоминаний', () => {
   })
 
   it('чат подтягивает напоминания и сбрасывает их при переходе', () => {
+    // Сама тема живёт в composable (мессенджер только связывает её с лентой и
+    // плашкой ошибки), поэтому обращения к сервису ищем у владельца.
+    expect(reminders).toContain('createMessageReminder(message.id, remindAt)')
+    expect(reminders).toContain('cancelMessageReminder(existing.id)')
+    expect(messenger).toContain('useMessageReminders(')
     expect(messenger).toContain('loadReminders(chatId)')
+    expect(messenger).toContain('resetReminders()')
     expect(messenger).toContain('@remind="openReminderDialog"')
-    expect(messenger).toContain('reminders.value = []')
-    expect(messenger).toContain('createMessageReminder(message.id, remindAt)')
-    expect(messenger).toContain('cancelMessageReminder(existing.id)')
   })
 })
 

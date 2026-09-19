@@ -434,7 +434,7 @@
     :busy="reminderBusy"
     @save="saveReminder"
     @remove="removeReminder"
-    @close="reminderTarget = null"
+    @close="closeReminderDialog"
   />
 
   <!-- Статистика чата: сообщения по дням, участники, вложения -->
@@ -654,10 +654,7 @@ import {
   joinGroupByInvite,
   createScheduledMessage,
   fetchScheduledMessages,
-  cancelScheduledMessage,
-  createMessageReminder,
-  fetchMessageReminders,
-  cancelMessageReminder
+  cancelScheduledMessage
 } from '@/services/chatService'
 import {
   ENCRYPTED_FALLBACK,
@@ -684,6 +681,7 @@ import {
   releaseDecryptedMedia,
   releaseDecryptedMediaExcept
 } from '@/composables/useDecryptedMedia'
+import { useMessageReminders } from '@/composables/useMessageReminders'
 import { usePeerBlocking } from '@/composables/usePeerBlocking'
 import { useStandardSetImport } from '@/composables/useStandardSetImport'
 import { presetSetOfFileName, presetStickerFileName } from '@/utils/presetStickers'
@@ -694,7 +692,6 @@ import type {
   EncryptedFileMeta,
   GroupInvitePreview,
   Message,
-  MessageReminder,
   ScheduledMessage
 } from '@/types'
 import { avatarUrlOf, chatPeer, chatTitle, displayName, isGroupChat } from '@/utils/user'
@@ -2458,7 +2455,7 @@ const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {
   pinnedMessages.value = []
   scheduledMessages.value = []
   scheduledDecrypted.value = {}
-  reminders.value = []
+  resetReminders()
   // Расшифровка голосовых читает файл этого чата — в другом она не нужна, а
   // `blob:`-ссылка вот-вот будет освобождена (releaseDecryptedMediaExcept).
   stopAllRecognitions()
@@ -2706,93 +2703,30 @@ const cancelScheduled = async (scheduledId: number) => {
 
 // ---------- Напоминания о сообщении («напомнить мне») ----------
 //
-// Второй сценарий отложенного действия: «верни меня к этой строке». Живёт на
-// сервере (напоминание должно сработать с закрытым приложением — доставка push),
-// а клиент хранит только список напоминаний открытого чата: по нему строка
-// показывает значок у времени, а меню — «Изменить напоминание».
+// «Верни меня к этой строке»: список напоминаний открытого чата, значок у времени
+// и диалог выбора срока. Сама тема живёт в `composables/useMessageReminders.ts` —
+// здесь только связь с лентой сообщений и плашкой ошибки.
 
-/** Напоминания открытого чата. */
-const reminders = ref<MessageReminder[]>([])
-/** Сообщение, для которого открыт диалог напоминания. */
-const reminderTarget = ref<Message | null>(null)
-/** Запрос в полёте: кнопки диалога временно недоступны. */
-const reminderBusy = ref(false)
-
-/** Напоминание по id сообщения (null — его нет). */
-const reminderFor = (messageId: number): MessageReminder | null =>
-  reminders.value.find((item) => item.message_id === messageId) ?? null
-
-/** Время напоминания по id сообщения — для значка в строке (`MessageThread`). */
-const reminderAtOf = (message: Message): string | null => reminderFor(message.id)?.remind_at ?? null
-
-/** Начало текста сообщения для диалога (в E2EE — нейтральная подпись). */
-const reminderPreview = computed(() => {
-  const message = reminderTarget.value
-  if (!message) return ''
-  if (message.file && !message.text) return 'Вложение'
-  const text = (message.text ?? '').trim().replace(/\s+/g, ' ')
-  if (!text) return message.file ? 'Вложение' : ''
-  return text.length > 120 ? `${text.slice(0, 120)}…` : text
+const {
+  reminderTarget,
+  reminderBusy,
+  reminderFor,
+  reminderAtOf,
+  reminderPreview,
+  loadReminders,
+  resetReminders,
+  openReminderDialog,
+  saveReminder,
+  removeReminder,
+  closeReminderDialog
+} = useMessageReminders({
+  // Геттеры, а не значения: `selectedChatId` объявлен ниже, а вызывает их
+  // composable только по действию человека (см. граблю TDZ в шапке файла).
+  selectedChatId: () => selectedChatId.value,
+  onError: (message) => {
+    sendError.value = message
+  }
 })
-
-/**
- * Подтягивает напоминания чата.
- *
- * Список вспомогательный: без него чат работает как обычно (значка у времени не
- * будет, а поставить напоминание всё равно можно) — поэтому ошибку глотаем.
- */
-const loadReminders = async (chatId: number) => {
-  try {
-    reminders.value = await fetchMessageReminders(chatId)
-  } catch {
-    reminders.value = []
-  }
-}
-
-/** Открывает диалог напоминания для сообщения (из меню строки). */
-const openReminderDialog = (message: Message) => {
-  if (message.kind === 'call') return
-  reminderTarget.value = message
-}
-
-/** Сохраняет (или переносит) напоминание в выбранное время. */
-const saveReminder = async (remindAt: string) => {
-  const message = reminderTarget.value
-  const chatId = selectedChatId.value
-  if (!message || chatId === null) return
-  reminderBusy.value = true
-  try {
-    await createMessageReminder(message.id, remindAt)
-    reminderTarget.value = null
-    await loadReminders(chatId)
-  } catch (error) {
-    sendError.value = getErrorMessage(error, 'Не удалось поставить напоминание')
-  } finally {
-    reminderBusy.value = false
-  }
-}
-
-/** Снимает напоминание у выбранного сообщения. */
-const removeReminder = async () => {
-  const message = reminderTarget.value
-  const chatId = selectedChatId.value
-  if (!message) return
-  const existing = reminderFor(message.id)
-  if (!existing) {
-    reminderTarget.value = null
-    return
-  }
-  reminderBusy.value = true
-  try {
-    await cancelMessageReminder(existing.id)
-    reminderTarget.value = null
-    if (chatId !== null) await loadReminders(chatId)
-  } catch (error) {
-    sendError.value = getErrorMessage(error, 'Не удалось убрать напоминание')
-  } finally {
-    reminderBusy.value = false
-  }
-}
 
 /**
  * Отправляет стикер (эмодзи) отдельным сообщением — тап в панели «Стикеры».
