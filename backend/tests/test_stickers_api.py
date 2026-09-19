@@ -94,7 +94,7 @@ async def _presets(api: _ApiCtx, token: str) -> list[dict]:
 
 
 async def _make_superuser(api: _ApiCtx) -> tuple[User, str]:
-    """Владелец (``is_superuser``) вместе с токеном: публиковать наборы может только он."""
+    """Владелец (``is_superuser``) с токеном: публиковать может только он."""
     owner = await api.make_user()
     async with api.factory() as session:
         row = await session.get(User, owner.id)
