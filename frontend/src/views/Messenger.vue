@@ -704,7 +704,6 @@ import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import { effectiveFile, messageSnippet, optimizeImageFile } from '@/utils/media'
 import type { CallHistoryItem } from '@/utils/callHistory'
-import { deleteDraft, fetchDrafts, putDraft } from '@/services/drafts'
 import { fetchChannel, fetchPostsMeta, markPostViewed } from '@/services/channelService'
 import { type Section } from '@/utils/mobileNav'
 import { mediaUrl } from '@/config'
@@ -720,6 +719,7 @@ import { useCallSession } from '@/composables/useCallSession'
 import { useChatNavigation } from '@/composables/useChatNavigation'
 import { useChatFolders } from '@/composables/useChatFolders'
 import { useChatUnreadState } from '@/composables/useChatUnreadState'
+import { useDrafts } from '@/composables/useDrafts'
 import { useForward } from '@/composables/useForward'
 import { useMediaRecording } from '@/composables/useMediaRecording'
 import { useLightbox } from '@/composables/useLightbox'
@@ -3317,180 +3317,32 @@ const openForwarderChat = async (message: Message) => {
 // ---------- Редактирование / пересылка ----------
 const editingMessage = ref<Message | null>(null)
 
-// ---------- Черновики сообщений (автосохранение текста при смене чата) ----------
-// Ключ `userId:chatId` — черновики не «перетекают» между аккаунтами устройства.
-const DRAFTS_KEY = 'pismo_drafts'
-/** Момент последней программной установки текста поля (гасит «печатает…»). */
-let lastComposerProgrammaticEdit = 0
+// ---------- Черновики сообщений (локально + на сервере) ----------
+//
+// Локальная копия (localStorage, ключ `userId:chatId`) и серверная (черновик виден
+// с другого устройства; в зашифрованном чате уходит шифротекстом). Тема целиком в
+// `composables/useDrafts.ts` — здесь только связь с полем ввода и жизненным циклом
+// страницы.
 
-const readDrafts = (): Record<string, string> => {
-  try {
-    const raw = window.localStorage.getItem(DRAFTS_KEY)
-    return raw ? (JSON.parse(raw) as Record<string, string>) : {}
-  } catch {
-    return {}
-  }
-}
-
-const writeDrafts = (drafts: Record<string, string>) => {
-  try {
-    window.localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts))
-  } catch {
-    // Приватный режим/переполнение — черновик просто не сохранится.
-  }
-}
-
-/** Черновики текущего пользователя по id чата (для превью в списке диалогов). */
-const draftsByChatId = reactive<Record<number, string>>({})
-
-/** Загружает черновики пользователя из localStorage в реактивную карту. */
-const syncDraftsFromStorage = (uid: number | null) => {
-  for (const key of Object.keys(draftsByChatId)) {
-    delete draftsByChatId[Number(key)]
-  }
-  if (uid === null) return
-  const all = readDrafts()
-  const prefix = `${uid}:`
-  for (const [key, text] of Object.entries(all)) {
-    if (key.startsWith(prefix) && text.trim()) {
-      const chatId = Number(key.slice(prefix.length))
-      if (Number.isFinite(chatId)) draftsByChatId[chatId] = text
-    }
-  }
-}
-
-watch(currentUserId, () => syncDraftsFromStorage(currentUserId.value), {
-  immediate: true
+const {
+  draftsByChatId,
+  saveDraftFor,
+  loadDraftFor,
+  clearDraftFor,
+  flushDraftPushes,
+  syncDraftsFromServer,
+  setComposerText,
+  isProgrammaticComposerEdit
+} = useDrafts({
+  // Геттеры, а не значения: объявлены ниже по `<script setup>`, а читаются они по
+  // действию человека (см. граблю TDZ в шапке файла).
+  composerText: newMessage,
+  currentUserId: () => currentUserId.value,
+  chats: () => chats.value,
+  isEditing: () => editingMessage.value !== null,
+  buildWireText: (chatId, text) => buildWireText(chatId, text),
+  chatDecryptKeys: (chat) => chatDecryptKeysOf(chat)
 })
-
-const draftStorageKey = (chatId: number | null): string | null => {
-  const uid = currentUserId.value
-  if (uid === null || chatId === null) return null
-  return `${uid}:${chatId}`
-}
-
-/** Сохраняет набранный текст в черновик чата (в режиме правки не трогаем). */
-const saveDraftFor = (chatId: number | null) => {
-  const key = draftStorageKey(chatId)
-  if (key === null || editingMessage.value !== null) return
-  const text = newMessage.value
-  const drafts = readDrafts()
-  if (text.trim()) {
-    drafts[key] = text
-    if (chatId !== null) draftsByChatId[chatId] = text
-  } else {
-    delete drafts[key]
-    if (chatId !== null) delete draftsByChatId[chatId]
-  }
-  writeDrafts(drafts)
-  scheduleDraftPush(chatId, text)
-}
-
-/** Черновик чата (пустая строка, если его нет). */
-const loadDraftFor = (chatId: number | null): string => {
-  const key = draftStorageKey(chatId)
-  if (key === null) return ''
-  return readDrafts()[key] ?? ''
-}
-
-/** Удаляет черновик чата (после фактической отправки). */
-const clearDraftFor = (chatId: number | null) => {
-  const key = draftStorageKey(chatId)
-  if (key === null) return
-  const drafts = readDrafts()
-  if (key in drafts) {
-    delete drafts[key]
-    writeDrafts(drafts)
-  }
-  if (chatId !== null) delete draftsByChatId[chatId]
-  scheduleDraftPush(chatId, '')
-}
-
-// ---------- Черновики на сервере ----------
-// Черновик в localStorage живёт только на этом устройстве и теряется при
-// переустановке. Дублируем его на сервере: тогда он виден с другого устройства.
-// Пишем не на каждую букву, а с задержкой — API не должен дёргаться на каждый
-// символ.
-const DRAFT_PUSH_DELAY_MS = 1500
-
-/** Отложенные отправки черновиков: id чата → таймер. */
-const draftPushTimers = new Map<number, number>()
-
-/** Что уходит на сервер: в зашифрованном чате — шифротекст (сервер его не читает). */
-const pushDraftToServer = async (chatId: number, text: string) => {
-  try {
-    if (!text.trim()) {
-      await deleteDraft(chatId)
-      return
-    }
-    const chat = chats.value.find((item) => item.id === chatId) ?? null
-    const wire = chat?.e2ee_enabled ? await buildWireText(chatId, text) : null
-    await putDraft(chatId, wire ? wire.wireText : text)
-  } catch (error) {
-    // Сеть пропала — черновик остался в localStorage и уйдёт при следующем наборе.
-    console.error('Не удалось сохранить черновик:', getErrorMessage(error))
-  }
-}
-
-/** Отложить отправку черновика чата (повторный вызов сдвигает таймер). */
-const scheduleDraftPush = (chatId: number | null, text: string) => {
-  if (chatId === null || currentUserId.value === null) return
-  const existing = draftPushTimers.get(chatId)
-  if (existing !== undefined) window.clearTimeout(existing)
-  draftPushTimers.set(
-    chatId,
-    window.setTimeout(() => {
-      draftPushTimers.delete(chatId)
-      void pushDraftToServer(chatId, text)
-    }, DRAFT_PUSH_DELAY_MS)
-  )
-}
-
-/** Отправить всё отложенное сейчас (уход со страницы, смена чата). */
-const flushDraftPushes = () => {
-  for (const [chatId, timer] of draftPushTimers) {
-    window.clearTimeout(timer)
-    const text = draftsByChatId[chatId] ?? ''
-    void pushDraftToServer(chatId, text)
-  }
-  draftPushTimers.clear()
-}
-
-/**
- * Подтянуть черновики с сервера.
- *
- * Сервер — источник правды (черновик мог быть набран на другом устройстве), но
- * локальные черновики чатов, которых на сервере нет, не трогаем: они могли не
- * успеть уйти. Черновик зашифрованного чата без ключа просто пропускаем.
- */
-const syncDraftsFromServer = async () => {
-  const uid = currentUserId.value
-  if (uid === null) return
-  try {
-    const list = await fetchDrafts()
-    const local = readDrafts()
-    for (const item of list) {
-      let text = item.text
-      if (isEncryptedPayload(text)) {
-        const chat = chats.value.find((entry) => entry.id === item.chat_id) ?? null
-        const plain = await decryptTextWithKeys(await chatDecryptKeysOf(chat), text)
-        if (plain === null) continue
-        text = plain
-      }
-      draftsByChatId[item.chat_id] = text
-      local[`${uid}:${item.chat_id}`] = text
-    }
-    writeDrafts(local)
-  } catch (error) {
-    console.error('Не удалось загрузить черновики:', getErrorMessage(error))
-  }
-}
-
-/** Программно ставит текст поля — не считается «набором текста» для собеседника. */
-const setComposerText = (text: string) => {
-  lastComposerProgrammaticEdit = Date.now()
-  newMessage.value = text
-}
 
 /** Сохраняет черновик текущего чата (вызывается при перезагрузке/закрытии). */
 const handleBeforeUnload = () => {
@@ -4043,7 +3895,7 @@ watch(newMessage, (value) => {
   const chatId = selectedChatId.value
   if (!value.trim() || chatId === null) return
   // Программная установка (восстановление черновика/правка) не шлёт «печатает…».
-  if (Date.now() - lastComposerProgrammaticEdit < 500) return
+  if (isProgrammaticComposerEdit()) return
   const now = Date.now()
   if (now - lastTypingSentAt >= TYPING_SEND_INTERVAL_MS) {
     lastTypingSentAt = now
