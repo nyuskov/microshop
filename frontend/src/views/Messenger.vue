@@ -685,6 +685,7 @@ import { useOutbox } from '@/composables/useOutbox'
 import { usePeerBlocking } from '@/composables/usePeerBlocking'
 import { useScheduledSend } from '@/composables/useScheduledSend'
 import { useStandardSetImport } from '@/composables/useStandardSetImport'
+import { useThreadPagination, MESSAGES_PAGE_SIZE } from '@/composables/useThreadPagination'
 import {
   packIdOfFileName,
   presetSetOfFileName,
@@ -981,7 +982,6 @@ const pinnedMessages = ref<Message[]>([])
 const contactsStore = useContactsStore()
 const contacts = computed<ChatUser[]>(() => contactsStore.users)
 const loadingChats = ref(false)
-const messagesLoading = ref(false)
 const contactsLoading = computed(() => contactsStore.loading)
 const selectedChatId = ref<number | null>(initialChatId)
 
@@ -2333,90 +2333,27 @@ const loadChats = async () => {
 }
 
 // ---------- Пагинация истории ----------
-const MESSAGES_PAGE_SIZE = 80
-const noMoreOlder = ref(false)
-const loadingOlder = ref(false)
+//
+// Свежая страница при открытии чата, догрузка вверх и склейка с загруженным —
+// `composables/useThreadPagination.ts`.
 
-const replaceMessageInThread = (updated: Message) => {
-  messages.value = messages.value.map((m) => (m.id === updated.id ? updated : m))
-}
-
-const removeMessageFromThread = (messageId: number) => {
-  messages.value = messages.value.filter((m) => m.id !== messageId)
-}
-
-/** Загружает самую свежую страницу (при открытии чата). */
-const loadThreadLatest = async (chatId: number) => {
-  messagesLoading.value = true
-  noMoreOlder.value = false
-  loadingOlder.value = false
-  try {
-    messages.value = await applyDecryptMessages(
-      chatId,
-      await fetchMessages(chatId, { limit: MESSAGES_PAGE_SIZE })
-    )
-  } catch (error) {
-    console.error('Не удалось загрузить сообщения:', getErrorMessage(error))
-  } finally {
-    messagesLoading.value = false
-  }
-}
-
-/**
- * Объединяет свежую «последнюю страницу» с уже загруженными старыми
- * сообщениями (не роняет загруженную выше историю) и при новых сообщениях
- * прокручивает вниз, только если пользователь и так внизу.
- */
-const mergeThreadLatest = async (chatId: number): Promise<boolean> => {
-  const previousIds = new Set(messages.value.map((m) => m.id))
-  const freshRaw = await fetchMessages(chatId, { limit: MESSAGES_PAGE_SIZE })
-  const fresh = await applyDecryptMessages(chatId, freshRaw)
-  const freshIds = new Set(fresh.map((m) => m.id))
-  const keptOlder = messages.value.filter((m) => !freshIds.has(m.id))
-  messages.value = [...keptOlder, ...fresh].sort((a, b) => a.id - b.id)
-  const hasNew = fresh.some((m) => !previousIds.has(m.id))
-  if (hasNew && (!threadRef.value || threadRef.value.isNearBottom())) {
-    await nextTick()
-    scrollToBottom()
-  }
-  return hasNew
-}
-
-/** Подгружает более старые сообщения при прокрутке вверх (вызывается лентой). */
-const loadOlderMessages = async () => {
-  const chatId = selectedChatId.value
-  if (chatId === null || loadingOlder.value || noMoreOlder.value || messages.value.length === 0) {
-    return
-  }
-  const saved = threadRef.value?.capture()
-  const prevScrollHeight = saved?.height ?? 0
-  const prevScrollTop = saved?.top ?? 0
-  const oldestId = messages.value.reduce<number | null>(
-    (min, m) => (min === null || m.id < min ? m.id : min),
-    null
-  )
-  loadingOlder.value = true
-  try {
-    const olderRaw = await fetchMessages(chatId, {
-      limit: MESSAGES_PAGE_SIZE,
-      beforeId: oldestId ?? undefined
-    })
-    const older = await applyDecryptMessages(chatId, olderRaw)
-    const existingIds = new Set(messages.value.map((m) => m.id))
-    const toAdd = older.filter((m) => !existingIds.has(m.id))
-    if (older.length === 0 || toAdd.length === 0) {
-      noMoreOlder.value = true
-      return
-    }
-    messages.value = [...toAdd, ...messages.value].sort((a, b) => a.id - b.id)
-    await nextTick()
-    threadRef.value?.restoreScroll(prevScrollTop, prevScrollHeight)
-  } catch (error) {
-    console.error('Не удалось загрузить более старые сообщения:', getErrorMessage(error))
-  } finally {
-    loadingOlder.value = false
-  }
-}
+const {
+  messagesLoading,
+  noMoreOlder,
+  scrollToBottom,
+  replaceMessageInThread,
+  removeMessageFromThread,
+  loadThreadLatest,
+  mergeThreadLatest,
+  loadOlderMessages
+} = useThreadPagination({
+  // Геттеры, а не значения: объявлены ниже по `<script setup>` (см. граблю TDZ
+  // в шапке файла); расшифровка страницы — функция выше.
+  messages,
+  selectedChatId: () => selectedChatId.value,
+  thread: () => threadRef.value,
+  decryptPage: (chatId, list) => applyDecryptMessages(chatId, list)
+})
 
 const loadPinned = async (chatId: number) => {
   try {
@@ -2438,10 +2375,6 @@ const refreshThread = async () => {
   const chatId = selectedChatId.value
   if (chatId === null) return
   await Promise.all([mergeThreadLatest(chatId), loadPinned(chatId), loadChats()])
-}
-
-const scrollToBottom = () => {
-  threadRef.value?.scrollToBottom()
 }
 
 // ---------- Выбор / открытие чата ----------

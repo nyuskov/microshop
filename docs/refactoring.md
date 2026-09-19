@@ -108,7 +108,14 @@
 - отложенная отправка — `composables/useScheduledSend.ts`: список отложенных
   открытого чата, создание (с шифрованием текста в E2EE) и отмена. Общие флаги
   (`newMessage`, `sending`) приходят ref'ами, а «после отправки» (черновик, ответ,
-  «печатает…») — одним колбэком `onScheduled`.
+  «печатает…») — одним колбэком `onScheduled`;
+- страницы истории — `composables/useThreadPagination.ts`: свежая страница при
+  открытии, склейка с загруженным (ничего не теряем) и догрузка вверх с возвратом
+  позиции прокрутки. Ленту composable просит структурным типом
+  (`ThreadScrollHandle`), расшифровка страницы приходит колбэком. Побочная польза:
+  логику загрузки, которая раньше была неотделима от мессенджера и проверялась
+  только руками, теперь покрывает `__tests__/threadPagination.spec.ts` (8 тестов:
+  порядок склейки, конец истории, повтор страницы, возврат прокрутки).
 Проверка: тесты `mobileNav`, `chatUrl`, `unreadSeenAtBottom`, `thread`, `call*`,
 `chatUnread`, `channelLink`, `lightbox`, `forward`, `nativeShareIncoming`, `recorder`,
 `pendingUploadRow`, `messageReminders`; плюс сценарии в браузере
