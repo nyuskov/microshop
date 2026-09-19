@@ -31,16 +31,17 @@
       @click.stop="openAttachment()"
     >
       <img
-        v-if="fileUrl"
+        v-if="fileUrl && !imageBroken"
         :src="fileUrl"
         :alt="file.name"
         class="attachment-image"
         loading="lazy"
         decoding="async"
+        @error="imageBroken = true"
       />
       <span v-else class="attachment-locked">
-        <q-icon :name="icon('lock')" size="20px" />
-        <span>{{ lockedLabel }}</span>
+        <q-icon :name="icon(imageBroken ? 'warning' : 'lock')" size="20px" />
+        <span>{{ imageBroken ? brokenLabel : lockedLabel }}</span>
       </span>
     </button>
     <template v-else-if="fileUrl">
@@ -100,7 +101,7 @@
  * вложения всей истории (см. `useDecryptedMedia`). Пока расшифровки нет,
  * вместо шифротекста показываем «замок».
  */
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { Message } from '@/types'
 import { mediaUrl } from '@/config'
 import { formatBytes } from '@/utils/format'
@@ -187,6 +188,22 @@ const fileUrl = computed<string>(() => {
 
 const lockedLabel = computed<string>(() =>
   decrypted.value?.status === 'failed' ? '🔒 Не удалось расшифровать' : '🔒 Расшифровываем…'
+)
+
+/**
+ * Файл не открылся (его нет на сервере или ссылка битая).
+ *
+ * Показываем надпись вместо пустого места: пустая картинка в пузыре читалась как
+ * «тёмное окно» и не говорила, что случилось. Сбрасываем признак при смене
+ * ссылки — если придёт расшифрованная копия, попробуем показать её.
+ */
+const imageBroken = ref(false)
+watch(fileUrl, () => {
+  imageBroken.value = false
+})
+
+const brokenLabel = computed<string>(() =>
+  props.sticker ? 'Стикер недоступен' : 'Изображение недоступно'
 )
 </script>
 

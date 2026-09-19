@@ -2695,7 +2695,9 @@ const makeStickerFromMessage = async (message: Message) => {
 const { run: runStandardSetImport } = useStandardSetImport()
 
 const addStickerSet = (message: Message) => {
-  const set = presetSetOfFileName(message.file?.name ?? null)
+  // Имя берём из эффективного вложения: в E2EE в `message.file.name` лежит
+  // нейтральное `enc_*.bin`, а метка набора — в расшифрованном конверте.
+  const set = presetSetOfFileName(effectiveFile(message)?.name ?? null)
   if (!set) return
   void runStandardSetImport(set).then((problem) => {
     if (problem) sendError.value = problem
@@ -2714,7 +2716,10 @@ const stickerSet = ref<StickerSetRef | null>(null)
  * просмотр картинки: обещать нечего.
  */
 const openStickerSetOf = async (message: Message) => {
-  const fileName = message.file?.name ?? null
+  // Имя — из эффективного вложения: у E2EE-стикера настоящее имя (с меткой
+  // набора) лежит в расшифрованном конверте, а `message.file.name` — `enc_*.bin`.
+  // Без этого тап по стикеру в зашифрованном чате открывал просмотр картинки.
+  const fileName = effectiveFile(message)?.name ?? null
   const packId = packIdOfFileName(fileName)
   let set = resolveStickerSet(fileName, stickerStore.packs, stickerStore.presets)
   if (!set && packId !== null) {

@@ -24,7 +24,8 @@ from sqlalchemy import select
 from core.celery_app import celery_app
 from core.config import settings
 from core.media_store import store_media
-from core.models import Chat, Message, Story, User, user_chat_association_table
+from core.media_usage import collect_used_media_names
+from core.models import Chat, Message, user_chat_association_table
 from tasks.base import make_engine, make_session, run_async
 from tasks.notifications import publish_realtime_new_message
 
@@ -209,6 +210,11 @@ def cleanup_orphan_media(delete: bool = True) -> dict[str, int]:
 
     Раньше это был ручной скрипт ``python -m scripts.cleanup_orphan_media``.
     Теперь запускается по расписанию celery beat (см. core.celery_app).
+
+    Набор «используемых» имён берём из ``core.media_usage`` — оттуда же, откуда
+    его берёт скрипт. Своя копия выборок в этой задаче уже приводила к потере
+    живых файлов (стикеры библиотеки, иконки уведомлений), поэтому списки только
+    общие.
     """
     return run_async(_cleanup_async(delete=delete))
 
@@ -217,36 +223,7 @@ async def _cleanup_async(*, delete: bool) -> dict[str, int]:
     engine = make_engine()
     session = make_session(engine)
     try:
-        used: set[str] = set()
-
-        result = await session.execute(
-            select(Message.file_url).where(Message.file_url.is_not(None))
-        )
-        used |= _collect_names([row[0] for row in result.all()])
-
-        result = await session.execute(
-            select(User.avatar_url, User.avatar_thumb_url).where(
-                User.avatar_url.is_not(None)
-            )
-        )
-        used |= _collect_names([row[0] for row in result.all()])
-        used |= _collect_names([row[1] for row in result.all()])
-
-        # Аватары групп лежат рядом с пользовательскими: без этой выборки
-        # очистка удаляла бы файлы живых групп как неиспользуемые.
-        result = await session.execute(
-            select(Chat.avatar_url, Chat.avatar_thumb_url).where(
-                Chat.avatar_url.is_not(None)
-            )
-        )
-        used |= _collect_names([row[0] for row in result.all()])
-        used |= _collect_names([row[1] for row in result.all()])
-
-        # Медиа историй: файл живёт, пока есть запись (история — максимум сутки).
-        result = await session.execute(
-            select(Story.media_url).where(Story.media_url.is_not(None))
-        )
-        used |= _collect_names([row[0] for row in result.all()])
+        used = await collect_used_media_names(session)
     finally:
         await session.close()
         await engine.dispose()
@@ -262,13 +239,3 @@ async def _cleanup_async(*, delete: bool) -> dict[str, int]:
                 removed += 1
     logger.info("cleanup_orphan_media: delete=%s, файлов = %s", delete, removed)
     return {"delete": delete, "removed": removed}
-
-
-def _collect_names(urls: list[str | None]) -> set[str]:
-    """Из /media/... URL достаёт имена файлов."""
-    names: set[str] = set()
-    for url in urls or []:
-        if not url or not url.startswith("/media/"):
-            continue
-        names.add(Path(url).name)
-    return names

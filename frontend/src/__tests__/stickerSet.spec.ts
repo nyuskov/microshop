@@ -6,6 +6,7 @@ import { mount } from '@vue/test-utils'
 import { packStickerFileName, presetStickerFileName } from '@/utils/presetStickers'
 import { resolveStickerSet, stickerSendRef, type StickerSetRef } from '@/utils/stickerSet'
 import { STANDARD_STICKER_PACKS } from '@/utils/standardStickers'
+import { effectiveFile } from '@/utils/media'
 import { mediaUrl } from '@/config'
 import type { StickerPack } from '@/services/stickers'
 
@@ -120,6 +121,55 @@ describe('stickerSendRef', () => {
       mime: 'image/webp',
       pack: { packId: PACK.id, position: 1 }
     })
+  })
+})
+
+/**
+ * E2EE: настоящее имя стикера лежит внутри расшифрованного конверта.
+ *
+ * В зашифрованном чате сервер хранит вложение под нейтральным именем
+ * (`enc_*.bin`) и типом `application/octet-stream`; метку набора клиент достаёт
+ * из конверта (`e2ee_file`, см. `effectiveFile`). Пока имя брали напрямую из
+ * `message.file.name`, тап по стикеру не находил набор и открывал лайтбокс —
+ * «стикер открывается просмотром картинки».
+ */
+describe('набор стикера в E2EE-чате', () => {
+  const encryptedSticker = (name: string) =>
+    ({
+      file: {
+        name: 'enc_0f1e2d.bin',
+        url: '/media/enc_0f1e2d.bin',
+        mime: 'application/octet-stream',
+        size: 10
+      },
+      e2ee_file: { n: name, m: 'image/webp', s: 10 }
+    }) as never
+
+  it('метка читается из расшифрованного имени, а не из `enc_*.bin`', () => {
+    const message = encryptedSticker(packStickerFileName(PUBLIC_PACK.id, '1'))
+
+    // Именно так строку читают лента и открытие набора: имя — из эффективного
+    // вложения (у E2EE это расшифрованный конверт).
+    const set = resolveStickerSet(effectiveFile(message)?.name, [PACK], [PUBLIC_PACK])
+
+    expect(set?.title).toBe('Котики')
+    expect(set?.own).toBe(false)
+    // По «сырому» имени метки нет — это и был баг.
+    expect(resolveStickerSet(message.file?.name, [PACK], [PUBLIC_PACK])).toBeNull()
+  })
+
+  it('строки берут имя из эффективного вложения', () => {
+    // Тап по стикеру (`openStickerSetOf`) и пункт меню «Добавить набор»
+    // (`presetSet`) обязаны смотреть на расшифрованное имя: у E2EE в
+    // `message.file.name` только `enc_*.bin`, и метка набора теряется.
+    const messenger = readFileSync('src/views/Messenger.vue', 'utf8')
+    const openSet = messenger.slice(messenger.indexOf('const openStickerSetOf'))
+    const openSetBody = openSet.slice(0, openSet.indexOf('const sendStickerImage'))
+    expect(openSetBody).toContain('effectiveFile(message)?.name')
+    expect(openSetBody).not.toContain('message.file?.name')
+
+    const row = readFileSync('src/components/messenger/MessageRow.vue', 'utf8')
+    expect(row).toContain('presetSetOfFileName(file.value?.name ?? null)')
   })
 })
 

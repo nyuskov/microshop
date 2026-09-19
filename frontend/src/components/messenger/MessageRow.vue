@@ -626,7 +626,7 @@ const canOpenImage = computed<boolean>(() => {
  * по метке в имени файла (`utils/presetStickers.ts`), потому что у сервера
  * предустановленных наборов нет — он видит только картинку.
  */
-const presetSet = computed(() => presetSetOfFileName(props.message.file?.name ?? null))
+const presetSet = computed(() => presetSetOfFileName(file.value?.name ?? null))
 /**
  * Набор ещё не добавлен себе.
  *
@@ -1092,6 +1092,21 @@ onBeforeUnmount(() => {
 
 .msg-bubble.sticker-only .msg-meta {
   color: var(--ms-muted-2);
+}
+
+/* Картинка-стикер: пузырь тоже прозрачный — в ленте это не «сообщение с
+   картинкой», а сам стикер (в Telegram у стикеров подложки нет). Без этого
+   прозрачная картинка лежала на тёмной подложке пузыря и читалась как «тёмное
+   окно», особенно когда файл не загрузился. Селекторы с .msg.in/.msg.out нужны
+   по той же причине, что и у «кружка»: у правил цвета пузыря выше
+   специфичность выше. */
+.msg-bubble.sticker-image,
+.msg.in .msg-bubble.sticker-image,
+.msg.out .msg-bubble.sticker-image {
+  background: transparent;
+  box-shadow: none;
+  padding: 0 2px;
+  max-width: min(70%, 320px);
 }
 
 /* ---------- Свайп вправо = ответ ---------- */

@@ -1,5 +1,14 @@
 <template>
-  <aside class="side-panel ms-rows" :class="{ 'has-admin-gear': isAdmin && !selectionMode }">
+  <!-- Жесты (протяжка вниз — раскрыть панели, смах вверх — убрать) слушаем на
+       всей панели: свайп по шапке, поиску или полосе фильтров тоже должен
+       работать (см. onPanelTouchMove). -->
+  <aside
+    ref="panelRoot"
+    class="side-panel ms-rows"
+    :class="{ 'has-admin-gear': isAdmin && !selectionMode }"
+    @touchstart.passive="onPanelTouchStart"
+    @touchmove.passive="onPanelTouchMove"
+  >
     <!-- Шапка панели (обычный режим и режим выделения чатов — в SidebarHeader.vue) -->
     <SidebarHeader
       :selection-mode="selectionMode"
@@ -117,8 +126,6 @@
               :muted-chat-ids="mutedChatIds"
               :online-user-ids="onlineUserIds"
               :handle-scroll="onChatsScroll"
-              :handle-touch-start="onListTouchStart"
-              :handle-touch-move="onListTouchMove"
               @update:filter="chatFilter = $event as ChatFilterValue"
               @create-folder="emit('create-folder')"
               @manage-folder="emit('manage-folder', $event)"
@@ -331,8 +338,8 @@ const toggleStoriesExpand = () => setStoriesExpanded(!storiesExpanded.value)
  * Сжимает верхние панели на один шаг — в порядке, обратном раскрытию: сначала
  * истории (они раскрываются вторым шагом), потом поле поиска.
  *
- * Возвращает `true`, если что-то сжалось: по этому признаку жест расходуется
- * целиком, а не сжимает обе панели одним движением.
+ * Возвращает `true`, если что-то сжалось: по этому признаку прокрутка списка
+ * расходует движение целиком, а не сжимает обе панели одним движением.
  */
 const collapseTopPanels = (): boolean => {
   if (storiesExpanded.value) {
@@ -346,10 +353,7 @@ const collapseTopPanels = (): boolean => {
   return false
 }
 
-/** Есть ли что прокручивать: у короткого списка событий скролла не будет вовсе. */
-const canScroll = (el: HTMLElement): boolean => el.scrollHeight - el.clientHeight > 1
-
-// Копим движение в пределах шага: без этого микро-дрожание скролла мигало бы полосой.
+/** Копим движение в пределах шага: без этого микро-дрожание скролла мигало бы полосой. */
 const STORIES_SCROLL_STEP = 24
 let storiesScrollAcc = 0
 let storiesLastTop = 0
@@ -384,11 +388,16 @@ const onChatsScroll = (el: HTMLElement) => {
 }
 
 /**
- * Протяжка списка вниз у самого верха раскрывает панели под шапкой — как в
- * Telegram, по шагам: первое движение открывает поле поиска, следующее (уже
- * сильнее) — полосу историй над ним. За одно касание делаем только один шаг,
- * поэтому «второй» требует отдельной протяжки. Обратное движение (смахнуть
- * вверх) так же по шагам сжимает их — об этом ниже.
+ * Жесты по панели: протяжка вниз у самого верха списка раскрывает панели под
+ * шапкой — как в Telegram, по шагам (первое движение открывает поле поиска,
+ * следующее, уже сильнее, — полосу историй над ним); обратное движение
+ * (смахнуть вверх) так же по шагам их сжимает.
+ *
+ * Слушаем ВСЮ панель (`@touchstart`/`@touchmove` на `.side-panel`), а не только
+ * список чатов: свайп по шапке, полю поиска, полосе фильтров или полосе историй
+ * до списка не доходил, и жест «смахнуть вверх, чтобы убрать поиск» на телефоне
+ * просто ничего не делал. Раскрытие протяжкой вниз при этом по-прежнему только
+ * по списку: тянуть вниз по шапке не должно открывать панели случайно.
  */
 const PULL_EXPAND_PX = 48
 /** Порог для историй выше: они раскрываются вторым, более сильным движением. */
@@ -400,24 +409,42 @@ const PULL_STORIES_PX = 96
 const SWIPE_COLLAPSE_PX = 32
 let pullStartY = 0
 let pullUsed = false
-const onListTouchStart = (event: TouchEvent) => {
+/** Касание началось на самом списке — только там работает протяжка вниз. */
+let pullFromList = false
+
+/** Панель целиком: на ней и слушаем жесты. */
+const panelRoot = ref<HTMLElement | null>(null)
+
+/** Список чатов внутри панели (может отсутствовать: загрузка, пустой список). */
+const listScrollEl = (): HTMLElement | null =>
+  panelRoot.value?.querySelector<HTMLElement>('.chat-scroll') ?? null
+
+/** Список уже прокручен — это обычное листание чатов, а не жест по шапке. */
+const listIsScrolled = (el: HTMLElement | null): boolean => (el?.scrollTop ?? 0) > 0
+
+const onPanelTouchStart = (event: TouchEvent) => {
   pullStartY = event.touches[0]?.clientY ?? 0
   pullUsed = false
+  const target = event.target
+  pullFromList = target instanceof Element && target.closest('.chat-scroll') !== null
 }
-const onListTouchMove = (event: TouchEvent, el: HTMLElement) => {
-  if (pullUsed || el.scrollTop > 0) return
+
+const onPanelTouchMove = (event: TouchEvent) => {
+  if (pullUsed) return
+  const list = listScrollEl()
   const y = event.touches[0]?.clientY ?? 0
   const distance = y - pullStartY
-  // Смахнуть вверх — убрать панели. Ловим по касанию ТОЛЬКО когда прокрутки
-  // нет: у короткого списка (мало чатов) событий скролла не бывает вообще, и
-  // жест, построенный на прокрутке, молча не работал бы — именно так «пропадало»
-  // сокрытие поиска, открытого без историй. Когда прокрутка есть, это обычное
-  // листание списка, и панели сжимает его обработчик (`onChatsScroll`).
-  if (distance <= -SWIPE_COLLAPSE_PX && !canScroll(el)) {
+  // Смахнуть вверх — убрать одну панель (по шагам, в порядке, обратном
+  // раскрытию). Раньше жест ловился только по самому списку и только когда тот
+  // не прокручивался: касание по шапке/поиску/полосе фильтров до списка не
+  // доходило, и на телефоне не срабатывало ничего.
+  if (distance <= -SWIPE_COLLAPSE_PX && !listIsScrolled(list)) {
     pullUsed = true
     collapseTopPanels()
     return
   }
+  // Дальше — только протяжка вниз по самому списку, с его верха.
+  if (!pullFromList || listIsScrolled(list)) return
   if (!searchOpen.value) {
     if (distance < PULL_EXPAND_PX) return
     pullUsed = true

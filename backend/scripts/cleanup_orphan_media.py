@@ -12,86 +12,21 @@
 
 Для cron добавьте строку (в контейнере/хосте с доступом к БД):
     0 4 * * * cd /path && poetry run python -m scripts.cleanup_orphan_media --delete
+
+Список «используемых» имён берётся из ``core.media_usage`` — оттуда же, откуда
+его берёт периодическая задача воркера (``tasks.media_tasks``). Своя копия
+выборок в скрипте уже расходилась с задачей, и ночная очистка удаляла живые
+файлы: стикеры библиотеки и иконки уведомлений.
 """
 
 import argparse
 import asyncio
 from pathlib import Path
 
-from sqlalchemy import select
-
-from core.avatar_store import push_icon_stored_name
-from core.models import Chat, LinkPreview, Message, Sticker, Story, User, db_helper
+from core.media_usage import collect_used_media_names
+from core.models import db_helper
 
 MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
-
-
-def _collect_names(urls: list[str | None]) -> set[str]:
-    """Из /media/... URL достаёт имена файлов."""
-    names: set[str] = set()
-    for url in urls or []:
-        if not url or not url.startswith("/media/"):
-            continue
-        names.add(Path(url).name)
-    return names
-
-
-async def _collect_used(session) -> set[str]:
-    """Имена файлов, на которые ссылаются записи БД.
-
-    Проверяем сообщения, стикеры, аватары (людей и групп), истории и превью
-    ссылок — всё, что хранит путь в ``media``.
-    """
-    used: set[str] = set()
-
-    result = await session.execute(
-        select(Message.file_url).where(Message.file_url.is_not(None))
-    )
-    used |= _collect_names([row[0] for row in result.all()])
-
-    # Стикеры живут отдельно от сообщений: без этой строки скрипт удалял бы
-    # файлы живых стикеров как «сироты».
-    result = await session.execute(
-        select(Sticker.file_url).where(Sticker.file_url.is_not(None))
-    )
-    used |= _collect_names([row[0] for row in result.all()])
-
-    result = await session.execute(
-        select(User.avatar_url, User.avatar_thumb_url).where(
-            User.avatar_url.is_not(None)
-        )
-    )
-    user_avatar_names = _collect_names([row[0] for row in result.all()])
-    user_avatar_names |= _collect_names([row[1] for row in result.all()])
-    used |= user_avatar_names
-    # Иконки уведомлений лежат рядом с аватарами и выводятся из их имён
-    # (`user_5_ab_n192.png`), в БД их адреса нет: без этой строки скрипт удалял бы
-    # их как «сироты», и генерация повторялась бы при каждом push.
-    used |= {push_icon_stored_name(name) for name in user_avatar_names}
-
-    # Аватары групп лежат в том же каталоге, что и аватары пользователей, — без
-    # них скрипт удалял бы файлы живых групп как «сироты».
-    result = await session.execute(
-        select(Chat.avatar_url, Chat.avatar_thumb_url).where(
-            Chat.avatar_url.is_not(None)
-        )
-    )
-    chat_avatar_names = _collect_names([row[0] for row in result.all()])
-    chat_avatar_names |= _collect_names([row[1] for row in result.all()])
-    used |= chat_avatar_names
-    used |= {push_icon_stored_name(name) for name in chat_avatar_names}
-
-    result = await session.execute(
-        select(Story.media_url).where(Story.media_url.is_not(None))
-    )
-    used |= _collect_names([row[0] for row in result.all()])
-
-    result = await session.execute(
-        select(LinkPreview.image_url).where(LinkPreview.image_url.is_not(None))
-    )
-    used |= _collect_names([row[0] for row in result.all()])
-
-    return used
 
 
 def _find_orphans(used: set[str]) -> list[Path]:
@@ -108,7 +43,7 @@ def _find_orphans(used: set[str]) -> list[Path]:
 
 async def _run(delete: bool) -> None:
     async with db_helper.session_factory() as session:
-        used = await _collect_used(session)
+        used = await collect_used_media_names(session)
     orphans = _find_orphans(used)
 
     action = (

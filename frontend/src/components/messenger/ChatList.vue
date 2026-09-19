@@ -89,8 +89,6 @@
         v-else
         class="chat-scroll"
         @scroll.passive="props.handleScroll($event.currentTarget as HTMLElement)"
-        @touchstart.passive="props.handleTouchStart($event)"
-        @touchmove.passive="props.handleTouchMove($event, $event.currentTarget as HTMLElement)"
       >
         <div v-for="chat in props.chats" :key="chat.id" class="chat-row">
           <button
@@ -259,10 +257,8 @@ const props = defineProps<{
   typingChatIds?: number[]
   mutedChatIds?: number[]
   onlineUserIds?: number[]
-  /** Скролл списка (жесты живут в сайдбаре) и протяжка вниз у самого верха. */
+  /** Скролл списка: по нему видно, что человек листает чаты (жесты — в сайдбаре). */
   handleScroll: (el: HTMLElement) => void
-  handleTouchStart: (event: TouchEvent) => void
-  handleTouchMove: (event: TouchEvent, el: HTMLElement) => void
 }>()
 
 const emit = defineEmits<{

@@ -38,6 +38,7 @@ import './assets/quasar.css'
 import './assets/a11y.css'
 // Import the new theme store
 import { useThemeStore } from './stores/theme'
+import { installAvatarFallback } from './utils/avatarFallback'
 import { migrateLegacyStorage } from './utils/storage'
 import { reportFatalError } from './utils/fatalError'
 
@@ -53,6 +54,10 @@ app.config.errorHandler = (error) => {
 window.addEventListener('error', (event) => {
   if (event.error) reportFatalError(event.error)
 })
+
+// Битые миниатюры аватаров (файла нет, а ссылка в БД осталась) подменяем на
+// оригинал — иначе человек видит пустое место вместо аватара.
+installAvatarFallback()
 
 app.use(createPinia())
 app.use(router)

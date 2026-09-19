@@ -130,6 +130,15 @@ describe('панели списка чатов', () => {
   const sidebar = readFileSync('src/components/messenger/ChatSidebar.vue', 'utf8')
   const header = readFileSync('src/components/messenger/SidebarHeader.vue', 'utf8')
 
+  /** Тело функции из исходника: от объявления до закрывающей скобки. */
+  const fnBody = (declaration: string): string => {
+    const start = sidebar.indexOf(declaration)
+    expect(start).toBeGreaterThan(-1)
+    const rest = sidebar.slice(start)
+    const end = rest.indexOf('\n}\n')
+    return end === -1 ? rest : rest.slice(0, end)
+  }
+
   it('поиск и истории раскрываются переходами на общих хуках', () => {
     // Поиск — обычный слайд, истории — усиленный (они раскрываются вторым шагом).
     expect(sidebar.match(/name="slide-down"/g)).toHaveLength(1)
@@ -197,40 +206,51 @@ describe('панели списка чатов', () => {
     expect(header).not.toContain('search-back')
   })
 
-  it('протяжка списка вниз раскрывает и поиск, и истории', () => {
-    const pull = sidebar.slice(sidebar.indexOf('const onListTouchMove'))
-    const body = pull.slice(0, pull.indexOf('\n}'))
+  it('протяжка вниз раскрывает и поиск, и истории', () => {
+    const body = fnBody('const onPanelTouchMove')
     expect(body).toContain('setStoriesExpanded(true)')
     expect(body).toContain('revealSearch()')
     // Протяжка не должна забирать фокус: клавиатура на жест не выезжает.
     expect(body).not.toContain('openSearch()')
+    // Раскрывать панели можно только протяжкой по самому списку: тянуть вниз по
+    // шапке или полю поиска панели открывать не должно.
+    expect(sidebar).toContain("target.closest('.chat-scroll')")
+    expect(body).toContain('if (!pullFromList || listIsScrolled(list)) return')
   })
 
-  it('прокрутка списка вверх сжимает обе панели', () => {
+  it('прокрутка списка вверх сжимает панели по шагам', () => {
     const scroll = sidebar.slice(sidebar.indexOf('const onChatsScroll'))
     const body = scroll.slice(0, scroll.indexOf('const PULL_EXPAND_PX'))
     expect(body).toContain('collapseTopPanels()')
     // Порядок обратный раскрытию (сначала истории, потом поиск) — в одном месте,
     // чтобы прокрутка и жест по касанию сжимали панели одинаково.
     const collapse = sidebar.slice(sidebar.indexOf('const collapseTopPanels'))
-    const collapseBody = collapse.slice(0, collapse.indexOf('const canScroll'))
+    const collapseBody = collapse.slice(0, collapse.indexOf('const STORIES_SCROLL_STEP'))
     expect(collapseBody).toContain('setStoriesExpanded(false)')
     expect(collapseBody).toContain('closeSearch()')
   })
 
-  it('смахнуть вверх прячет панели даже когда список не прокручивается', () => {
-    // Короткий список (мало чатов) не даёт событий скролла вообще, поэтому жест,
-    // построенный на прокрутке, молча не работал: именно так «пропадало»
-    // сокрытие поиска, открытого без историй (они-то и добавляли список высоты,
-    // после которой появлялась прокрутка). Смах вверх ловим по касанию — но
-    // только когда прокрутки нет: иначе это обычное листание списка.
-    const move = sidebar.slice(sidebar.indexOf('const onListTouchMove'))
-    const body = move.slice(0, move.indexOf('\n}'))
+  it('смах вверх убирает панель одним шагом и ловится по всей панели', () => {
+    // Жест ловим на всей панели (шапка, поиск, полоса фильтров, список):
+    // касание по верху панели до списка не доходило, и на телефоне смах вверх
+    // не делал ничего. Закрываем по шагам — одну панель за касание, как и
+    // раньше: сначала истории, потом поиск.
+    expect(sidebar).toContain('ref="panelRoot"')
+    expect(sidebar).toContain('@touchstart.passive="onPanelTouchStart"')
+    expect(sidebar).toContain('@touchmove.passive="onPanelTouchMove"')
+    // Слушателей касаний на самом списке больше нет — они не срабатывали,
+    // когда свайп начинался выше списка.
+    expect(sidebar).not.toContain('onListTouchMove')
+    expect(sidebar).not.toContain('handle-touch-move')
+
+    const body = fnBody('const onPanelTouchMove')
     expect(body).toContain('SWIPE_COLLAPSE_PX')
-    expect(body).toContain('!canScroll(el)')
+    expect(body).toContain('!listIsScrolled(list)')
     expect(body).toContain('collapseTopPanels()')
+    // Одна панель за жест: закрывать все разом не надо (так же на других телефонах).
+    expect(body).not.toContain('while (collapseTopPanels()')
     expect(sidebar).toMatch(
-      /const canScroll = \(el: HTMLElement\): boolean =>[\s\S]{0,80}scrollHeight/
+      /const listIsScrolled = \(el: HTMLElement \| null\): boolean =>[\s\S]{0,60}scrollTop/
     )
   })
 

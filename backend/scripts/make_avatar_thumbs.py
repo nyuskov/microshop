@@ -5,6 +5,11 @@
 кружок 40–56px. Скрипт проходит по пользователям и группам с аватаром без
 миниатюры, делает миниатюру из файла на диске и проставляет ссылку в БД.
 
+Второй случай, не менее важный: ссылка в БД есть, а ФАЙЛА миниатюры нет (так
+случилось на проде, когда ночная очистка media удалила миниатюры как «сироты» -
+тогда клиент показывает битую картинку вместо аватара). Такой аватар скрипт
+тоже считает «без миниатюры» и делает файл заново, обновив ссылку.
+
 Заодно делаются «иконки уведомлений» (``_n192.png`` рядом с аватаром): их адрес
 выводится из имени аватара и в БД не хранится, поэтому достаточно файла. Без них
 в пуше показывается полный аватар — крупнее, чем хотелось бы (генерация при
@@ -20,6 +25,7 @@
 
 import argparse
 import asyncio
+from pathlib import Path
 
 from sqlalchemy import select
 
@@ -33,6 +39,18 @@ from core.avatar_store import (
 )
 from core.media_crypto import read_file, write_file
 from core.models import Chat, User, db_helper
+
+
+def _thumb_missing(row: User | Chat) -> bool:
+    """Нужна ли миниатюра: ссылки нет или файла по ссылке нет.
+
+    Второй случай — потерянный файл: ссылка в БД осталась (например, файл удалила
+    очистка media), и клиент показывает битую картинку вместо аватара.
+    """
+    url = row.avatar_thumb_url
+    if not url:
+        return True
+    return not (AVATAR_DIR / Path(url).name).is_file()
 
 
 def _make_thumb_for(avatar_url: str) -> str | None:
@@ -71,19 +89,22 @@ async def _run(apply: bool) -> None:
     icons = 0
     broken = 0
     async with db_helper.session_factory() as session:
-        rows = [
-            *(await session.execute(select(User).where(User.avatar_url.is_not(None))))
+        users = (
+            (await session.execute(select(User).where(User.avatar_url.is_not(None))))
             .scalars()
-            .all(),
-            *(await session.execute(select(Chat).where(Chat.avatar_url.is_not(None))))
+            .all()
+        )
+        chats = (
+            (await session.execute(select(Chat).where(Chat.avatar_url.is_not(None))))
             .scalars()
-            .all(),
-        ]
+            .all()
+        )
+        rows: list[User | Chat] = [*users, *chats]
 
         for row in rows:
             avatar_url = row.avatar_url or ""
 
-            if row.avatar_thumb_url is None:
+            if _thumb_missing(row):
                 thumb_url = _make_thumb_for(avatar_url)
                 if thumb_url is None:
                     # Файла нет или он не картинка — иконку для него тоже не сделать.
