@@ -30,6 +30,19 @@
 
     <div v-if="broken" class="am-sub">
       <span class="am-error">Не удалось воспроизвести аудио</span>
+      <!-- Расшифровка нужна как раз здесь: человек не может послушать — пусть
+           хотя бы прочитает (см. feature-proposals G2). Если и прочитать запись
+           не удастся, он увидит честную причину. -->
+      <button
+        v-if="recognitionAvailable"
+        class="am-transcribe am-transcribe--end"
+        :class="{ busy: transcript?.status === 'running' }"
+        :title="transcribeHint"
+        :aria-label="transcribeHint"
+        @click="toggleTranscript"
+      >
+        {{ transcribeLabel }}
+      </button>
     </div>
     <div v-else class="am-sub">
       <span class="am-name">
@@ -398,6 +411,14 @@ const copyTranscript = async () => {
 
 .am-error {
   color: var(--ms-danger, #d64545);
+  min-width: 0;
+}
+
+/* В «сломанном» состоянии кнопки скорости нет, поэтому к правому краю кнопку
+   расшифровки двигаем отдельным правилом (иначе два `margin-left: auto` в одной
+   строке растащили бы кнопки к центру). */
+.am-transcribe--end {
+  margin-left: auto;
 }
 
 /* Кнопка скорости воспроизведения (1×/1.5×/2×) */

@@ -471,6 +471,18 @@ describe('кнопка «В текст» в голосовом', () => {
     wrapper.unmount()
   })
 
+  it('кнопка есть и когда запись не воспроизводится', async () => {
+    // Владелец-сценарий: браузер не смог декодировать файл («Не удалось
+    // воспроизвести аудио»), и кнопки расшифровки не было вовсе — ровно там, где
+    // она нужнее всего (человек не может ни послушать, ни прочитать).
+    const wrapper = mountVoice()
+    await wrapper.find('audio').trigger('error')
+
+    expect(wrapper.find('.am-error').exists()).toBe(true)
+    expect(wrapper.find('.am-transcribe').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
   it('расшифровки в разметке нет, пока её не запросили', () => {
     const wrapper = mountVoice()
 
