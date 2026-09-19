@@ -526,7 +526,7 @@ Push показывает текст прямо на экране блокиро
 | PATCH | `/messages/{message_id}/pin/` | закрепить/открепить `{is_pinned}` | токен |
 | PUT | `/messages/{message_id}/reaction/` | поставить реакцию `{emoji}` | токен |
 | DELETE | `/messages/{message_id}/reaction/` | снять свою реакцию | токен |
-| DELETE | `/messages/{message_id}/` | удалить (только своё) | токен |
+| DELETE | `/messages/{message_id}/?for_all=` | убрать сообщение: `for_all=true` — у всех (только своё, иначе 403), `false` — скрыть только у себя (чужое тоже можно) | токен |
 | GET | `/users/search/?q=` | поиск по логину/телефону (исключает себя) | токен |
 | GET | `/users/by-username/{логин}` | пользователь по ссылке-профилю `pismo.space/u/<логин>` (без номера телефона; 404) | токен |
 | POST | `/link-preview/` | карточка внешней ссылки: `{url}` → `{ok,title,description,site_name,image_url,domain}` (кэш в БД, защита от SSRF) | токен |
@@ -661,7 +661,12 @@ Push показывает текст прямо на экране блокиро
 54. `2026_09_17_1900-f9a0b1c2d3e4` — парковка вызова и очередь сигналинга (`pending_call_offers`, `queued_call_signals`)
 55. `2026_09_17_2000-c4d5e6f7a8b9` — несколько устройств на аккаунт (`device_keys.device_id`)
 56. `2026_09_17_2100-f1a2b3c4d5e6` — обёртки ключа чата по устройствам (`chat_device_keys`)
-57. `2026_09_18_1200-c1d2e3f4a5b9` — стикеры (`sticker_packs`, `stickers`) и настройки эмодзи (`emoji_pack_choices`, `emoji_favorites`) — **голова**
+57. `2026_09_18_1200-c1d2e3f4a5b9` — стикеры (`sticker_packs`, `stickers`) и настройки эмодзи (`emoji_pack_choices`, `emoji_favorites`)
+58. `2026_09_18_1600-b6c7d8e9f0a1` — одноразовые медиа (`messages.view_once`, `view_once_opened_at`)
+59. `2026_09_18_1800-c8d9e0f1a2b4` — отложенные сообщения (`scheduled_messages`)
+60. `2026_09_19_1200-a2b3c4d5e6f7` — напоминания о сообщении (`message_reminders`)
+61. `2026_09_19_1900-b3c4d5e6f7a8` — предустановленные наборы стикеров (`sticker_packs.is_preset`)
+62. `2026_09_19_2100-e6f7a8b9c0d1` — «удалить у меня» (`message_deletions`) — **голова**
 
 Применение: `cd backend && poetry run alembic upgrade head`. В docker-стеке миграции выполняются автоматически при старте контейнера `web`.
 
