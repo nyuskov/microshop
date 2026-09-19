@@ -107,6 +107,11 @@ class Message(IdIntPkMixin, Base):
     mime_type: Mapped[str | None] = mapped_column(String(120))
     file_size: Mapped[int | None]
 
+    # Альбом: картинки, отправленные одним действием, делят один `album_id` и
+    # рисуются в ленте одной сеткой. Сервер хранит только метку — группировка
+    # клиентская (см. api_v1/messages/crud.send_attachment_message).
+    album_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+
     # «Посмотреть один раз»: файл отдаётся ровно один раз, дальше сервер его не
     # показывает (см. api_v1/media/views.py — там же удаление блоба).
     view_once: Mapped[bool] = mapped_column(

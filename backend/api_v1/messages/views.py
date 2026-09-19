@@ -2,7 +2,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user
@@ -38,6 +38,10 @@ router = APIRouter(
 MAX_UPLOAD_SIZE = settings.max_upload_size_bytes
 MAX_UPLOAD_MB = MAX_UPLOAD_SIZE // (1024 * 1024)
 
+# Сколько вложений допускается в одном альбоме. Столько же собирает клиент
+# (`ALBUM_MAX_ITEMS` в `utils/albums.ts`) — иначе сервер и интерфейс разошлись бы.
+MAX_ALBUM_SIZE = 10
+
 
 async def _enforce_user_rate_limit(user: User, *, scope: str, limit: int) -> None:
     """Per-user лимит (по user.id) на «дорогие»/«писательские» действия."""
@@ -62,6 +66,10 @@ class GifMessageCreate(BaseModel):
     chat_id: int
     url: str
     reply_to_id: int | None = None
+    #: Подпись к гифке — как комментарий к фото в Телеграме: текст, набранный в
+    #: поле ввода до тапа по гифке, уезжает вместе с ней (пусто — гифка без
+    #: подписи).
+    caption: str = Field(default="", max_length=4000)
 
 
 class MarkChatReadRequest(BaseModel):
@@ -152,6 +160,7 @@ async def create_attachment_message(
     encrypted: bool = Query(default=False),
     sticker: bool = Query(default=False),
     view_once: bool = Query(default=False),
+    album_id: str | None = Query(default=None, min_length=8, max_length=36),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
@@ -164,15 +173,47 @@ async def create_attachment_message(
     ``sticker=true`` — это картинка-стикер: сообщение получает ``kind='sticker'``
     и рисуется без пузыря (панель стикеров шлёт так свои картинки, в том числе
     зашифрованной копией в E2EE-чатах).
+
+    ``album_id`` — метка альбома: клиент шлёт картинки одной пачки с общей
+    меткой и рисует их одной сеткой. Лимит частоты и анти-флуд считаются один
+    раз на альбом (по первому вложению): иначе пачка из десяти фото сама
+    упиралась бы в лимит «10 загрузок в минуту», а медленный режим отбил бы
+    второй файл той же отправки.
     """
-    await _enforce_user_rate_limit(
-        user,
-        scope="messages:upload",
-        limit=settings.message_upload_limit_per_minute,
-    )
-    # Анти-флуд проверяем ДО чтения тела: молчащему участнику незачем гнать
-    # мегабайты на сервер, чтобы получить отказ в конце.
-    await crud.ensure_can_write(session, chat_id=chat_id, user_id=user.id)
+    # Считаем альбом ДО лимитов: по числу уже сохранённых вложений видно, первое
+    # это или продолжение пачки.
+    album_parts = 0
+    if album_id:
+        album_parts = await crud.count_album_parts(
+            session, album_id=album_id, chat_id=chat_id
+        )
+        if album_parts >= MAX_ALBUM_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"В альбоме не больше {MAX_ALBUM_SIZE} вложений",
+            )
+        if sticker or view_once:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="В альбом собираются только обычные картинки",
+            )
+        # В E2EE тип и имя файла на сервере неизвестны (там шифротекст) —
+        # проверять нечего, как и у одиночного зашифрованного вложения.
+        if not encrypted and not (mime or "").startswith("image/"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="В альбом можно собрать только изображения",
+            )
+    album_first = album_parts == 0
+    if album_first:
+        await _enforce_user_rate_limit(
+            user,
+            scope="messages:upload",
+            limit=settings.message_upload_limit_per_minute,
+        )
+        # Анти-флуд проверяем ДО чтения тела: молчащему участнику незачем гнать
+        # мегабайты на сервер, чтобы получить отказ в конце.
+        await crud.ensure_can_write(session, chat_id=chat_id, user_id=user.id)
     content = await request.body()
     if not content:
         raise HTTPException(
@@ -224,6 +265,8 @@ async def create_attachment_message(
         encrypted=encrypted,
         kind="sticker" if sticker else "text",
         view_once=view_once,
+        album_id=album_id,
+        album_first=album_first,
     )
 
 
@@ -301,6 +344,7 @@ async def send_gif_message(
             user_id=user.id,
             url=payload.url,
             reply_to_id=payload.reply_to_id,
+            caption=payload.caption.strip(),
         )
     except Exception:  # noqa: BLE001 - очередь (RabbitMQ) может быть недоступна
         raise HTTPException(

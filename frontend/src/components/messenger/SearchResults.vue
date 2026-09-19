@@ -73,41 +73,84 @@
     <div v-else-if="props.mode === 'people'" class="search-status">Никого не найдено</div>
 
     <!-- Сообщения (по всем диалогам) -->
-    <template v-else-if="props.mode === 'messages' && props.messages.length">
-      <div class="section-label">Найдено в чатах</div>
-      <button
-        v-for="msg in props.messages"
-        :key="msg.id"
-        class="row-item"
-        @click="emit('pick-message', msg)"
-      >
-        <span class="avatar" :style="avatarStyle(chatTitleOf(msg))">
-          <img
-            v-if="chatAvatarOf(msg)"
-            :src="chatAvatarOf(msg)"
-            class="avatar-img"
-            alt=""
-            loading="lazy"
-            decoding="async"
-          />
-          <template v-else>{{ initials(chatTitleOf(msg)) }}</template>
-        </span>
-        <span class="row-text">
-          <span class="row-line">
-            <span class="row-title msg-result-chat">{{ chatTitleOf(msg) }}</span>
-            <span class="row-time">{{ formatMsgTime(msg.timestamp) }}</span>
+    <div v-else-if="props.mode === 'messages' && hasAnyMessage">
+      <template v-if="props.messages.length">
+        <div class="section-label">Найдено в чатах</div>
+        <button
+          v-for="msg in props.messages"
+          :key="msg.id"
+          class="row-item"
+          @click="emit('pick-message', msg)"
+        >
+          <span class="avatar" :style="avatarStyle(chatTitleOf(msg))">
+            <img
+              v-if="chatAvatarOf(msg)"
+              :src="chatAvatarOf(msg)"
+              class="avatar-img"
+              alt=""
+              loading="lazy"
+              decoding="async"
+            />
+            <template v-else>{{ initials(chatTitleOf(msg)) }}</template>
           </span>
-          <span class="row-sub msg-result-snippet">
-            {{ senderPrefix(msg)
-            }}<template v-for="(part, i) in parts(snippetOf(msg))" :key="'s' + i">
-              <mark v-if="part.hit" class="search-hit">{{ part.text }}</mark>
-              <template v-else>{{ part.text }}</template>
-            </template>
+          <span class="row-text">
+            <span class="row-line">
+              <span class="row-title msg-result-chat">{{ chatTitleOf(msg) }}</span>
+              <span class="row-time">{{ formatMsgTime(msg.timestamp) }}</span>
+            </span>
+            <span class="row-sub msg-result-snippet">
+              {{ senderPrefix(msg)
+              }}<template v-for="(part, i) in parts(snippetOf(msg))" :key="'s' + i">
+                <mark v-if="part.hit" class="search-hit">{{ part.text }}</mark>
+                <template v-else>{{ part.text }}</template>
+              </template>
+            </span>
           </span>
-        </span>
-        <q-icon :name="icon('chevron_right')" class="row-arrow" size="20px" />
-      </button>
-    </template>
+          <q-icon :name="icon('chevron_right')" class="row-arrow" size="20px" />
+        </button>
+      </template>
+
+      <!-- Зашифрованные чаты: их текст сервер не видит вовсе, поэтому ищем по
+           индексу на ЭТОМ устройстве — и подписываем это честно. -->
+      <template v-if="localList.length">
+        <div class="section-label search-local-label">
+          <q-icon :name="icon('lock')" size="14px" />
+          В зашифрованных чатах — на этом устройстве
+        </div>
+        <button
+          v-for="msg in localList"
+          :key="'local-' + msg.id"
+          class="row-item"
+          @click="emit('pick-message', msg)"
+        >
+          <span class="avatar" :style="avatarStyle(chatTitleOf(msg))">
+            <img
+              v-if="chatAvatarOf(msg)"
+              :src="chatAvatarOf(msg)"
+              class="avatar-img"
+              alt=""
+              loading="lazy"
+              decoding="async"
+            />
+            <template v-else>{{ initials(chatTitleOf(msg)) }}</template>
+          </span>
+          <span class="row-text">
+            <span class="row-line">
+              <span class="row-title msg-result-chat">{{ chatTitleOf(msg) }}</span>
+              <span class="row-time">{{ formatMsgTime(msg.timestamp) }}</span>
+            </span>
+            <span class="row-sub msg-result-snippet">
+              {{ senderPrefix(msg)
+              }}<template v-for="(part, i) in parts(snippetOf(msg))" :key="'l' + i">
+                <mark v-if="part.hit" class="search-hit">{{ part.text }}</mark>
+                <template v-else>{{ part.text }}</template>
+              </template>
+            </span>
+          </span>
+          <q-icon :name="icon('chevron_right')" class="row-arrow" size="20px" />
+        </button>
+      </template>
+    </div>
     <div v-else-if="props.mode === 'messages'" class="search-status">Ничего не найдено</div>
 
     <!-- Каналы (каталог): публичные каналы по названию и адресу -->
@@ -173,6 +216,7 @@
  * стили строк и подсветки совпадений — в `assets/rows.css` (область `.ms-rows`),
  * здесь только то, что относится к самим результатам.
  */
+import { computed } from 'vue'
 import { icon } from '@/utils/icons'
 import type { ChannelCard, Chat, Message } from '@/types'
 import type { SearchUserResult } from '@/services/chatService'
@@ -194,6 +238,12 @@ const props = defineProps<{
   mode: SearchMode
   users: SearchUserResult[]
   messages: Message[]
+  /**
+   * Совпадения из зашифрованных чатов: индекс лежит на устройстве, сервер такой
+   * текст не видит (см. `utils/localSearchIndex.ts`). Показываем отдельным блоком;
+   * не передан — считаем, что локальный поиск ничего не нашёл.
+   */
+  localMessages?: Message[]
   /** Найденные публичные каналы (каталог, вкладка «Каналы»). */
   channels: ChannelCard[]
   loading: boolean
@@ -212,6 +262,14 @@ const emit = defineEmits<{
 
 /** Части текста с подсветкой совпадений по текущему запросу. */
 const parts = (text: string) => splitByQuery(text, props.query)
+
+/** Локальные совпадения: проп необязателен, чтобы компонент жил и без индекса. */
+const localList = computed<Message[]>(() => props.localMessages ?? [])
+
+/** Есть что показать хоть из одного источника (сервер или индекс на устройстве). */
+const hasAnyMessage = computed<boolean>(
+  () => props.messages.length > 0 || localList.value.length > 0
+)
 
 const chatTitleOf = (message: Message): string =>
   messageChatTitle(props.chats, message, props.currentUserId)
@@ -262,6 +320,14 @@ const snippetOf = (message: Message): string => messageSnippetText(message)
 
 .msg-result-chat {
   color: var(--ms-accent, #2ea25e);
+}
+
+/* Блок «в зашифрованных чатах»: замок сразу говорит, почему это отдельный
+   список (искать там может только само устройство). */
+.search-local-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .msg-result-snippet {

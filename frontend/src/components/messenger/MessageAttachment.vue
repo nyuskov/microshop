@@ -1,10 +1,35 @@
 <template>
   <template v-if="file">
+    <!-- Альбом: несколько картинок одной отправки — сеткой, как в мессенджерах.
+         Плитка знает своё сообщение и открывает лайтбокс именно на нём. -->
+    <div v-if="albumTiles.length > 1" class="album-grid" :class="`cols-${albumColumns}`">
+      <button
+        v-for="tile in albumTiles"
+        :key="tile.message.id"
+        type="button"
+        class="album-tile"
+        :title="`Открыть изображение «${tile.name}»`"
+        @click.stop="emit('open-image', tile.message)"
+      >
+        <img
+          v-if="tile.url && !tile.broken"
+          :src="tile.url"
+          :alt="tile.name"
+          class="album-image"
+          loading="lazy"
+          decoding="async"
+          @error="markBroken(tile.message.id)"
+        />
+        <span v-else class="album-locked">
+          <q-icon :name="icon(tile.url ? 'warning' : 'lock')" size="18px" />
+        </span>
+      </button>
+    </div>
     <!-- Одноразовое медиа: содержимое НЕ грузим, пока не нажмут.
          Сервер отдаёт такой файл ровно один раз, и любое превью сожгло бы
          вложение ещё до просмотра. -->
     <button
-      v-if="viewOnce"
+      v-else-if="viewOnce"
       type="button"
       class="attachment attachment-view-once"
       :class="{ opened: viewOnceOpened }"
@@ -127,7 +152,11 @@ const props = defineProps<{
    * Картинка-стикер (`kind='sticker'`): показываем крупно и без рамки — в ленте
    * это не «вложение с превью», а сам стикер.
    */
-  sticker?: boolean
+  sticker?: boolean /**
+   * Все вложения альбома (включая это сообщение): пачку рисуем одной сеткой
+   * (см. `utils/albums.ts`). Пусто или одно — обычное одиночное вложение.
+   */
+  album?: Message[]
 }>()
 
 /**
@@ -140,8 +169,12 @@ const props = defineProps<{
 defineOptions({ inheritAttrs: false })
 
 const emit = defineEmits<{
-  /** Обычная картинка: лайтбокс. */
-  (e: 'open-image'): void
+  /**
+   * Картинка открывается в лайтбоксе. Для альбома приходит КОНКРЕТНОЕ вложение
+   * (человек нажал на плитку, а она другая, чем головное сообщение); пусто —
+   * значит открываем вложение самой строки.
+   */
+  (e: 'open-image', message?: Message): void
   /** Стикер: окно его набора (как в Телеграме — по тапу видно весь набор). */
   (e: 'open-sticker'): void
   (e: 'open-view-once'): void
@@ -205,6 +238,56 @@ watch(fileUrl, () => {
 const brokenLabel = computed<string>(() =>
   props.sticker ? 'Стикер недоступен' : 'Изображение недоступно'
 )
+
+// ---------- Альбом ----------
+
+/** Вложения альбома: с одним сообщением альбом не нужен — это обычная картинка. */
+const albumItems = computed<Message[]>(() =>
+  props.album && props.album.length > 1 ? props.album : []
+)
+
+/** Раскладка сетки: два фото — в два столбца, три и больше — в три. */
+const albumColumns = computed<number>(() => (albumItems.value.length === 2 ? 2 : 3))
+
+/** id картинок альбома, которые не открылись: вместо пустоты — значок. */
+const brokenAlbumImages = ref<Set<number>>(new Set())
+const markBroken = (messageId: number): void => {
+  brokenAlbumImages.value = new Set([...brokenAlbumImages.value, messageId])
+}
+
+interface AlbumTile {
+  message: Message
+  name: string
+  url: string
+  broken: boolean
+}
+
+/**
+ * Плитки альбома.
+ *
+ * Расшифровка у каждой своя: в E2EE-чате файлы шифруются ПО ОТДЕЛЬНОСТИ, и
+ * готовность одного вложения ничего не говорит про соседей, поэтому в ленте
+ * плитка сначала показывает замок.
+ */
+const albumTiles = computed<AlbumTile[]>(() =>
+  albumItems.value.map((message) => {
+    const attachment = effectiveFile(message)
+    const local = decryptedMediaFor(message, { enabled: () => props.rowVisible })
+    const url = local
+      ? local.status === 'ready'
+        ? local.url
+        : ''
+      : attachment
+        ? mediaAbsolute(attachment.url)
+        : ''
+    return {
+      message,
+      name: attachment?.name ?? 'Изображение',
+      url,
+      broken: brokenAlbumImages.value.has(message.id)
+    }
+  })
+)
 </script>
 
 <style scoped>
@@ -213,6 +296,54 @@ const brokenLabel = computed<string>(() =>
   display: block;
   margin-bottom: 4px;
   text-decoration: none;
+}
+
+/* Альбом: несколько картинок одной отправки. Ширина — как у одиночной
+   картинки, плитки квадратные: сетка не «разъезжается» от числа файлов. */
+.album-grid {
+  display: grid;
+  gap: 2px;
+  width: min(300px, calc(100vw - 60px));
+  /* Ступень из шкалы: у одиночной картинки исторически 8px, ближайшая ступень —
+     xs (6px); разница в углах незаметна, а литералы геометрии запрещены. */
+  border-radius: var(--ms-radius-xs);
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.album-grid.cols-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.album-grid.cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.album-tile {
+  position: relative;
+  padding: 0;
+  border: none;
+  background: var(--ms-surface-2);
+  cursor: zoom-in;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+}
+
+.album-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Зашифрованная или не открывшаяся плитка: значок вместо пустого места. */
+.album-locked {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--ms-muted);
 }
 
 .attachment-image-btn {

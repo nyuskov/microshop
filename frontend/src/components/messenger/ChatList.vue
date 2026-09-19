@@ -164,13 +164,18 @@
                 <span
                   class="row-sub preview"
                   :class="{
-                    typing: isChatTyping(chat, props.typingChatIds),
+                    typing: activityOf(chat) !== null,
                     draft: draftOf(chat, props.drafts) !== null
                   }"
                 >
-                  <template v-if="isChatTyping(chat, props.typingChatIds)">
+                  <template v-if="activityOf(chat) === 'text'">
                     <span class="sr-only">печатает</span>
                     <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                  </template>
+                  <!-- Запись голосового, отправка файла и т.п. — словами: только
+                       точками их не различить. -->
+                  <template v-else-if="activityOf(chat)">
+                    {{ peerActivityLabel(activityOf(chat) as PeerActivityKind) }}
                   </template>
                   <template v-else-if="draftOf(chat, props.drafts)">
                     Черновик: {{ draftOf(chat, props.drafts) }}
@@ -226,15 +231,16 @@ import { useHScroll } from '@/composables/useHScroll'
 import { avatarStyle, initials } from '@/utils/user'
 import { formatChatTime } from '@/utils/format'
 import {
+  chatActivityKind,
   chatAvatarOf,
   chatPeerOnline,
   chatTitleOf,
   draftOf,
-  isChatTyping,
   lastMessageIsOut,
   previewCallOf,
   previewText
 } from '@/utils/chatPreview'
+import { peerActivityLabel, type PeerActivityKind } from '@/utils/peerActivity'
 
 const props = defineProps<{
   /** Чаты для показа: уже отфильтрованные и упорядоченные (закреплённые вверху). */
@@ -254,7 +260,8 @@ const props = defineProps<{
   /** Сколько из архивных чатов с непрочитанными: подсвечиваем счётчик. */
   archivedUnreadCount?: number
   drafts?: Record<number, string>
-  typingChatIds?: number[]
+  /** Виды активности по чатам: «печатает…», «записывает голосовое…» и т.п. */
+  chatActivities?: Record<number, PeerActivityKind>
   mutedChatIds?: number[]
   onlineUserIds?: number[]
   /** Скролл списка: по нему видно, что человек листает чаты (жесты — в сайдбаре). */
@@ -327,6 +334,15 @@ const savedStyle: Record<string, string> = {
 
 const isSelected = (chatId: number): boolean => props.selectedIds.includes(chatId)
 const isMutedOf = (chatId: number): boolean => props.mutedChatIds?.includes(chatId) ?? false
+
+/**
+ * Чем занят собеседник в этой строке.
+ *
+ * В групповых чатах подпись не показываем: без имени она бесполезна, а место в
+ * строке одно (см. `chatActivityKind`).
+ */
+const activityOf = (chat: Chat): PeerActivityKind | null =>
+  chatActivityKind(chat, props.chatActivities)
 
 // Ряд фильтров на узких экранах шире панели (шесть базовых чипов не влезают в
 // 320–390 px), а папок может быть до десяти — поэтому ряд листается колесом

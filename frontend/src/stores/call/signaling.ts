@@ -1,6 +1,7 @@
 import type { CallDiagnostics, StatsSample } from '@/utils/callStats'
 
 import type { QualityStep } from './quality'
+import type { VideoEffectsRuntime } from './videoPipeline'
 
 import type { CallKind, SignalingMessage } from './types'
 
@@ -101,6 +102,16 @@ export interface CallSignalingRuntime {
   /** Таймер обновления признака «говорит» (уровень звука собеседников). */
   speakingTimer: number | undefined
   localMedia: MediaStream | null
+  /**
+   * Дорожка камеры КАК ЕЁ ОТДАЛ БРАУЗЕР (без эффектов).
+   *
+   * Нужна, чтобы можно было включить/выключить эффекты на ходу: в `localMedia` и
+   * у передатчиков лежит уже обработанная дорожка, и без «сырой» вернуть
+   * обычный кадр было бы нечем.
+   */
+  rawCameraTrack: MediaStreamTrack | null
+  /** Обработка видео (эффекты и маски) — см. `stores/call/videoPipeline.ts`. */
+  videoEffects: VideoEffectsRuntime | null
   remoteMedia: MediaStream | null
   pendingOffer: PendingOffer | null
   screenTrack: MediaStreamTrack | null
@@ -146,6 +157,8 @@ export const runtime: CallSignalingRuntime = {
   confirmedPeers: new Set<number>(),
   pendingCandidates: new Map<number, RTCIceCandidateInit[]>(),
   localMedia: null,
+  rawCameraTrack: null,
+  videoEffects: null,
   remoteMedia: null,
   pendingOffer: null,
   screenTrack: null,

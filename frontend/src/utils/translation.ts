@@ -136,6 +136,22 @@ export const setTranslationTarget = (code: string): void => {
 export const translationSupported = (): boolean =>
   typeof (globalThis as { Translator?: unknown }).Translator === 'function'
 
+/**
+ * Предлагать ли перевод в интерфейсе: пункт меню и кнопку у расшифровки.
+ *
+ * Там, где встроенного переводчика нет (мобильные браузеры, WebView приложения
+ * на Android, Safari и Firefox), пункта НЕТ вовсе. Раньше он показывался всегда,
+ * и на телефоне нажатие упиралось в «этот браузер не умеет переводить на
+ * устройстве»: человек видел тупик вместо функции.
+ *
+ * Почему не «починить» на таких устройствах: перевод идёт ТОЛЬКО встроенной
+ * моделью браузера, текст никуда не уходит. Сторонний сервис (Google/Яндекс)
+ * или перевод на нашем сервере сломали бы обещание E2EE — то же решение
+ * владельца, что и в шапке файла. Поэтому честнее не обещать, а сказать об этом
+ * в разделе «Устройство» (см. `utils/browserSupport.ts`).
+ */
+export const canOfferTranslation = (): boolean => translationSupported()
+
 /** Текущий перевод сообщения (undefined — не переводили). */
 export const translationOf = (messageId: number): MessageTranslation | undefined =>
   translations[messageId]

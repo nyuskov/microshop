@@ -21,6 +21,7 @@ import { computed, onScopeDispose, ref, watch, type ComputedRef, type Ref } from
 import { getErrorMessage } from '@/services/errors'
 import { searchChannels } from '@/services/channelService'
 import { searchMessages, searchUsers, type SearchUserResult } from '@/services/chatService'
+import { searchLocalMessages, toSearchMessage } from '@/utils/localSearchIndex'
 import type { ChannelCard, Message } from '@/types'
 
 /** Пауза перед запросом: пока человек печатает, сервер не дёргаем. */
@@ -33,6 +34,14 @@ export interface UseGlobalSearch {
   mode: Ref<SearchMode>
   users: Ref<SearchUserResult[]>
   messages: Ref<Message[]>
+  /**
+   * Совпадения из зашифрованных чатов — из индекса на ЭТОМ устройстве.
+   *
+   * Отдельным списком, а не в общем: сервер их текст не видит вовсе (там
+   * шифротекст), поэтому в интерфейсе это отдельный блок с честной подписью
+   * «на этом устройстве» (см. `utils/localSearchIndex.ts`).
+   */
+  localMessages: Ref<Message[]>
   /** Публичные каналы (каталог): ищем по названию и адресу. */
   channels: Ref<ChannelCard[]>
   loading: Ref<boolean>
@@ -50,6 +59,7 @@ export function useGlobalSearch(): UseGlobalSearch {
   const mode = ref<SearchMode>('people')
   const users = ref<SearchUserResult[]>([])
   const messages = ref<Message[]>([])
+  const localMessages = ref<Message[]>([])
   const channels = ref<ChannelCard[]>([])
   const loading = ref(false)
   const error = ref('')
@@ -65,7 +75,24 @@ export function useGlobalSearch(): UseGlobalSearch {
   const clearResults = () => {
     users.value = []
     messages.value = []
+    localMessages.value = []
     channels.value = []
+  }
+
+  /**
+   * Совпадения из зашифрованных чатов (индекс на устройстве).
+   *
+   * Совпадение, которое сервер тоже нашёл, показываем один раз — в общем блоке.
+   */
+  const fillLocalResults = async (text: string, serverFound: Message[]): Promise<void> => {
+    try {
+      const records = await searchLocalMessages(text)
+      const seen = new Set(serverFound.map((message) => message.id))
+      localMessages.value = records.filter((record) => !seen.has(record.id)).map(toSearchMessage)
+    } catch {
+      // Локальный индекс — добавка: его сбой не должен ломать серверный поиск.
+      localMessages.value = []
+    }
   }
 
   watch([query, mode], ([value, nextMode]) => {
@@ -83,15 +110,18 @@ export function useGlobalSearch(): UseGlobalSearch {
       try {
         if (nextMode === 'messages') {
           messages.value = await searchMessages(text)
+          await fillLocalResults(text, messages.value)
           users.value = []
           channels.value = []
         } else if (nextMode === 'channels') {
           channels.value = await searchChannels(text)
           users.value = []
           messages.value = []
+          localMessages.value = []
         } else {
           users.value = await searchUsers(text)
           messages.value = []
+          localMessages.value = []
           channels.value = []
         }
       } catch (err) {
@@ -110,6 +140,7 @@ export function useGlobalSearch(): UseGlobalSearch {
     mode,
     users,
     messages,
+    localMessages,
     channels,
     loading,
     error,

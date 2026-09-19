@@ -160,6 +160,14 @@
                 Отозвать
               </button>
             </div>
+            <!-- QR-код: ссылку можно показать рядом сидящему человеку -->
+            <div class="gi-invite-qr">
+              <QrCode
+                :value="inviteLinkOf(activeInvite)"
+                :size="168"
+                label="QR-код ссылки-приглашения в группу"
+              />
+            </div>
             <div v-if="inviteError" class="gi-error">{{ inviteError }}</div>
           </div>
           <div v-else-if="inviteError" class="gi-error">{{ inviteError }}</div>
@@ -384,6 +392,7 @@ import { optimizeAvatarFile } from '@/utils/media'
 import { inviteLinkFor } from '@/utils/groupInvite'
 import { confirmDialog } from '@/utils/appDialogs'
 import { mediaUrl } from '@/config'
+import QrCode from '@/components/common/QrCode.vue'
 
 const props = defineProps<{
   chat: Chat
@@ -1223,6 +1232,13 @@ const deleteGroup = async () => {
 
 .gi-invite-actions .gi-btn.danger {
   color: var(--ms-danger, #d64545);
+}
+
+/* QR-код ссылки-приглашения: по центру, чтобы удобно было навести камеру */
+.gi-invite-qr {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--ms-space-2);
 }
 
 .gi-invite-actions .gi-btn:disabled {

@@ -237,6 +237,7 @@ def message_to_dict(message: Message, user_id: int) -> dict:
         "hidden": hidden,
         "hidden_reason": message.hidden_reason if hidden else None,
         "file": _file_payload(message),
+        "album_id": message.album_id,
         "view_once": message.view_once,
         # Вложение уже сгорело: клиент покажет плашку «Просмотрено» и не будет
         # запрашивать файл (сервер ответит «истёк»).
@@ -275,6 +276,7 @@ def message_basic_to_dict(message: Message) -> dict:
         "hidden": hidden,
         "hidden_reason": message.hidden_reason if hidden else None,
         "file": None if hidden else _file_payload(message),
+        "album_id": None if hidden else message.album_id,
         "reactions": [],
         "forwarded_from": None if hidden else _forwarded_payload(message),
         "reply_to_story": None if hidden else _story_reply_payload(message),
@@ -453,6 +455,22 @@ async def send_text_message(
     return result
 
 
+async def count_album_parts(
+    session: AsyncSession, *, album_id: str, chat_id: int
+) -> int:
+    """Сколько вложений альбома уже сохранено в этом чате.
+
+    Нужен дважды: чтобы не повторять push на каждый файл пачки и чтобы
+    ограничить размер альбома (см. `api_v1/messages/views.create_attachment_message`).
+    """
+    result = await session.execute(
+        select(func.count())
+        .select_from(Message)
+        .where(Message.album_id == album_id, Message.chat_id == chat_id)
+    )
+    return int(result.scalar_one())
+
+
 async def send_attachment_message(
     session: AsyncSession,
     *,
@@ -467,6 +485,8 @@ async def send_attachment_message(
     encrypted: bool = False,
     kind: str = "text",
     view_once: bool = False,
+    album_id: str | None = None,
+    album_first: bool = True,
 ) -> dict:
     """Отправляет сообщение с файлом-вложением.
 
@@ -480,11 +500,19 @@ async def send_attachment_message(
 
     ``view_once=True`` — вложение сгорает после просмотра: сервер отдаст файл
     один раз (см. ``api_v1/media/views.py``), дальше в ленте останется плашка.
+
+    ``album_id`` — метка альбома: у картинок одной отправки она одна, и клиент
+    рисует их общей сеткой. ``album_first`` — это первое вложение альбома (для
+    обычного сообщения — всегда True). На первом вложении выполняются проверки
+    анти-флуда и уходит push: пачка из десяти фото — одна отправка, иначе
+    медленный режим отбил бы второй файл, а получателю прилетело бы десять
+    уведомлений.
     """
     await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
     # Анти-флуд: мут, бан и медленный режим группы (иначе ограничение текста
     # обходилось бы «отправить картинкой»).
-    await ensure_can_write(session, chat_id=chat_id, user_id=user_id)
+    if album_first:
+        await ensure_can_write(session, chat_id=chat_id, user_id=user_id)
     await _ensure_not_blocked(session, chat_id=chat_id, user_id=user_id)
     if reply_to_id is not None:
         await _validate_reply(session, chat_id=chat_id, reply_to_id=reply_to_id)
@@ -512,6 +540,7 @@ async def send_attachment_message(
         file_size=file_size,
         encrypted=encrypted,
         view_once=view_once,
+        album_id=album_id,
     )
     session.add(message)
     await session.commit()
@@ -527,6 +556,9 @@ async def send_attachment_message(
             "sender_id": user_id,
         },
         exclude_user_id=user_id,
+        # Событие реального времени уходит всегда (лента получателя обновляется
+        # по мере прихода файлов), а push — один на альбом.
+        push=album_first,
     )
     return result
 

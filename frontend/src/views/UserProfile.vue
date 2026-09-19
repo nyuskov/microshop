@@ -26,6 +26,12 @@ import {
 import { disableNativePush, enableNativePush, isNativeApp } from '@/services/nativePush'
 import { fetchStorageInfo, formatBytes, type StorageInfo } from '@/services/storage'
 import { clearAppCache, readDeviceCache, type DeviceCacheInfo } from '@/utils/deviceCache'
+import {
+  clearLocalSearch,
+  isLocalSearchEnabled,
+  localSearchCount,
+  setLocalSearchEnabled
+} from '@/utils/localSearchIndex'
 import { isMessageSoundEnabled, setMessageSoundEnabled } from '@/utils/sounds'
 import { deviceLabelOf, formatEventTime, isAlertEvent } from '@/services/securityLog'
 import { PASSWORD_MIN_LENGTH } from '@/utils/passwordPolicy'
@@ -39,6 +45,7 @@ import {
 } from '@/utils/quietHours'
 import DeleteAccountDialog from '@/components/messenger/DeleteAccountDialog.vue'
 import SelectField from '@/components/common/SelectField.vue'
+import QrCode from '@/components/common/QrCode.vue'
 import InvitesSettings from '@/components/messenger/InvitesSettings.vue'
 import AppearanceSettings from '@/views/AppearanceSettings.vue'
 
@@ -531,7 +538,7 @@ const loadStorage = async () => {
   } finally {
     storageLoading.value = false
   }
-  await loadDeviceCache()
+  await Promise.all([loadDeviceCache(), loadLocalSearchCount()])
 }
 
 void loadStorage()
@@ -558,6 +565,34 @@ const onClearAppCache = async () => {
   } finally {
     cacheClearing.value = false
   }
+}
+
+// ---------- Локальный поиск по зашифрованным чатам ----------
+//
+// В шифрованном чате сервер видит только шифротекст, поэтому искать там может
+// лишь само устройство: индекс расшифрованного текста лежит в IndexedDB
+// (utils/localSearchIndex.ts). Здесь — тумблер, размер и очистка.
+const localSearchOn = ref(isLocalSearchEnabled())
+const localSearchSize = ref(0)
+const localSearchNotice = ref('')
+
+const loadLocalSearchCount = async () => {
+  localSearchSize.value = await localSearchCount()
+}
+
+/** Выключили поиск — индекс больше не нужен: текст переписки на устройстве не держим. */
+const onToggleLocalSearch = async (value: boolean) => {
+  setLocalSearchEnabled(value)
+  localSearchNotice.value = value
+    ? 'Включено: текст прочитанных сообщений из шифрованных чатов будет запоминаться на этом устройстве'
+    : ''
+  if (!value) await onClearLocalSearch()
+}
+
+const onClearLocalSearch = async () => {
+  await clearLocalSearch()
+  await loadLocalSearchCount()
+  localSearchNotice.value = 'Индекс очищен'
 }
 
 // ---------- Журнал безопасности: что происходило с аккаунтом ----------
@@ -1308,6 +1343,40 @@ const onNotificationsToggle = async (val: boolean) => {
             </button>
             <p v-if="cacheNotice" class="storage-hint">{{ cacheNotice }}</p>
           </div>
+
+          <!-- Поиск по зашифрованным чатам: индекс расшифрованного текста лежит
+               только на устройстве (сервер в шифрованном чате текста не видит). -->
+          <div class="device-cache">
+            <div class="toggle-row">
+              <div class="toggle-text">
+                <span class="toggle-name">Поиск по зашифрованным чатам</span>
+                <span class="toggle-desc">
+                  В шифрованном чате сервер текста не видит, поэтому поиск идёт по индексу на этом
+                  устройстве. Запоминается только текст сообщений, которые вы уже прочитали здесь;
+                  ключи шифрования в индексе не хранятся.
+                </span>
+              </div>
+              <q-toggle
+                v-model="localSearchOn"
+                color="primary"
+                keep-color
+                @update:model-value="onToggleLocalSearch"
+              />
+            </div>
+            <div class="storage-line">
+              <span class="storage-used">Индекс на устройстве</span>
+              <span class="storage-files">{{ localSearchSize }} сообщений</span>
+            </div>
+            <button
+              type="button"
+              class="storage-refresh"
+              :disabled="localSearchSize === 0"
+              @click="onClearLocalSearch"
+            >
+              <q-icon :name="icon('delete_outline')" size="15px" /> Очистить индекс
+            </button>
+            <p v-if="localSearchNotice" class="storage-hint">{{ localSearchNotice }}</p>
+          </div>
         </section>
 
         <!-- Моя ссылка: по ней человек открывает чат с вами -->
@@ -1329,6 +1398,13 @@ const onNotificationsToggle = async (val: boolean) => {
               <button type="button" class="btn ghost" @click="copyProfileLink">
                 <q-icon :name="icon('content_copy')" size="17px" /> Копировать
               </button>
+            </div>
+            <!-- QR-код: чтобы дать ссылку без пересылки — наводят камеру -->
+            <div class="profile-link-qr">
+              <QrCode :value="myProfileLink" :size="180" label="QR-код ссылки на ваш профиль" />
+              <p class="profile-link-qr-hint">
+                Наводят камеру другого телефона — чат со мной откроется сразу.
+              </p>
             </div>
             <p v-if="linkNotice" class="notice success">{{ linkNotice }}</p>
           </template>
@@ -3001,6 +3077,22 @@ const onNotificationsToggle = async (val: boolean) => {
   flex: 0 0 auto;
   padding: 10px 14px;
   font-size: 14px;
+}
+
+/* QR-код под строкой адреса: по центру, с короткой подсказкой */
+.profile-link-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ms-space-2);
+  margin-top: var(--ms-space-4);
+}
+
+.profile-link-qr-hint {
+  margin: 0;
+  font-size: var(--ms-fs-xs);
+  color: var(--ms-muted);
+  text-align: center;
 }
 
 @media (max-width: 560px) {

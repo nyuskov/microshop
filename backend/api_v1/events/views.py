@@ -54,6 +54,13 @@ WS_ACTIVITY_FALLBACK_SECONDS = 2.0
 #: писать каждые 25 секунд незачем).
 WS_LAST_SEEN_TOUCH_SECONDS = 60
 
+#: Виды активности собеседника (``typing.kind``). Держать согласованным с
+#: `frontend/src/utils/peerActivity.ts`: клиент показывает по ним подпись
+#: («записывает голосовое…», «отправляет видео…»), а тест
+#: `frontend/src/__tests__/peerActivity.spec.ts` сверяет списки.
+TYPING_KINDS = frozenset({"text", "voice", "video_note", "photo", "video", "file"})
+TYPING_KIND_DEFAULT = "text"
+
 
 async def _broadcast_presence(
     peer_ids: list[int],
@@ -73,9 +80,12 @@ async def _broadcast_presence(
 
 
 async def _handle_client_event(user_id: int, data: Any) -> None:
-    """Обрабатывает события от клиента (сейчас — индикатор «печатает…»).
+    """Обрабатывает события от клиента (индикатор активности собеседника).
 
     ``typing``/``typing-stop`` ретранслируются участникам чата, кроме автора.
+    У ``typing`` есть вид активности (``kind``): «печатает…», «записывает
+    голосовое…», «отправляет видео…» и т.п. События без вида (старый клиент)
+    считаются набором текста.
     """
     if not isinstance(data, dict):
         return
@@ -87,15 +97,23 @@ async def _handle_client_event(user_id: int, data: Any) -> None:
     except (KeyError, TypeError, ValueError):
         return
 
+    payload: dict[str, Any] = {
+        "type": event_type,
+        "chat_id": chat_id,
+        "user_id": user_id,
+    }
+    if event_type == "typing":
+        kind = data.get("kind", TYPING_KIND_DEFAULT)
+        # Неизвестный вид приводим к набору текста: список открыт для клиента, но
+        # пересылать собеседнику произвольную строку из сети нельзя.
+        payload["kind"] = kind if kind in TYPING_KINDS else TYPING_KIND_DEFAULT
+
     async with db_helper.session_factory() as session:
         members = await chat_member_ids(session, chat_id)
     if user_id not in members:
         return
     recipients = [member_id for member_id in members if member_id != user_id]
-    await dispatch_realtime(
-        recipients,
-        {"type": event_type, "chat_id": chat_id, "user_id": user_id},
-    )
+    await dispatch_realtime(recipients, payload)
 
 
 async def _presence_last_seen(user_id: int) -> tuple[datetime | None, list[int]]:

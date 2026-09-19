@@ -151,6 +151,9 @@ class Message(BaseModel):
     call_duration: int | None = None
     call_caller_id: int | None = None
     file: MessageFile | None = None
+    # Альбом: у картинок одной отправки та же метка — лента рисует их сеткой
+    # (см. `utils/thread.ts::albumLayout` на клиенте).
+    album_id: str | None = None
     # «Посмотреть один раз»: файл отдаётся ровно один раз (см. api_v1/media).
     view_once: bool = False
     # Одноразовое вложение уже открыли — в ленте останется плашка «Просмотрено».

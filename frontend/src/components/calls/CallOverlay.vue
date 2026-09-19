@@ -240,15 +240,21 @@
                  кнопками. -->
             <CallGrid v-if="callStore.isGroup" @drop="callStore.dropPeer" />
 
-            <!-- Локальное превью (видео) -->
+            <!-- Локальное превью (видео). Если выбрана маска — потяните её по
+                 лицу: положение считается по кадру, а не по элементу, поэтому
+                 маска не уезжает от пальца при обрезке (`cover`) и зеркале. -->
             <video
               v-if="callStore.kind === 'video'"
               ref="localVideoEl"
               class="local-video"
-              :class="{ mirrored: mirrorLocal }"
+              :class="{ mirrored: mirrorLocal, 'mask-drag': callStore.videoMask !== null }"
               autoplay
               playsinline
               muted
+              @pointerdown="onMaskPointerDown"
+              @pointermove="onMaskPointerMove"
+              @pointerup="onMaskPointerUp"
+              @pointercancel="onMaskPointerUp"
             ></video>
 
             <!-- Элементы управления: в панели — только частое (микрофон, камера,
@@ -378,6 +384,19 @@
                   <q-icon :name="icon('tune')" size="20px" />
                   <span>Устройства звонка</span>
                   <q-icon v-if="settingsOpen" :name="icon('check')" size="16px" class="more-mark" />
+                </button>
+                <!-- Эффекты видео: цвет кадра и маска. Показ экрана их выключает
+                     (эффект — про камеру), поэтому пункт в этот момент не нужен. -->
+                <button
+                  v-if="callStore.kind === 'video' && !callStore.screenSharing"
+                  class="more-row"
+                  :class="{ on: effectsOpen }"
+                  role="menuitem"
+                  @click="onEffectsRow"
+                >
+                  <q-icon :name="icon('palette')" size="20px" />
+                  <span>Эффекты видео</span>
+                  <q-icon v-if="effectsOpen" :name="icon('check')" size="16px" class="more-mark" />
                 </button>
                 <!-- Картинка в картинке: разговор можно свернуть в плавающее окно
                    и заниматься другим (видеозвонок или показ экрана). -->
@@ -550,6 +569,9 @@
         </div>
       </div>
     </transition>
+
+    <!-- Окно эффектов видео (цвет кадра и маска) — поверх звонка. -->
+    <CallEffectsDialog v-if="effectsOpen" @close="effectsOpen = false" />
   </Teleport>
 </template>
 
@@ -559,6 +581,8 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { peerQualityLine, screenShareNotice, screenShareSupport, useCallStore } from '@/stores/call'
 import { mediaUrl } from '@/services/chatService'
 import CallGrid from '@/components/calls/CallGrid.vue'
+import CallEffectsDialog from '@/components/calls/CallEffectsDialog.vue'
+import { framePointFromPointer } from '@/utils/videoEffects'
 import SelectField from '@/components/common/SelectField.vue'
 import type { SelectValue } from '@/utils/select'
 import { avatarStyle as userAvatarStyle, initials as userInitials } from '@/utils/user'
@@ -709,6 +733,9 @@ const speakerOn = ref(false)
 // Панель выбора устройств (камера/микрофон/динамик) во время звонка.
 const settingsOpen = ref(false)
 
+// Окно эффектов видео (цвет кадра и маска) — отдельным слоем поверх звонка.
+const effectsOpen = ref(false)
+
 // Меню «ещё»: редкие во время звонка действия (громкая связь, показ экрана,
 // устройства). В панели они не помещаются на телефоне в одну строку.
 const moreOpen = ref(false)
@@ -725,7 +752,6 @@ const closePanels = () => {
   diagnosticsOpen.value = false
   verifyOpen.value = false
 }
-
 /**
  * Нажатие в любом месте звонка.
  *
@@ -780,6 +806,56 @@ const onDevicesRow = () => {
   settingsOpen.value = !settingsOpen.value
   moreOpen.value = false
 }
+
+/** Пункт «Эффекты видео»: открывает окно выбора эффекта и маски. */
+const onEffectsRow = () => {
+  closePanels()
+  effectsOpen.value = true
+}
+
+/**
+ * Перетаскивание маски по своему видео.
+ *
+ * Считаем по настоящему кадру (`videoWidth/videoHeight`) с учётом обрезки
+ * `cover` и зеркала передней камеры — иначе маска уезжает от пальца тем сильнее,
+ * чем сильнее отличается соотношение сторон превью и кадра.
+ */
+const onMaskPointerDown = (event: PointerEvent) => {
+  if (!callStore.videoMask || !localVideoEl.value) return
+  ;(event.target as HTMLElement | null)?.setPointerCapture?.(event.pointerId)
+  moveMaskTo(event)
+}
+
+const onMaskPointerMove = (event: PointerEvent) => {
+  if (!callStore.videoMask) return
+  // Тянем только при нажатой кнопке/пальце: иначе маска «прыгала» бы на любой
+  // проход курсора по превью.
+  if (event.buttons !== 1 && event.pointerType === 'mouse') return
+  moveMaskTo(event)
+}
+
+const onMaskPointerUp = (event: PointerEvent) => {
+  ;(event.target as HTMLElement | null)?.releasePointerCapture?.(event.pointerId)
+}
+
+const moveMaskTo = (event: PointerEvent) => {
+  const el = localVideoEl.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const frame = {
+    width: el.videoWidth || rect.width,
+    height: el.videoHeight || rect.height
+  }
+  const point = framePointFromPointer({
+    rect,
+    frame,
+    mirrored: mirrorLocal.value,
+    clientX: event.clientX,
+    clientY: event.clientY
+  })
+  callStore.setVideoMaskLayout({ ...callStore.videoMaskLayout, ...point })
+}
+
 /** Пункт «Диагностика звонка»: открывает панель и сразу снимает свежие цифры. */
 const onDiagnosticsRow = () => {
   settingsOpen.value = false
@@ -1326,6 +1402,16 @@ onBeforeUnmount(() => {
 /* Зеркало — только у передней камеры (см. `mirrorLocal`). */
 .local-video.mirrored {
   transform: scaleX(-1);
+}
+
+/* Маска выбрана: превью становится площадкой, по которой её двигают пальцем. */
+.local-video.mask-drag {
+  cursor: grab;
+  touch-action: none;
+}
+
+.local-video.mask-drag:active {
+  cursor: grabbing;
 }
 
 .ctl-btn.speaker-on {

@@ -45,9 +45,10 @@ describe('MessageComposer: вставка картинки из буфера', (
       }
     })
 
-    const emitted = wrapper.emitted('file-selected')
+    // Событие отдаёт ПАЧКУ файлов: подряд идущие картинки уходят альбомом.
+    const emitted = wrapper.emitted('files-selected')
     expect(emitted).toHaveLength(1)
-    expect(emitted?.[0][0]).toBe(IMAGE)
+    expect(emitted?.[0][0]).toEqual([IMAGE])
     wrapper.unmount()
   })
 
@@ -59,14 +60,14 @@ describe('MessageComposer: вставка картинки из буфера', (
       }
     })
 
-    expect(wrapper.emitted('file-selected')).toBeUndefined()
+    expect(wrapper.emitted('files-selected')).toBeUndefined()
     wrapper.unmount()
   })
 
   it('буфер без данных не ломает ввод', async () => {
     const wrapper = mountComposer()
     await wrapper.find('.text-input').trigger('paste', {})
-    expect(wrapper.emitted('file-selected')).toBeUndefined()
+    expect(wrapper.emitted('files-selected')).toBeUndefined()
     wrapper.unmount()
   })
 })

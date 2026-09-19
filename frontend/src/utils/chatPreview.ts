@@ -1,5 +1,6 @@
 import type { Chat, ChatUser, Message } from '@/types'
 import { isEncryptedPayload } from '@/services/e2ee'
+import type { PeerActivityKind } from '@/utils/peerActivity'
 import {
   callMessageIcon,
   callMessageText,
@@ -62,6 +63,18 @@ export const chatPeerOnline = (
   const peer = chatPeer(chat, currentUserId)
   return !!peer && (onlineUserIds?.includes(peer.id) ?? false)
 }
+
+/**
+ * Чем занят собеседник в этом чате прямо сейчас (`null` — ничем).
+ *
+ * В списке диалогов показываем только личные чаты: в группе подпись без имени
+ * бесполезна, а место в строке одно. Там же, где имя есть (шапка чата), подпись
+ * собирается отдельно — см. `peerActivityLabel`.
+ */
+export const chatActivityKind = (
+  chat: Chat,
+  activities?: Record<number, PeerActivityKind>
+): PeerActivityKind | null => (chat.users.length === 2 ? (activities?.[chat.id] ?? null) : null)
 
 /** Печатает ли сейчас собеседник в этом чате. */
 export const isChatTyping = (chat: Chat, typingChatIds?: number[]): boolean =>

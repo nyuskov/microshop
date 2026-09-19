@@ -50,10 +50,10 @@
         @click.stop
       />
       <!-- Зашифрованное вложение расшифровывается по запросу (см. utils/lightbox):
-           пока ссылки нет, показываем ожидание, а не «битую» картинку. -->
-      <div v-else class="lb-loading" role="status" aria-live="polite">
-        <q-spinner size="34px" color="primary" />
-        <span class="lb-loading-text">Открываем изображение…</span>
+           пока ссылки нет, показываем ожидание, а не «битую» картинку.
+           Подписи рядом с кружком нет — крутится и так понятно. -->
+      <div v-else class="lb-loading" role="status">
+        <BrandSpinner :size="48" label="Открываем изображение" />
       </div>
 
       <button
@@ -73,6 +73,7 @@
 import { icon } from '@/utils/icons'
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useFocusTrap } from '@/composables/useFocusTrap'
+import BrandSpinner from '@/components/common/BrandSpinner.vue'
 
 export interface LightboxImage {
   id: number
@@ -200,17 +201,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   right: 16px;
 }
 
-/* Ожидание расшифровки E2EE-кадра: текст и спиннер в стиле верхней панели */
+/* Ожидание расшифровки E2EE-кадра: кружок в палитре приложения, полоска белая —
+   оверлей тёмный. */
 .lb-loading {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
   color: #fff;
-}
-
-.lb-loading-text {
-  font-size: 13px;
-  opacity: 0.85;
+  --brand-spinner-track: var(--ms-scrim-soft);
 }
 </style>

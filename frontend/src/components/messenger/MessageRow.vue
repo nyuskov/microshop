@@ -118,7 +118,8 @@
         :message="message"
         :row-visible="rowVisible"
         :sticker="isStickerMessage(message)"
-        @open-image="emit('open-image')"
+        :album="album"
+        @open-image="emit('open-image', $event)"
         @open-sticker="emit('open-sticker')"
         @open-view-once="emit('open-view-once')"
       />
@@ -248,6 +249,7 @@
       :can-make-sticker="canMakeSticker"
       :has-reminder="Boolean(reminderAt)"
       :translation-label="translationLabel"
+      :can-translate="canTranslate"
       :emoji-picker-open="emojiPickerOpen"
       :row-visible="rowVisible"
       :can-add-set="canAddSet"
@@ -280,6 +282,7 @@
       :can-make-sticker="canMakeSticker"
       :has-reminder="Boolean(reminderAt)"
       :translation-label="translationLabel"
+      :can-translate="canTranslate"
       :selectable="selectable"
       :selection-mode="selectionMode"
       :emoji-picker-open="emojiPickerOpen"
@@ -314,7 +317,12 @@ import { emojiLayout, type EmojiLayout } from '@/utils/emoji'
 import { haptic, HAPTIC_HOLD } from '@/utils/haptics'
 import { formatMsgTime } from '@/utils/format'
 import { formatScheduledAt } from '@/utils/scheduledSend'
-import { toggleTranslation, translationActionFor, translationOf } from '@/utils/translation'
+import {
+  canOfferTranslation,
+  toggleTranslation,
+  translationActionFor,
+  translationOf
+} from '@/utils/translation'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import { highlightQuery, splitMessageText } from '@/utils/mentions'
 import { followLink } from '@/composables/useExternalLinkGuard'
@@ -467,6 +475,11 @@ const props = defineProps<{
    * времени появляется значок.
    */
   reminderAt?: string | null
+  /**
+   * Все вложения альбома, если эта строка — головное сообщение пачки картинок
+   * (см. `utils/albums.ts`). Пусто — обычное одиночное вложение.
+   */
+  album?: Message[]
 }>()
 
 /** Текст плашки «Переслано от …» (null, если сообщение не переслано). */
@@ -506,11 +519,21 @@ const translationLabel = computed<string>(() => {
 })
 
 /**
+ * Предлагать ли перевод НА ЭТОМ устройстве.
+ *
+ * Без встроенного переводчика браузера (телефон, WebView приложения, Safari)
+ * пункта меню нет вовсе: раньше он был, а нажатие упиралось в «этот браузер не
+ * умеет переводить на устройстве» — тупик вместо функции.
+ */
+const canTranslate = canOfferTranslation()
+
+/**
  * Меню сообщения → пункт «Перевести»: переводим текст, отменяем идущий перевод
  * или убираем готовый — что именно, решает `toggleTranslation` (та же функция у
  * кнопки под расшифровкой голосового).
  */
 const onTranslate = () => {
+  if (!canTranslate) return
   toggleTranslation(props.message.id, props.message.text)
 }
 
@@ -555,7 +578,11 @@ const emit = defineEmits<{
   (e: 'delete'): void
   /** Жалоба на сообщение (модерация UGC, требование RuStore). */
   (e: 'report'): void
-  (e: 'open-image'): void
+  /**
+   * Картинка открывается в лайтбоксе. Для альбома приходит КОНКРЕТНОЕ вложение
+   * (нажали на плитку, а не на головное сообщение), пусто — вложение строки.
+   */
+  (e: 'open-image', message?: Message): void
   /** Тап по стикеру: открыть его набор (в наборе видно весь пак и «Добавить»). */
   (e: 'open-sticker'): void
   /** Одноразовое вложение: открыть на просмотр (сервер отдаст файл один раз). */

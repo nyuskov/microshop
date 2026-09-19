@@ -40,7 +40,7 @@ export type RealtimeEvent =
       type: 'presence.snapshot'
       users: { user_id: number; online: boolean; last_seen: string | null }[]
     }
-  | { type: 'typing'; chat_id: number; user_id: number }
+  | { type: 'typing'; chat_id: number; user_id: number; kind?: string }
   | { type: 'typing-stop'; chat_id: number; user_id: number }
   // Моя история получила реакцию: автор обновляет счётчики и узнаёт об этом
   // голосом (когда приложение закрыто — приходит push).

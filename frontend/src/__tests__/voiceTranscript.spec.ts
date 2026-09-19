@@ -154,8 +154,22 @@ beforeEach(() => {
 afterEach(() => {
   stopAllRecognitions()
   delete (globals.window as { SpeechRecognition?: unknown }).SpeechRecognition
+  delete (globalThis as { Translator?: unknown }).Translator
   vi.unstubAllGlobals()
 })
+
+/**
+ * Заглушка встроенного переводчика браузера.
+ *
+ * Кнопка «Перевести» у расшифровки есть только там, где перевод возможен: без
+ * `Translator` (телефон, WebView приложения, Safari) её нет вовсе — иначе нажатие
+ * упиралось бы в «браузер не умеет переводить» (см. `canOfferTranslation`).
+ */
+const installTranslator = () => {
+  ;(globalThis as { Translator?: unknown }).Translator = function () {
+    /* конструктор не нужен: проверяется только наличие API */
+  }
+}
 
 /**
  * Ждём, пока соберётся «граф»: загрузка и декодирование аудио — это промисы, а
@@ -522,6 +536,7 @@ describe('кнопка «В текст» в голосовом', () => {
   it('«Перевести» появляется только после готового текста (G1)', async () => {
     // Переводить нечего, пока текста нет: кнопка обязана ждать расшифровку, иначе
     // человек нажмёт её и получит перевод пустой строки.
+    installTranslator()
     const wrapper = mount(TranscriptionBlock, {
       props: { messageId: 90, src: 'blob:voice' },
       global: { stubs: { 'q-icon': true } }
@@ -536,6 +551,26 @@ describe('кнопка «В текст» в голосовом', () => {
 
     expect(wrapper.text()).toContain('Перевести')
     clearTranscript(90)
+    wrapper.unmount()
+  })
+
+  it('на устройстве без встроенного переводчика кнопки нет и после текста', async () => {
+    // Симптом владельца: «в мобилках перевод пишет, что не может» — кнопка вела
+    // в тупик. Теперь её просто нет (перевод идёт только на устройстве).
+    const wrapper = mount(TranscriptionBlock, {
+      props: { messageId: 91, src: 'blob:voice' },
+      global: { stubs: { 'q-icon': true } }
+    })
+
+    const running = recognizeVoice(91, 'blob:voice')
+    await settle()
+    recognition.emitResult('Hello there', true)
+    ended?.()
+    await running
+
+    expect(wrapper.text()).toContain('Скопировать')
+    expect(wrapper.text()).not.toContain('Перевести')
+    clearTranscript(91)
     wrapper.unmount()
   })
 
@@ -584,6 +619,7 @@ describe('кнопка «В текст» в голосовом', () => {
   it('готовый текст можно и скопировать, и распознать заново', async () => {
     // Раньше готовый текст умел только копироваться: старую расшифровку нельзя
     // было переиграть, и человек видел вчерашний результат.
+    installTranslator()
     const wrapper = mountVoice()
     await wrapper.find('.am-transcribe').trigger('click')
     await settle()

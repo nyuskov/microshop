@@ -261,6 +261,11 @@ export interface Message {
   call_caller_id?: number
   edited_at: string | null
   file: MessageFile | null
+  /**
+   * Метка альбома: у картинок одной отправки она одна, и лента рисует их общей
+   * сеткой (см. `utils/albums.ts`). У одиночного вложения — `null`.
+   */
+  album_id?: string | null
   reactions: ReactionSummary[]
   forwarded_from: ForwardedFrom | null
   /**

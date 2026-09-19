@@ -38,7 +38,7 @@
           </div>
           <template v-for="item in group.items" :key="item.row.message.id">
             <div
-              v-if="unreadDividerId === item.row.message.id"
+              v-if="ownsUnreadDivider(item.row.message.id)"
               class="unread-divider"
               data-unread-divider
             >
@@ -60,6 +60,7 @@
               :members="members"
               :reminder-at="reminderAtOf(item.row.message)"
               :own-as-incoming="Boolean(channelPosts)"
+              :album="albumOf(item.row.message)"
               @quote-click="emit('quote-click', item.row.message)"
               @select-start="emit('select-start', item.row.message)"
               @toggle-select="emit('toggle-select', item.row.message)"
@@ -80,7 +81,7 @@
               @add-set="emit('add-set', item.row.message)"
               @delete="emit('delete', item.row.message)"
               @report="emit('report', item.row.message)"
-              @open-image="emit('open-image', item.row.message)"
+              @open-image="openImageOf(item.row, $event)"
               @open-sticker="emit('open-sticker', item.row.message)"
               @open-view-once="emit('open-view-once', item.row.message)"
               @remind="emit('remind', item.row.message)"
@@ -198,6 +199,7 @@ import type { ChatUser, Message } from '@/types'
 import { seriesKindFor, unreadSeenAtBottom } from '@/utils/thread'
 import type { MessageRow as ThreadRow, SeriesKind } from '@/utils/thread'
 import { displayName } from '@/utils/user'
+import { albumLayout } from '@/utils/albums'
 import MessageRow from '@/components/messenger/MessageRow.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 
@@ -274,6 +276,37 @@ const postMetaOf = (messageId: number): ChannelPostCounters =>
 
 /** Время напоминания для строки: нет функции — считаем, что напоминаний нет. */
 const reminderAtOf = (message: Message): string | null => props.reminderAt?.(message) ?? null
+
+// ---------- Альбомы (несколько картинок одной отправки) ----------
+// У вложений альбома одна метка `album_id`, но это отдельные сообщения: в ленте
+// сетку рисует ПЕРВОЕ из них, остальные не выводятся (см. utils/albums.ts).
+
+const albums = computed(() => albumLayout(props.rows))
+
+/** Вложения альбома для строки (undefined — обычное одиночное вложение). */
+const albumOf = (message: Message): Message[] | undefined => albums.value.members.get(message.id)
+
+/**
+ * Открыть картинку в лайтбоксе.
+ *
+ * У альбома тап приходит с КОНКРЕТНОЙ плиткой (их несколько в одном сообщении),
+ * поэтому берём её, а не сообщение строки.
+ */
+const openImageOf = (row: ThreadRow, message?: Message): void => {
+  if (row.kind === 'message') emit('open-image', message ?? row.message)
+}
+
+/**
+ * Кому показать разделитель «Непрочитанные сообщения».
+ *
+ * Разделитель может попасть на продолжение альбома, а такие строки не рисуются:
+ * тогда его показывает головное сообщение пачки.
+ */
+const ownsUnreadDivider = (messageId: number): boolean => {
+  const divider = unreadDividerId.value
+  if (divider === null) return false
+  return (albums.value.headOf.get(divider) ?? divider) === messageId
+}
 
 const emit = defineEmits<{
   (e: 'background-click'): void
@@ -359,7 +392,10 @@ const measureBands = (): void => {
   const wrapBox = wrap.getBoundingClientRect()
   const collect = (ids: number[], selected: boolean): ThreadBand[] =>
     ids.flatMap((id) => {
-      const row = container.querySelector<HTMLElement>(`[data-message-id="${id}"]`)
+      // Продолжения альбома в ленте не нарисованы — полосу ставим на головное
+      // сообщение пачки, иначе подсветка просто пропала бы.
+      const target = albums.value.headOf.get(id) ?? id
+      const row = container.querySelector<HTMLElement>(`[data-message-id="${target}"]`)
       if (!row) return []
       const box = row.getBoundingClientRect()
       return [
@@ -526,6 +562,9 @@ const dayGroups = computed(() => {
       groups.push({ key: `day-${index}`, label: row.label, items: [] })
       return
     }
+    // Продолжения альбома отдельными строками не рисуем: их показывает сетка
+    // головного сообщения пачки (см. utils/albums.ts).
+    if (albums.value.continuations.has(row.message.id)) return
     if (groups.length === 0) groups.push({ key: 'day-start', label: '', items: [] })
     groups[groups.length - 1].items.push({ row, index })
   })
@@ -591,7 +630,9 @@ const restoreScroll = (top: number, height: number) => {
 const reveal = (messageId: number): boolean => {
   const container = containerRef.value
   if (!container) return false
-  const el = container.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null
+  // Продолжение альбома отдельной строкой не нарисовано — показываем пачку.
+  const target = albums.value.headOf.get(messageId) ?? messageId
+  const el = container.querySelector(`[data-message-id="${target}"]`) as HTMLElement | null
   if (!el) return false
   const containerRect = container.getBoundingClientRect()
   const elRect = el.getBoundingClientRect()

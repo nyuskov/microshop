@@ -53,9 +53,11 @@
         <q-icon :name="icon('notifications')" size="16px" />
         <span>{{ hasReminder ? 'Изменить напоминание' : 'Напомнить' }}</span>
       </button>
-      <!-- Перевод — только у текста: переводить вложение нечем. Подпись меняется
-           по состоянию (переводим — можно отменить, готово — скрыть). -->
-      <button v-if="message.text" class="more-item" @click="onTranslate">
+      <!-- Перевод — только у текста (переводить вложение нечем) и только там,
+           где он вообще возможен: без встроенного переводчика браузера пункта
+           нет вовсе (см. `canOfferTranslation`). Подпись меняется по состоянию
+           (переводим — можно отменить, готово — скрыть). -->
+      <button v-if="message.text && canTranslate" class="more-item" @click="onTranslate">
         <q-icon :name="icon('translate')" size="16px" />
         <span>{{ translationLabel || 'Перевести' }}</span>
       </button>
@@ -137,6 +139,11 @@ const props = defineProps<{
    * «Перевод…» — идёт, «Скрыть перевод» — готовый перевод или ошибка.
    */
   translationLabel?: string
+  /**
+   * Предлагать ли перевод: в браузерах без встроенного переводчика (телефон,
+   * WebView приложения, Safari) пункта нет — см. `canOfferTranslation`.
+   */
+  canTranslate: boolean
   /** Открыта ли палитра реакций (состояние представления). */
   emojiPickerOpen: boolean
   /** Строка уже доходила до экрана — только тогда рисуем панель. */

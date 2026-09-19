@@ -1,5 +1,7 @@
 /** Утилиты отображения имени пользователя и аватара (градиент). */
 
+import { ref } from 'vue'
+
 import { mediaUrl } from '@/config'
 import type { Chat, ChatUser } from '@/types'
 
@@ -10,17 +12,24 @@ import type { Chat, ChatUser } from '@/types'
  * подставляться ВЕЗДЕ — в списке чатов, шапке, превью, поиске, уведомлениях,
  * без правок каждого места. Реестр обновляет стор контактов
  * (`setContactNames`), поэтому `displayName()` всегда видит свежие имена.
+ *
+ * ПОЧЕМУ `ref`, а не обычный объект (грабля 2026-09-20): имя считается внутри
+ * вычисляемых свойств и кэшируется. Пока реестр был обычной переменной, Vue не
+ * знал о его изменении — и имена «сбивались»: чаты грузятся ОДНОВРЕМЕННО с
+ * контактами, поэтому первые вычисления успевали закэшировать логин, а сами
+ * имена появлялись только после того, как человек откроет чат или обновит
+ * список (любое другое изменение пересчитывало вычисляемое).
  */
-let contactNames: Record<number, string> = {}
+const contactNames = ref<Record<number, string>>({})
 
 /** Обновляет реестр имён контактов (вызывает стор контактов). */
 export const setContactNames = (names: Record<number, string>): void => {
-  contactNames = names
+  contactNames.value = names
 }
 
 /** Имя, которым пользователь назвал контакт (если назвал). */
 export const contactNameOf = (userId: number | null | undefined): string | undefined =>
-  userId === null || userId === undefined ? undefined : contactNames[userId]
+  userId === null || userId === undefined ? undefined : contactNames.value[userId]
 
 export const fullName = (
   first: string | null | undefined,

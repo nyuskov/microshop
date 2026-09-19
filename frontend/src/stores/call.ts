@@ -25,6 +25,13 @@ import {
   writeCallDevices,
   type MicProcessing
 } from '@/utils/callDevices'
+import {
+  DEFAULT_MASK_LAYOUT,
+  DEFAULT_VIDEO_EFFECT,
+  clampMaskLayout,
+  type MaskLayout
+} from '@/utils/videoEffects'
+import { getErrorMessage } from '@/services/errors'
 
 import {
   applyTrackHints,
@@ -41,6 +48,7 @@ import {
   type QualityStep
 } from './call/quality'
 import { screenShareNotice, screenShareSupport } from './call/screenShare'
+import { startVideoEffects, videoEffectsSupported } from './call/videoPipeline'
 import {
   ANSWER_RETRY_MAX_ATTEMPTS,
   ANSWER_RETRY_MS,
@@ -186,6 +194,14 @@ interface CallState {
   isGroup: boolean
   /** id группового чата (для сигналинга и подписи). */
   groupChatId: number | null
+  /** Выбранный эффект видео (id из `VIDEO_EFFECTS`). */
+  videoEffect: string
+  /** Выбранная маска (id из `VIDEO_MASKS`) или null. */
+  videoMask: string | null
+  /** Где стоит маска: центр в долях кадра и размер в долях ширины кадра. */
+  videoMaskLayout: MaskLayout
+  /** Причина недоступности эффектов (пустая строка — доступны). */
+  videoEffectsUnavailable: string
   /** Участники группового звонка (в 1:1 — один, собеседник). */
   participants: CallParticipant[]
   /**
@@ -235,7 +251,23 @@ const DEFAULT_STATE: CallState = {
   isGroup: false,
   groupChatId: null,
   participants: [],
-  peerNames: {}
+  peerNames: {},
+  /**
+   * Эффекты своего видео (см. utils/videoEffects.ts): цвет кадра и маска.
+   *
+   * Настройки живут в сторе, а не в компоненте: обработка идёт в звонке и
+   * должна переживать сворачивание окна эффектов, смену камеры и показ экрана.
+   */
+  videoEffect: DEFAULT_VIDEO_EFFECT,
+  videoMask: null as string | null,
+  videoMaskLayout: { ...DEFAULT_MASK_LAYOUT },
+  /**
+   * Почему эффекты недоступны (браузер без `captureStream` и т.п.).
+   *
+   * Пустая строка — доступны. Держим строкой, а не флагом: показываем человеку
+   * причину, а не просто неактивную кнопку.
+   */
+  videoEffectsUnavailable: ''
 }
 
 function makeCallId(): string {
@@ -1275,6 +1307,7 @@ export const useCallStore = defineStore('call', {
           micProcessing: this.micProcessing
         })
         runtime.localMedia = stream
+        this._rememberRawCamera(stream)
         this._applyAcquiredKind(kind, effectiveKind)
         runtime.isCaller = true
         // Соединение с каждым участником (медиа добавляется внутри `_offerToPeer`).
@@ -1336,6 +1369,7 @@ export const useCallStore = defineStore('call', {
           micProcessing: this.micProcessing
         })
         runtime.localMedia = stream
+        this._rememberRawCamera(stream)
         this._applyAcquiredKind(kind, effectiveKind)
         applyTrackHints(stream)
         const link = this._newLink(peer.id, ice)
@@ -1388,6 +1422,7 @@ export const useCallStore = defineStore('call', {
           micProcessing: this.micProcessing
         })
         runtime.localMedia = stream
+        this._rememberRawCamera(stream)
         this._applyAcquiredKind(kind, effectiveKind)
         applyTrackHints(stream)
         const link = this._newLink(peerId, ice)
@@ -1969,6 +2004,7 @@ export const useCallStore = defineStore('call', {
           micProcessing: this.micProcessing
         })
         runtime.localMedia = stream
+        this._rememberRawCamera(stream)
         this._applyAcquiredKind(stored.kind, effectiveKind)
         const link = this._newLink(stored.peerId, ice)
         stream.getTracks().forEach((track) => link.pc.addTrack(track, stream))
@@ -2130,6 +2166,9 @@ export const useCallStore = defineStore('call', {
         runtime.screenTrack = track
         // Кнопка «Остановить показ» в самом браузере (плашка Chrome/Safari).
         track.onended = () => this.stopScreenShare()
+        // Камера больше не отправляется: гасим и обработку эффектов, и саму
+        // камеру — иначе они продолжат занимать устройство и процессор.
+        this._releaseCameraForScreenShare()
 
         // Каким был звонок до показа: видеозвонок вернёт камеру, аудиозвонок — уберёт
         // видеолинию и останется аудио (см. `kindAfterScreenShare`).
@@ -2237,14 +2276,19 @@ export const useCallStore = defineStore('call', {
         const stream = await acquireCameraStream(this.selectedCamera, { group: this.isGroup })
         const track = stream.getVideoTracks()[0]
         if (!track) throw new Error('нет видеодорожки')
-        swapTrackInStream(runtime.localMedia, track, 'video')
+        // Эффекты и маски возвращаются вместе с камерой: настройки всё время
+        // лежали в сторе, поэтому пересобираем обработку из той же камеры.
+        const outgoing = await this._outgoingCameraTrack(track)
+        swapTrackInStream(runtime.localMedia, outgoing, 'video')
         applyTrackHints(runtime.localMedia)
-        track.enabled = this.videoOn
+        outgoing.enabled = this.videoOn
         if (senders.length) {
-          await Promise.all(senders.map((item) => item.replaceTrack(track).catch(() => undefined)))
+          await Promise.all(
+            senders.map((item) => item.replaceTrack(outgoing).catch(() => undefined))
+          )
         } else {
           this._eachLink((link) => {
-            link.pc.addTrack(track, runtime.localMedia ?? new MediaStream([track]))
+            link.pc.addTrack(outgoing, runtime.localMedia ?? new MediaStream([outgoing]))
           })
         }
       } catch {
@@ -2359,24 +2403,27 @@ export const useCallStore = defineStore('call', {
       // Явный выбор устройства отменяет выбор стороны: дальше идём по deviceId.
       writeCallDevices({ camera: deviceId })
       if (this.status !== 'active' || this.screenSharing || this.kind !== 'video') return
-      const senders = [...runtime.links.values()]
-        .map((link) => link.pc.getSenders().find((item) => item.track?.kind === 'video'))
-        .filter((item): item is RTCRtpSender => Boolean(item))
+      const senders = this._cameraSenders()
       if (senders.length === 0) return
+      const previousRaw = runtime.rawCameraTrack
       try {
         const stream = await acquireCameraStream(deviceId, { group: this.isGroup })
         const track = stream.getVideoTracks()[0]
         if (!track) return
+        // Дорожка у собеседников — с эффектами, если они включены.
+        const outgoing = await this._outgoingCameraTrack(track)
         runtime.localMedia?.getVideoTracks().forEach((old) => {
-          old.stop()
+          if (old !== outgoing) old.stop()
           runtime.localMedia?.removeTrack(old)
         })
         if (!runtime.localMedia) runtime.localMedia = new MediaStream()
-        runtime.localMedia.addTrack(track)
-        track.enabled = this.videoOn
+        runtime.localMedia.addTrack(outgoing)
+        outgoing.enabled = this.videoOn
+        // Старую камеру гасим только после того, как новая встала на место.
+        if (previousRaw && previousRaw !== track && previousRaw !== outgoing) previousRaw.stop()
         // Всем участникам одна и та же новая дорожка (mesh: у каждого своё
         // соединение, но источник медиа один — моя камера).
-        await Promise.all(senders.map((item) => item.replaceTrack(track).catch(() => undefined)))
+        await Promise.all(senders.map((item) => item.replaceTrack(outgoing).catch(() => undefined)))
       } catch {
         this.notice = 'Не удалось переключить камеру'
       }
@@ -2398,10 +2445,9 @@ export const useCallStore = defineStore('call', {
         writeCallDevices({ camera: '' })
       }
       if (this.status !== 'active' || this.screenSharing || this.kind !== 'video') return
-      const senders = [...runtime.links.values()]
-        .map((link) => link.pc.getSenders().find((item) => item.track?.kind === 'video'))
-        .filter((item): item is RTCRtpSender => Boolean(item))
+      const senders = this._cameraSenders()
       if (senders.length === 0) return
+      const previousRaw = runtime.rawCameraTrack
       try {
         const stream = await acquireCameraStream('', {
           group: this.isGroup,
@@ -2409,17 +2455,161 @@ export const useCallStore = defineStore('call', {
         })
         const track = stream.getVideoTracks()[0]
         if (!track) return
+        // Эффекты остаются включёнными: меняется только источник кадров.
+        const outgoing = await this._outgoingCameraTrack(track)
         runtime.localMedia?.getVideoTracks().forEach((old) => {
-          old.stop()
+          if (old !== outgoing) old.stop()
           runtime.localMedia?.removeTrack(old)
         })
         if (!runtime.localMedia) runtime.localMedia = new MediaStream()
-        runtime.localMedia.addTrack(track)
-        track.enabled = this.videoOn
-        await Promise.all(senders.map((item) => item.replaceTrack(track).catch(() => undefined)))
+        runtime.localMedia.addTrack(outgoing)
+        outgoing.enabled = this.videoOn
+        if (previousRaw && previousRaw !== track && previousRaw !== outgoing) previousRaw.stop()
+        await Promise.all(senders.map((item) => item.replaceTrack(outgoing).catch(() => undefined)))
       } catch {
         this.notice = 'Не удалось переключить камеру'
       }
+    },
+
+    /* ---------------- Эффекты и маски своего видео ---------------- */
+
+    /**
+     * Запомнить «сырую» дорожку камеры.
+     *
+     * Из неё собираются эффекты: собеседники получают обработанную дорожку, и без
+     * «сырой» вернуть обычный кадр (или пережить смену камеры) было бы нечем.
+     */
+    _rememberRawCamera(stream: MediaStream) {
+      // `?.` не для красоты: поток может быть заглушкой (тесты) или «частичным»
+      // объектом после перезагрузки страницы — падать из-за этого звонок не должен.
+      runtime.rawCameraTrack = stream.getVideoTracks?.()[0] ?? null
+    },
+
+    /** Видео-передатчики всех связей (в mesh — по одному на участника). */
+    _cameraSenders(): RTCRtpSender[] {
+      return [...runtime.links.values()]
+        .map((link) => link.pc.getSenders().find((item) => item.track?.kind === 'video'))
+        .filter((item): item is RTCRtpSender => Boolean(item))
+    },
+
+    /** Нужны ли эффекты при текущих настройках. */
+    _effectsWanted(): boolean {
+      return this.videoEffect !== DEFAULT_VIDEO_EFFECT || this.videoMask !== null
+    },
+
+    /**
+     * Какая дорожка должна уходить собеседникам: обработанная (если эффекты
+     * включены) или сама камера.
+     *
+     * Обработка одна на все связи: в группе один и тот же обработанный кадр уходит
+     * каждому участнику, поэтому нагрузка не растёт с числом собеседников.
+     */
+    async _outgoingCameraTrack(raw: MediaStreamTrack): Promise<MediaStreamTrack> {
+      runtime.rawCameraTrack = raw
+      if (!this._effectsWanted()) return raw
+      if (!videoEffectsSupported()) {
+        this.videoEffectsUnavailable =
+          'Браузер не умеет обрабатывать видео на лету — эффекты недоступны'
+        return raw
+      }
+      try {
+        if (runtime.videoEffects) {
+          // Уже работает: меняем только источник кадров (например, сменили камеру).
+          runtime.videoEffects.setSource(raw)
+        } else {
+          runtime.videoEffects = startVideoEffects(raw, () => ({
+            effectId: this.videoEffect,
+            maskId: this.videoMask,
+            maskLayout: this.videoMaskLayout
+          }))
+        }
+        return runtime.videoEffects.track
+      } catch (error) {
+        runtime.videoEffects = null
+        this.videoEffectsUnavailable = getErrorMessage(error, 'Не удалось включить эффекты')
+        return raw
+      }
+    },
+
+    /**
+     * Применяет выбранные эффекты к своему видео.
+     *
+     * Дорожка не пересоздаётся при каждом изменении настроек: обработка читает их
+     * сама на каждом кадре. Поэтому маску можно двигать пальцем без «моргания»
+     * картинки у собеседника.
+     */
+    async applyVideoEffects() {
+      if (this.kind !== 'video') return
+      const wanted = this._effectsWanted()
+      const previous = runtime.videoEffects
+      const raw = runtime.rawCameraTrack
+      // Показ экрана: камера не отправляется. Настройки применятся, когда камера
+      // вернётся (см. `_restoreCamera`), иначе подмена задела бы дорожку экрана.
+      if (!raw || this.screenSharing) {
+        if (!wanted && previous) {
+          previous.stop()
+          runtime.videoEffects = null
+        }
+        return
+      }
+      const senders = this._cameraSenders()
+      const outgoing = await this._outgoingCameraTrack(raw)
+      swapTrackInStream(runtime.localMedia, outgoing, 'video')
+      await Promise.all(
+        senders.map((sender) => sender.replaceTrack(outgoing).catch(() => undefined))
+      )
+      if (!wanted && previous) {
+        // Сначала подмена у всех, потом остановка: иначе собеседники получили бы
+        // уже погашенную дорожку и картинка пропала бы.
+        previous.stop()
+        runtime.videoEffects = null
+      }
+    },
+
+    /** Выбрать эффект кадра («Тёплый», «Ч/б», «Мягкая кожа»…). */
+    async setVideoEffect(id: string) {
+      if (id === this.videoEffect) return
+      this.videoEffect = id
+      await this.applyVideoEffects()
+    },
+
+    /** Выбрать маску (`null` — снять). */
+    async setVideoMask(id: string | null) {
+      if (id === this.videoMask) return
+      this.videoMask = id
+      // Новая маска встаёт «на голову»: её положение у каждого своё, но начинать
+      // с уехавшего за край нельзя.
+      this.videoMaskLayout = { ...DEFAULT_MASK_LAYOUT }
+      await this.applyVideoEffects()
+    },
+
+    /** Показать/скрыть окно выбора эффектов (эффекты «на всякий случай»). */
+    resetVideoEffects() {
+      this.videoEffect = DEFAULT_VIDEO_EFFECT
+      this.videoMask = null
+      this.videoMaskLayout = { ...DEFAULT_MASK_LAYOUT }
+      void this.applyVideoEffects()
+    },
+
+    /** Сдвинуть маску: положение меняется без пересборки дорожки. */
+    setVideoMaskLayout(layout: MaskLayout) {
+      this.videoMaskLayout = clampMaskLayout(layout)
+    },
+
+    /** Отпускает камеру на время показа экрана. */
+    _releaseCameraForScreenShare() {
+      runtime.videoEffects?.stop()
+      runtime.videoEffects = null
+      runtime.rawCameraTrack?.stop()
+      runtime.rawCameraTrack = null
+    },
+
+    /** Останавливает обработку видео (при завершении звонка). */
+    _stopVideoEffects() {
+      const effects = runtime.videoEffects
+      runtime.videoEffects = null
+      runtime.rawCameraTrack = null
+      effects?.stop()
     },
 
     /** Сменить микрофон по ходу звонка. */
@@ -2598,6 +2788,9 @@ export const useCallStore = defineStore('call', {
       runtime.screenSenders = []
       runtime.shareReturnKind = 'video'
       runtime.renegotiateSeq += 1
+      // Обработка видео (эффекты/маски) держит камеру и canvas: гасим её до
+      // остановки дорожек, иначе обработка осталась бы «вечным» кадром без звука.
+      this._stopVideoEffects()
       // Групповой звонок: закрываем ВСЕ соединения, а не только основное.
       for (const link of [...runtime.links.values()]) {
         link.pc.onicecandidate = null

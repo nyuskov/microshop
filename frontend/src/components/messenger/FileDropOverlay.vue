@@ -4,7 +4,7 @@
       <div class="drop-card">
         <q-icon :name="icon(canSend ? 'attach_file' : 'chat_bubble')" size="28px" />
         <span class="drop-title">
-          {{ canSend ? 'Отпустите файл, чтобы отправить' : 'Откройте чат, чтобы отправить файл' }}
+          {{ canSend ? 'Отпустите файл, чтобы прикрепить' : 'Откройте чат, чтобы прикрепить файл' }}
         </span>
         <span v-if="canSend" class="drop-note">Можно перетащить несколько файлов сразу</span>
       </div>

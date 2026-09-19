@@ -90,9 +90,16 @@ def _download_bytes(url: str, limit: int) -> bytes:
     soft_time_limit=90,
 )
 def download_gif_message(
-    self, chat_id: int, user_id: int, url: str, reply_to_id: int | None = None
+    self,
+    chat_id: int,
+    user_id: int,
+    url: str,
+    reply_to_id: int | None = None,
+    caption: str = "",
 ) -> None:
     """Скачивает GIF и создаёт сообщение-вложение (вызывается воркером).
+
+    ``caption`` — подпись к гифке (текст из поля ввода на момент отправки).
 
     При успехе публикует ``message.new`` в мост realtime-событий. Ошибки
     валидации/сети не ретраим (бессмысленно для плохого URL); исключения БД —
@@ -106,6 +113,7 @@ def download_gif_message(
                 user_id=user_id,
                 url=url,
                 reply_to_id=reply_to_id,
+                caption=caption,
             )
         )
     except ValueError as exc:
@@ -116,7 +124,12 @@ def download_gif_message(
 
 
 async def _download_gif_message_async(
-    *, chat_id: int, user_id: int, url: str, reply_to_id: int | None = None
+    *,
+    chat_id: int,
+    user_id: int,
+    url: str,
+    reply_to_id: int | None = None,
+    caption: str = "",
 ) -> None:
     from urllib.parse import urlparse
 
@@ -164,7 +177,7 @@ async def _download_gif_message_async(
         file_url = await asyncio.to_thread(store_media, content, ".gif")
 
         message = Message(
-            text="",
+            text=caption[:4000],
             chat_id=chat_id,
             user_id=user_id,
             reply_to_id=reply_to_id,

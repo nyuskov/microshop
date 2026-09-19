@@ -97,6 +97,7 @@
             :mode="searchMode"
             :users="userResults"
             :messages="messageResults"
+            :local-messages="localMessages"
             :channels="channelResults"
             :loading="searching"
             :chats="chats"
@@ -122,7 +123,7 @@
               :archived-count="archivedCount"
               :archived-unread-count="archivedUnreadCount"
               :drafts="drafts"
-              :typing-chat-ids="typingChatIds"
+              :chat-activities="chatActivities"
               :muted-chat-ids="mutedChatIds"
               :online-user-ids="onlineUserIds"
               :handle-scroll="onChatsScroll"
@@ -207,6 +208,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch 
 import { getErrorMessage } from '@/services/errors'
 import { openPrivateChat, type SearchUserResult } from '@/services/chatService'
 import type { ChannelCard, Chat, ChatUser, Message } from '@/types'
+import type { PeerActivityKind } from '@/utils/peerActivity'
 import { useChatSelection } from '@/composables/useChatSelection'
 import {
   CHAT_FILTERS,
@@ -251,7 +253,8 @@ const props = defineProps<{
   /** id пользователей, которые сейчас «в сети» (присутствие из WS). */
   onlineUserIds?: number[]
   /** id чатов, где собеседник сейчас печатает. */
-  typingChatIds?: number[]
+  /** Виды активности по чатам («печатает…», «записывает голосовое…»). */
+  chatActivities?: Record<number, PeerActivityKind>
   /** id закреплённых чатов (показываются вверху списка). */
   pinnedChatIds?: number[]
   /** id замьюченных чатов (без всплывающих уведомлений). */
@@ -471,6 +474,7 @@ const {
   mode: searchMode,
   users: userResults,
   messages: messageResults,
+  localMessages,
   channels: channelResults,
   loading: searching,
   error: searchError,

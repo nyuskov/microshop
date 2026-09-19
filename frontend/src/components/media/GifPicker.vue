@@ -77,6 +77,12 @@ import { fetchTrendingGifs, hasGiphyKey, searchGifs, type GiphyGif } from '@/ser
 const props = defineProps<{
   chatId: number
   replyToId?: number | null
+  /**
+   * Комментарий к гифке — текст из поля ввода. Тап по гифке в Телеграме
+   * отправляет её сразу, поэтому «написать подпись после» нельзя: берём то,
+   * что человек уже напечатал (пусто — гифка без подписи).
+   */
+  caption?: string
 }>()
 
 // Событие «sent» — это подтверждение постановки задачи: сообщение появится в
@@ -137,7 +143,7 @@ const sendGif = async (gif: GiphyGif) => {
   sendingId.value = gif.id
   error.value = ''
   try {
-    await sendGifMessage(props.chatId, gif.gif, props.replyToId ?? null)
+    await sendGifMessage(props.chatId, gif.gif, props.replyToId ?? null, props.caption ?? '')
     emit('sent')
   } catch {
     error.value = 'Не удалось отправить GIF'

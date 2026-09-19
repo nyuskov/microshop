@@ -116,13 +116,18 @@ describe('отправка одноразовых медиа', () => {
     expect(composer).toContain('pickAttachment(true)')
     // Одноразовым может быть только медиа: «сгорающий» архив смысла не имеет.
     expect(composer).toContain("file.type.startsWith('image/') || file.type.startsWith('video/')")
-    expect(composer).toContain("emit('file-selected', file, viewOnce)")
+    expect(composer).toContain("emit('files-selected', files, viewOnce)")
   })
 
   it('флаг доходит до отправки вложения в Messenger', () => {
-    expect(messenger).toContain('const sendFileMessage = async (file: File, viewOnce = false)')
-    expect(messenger).toContain('viewOnce')
+    // Подпись функции выросла (появились параметры альбома), поэтому проверяем
+    // сам факт передачи флага «посмотреть один раз», а не строку целиком.
+    expect(messenger).toContain('const sendFileMessage = async (')
+    expect(messenger).toContain('viewOnce = false')
+    expect(messenger).toContain('viewOnce,')
     expect(messenger).toContain('sendAttachmentMessage(')
+    // Одноразовый файл альбомом не отправляется: сервер отвечает 400.
+    expect(messenger).toContain('planFileSend(files, !viewOnce)')
   })
 })
 

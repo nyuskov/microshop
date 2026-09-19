@@ -74,6 +74,10 @@
           <span>Отправить</span>
         </button>
       </div>
+      <!-- QR-код: приглашение можно показать рядом сидящему человеку с телефоном -->
+      <div class="invites-qr">
+        <QrCode :value="linkOf(created)" :size="168" label="QR-код ссылки-приглашения" />
+      </div>
     </div>
 
     <!-- Список -->
@@ -129,6 +133,7 @@
 import { computed, onMounted, ref } from 'vue'
 
 import PhoneInput from '@/components/common/PhoneInput.vue'
+import QrCode from '@/components/common/QrCode.vue'
 import { getErrorMessage } from '@/services/errors'
 import {
   createRegistrationInvite,
@@ -453,6 +458,13 @@ async function share(link: string) {
   padding: 12px;
   background: var(--ms-ok-bg);
   border-radius: 12px;
+}
+
+/* QR-код приглашения: по центру, чтобы удобно было навести камеру */
+.invites-qr {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--ms-space-2);
 }
 
 .invites-created-title {

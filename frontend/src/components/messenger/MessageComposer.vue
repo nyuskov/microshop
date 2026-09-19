@@ -61,6 +61,7 @@
         ref="attachInput"
         class="hidden-file"
         type="file"
+        multiple
         :accept="viewOncePick ? 'image/*,video/*' : undefined"
         aria-label="Прикрепить файл"
         @change="onFileSelected"
@@ -332,6 +333,7 @@
           <GifPicker
             :chat-id="chatId"
             :reply-to-id="replyTarget?.id ?? null"
+            :caption="newMessage.trim()"
             @sent="emit('gif-sent')"
           />
         </div>
@@ -974,8 +976,14 @@ const onStickersSelected = (event: Event) => {
 
 const emit = defineEmits<{
   (e: 'send-text'): void
-  /** Файл выбран: `viewOnce` — «посмотреть один раз» (медиа сгорает). */
-  (e: 'file-selected', file: File, viewOnce?: boolean): void
+  /**
+   * Файлы выбраны: `viewOnce` — «посмотреть один раз» (медиа сгорает).
+   *
+   * Идёт ПАЧКА, а не один файл: подряд идущие картинки собираются в альбом
+   * (сетка в ленте, см. `utils/albums.ts`), и отправлять их нужно одним
+   * действием, иначе родитель получил бы несколько независимых вызовов.
+   */
+  (e: 'files-selected', files: File[], viewOnce?: boolean): void
   (e: 'cancel-edit'): void
   (e: 'clear-reply'): void
   (e: 'voice-cancel'): void
@@ -1028,15 +1036,18 @@ const pickAttachment = (viewOnce: boolean) => {
 
 const onFileSelected = (event: Event) => {
   const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
+  const files = Array.from(input.files ?? [])
   input.value = ''
-  if (!file) return
+  if (files.length === 0) return
   // Одноразовым может быть только медиа: «сгорающий» документ/архив смысла не
-  // имеет, а в списке файлов он бы потом искался.
-  const viewOnce =
-    viewOncePick.value && (file.type.startsWith('image/') || file.type.startsWith('video/'))
+  // имеет, а в списке файлов он бы потом искался. В режиме «одноразово» выбор
+  // и так ограничен картинками и видео (`accept`), поэтому решаем по пачке.
+  const allMedia = files.every(
+    (file) => file.type.startsWith('image/') || file.type.startsWith('video/')
+  )
+  const viewOnce = viewOncePick.value && allMedia
   viewOncePick.value = false
-  emit('file-selected', file, viewOnce)
+  emit('files-selected', files, viewOnce)
 }
 
 // ---------- Отправить позже ----------
@@ -1107,7 +1118,7 @@ const onTextPaste = (event: ClipboardEvent) => {
       const file = item.getAsFile()
       if (file) {
         event.preventDefault()
-        emit('file-selected', file)
+        emit('files-selected', [file])
         return
       }
     }

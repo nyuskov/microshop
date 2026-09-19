@@ -20,7 +20,7 @@ describe('FileDropOverlay: подсказка при перетаскивани�
 
   it('с открытым чатом предлагает отпустить файл', () => {
     const wrapper = mountOverlay({ active: true, canSend: true })
-    expect(wrapper.find('.drop-overlay').text()).toContain('Отпустите файл, чтобы отправить')
+    expect(wrapper.find('.drop-overlay').text()).toContain('Отпустите файл, чтобы прикрепить')
     // Про несколько файлов говорим заранее: иначе про это узнают случайно.
     expect(wrapper.find('.drop-note').exists()).toBe(true)
     wrapper.unmount()
@@ -28,7 +28,7 @@ describe('FileDropOverlay: подсказка при перетаскивани�
 
   it('без открытого чата объясняет, что сначала нужен чат', () => {
     const wrapper = mountOverlay({ active: true, canSend: false })
-    expect(wrapper.find('.drop-overlay').text()).toContain('Откройте чат, чтобы отправить файл')
+    expect(wrapper.find('.drop-overlay').text()).toContain('Откройте чат, чтобы прикрепить файл')
     expect(wrapper.find('.drop-overlay').classes()).toContain('cannot-send')
     wrapper.unmount()
   })

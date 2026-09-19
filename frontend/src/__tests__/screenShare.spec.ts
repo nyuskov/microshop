@@ -138,7 +138,7 @@ describe('показ экрана в звонке: видно и понятно'
   it('своё превью зеркалится только у передней камеры', () => {
     // Раньше зеркалилось всегда: показ экрана и задняя камера отражались, и
     // текст в кадре читался справа налево.
-    expect(overlay).toContain(':class="{ mirrored: mirrorLocal }"')
+    expect(overlay).toContain('mirrored: mirrorLocal')
     expect(overlay).toContain("!callStore.screenSharing && callStore.cameraFacing === 'user'")
     expect(overlay).toContain('.local-video.mirrored')
   })

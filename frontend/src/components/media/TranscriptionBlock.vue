@@ -16,8 +16,13 @@
       <!-- Перевод прямо здесь, а не в меню сообщения: иностранное голосовое
            понимают в два шага — сначала текст, потом перевод, и искать пункт меню
            между ними — лишняя работа. Для кружка это единственный вход: у него
-           текста в сообщении нет вовсе. -->
-      <button v-if="transcript.status === 'ready'" class="am-transcript-btn" @click="onTranslate">
+           текста в сообщении нет вовсе. Без встроенного переводчика браузера
+           (телефон, WebView приложения) кнопки нет — переводить нечем. -->
+      <button
+        v-if="transcript.status === 'ready' && canTranslate"
+        class="am-transcript-btn"
+        @click="onTranslate"
+      >
         {{ translationLabel }}
       </button>
       <!-- «Ещё раз» есть и при готовом тексте: после улучшений распознавания
@@ -96,7 +101,12 @@ import {
   speechLanguageInUse,
   transcriptOf
 } from '@/utils/voiceRecognition'
-import { toggleTranslation, translationActionFor, translationOf } from '@/utils/translation'
+import {
+  canOfferTranslation,
+  toggleTranslation,
+  translationActionFor,
+  translationOf
+} from '@/utils/translation'
 
 const props = defineProps<{
   /** Id сообщения: по нему помним расшифровку при перерисовке ленты. */
@@ -109,6 +119,12 @@ const transcript = computed(() => transcriptOf(props.messageId))
 
 /** Есть ли перевод расшифровки (или идёт) — от этого зависит, рисуем ли блок. */
 const translationState = computed(() => translationOf(props.messageId))
+
+/**
+ * Предлагать ли перевод на этом устройстве: без встроенного переводчика браузера
+ * кнопки нет (см. `utils/translation.ts::canOfferTranslation`).
+ */
+const canTranslate = canOfferTranslation()
 
 /** Подпись кнопки перевода по тому же состоянию, что и у пункта меню. */
 const translationLabel = computed<string>(() => {

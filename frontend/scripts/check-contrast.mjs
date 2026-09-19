@@ -68,7 +68,13 @@ const CHECKS = [
   { fg: '--ms-icon-3', bg: '--ms-surface', min: 3, note: 'иконки третьего уровня' },
   { fg: '--ms-text', bg: '--ms-danger-bg', min: 4.5, note: 'текст на подложке ошибки' },
   { fg: '--ms-text', bg: '--ms-info-bg', min: 4.5, note: 'текст на инфо-подложке' },
-  { fg: '--ms-text', bg: '--ms-warn-bg', min: 4.5, note: 'текст на предупреждающей подложке' }
+  { fg: '--ms-text', bg: '--ms-warn-bg', min: 4.5, note: 'текст на предупреждающей подложке' },
+  {
+    fg: '--ms-qr-fg',
+    bg: '--ms-qr-bg',
+    min: 4.5,
+    note: 'модули QR-кода (сканерам нужен запас контраста)'
+  }
 ]
 
 const THEMES = [

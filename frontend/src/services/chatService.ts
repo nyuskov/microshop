@@ -329,6 +329,10 @@ export const sendNewMessage = async (
  *
  * `viewOnce=true` — «посмотреть один раз»: сервер отдаст файл ровно один раз,
  * дальше в ленте останется плашка «Просмотрено».
+ *
+ * `albumId` — метка альбома: картинки одной пачки шлют её одинаковой, и лента
+ * рисует их общей сеткой (см. `utils/albums.ts`). Лимиты частоты и анти-флуд
+ * сервер считает один раз на альбом, по первому вложению.
  */
 export const sendAttachmentMessage = async (
   chatId: number,
@@ -338,13 +342,17 @@ export const sendAttachmentMessage = async (
   onProgress?: (percent: number) => void,
   encrypted = false,
   sticker = false,
-  viewOnce = false
+  viewOnce = false,
+  albumId?: string | null
 ): Promise<Message> => {
   const params: Record<string, string | number> = {
     chat_id: chatId,
     filename: file.name,
     caption,
     mime: file.type
+  }
+  if (albumId) {
+    params.album_id = albumId
   }
   if (sticker) {
     params.sticker = 'true'
@@ -385,16 +393,21 @@ export const sendAttachmentMessage = async (
  * фоновый воркер, после чего web пришлёт событие ``message.new`` (realtime
  * или фолбэк-опрос) — и сообщение появится в ленте само. Здесь ничего не
  * возвращаем — сообщение приходит по событию.
+ *
+ * `caption` — комментарий к гифке (текст из поля ввода на момент тапа): он
+ * уезжает сообщением вместе с файлом, как подпись к фото.
  */
 export const sendGifMessage = async (
   chatId: number,
   url: string,
-  replyToId?: number | null
+  replyToId?: number | null,
+  caption = ''
 ): Promise<void> => {
   await api.post('/messages/gif/', {
     chat_id: chatId,
     url,
-    reply_to_id: replyToId ?? null
+    reply_to_id: replyToId ?? null,
+    caption
   })
 }
 

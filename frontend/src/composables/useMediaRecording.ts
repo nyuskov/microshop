@@ -8,11 +8,12 @@
  * передаются опциями.
  */
 
-import { ref, type Ref } from 'vue'
+import { ref, onScopeDispose, type Ref } from 'vue'
 import { mediaFileName, type RecordedMedia } from '@/services/recorder'
 import { sendAttachmentMessage } from '@/services/chatService'
 import { encryptFileForChat } from '@/services/e2eeFiles'
 import { getErrorMessage } from '@/services/errors'
+import type { PeerActivityKind } from '@/utils/peerActivity'
 import type { Chat, EncryptedFileMeta, Message } from '@/types'
 
 export interface UseMediaRecordingOptions {
@@ -46,8 +47,12 @@ export interface UseMediaRecordingOptions {
   refreshChats: () => Promise<void>
   /** Сбросить панель ответа (reply). */
   clearReply: () => void
-  /** Сообщить собеседнику, что печатать закончили. */
-  stopTyping: (chatId: number) => void
+  /**
+   * Сообщить собеседнику, что идёт занятие (запись, отправка): возвращает
+   * функцию «закончили». Одно событие живёт недолго, поэтому реализация сама
+   * повторяет его, пока занятие не закончится.
+   */
+  beginActivity: (chatId: number, kind: PeerActivityKind) => () => void
   /** Прокрутить ленту вниз (после добавления временного/настоящего пузыря). */
   scrollToBottom: () => void
   /** Дождаться следующего тика перед прокруткой. */
@@ -75,11 +80,33 @@ export function useMediaRecording(options: UseMediaRecordingOptions): UseMediaRe
   const voiceRecOpen = ref(false)
   const videoRecOpen = ref(false)
 
+  /**
+   * Пока идёт запись, собеседник должен видеть «записывает голосовое…»: держим
+   * функцию «закончили», чтобы погасить подпись при отмене/отправке.
+   */
+  let recordActivityStop: (() => void) | null = null
+
+  const beginRecordActivity = (kind: PeerActivityKind) => {
+    finishRecordActivity()
+    const chatId = options.selectedChatId()
+    if (chatId === null) return
+    recordActivityStop = options.beginActivity(chatId, kind)
+  }
+
+  const finishRecordActivity = () => {
+    recordActivityStop?.()
+    recordActivityStop = null
+  }
+
+  onScopeDispose(finishRecordActivity)
+
   const uploadRecordedMedia = async (payload: RecordedMedia, kind: 'voice' | 'video') => {
     const chatId = options.selectedChatId()
     if (chatId === null) return
     options.setSendingFile(true)
     options.setSendError('')
+    // Запись закончилась, но файл ещё грузится: подпись меняется на «отправляет…».
+    const finishUploadActivity = options.beginActivity(chatId, kind === 'voice' ? 'file' : 'video')
     // Голосовое/видео тоже показываем временным пузырём с прогрессом:
     // длинная запись грузится не мгновенно.
     const label = kind === 'voice' ? 'Голосовое сообщение' : 'Видеосообщение'
@@ -107,7 +134,6 @@ export function useMediaRecording(options: UseMediaRecordingOptions): UseMediaRe
       if (encrypted) options.applyLocalFileEnvelope(message, encrypted.meta)
       options.removePendingUpload(localId)
       options.clearReply()
-      options.stopTyping(chatId)
       options.appendToThread(message)
       await Promise.all([options.loadPinned(chatId), options.refreshChats()])
       options.scrollToBottom()
@@ -115,6 +141,7 @@ export function useMediaRecording(options: UseMediaRecordingOptions): UseMediaRe
       options.removePendingUpload(localId)
       options.setSendError(getErrorMessage(error, 'Не удалось отправить медиасообщение'))
     } finally {
+      finishUploadActivity()
       options.setSendingFile(false)
     }
   }
@@ -122,30 +149,36 @@ export function useMediaRecording(options: UseMediaRecordingOptions): UseMediaRe
   const openVoiceRec = () => {
     options.prepare()
     voiceRecOpen.value = true
+    beginRecordActivity('voice')
   }
 
   const onVoiceCancel = () => {
     voiceRecOpen.value = false
+    finishRecordActivity()
   }
 
   const onVoiceSend = async (payload: RecordedMedia) => {
     voiceRecOpen.value = false
+    finishRecordActivity()
     await uploadRecordedMedia(payload, 'voice')
   }
 
   const openVideoRec = () => {
     options.prepare()
     videoRecOpen.value = true
+    beginRecordActivity('video_note')
   }
 
   const onVideoCancel = () => {
     videoRecOpen.value = false
     options.resetRecordMode()
+    finishRecordActivity()
   }
 
   const onVideoSend = async (payload: RecordedMedia) => {
     videoRecOpen.value = false
     options.resetRecordMode()
+    finishRecordActivity()
     await uploadRecordedMedia(payload, 'video')
   }
 

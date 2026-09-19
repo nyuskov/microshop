@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   cancelAllTranslations,
   cancelTranslation,
+  canOfferTranslation,
   clearTranslation,
   setTranslationTarget,
   stopTranslationWork,
@@ -602,5 +603,34 @@ describe('перевод расшифровки голосового и круж
     expect(row).toContain(
       "import MessageTranslation from '@/components/common/MessageTranslation.vue'"
     )
+  })
+})
+
+describe('перевод не предлагается там, где его нечем сделать', () => {
+  const row = readFileSync('src/components/messenger/MessageRow.vue', 'utf8')
+  const bar = readFileSync('src/components/messenger/MessageActionsBar.vue', 'utf8')
+  const sheet = readFileSync('src/components/messenger/MessageActionSheet.vue', 'utf8')
+  const media = readFileSync('src/components/media/TranscriptionBlock.vue', 'utf8')
+
+  it('без встроенного переводчика пункт не предлагается', () => {
+    // Владелец: «в мобилках перевод пишет, что не может» — меню показывалось
+    // всегда, и на телефоне нажатие давало «браузер не умеет переводить».
+    expect(canOfferTranslation()).toBe(false)
+    expect(bar).toContain('v-if="message.text && canTranslate"')
+    expect(sheet).toContain('v-if="message.text && canTranslate"')
+    expect(media).toContain("transcript.status === 'ready' && canTranslate")
+  })
+
+  it('решение принимается по одному признаку устройства', () => {
+    // Три входа (меню, лист, кнопка у расшифровки) — один ответ, иначе они
+    // разошлись бы, как только появится новый вход.
+    expect(row).toContain('const canTranslate = canOfferTranslation()')
+    expect(row).toContain(':can-translate="canTranslate"')
+    expect(media).toContain('const canTranslate = canOfferTranslation()')
+  })
+
+  it('нажатие без поддержки ничего не запускает', () => {
+    const onTranslate = row.slice(row.indexOf('const onTranslate'))
+    expect(onTranslate).toContain('if (!canTranslate) return')
   })
 })

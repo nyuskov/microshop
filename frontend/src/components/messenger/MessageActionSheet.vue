@@ -76,10 +76,15 @@
           <q-icon :name="icon('notifications')" size="18px" />
           <span>{{ hasReminder ? 'Изменить напоминание' : 'Напомнить' }}</span>
         </button>
-        <!-- Перевод — только у текста (переводить вложение нечем). Подпись по
-             состоянию: пусто — «Перевести», идёт — «Перевод…», готово — «Скрыть
-             перевод». -->
-        <button v-if="message.text" class="ctx-item" @click="ctxAction('translate')">
+        <!-- Перевод — только у текста (переводить вложение нечем) и только там,
+             где он возможен: без встроенного переводчика пункта нет вовсе.
+             Подпись по состоянию: пусто — «Перевести», идёт — «Перевод…»,
+             готово — «Скрыть перевод». -->
+        <button
+          v-if="message.text && canTranslate"
+          class="ctx-item"
+          @click="ctxAction('translate')"
+        >
           <q-icon :name="icon('translate')" size="18px" />
           <span>{{ translationLabel || 'Перевести' }}</span>
         </button>
@@ -171,6 +176,11 @@ const props = defineProps<{
    * «Перевод…» — идёт, «Скрыть перевод» — готовый перевод или ошибка.
    */
   translationLabel?: string
+  /**
+   * Предлагать ли перевод: в браузерах без встроенного переводчика (телефон,
+   * WebView приложения, Safari) пункта нет — см. `canOfferTranslation`.
+   */
+  canTranslate: boolean
   /** Доступны ли реакции и «ответить» (у служебных сообщений — нет). */
   selectable: boolean
   /** Режим выделения: в нём лист не нужен. */

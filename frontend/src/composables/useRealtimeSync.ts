@@ -20,7 +20,7 @@ export interface RealtimeSyncOptions {
   onPresenceSnapshot?: (
     users: { user_id: number; online: boolean; last_seen: string | null }[]
   ) => void
-  onTyping: (chatId: number, userId: number) => void
+  onTyping: (chatId: number, userId: number, kind?: string) => void
   onTypingStop: (chatId: number) => void
   /** Мягкий refetch списка чатов (после дебаунса). */
   onChatsSync: () => Promise<void> | void
@@ -69,7 +69,7 @@ export function useRealtimeSync(options: RealtimeSyncOptions) {
         options.onPresenceSnapshot?.(event.users)
         return
       case 'typing':
-        options.onTyping(event.chat_id, event.user_id)
+        options.onTyping(event.chat_id, event.user_id, event.kind)
         return
       case 'typing-stop':
         options.onTypingStop(event.chat_id)

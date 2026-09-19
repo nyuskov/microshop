@@ -37,7 +37,7 @@
         :loading-chats="loadingChats"
         :contacts-loading="contactsLoading"
         :online-user-ids="onlineUserIds"
-        :typing-chat-ids="typingChatIds"
+        :chat-activities="chatActivities"
         :pinned-chat-ids="pinnedChatIds"
         :muted-chat-ids="mutedChatIds"
         :archived-chat-ids="archivedChatIds"
@@ -78,12 +78,13 @@
           <ChatPlaceholder @open-contacts="openContacts" />
         </template>
 
-        <!-- Чат восстановлен из адреса (`?chat=`), но список чатов ещё грузится:
+        <!-- Чат восстанавливается из адреса (`?chat=`), но список чатов ещё грузится:
              показываем загрузку, а не заглушку «выберите чат» — иначе при
-             обновлении страницы мелькает экран со списком и заглушкой. -->
+             обновлении страницы мелькает экран со списком и заглушкой.
+             Подписи рядом с кружком нет: кольцо само говорит об ожидании
+             (решение владельца), а для диктора подпись осталась в aria-label. -->
         <div v-else-if="!selectedChat" class="chat-restoring">
-          <q-spinner size="30px" color="primary" />
-          <span>Открываю чат…</span>
+          <BrandSpinner :size="56" label="Открываю чат" />
         </div>
 
         <template v-else>
@@ -285,7 +286,7 @@
               :record-mode-hint="recordModeHint"
               @send-text="sendText"
               @send-scheduled="scheduleSend"
-              @file-selected="onFileSelected"
+              @files-selected="onFilesSelected"
               @cancel-edit="cancelEditing"
               @clear-reply="clearReply"
               @voice-cancel="onVoiceCancel"
@@ -341,6 +342,18 @@
       </aside>
     </q-page-container>
   </q-layout>
+
+  <!-- Отправка вложения: превью, подпись и «Отправить» (как в Телеграме).
+       Подпись берётся из поля ввода, если текст уже набран. -->
+  <MediaSendDialog
+    v-if="pendingSend"
+    :files="pendingSend.files"
+    :caption="newMessage.trim()"
+    :view-once="pendingSend.viewOnce"
+    :reply-to="pendingSendReply"
+    @close="cancelSend"
+    @send="confirmSend"
+  />
 
   <!-- Пересылка сообщения (список чатов) -->
   <ForwardDialog
@@ -557,11 +570,8 @@
   <Teleport to="body">
     <div v-if="callLaunchScreen === 'ring' && callStore.status === 'idle'" class="call-launch-wait">
       <div class="clw-card">
-        <span class="clw-ring" aria-hidden="true"></span>
+        <BrandSpinner :size="104" label="Входящий звонок" />
         <p v-if="callLaunchPeerName" class="clw-peer">{{ callLaunchPeerName }}</p>
-        <p class="clw-text">
-          {{ callLaunchAnswering ? 'Отвечаем…' : 'Входящий звонок…' }}
-        </p>
         <div class="clw-actions">
           <button
             type="button"
@@ -570,7 +580,10 @@
             :disabled="callLaunchAnswering"
             @click="answerCallLaunch"
           >
-            <q-icon :name="icon('call')" size="26px" />
+            <!-- Ждём offer: вместо значка трубки крутится тот же кружок — видно,
+                 что нажатие принято, и никакой подписи рядом не нужно. -->
+            <BrandSpinner v-if="callLaunchAnswering" :size="26" label="Отвечаем" />
+            <q-icon v-else :name="icon('call')" size="26px" />
           </button>
           <button
             type="button"
@@ -720,6 +733,9 @@ import { channelUsernameFromPath } from '@/utils/channelLink'
 import { inviteTokenFromPath } from '@/utils/groupInvite'
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
+import { newAlbumId, planFileSend } from '@/utils/albums'
+import BrandSpinner from '@/components/common/BrandSpinner.vue'
+import { forgetLocalChat, indexLocalMessages } from '@/utils/localSearchIndex'
 import { effectiveFile, messageSnippet, optimizeImageFile } from '@/utils/media'
 import type { CallHistoryItem } from '@/utils/callHistory'
 import { fetchChannel, fetchPostsMeta, markPostViewed } from '@/services/channelService'
@@ -730,6 +746,7 @@ import { useStickersStore } from '@/stores/stickers'
 import { chatIdFromUrl, isReplyLaunch, readStoredSection, storeSection } from '@/utils/chatUrl'
 import { haptic } from '@/utils/haptics'
 import { usePeerActivity } from '@/composables/usePeerActivity'
+import { activityKindOfFile, peerActivityLabel, type PeerActivityKind } from '@/utils/peerActivity'
 import { useRealtimeSync } from '@/composables/useRealtimeSync'
 import { useRecordButton } from '@/composables/useRecordButton'
 import { useCallSession } from '@/composables/useCallSession'
@@ -816,6 +833,9 @@ const CallHistoryDialog = defineAsyncComponent(
 // на остальных — модалка внутри MessengerChatOverlays. Компоненты те же, поэтому
 // содержимое не расходится между панелью и диалогом.
 const ChatInfo = defineAsyncComponent(() => import('@/components/messenger/ChatInfo.vue'))
+const MediaSendDialog = defineAsyncComponent(
+  () => import('@/components/messenger/MediaSendDialog.vue')
+)
 const GroupChatInfo = defineAsyncComponent(() => import('@/components/messenger/GroupChatInfo.vue'))
 const ReactionUsersDialog = defineAsyncComponent(
   () => import('@/components/messenger/ReactionUsersDialog.vue')
@@ -1761,13 +1781,20 @@ const selectedChatE2ee = computed<boolean>(() => {
  * пробуем ещё раз, иначе переписка выглядела бы «замками» до перезапуска.
  */
 const applyDecryptMessages = async (chatId: number, list: Message[]): Promise<Message[]> => {
-  const need = list.filter((m) => m.encrypted && isEncryptedPayload(m.text))
-  if (need.length === 0) return list
   const chat = chats.value.find((c) => c.id === chatId) ?? selectedChat.value
+  const need = list.filter((m) => m.encrypted && isEncryptedPayload(m.text))
+  if (need.length === 0) {
+    indexForLocalSearch(chat, list)
+    return list
+  }
   let keys = await chatDecryptKeysOf(chat)
   const fallback = (m: Message): Message =>
     m.encrypted && isEncryptedPayload(m.text) ? { ...m, text: ENCRYPTED_FALLBACK } : m
-  if (keys.length === 0) return list.map(fallback)
+  if (keys.length === 0) {
+    const hidden = list.map(fallback)
+    indexForLocalSearch(chat, hidden)
+    return hidden
+  }
 
   let decoded = await decodeEncryptedList(list, keys)
   if (decoded.failed > 0 && chat !== null && !chat.is_group) {
@@ -1778,7 +1805,20 @@ const applyDecryptMessages = async (chatId: number, list: Message[]): Promise<Me
   // Заранее запускаем расшифровку вложений: к моменту отрисовки/лайтбокса
   // картинки уже готовы (и грузятся один раз на сообщение).
   preloadDecryptedMedia(decoded.out)
+  indexForLocalSearch(chat, decoded.out)
   return decoded.out
+}
+
+/**
+ * Запоминает расшифрованный текст для локального поиска.
+ *
+ * Только в ЗАШИФРОВАННОМ чате: в обычном ищет сервер, и второй индекс был бы
+ * копией того же самого. Шифротекст, заглушку «🔒 Сообщение» и системные строки
+ * отсеивает сам индекс (см. `utils/localSearchIndex.ts`).
+ */
+const indexForLocalSearch = (chat: Chat | null | undefined, list: Message[]): void => {
+  if (!chat?.e2ee_enabled) return
+  void indexLocalMessages(list)
 }
 
 /** Разбирает шифротекст списка ключами чата; `failed` — сколько не поддалось. */
@@ -1944,16 +1984,17 @@ const peerStatus = (chat: Chat): string => {
   return (other.status ?? '').trim()
 }
 
-// ---------- Присутствие + индикатор «печатает…» (состояние в composable) ----------
+// ---------- Присутствие + активность собеседника (состояние в composable) ----------
 const {
   peerPresence,
-  peerTypingUntil,
+  peerActivity,
   applyPresence,
   applyPresenceSnapshot,
   seedPresence,
+  peerActivityOf,
   isPeerTyping,
-  markPeerTyping,
-  clearPeerTyping,
+  markPeerActivity,
+  clearPeerActivity,
   clearAll
 } = usePeerActivity({
   isMe: (userId) => userId === currentUserId.value
@@ -1966,12 +2007,26 @@ const onlineUserIds = computed<number[]>(() =>
     .map(([userId]) => Number(userId))
 )
 
-/** id чатов, где собеседник сейчас «печатает…» (для списка диалогов). */
-const typingChatIds = computed<number[]>(() =>
-  Object.keys(peerTypingUntil)
-    .filter((chatId) => isPeerTyping(Number(chatId)))
-    .map((chatId) => Number(chatId))
-)
+/** Виды активности по чатам — для строки списка диалогов. */
+const chatActivities = computed<Record<number, PeerActivityKind>>(() => {
+  const map: Record<number, PeerActivityKind> = {}
+  for (const [chatId, state] of Object.entries(peerActivity)) {
+    map[Number(chatId)] = state.kind
+  }
+  return map
+})
+
+/**
+ * Имя человека для подписи активности: в группе без него непонятно, кто именно
+ * записывает голосовое.
+ */
+const activityName = (chat: Chat): string | null => {
+  const activity = peerActivityOf(chat.id)
+  if (!activity) return null
+  if (!isGroupChat(chat)) return null
+  const user = chat.users.find((item) => item.id === activity.userId)
+  return user ? displayName(user) : null
+}
 
 /** Подмешивает присутствие из свежего ответа /chats (без выдумывания «в сети»). */
 const syncPresenceFromChats = (list: Chat[]) => {
@@ -2013,8 +2068,19 @@ const presenceText = (chat: Chat): string => {
   return lastSeenLabel(other.last_seen, false) || 'был(а) давно'
 }
 
+/**
+ * Подпись под именем в шапке чата.
+ *
+ * Активность собеседника главнее присутствия: пока человек записывает голосовое
+ * или отправляет файл, «в сети» ничего не сообщает. Набор текста остаётся
+ * точками (это делает шапка по флагу `peerTyping`), остальные виды — словами.
+ */
 const chatSubtitle = (chat: Chat): string => {
-  if (isPeerTyping(chat.id)) return 'печатает…'
+  const activity = peerActivityOf(chat.id)
+  if (activity) {
+    if (activity.kind === 'text') return ''
+    return peerActivityLabel(activity.kind, activityName(chat))
+  }
   if (chat.is_channel) return channelSubtitle(chat)
   if (isGroupChat(chat)) return groupSubtitle(chat)
   return presenceText(chat)
@@ -2518,6 +2584,9 @@ const deliverText = async (chatId: number, text: string, replyTo: number | null)
     // Локально в ленте показываем открытый текст; шифротекст живёт на сервере.
     message.text = text
     message.encrypted = false
+    // И сразу запоминаем его для локального поиска: сервер этот текст не видит
+    // (см. utils/localSearchIndex.ts).
+    void indexLocalMessages([message])
   }
   await refreshThread()
   messages.value = appendMessage(messages.value, message)
@@ -2790,12 +2859,61 @@ const sendStickerImage = async (image: {
   }
 }
 
+// ---------- Окно отправки вложения (превью + подпись) ----------
+
+/**
+ * Файлы, выбранные для отправки, но ещё не отправленные.
+ *
+ * Пока они здесь, человек видит превью, может написать подпись (и поправить
+ * её) и только потом нажать «Отправить». Без этого окна подпись получалась
+ * лишь у того файла, который шёл первым, и только если текст был набран ДО
+ * выбора файла.
+ */
+const pendingSend = ref<{ files: File[]; viewOnce: boolean } | null>(null)
+
+/** Цитата для окна отправки: к какому сообщению уйдёт вложение. */
+const pendingSendReply = computed<{ name: string; text: string } | null>(() => {
+  const target = replyTarget.value
+  if (!target) return null
+  return { name: replyBarName.value, text: messageSnippet(target) }
+})
+
+/** Файлы выбраны: показать окно отправки (подпись пишется здесь же). */
+const openSendDialog = (files: File[], viewOnce = false) => {
+  if (files.length === 0) return
+  sendError.value = ''
+  pendingSend.value = { files, viewOnce }
+}
+
+/** «Отправить» в окне: подпись уже написана — отправляем пачку. */
+const confirmSend = (caption: string) => {
+  const pending = pendingSend.value
+  pendingSend.value = null
+  if (!pending) return
+  void sendFiles(pending.files, pending.viewOnce, caption)
+}
+
+/** Закрыть окно без отправки: файлы не уходят, текст в поле ввода остаётся. */
+const cancelSend = () => {
+  pendingSend.value = null
+}
+
 /**
  * Отправка одного файла: временный пузырь с прогрессом → сжатие фото → E2EE →
  * загрузка. На ошибке бросает исключение (почистив за собой временный пузырь) —
  * что показать пользователю, решает вызывающий: отправка одного файла или пачки.
+ *
+ * `options.albumId` — файл входит в альбом (см. utils/albums.ts).
+ * `options.caption === null` — подписи этому файлу не даём: она уже уехала с
+ * первым вложением пачки (и поле ввода чистить второй раз нельзя).
+ * `options.refresh === false` — не перечитывать список чатов и закреплённые:
+ * пачка из десяти фото не должна дёргать их десять раз.
  */
-const sendFileMessage = async (file: File, viewOnce = false) => {
+const sendFileMessage = async (
+  file: File,
+  viewOnce = false,
+  options: { albumId?: string; caption?: string | null; refresh?: boolean } = {}
+) => {
   const chatId = selectedChatId.value
   if (chatId === null) return
 
@@ -2807,10 +2925,15 @@ const sendFileMessage = async (file: File, viewOnce = false) => {
   void nextTick(scrollToBottom)
 
   sendingFile.value = true
+  // Что именно отправляем — видно по типу файла: фото, видео или документ.
+  const finishActivity = beginActivity(chatId, activityKindOfFile(file))
   try {
     // Фото с камеры/галереи сжимаем на клиенте — грузится быстрее.
     const optimized = isImage ? await optimizeImageFile(file) : file
-    const caption = newMessage.value.trim()
+    // Подпись: своя (у альбома её несёт первое вложение), из поля ввода — или
+    // никакая (продолжение альбома приходит с `caption: null`).
+    const ownCaption = options.caption !== null
+    const caption = ownCaption ? (options.caption ?? newMessage.value.trim()) : ''
     // «Зашифрованный» чат: и содержимое, и настоящее имя файла уезжают
     // только в шифрованном виде (на сервере остаётся блоб enc_*.bin).
     const aes = await chatKeyOf(selectedChat.value)
@@ -2829,55 +2952,102 @@ const sendFileMessage = async (file: File, viewOnce = false) => {
       !!payload,
       // Стикером это не отправляем, а «посмотреть один раз» — флаг сообщения.
       false,
-      viewOnce
+      viewOnce,
+      options.albumId ?? null
     )
     if (payload) applyLocalFileEnvelope(message, payload.meta)
     removePendingUpload(localId)
     if (previewUrl) URL.revokeObjectURL(previewUrl)
-    newMessage.value = ''
-    clearDraftFor(chatId)
-    clearReply()
-    sendTypingStop(chatId)
+    // Поле ввода и «ответ» относятся ко всей отправке, а не к каждому файлу:
+    // у альбома их забирает первое вложение.
+    if (ownCaption) {
+      newMessage.value = ''
+      clearDraftFor(chatId)
+      clearReply()
+    }
     messages.value = appendMessage(messages.value, message)
-    await Promise.all([loadPinned(chatId), loadChats()])
+    if (options.refresh !== false) await Promise.all([loadPinned(chatId), loadChats()])
     scrollToBottom()
   } catch (error) {
     removePendingUpload(localId)
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     throw error
   } finally {
+    finishActivity()
     sendingFile.value = false
   }
 }
 
 /**
  * Отправка файлов: кнопка «Прикрепить», вставка из буфера и перетаскивание в
- * окно. Файлы уходят по очереди, каждый — отдельным сообщением (альбомов в
- * модели сообщений нет). Подпись из поля ввода достаётся первому файлу: после
- * него поле очищается — ровно как при отправке одного файла.
+ * окно. Подряд идущие картинки уходят одним АЛЬБОМОМ — в ленте они рисуются
+ * сеткой (см. utils/albums.ts), остальные файлы — отдельными сообщениями.
+ * Подпись из поля ввода достаётся первому отправленному файлу: после него поле
+ * очищается — ровно как при отправке одного файла.
  */
-const sendFiles = async (files: File[], viewOnce = false) => {
+const sendFiles = async (files: File[], viewOnce = false, caption?: string) => {
   if (selectedChatId.value === null || files.length === 0) return
   sendError.value = ''
+  const chatId = selectedChatId.value
   const failures: string[] = []
-  for (const file of files) {
-    try {
-      await sendFileMessage(file, viewOnce)
-    } catch (error) {
-      // Один неудачный файл не отменяет остальные: копим причины и показываем
-      // итог после всей пачки.
-      failures.push(getErrorMessage(error, `Не удалось отправить «${file.name}»`))
+  // Подпись из окна отправки достаётся ПЕРВОМУ ушедшему файлу (у альбома —
+  // первой картинке пачки), остальным — ничего: так же ведёт себя Телеграм.
+  let captionLeft: string | null | undefined = caption
+
+  for (const item of planFileSend(files, !viewOnce)) {
+    if (item.kind === 'album') {
+      // Одна метка на всю пачку: по ней лента собирает сетку и понимает, что
+      // push на эту отправку нужен один, а не на каждый файл.
+      const albumId = newAlbumId()
+      for (let index = 0; index < item.files.length; index += 1) {
+        const file = item.files[index] as File
+        const partCaption = index === 0 ? captionLeft : null
+        try {
+          await sendFileMessage(file, false, {
+            albumId,
+            caption: partCaption,
+            refresh: false
+          })
+        } catch (error) {
+          // Один неудачный файл не отменяет остальные: копим причины и показываем
+          // итог после всей пачки.
+          failures.push(getErrorMessage(error, `Не удалось отправить «${file.name}»`))
+        }
+      }
+      captionLeft = null
+      continue
     }
+    try {
+      await sendFileMessage(item.file, viewOnce, { caption: captionLeft })
+    } catch (error) {
+      failures.push(getErrorMessage(error, `Не удалось отправить «${item.file.name}»`))
+    }
+    captionLeft = null
   }
+
+  // Список чатов и закреплённые перечитываем один раз на всю пачку — и только
+  // если человек всё ещё в том же чате.
+  if (selectedChatId.value === chatId) {
+    await Promise.all([loadPinned(chatId), loadChats()])
+    scrollToBottom()
+  }
+
   if (failures.length === 1) sendError.value = failures[0]
   else if (failures.length > 1) {
     sendError.value = `Не удалось отправить ${failures.length} из ${files.length} файлов`
   }
 }
 
-/** Кнопка «Прикрепить» и вставка картинки из буфера — всегда один файл. */
-const onFileSelected = (file: File, viewOnce = false) => {
-  void sendFiles([file], viewOnce)
+/**
+ * Файлы выбраны (кнопка «Прикрепить», вставка из буфера, перетаскивание):
+ * открываем ОКНО ОТПРАВКИ, а не шлём сразу.
+ *
+ * Раньше подпись уходила в файл только если текст был набран ДО выбора файла —
+ * то есть обычный порядок «прикрепил, потом написал комментарий» не работал
+ * (владелец: «отсылать фото с комментарием, как в Телеграме»).
+ */
+const onFilesSelected = (files: File[], viewOnce = false) => {
+  openSendDialog(files, viewOnce)
 }
 
 /**
@@ -2890,7 +3060,7 @@ const handleDroppedFiles = (files: File[]) => {
     Notify.create({ message: 'Откройте чат, чтобы отправить файл', timeout: 3000 })
     return
   }
-  void sendFiles(files)
+  openSendDialog(files)
 }
 
 /* Файл можно бросить в любое место окна — слушатели живут в composable. */
@@ -2926,7 +3096,7 @@ const {
   loadPinned,
   refreshChats: loadChats,
   clearReply: () => clearReply(),
-  stopTyping: (chatId) => sendTypingStop(chatId),
+  beginActivity,
   scrollToBottom,
   nextTick: (callback) => void nextTick(callback),
   setSendingFile: (value) => {
@@ -3231,6 +3401,8 @@ const handleVisibilityForPresence = () => {
 const removeDeletedChat = (chat: Chat) => {
   chats.value = chats.value.filter((item) => item.id !== chat.id)
   clearDraftFor(chat.id)
+  // Переписки больше нет — её текст не должен находиться локальным поиском.
+  void forgetLocalChat(chat.id)
   if (pinnedChatIds.value.includes(chat.id)) toggleChatPinned(chat.id)
   // Чата больше нет — в архиве ему делать нечего (иначе останется мусорный id).
   if (archivedChatIds.value.includes(chat.id)) toggleChatArchived(chat.id)
@@ -3559,10 +3731,16 @@ const onGifSent = () => {
   // Задача поставлена в очередь (202): сообщение пока не создано — не добавляем
   // в ленту «пустышку». Воркер скачает GIF и создаст сообщение; здесь лишь
   // закрываем панель, сбрасываем ответ/печать и коротко ждём появления GIF.
+  // Если текст был подписью к гифке (его взял `GifPicker` из поля ввода), поле
+  // очищаем — ровно как при отправке файла с подписью.
   extrasPanel.value = 'none'
   clearReply()
   const chatId = selectedChatId.value
   if (chatId === null) return
+  if (newMessage.value.trim()) {
+    newMessage.value = ''
+    clearDraftFor(chatId)
+  }
   sendTypingStop(chatId)
 
   const beforeMaxId = messages.value.reduce((max, m) => Math.max(max, m.id), 0)
@@ -3770,8 +3948,8 @@ const { start: startRealtime, stop: stopRealtime } = useRealtimeSync({
   onPresence: applyPresence,
   onPresenceSnapshot: applyPresenceSnapshot,
   onChatReadElsewhere,
-  onTyping: markPeerTyping,
-  onTypingStop: clearPeerTyping,
+  onTyping: markPeerActivity,
+  onTypingStop: clearPeerActivity,
   onChatsSync: refreshChatsQuiet,
   onThreadSync: refreshOpenThreadQuiet,
   onMessageNew: handleIncomingMessage,
@@ -3779,12 +3957,45 @@ const { start: startRealtime, stop: stopRealtime } = useRealtimeSync({
   onStoryReaction: handleStoryReaction
 })
 
-// ---------- Отправка индикатора «печатает…» ----------
-const TYPING_SEND_INTERVAL_MS = 3000
+// ---------- Отправка активности собеседнику ----------
+// Одно событие на все виды: «печатает…», «записывает голосовое…», «отправляет
+// фото…». Вид живёт в поле `kind` (см. utils/peerActivity.ts).
+//
+// Объявления — подъёмные (function), потому что эти функции передаются опциями в
+// composable'ы выше по файлу: `const` там попал бы в «использование до
+// объявления».
+const ACTIVITY_SEND_INTERVAL_MS = 3000
 let lastTypingSentAt = 0
 
-const sendTypingStop = (chatId: number) => {
+/** Сообщить собеседнику вид занятия (с троттлингом: сокет не дёргаем зря). */
+function sendActivity(chatId: number, kind: PeerActivityKind, force = false): void {
+  const now = Date.now()
+  if (!force && now - lastTypingSentAt < ACTIVITY_SEND_INTERVAL_MS) return
+  lastTypingSentAt = now
+  realtimeStore.send({ type: 'typing', chat_id: chatId, kind })
+}
+
+/** Погасить подпись: человек перестал печатать/записывать/отправлять. */
+function sendTypingStop(chatId: number): void {
   realtimeStore.send({ type: 'typing-stop', chat_id: chatId })
+}
+
+/**
+ * Показывает собеседнику, что идёт занятие, и гасит подпись в конце.
+ *
+ * Одно событие живёт недолго (см. `PEER_ACTIVITY_TTL_MS`), а запись голосового
+ * или загрузка большого файла длятся дольше — поэтому повторяем, пока занятие не
+ * закончилось. Возвращает функцию «закончили».
+ */
+function beginActivity(chatId: number, kind: PeerActivityKind): () => void {
+  sendActivity(chatId, kind, true)
+  const timer = window.setInterval(() => {
+    sendActivity(chatId, kind, true)
+  }, ACTIVITY_SEND_INTERVAL_MS)
+  return () => {
+    window.clearInterval(timer)
+    sendTypingStop(chatId)
+  }
 }
 
 // Пока пользователь набирает текст — с троттлингом сообщаем собеседнику.
@@ -3793,11 +4004,7 @@ watch(newMessage, (value) => {
   if (!value.trim() || chatId === null) return
   // Программная установка (восстановление черновика/правка) не шлёт «печатает…».
   if (isProgrammaticComposerEdit()) return
-  const now = Date.now()
-  if (now - lastTypingSentAt >= TYPING_SEND_INTERVAL_MS) {
-    lastTypingSentAt = now
-    realtimeStore.send({ type: 'typing', chat_id: chatId })
-  }
+  sendActivity(chatId, 'text')
 })
 
 // ---------- Навигация ----------
@@ -4683,9 +4890,6 @@ watch(
   flex: 1;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  color: var(--q-primary);
-  opacity: 0.85;
 }
 
 .chat-panel {
@@ -4852,7 +5056,7 @@ watch(
   color: var(--ms-accent, #2ea25e);
 }
 
-/* Экран «Входящий звонок…» при запуске из push-уведомления о звонке */
+/* Экран ожидания звонка (запуск из push-уведомления о звонке) */
 .call-launch-wait {
   position: fixed;
   inset: 0;
@@ -4868,28 +5072,9 @@ watch(
   flex-direction: column;
   align-items: center;
   gap: 18px;
-}
-
-.clw-ring {
-  width: 84px;
-  height: 84px;
-  border-radius: 50%;
-  border: 4px solid var(--ms-call-ring);
-  border-top-color: var(--ms-accent, #2ea25e);
-  animation: clw-spin 1.1s linear infinite;
-}
-
-@keyframes clw-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.clw-text {
-  margin: 0;
-  color: var(--ms-call-fg);
-  font-size: 18px;
-  font-weight: 600;
+  /* Кружок ждёт здесь в палитре звонка: фон звонка тёмный, акцентная подложка
+     на нём невидима. */
+  --brand-spinner-track: var(--ms-call-ring);
 }
 
 .clw-peer {
@@ -4949,6 +5134,15 @@ watch(
   background: var(--ms-call-danger);
   filter: brightness(0.9);
   transform: scale(1.06);
+}
+
+/* Подпись осталась только у экрана «Вызов завершён»: у ожидающего звонка текста
+   рядом с кружком нет — ожидание показывает сам кружок. */
+.clw-text {
+  margin: 0;
+  color: var(--ms-call-fg);
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .call-launch-missed .clw-text {
