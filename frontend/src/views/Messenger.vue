@@ -630,8 +630,6 @@ import {
 } from '@/utils/outbox'
 import { getErrorMessage, isChatGoneError, isNetworkError } from '@/services/errors'
 import { watchServiceWorkerUpdate } from '@/services/swUpdate'
-import { blockUser, fetchBlockState, unblockUser } from '@/services/moderation'
-import type { BlockState } from '@/services/moderation'
 import {
   fetchMessages,
   fetchMyChats,
@@ -685,6 +683,7 @@ import {
   releaseDecryptedMedia,
   releaseDecryptedMediaExcept
 } from '@/composables/useDecryptedMedia'
+import { usePeerBlocking } from '@/composables/usePeerBlocking'
 import type {
   Chat,
   ChatUser,
@@ -4648,126 +4647,29 @@ const openReportForMessage = (message: Message) => {
 // звонки» (переписка и чат остаются). Состояние читаем с сервера: без этого
 // подписи в меню («Заблокировать»/«Разблокировать», «Не принимать звонки» /
 // «Принимать звонки») врали бы после перезагрузки страницы.
-const peerBlockState = ref<BlockState>({ blocked: false, messagesAllowed: false })
-const peerFullyBlocked = computed(
-  () => peerBlockState.value.blocked && !peerBlockState.value.messagesAllowed
-)
-const peerCallsBlocked = computed(
-  () => peerBlockState.value.blocked && peerBlockState.value.messagesAllowed
-)
-
-const refreshPeerBlockState = async () => {
-  const chat = selectedChat.value
-  const peer = chat && !chat.is_group ? chatPeer(chat, currentUserId.value) : null
-  if (!peer) {
-    peerBlockState.value = { blocked: false, messagesAllowed: false }
-    return
-  }
-  try {
-    peerBlockState.value = await fetchBlockState(peer.id)
-  } catch {
-    // Не удалось узнать — считаем, что блокировки нет: меню покажет действия,
-    // а права всё равно проверяет сервер.
-    peerBlockState.value = { blocked: false, messagesAllowed: false }
-  }
-}
-
-// Следим И за id открытого чата, И за появлением самого чата в списке: при
-// открытии по ссылке (`?chat=40`) сначала есть только id, а чатов ещё нет — с
-// одним лишь id состояние не подгрузится, и меню покажет «Не принимать звонки»
-// там, где звонки уже запрещены.
-watch(
-  () => [selectedChatId.value, selectedChat.value?.id ?? null],
-  () => void refreshPeerBlockState(),
-  { immediate: true }
-)
-
-/** Блокировка пользователя: диалог скрывается, переписка не доставляется. */
-const blockPeer = async (userId: number) => {
-  if (userId === currentUserId.value) return
-  try {
-    await blockUser(userId)
-    const chat = selectedChat.value
-    if (chat) {
-      chats.value = chats.value.filter((item) => item.id !== chat.id)
-      selectedChatId.value = null
-      syncChatUrl(null)
-      messages.value = []
-    }
-    await refreshChatsQuiet()
-  } catch (error) {
-    Notify.create({
-      message: getErrorMessage(error, 'Не удалось заблокировать пользователя'),
-      color: 'negative',
-      timeout: 4000
-    })
-  }
-}
-
-/** Блокировка собеседника открытого чата (событие из шапки).
- *
- * Если человек уже заблокирован полностью — этот же пункт снимает блокировку
- * (подпись в меню меняется на «Разблокировать»).
- */
-const blockSelectedPeer = async () => {
-  const chat = selectedChat.value
-  const peer = chat ? chatPeer(chat, currentUserId.value) : null
-  if (!peer) return
-  if (peerFullyBlocked.value) {
-    await unblockPeer(peer.id)
-    return
-  }
-  await blockPeer(peer.id)
-}
-
-/**
- * «Не принимать звонки» / «Принимать звонки» (мягкая блокировка).
- *
- * Частый случай: человек не хочет звонков от знакомого, но переписка нужна.
- * Полная блокировка тут слишком грубая — она вычёркивает и переписку.
- */
-const toggleSelectedPeerCalls = async () => {
-  const chat = selectedChat.value
-  const peer = chat ? chatPeer(chat, currentUserId.value) : null
-  if (!peer) return
-  const userId = peer.id
-  try {
-    if (peerCallsBlocked.value) {
-      // Уже запрещено — возвращаем звонки (мягкую блокировку снимаем целиком).
-      await unblockUser(userId)
-      peerBlockState.value = { blocked: false, messagesAllowed: false }
-    } else {
-      const state = await blockUser(userId, { messagesAllowed: true })
-      peerBlockState.value = state
-    }
-  } catch (error) {
-    Notify.create({
-      message: getErrorMessage(error, 'Не удалось изменить запрет звонков'),
-      color: 'negative',
-      timeout: 4000
-    })
-  }
-}
-
-/** Снятие блокировки (полной или мягкой). */
-const unblockPeer = async (userId: number) => {
-  try {
-    await unblockUser(userId)
-    peerBlockState.value = { blocked: false, messagesAllowed: false }
-    await refreshChatsQuiet()
-  } catch (error) {
-    Notify.create({
-      message: getErrorMessage(error, 'Не удалось снять блокировку'),
-      color: 'negative',
-      timeout: 4000
-    })
-  }
-}
-
-/** Блокировка снята — диалог снова становится видимым. */
-const onBlockedUsersChanged = () => {
-  void refreshChatsQuiet()
-}
+//
+// Вся тема живёт в `usePeerBlocking` — мессенджер только связывает её с шапкой
+// чата и списком диалогов. Зависимости отдаём геттерами: `chatPeer`-состояние и
+// список чатов меняются, а `refreshChatsQuiet` объявлен выше, но вызывается
+// позже — так у composable нет доступа к реактивности мессенджера напрямую.
+const {
+  peerFullyBlocked,
+  peerCallsBlocked,
+  blockSelectedPeer,
+  toggleSelectedPeerCalls,
+  onBlockedUsersChanged
+} = usePeerBlocking({
+  selectedChat: () => selectedChat.value,
+  selectedChatId: () => selectedChatId.value,
+  currentUserId: () => currentUserId.value,
+  dropChat: (chatId: number) => {
+    chats.value = chats.value.filter((item) => item.id !== chatId)
+    selectedChatId.value = null
+    syncChatUrl(null)
+    messages.value = []
+  },
+  refreshChats: () => refreshChatsQuiet()
+})
 
 /**
  * Кто сменил ключ шифрования — имя для предупреждения (ищем в чатах и контактах).

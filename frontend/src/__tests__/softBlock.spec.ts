@@ -47,27 +47,40 @@ describe('сервис модерации', () => {
   })
 })
 
-describe('Messenger', () => {
+describe('блокировка собеседника (composable)', () => {
+  // Логика вынесена из `Messenger.vue` в `usePeerBlocking`: тема одна (кто
+  // заблокирован и что показывать в меню), а мессенджер отдаёт ей открытый чат и
+  // действия над списком диалогов. Проверяем владельца логики и связку в шапке.
+  const blocking = source('composables/usePeerBlocking.ts')
   const view = source('views/Messenger.vue')
 
   it('знает состояние блокировки открытого чата, а не только факт нажатия', () => {
-    expect(view).toContain('const peerBlockState = ref<BlockState>')
-    expect(view).toContain('const peerFullyBlocked = computed(')
-    expect(view).toContain('const peerCallsBlocked = computed(')
-    expect(view).toContain('await fetchBlockState(peer.id)')
+    expect(blocking).toContain('const peerBlockState = ref<BlockState>')
+    expect(blocking).toContain('const peerFullyBlocked = computed(')
+    expect(blocking).toContain('const peerCallsBlocked = computed(')
+    expect(blocking).toContain('await fetchBlockState(peer.id)')
   })
 
   it('мягкая блокировка не закрывает чат: переписка остаётся', () => {
     // В toggleSelectedPeerCalls нет выкидывания чата из списка и очистки ленты —
-    // это делает только полная блокировка (blockPeer).
-    const start = view.indexOf('const toggleSelectedPeerCalls')
-    const body = view.slice(start, start + 1400)
+    // это делает только полная блокировка (blockPeer через dropChat).
+    const start = blocking.indexOf('const toggleSelectedPeerCalls')
+    const body = blocking.slice(start, start + 1400)
     expect(body).not.toContain('chats.value = chats.value.filter')
-    expect(body).not.toContain('messages.value = []')
+    expect(body).not.toContain('dropChat(')
   })
 
   it('повторное нажатие «Заблокировать» при полной блокировке снимает её', () => {
-    expect(view).toContain('if (peerFullyBlocked.value) {')
+    expect(blocking).toContain('if (peerFullyBlocked.value) {')
+  })
+
+  it('мессенджер отдаёт composable открытый чат и действия над списком', () => {
+    expect(view).toContain('usePeerBlocking({')
+    expect(view).toContain('dropChat: (chatId: number) => {')
+    expect(view).toContain('refreshChats: () => refreshChatsQuiet()')
+    // Шапка чата берёт состояние из composable, а не считает его сама.
+    expect(view).toContain(':blocked="peerFullyBlocked"')
+    expect(view).toContain(':calls-blocked="peerCallsBlocked"')
   })
 })
 
