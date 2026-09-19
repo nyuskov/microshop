@@ -142,6 +142,18 @@ describe('связки в интерфейсе', () => {
     expect(row).toContain('.msg-bubble.sticker-only')
   })
 
+  it('у пузыря картинки-стикера нет предела ширины в процентах', () => {
+    // Ширина строки со вложением считается по содержимому, то есть по самому
+    // пузырю: `max-width: min(70%, 320px)` разрешалось в его же ширину, пузырь
+    // сжимался до 115px при картинке 160px и обрезал её справа на 47px
+    // (проверено на живом приложении 20.09.2026). У эмодзи-стикера (текст
+    // переносится) процент безобиден, у картинки — нет.
+    const block = row.slice(row.indexOf('.msg-bubble.sticker-image'))
+    const rule = block.slice(block.indexOf('{'), block.indexOf('}'))
+    expect(rule).toContain('max-width: 320px')
+    expect(rule).not.toContain('%')
+  })
+
   it('стикером не становится сообщение с вложением, ответом или пересылкой', () => {
     const computed = row.slice(row.indexOf('const stickerLayout'))
     expect(computed).toContain('message.file')
