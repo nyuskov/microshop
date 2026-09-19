@@ -270,43 +270,6 @@
               :count="section.images.length || section.emojis.length"
               :force="index <= forcedSectionsUpTo"
             >
-              <!-- Как в Телеграме: у набора есть «⋯», а в меню — «Добавить весь
-                   набор». То же меню открывается удержанием стикера. -->
-              <template #action>
-                <template v-if="staticSetKeyOf(section) || section.presetPackId">
-                  <span v-if="importingSetKey === staticSetKeyOf(section)" class="set-progress">
-                    {{ addButtonLabel(section) }}
-                  </span>
-                  <span v-else-if="isSetAdded(section)" class="set-done">Добавлен</span>
-                  <button
-                    v-else
-                    type="button"
-                    class="section-more"
-                    aria-haspopup="menu"
-                    :aria-expanded="setMenuKey === section.key"
-                    :aria-label="`Действия с набором «${section.title}»`"
-                    @click="toggleSetMenu(section.key)"
-                  >
-                    <q-icon :name="icon('more_horiz')" size="18px" />
-                  </button>
-
-                  <div v-if="setMenuKey === section.key" class="set-menu" role="menu">
-                    <button
-                      type="button"
-                      class="set-menu-item"
-                      role="menuitem"
-                      @click="addSetFromPanel(section)"
-                    >
-                      <q-icon :name="icon('add')" size="16px" />
-                      <span>Добавить весь набор</span>
-                    </button>
-                    <p class="set-menu-hint">
-                      Стикеры появятся в «Мои стикеры»: их можно переименовать, переставить и
-                      удалить.
-                    </p>
-                  </div>
-                </template>
-              </template>
               <div v-if="section.images.length" class="extras-grid stickers-grid">
                 <button
                   v-for="image in section.images"
@@ -314,12 +277,7 @@
                   class="sticker-option sticker-image"
                   :title="`Отправить: ${image.alt}`"
                   :aria-label="`Отправить стикер ${image.alt}`"
-                  @pointerdown="startStickerHold(section)"
-                  @pointerup="cancelStickerHold"
-                  @pointerleave="cancelStickerHold"
-                  @pointercancel="cancelStickerHold"
-                  @contextmenu.prevent="setMenuKey = section.key"
-                  @click="onStickerTap(image)"
+                  @click="tapImage(image)"
                 >
                   <img :src="image.url" alt="" loading="lazy" />
                 </button>
@@ -339,17 +297,22 @@
               <p v-else class="emoji-hint">
                 {{ section.emptyHint ?? 'Здесь пока пусто.' }}
               </p>
-              <!-- Широкая кнопка ПОД набором — как «ДОБАВИТЬ СТИКЕРЫ» в Телеграме:
-                   искать «⋯» не нужно, действие видно сразу. -->
+              <!-- Одна кнопка набора под сеткой — как «ДОБАВИТЬ СТИКЕРЫ» в
+                   Телеграме: и действие, и его ход видно сразу, искать «⋯» и
+                   удерживать стикер не нужно. -->
               <button
-                v-if="showAddButton(section)"
+                v-if="setAddStateOf(section)"
                 type="button"
                 class="set-add-wide"
-                :disabled="importingSetKey !== null"
+                :class="`state-${setAddStateOf(section)}`"
+                :disabled="setAddStateOf(section) !== 'add' || importingSetKey !== null"
                 @click="addSetFromPanel(section)"
               >
-                <q-icon :name="icon('add')" size="16px" />
-                <span>{{ addButtonLabel(section) }}</span>
+                <q-icon
+                  :name="icon(setAddStateOf(section) === 'added' ? 'check' : 'add')"
+                  size="16px"
+                />
+                <span>{{ setAddLabelOf(section) }}</span>
               </button>
             </PanelSection>
             <p v-if="!panelSections.length" class="emoji-hint">Загружаем…</p>
@@ -575,64 +538,6 @@ const {
   run: runSetImport
 } = useStandardSetImport()
 
-/** Открытое меню набора (ключ секции) — «⋯» у набора, как в Телеграме. */
-const setMenuKey = ref<string | null>(null)
-
-const toggleSetMenu = (sectionKey: string): void => {
-  setMenuKey.value = setMenuKey.value === sectionKey ? null : sectionKey
-}
-
-const closeSetMenu = (): void => {
-  setMenuKey.value = null
-}
-
-/** Клик мимо меню закрывает его — как у выпадающих меню в шапке чата. */
-const onDocumentPointerDown = (event: Event): void => {
-  const target = event.target as HTMLElement | null
-  if (target?.closest?.('.set-menu, .section-more')) return
-  closeSetMenu()
-}
-
-watch(setMenuKey, (open) => {
-  if (open) document.addEventListener('pointerdown', onDocumentPointerDown, true)
-  else document.removeEventListener('pointerdown', onDocumentPointerDown, true)
-})
-
-onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocumentPointerDown, true))
-
-/**
- * Долгое нажатие (или правый клик) по стикеру встроенного набора открывает то же
- * меню: в Телеграме набор добавляют именно так — удержав стикер.
- */
-const STICKER_HOLD_MS = 480
-let holdTimer: number | null = null
-let holdFired = false
-
-const startStickerHold = (section: PanelSectionItem): void => {
-  if (!hasSetOf(section) || isSetAdded(section)) return
-  holdFired = false
-  holdTimer = window.setTimeout(() => {
-    holdFired = true
-    setMenuKey.value = section.key
-  }, STICKER_HOLD_MS)
-}
-
-const cancelStickerHold = (): void => {
-  if (holdTimer !== null) {
-    window.clearTimeout(holdTimer)
-    holdTimer = null
-  }
-}
-
-/** Тап по стикеру: если это было удержание — открылось меню, а не отправка. */
-const onStickerTap = (image: PanelImage): void => {
-  if (holdFired) {
-    holdFired = false
-    return
-  }
-  tapImage(image)
-}
-
 /** Ключ ВСТРОЕННОГО набора у секции (null — секция не про встроенный набор). */
 const staticSetKeyOf = (section: PanelSectionItem): string | null =>
   standardSetOf(section.key)?.key ?? null
@@ -657,30 +562,58 @@ const isSetAdded = (section: PanelSectionItem): boolean => {
   return key !== null && stickersStore.isStandardSetImported(key)
 }
 
-/** Широкая кнопка под набором: набор есть и ещё не добавлен. */
-const showAddButton = (section: PanelSectionItem): boolean =>
-  hasSetOf(section) && !isSetAdded(section)
+/** Серверный набор копируется: кнопка показывает «Добавляем…» и не нажимается. */
+const presetBusyPackId = ref<number | null>(null)
 
-/** Подпись кнопки: у встроенного набора виден прогресс импорта. */
-const addButtonLabel = (section: PanelSectionItem): string => {
+/** Состояние кнопки набора: добавить / идёт добавление / уже добавлен. */
+type SetAddState = 'add' | 'busy' | 'added'
+
+/**
+ * Что показывает кнопка набора (null — у секции набора нет: «Недавние», свои
+ * паки, эмодзи; добавлять там нечего).
+ *
+ * Путь к действию ОДИН: кнопка под сеткой. Ни меню «⋯» у заголовка, ни удержания
+ * стикера нет — два-три входа в одно и то же заставляли гадать, какой из них
+ * «настоящий», а прогресс добавления приходилось показывать в двух местах.
+ */
+const setAddStateOf = (section: PanelSectionItem): SetAddState | null => {
+  if (!hasSetOf(section)) return null
+  if (isSetAdded(section)) return 'added'
+  if (section.presetPackId !== undefined) {
+    return presetBusyPackId.value === section.presetPackId ? 'busy' : 'add'
+  }
+  return importingSetKey.value === staticSetKeyOf(section) ? 'busy' : 'add'
+}
+
+/** Подпись кнопки: у добавления виден счётчик, у ожидания лимита — секунды. */
+const setAddLabelOf = (section: PanelSectionItem): string => {
+  const state = setAddStateOf(section)
+  if (state === 'added') return 'Добавлен'
   const set = standardSetOf(section.key)
-  return set ? setImportLabel(set) : 'Добавить весь набор'
+  // `setImportLabel` отдаёт прогресс, пока набор добавляется (там же ожидание
+  // лимита загрузок), поэтому его берём только для хода добавления.
+  if (state === 'busy') return set ? setImportLabel(set) : 'Добавляем…'
+  return 'Добавить весь набор'
 }
 
 /**
  * «Добавить весь набор» из панели.
  *
  * Серверный набор копируется ОДНИМ запросом (файлы переиспользуются), встроенный
- * — импортом по картинкам. Меню «⋯» закрываем, ошибку отдаём наружу: родитель
- * покажет её плашкой.
+ * — импортом по картинкам. Ошибку отдаём наружу: родитель покажет её плашкой.
  */
 const addSetFromPanel = (section: PanelSectionItem): void => {
-  closeSetMenu()
   const presetPackId = section.presetPackId
   if (presetPackId !== undefined) {
-    void stickersStore.addPreset(presetPackId).catch((cause: unknown) => {
-      emit('sticker-error', cause instanceof Error ? cause.message : 'Не удалось добавить набор')
-    })
+    presetBusyPackId.value = presetPackId
+    void stickersStore
+      .addPreset(presetPackId)
+      .catch((cause: unknown) => {
+        emit('sticker-error', cause instanceof Error ? cause.message : 'Не удалось добавить набор')
+      })
+      .finally(() => {
+        presetBusyPackId.value = null
+      })
     return
   }
   const set = standardSetOf(section.key)
@@ -1833,96 +1766,10 @@ watch(newMessage, () => {
   justify-content: center;
 }
 
-/* «⋯» у встроенного набора: открывает меню «Добавить весь набор» — как меню
-   набора в Телеграме. Наследуем шрифт панели, но не оформление заголовка
-   (он прописными и с разрядкой). */
-.section-more {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: var(--ms-radius-xs);
-  background: transparent;
-  color: var(--ms-muted-2);
-  letter-spacing: 0;
-  text-transform: none;
-  cursor: pointer;
-}
-
-.section-more:hover {
-  background: var(--ms-hover);
-  color: var(--ms-text);
-}
-
-/* «Добавлен» и прогресс импорта стоят там же, где была кнопка. */
-.set-done,
-.set-progress {
-  font-size: var(--ms-fs-xs);
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.set-done {
-  color: var(--ms-accent);
-}
-
-.set-progress {
-  color: var(--ms-muted-2);
-}
-
-/* Меню набора: прижимается к правому краю заголовка секции (`.panel-section` —
-   позиционированный предок, см. `PanelSection.vue`). */
-.set-menu {
-  position: absolute;
-  top: 24px;
-  right: 8px;
-  z-index: 40;
-  min-width: 210px;
-  padding: 6px;
-  border: 1px solid var(--ms-border);
-  border-radius: var(--ms-radius-lg);
-  background: var(--ms-surface);
-  box-shadow: var(--ms-shadow-pop);
-}
-
-.set-menu-item {
-  display: flex;
-  align-items: center;
-  gap: var(--ms-space-2);
-  width: 100%;
-  padding: 9px 10px;
-  border: none;
-  border-radius: var(--ms-radius-sm);
-  background: transparent;
-  color: var(--ms-text-strong);
-  font: inherit;
-  font-size: var(--ms-fs-base);
-  /* Заголовок секции — прописными и с разрядкой; меню внутри него обычный текст. */
-  letter-spacing: 0;
-  text-transform: none;
-  text-align: left;
-  cursor: pointer;
-}
-
-.set-menu-item:hover {
-  background: var(--ms-hover);
-}
-
-.set-menu-hint {
-  margin: 4px 10px 6px;
-  font-size: var(--ms-fs-xs);
-  line-height: 1.4;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--ms-muted-2);
-}
-
-/* Широкая кнопка «Добавить весь набор» под сеткой стикеров: то же действие, что
-   в меню «⋯», но его видно без поисков (в Телеграме это «ДОБАВИТЬ СТИКЕРЫ»). */
+/* Кнопка набора под сеткой стикеров — как «ДОБАВИТЬ СТИКЕРЫ» в Телеграме.
+   Оформлена как элементы этой же панели (активная вкладка, значок ленты):
+   акцентная подложка, акцентная рамка, скругление панели. Она одна: и действие,
+   и его ход видно сразу (см. `setAddStateOf`). */
 .set-add-wide {
   display: flex;
   align-items: center;
@@ -1932,24 +1779,32 @@ watch(newMessage, () => {
   margin-top: var(--ms-space-2);
   padding: 8px 10px;
   border: 1px solid var(--ms-accent-border);
-  border-radius: var(--ms-radius-md);
+  border-radius: var(--ms-radius-sm);
   background: var(--ms-accent-soft);
   color: var(--ms-accent);
   font: inherit;
   font-size: var(--ms-fs-sm);
   font-weight: 600;
   cursor: pointer;
+  transition: border-color var(--ms-dur-fast) var(--ms-ease);
 }
 
 .set-add-wide:hover:not(:disabled) {
-  background: var(--ms-hover);
+  border-color: var(--ms-accent);
 }
 
+/* Идёт добавление: кнопка не нажимается, но остаётся акцентной — серых
+   «выключенных» плашек в панели нет, подпись сама говорит, что происходит. */
 .set-add-wide:disabled {
-  border-color: var(--ms-border);
-  background: var(--ms-surface-2);
-  color: var(--ms-muted-2);
   cursor: default;
+}
+
+/* Набор уже добавлен: акцентная рамка без заливки — это готовое состояние, а не
+   ошибка. */
+.set-add-wide.state-added:disabled {
+  border-color: var(--ms-accent-border);
+  background: transparent;
+  color: var(--ms-accent);
 }
 
 .sticker-option:hover {

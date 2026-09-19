@@ -3,11 +3,6 @@
     <h3 class="panel-section-title">
       <span class="panel-section-name">{{ title }}</span>
       <span v-if="(count ?? 0) > 0" class="panel-section-count">{{ count }}</span>
-      <!-- Действие секции (например «Добавить набор» у встроенного набора
-           стикеров): прижато к правому краю заголовка. -->
-      <span class="panel-section-action">
-        <slot name="action" />
-      </span>
     </h3>
     <!-- Содержимое рисуем только когда секция дошла до экрана: в каталоге
          эмодзи ~1900 символов, и держать их все в разметке сразу — заметная
@@ -72,11 +67,5 @@ const { visible } = useVisibleOnce(root)
   font-weight: 400;
   text-transform: none;
   color: var(--ms-muted-3);
-}
-
-.panel-section-action {
-  display: inline-flex;
-  align-items: center;
-  margin-left: auto;
 }
 </style>
