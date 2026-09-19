@@ -621,14 +621,6 @@ import {
 import { Notify, useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
-import {
-  addOutboxItem,
-  nextOutboxLocalId,
-  patchOutboxItem,
-  readOutbox,
-  removeOutboxItem,
-  type OutboxItem
-} from '@/utils/outbox'
 import { getErrorMessage, isChatGoneError, isNetworkError } from '@/services/errors'
 import { watchServiceWorkerUpdate } from '@/services/swUpdate'
 import {
@@ -683,6 +675,7 @@ import {
 } from '@/composables/useDecryptedMedia'
 import { useMessageReminders } from '@/composables/useMessageReminders'
 import { useMessageSelection } from '@/composables/useMessageSelection'
+import { useOutbox } from '@/composables/useOutbox'
 import { usePeerBlocking } from '@/composables/usePeerBlocking'
 import { useStandardSetImport } from '@/composables/useStandardSetImport'
 import { presetSetOfFileName, presetStickerFileName } from '@/utils/presetStickers'
@@ -3051,44 +3044,13 @@ const copyMessage = async (message: Message) => {
   }
 }
 
-// ---------- Очередь сообщений, которые не ушли из-за сети ----------
-/** Сообщения текущего пользователя, ждущие связи (или уже отвергнутые сервером). */
-const outboxItems = ref<OutboxItem[]>([])
-/** Id, которые прямо сейчас отправляются (в ленте показываем «Отправка…»). */
-const outboxSending = ref<string[]>([])
-let outboxTimer: ReturnType<typeof setInterval> | undefined
-
-const reloadOutbox = () => {
-  outboxItems.value = readOutbox(currentUserId.value)
-}
-
-// В ленте показываем только сообщения открытого чата: у остальных чатов своё.
-const openChatOutboxRows = computed<PendingRow[]>(() => {
-  const chatId = selectedChatId.value
-  if (chatId === null) return []
-  return outboxItems.value
-    .filter((item) => item.chatId === chatId)
-    .map((item) => ({
-      localId: item.localId,
-      label: item.text,
-      status: outboxSending.value.includes(item.id)
-        ? 'sending'
-        : item.state === 'error'
-          ? 'failed'
-          : 'queued',
-      error: item.error ?? null
-    }))
-})
-
-/** Строки под лентой: загружаемые вложения + очередь сообщений. */
-const threadPendingRows = computed<PendingRow[]>(() => [
-  ...pendingUploads.value.map((item) => ({ ...item, status: 'sending' as const })),
-  ...openChatOutboxRows.value
-])
-
 /**
  * Собрать текст для отправки: в «зашифрованном» чате шифруем в момент отправки
- * (в очереди текст лежит открытым — ключи могут появиться позже).
+ * (в очереди и в черновике текст лежит открытым — ключи могут появиться позже).
+ *
+ * Нужен очереди (`useOutbox`) и черновикам (`useDrafts`) — отправка обычного
+ * сообщения шифрует у себя в `deliverText`: там к шифрованию прицеплено ещё и
+ * состояние «собеседник готов к E2EE».
  */
 const buildWireText = async (
   chatId: number,
@@ -3105,86 +3067,40 @@ const buildWireText = async (
   return { wireText, encrypted }
 }
 
-/** Поставить сообщение в очередь (связь пропала во время отправки). */
-const queueOutgoingText = (chatId: number, text: string, replyToId?: number | null) => {
-  const uid = currentUserId.value
-  const item: OutboxItem = {
-    id: `out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    localId: nextOutboxLocalId(outboxItems.value),
-    chatId,
-    text,
-    replyToId: replyToId ?? null,
-    createdAt: new Date().toISOString(),
-    state: 'queued'
-  }
-  addOutboxItem(uid, item)
-  reloadOutbox()
-}
+// ---------- Очередь сообщений, которые не ушли из-за сети ----------
+//
+// Очередь, автоотправка при возврате связи и ручной повтор живут в
+// `composables/useOutbox.ts` — здесь строки очереди для ленты и обновление
+// открытого чата после доставки.
 
-/**
- * Отправить всё, что накопилось без сети.
- *
- * `onlyId` — повтор одного конкретного сообщения (кнопка «Повторить»).
- */
-const flushOutbox = async (onlyId?: string) => {
-  const uid = currentUserId.value
-  if (uid === null) return
-  const items = outboxItems.value.filter((item) => !onlyId || item.id === onlyId)
-  for (const item of items) {
-    if (!onlyId && !online.value) return
-    outboxSending.value = [...outboxSending.value, item.id]
-    try {
-      const { wireText, encrypted } = await buildWireText(item.chatId, item.text)
-      const message = await sendNewMessage(item.chatId, wireText, item.replyToId, encrypted)
-      if (encrypted) {
-        message.text = item.text
-        message.encrypted = false
-      }
-      removeOutboxItem(uid, item.id)
-      reloadOutbox()
-      if (selectedChatId.value === item.chatId) {
-        messages.value = appendMessage(messages.value, message)
-        void loadPinned(item.chatId)
-        void nextTick(scrollToBottom)
-      }
-      await loadChats()
-    } catch (error) {
-      if (isNetworkError(error)) {
-        // Сеть снова пропала — оставляем в очереди и выйдем из цикла: остальные
-        // сообщения тоже не уйдут.
-        patchOutboxItem(uid, item.id, { state: 'queued', error: undefined })
-        reloadOutbox()
-        return
-      }
-      patchOutboxItem(uid, item.id, {
-        state: 'error',
-        error: getErrorMessage(error, 'Не удалось отправить')
-      })
-      reloadOutbox()
-    } finally {
-      outboxSending.value = outboxSending.value.filter((id) => id !== item.id)
-    }
-  }
-}
+const {
+  openChatOutboxRows,
+  queueOutgoingText,
+  flushOutbox,
+  retryOutboxItem,
+  dropOutboxItem,
+  startOutboxTimer
+} = useOutbox({
+  // Геттеры, а не значения: объявлены ниже по `<script setup>` (`online` — в самом
+  // конце, у realtime-связи), а читаются они по действию человека и по таймеру.
+  currentUserId: () => currentUserId.value,
+  selectedChatId: () => selectedChatId.value,
+  isOnline: () => online.value,
+  buildWireText: (chatId, text) => buildWireText(chatId, text),
+  // Доставленное показываем сразу в открытом чате: лента, закреплённые, вниз.
+  onDelivered: (message, chatId) => {
+    messages.value = appendMessage(messages.value, message)
+    void loadPinned(chatId)
+    void nextTick(scrollToBottom)
+  },
+  reloadChats: () => loadChats()
+})
 
-/** Повтор одного сообщения из очереди (кнопка в ленте). */
-const retryOutboxItem = (localId: number) => {
-  const item = outboxItems.value.find((entry) => entry.localId === localId)
-  if (item) void flushOutbox(item.id)
-}
-
-/** Убрать неотправленное сообщение из очереди. */
-const dropOutboxItem = (localId: number) => {
-  const item = outboxItems.value.find((entry) => entry.localId === localId)
-  if (!item) return
-  removeOutboxItem(currentUserId.value, item.id)
-  reloadOutbox()
-}
-
-// ---------- Автоотправка очереди, когда связь вернулась ----------
-/** Раз в 20 секунд пробуем дослать то, что застряло (если браузер думает, что сеть есть). */
-const OUTBOX_RETRY_MS = 20_000
-
+/** Строки под лентой: загружаемые вложения + очередь сообщений. */
+const threadPendingRows = computed<PendingRow[]>(() => [
+  ...pendingUploads.value.map((item) => ({ ...item, status: 'sending' as const })),
+  ...openChatOutboxRows.value
+])
 // ---------- Догрузка, когда связь вернулась ----------
 /**
  * Связь вернулась: досылаем застрявшее и добираем то, что пропустили за время
@@ -3204,23 +3120,6 @@ const onConnectionRestored = async () => {
     setConnectionSyncing(false)
   }
 }
-
-const startOutboxTimer = () => {
-  if (outboxTimer !== undefined) return
-  outboxTimer = window.setInterval(() => {
-    if (outboxItems.value.length === 0) return
-    void flushOutbox()
-  }, OUTBOX_RETRY_MS)
-}
-
-watch(
-  currentUserId,
-  (uid) => {
-    reloadOutbox()
-    if (uid !== null && outboxItems.value.length > 0) void flushOutbox()
-  },
-  { immediate: true }
-)
 
 // ---------- Мультивыделение сообщений (long-press; как в чатах) ----------
 //
@@ -4663,10 +4562,6 @@ onBeforeUnmount(() => {
   window.removeEventListener(ONLINE_RESTORED_EVENT, onConnectionRestored)
   unsubscribePeerKey?.()
   unsubscribePeerKey = null
-  if (outboxTimer !== undefined) {
-    window.clearInterval(outboxTimer)
-    outboxTimer = undefined
-  }
   disposeNativePush()
   stopRealtime()
   realtimeStore.setHandler(null)

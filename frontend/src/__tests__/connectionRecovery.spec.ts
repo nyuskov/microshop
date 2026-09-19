@@ -66,9 +66,11 @@ describe('догрузка после возврата связи', () => {
   })
 
   it('очередь «Ждёт сети» опирается на проверенную связь', () => {
+    // Очередь живёт в composable (сюда приезжает только строка для ленты).
+    const outbox = source('src/composables/useOutbox.ts')
     // `navigator.onLine` врёт: интерфейс есть — интернета нет.
     expect(messenger).not.toContain('navigator.onLine')
-    expect(messenger).toContain('if (!onlyId && !online.value) return')
+    expect(outbox).toContain('if (!onlyId && !deps.isOnline()) return')
   })
 
   it('запросы к API сами сообщают о потере и восстановлении связи', () => {
