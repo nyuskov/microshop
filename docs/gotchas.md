@@ -68,3 +68,21 @@
   `function`, а не `const`.** `Messenger.vue` — один огромный `<script setup>`:
   `useMediaRecording({ beginActivity })` стоит ВЫШЕ объявления, и `const` даёт
   «использование до объявления» (страница падает при загрузке).
+- **Тест задачи воркера должен подменять `make_engine`/`make_session` из
+  `tasks/base.py`, а не `db_helper`.** Воркер создаёт СВОЙ движок из настроек
+  (`settings.db_url`), у фикстуры API подменена только зависимость запросов
+  (`app.dependency_overrides`), поэтому такая задача в тесте уходит в БД из
+  настроек. Локально это совпадает с тестовой БД случайно — `make test-backend`
+  задаёт ещё и `DATABASE_URL`, — а в CI падает на пароле
+  (`InvalidPasswordError`) и выглядит как поломка кода. Образец:
+  `tests/test_gif_caption.py` (тест воркера) и `tests/test_message_reminders.py`.
+  Проверка «как в CI»: `TEST_DATABASE_URL=… pytest`, но БЕЗ `DATABASE_URL`.
+- **Бюджет веса бандла — шаг CI, и он падает от любого нового импорта.**
+  `check-bundle-size.mjs` сравнивает gzip каждого чанка с
+  `scripts/bundle-size-baseline.json` (допуск +3% и не больше 2 КБ): новый модуль
+  в основном чанке сразу даёт превышение. Чтобы не растить главный чанк, тяжёлое
+  выносим в ленивые чанки (`dynamic import`), например конвейер эффектов видео
+  (`stores/call/videoPipeline.ts`) и мелкие настройки отдельным модулем
+  (`utils/videoEffectSettings.ts`). Рост по делу — `--update-baseline`, и это
+  стоит отметить в `docs/changelog.md`. С 20.09.2026 и сборка, и эта проверка
+  входят в `make check-frontend` (до этого были только в CI).

@@ -12,6 +12,7 @@ import inspect
 import os
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from tasks import media_tasks
 from tests.test_messenger_api import _ApiCtx  # noqa: E402
@@ -128,12 +129,27 @@ async def test_worker_stores_caption_as_message_text(
 
     monkeypatch.setattr(media_tasks, "publish_realtime_new_message", no_notify)
 
-    await media_tasks._download_gif_message_async(
-        chat_id=chat_id,
-        user_id=user.id,
-        url=GIF_URL,
-        caption="подпись к гифке",
-    )
+    # Воркер создаёт СВОЙ движок из настроек (`tasks/base.make_engine`), а не
+    # берёт общий `db_helper`: в бою это правильно (у задачи свой цикл событий), но
+    # в тесте означает, что подмена зависимости запросов из фикстуры API его не
+    # покрывает. Без этих двух строк задача уходит в рабочую БД из настроек:
+    # локально это совпадает случайно (в `make test-backend` задан и
+    # `DATABASE_URL`), а в CI падает на пароле (`InvalidPasswordError`), выглядя
+    # как поломка кода.
+    engine = create_async_engine(os.environ["TEST_DATABASE_URL"])
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(media_tasks, "make_engine", lambda: engine)
+    monkeypatch.setattr(media_tasks, "make_session", lambda _engine: factory())
+
+    try:
+        await media_tasks._download_gif_message_async(
+            chat_id=chat_id,
+            user_id=user.id,
+            url=GIF_URL,
+            caption="подпись к гифке",
+        )
+    finally:
+        await engine.dispose()
 
     response = await api.client.get(
         f"/api/v1/messages/{chat_id}/", headers=api.auth(token)

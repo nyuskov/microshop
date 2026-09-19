@@ -29,8 +29,9 @@ import {
   DEFAULT_MASK_LAYOUT,
   DEFAULT_VIDEO_EFFECT,
   clampMaskLayout,
+  isVideoEffectsSupported,
   type MaskLayout
-} from '@/utils/videoEffects'
+} from '@/utils/videoEffectSettings'
 import { getErrorMessage } from '@/services/errors'
 
 import {
@@ -48,7 +49,6 @@ import {
   type QualityStep
 } from './call/quality'
 import { screenShareNotice, screenShareSupport } from './call/screenShare'
-import { startVideoEffects, videoEffectsSupported } from './call/videoPipeline'
 import {
   ANSWER_RETRY_MAX_ATTEMPTS,
   ANSWER_RETRY_MS,
@@ -2507,12 +2507,15 @@ export const useCallStore = defineStore('call', {
     async _outgoingCameraTrack(raw: MediaStreamTrack): Promise<MediaStreamTrack> {
       runtime.rawCameraTrack = raw
       if (!this._effectsWanted()) return raw
-      if (!videoEffectsSupported()) {
+      if (!isVideoEffectsSupported()) {
         this.videoEffectsUnavailable =
           'Браузер не умеет обрабатывать видео на лету — эффекты недоступны'
         return raw
       }
       try {
+        // Модуль обработки грузим ПО ТРЕБОВАНИЮ: он тянет за собой таблицы масок
+        // и рисование, которые нужны только когда эффект действительно включили.
+        const { startVideoEffects } = await import('./call/videoPipeline')
         if (runtime.videoEffects) {
           // Уже работает: меняем только источник кадров (например, сменили камеру).
           runtime.videoEffects.setSource(raw)

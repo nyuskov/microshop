@@ -37,6 +37,13 @@ check-frontend:
 	cd $(FE) && node scripts/check-style-duplicates.mjs
 	cd $(FE) && node scripts/check-geometry.mjs
 	cd $(FE) && $(NODE_BIN)/vitest run
+	@# Сборка и бюджет веса: это тоже шаги CI. Без них проверка проходила, а сборка
+	@# падала на «бюджет размера бандла превышен» — новый импорт незаметно
+	@# прибавляет килобайты, а локально это нигде не видно. Собираем во временный
+	@# каталог: `dist` в репозитории не нужен, а у разработчика он может быть занят
+	@# (например, файлами от root после сборки в Docker).
+	cd $(FE) && $(NODE_BIN)/vite build --outDir /tmp/pismo-fe-check --emptyOutDir >/dev/null
+	cd $(FE) && node scripts/check-bundle-size.mjs --dist /tmp/pismo-fe-check
 
 test-backend:
 	@docker ps --format '{{.Names}}' | grep -qx pismo-test-db || \

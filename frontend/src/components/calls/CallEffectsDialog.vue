@@ -6,10 +6,9 @@ import { useCallStore } from '@/stores/call'
 import {
   MASK_SCALE_MAX,
   MASK_SCALE_MIN,
-  VIDEO_EFFECTS,
-  VIDEO_MASKS,
   isVideoEffectsSupported
-} from '@/utils/videoEffects'
+} from '@/utils/videoEffectSettings'
+import { VIDEO_EFFECTS, VIDEO_MASKS } from '@/utils/videoEffects'
 
 /**
  * Окно «Эффекты видео»: цвет кадра и маска-наклейка (кошачьи ушки, очки…).

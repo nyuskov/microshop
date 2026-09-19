@@ -10,7 +10,32 @@
  *
  * Модуль без DOM: рисует по переданному 2D-контексту, поэтому геометрию масок и
  * положение под пальцем можно проверять тестами, а не глазами.
+ *
+ * Мелкие настройки (id «без эффекта», пределы размера маски, проверка поддержки)
+ * лежат в `videoEffectSettings.ts` — их берёт ещё и стор звонка, которому
+ * тяжёлые таблицы масок в основном чанке не нужны. Здесь они реэкспортируются,
+ * чтобы импорт оставался один.
  */
+
+import {
+  DEFAULT_MASK_LAYOUT,
+  DEFAULT_VIDEO_EFFECT,
+  MASK_SCALE_MAX,
+  MASK_SCALE_MIN,
+  clampMaskLayout,
+  isVideoEffectsSupported,
+  type MaskLayout
+} from '@/utils/videoEffectSettings'
+
+export {
+  DEFAULT_MASK_LAYOUT,
+  DEFAULT_VIDEO_EFFECT,
+  MASK_SCALE_MAX,
+  MASK_SCALE_MIN,
+  clampMaskLayout,
+  isVideoEffectsSupported
+}
+export type { MaskLayout }
 
 /** Что можно сделать с кадром. */
 export interface VideoEffectPreset {
@@ -38,9 +63,6 @@ export const VIDEO_EFFECTS: VideoEffectPreset[] = [
   },
   { id: 'soft', title: 'Мягкая кожа', filter: 'brightness(1.05) saturate(1.04)', soft: true }
 ]
-
-/** Эффект по умолчанию — никакой. */
-export const DEFAULT_VIDEO_EFFECT = 'none'
 
 export const videoEffectById = (id: string): VideoEffectPreset =>
   VIDEO_EFFECTS.find((item) => item.id === id) ?? VIDEO_EFFECTS[0]
@@ -180,29 +202,7 @@ export const VIDEO_MASKS: MaskPreset[] = [
 export const maskById = (id: string | null): MaskPreset | null =>
   id === null ? null : (VIDEO_MASKS.find((item) => item.id === id) ?? null)
 
-/** Где стоит маска: центр — в долях кадра, размер — в долях ширины кадра. */
-export interface MaskLayout {
-  x: number
-  y: number
-  scale: number
-}
-
-/** По умолчанию маска «на голове» — чуть выше центра кадра. */
-export const DEFAULT_MASK_LAYOUT: MaskLayout = { x: 0.5, y: 0.3, scale: 0.45 }
-
-/** Пределы размера: совсем мелкую маску не найти, огромная закрывает лицо. */
-export const MASK_SCALE_MIN = 0.18
-export const MASK_SCALE_MAX = 1.1
-
-const clamp = (value: number, min: number, max: number): number =>
-  Math.min(max, Math.max(min, value))
-
-/** Приводит положение маски к допустимому (человек может утянуть её за край). */
-export const clampMaskLayout = (layout: MaskLayout): MaskLayout => ({
-  x: clamp(layout.x, -0.1, 1.1),
-  y: clamp(layout.y, -0.1, 1.1),
-  scale: clamp(layout.scale, MASK_SCALE_MIN, MASK_SCALE_MAX)
-})
+/** Где стоит маска — тип и пределы в `videoEffectSettings.ts` (реэкспорт выше). */
 
 /** Прямоугольник маски в пикселях кадра (квадрат со стороной от ширины кадра). */
 export const maskBoxFor = (
@@ -248,19 +248,6 @@ export const framePointFromPointer = (input: {
   const x = (input.clientX - rect.left - offsetX) / drawnWidth
   const y = (input.clientY - rect.top - offsetY) / drawnHeight
   return { x: mirrored ? 1 - x : x, y }
-}
-
-/** Есть ли в браузере всё нужное для эффектов (иначе кнопку не показываем). */
-export const isVideoEffectsSupported = (canvas?: {
-  captureStream?: unknown
-  mozCaptureStream?: unknown
-}): boolean => {
-  const element: { captureStream?: unknown; mozCaptureStream?: unknown } | undefined =
-    canvas ?? (typeof document === 'undefined' ? undefined : document.createElement('canvas'))
-  if (!element) return false
-  return (
-    typeof element.captureStream === 'function' || typeof element.mozCaptureStream === 'function'
-  )
 }
 
 // ---------- Рисование ----------
