@@ -34,6 +34,14 @@ interface NativeBridge {
   readShareChunk?: (offset: number, length: number) => string
   /** Освободить содержимое в нативной части. */
   clearShare?: () => void
+  /**
+   * Расшифровка голосовых силами устройства (см. services/nativeSpeech.ts):
+   * в WebView Web Speech нет, поэтому запись отдаётся системному распознавателю.
+   */
+  speechSupported?: () => boolean
+  speechBegin?: (id: string, language: string) => boolean
+  speechChunk?: (base64: string, last: boolean) => void
+  speechCancel?: () => void
 }
 
 declare global {

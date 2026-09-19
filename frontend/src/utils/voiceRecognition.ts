@@ -40,6 +40,13 @@
 
 import { computed, reactive, ref } from 'vue'
 
+import {
+  cancelNativeRecognition,
+  nativeSpeechSupported,
+  recognizeWithNative
+} from '@/services/nativeSpeech'
+import { loadAudioBuffer } from '@/utils/audioPcm'
+
 /** Состояние расшифровки одного голосового. */
 export type VoiceTranscriptStatus = 'running' | 'ready' | 'failed'
 
@@ -80,14 +87,19 @@ const recognitionCtor = (): SpeechRecognitionCtor | null => {
 }
 
 /**
- * Умеет ли браузер распознавать ФАЙЛ (а не только микрофон).
+ * Можно ли расшифровать запись на этом устройстве.
  *
- * Проверяем и наличие API, и аудио-граф (`AudioContext` +
- * `createMediaStreamDestination`): без него трек из файла не получить. Точную
- * поддержку `start(track)` заранее не спросить, поэтому считаем доступным и в
- * случае отказа — тогда человек увидит понятную ошибку, а не пустую кнопку.
+ * Путей два, и оба честно проверяются:
+ *  * в Android-обёртке распознаёт САМО устройство (Web Speech в WebView нет) —
+ *    см. `services/nativeSpeech.ts`;
+ *  * в браузере — Web Speech API, но только если он умеет распознавать ФАЙЛ: нужен
+ *    и `SpeechRecognition`, и аудио-граф (`AudioContext` +
+ *    `createMediaStreamDestination`), иначе трек из записи не получить.
+ * Точную поддержку `start(track)` заранее не спросить, поэтому считаем доступным
+ * и в случае отказа — тогда человек увидит понятную ошибку, а не пустую кнопку.
  */
 export const speechRecognitionSupported = (): boolean => {
+  if (nativeSpeechSupported()) return true
   if (recognitionCtor() === null) return false
   if (typeof AudioContext === 'undefined') return false
   return 'createMediaStreamDestination' in AudioContext.prototype
@@ -210,38 +222,26 @@ const CHUNK_FLUSH_MS = 1500
 const CHUNK_LIMIT_MS = (CHUNK_SECONDS + 12) * 1000
 
 /**
- * Готовит звук: декодирует файл и усиливает тихую запись.
+ * Приводит ошибку нативного слоя к тексту для человека.
  *
- * Нормализация по пику: если запись тихая (пик 0.1 от шкалы), распознаватель
- * «не слышит» слова — домножаем до 0.5, но не больше ×8, чтобы не поднять шум
- * вместе с речью.
+ * Нативная часть присылает либо КОД (как у браузера: `no-speech`, `network`,
+ * `not-allowed`, `aborted`), либо готовую фразу («Запись слишком длинная для
+ * расшифровки»). Коды переводим знакомыми словами, фразы оставляем как есть.
  */
-async function decodeAudio(ctx: AudioContext, src: string): Promise<AudioBuffer> {
-  const response = await fetch(src)
-  if (!response.ok) throw new Error(`Не удалось загрузить голосовое (${response.status})`)
-  const data = await response.arrayBuffer()
-  const buffer = await ctx.decodeAudioData(data)
-  let peak = 0
-  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
-    const samples = buffer.getChannelData(channel)
-    // Пик ищем по каждому 20-му сэмплу: для оценки уровня этого достаточно, а
-    // перебор десятков миллионов значений заметно тормозил бы интерфейс.
-    for (let index = 0; index < samples.length; index += 20) {
-      const value = Math.abs(samples[index])
-      if (value > peak) peak = value
-    }
+const nativeErrorText = (error?: string): string => {
+  const value = (error ?? '').trim()
+  if (!value || value === 'other') return 'Не удалось распознать голосовое'
+  if (value === 'aborted') return errorMessage('aborted', false)
+  if (value === 'network' || value === 'not-allowed' || value === 'service-not-allowed') {
+    return errorMessage(value, false)
   }
-  if (peak > 0 && peak < 0.5) {
-    const gainValue = Math.min(8, 0.5 / peak)
-    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
-      const samples = buffer.getChannelData(channel)
-      for (let index = 0; index < samples.length; index += 1) {
-        samples[index] = Math.max(-1, Math.min(1, samples[index] * gainValue))
-      }
-    }
+  if (value === 'no-speech') {
+    // Системный распознаватель читал запись: «не разобрал», а не «не слышал».
+    return errorMessage('no-speech', true)
   }
-  return buffer
+  return value
 }
+
 /** Ошибка распознавания → понятный текст (коды у браузеров общие). */
 const errorMessage = (code: string, heard: boolean): string => {
   if (code === 'network') return 'Браузер не смог обратиться к своему сервису распознавания'
@@ -462,13 +462,13 @@ async function recognizeChunk(
  * Расшифровывает голосовое сообщение.
  *
  * Текст никуда не отправляется: результат кладётся в память вкладки и
- * показывается под сообщением. Запись идёт кусками по `CHUNK_SECONDS` — так
- * точнее (см. `recognizeChunk`), а в интерфейсе текст появляется по мере
- * готовности кусков.
+ * показывается под сообщением. Путь выбирается по возможностям устройства: в
+ * Android-обёртке распознаёт САМО устройство (в WebView Web Speech нет), в
+ * браузере — Web Speech API кусками по `CHUNK_SECONDS` (так точнее, см.
+ * `recognizeChunk`), и текст виден по мере готовности кусков.
  */
 export const recognizeVoice = async (messageId: number, src: string): Promise<void> => {
-  const Ctor = recognitionCtor()
-  if (Ctor === null || !speechRecognitionSupported()) {
+  if (!speechRecognitionSupported()) {
     transcripts[messageId] = {
       status: 'failed',
       text: '',
@@ -480,21 +480,21 @@ export const recognizeVoice = async (messageId: number, src: string): Promise<vo
   stopRecognition(messageId)
   transcripts[messageId] = { status: 'running', text: '' }
 
+  const finish = transcriptFinisher(messageId)
+
+  if (nativeSpeechSupported()) {
+    await recognizeVoiceNatively(messageId, src, finish)
+    return
+  }
+
+  const Ctor = recognitionCtor()
+  if (Ctor === null) return
+
   const run: RunState = { cancelled: false, cancelChunk: null }
   running.set(messageId, () => {
     run.cancelled = true
     run.cancelChunk?.()
   })
-
-  let finished = false
-  const finish = (state: VoiceTranscript) => {
-    if (finished) return
-    finished = true
-    running.delete(messageId)
-    // Уже скрытая расшифровка не должна появиться заново (человек нажал
-    // «Скрыть», пока распознавание шло).
-    if (transcripts[messageId]) transcripts[messageId] = state
-  }
 
   const ctx = new AudioContext()
   try {
@@ -503,7 +503,7 @@ export const recognizeVoice = async (messageId: number, src: string): Promise<vo
     // пользователя — Chrome оставляет такой контекст в состоянии `suspended`,
     // граф не рендерится, и распознаватель получает ТИШИНУ.
     if (ctx.state === 'suspended') await ctx.resume()
-    const buffer = await decodeAudio(ctx, src)
+    const buffer = await loadAudioBuffer(ctx, src)
 
     const parts: string[] = []
     let heardAny = false
@@ -548,5 +548,57 @@ export const recognizeVoice = async (messageId: number, src: string): Promise<vo
     })
   } finally {
     void ctx.close()
+  }
+}
+
+/**
+ * Общий «завершитель» расшифровки: закрывает прогон ровно один раз и не даёт
+ * вернуть уже скрытый текст (человек мог нажать «Скрыть», пока шло распознавание).
+ */
+function transcriptFinisher(messageId: number): (state: VoiceTranscript) => void {
+  let finished = false
+  return (state: VoiceTranscript) => {
+    if (finished) return
+    finished = true
+    running.delete(messageId)
+    if (transcripts[messageId]) transcripts[messageId] = state
+  }
+}
+
+/**
+ * Расшифровка силами устройства (Android-обёртка): звук уходит в системный
+ * распознаватель файлом, результат приходит событием `pismo:speech`.
+ *
+ * Кнопка отмены регистрируется так же, как в браузерном пути, — поэтому уход из
+ * чата останавливает и это распознавание.
+ */
+async function recognizeVoiceNatively(
+  messageId: number,
+  src: string,
+  finish: (state: VoiceTranscript) => void
+): Promise<void> {
+  running.set(messageId, () => cancelNativeRecognition(messageId))
+  try {
+    const result = await recognizeWithNative(messageId, src, effectiveLanguage(), (partial) => {
+      const text = partial.trim()
+      if (text) transcripts[messageId] = { status: 'running', text }
+    })
+    if (result.status === 'ready' && result.text.trim()) {
+      finish({ status: 'ready', text: result.text.trim() })
+      return
+    }
+    finish({
+      status: 'failed',
+      text: '',
+      error: nativeErrorText(result.error)
+    })
+  } catch (thrown) {
+    finish({
+      status: 'failed',
+      text: '',
+      error: thrown instanceof Error ? thrown.message : 'Не удалось распознать голосовое'
+    })
+  } finally {
+    running.delete(messageId)
   }
 }

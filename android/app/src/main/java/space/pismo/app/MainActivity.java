@@ -75,6 +75,8 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> filePathCallback;
     private PermissionRequest pendingWebPermission;
     private JSONObject pendingOpenTarget;
+    /** Расшифровка голосовых распознавателем устройства (создаётся по надобности). */
+    private SpeechFileRecognizer speechRecognizer;
 
     /**
      * Замок для цели перехода: страница может забрать её сама из JS-потока
@@ -152,6 +154,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         WebBridge.detach();
+        if (speechRecognizer != null) {
+            speechRecognizer.cancel();
+        }
         if (webView != null) {
             webView.destroy();
             webView = null;
@@ -822,5 +827,51 @@ public class MainActivity extends Activity {
             JSONObject target = takePendingOpenTarget();
             return target == null ? "" : target.toString();
         }
+
+        // ----------------------------------------- расшифровка голосовых (F4)
+
+        /**
+         * Умеет ли устройство распознавать ЗАПИСЬ (Android 13+ и есть сервис
+         * распознавания). Страница по этому ответу показывает кнопку «В текст».
+         */
+        @JavascriptInterface
+        public boolean speechSupported() {
+            return speech().isSupported();
+        }
+
+        /**
+         * Начало расшифровки: готовимся принять звук одного голосового.
+         *
+         * @param id       идентификатор сообщения (вернётся в событии)
+         * @param language язык распознавания (`ru-RU` и т.п.)
+         */
+        @JavascriptInterface
+        public boolean speechBegin(String id, String language) {
+            return speech().begin(id, language);
+        }
+
+        /**
+         * Кусок звука: PCM 16 бит, моно, 16 кГц, в base64. Последний кусок
+         * (`last`) запускает распознавание; результат придёт событием
+         * {@code pismo:speech}.
+         */
+        @JavascriptInterface
+        public void speechChunk(String base64, boolean last) {
+            speech().chunk(base64, last);
+        }
+
+        /** Отмена расшифровки (человек закрыл текст, ушёл из чата). */
+        @JavascriptInterface
+        public void speechCancel() {
+            speech().cancel();
+        }
+    }
+
+    /** Распознаватель записей: один на активность, создаётся при первой нужде. */
+    private SpeechFileRecognizer speech() {
+        if (speechRecognizer == null) {
+            speechRecognizer = new SpeechFileRecognizer(this);
+        }
+        return speechRecognizer;
     }
 }
