@@ -507,6 +507,9 @@ describe('кнопка «В текст» в голосовом', () => {
     const round = readFileSync('src/components/media/RoundVideoMessage.vue', 'utf8')
     expect(round).toContain('<TranscribeButton :message-id="messageId" :src="src" />')
     expect(round).toContain('<TranscriptionBlock :message-id="messageId" :src="src" />')
+    // Кнопка прижата к правому краю — владелец: «у видео-кружка она должна быть
+    // справа, как у голосового».
+    expect(round).toContain('justify-content: flex-end')
     // Кружок получает id сообщения от вложения, иначе расшифровка не запомнится.
     expect(attachmentSource).toContain(':message-id="message.id"')
   })

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 
@@ -49,5 +50,26 @@ describe('RoundVideoMessage: недоступная запись', () => {
     expect(wrapper.find('.rvm-pip').exists()).toBe(false)
     expect(wrapper.find('.rvm-expand').exists()).toBe(false)
     expect(wrapper.find('.rvm-center').exists()).toBe(false)
+  })
+})
+
+describe('зеркало в видеосообщении', () => {
+  const recorder = readFileSync('src/components/media/VideoRecorderModal.vue', 'utf8')
+
+  it('зеркалит только предпросмотр, а в файл идёт поток как есть', () => {
+    // Владелец: «кружок записываешь — смотришь одно, сохраняется зеркальным».
+    // Так и должно быть: зеркальный вид при съёмке себя привычнее (как в зеркале),
+    // но в записи он был бы неверным — надписи в кадре читались бы наоборот.
+    expect(recorder).toContain(':class="{ mirrored: phase !== \'preview\' }"')
+    expect(recorder).toContain('transform: scaleX(-1)')
+    // Файл — прямо из MediaRecorder, без переворота через canvas.
+    expect(recorder).toContain('blob = new Blob(chunks')
+    expect(recorder).not.toContain('drawImage')
+    expect(recorder).not.toContain("getContext('2d')")
+  })
+
+  it('человеку объяснено, почему предпросмотр зеркальный', () => {
+    expect(recorder).toContain('Предпросмотр зеркальный — в записи будет как есть')
+    expect(recorder).toContain('Так увидит собеседник')
   })
 })

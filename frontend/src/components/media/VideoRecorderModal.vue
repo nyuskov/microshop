@@ -36,6 +36,20 @@
           <div v-else-if="phase === 'live' && !error" class="vrm-hint">
             Нажмите «Запись», чтобы начать
           </div>
+          <!-- Зеркальный предпросмотр — так удобнее снимать себя, но в записи
+               будет НЕ зеркально (иначе надписи в кадре читались бы наоборот).
+               Без этой строки человек думает, что видео «сохранилось
+               зеркальным»: он сравнивает запись со своим зеркальным видом. -->
+          <div v-if="phase !== 'preview' && !error" class="vrm-mirror-note">
+            {{
+              phase === 'recording'
+                ? 'В записи будет как есть, без зеркала'
+                : 'Предпросмотр зеркальный — в записи будет как есть'
+            }}
+          </div>
+          <div v-else-if="phase === 'preview' && !error" class="vrm-mirror-note">
+            Так увидит собеседник
+          </div>
         </div>
 
         <div class="vrm-actions">
@@ -175,6 +189,10 @@ const start = async () => {
 
 const finalize = () => {
   if (!recorder) return
+  // Грабли, из-за которых кажется, что «видео сохранилось зеркальным»:
+  // зеркалит ТОЛЬКО предпросмотр (`scaleX(-1)` в стилях), а в файл идёт поток
+  // камеры как есть — иначе надписи в кадре получились бы наоборот. Никакого
+  // переворачивания через canvas здесь быть не должно.
   blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' })
   clearTimers()
   stopMediaStream(mediaStream)
@@ -333,7 +351,6 @@ void openCamera()
 .vrm-video.mirrored {
   transform: scaleX(-1);
 }
-
 .vrm-rec-badge {
   position: absolute;
   top: 12px;
@@ -378,6 +395,21 @@ void openCamera()
   padding: 6px 12px;
   border-radius: 20px;
   font-size: 12.5px;
+  white-space: nowrap;
+}
+
+/* Пояснение про зеркало: та же «плашка поверх видео», что и подсказка, только
+   сверху — внизу уже стоит подсказка и метка записи. */
+.vrm-mirror-note {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: var(--ms-fs-xs);
   white-space: nowrap;
 }
 

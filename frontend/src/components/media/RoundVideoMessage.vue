@@ -220,10 +220,13 @@ const closePreview = () => {
 }
 
 /* Кнопка расшифровки под кругом: у кружка нет строки с названием, поэтому кнопка
-   стоит отдельно и не мешает нажатию на само видео. */
+   стоит отдельно и не мешает нажатию на само видео. По правому краю — как у
+   голосового, где она стоит в конце строки с названием и скоростью. */
 .rvm-transcribe {
+  align-self: stretch;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   font-size: var(--ms-fs-xs);
 }
 .round-video-msg {
