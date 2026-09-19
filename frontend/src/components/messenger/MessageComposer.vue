@@ -270,23 +270,52 @@
               :count="section.images.length || section.emojis.length"
               :force="index <= forcedSectionsUpTo"
             >
-              <!-- «Добавить набор целиком» — только у встроенных наборов и
-                   только пока набор не добавлен себе. -->
+              <!-- Как в Телеграме: у набора есть «⋯», а в меню — «Добавить весь
+                   набор». То же меню открывается удержанием стикера. -->
               <template #action>
-                <button
-                  v-if="
-                    standardSetOf(section.key) &&
-                    !stickersStore.isStandardSetImported(standardSetOf(section.key)?.key ?? '')
-                  "
-                  type="button"
-                  class="section-add"
-                  :disabled="isSetImporting"
-                  :title="'Добавить набор целиком — появятся в «Мои стикеры»'"
-                  :aria-label="`Добавить набор «${standardSetOf(section.key)?.title ?? ''}» целиком`"
-                  @click="addStandardSetByKey(section.key)"
-                >
-                  {{ setImportLabelFor(section.key) }}
-                </button>
+                <template v-if="standardSetOf(section.key)">
+                  <span
+                    v-if="importingSetKey === standardSetOf(section.key)?.key"
+                    class="set-progress"
+                  >
+                    {{ setImportLabel(standardSetOf(section.key)!) }}
+                  </span>
+                  <span
+                    v-else-if="
+                      stickersStore.isStandardSetImported(standardSetOf(section.key)?.key ?? '')
+                    "
+                    class="set-done"
+                  >
+                    Добавлен
+                  </span>
+                  <button
+                    v-else
+                    type="button"
+                    class="section-more"
+                    aria-haspopup="menu"
+                    :aria-expanded="setMenuKey === section.key"
+                    :aria-label="`Действия с набором «${standardSetOf(section.key)?.title ?? ''}»`"
+                    @click="toggleSetMenu(section.key)"
+                  >
+                    <q-icon :name="icon('more_horiz')" size="18px" />
+                  </button>
+
+                  <div v-if="setMenuKey === section.key" class="set-menu" role="menu">
+                    <button
+                      type="button"
+                      class="set-menu-item"
+                      role="menuitem"
+                      @click="addStandardSetByKey(section.key)"
+                    >
+                      <q-icon :name="icon('add')" size="16px" />
+                      <span>Добавить весь набор</span>
+                    </button>
+                    <p class="set-menu-hint">
+                      Стикеры появятся в «Мои стикеры»: их можно переименовать, переставить и
+                      удалить.
+                    </p>
+                  </div>
+                </template>
               </template>
               <div v-if="section.images.length" class="extras-grid stickers-grid">
                 <button
@@ -295,7 +324,12 @@
                   class="sticker-option sticker-image"
                   :title="`Отправить: ${image.alt}`"
                   :aria-label="`Отправить стикер ${image.alt}`"
-                  @click="tapImage(image)"
+                  @pointerdown="startStickerHold(section.key)"
+                  @pointerup="cancelStickerHold"
+                  @pointerleave="cancelStickerHold"
+                  @pointercancel="cancelStickerHold"
+                  @contextmenu.prevent="setMenuKey = section.key"
+                  @click="onStickerTap(image)"
                 >
                   <img :src="image.url" alt="" loading="lazy" />
                 </button>
@@ -517,17 +551,72 @@ const standardSetOf = (sectionKey: string): StandardStickerPack | undefined =>
  * единственный способ сказать «почему не получилось».
  */
 const {
-  isImporting: isSetImporting,
+  importingKey: importingSetKey,
   label: setImportLabel,
   run: runSetImport
 } = useStandardSetImport()
 
-const setImportLabelFor = (sectionKey: string): string => {
+/** Открытое меню набора (ключ секции) — «⋯» у набора, как в Телеграме. */
+const setMenuKey = ref<string | null>(null)
+
+const toggleSetMenu = (sectionKey: string): void => {
+  setMenuKey.value = setMenuKey.value === sectionKey ? null : sectionKey
+}
+
+const closeSetMenu = (): void => {
+  setMenuKey.value = null
+}
+
+/** Клик мимо меню закрывает его — как у выпадающих меню в шапке чата. */
+const onDocumentPointerDown = (event: Event): void => {
+  const target = event.target as HTMLElement | null
+  if (target?.closest?.('.set-menu, .section-more')) return
+  closeSetMenu()
+}
+
+watch(setMenuKey, (open) => {
+  if (open) document.addEventListener('pointerdown', onDocumentPointerDown, true)
+  else document.removeEventListener('pointerdown', onDocumentPointerDown, true)
+})
+
+onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocumentPointerDown, true))
+
+/**
+ * Долгое нажатие (или правый клик) по стикеру встроенного набора открывает то же
+ * меню: в Телеграме набор добавляют именно так — удержав стикер.
+ */
+const STICKER_HOLD_MS = 480
+let holdTimer: number | null = null
+let holdFired = false
+
+const startStickerHold = (sectionKey: string): void => {
   const set = standardSetOf(sectionKey)
-  return set ? setImportLabel(set) : ''
+  if (!set || stickersStore.isStandardSetImported(set.key)) return
+  holdFired = false
+  holdTimer = window.setTimeout(() => {
+    holdFired = true
+    setMenuKey.value = sectionKey
+  }, STICKER_HOLD_MS)
+}
+
+const cancelStickerHold = (): void => {
+  if (holdTimer !== null) {
+    window.clearTimeout(holdTimer)
+    holdTimer = null
+  }
+}
+
+/** Тап по стикеру: если это было удержание — открылось меню, а не отправка. */
+const onStickerTap = (image: PanelImage): void => {
+  if (holdFired) {
+    holdFired = false
+    return
+  }
+  tapImage(image)
 }
 
 const addStandardSetByKey = (sectionKey: string): void => {
+  closeSetMenu()
   const set = standardSetOf(sectionKey)
   if (!set) return
   void runSetImport(set).then((message) => {
@@ -1650,24 +1739,92 @@ watch(newMessage, () => {
   justify-content: center;
 }
 
-/* «Добавить набор» в заголовке секции: кнопка наследует шрифт панели, но не
-   оформление заголовка — он строчный-верхний и с разрядкой, а тут обычный текст. */
-.section-add {
+/* «⋯» у встроенного набора: открывает меню «Добавить весь набор» — как меню
+   набора в Телеграме. Наследуем шрифт панели, но не оформление заголовка
+   (он прописными и с разрядкой). */
+.section-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
   border: none;
+  border-radius: var(--ms-radius-xs);
   background: transparent;
-  padding: 0 2px;
-  font: inherit;
+  color: var(--ms-muted-2);
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.section-more:hover {
+  background: var(--ms-hover);
+  color: var(--ms-text);
+}
+
+/* «Добавлен» и прогресс импорта стоят там же, где была кнопка. */
+.set-done,
+.set-progress {
   font-size: var(--ms-fs-xs);
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
+}
+
+.set-done {
   color: var(--ms-accent);
+}
+
+.set-progress {
+  color: var(--ms-muted-2);
+}
+
+/* Меню набора: прижимается к правому краю заголовка секции (`.panel-section` —
+   позиционированный предок, см. `PanelSection.vue`). */
+.set-menu {
+  position: absolute;
+  top: 24px;
+  right: 8px;
+  z-index: 40;
+  min-width: 210px;
+  padding: 6px;
+  border: 1px solid var(--ms-border);
+  border-radius: var(--ms-radius-lg);
+  background: var(--ms-surface);
+  box-shadow: var(--ms-shadow-pop);
+}
+
+.set-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-2);
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: var(--ms-radius-sm);
+  background: transparent;
+  color: var(--ms-text-strong);
+  font: inherit;
+  font-size: var(--ms-fs-base);
+  /* Заголовок секции — прописными и с разрядкой; меню внутри него обычный текст. */
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: left;
   cursor: pointer;
 }
 
-.section-add:disabled {
+.set-menu-item:hover {
+  background: var(--ms-hover);
+}
+
+.set-menu-hint {
+  margin: 4px 10px 6px;
+  font-size: var(--ms-fs-xs);
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--ms-muted-2);
-  cursor: default;
 }
 
 .sticker-option:hover {

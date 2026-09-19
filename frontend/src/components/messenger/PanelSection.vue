@@ -52,6 +52,7 @@ const { visible } = useVisibleOnce(root)
 
 <style scoped>
 .panel-section {
+  position: relative;
   padding-bottom: var(--ms-space-2);
 }
 
