@@ -1812,14 +1812,6 @@ watch(newMessage, () => {
   cursor: default;
 }
 
-/* Набор уже добавлен: акцентная рамка без заливки — это готовое состояние, а не
-   ошибка. */
-.set-add-wide.state-added:disabled {
-  border-color: var(--ms-accent-border);
-  background: transparent;
-  color: var(--ms-accent);
-}
-
 .sticker-option:hover {
   background: var(--ms-hover);
   transform: scale(1.08);

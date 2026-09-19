@@ -397,35 +397,4 @@ onBeforeUnmount(() => {
   font-size: 12.5px;
   color: var(--ms-muted-2);
 }
-
-/* ---------- Вариант «панель звонка» (стекло поверх видео) ---------- */
-.v-call .sf-trigger {
-  padding: 8px 10px;
-  font-size: 13.5px;
-  color: var(--ms-call-fg);
-  background: var(--ms-call-surface);
-  border-color: var(--ms-call-border);
-  border-radius: var(--ms-radius-md);
-}
-
-.sf-layer.v-call {
-  background: var(--ms-call-bg);
-  border-color: var(--ms-call-border);
-}
-
-.sf-layer.v-call .sf-option {
-  color: var(--ms-call-fg);
-}
-
-.sf-layer.v-call .sf-option.is-active {
-  background: var(--ms-call-surface-hover);
-}
-
-.sf-layer.v-call .sf-option.is-selected {
-  color: var(--ms-call-fg);
-}
-
-.sf-layer.v-call .sf-empty {
-  color: var(--ms-call-muted);
-}
 </style>

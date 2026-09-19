@@ -388,16 +388,6 @@ const restoreAuthorMessages = async (userId: number) => {
   background: var(--ms-warn-bg);
 }
 
-.mod-status.s-resolved {
-  color: var(--ms-accent);
-  background: var(--ms-accent-soft);
-}
-
-.mod-status.s-rejected {
-  color: var(--ms-danger);
-  background: var(--ms-danger-bg);
-}
-
 .mod-date {
   font-size: 12px;
   color: var(--ms-muted);

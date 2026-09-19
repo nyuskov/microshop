@@ -450,19 +450,6 @@ void store.load()
   color: var(--ms-danger);
 }
 
-.pack-ask {
-  border: none;
-  background: none;
-  color: var(--ms-muted);
-  font: inherit;
-  cursor: pointer;
-  padding: 0 var(--ms-space-1);
-}
-
-.pack-ask.danger {
-  color: var(--ms-danger);
-}
-
 .pack-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));

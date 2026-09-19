@@ -1435,19 +1435,9 @@ const leaveFrozen = () => {
   color: var(--ms-danger);
 }
 
-.login-message.msg-success {
-  background: var(--ms-ok-bg);
-  color: var(--ms-accent-strong);
-}
-
 .login-message.msg-info {
   background: var(--ms-info-bg);
   color: var(--ms-info);
-}
-
-.login-message.msg-warn {
-  background: var(--ms-warn-bg);
-  color: var(--ms-warn);
 }
 
 .fade-enter-active,

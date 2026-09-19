@@ -1056,27 +1056,6 @@ onBeforeUnmount(() => {
   background: var(--ms-surface);
 }
 
-/* «Серия» — несколько сообщений одного автора подряд.
-   Срезанный угол остаётся только у ПЕРВОГО пузыря серии: он отмечает начало
-   блока. Если оставить срез на каждом (как было), подряд идущие сообщения
-   дают частокол одинаковых срезов, и граница серии не читается. */
-.msg.out.series-first .msg-bubble,
-.msg.out.series-single .msg-bubble {
-  border-top-right-radius: 3px;
-}
-
-.msg.in.series-first .msg-bubble,
-.msg.in.series-single .msg-bubble {
-  border-top-left-radius: 3px;
-}
-
-/* Продолжение серии прижимается к предыдущему пузырю (базовый отступ строки —
-   3px): вместе с общими скруглениями серия читается как один блок. */
-.msg.series-middle,
-.msg.series-last {
-  margin-top: 1px;
-}
-
 /* Имя автора в групповом чате (в начале «серии» сообщений собеседника) */
 .msg.in .msg-author {
   display: block;

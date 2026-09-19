@@ -216,7 +216,6 @@ const add = (): void => {
   border-color: var(--ms-accent);
 }
 
-.sticker-set-add.state-busy:disabled,
 .sticker-set-note.added {
   cursor: default;
 }

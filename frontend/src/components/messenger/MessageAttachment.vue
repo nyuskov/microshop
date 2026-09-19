@@ -129,6 +129,15 @@ const props = defineProps<{
   sticker?: boolean
 }>()
 
+/**
+ * Корень компонента — фрагмент (`<template v-if=«file»>` с несколькими ветками),
+ * поэтому наследовать атрибуты некуда: без этого Vue в dev-режиме предупреждает
+ * «Extraneous non-emits event listeners (openViewOnce) … renders fragment root»
+ * на каждом вложении. Настоящих атрибутов для корня здесь нет — все события
+ * объявлены ниже (`defineEmits`).
+ */
+defineOptions({ inheritAttrs: false })
+
 const emit = defineEmits<{
   /** Обычная картинка: лайтбокс. */
   (e: 'open-image'): void

@@ -1400,20 +1400,6 @@ const deleteGroup = async () => {
   flex-shrink: 0;
 }
 
-.gi-role.role-creator {
-  color: var(--ms-warn);
-  background: var(--ms-warn-bg);
-}
-
-.gi-role.role-admin {
-  color: var(--ms-accent, #2ea25e);
-  background: var(--ms-accent-soft, #e3f2e5);
-}
-
-.gi-role.role-member {
-  display: none;
-}
-
 /* Метка «в муте»: видно, почему человек не пишет (снимается сама по времени). */
 .gi-muted {
   font-size: var(--ms-fs-xs);
