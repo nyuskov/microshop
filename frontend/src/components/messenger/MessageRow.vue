@@ -252,6 +252,7 @@
       :row-visible="rowVisible"
       :can-add-set="canAddSet"
       :add-set-title="addSetTitle"
+      :can-open-image="canOpenImage"
       @toggle-emoji-picker="emit('toggle-emoji-picker')"
       @toggle-reaction="emit('toggle-reaction', $event)"
       @set-reply="emit('set-reply')"
@@ -261,6 +262,7 @@
       @save="emit('save')"
       @make-sticker="emit('make-sticker')"
       @add-set="emit('add-set')"
+      @open-image="emit('open-image')"
       @delete="emit('delete')"
       @report="emit('report')"
       @toggle-pin="emit('toggle-pin')"
@@ -283,6 +285,7 @@
       :emoji-picker-open="emojiPickerOpen"
       :can-add-set="canAddSet"
       :add-set-title="addSetTitle"
+      :can-open-image="canOpenImage"
       @toggle-reaction="emit('toggle-reaction', $event)"
       @set-reply="emit('set-reply')"
       @forward="emit('forward')"
@@ -291,6 +294,7 @@
       @save="emit('save')"
       @make-sticker="emit('make-sticker')"
       @add-set="emit('add-set')"
+      @open-image="emit('open-image')"
       @delete="emit('delete')"
       @report="emit('report')"
       @toggle-pin="emit('toggle-pin')"
@@ -326,6 +330,7 @@ import {
   callMessageText,
   canBecomeSticker,
   effectiveFile,
+  isImageFile,
   isRoundVideoOnly,
   isStickerMessage
 } from '@/utils/media'
@@ -617,6 +622,17 @@ const canSave = computed<boolean>(() => props.message.kind !== 'call')
 
 /** «В стикеры» — только для открытых картинок (см. `canBecomeSticker`). */
 const canMakeSticker = computed<boolean>(() => canBecomeSticker(props.message))
+
+/**
+ * Есть что посмотреть отдельно: картинка-вложение, не одноразовая и не звонок.
+ *
+ * Нужно прежде всего СТИКЕРУ: тап по нему открывает НАБОР, поэтому сама картинка
+ * осталась бы недоступной — её и показывает этот пункт.
+ */
+const canOpenImage = computed<boolean>(() => {
+  const attachment = effectiveFile(props.message)
+  return !!attachment && isImageFile(attachment) && !props.message.view_once
+})
 
 /**
  * Стикер из предустановленного набора, которого у человека ещё нет: в меню

@@ -83,6 +83,12 @@
           <q-icon :name="icon('translate')" size="18px" />
           <span>{{ translationLabel || 'Перевести' }}</span>
         </button>
+        <!-- Стикер тапом открывает набор, поэтому посмотреть саму картинку
+             можно только отсюда. -->
+        <button v-if="canOpenImage" class="ctx-item" @click="ctxAction('image')">
+          <q-icon :name="icon('image')" size="18px" />
+          <span>{{ openImageLabel }}</span>
+        </button>
         <button
           v-if="canMakeSticker && !message.view_once"
           class="ctx-item"
@@ -129,6 +135,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { Message } from '@/types'
 import { icon } from '@/utils/icons'
 import { haptic, HAPTIC_HOLD } from '@/utils/haptics'
+import { isStickerMessage } from '@/utils/media'
 import {
   QUICK_REACTIONS,
   REACTION_EMOJIS,
@@ -149,6 +156,11 @@ const props = defineProps<{
   canMakeSticker?: boolean
   /** У стикера из предустановленного набора, которого у человека ещё нет. */
   canAddSet?: boolean
+  /**
+   * Есть картинка, которую можно открыть отдельно. Нужно прежде всего СТИКЕРУ:
+   * тап по нему открывает набор, а посмотреть саму картинку больше негде.
+   */
+  canOpenImage?: boolean
   /** Название этого набора — попадает в подпись пункта меню. */
   addSetTitle?: string
   /** Стоит ли напоминание об этом сообщении (меняет подпись пункта меню). */
@@ -175,6 +187,8 @@ const emit = defineEmits<{
   (e: 'save'): void
   /** «В стикеры»: картинка уходит в свои стикеры. */
   (e: 'make-sticker'): void
+  /** «Открыть как картинку»: показать вложение крупно (лайтбокс). */
+  (e: 'open-image'): void
   (e: 'add-set'): void
   (e: 'delete'): void
   (e: 'report'): void
@@ -262,6 +276,14 @@ const pickCtxEmoji = (emoji: string): void => {
   close()
 }
 
+/**
+ * «Открыть как картинку» для стикера: стикер в ленте — картинка, но тап по нему
+ * открывает набор, поэтому просмотр живёт в меню.
+ */
+const openImageLabel = computed<string>(() =>
+  isStickerMessage(props.message) ? 'Открыть как картинку' : 'Открыть изображение'
+)
+
 /** Действие из листа: закрываем лист и повторяем обычный emit. */
 const ctxAction = (
   action:
@@ -272,6 +294,7 @@ const ctxAction = (
     | 'save'
     | 'sticker'
     | 'add-set'
+    | 'image'
     | 'remind'
     | 'translate'
     | 'edit'
@@ -286,6 +309,7 @@ const ctxAction = (
   else if (action === 'save') emit('save')
   else if (action === 'sticker') emit('make-sticker')
   else if (action === 'add-set') emit('add-set')
+  else if (action === 'image') emit('open-image')
   else if (action === 'remind') emit('remind')
   else if (action === 'translate') emit('translate')
   else if (action === 'edit') emit('edit')

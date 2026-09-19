@@ -37,6 +37,10 @@
         <q-icon :name="icon('content_copy')" size="16px" />
         <span>Копировать</span>
       </button>
+      <button v-if="canOpenImage" class="more-item" @click="onOpenImage">
+        <q-icon :name="icon('image')" size="16px" />
+        <span>{{ openImageLabel }}</span>
+      </button>
       <button v-if="isOwn && message.text" class="more-item" @click="onEdit">
         <q-icon :name="icon('edit')" size="16px" />
         <span>Редактировать</span>
@@ -100,10 +104,11 @@
  * наведению недоступно, поэтому там работает лист. Палитра реакций — состояние
  * представления (`emojiPickerOpen`): её открывают и панель, и лист, и двойной тап.
  */
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type { Message } from '@/types'
 import { icon } from '@/utils/icons'
 import { haptic } from '@/utils/haptics'
+import { isStickerMessage } from '@/utils/media'
 import { REACTION_EMOJIS, hasMyReaction, rememberQuickReaction } from '@/utils/reactions'
 
 const props = defineProps<{
@@ -117,6 +122,11 @@ const props = defineProps<{
   canMakeSticker?: boolean
   /** У стикера из предустановленного набора, которого у человека ещё нет. */
   canAddSet?: boolean
+  /**
+   * Есть картинка, которую можно открыть отдельно. Нужно прежде всего СТИКЕРУ:
+   * тап по нему теперь открывает набор, а посмотреть саму картинку больше негде.
+   */
+  canOpenImage?: boolean
   /** Название этого набора — попадает в подпись пункта меню. */
   addSetTitle?: string
   /** Стоит ли напоминание об этом сообщении (меняет подпись пункта меню). */
@@ -143,6 +153,8 @@ const emit = defineEmits<{
   /** «В стикеры»: картинка уходит в свои стикеры. */
   (e: 'make-sticker'): void
   (e: 'add-set'): void
+  /** «Открыть как картинку»: показать вложение крупно (лайтбокс). */
+  (e: 'open-image'): void
   (e: 'delete'): void
   (e: 'report'): void
   (e: 'toggle-pin'): void
@@ -249,6 +261,19 @@ const onRemind = () => {
 const onTranslate = () => {
   moreOpen.value = false
   emit('translate')
+}
+
+/**
+ * «Открыть как картинку» для стикера: стикер в ленте — это картинка, но тап по
+ * нему открывает набор.
+ */
+const openImageLabel = computed<string>(() =>
+  isStickerMessage(props.message) ? 'Открыть как картинку' : 'Открыть изображение'
+)
+
+const onOpenImage = () => {
+  moreOpen.value = false
+  emit('open-image')
 }
 
 const onMakeSticker = () => {

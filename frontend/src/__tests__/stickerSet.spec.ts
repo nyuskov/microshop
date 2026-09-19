@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { createPinia, setActivePinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 
@@ -128,6 +129,25 @@ const mountDialog = (set: StickerSetRef) =>
     props: { set },
     global: { stubs: { 'q-icon': true } }
   })
+
+describe('просмотр картинки у стикера', () => {
+  const bar = readFileSync('src/components/messenger/MessageActionsBar.vue', 'utf8')
+  const sheet = readFileSync('src/components/messenger/MessageActionSheet.vue', 'utf8')
+  const row = readFileSync('src/components/messenger/MessageRow.vue', 'utf8')
+
+  it('в меню есть «Открыть как картинку», и оно ведёт в просмотр', () => {
+    // Тап по стикеру открывает НАБОР, поэтому сама картинка доступна только отсюда.
+    for (const source of [bar, sheet]) {
+      expect(source).toContain('canOpenImage')
+      expect(source).toContain("'Открыть как картинку'")
+    }
+    // У обычной картинки подпись прежняя.
+    expect(bar).toContain("'Открыть изображение'")
+    expect(sheet).toContain("ctxAction('image')")
+    expect(row).toContain(':can-open-image="canOpenImage"')
+    expect(row).toContain(':has-reminder="Boolean(reminderAt)"')
+  })
+})
 
 describe('окно набора', () => {
   it('показывает название, размер набора и все стикеры', () => {
