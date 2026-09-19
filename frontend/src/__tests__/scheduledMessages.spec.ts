@@ -18,6 +18,8 @@ import { formatScheduledAt, schedulePresets, scheduledSendAt } from '@/utils/sch
  */
 const composer = readFileSync('src/components/messenger/MessageComposer.vue', 'utf8')
 const messenger = readFileSync('src/views/Messenger.vue', 'utf8')
+/** Владелец темы: список отложенных и их создание/отмена — в composable. */
+const scheduledOwner = readFileSync('src/composables/useScheduledSend.ts', 'utf8')
 const service = readFileSync('src/services/chatService.ts', 'utf8')
 
 const scheduled = (extra: Partial<ScheduledMessage> = {}): ScheduledMessage =>
@@ -143,7 +145,8 @@ describe('подключение отложенной отправки', () => {
   it('чат подтягивает отложенные и сбрасывает их при переходе', () => {
     expect(messenger).toContain('loadScheduled(chatId)')
     expect(messenger).toContain('@send-scheduled="scheduleSend"')
-    // При открытии другого чата список прошлого чата не остаётся.
-    expect(messenger).toContain('scheduledMessages.value = []')
+    // Список живёт в composable; при открытии другого чата он очищается.
+    expect(messenger).toContain('resetScheduled()')
+    expect(scheduledOwner).toContain('scheduledMessages.value = []')
   })
 })

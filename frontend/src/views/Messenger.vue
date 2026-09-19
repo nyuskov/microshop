@@ -653,10 +653,7 @@ import {
   setChatMuted,
   setChatE2ee,
   fetchGroupInvitePreview,
-  joinGroupByInvite,
-  createScheduledMessage,
-  fetchScheduledMessages,
-  cancelScheduledMessage
+  joinGroupByInvite
 } from '@/services/chatService'
 import {
   ENCRYPTED_FALLBACK,
@@ -664,7 +661,6 @@ import {
   chatAesKeyFor,
   chatDecryptKeysFor,
   clearChatKeyCache,
-  decryptText,
   decryptTextWithKeys,
   distributeChatKey,
   distributeGroupKey,
@@ -687,6 +683,7 @@ import { useMessageReminders } from '@/composables/useMessageReminders'
 import { useMessageSelection } from '@/composables/useMessageSelection'
 import { useOutbox } from '@/composables/useOutbox'
 import { usePeerBlocking } from '@/composables/usePeerBlocking'
+import { useScheduledSend } from '@/composables/useScheduledSend'
 import { useStandardSetImport } from '@/composables/useStandardSetImport'
 import {
   packIdOfFileName,
@@ -701,8 +698,7 @@ import type {
   ChannelCard,
   EncryptedFileMeta,
   GroupInvitePreview,
-  Message,
-  ScheduledMessage
+  Message
 } from '@/types'
 import { avatarUrlOf, chatPeer, chatTitle, displayName, isGroupChat } from '@/utils/user'
 import { stopAllRecognitions } from '@/utils/voiceRecognition'
@@ -2466,8 +2462,7 @@ const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {
   void prepareChatE2ee(chatId)
   messages.value = []
   pinnedMessages.value = []
-  scheduledMessages.value = []
-  scheduledDecrypted.value = {}
+  resetScheduled()
   resetReminders()
   // Расшифровка голосовых читает файл этого чата — в другом она не нужна, а
   // `blob:`-ссылка вот-вот будет освобождена (releaseDecryptedMediaExcept).
@@ -2630,89 +2625,36 @@ const sendText = async () => {
 }
 
 // ---------- Отложенная отправка («отправить позже») ----------
-// Очередь живёт на сервере: её разбирает Celery beat, поэтому сообщение уйдёт и
-// с закрытым приложением — таймер в браузере такого не даёт. Здесь только UI:
-// список отложенных в открытом чате и создание/отмена.
+//
+// Очередь живёт на сервере (её разбирает Celery beat, поэтому сообщение уйдёт и с
+// закрытым приложением), а список и создание/отмена — в
+// `composables/useScheduledSend.ts`.
 
-/** Отложенные сообщения открытого чата (по возрастанию времени). */
-const scheduledMessages = ref<ScheduledMessage[]>([])
-/** Расшифрованные тексты отложенных (id → текст): в E2EE-чате на сервере шифр. */
-const scheduledDecrypted = ref<Record<number, string>>({})
-
-/**
- * Подтягивает отложенные сообщения чата.
- *
- * В зашифрованном чате текст на сервере — шифротекст: расшифровываем его для
- * предпросмотра, а если ключа ещё нет (или строку писал клиент другой версии) —
- * список покажет «Зашифрованное сообщение» вместо мусора.
- */
-const loadScheduled = async (chatId: number) => {
-  try {
-    const rows = await fetchScheduledMessages(chatId)
-    scheduledMessages.value = rows
-    const decrypted: Record<number, string> = {}
-    const aes = await chatKeyOf(selectedChat.value)
-    if (aes) {
-      for (const row of rows) {
-        if (!row.encrypted) continue
-        const text = await decryptText(aes, row.text)
-        if (text !== null) decrypted[row.id] = text
-      }
-    }
-    scheduledDecrypted.value = decrypted
-  } catch {
-    // Список отложенных — вспомогательный: без него чат работает как обычно.
-    scheduledMessages.value = []
-    scheduledDecrypted.value = {}
-  }
-}
-
-const scheduleSend = async (sendAt: string) => {
-  const chatId = selectedChatId.value
-  const text = newMessage.value.trim()
-  if (chatId === null || !text) return
-
-  sending.value = true
-  sendError.value = ''
-  try {
-    // Шифруем так же, как обычную отправку: открытый текст не должен уезжать на
-    // сервер, даже если сообщение уйдёт через час.
-    let wireText = text
-    let wireEncrypted = false
-    const aes = await chatKeyOf(selectedChat.value)
-    if (aes) {
-      wireText = await encryptText(aes, text)
-      wireEncrypted = true
-    }
-    await createScheduledMessage({
-      chat_id: chatId,
-      text: wireText,
-      send_at: sendAt,
-      reply_to_id: replyTarget.value?.id ?? null,
-      encrypted: wireEncrypted
-    })
-    newMessage.value = ''
+const {
+  scheduledMessages,
+  scheduledDecrypted,
+  loadScheduled,
+  resetScheduled,
+  scheduleSend,
+  cancelScheduled
+} = useScheduledSend({
+  // Геттеры, а не значения: объявлены ниже по `<script setup>`, а читаются по
+  // действию человека (см. граблю TDZ в шапке файла).
+  composerText: newMessage,
+  sending,
+  selectedChat: () => selectedChat.value,
+  selectedChatId: () => selectedChatId.value,
+  replyToId: () => replyTarget.value?.id ?? null,
+  chatKeyOf: (chat) => chatKeyOf(chat),
+  onScheduled: (chatId) => {
     clearDraftFor(chatId)
     clearReply()
     sendTypingStop(chatId)
-    await loadScheduled(chatId)
-  } catch (error) {
-    sendError.value = getErrorMessage(error, 'Не удалось отложить сообщение')
-  } finally {
-    sending.value = false
+  },
+  onError: (message) => {
+    sendError.value = message
   }
-}
-
-const cancelScheduled = async (scheduledId: number) => {
-  const chatId = selectedChatId.value
-  try {
-    await cancelScheduledMessage(scheduledId)
-  } catch (error) {
-    sendError.value = getErrorMessage(error, 'Не удалось отменить отправку')
-  } finally {
-    if (chatId !== null) await loadScheduled(chatId)
-  }
-}
+})
 
 // ---------- Напоминания о сообщении («напомнить мне») ----------
 //

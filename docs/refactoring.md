@@ -103,8 +103,12 @@
 - черновики сообщений — `composables/useDrafts.ts`: локальная копия
   (localStorage) и серверная (в зашифрованном чате — шифротекстом), отложенная
   отправка, подтягивание с сервера и съкрытие «печатает…» при программной
-  подстановке текста (`isProgrammaticComposerEdit`).
-
+  подстановке текста (`isProgrammaticComposerEdit`).- очередь сообщений офлайна — `composables/useOutbox.ts` (геттеры + колбэк
+  `onDelivered`; таймер автоотправки гасится через `onScopeDispose`);
+- отложенная отправка — `composables/useScheduledSend.ts`: список отложенных
+  открытого чата, создание (с шифрованием текста в E2EE) и отмена. Общие флаги
+  (`newMessage`, `sending`) приходят ref'ами, а «после отправки» (черновик, ответ,
+  «печатает…») — одним колбэком `onScheduled`.
 Проверка: тесты `mobileNav`, `chatUrl`, `unreadSeenAtBottom`, `thread`, `call*`,
 `chatUnread`, `channelLink`, `lightbox`, `forward`, `nativeShareIncoming`, `recorder`,
 `pendingUploadRow`, `messageReminders`; плюс сценарии в браузере
