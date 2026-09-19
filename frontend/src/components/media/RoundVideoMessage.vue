@@ -1,11 +1,7 @@
 <template>
-  <MediaMessageShell
-    class="rvm-shell"
-    :message-id="messageId"
-    :src="src"
-    :broken="broken"
-    broken-text="Видео недоступно"
-  >
+  <!-- Причину недоступности кружок показывает своим чипом на самом видео, поэтому
+       в строку её не дублируем: там остаётся только кнопка расшифровки. -->
+  <MediaMessageShell class="rvm-shell" :message-id="messageId" :src="src">
     <template #player>
       <div
         class="round-video-msg"
