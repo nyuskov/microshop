@@ -19,7 +19,7 @@
       :name="name"
       :size-label="!durationKnown && size ? formatBytes(size) : ''"
       :broken="broken"
-      broken-text="Не удалось воспроизвести аудио"
+      :broken-text="brokenText"
     >
       <template #player>
         <div class="am-row">
@@ -78,6 +78,22 @@ const current = ref(0)
 const duration = ref(0)
 const durationKnown = ref(false)
 const broken = ref(false)
+const brokenText = ref('Не удалось воспроизвести аудио')
+
+/**
+ * Причина недоступности по коду `MediaError`.
+ *
+ * Говорить всегда «не удалось воспроизвести» — значит скрывать от человека то,
+ * что он может сделать: при коде 2 виновата связь (повторить), при 3 — файл на
+ * сервере битый, при 4 — формат не тот, что умеет это устройство (и тогда путь
+ * один: расшифровка текстом).
+ */
+const brokenTexts: Record<number, string> = {
+  1: 'Загрузка записи прервана',
+  2: 'Запись не загрузилась — проверьте связь',
+  3: 'Запись повреждена — файл не читается',
+  4: 'Устройство не умеет играть этот формат'
+}
 
 const onLoadedMetadata = () => {
   const audio = audioRef.value
@@ -99,6 +115,8 @@ const onEnded = () => {
 }
 
 const onError = () => {
+  const code = audioRef.value?.error?.code ?? 0
+  brokenText.value = brokenTexts[code] ?? brokenText.value
   broken.value = true
 }
 

@@ -163,12 +163,17 @@ export function pcmChunks(pcm: Int16Array, chunkBytes: number): string[] {
  * `EncodingError: Unable to decode audio data`, и человек видел ровно это вместо
  * причины («файл повреждён»). Русские сообщения от `loadAudioBuffer` (например,
  * «Не удалось загрузить голосовое (404)») оставляем как есть.
+ *
+ * Про формат сказано не ради полноты: при ошибке воспроизведения того же файла
+ * браузер отвечает кодом 4 («устройство не умеет играть этот формат»), и тогда
+ * расшифровка падает по той же причине — обещать в этом случае «файл повреждён»
+ * нечестно.
  */
 export function describeAudioError(thrown: unknown): string {
   const name = thrown instanceof Error ? thrown.name : ''
   const text = thrown instanceof Error ? thrown.message : String(thrown ?? '')
   if (name === 'EncodingError' || /decode/i.test(text)) {
-    return 'Запись не удалось прочитать — возможно, файл повреждён'
+    return 'Запись не удалось прочитать — файл повреждён или формат не поддерживается устройством'
   }
   return text || 'Не удалось распознать голосовое'
 }

@@ -313,7 +313,7 @@ describe('расшифровка голосового', () => {
     expect(transcriptOf(17)).toEqual({
       status: 'failed',
       text: '',
-      error: 'Запись не удалось прочитать — возможно, файл повреждён'
+      error: 'Запись не удалось прочитать — файл повреждён или формат не поддерживается устройством'
     })
     clearTranscript(17)
   })
@@ -482,7 +482,33 @@ describe('кнопка «В текст» в голосовом', () => {
 
     expect(wrapper.find('.mms-error').exists()).toBe(true)
     expect(wrapper.find('.am-transcribe').exists()).toBe(true)
+    // Причина — своей строкой, а не в одной строке с кнопкой: длинный текст
+    // ломал строку с расшифровкой (владелец: «сообщение об ошибке — отдельной
+    // строкой»).
+    expect(wrapper.find('.mms-sub .mms-error').exists()).toBe(false)
     wrapper.unmount()
+  })
+
+  it('говорит причину по коду ошибки, а не «не удалось» обо всём подряд', async () => {
+    // Разные коды `MediaError` — разные действия человека: связь (повторить),
+    // битый файл (расшифровка в текст), формат (то же самое). Обещать «не удалось
+    // воспроизвести» на все случаи — терять эту разницу.
+    const cases: Array<[number, string]> = [
+      [2, 'Запись не загрузилась — проверьте связь'],
+      [3, 'Запись повреждена — файл не читается'],
+      [4, 'Устройство не умеет играть этот формат']
+    ]
+    for (const [code, text] of cases) {
+      const wrapper = mountVoice()
+      Object.defineProperty(wrapper.find('audio').element, 'error', {
+        value: { code },
+        configurable: true
+      })
+      await wrapper.find('audio').trigger('error')
+
+      expect(wrapper.find('.mms-error').text()).toBe(text)
+      wrapper.unmount()
+    }
   })
 
   it('расшифровки в разметке нет, пока её не запросили', () => {

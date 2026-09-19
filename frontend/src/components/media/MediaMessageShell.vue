@@ -8,9 +8,13 @@
   <div class="mms">
     <slot name="player" />
 
+    <!-- Причина недоступности — своей строкой, а не рядом с кнопкой расшифровки:
+         текст причины длинный, в общей строке он переносился и ломал её. Сама
+         кнопка нужна именно здесь — послушать нельзя, прочитать можно. -->
+    <div v-if="broken" class="mms-error">{{ brokenText }}</div>
+
     <div class="mms-sub">
-      <span v-if="broken" class="mms-error">{{ brokenText }}</span>
-      <template v-else>
+      <template v-if="!broken">
         <span v-if="name" class="mms-name">
           <slot name="name-icon" />
           <span class="mms-name-text">{{ name }}</span>
@@ -52,7 +56,7 @@ defineProps<{
   sizeLabel?: string
   /** Запись не читается — вместо названия показываем причину. */
   broken?: boolean
-  /** Текст ошибки воспроизведения. */
+  /** Текст ошибки воспроизведения (своей строкой над подписью). */
   brokenText?: string
 }>()
 </script>
@@ -96,7 +100,10 @@ defineProps<{
 
 .mms-error {
   color: var(--ms-danger, #d64545);
+  font-size: var(--ms-fs-xs);
+  line-height: 1.35;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* Кнопка расшифровки — в конце строки (у голосового: после названия и скорости). */
