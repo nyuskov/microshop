@@ -510,6 +510,10 @@ describe('кнопка «В текст» в голосовом', () => {
     // Кнопка прижата к правому краю — владелец: «у видео-кружка она должна быть
     // справа, как у голосового».
     expect(round).toContain('justify-content: flex-end')
+    // Сам блок расшифровки НЕ переопределяем: он должен выглядеть как у
+    // голосового (владелец: «как в аудио сделай»).
+    expect(round).not.toContain('.rvm-transcript')
+    expect(round).not.toContain('text-align: right')
     // Кружок получает id сообщения от вложения, иначе расшифровка не запомнится.
     expect(attachmentSource).toContain(':message-id="message.id"')
   })
