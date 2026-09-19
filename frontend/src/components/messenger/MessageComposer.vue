@@ -499,6 +499,11 @@ interface PanelImage {
    * «Добавить набор» — см. `utils/presetStickers.ts`.
    */
   preset?: { setKey: string; name: string }
+  /**
+   * Пак на сервере, из которого стикер: уезжает меткой `sp-<id>-<имя>.png`, по ней
+   * получатель открывает и добавляет набор (окно набора по тапу на стикер).
+   */
+  pack?: { packId: number; position: number }
 }
 
 /** Стикер с сервера → картинка панели (лежит в `media/`, отдаётся через API). */
@@ -628,7 +633,8 @@ const tapImage = (image: PanelImage) => {
     stickersStore.rememberRecent(image.sticker.id)
     emit('send-sticker-image', {
       url: image.url,
-      mime: image.sticker.mime_type ?? 'image/webp'
+      mime: image.sticker.mime_type ?? 'image/webp',
+      pack: image.pack
     })
     return
   }
@@ -700,7 +706,8 @@ const stickerPanelSections = computed<PanelSectionItem[]>(() => [
       emojis: [],
       images: pack.stickers.map((sticker) => ({
         url: mediaUrl(sticker.file_url),
-        alt: 'Стикер'
+        alt: 'Стикер',
+        pack: { packId: pack.id, position: sticker.position }
       })),
       presetPackId: pack.id
     })),
@@ -724,7 +731,10 @@ const stickerPanelSections = computed<PanelSectionItem[]>(() => [
     icon: '🖼️',
     imageUrl: pack.stickers[0] ? (mediaUrl(pack.stickers[0].file_url) ?? null) : null,
     emojis: [],
-    images: pack.stickers.map(mediaImage),
+    images: pack.stickers.map((sticker) => ({
+      ...mediaImage(sticker),
+      pack: { packId: pack.id, position: sticker.position }
+    })),
     emptyHint: 'В паке пусто. Добавьте картинки кнопкой «Добавить».'
   })),
   ...(emojiStickerRecent.value.length
@@ -991,7 +1001,10 @@ const emit = defineEmits<{
     payload: {
       url: string
       mime: string
+      /** Встроенный набор приложения: метка `st-…` в имени файла. */
       preset?: { setKey: string; name: string }
+      /** Пак на сервере: метка `sp-<id>-…` в имени файла. */
+      pack?: { packId: number; position: number }
     }
   ): void
   /** Сообщение об ошибке добавления стикера (показывает родитель). */

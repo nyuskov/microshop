@@ -234,6 +234,7 @@
             @delete="deleteMessageOf"
             @report="openReportForMessage"
             @open-image="openImageFromMessage"
+            @open-sticker="openStickerSetOf"
             @open-view-once="openViewOnce"
             @remind="openReminderDialog"
           />
@@ -435,6 +436,15 @@
     @save="saveReminder"
     @remove="removeReminder"
     @close="closeReminderDialog"
+  />
+
+  <!-- Набор стикера: тап по стикеру показывает весь набор и даёт его добавить -->
+  <StickerSetDialog
+    v-if="stickerSet"
+    :set="stickerSet"
+    @send="sendStickerImage"
+    @error="sendError = $event"
+    @close="stickerSet = null"
   />
 
   <!-- Статистика чата: сообщения по дням, участники, вложения -->
@@ -678,7 +688,13 @@ import { useMessageSelection } from '@/composables/useMessageSelection'
 import { useOutbox } from '@/composables/useOutbox'
 import { usePeerBlocking } from '@/composables/usePeerBlocking'
 import { useStandardSetImport } from '@/composables/useStandardSetImport'
-import { presetSetOfFileName, presetStickerFileName } from '@/utils/presetStickers'
+import {
+  packIdOfFileName,
+  presetSetOfFileName,
+  presetStickerFileName,
+  packStickerFileName
+} from '@/utils/presetStickers'
+import { resolveStickerSet, type StickerSetRef } from '@/utils/stickerSet'
 import type {
   Chat,
   ChatUser,
@@ -766,6 +782,9 @@ const ChatSoundDialog = defineAsyncComponent(
 )
 const ReminderDialog = defineAsyncComponent(
   () => import('@/components/messenger/ReminderDialog.vue')
+)
+const StickerSetDialog = defineAsyncComponent(
+  () => import('@/components/messenger/StickerSetDialog.vue')
 )
 const ChatStatsDialog = defineAsyncComponent(
   () => import('@/components/messenger/ChatStatsDialog.vue')
@@ -2780,9 +2799,9 @@ const makeStickerFromMessage = async (message: Message) => {
 /**
  * «Добавить набор» из меню стикера — как «Добавить стикеры» в Телеграме.
  *
- * Набор узнаём по метке в имени файла (`utils/presetStickers.ts`): у сервера
- * предустановленных наборов нет, он видит только картинку, поэтому имя файла и
- * служит меткой. Свои стикеры человека метки не имеют — для них пункта нет.
+ * Так работают только ВСТРОЕННЫЕ наборы: метка `st-…` в имени файла говорит, какой
+ * это набор (`utils/presetStickers.ts`). Стикеры из серверных наборов (своих и
+ * публичных) добавляются из окна набора — тап по стикеру в ленте.
  */
 const { run: runStandardSetImport } = useStandardSetImport()
 
@@ -2792,6 +2811,31 @@ const addStickerSet = (message: Message) => {
   void runStandardSetImport(set).then((problem) => {
     if (problem) sendError.value = problem
   })
+}
+
+/** Открытый набор стикера (окно): null — окно закрыто. */
+const stickerSet = ref<StickerSetRef | null>(null)
+
+/**
+ * Тап по стикеру в ленте: показываем его набор — как в Телеграме.
+ *
+ * Набор узнаём по метке в имени файла (`utils/presetStickers.ts`): `st-…` —
+ * встроенный, `sp-<id>` — свой или публичный с сервера. Метки нет (старый стикер,
+ * чужой личный набор, обычная картинка) — ведём себя как раньше и открываем
+ * просмотр картинки: обещать нечего.
+ */
+const openStickerSetOf = async (message: Message) => {
+  const fileName = message.file?.name ?? null
+  const packId = packIdOfFileName(fileName)
+  let set = resolveStickerSet(fileName, stickerStore.packs, stickerStore.presets)
+  if (!set && packId !== null) {
+    // Списки могли быть ещё не загружены (панель стикеров не открывали) —
+    // подтягиваем и пробуем снова: без них серверный набор не опознать.
+    await Promise.all([stickerStore.load(), stickerStore.loadPresets()])
+    set = resolveStickerSet(fileName, stickerStore.packs, stickerStore.presets)
+  }
+  if (set) stickerSet.value = set
+  else openImageFromMessage(message)
 }
 
 /**
@@ -2806,7 +2850,10 @@ const addStickerSet = (message: Message) => {
 const sendStickerImage = async (image: {
   url: string
   mime: string
+  /** Встроенный набор приложения: метка `st-<набор>-<имя>.png`. */
   preset?: { setKey: string; name: string }
+  /** Набор с сервера: метка `sp-<id>-<имя>.png` (свой или публичный). */
+  pack?: { packId: number; position: number }
 }) => {
   const chatId = selectedChatId.value
   if (chatId === null || sending.value) return
@@ -2816,11 +2863,13 @@ const sendStickerImage = async (image: {
     const response = await fetch(image.url)
     if (!response.ok) throw new Error('Не удалось прочитать стикер')
     const blob = await response.blob()
-    // Имя файла несёт метку набора (`st-<набор>-<имя>.png`): по ней получатель
-    // сможет предложить «Добавить набор» — см. utils/presetStickers.ts.
+    // Имя файла несёт метку набора: по ней получатель поймёт, из какого набора
+    // стикер, и сможет открыть его целиком — см. utils/presetStickers.ts.
     const fileName = image.preset
       ? presetStickerFileName(image.preset.setKey, image.preset.name)
-      : 'sticker.webp'
+      : image.pack
+        ? packStickerFileName(image.pack.packId, String(image.pack.position))
+        : 'sticker.webp'
     const file = new File([blob], fileName, {
       type: image.mime || blob.type || 'image/webp'
     })

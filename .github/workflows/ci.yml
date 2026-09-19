@@ -134,6 +134,12 @@ jobs:
       - name: Styles (слой не перебивает компоненты)
         run: node frontend/scripts/check-style-duplicates.mjs
 
+      # Радиусы и тени окон/кнопок живут в токенах --ms-*: проверяем, что в стилях
+      # компонентов не появилось новых литеральных значений (окна перестают быть
+      # похожими друг на друга). База — scripts/style-geometry-baseline.json.
+      - name: Styles (нет новой сырой геометрии)
+        run: node frontend/scripts/check-geometry.mjs
+
       - name: Unit tests (vitest)
         run: pnpm --prefix frontend exec vitest run
 

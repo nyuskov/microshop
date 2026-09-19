@@ -27,8 +27,8 @@
       class="attachment attachment-image-btn"
       :class="{ sticker: props.sticker }"
       type="button"
-      :title="props.sticker ? 'Открыть стикер' : `Открыть изображение «${file.name}»`"
-      @click.stop="emit('open-image')"
+      :title="props.sticker ? 'Открыть набор стикеров' : `Открыть изображение «${file.name}»`"
+      @click.stop="openAttachment()"
     >
       <img
         v-if="fileUrl"
@@ -129,7 +129,23 @@ const props = defineProps<{
   sticker?: boolean
 }>()
 
-const emit = defineEmits<{ (e: 'open-image'): void; (e: 'open-view-once'): void }>()
+const emit = defineEmits<{
+  /** Обычная картинка: лайтбокс. */
+  (e: 'open-image'): void
+  /** Стикер: окно его набора (как в Телеграме — по тапу видно весь набор). */
+  (e: 'open-sticker'): void
+  (e: 'open-view-once'): void
+}>()
+
+/**
+ * Тап по картинке: стикер открывает свой набор (как в Телеграме), обычная
+ * картинка — просмотр. Что именно показать вместо набора (метки нет) — решает
+ * родитель: здесь про паки ничего не знают.
+ */
+const openAttachment = (): void => {
+  if (props.sticker) emit('open-sticker')
+  else emit('open-image')
+}
 
 /** Одноразовое вложение и его состояние (открыто — файла больше нет). */
 const viewOnce = computed(() => props.message.view_once === true)

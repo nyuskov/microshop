@@ -81,6 +81,7 @@
               @delete="emit('delete', item.row.message)"
               @report="emit('report', item.row.message)"
               @open-image="emit('open-image', item.row.message)"
+              @open-sticker="emit('open-sticker', item.row.message)"
               @open-view-once="emit('open-view-once', item.row.message)"
               @remind="emit('remind', item.row.message)"
             />
@@ -303,6 +304,8 @@ const emit = defineEmits<{
   (e: 'drop-pending', localId: number): void
   (e: 'report', message: Message): void
   (e: 'open-image', message: Message): void
+  /** Тап по стикеру: окно его набора (как в Телеграме). */
+  (e: 'open-sticker', message: Message): void
   /** Просмотр одноразового вложения (файл сервер отдаст ровно один раз). */
   (e: 'open-view-once', message: Message): void
   /** «Напомнить»: выбрать время напоминания об этом сообщении. */

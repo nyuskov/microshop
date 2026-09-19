@@ -119,6 +119,7 @@
         :row-visible="rowVisible"
         :sticker="isStickerMessage(message)"
         @open-image="emit('open-image')"
+        @open-sticker="emit('open-sticker')"
         @open-view-once="emit('open-view-once')"
       />
 
@@ -564,6 +565,8 @@ const emit = defineEmits<{
   /** Жалоба на сообщение (модерация UGC, требование RuStore). */
   (e: 'report'): void
   (e: 'open-image'): void
+  /** Тап по стикеру: открыть его набор (в наборе видно весь пак и «Добавить»). */
+  (e: 'open-sticker'): void
   /** Одноразовое вложение: открыть на просмотр (сервер отдаст файл один раз). */
   (e: 'open-view-once'): void
   /** «Напомнить»: выбрать время напоминания об этом сообщении. */
