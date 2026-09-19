@@ -37,6 +37,7 @@ import {
   tuneReceivers,
   tuneSenders,
   tunedDescription,
+  videoStepFor,
   type QualityStep
 } from './call/quality'
 import { screenShareNotice, screenShareSupport } from './call/screenShare'
@@ -1771,11 +1772,15 @@ export const useCallStore = defineStore('call', {
      * разрешение и частоту кадров НЕ ухудшаем.
      */
     async _applyLinkTuning(link: PeerLink, step: QualityStep | undefined): Promise<void> {
+      const diagnostics = runtime.linkQuality.get(link.peerId) ?? null
+      // Ступень для видео своя: когда картинку ограничивает процессор (слабое
+      // устройство), видео облегчается, а звук остаётся на сетевой ступени —
+      // его кодирование дешёвое, и сужать его из-за CPU незачем.
       const tuning = step
-        ? senderTuningForStep(step, this.screenSharing)
+        ? senderTuningForStep(step, this.screenSharing, videoStepFor(diagnostics))
         : initialSenderTuning(this.screenSharing)
       await tuneSenders(link.pc, tuning)
-      tuneReceivers(link.pc, jitterTargetsFor(runtime.linkQuality.get(link.peerId) ?? null))
+      tuneReceivers(link.pc, jitterTargetsFor(diagnostics))
       // Видео могло быть приостановлено ещё до появления этой связи.
       if (this.videoPausedForNetwork) await this._pauseVideoOnLink(link)
     },

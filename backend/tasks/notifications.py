@@ -22,7 +22,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.contacts.crud import contact_names_for
-from core import mailer, rustore_push
+from core import avatar_store, mailer, rustore_push
 from core.amqp import publish_realtime_event
 from core.celery_app import celery_app
 from core.config import settings
@@ -40,6 +40,10 @@ PUSH_CALL_TOPIC = "pismo-call"
 # RFC 8030: Urgency high будит устройство сразу; без него Android в Doze
 # придерживает push до следующего окна — уведомление о звонке приходит поздно.
 PUSH_HEADERS_CALL = {"Urgency": "high", "Topic": PUSH_CALL_TOPIC}
+#: Повтор уведомления о звонке: тот же высокий приоритет, но БЕЗ `Topic`.
+#: `Topic` — это склейка очереди: повторы с ним схлопнулись бы в один, и звук
+#: прозвучал бы один раз — ровно то, ради чего повторы и делаются.
+PUSH_HEADERS_CALL_REPEAT = {"Urgency": "high"}
 PUSH_HEADERS_MESSAGE = {"Urgency": "high"}
 # Звонок живёт меньше минуты смысла; сообщение — сутки.
 PUSH_TTL_CALL = 90
@@ -481,13 +485,25 @@ def _display_name(user: User) -> str:
 def _push_icon(user: User | None) -> str:
     """Иконка уведомления: аватар отправителя, иначе иконка приложения.
 
+    Берём не аватар как есть, а «иконку уведомления» (`avatar_store.push_icon_url`):
+    размер крупной картинки задаёт система, поэтому аватар заранее уменьшен и
+    окружён прозрачными полями — иначе он занимает всю плитку уведомления и
+    выглядит грубо. Файла может не быть (аватар загружен до появления иконок) —
+    он делается из оригинала на месте, а если и это не вышло, отдаём прежний
+    адрес: уведомление без картинки хуже, чем уведомление с крупной.
+
     Путь отдаём относительный (`/media/...`): service worker лежит на том же
     origin и сам разворачивает его в абсолютный (см. frontend/public/sw.js),
     поэтому знать публичный адрес приложения серверу не нужно. Ссылка на
     аватар не секрет — она и так видна в интерфейсе.
     """
-    avatar = (user.avatar_thumb_url or user.avatar_url or "").strip() if user else ""
-    return avatar or PUSH_ICON_DEFAULT
+    if user is None:
+        return PUSH_ICON_DEFAULT
+    avatar = (user.avatar_thumb_url or user.avatar_url or "").strip()
+    if not avatar:
+        return PUSH_ICON_DEFAULT
+    icon = avatar_store.push_icon_url(user.avatar_url, user.avatar_thumb_url)
+    return icon or avatar
 
 
 @celery_app.task(name="tasks.notifications.send_security_push")
@@ -913,6 +929,24 @@ async def _send_call_cancelled_async(
         await engine.dispose()
 
 
+#: Заголовок ПОВТОРА: видно, что это тот же вызов звонит снова, а не новое.
+PUSH_CALL_REPEAT_TITLE = "Всё ещё звонит"
+
+
+def call_push_title(attempt: int) -> str:
+    """Заголовок уведомления о звонке: первый раз или повтор."""
+    return "Входящий звонок" if attempt <= 1 else PUSH_CALL_REPEAT_TITLE
+
+
+def call_push_headers(attempt: int) -> dict[str, str]:
+    """HTTP-заголовки push о звонке.
+
+    Повтор идёт БЕЗ `Topic` (см. `PUSH_HEADERS_CALL_REPEAT`), а первый push и
+    «звонок больше не звонит» — с ним, чтобы заменить не доставленное уведомление.
+    """
+    return PUSH_HEADERS_CALL if attempt <= 1 else PUSH_HEADERS_CALL_REPEAT
+
+
 @celery_app.task(
     name="tasks.notifications.send_call_push",
     bind=True,
@@ -927,6 +961,8 @@ def send_call_push(
     caller_id: int,
     kind: str | None,
     expires_at: int | None = None,
+    attempt: int = 1,
+    total: int = 1,
 ) -> None:
     """Push о входящем звонке (Web Push для PWA + RuStore Push для Android).
 
@@ -936,13 +972,22 @@ def send_call_push(
     ``expires_at`` (мс UTC) — момент, после которого звонок уже не актуален
     (зовущий отменил или абонент ответил): такое уведомление не отправляем, чтобы
     человек не получал «Вам звонят» о прошедшем звонке.
+
+    ``attempt``/``total`` — дозвон серией: пока вызов «висит», уведомление
+    повторяется (см. ``calls.views._enqueue_call_push_when_ringing``), а повтор с
+    тем же ``tag`` и ``renotify`` снова подаёт звук и вибрацию — одно уведомление
+    дало бы один короткий сигнал, который легко пропустить.
     """
     if not _web_push_configured() and not rustore_push.is_configured():
         return
     if _call_push_expired(expires_at):
         logger.info("Push о звонке %s устарел — не отправляем", call_id)
         return
-    run_async(_send_call_push_async(user_id, call_id, caller_id, kind, expires_at))
+    run_async(
+        _send_call_push_async(
+            user_id, call_id, caller_id, kind, expires_at, attempt, total
+        )
+    )
 
 
 def _call_push_expired(expires_at: int | None) -> bool:
@@ -958,6 +1003,8 @@ async def _send_call_push_async(
     caller_id: int,
     kind: str | None,
     expires_at: int | None = None,
+    attempt: int = 1,
+    total: int = 1,
 ) -> None:
     engine = make_engine()
     session = make_session(engine)
@@ -980,13 +1027,16 @@ async def _send_call_push_async(
             if custom:
                 name = custom
         kind_label = "Видеозвонок" if kind == "video" else "Аудиозвонок"
+        # Повтор называем словами: человек видит, что ТОТ ЖЕ вызов звонит снова.
+        title = call_push_title(attempt)
+        body = f"{name} · {kind_label}"
 
         await _send_rustore_push(
             session,
             [user_id],
             _rustore_message(
-                title="Входящий звонок",
-                body=f"{name} · {kind_label}",
+                title=title,
+                body=body,
                 channel_id=PUSH_CHANNEL_CALLS,
                 data={
                     "type": "call",
@@ -997,6 +1047,9 @@ async def _send_call_push_async(
                     # Срок годности: устройство могло получить push поздно
                     # (Doze) — тогда показывать «Вам звонят» уже незачем.
                     "expires_at": expires_at,
+                    # Номер попытки: по нему видно, что это повтор, а не новый вызов.
+                    "attempt": attempt,
+                    "total": total,
                 },
             ),
         )
@@ -1013,8 +1066,8 @@ async def _send_call_push_async(
         stale_ids: list[int] = []
         payload = json.dumps(
             {
-                "title": "Входящий звонок",
-                "body": f"{name} · {kind_label}",
+                "title": title,
+                "body": body,
                 # У входящего звонка тоже показываем аватар звонящего.
                 "icon": _push_icon(caller),
                 "badge": PUSH_BADGE,
@@ -1024,10 +1077,13 @@ async def _send_call_push_async(
                     "peer_id": caller_id,
                     "kind": kind,
                     "expires_at": expires_at,
+                    "attempt": attempt,
+                    "total": total,
                 },
             },
             ensure_ascii=False,
         )
+        headers = call_push_headers(attempt)
         for sub in subscriptions:
             try:
                 webpush(
@@ -1039,7 +1095,7 @@ async def _send_call_push_async(
                     vapid_private_key=settings.web_push_vapid_private_key,
                     vapid_claims={"sub": settings.web_push_vapid_subject},
                     ttl=PUSH_TTL_CALL,
-                    headers=PUSH_HEADERS_CALL,
+                    headers=headers,
                     timeout=10,
                 )
             except WebPushException as exc:

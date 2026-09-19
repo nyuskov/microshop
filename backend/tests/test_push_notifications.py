@@ -6,10 +6,13 @@
 """
 
 import json
+from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
+from PIL import Image
 
+from core import avatar_store
 from tasks import notifications
 
 
@@ -37,6 +40,45 @@ def test_push_icon_falls_back_to_app_icon() -> None:
     for avatar_url in (None, "", "   "):
         user = SimpleNamespace(avatar_url=avatar_url, avatar_thumb_url=None)
         assert notifications._push_icon(user) == default
+
+
+def test_push_icon_prefers_smaller_notification_icon(tmp_path, monkeypatch) -> None:
+    """Есть иконка уведомления — берём её: аватар показывается компактнее.
+
+    Размер крупной картинки в уведомлении задаёт система, поэтому «уменьшить»
+    можно только прозрачными полями вокруг аватара (см. `make_push_icon`).
+    """
+    monkeypatch.setattr(avatar_store, "AVATAR_DIR", tmp_path)
+    image = Image.new("RGB", (64, 64), (200, 40, 40))
+    buffer = BytesIO()
+    image.save(buffer, "JPEG", quality=90)
+    (tmp_path / "user_7_ab12cd.jpg").write_bytes(buffer.getvalue())
+    # Файл делает ленивая генерация: он же идёт в уведомление.
+    assert avatar_store.push_icon_url("/media/avatars/user_7_ab12cd.jpg") is not None
+
+    user = SimpleNamespace(
+        avatar_url="/media/avatars/user_7_ab12cd.jpg",
+        avatar_thumb_url="/media/avatars/user_7_ab12cd_t128.jpg",
+    )
+
+    assert notifications._push_icon(user) == "/media/avatars/user_7_ab12cd_n192.png"
+
+
+def test_call_push_repeat_has_no_topic() -> None:
+    """Повтор дозвона идёт без `Topic`: с ним служба push склеила бы повторы."""
+    first = notifications.call_push_headers(1)
+    repeat = notifications.call_push_headers(2)
+
+    assert first.get("Topic") == notifications.PUSH_CALL_TOPIC
+    assert "Topic" not in repeat
+    # Высокая срочность нужна и повтору: иначе Android в Doze его придержит.
+    assert repeat["Urgency"] == "high"
+
+
+def test_call_push_title_marks_repeats() -> None:
+    """Повтор называем словами: видно, что звонит ТОТ ЖЕ вызов, а не новый."""
+    assert notifications.call_push_title(1) == "Входящий звонок"
+    assert notifications.call_push_title(3) == notifications.PUSH_CALL_REPEAT_TITLE
 
 
 def test_rustore_message_carries_avatar_in_data() -> None:

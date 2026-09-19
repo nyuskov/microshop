@@ -661,6 +661,17 @@ async def _relay_message(
 #: и забрать припаркованный offer. Тогда уведомление «Вам звонят» не отправляем:
 #: иначе человек получал бы его, когда звонка уже нет (отменён или уже отвечен).
 CALL_PUSH_DELAY_SECONDS = 2.0
+
+#: Через сколько секунд ПОВТОРЯЕМ уведомление о звонке и сколько раз всего.
+#:
+#: Одно уведомление — это один короткий сигнал, а телефон в кармане его легко
+#: пропускает. Повтор с тем же ``tag`` и ``renotify`` заставляет систему подать
+#: звук и вибрацию снова: вызов «звонит», а не «пискнет» один раз. Повторы идут
+#: БЕЗ ``Topic`` — с ним служба push схлопывает их в очередь, и повтор не
+#: дозвонится. Расписание укладывается в ``CALL_PUSH_VALID_SECONDS``:
+#: 2 + 20 × 3 = 62 с (первый push и три повтора).
+CALL_PUSH_REPEAT_SECONDS = 20.0
+CALL_PUSH_ATTEMPTS = 4
 #: Сколько push о звонке остаётся актуальным.
 #:
 #: Зовущий ждёт ответа 60 секунд (``RING_OUT_TIMEOUT_MS`` на клиенте), и
@@ -728,27 +739,47 @@ def _notify_call_finished(
 async def _enqueue_call_push_when_ringing(
     *, callee_id: int, caller_id: int, offer: dict[str, Any]
 ) -> None:
-    """Ставит push о входящем звонке — только если вызов ещё «висит».
+    """Ставит push о входящем звонке — и повторяет его, пока вызов «висит».
 
-    Проверку делаем с задержкой (``CALL_PUSH_DELAY_SECONDS``) и в том же процессе,
-    который держит парковку: отменил зовущий или абонент уже подключился —
-    уведомление не нужно, он и так знает о звонке.
+    Первую проверку делаем с задержкой (``CALL_PUSH_DELAY_SECONDS``) и в том же
+    процессе, который держит парковку: отменил зовущий или абонент уже
+    подключился — уведомление не нужно, он и так знает о звонке.
+
+    Дальше — серия повторов (``CALL_PUSH_ATTEMPTS`` всего, шаг
+    ``CALL_PUSH_REPEAT_SECONDS``): так вызов звенит несколько раз подряд, как
+    телефонный. Перед каждым повтором сверяемся с парковкой: ответили, отменили
+    или срок вышел — замолкаем.
+
+    ``expires_at`` считаем ОДИН раз, до цикла: иначе каждый повтор продлевал бы
+    срок годности, и уведомление «Вам звонят» висело бы уже после того, как
+    зовущий перестал ждать.
     """
     call_id = offer.get("call_id")
+    expires_at = _call_push_expires_at()
     try:
-        await asyncio.sleep(CALL_PUSH_DELAY_SECONDS)
-        if not await call_manager.has_pending_offer(callee_id, call_id):
-            logger.info("Звонок %s уже снят — push не отправляем", call_id)
-            return
         from core.celery_app import get_task
 
-        get_task("tasks.notifications.send_call_push").delay(
-            callee_id,
-            call_id,
-            caller_id,
-            offer.get("kind"),
-            _call_push_expires_at(),
-        )
+        for attempt in range(1, CALL_PUSH_ATTEMPTS + 1):
+            delay = (
+                CALL_PUSH_DELAY_SECONDS if attempt == 1 else CALL_PUSH_REPEAT_SECONDS
+            )
+            await asyncio.sleep(delay)
+            if not await call_manager.has_pending_offer(callee_id, call_id):
+                logger.info(
+                    "Звонок %s уже снят — push больше не отправляем (попытка %s)",
+                    call_id,
+                    attempt,
+                )
+                return
+            get_task("tasks.notifications.send_call_push").delay(
+                callee_id,
+                call_id,
+                caller_id,
+                offer.get("kind"),
+                expires_at,
+                attempt,
+                CALL_PUSH_ATTEMPTS,
+            )
     except Exception:  # noqa: BLE001 - push не должен ронять сигналинг
         logger.exception("Не удалось поставить задачу push о входящем звонке")
 

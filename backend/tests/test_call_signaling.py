@@ -100,28 +100,30 @@ async def test_call_push_skipped_when_call_already_over(
             sent.append(args)
 
     monkeypatch.setattr(calls_views, "CALL_PUSH_DELAY_SECONDS", 0)
+    monkeypatch.setattr(calls_views, "CALL_PUSH_REPEAT_SECONDS", 0)
     # Задачу берём из очереди по имени — подменяем точку входа Celery.
     monkeypatch.setattr("core.celery_app.get_task", lambda name: _FakeTask())
 
     offer = {"type": "call-offer", "call_id": "call-1", "kind": "audio"}
 
-    # 1. Вызов ждёт ответа — push ставим в очередь.
+    # 1. Вызов ждёт ответа — уведомление ставим в очередь (и повторяем, пока ждёт).
     await call_manager.park_offer(7, dict(offer))
     await calls_views._enqueue_call_push_when_ringing(
         callee_id=7, caller_id=5, offer=offer
     )
-    assert len(sent) == 1
+    assert sent, "о живом вызове уведомление должно уйти"
     assert sent[0][0] == 7
     assert sent[0][1] == "call-1"
     # Срок годности уезжает в задачу: поздно доставленный push не показываем.
     assert isinstance(sent[0][4], int)
 
-    # 2. Зовущий отменил звонок — уведомление уже не нужно.
+    # 2. Зовущий отменил звонок — уведомления уже не нужны.
     await call_manager.discard_pending_offer(7, "call-1")
+    sent.clear()
     await calls_views._enqueue_call_push_when_ringing(
         callee_id=7, caller_id=5, offer=offer
     )
-    assert len(sent) == 1
+    assert sent == []
 
     # 3. Абонент подключился и забрал offer — тоже не шлём.
     await call_manager.park_offer(7, dict(offer))
@@ -129,7 +131,54 @@ async def test_call_push_skipped_when_call_already_over(
     await calls_views._enqueue_call_push_when_ringing(
         callee_id=7, caller_id=5, offer=offer
     )
-    assert len(sent) == 1
+    assert sent == []
+
+
+async def test_call_push_repeats_while_ringing(
+    call_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Дозвон серией: пока вызов «висит», уведомление повторяется.
+
+    Одно уведомление — один короткий сигнал, который легко пропустить; повтор с
+    тем же `tag` подаёт звук снова. Срок годности при этом считается ОДИН раз:
+    иначе каждый повтор продлевал бы его, и «Вам звонят» висело бы уже после
+    того, как зовущий перестал ждать.
+    """
+    from api_v1.calls import views as calls_views
+    from api_v1.calls.manager import call_manager
+
+    sent: list[tuple] = []
+
+    class _FakeTask:
+        def delay(self, *args: object) -> None:
+            sent.append(args)
+
+    monkeypatch.setattr(calls_views, "CALL_PUSH_DELAY_SECONDS", 0)
+    monkeypatch.setattr(calls_views, "CALL_PUSH_REPEAT_SECONDS", 0)
+    monkeypatch.setattr("core.celery_app.get_task", lambda name: _FakeTask())
+
+    offer = {"type": "call-offer", "call_id": "call-2", "kind": "video"}
+    await call_manager.park_offer(7, dict(offer))
+    await calls_views._enqueue_call_push_when_ringing(
+        callee_id=7, caller_id=5, offer=offer
+    )
+
+    assert len(sent) == calls_views.CALL_PUSH_ATTEMPTS
+    # Первая попытка — первый push, дальше повторы с их номером.
+    assert [item[5] for item in sent] == [1, 2, 3, 4]
+    assert {item[6] for item in sent} == {calls_views.CALL_PUSH_ATTEMPTS}
+    # Срок годности у всех попыток один и тот же (не продлевается повторами).
+    assert len({item[4] for item in sent}) == 1
+    # Вид звонка доезжает до уведомления: «Видеозвонок» в подписи.
+    assert {item[3] for item in sent} == {"video"}
+
+    # Вызов сняли посреди дозвона — повторов больше нет.
+    await call_manager.discard_pending_offer(7, "call-2")
+    sent.clear()
+    await calls_views._enqueue_call_push_when_ringing(
+        callee_id=7, caller_id=5, offer=offer
+    )
+    assert sent == []
 
 
 async def test_has_pending_offer_filters_by_call_id(call_db) -> None:

@@ -64,12 +64,37 @@ def test_ttl_is_never_shorter_than_a_minute() -> None:
 
 
 def test_ice_servers_include_stun_and_turn() -> None:
-    """В списке есть публичный STUN и TURN с кредами."""
+    """В списке есть публичный STUN и TURN с кредами — UDP и запасной TCP."""
     servers = turn.ice_servers(5)
     assert servers[0]["urls"] == turn.DEFAULT_STUN_URL
     turn_entry = servers[1]
-    assert turn_entry["urls"] == "turn:turn.example:3478?transport=udp"
+    assert turn_entry["urls"] == [
+        "turn:turn.example:3478?transport=udp",
+        "turn:turn.example:3478?transport=tcp",
+    ]
     assert turn_entry["username"] and turn_entry["credential"]
+
+
+def test_turn_urls_get_tcp_fallback() -> None:
+    """К адресу без параметров добавляется TCP-вариант (UDP бывает закрыт).
+
+    В корпоративных сетях и у части операторов UDP закрыт — без запасного TCP
+    звонок не собирается вовсе. Адрес TLS (`turns:`) второй раз не дублируем.
+    """
+    settings.turn_urls = "turn:turn.example:3478, turns:turn.example:5349"
+
+    assert turn.relay_url_list() == [
+        "turn:turn.example:3478",
+        "turn:turn.example:3478?transport=tcp",
+        "turns:turn.example:5349",
+    ]
+
+
+def test_turn_urls_do_not_duplicate_tcp() -> None:
+    """Если TCP уже задан явно, второй такой же строки не появляется."""
+    settings.turn_urls = "turn:turn.example:3478?transport=tcp"
+
+    assert turn.relay_url_list() == ["turn:turn.example:3478?transport=tcp"]
 
 
 def test_turn_urls_support_several_addresses() -> None:
@@ -84,6 +109,7 @@ def test_turn_urls_support_several_addresses() -> None:
     servers = turn.ice_servers(1)
     assert servers[1]["urls"] == [
         "turn:turn.example:3478?transport=udp",
+        "turn:turn.example:3478?transport=tcp",
         "turns:turn.example:5349?transport=tcp",
     ]
 

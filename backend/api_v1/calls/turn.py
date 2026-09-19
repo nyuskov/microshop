@@ -20,7 +20,13 @@ import time
 
 from core.config import settings
 
-__all__ = ["turn_configured", "turn_url_list", "build_credentials", "ice_servers"]
+__all__ = [
+    "turn_configured",
+    "turn_url_list",
+    "relay_url_list",
+    "build_credentials",
+    "ice_servers",
+]
 
 #: Публичный STUN — нужен, чтобы клиент узнал свой внешний адрес даже без TURN.
 DEFAULT_STUN_URL = "stun:stun.l.google.com:19302"
@@ -34,6 +40,30 @@ def turn_url_list() -> list[str]:
 def turn_configured() -> bool:
     """Настроен ли TURN: нужны и секрет, и хотя бы один адрес."""
     return bool(settings.turn_secret and turn_url_list())
+
+
+def relay_url_list() -> list[str]:
+    """Адреса релея с запасным вариантом по TCP.
+
+    UDP — обычный путь для медиа, но в корпоративных сетях и у части мобильных
+    операторов он закрыт, и звонок тогда не собирается вовсе. coturn слушает
+    3478 и по TCP, поэтому к каждому адресу добавляем тот же адрес с
+    ``?transport=tcp``: браузер сам переберёт вариантов кандидатов и возьмёт
+    рабочий. Адреса ``turns:`` (TLS) не трогаем — там TCP по определению.
+    """
+    result: list[str] = []
+    for url in turn_url_list():
+        if url not in result:
+            result.append(url)
+        if not url.startswith("turn:"):
+            continue
+        # Вариант строим от адреса БЕЗ параметров: иначе от
+        # `?transport=udp` получилось бы два `transport` в одной строке.
+        base = url.split("?", 1)[0]
+        tcp = f"{base}?transport=tcp"
+        if tcp not in result:
+            result.append(tcp)
+    return result
 
 
 def build_credentials(user_id: int, *, now: int | None = None) -> dict[str, object]:
@@ -62,10 +92,10 @@ def ice_servers(user_id: int) -> list[dict[str, object]]:
 
     STUN отдаём всегда (он не требует учётных данных), TURN — только когда
     настроен: иначе клиент будет ходить в никуда и терять время на сборе
-    кандидатов.
+    кандидатов. У TURN в списке есть и UDP, и TCP-вариант (см. ``relay_url_list``).
     """
     servers: list[dict[str, object]] = [{"urls": DEFAULT_STUN_URL}]
-    urls = turn_url_list()
+    urls = relay_url_list()
     if urls and settings.turn_secret:
         credentials = build_credentials(user_id)
         servers.append(

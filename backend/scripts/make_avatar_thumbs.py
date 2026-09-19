@@ -1,15 +1,21 @@
-"""Досоздаёт миниатюры аватаров для уже загруженных файлов.
+"""Досоздаёт миниатюры аватаров и иконки уведомлений для уже загруженных файлов.
 
 Миниатюры (``avatar_thumb_url``) появились позже самих аватаров: у файлов,
 загруженных до этого, их нет, и клиент тянет оригинал (несколько мегабайт) на
 кружок 40–56px. Скрипт проходит по пользователям и группам с аватаром без
 миниатюры, делает миниатюру из файла на диске и проставляет ссылку в БД.
 
+Заодно делаются «иконки уведомлений» (``_n192.png`` рядом с аватаром): их адрес
+выводится из имени аватара и в БД не хранится, поэтому достаточно файла. Без них
+в пуше показывается полный аватар — крупнее, чем хотелось бы (генерация при
+отправке работает, но первое уведомление ждёт её).
+
 Запуск (нужен доступ к БД и каталогу media, например внутри контейнера web):
     poetry run python -m scripts.make_avatar_thumbs            # dry-run
     poetry run python -m scripts.make_avatar_thumbs --apply    # с записью
 
-Скрипт идемпотентен: повторный запуск ничего не делает (миниатюра уже есть).
+Скрипт идемпотентен: повторный запуск ничего не делает (копии уже есть). В
+режиме dry-run файлы всё равно создаются (как и раньше) — не трогается только БД.
 """
 
 import argparse
@@ -21,6 +27,8 @@ from core.avatar_store import (
     AVATAR_DIR,
     AVATAR_URL_PREFIX,
     make_avatar_thumb,
+    make_push_icon,
+    push_icon_stored_name,
     thumb_stored_name,
 )
 from core.media_crypto import read_file, write_file
@@ -43,51 +51,63 @@ def _make_thumb_for(avatar_url: str) -> str | None:
     return f"{AVATAR_URL_PREFIX}{thumb_name}"
 
 
+def _make_push_icon_for(avatar_url: str) -> str | None:
+    """Делает иконку уведомления. None — уже есть, файла нет или не картинка."""
+    source = AVATAR_DIR / avatar_url.rsplit("/", 1)[-1]
+    if not source.is_file():
+        return None
+    name = push_icon_stored_name(source.name)
+    if (AVATAR_DIR / name).is_file():
+        return None
+    icon = make_push_icon(read_file(source))
+    if icon is None:
+        return None
+    write_file(AVATAR_DIR / name, icon)
+    return f"{AVATAR_URL_PREFIX}{name}"
+
+
 async def _run(apply: bool) -> None:
     made = 0
+    icons = 0
     broken = 0
     async with db_helper.session_factory() as session:
-        users = (
-            (
-                await session.execute(
-                    select(User).where(
-                        User.avatar_url.is_not(None),
-                        User.avatar_thumb_url.is_(None),
-                    )
-                )
-            )
+        rows = [
+            *(await session.execute(select(User).where(User.avatar_url.is_not(None))))
             .scalars()
-            .all()
-        )
-        chats = (
-            (
-                await session.execute(
-                    select(Chat).where(
-                        Chat.avatar_url.is_not(None),
-                        Chat.avatar_thumb_url.is_(None),
-                    )
-                )
-            )
+            .all(),
+            *(await session.execute(select(Chat).where(Chat.avatar_url.is_not(None))))
             .scalars()
-            .all()
-        )
+            .all(),
+        ]
 
-        for row in [*users, *chats]:
-            thumb_url = _make_thumb_for(row.avatar_url or "")
-            if thumb_url is None:
-                broken += 1
-                print(f"  пропуск: файл аватара недоступен ({row.avatar_url})")
-                continue
-            made += 1
-            if apply:
-                row.avatar_thumb_url = thumb_url
-            print(f"  миниатюра: {row.avatar_url} -> {thumb_url}")
+        for row in rows:
+            avatar_url = row.avatar_url or ""
+
+            if row.avatar_thumb_url is None:
+                thumb_url = _make_thumb_for(avatar_url)
+                if thumb_url is None:
+                    # Файла нет или он не картинка — иконку для него тоже не сделать.
+                    broken += 1
+                    print(f"  пропуск: файл аватара недоступен ({avatar_url})")
+                    continue
+                made += 1
+                if apply:
+                    row.avatar_thumb_url = thumb_url
+                print(f"  миниатюра: {avatar_url} -> {thumb_url}")
+
+            icon_url = _make_push_icon_for(avatar_url)
+            if icon_url is not None:
+                icons += 1
+                print(f"  иконка уведомления: {avatar_url} -> {icon_url}")
 
         if apply:
             await session.commit()
 
     mode = "записано" if apply else "dry-run (без изменений, нужен --apply)"
-    print(f"Миниатюр сделано: {made}; файл не читается: {broken}; режим: {mode}")
+    print(
+        f"Миниатюр сделано: {made}; иконок уведомления: {icons}; "
+        f"файл не читается: {broken}; режим: {mode}"
+    )
 
 
 def main() -> None:

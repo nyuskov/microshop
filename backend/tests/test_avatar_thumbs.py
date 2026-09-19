@@ -24,7 +24,11 @@ from PIL import Image
 from core import avatar_store
 from core.avatar_store import (
     AVATAR_THUMB_SIZE,
+    PUSH_ICON_SIZE,
     make_avatar_thumb,
+    make_push_icon,
+    push_icon_stored_name,
+    push_icon_url,
     remove_avatar_files,
     store_avatar,
     thumb_stored_name,
@@ -114,6 +118,98 @@ def test_remove_avatar_files_ignores_foreign_paths(tmp_path, monkeypatch) -> Non
     remove_avatar_files("/media/avatars/user_1_x.jpg", "/media/other/keep.jpg", None)
     assert not ours.exists()
     assert (tmp_path.parent / "other").exists() is False
+
+
+# --- Иконка уведомления (уменьшенный аватар с прозрачными полями) ---------
+
+
+def _png_bytes(size: int = 64, color: tuple[int, int, int] = (10, 200, 90)) -> bytes:
+    image = Image.new("RGB", (size, size), color)
+    buffer = BytesIO()
+    image.save(buffer, "PNG")
+    return buffer.getvalue()
+
+
+def test_push_icon_smaller_with_transparent_margins() -> None:
+    """Аватар уменьшен и окружён прозрачными полями — иначе он крупный в пуше."""
+    icon = make_push_icon(_jpeg_bytes())
+    assert icon is not None
+    with Image.open(BytesIO(icon)) as image:
+        assert image.mode == "RGBA"
+        assert image.size == (PUSH_ICON_SIZE, PUSH_ICON_SIZE)
+        # Угол пустой (поле), а середина — сам аватар.
+        assert image.getpixel((0, 0))[3] == 0
+        center = PUSH_ICON_SIZE // 2
+        assert image.getpixel((center, center))[3] > 0
+
+
+def test_push_icon_does_not_upscale_small_avatar() -> None:
+    """Мелкий аватар не растягиваем: увеличение дало бы мыло."""
+    icon = make_push_icon(_png_bytes(64))
+    assert icon is not None
+    with Image.open(BytesIO(icon)) as image:
+        box = image.getbbox()
+        assert box is not None
+        assert (box[2] - box[0], box[3] - box[1]) == (64, 64)
+
+
+def test_push_icon_rejects_non_image() -> None:
+    assert make_push_icon(b"<html>not an image</html>") is None
+
+
+def test_push_icon_stored_name_ignores_thumb_suffix() -> None:
+    assert push_icon_stored_name("user_5_ab12.png") == "user_5_ab12_n192.png"
+    # Имя миниатюры даёт ту же иконку: иначе от одного аватара было бы две.
+    assert push_icon_stored_name("user_5_ab12_t128.jpg") == "user_5_ab12_n192.png"
+
+
+def test_push_icon_url_generates_for_existing_avatar(tmp_path, monkeypatch) -> None:
+    """Аватар загружен до появления иконок — делаем её на месте."""
+    monkeypatch.setattr(avatar_store, "AVATAR_DIR", tmp_path)
+    (tmp_path / "user_9_ff.jpg").write_bytes(_jpeg_bytes())
+
+    url = push_icon_url("/media/avatars/user_9_ff.jpg")
+
+    assert url == "/media/avatars/user_9_ff_n192.png"
+    assert (tmp_path / "user_9_ff_n192.png").is_file()
+
+
+def test_push_icon_url_generates_from_thumb_when_original_is_gone(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(avatar_store, "AVATAR_DIR", tmp_path)
+    (tmp_path / "user_9_ff_t128.jpg").write_bytes(_jpeg_bytes())
+
+    url = push_icon_url(
+        "/media/avatars/user_9_ff.jpg", "/media/avatars/user_9_ff_t128.jpg"
+    )
+
+    assert url == "/media/avatars/user_9_ff_n192.png"
+
+
+def test_push_icon_url_none_without_files(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(avatar_store, "AVATAR_DIR", tmp_path)
+    assert push_icon_url("/media/avatars/missing.jpg") is None
+    assert push_icon_url(None, "") is None
+    assert push_icon_url("/media/stickers/other.png") is None
+
+
+def test_store_avatar_writes_push_icon(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(avatar_store, "AVATAR_DIR", tmp_path)
+    url, _ = store_avatar(_jpeg_bytes(), prefix="user_11", extension="jpg")
+
+    name = push_icon_stored_name(url.rsplit("/", 1)[-1])
+    assert (tmp_path / name).is_file()
+
+
+def test_remove_avatar_files_removes_push_icon(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(avatar_store, "AVATAR_DIR", tmp_path)
+    (tmp_path / "user_1_x.jpg").write_bytes(b"x")
+    (tmp_path / "user_1_x_n192.png").write_bytes(b"x")
+
+    remove_avatar_files("/media/avatars/user_1_x.jpg")
+
+    assert not (tmp_path / "user_1_x_n192.png").exists()
 
 
 # --- API: загрузка и удаление -------------------------------------------

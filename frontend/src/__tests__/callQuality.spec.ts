@@ -27,7 +27,8 @@ import {
   tunedDescription,
   videoBitrateFor,
   videoFramerateFor,
-  videoScaleFor
+  videoScaleFor,
+  videoStepFor
 } from '@/stores/call/quality'
 import { speakingNow, type CallDiagnostics } from '@/utils/callStats'
 import { rmsLevel } from '@/stores/call/output'
@@ -177,6 +178,44 @@ describe('ступени для звука, разрешения и кадров
     // Очень большое дрожание не должно раздувать буфер бесконечно.
     expect(jitterTargetsFor(diagnostics({ jitterMs: 900 })).audioMs).toBe(140)
     expect(jitterTargetsFor(diagnostics({ jitterMs: 900 })).videoMs).toBe(700)
+  })
+})
+
+describe('ограничение кодера по процессору', () => {
+  it('облегчает видео, но НЕ трогает звук', () => {
+    const cpu = diagnostics({ qualityLimitation: 'cpu' })
+
+    // Сеть хорошая, а картинку не тянет процессор: "плохая связь" тут не при чём.
+    expect(qualityStepFor(cpu)).toBe('good')
+    expect(videoStepFor(cpu)).toBe('fair')
+    expect(videoBitrateFor(cpu)).toBe(VIDEO_BITRATE_FAIR)
+    expect(videoScaleFor(cpu)).toBe(1.5)
+    // Звук остаётся «хорошим»: его кодирование дешёвое, сужать его из-за CPU незачем.
+    expect(audioBitrateFor(cpu)).toBe(AUDIO_BITRATE_GOOD)
+  })
+
+  it('не улучшает уже плохую связь', () => {
+    const both = diagnostics({ qualityLimitation: 'cpu', lossPercent: 12 })
+
+    expect(videoStepFor(both)).toBe('bad')
+    expect(videoBitrateFor(both)).toBe(VIDEO_BITRATE_BAD)
+  })
+
+  it('ограничение по полосе — не повод ужимать сверх сетевой ступени', () => {
+    // Полосу уже учитывает сетевая ступень (availableOutgoingKbps/потери) —
+    // второй раз резать видео по этой же причине нельзя.
+    expect(videoStepFor(diagnostics({ qualityLimitation: 'bandwidth' }))).toBe('good')
+  })
+
+  it('настройка отправки берёт ступень видео отдельно от звука', () => {
+    const tuning = senderTuningForStep('good', false, 'fair')
+
+    expect(tuning.videoBitrate).toBe(VIDEO_BITRATE_FAIR)
+    expect(tuning.audioBitrate).toBe(AUDIO_BITRATE_GOOD)
+  })
+
+  it('стор передаёт в настройку отдельную ступень для видео', () => {
+    expect(store).toMatch(/videoStepFor\(diagnostics\)/)
   })
 })
 

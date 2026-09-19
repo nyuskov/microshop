@@ -20,6 +20,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 
+from core.avatar_store import push_icon_stored_name
 from core.models import Chat, LinkPreview, Message, Sticker, Story, User, db_helper
 
 MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
@@ -60,8 +61,13 @@ async def _collect_used(session) -> set[str]:
             User.avatar_url.is_not(None)
         )
     )
-    used |= _collect_names([row[0] for row in result.all()])
-    used |= _collect_names([row[1] for row in result.all()])
+    user_avatar_names = _collect_names([row[0] for row in result.all()])
+    user_avatar_names |= _collect_names([row[1] for row in result.all()])
+    used |= user_avatar_names
+    # Иконки уведомлений лежат рядом с аватарами и выводятся из их имён
+    # (`user_5_ab_n192.png`), в БД их адреса нет: без этой строки скрипт удалял бы
+    # их как «сироты», и генерация повторялась бы при каждом push.
+    used |= {push_icon_stored_name(name) for name in user_avatar_names}
 
     # Аватары групп лежат в том же каталоге, что и аватары пользователей, — без
     # них скрипт удалял бы файлы живых групп как «сироты».
@@ -70,8 +76,10 @@ async def _collect_used(session) -> set[str]:
             Chat.avatar_url.is_not(None)
         )
     )
-    used |= _collect_names([row[0] for row in result.all()])
-    used |= _collect_names([row[1] for row in result.all()])
+    chat_avatar_names = _collect_names([row[0] for row in result.all()])
+    chat_avatar_names |= _collect_names([row[1] for row in result.all()])
+    used |= chat_avatar_names
+    used |= {push_icon_stored_name(name) for name in chat_avatar_names}
 
     result = await session.execute(
         select(Story.media_url).where(Story.media_url.is_not(None))

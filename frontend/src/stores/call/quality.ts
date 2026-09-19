@@ -183,9 +183,24 @@ export function qualityStepFor(diagnostics: CallDiagnostics | null): QualityStep
   return 'good'
 }
 
+/**
+ * Ступень качества для ВИДЕО.
+ *
+ * Отличается от сетевой одним случаем: кодер жалуется на ПРОЦЕССОР
+ * (`qualityLimitation === 'cpu'`). Сеть тут ни при чём, а картинка «замирает» и
+ * рассыпается — на слабом телефоне это заметнее потерь пакетов. Аудио кодируется
+ * дёшево, поэтому его сужать нельзя: пострадает разборчивость речи. Облегчаем
+ * ТОЛЬКО видео — до «среднего», а если сеть уже плохая, остаёмся на «плохой».
+ */
+export function videoStepFor(diagnostics: CallDiagnostics | null): QualityStep {
+  const network = qualityStepFor(diagnostics)
+  if (diagnostics?.qualityLimitation !== 'cpu') return network
+  return stepRank(network) >= stepRank('fair') ? 'fair' : network
+}
+
 /** Целевой битрейт видео по текущему качеству связи. */
 export function videoBitrateFor(diagnostics: CallDiagnostics | null): number {
-  return VIDEO_BITRATE_BY_STEP[qualityStepFor(diagnostics)]
+  return VIDEO_BITRATE_BY_STEP[videoStepFor(diagnostics)]
 }
 
 /** Целевой битрейт звука по текущему качеству связи. */
@@ -201,12 +216,12 @@ export function audioBitrateFor(diagnostics: CallDiagnostics | null): number {
  * более чистую картинку. На показ экрана не влияет (там всегда 1).
  */
 export function videoScaleFor(diagnostics: CallDiagnostics | null): number {
-  return VIDEO_SCALE_BY_STEP[qualityStepFor(diagnostics)]
+  return VIDEO_SCALE_BY_STEP[videoStepFor(diagnostics)]
 }
 
 /** Предел кадров/с для камеры по качеству связи. */
 export function videoFramerateFor(diagnostics: CallDiagnostics | null): number {
-  return VIDEO_FRAMERATE_BY_STEP[qualityStepFor(diagnostics)]
+  return VIDEO_FRAMERATE_BY_STEP[videoStepFor(diagnostics)]
 }
 
 /** Порядок ступеней: чем больше, тем лучше связь. */
@@ -317,8 +332,15 @@ export interface SenderTuning {
  * Показ экрана — отдельный режим: он ступеням не подчиняется (текст должен
  * оставаться читаемым), но звук продолжает сужаться вместе со связью — в
  * разговоре важен именно он.
+ *
+ * `videoStep` — своя ступень для ВИДЕО (`videoStepFor`): она ниже сетевой, когда
+ * картинку ограничивает процессор. Звук при этом остаётся на сетевой ступени.
  */
-export function senderTuningForStep(step: QualityStep, screen = false): SenderTuning {
+export function senderTuningForStep(
+  step: QualityStep,
+  screen = false,
+  videoStep: QualityStep = step
+): SenderTuning {
   const audioBitrate = AUDIO_BITRATE_BY_STEP[step]
   if (screen) {
     return {
@@ -331,9 +353,9 @@ export function senderTuningForStep(step: QualityStep, screen = false): SenderTu
   }
   return {
     audioBitrate,
-    videoBitrate: VIDEO_BITRATE_BY_STEP[step],
-    scale: VIDEO_SCALE_BY_STEP[step],
-    framerate: VIDEO_FRAMERATE_BY_STEP[step]
+    videoBitrate: VIDEO_BITRATE_BY_STEP[videoStep],
+    scale: VIDEO_SCALE_BY_STEP[videoStep],
+    framerate: VIDEO_FRAMERATE_BY_STEP[videoStep]
   }
 }
 
