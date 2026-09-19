@@ -213,7 +213,7 @@ export const stopTranslationWork = (messageId: number): void => {
 export const cancelAllTranslations = (): void => {
   for (const cancel of Array.from(running.values())) cancel()
   for (const prepared of Array.from(translators.values())) {
-    void prepared.then((translator) => translator.destroy()).catch(() => undefined)
+    void prepared.promise.then((translator) => translator.destroy()).catch(() => undefined)
   }
   translators.clear()
 }
@@ -254,8 +254,35 @@ const translatorFactory = (): TranslatorFactory | null => {
   return typeof holder.Translator === 'function' ? holder.Translator : null
 }
 
-/** Готовые переводчики по парам языков: создание (загрузка модели) стоит времени. */
-const translators = new Map<string, Promise<TranslatorInstance>>()
+/** Готовый переводчик пары языков: создание (загрузка модели) стоит времени. */
+interface PreparedTranslator {
+  promise: Promise<TranslatorInstance>
+  /** Готовый переводчик (null, пока модель качается). */
+  instance: TranslatorInstance | null
+}
+
+/** Готовые переводчики по парам языков. */
+const translators = new Map<string, PreparedTranslator>()
+
+/** Пара языков для кэша переводчиков. */
+const pairKey = (source: string, target: string): string => `${source}-${target}`
+
+/**
+ * Отпускает НЕЗАВЕРШЁННУЮ загрузку пары (готовый переводчик не трогаем).
+ *
+ * ГРАБЛЯ (симптом владельца: «после перевода на немецкий другие языки дают
+ * ошибку»): раньше отмена освобождала пару целиком — вместе с уже ГОТОВЫМ
+ * переводчиком. Следующий запуск брал из кэша уничтоженный объект, браузер
+ * отказывался с ним работать, и человек видел «Не удалось перевести сообщение».
+ * Прерванную загрузку отпускать обязательно: иначе повтор подхватит ту же
+ * незавершённую задачу и снова повиснет.
+ */
+function releasePair(key: string): void {
+  const prepared = translators.get(key)
+  if (!prepared || prepared.instance) return
+  translators.delete(key)
+  void prepared.promise.then((translator) => translator.destroy()).catch(() => undefined)
+}
 
 /**
  * Итог ожидания: получилось, не дождались или работа упала с ошибкой.
@@ -322,25 +349,9 @@ const targetFor = (source: string): string => {
 /**
  * Готовит переводчик для пары языков.
  *
- * Первый перевод скачивает модель: `onNote` сообщает, сколько уже скачано, —
- * иначе человек видит «Переводим…» без объяснения, почему так долго.
+ * Первый перевод скачивает модель: `onProgress` сообщает долю скачанного — иначе
+ * человек видит «Переводим…» без объяснения, почему так долго.
  */
-/**
- * Отпускает подготовленный переводчик пары языков.
- *
- * Нужно после отмены: незавершённая загрузка модели осталась бы в кэше, и любая
- * следующая попытка ждала бы ту же самую зависшую задачу («не качает повторно»).
- */
-function releasePair(key: string): void {
-  const prepared = translators.get(key)
-  if (!prepared) return
-  translators.delete(key)
-  void prepared.then((translator) => translator.destroy()).catch(() => undefined)
-}
-
-/** Пара языков для кэша переводчиков. */
-const pairKey = (source: string, target: string): string => `${source}-${target}`
-
 function translatorFor(
   source: string,
   target: string,
@@ -349,7 +360,7 @@ function translatorFor(
 ): Promise<TranslatorInstance> {
   const key = pairKey(source, target)
   const cached = translators.get(key)
-  if (cached) return cached
+  if (cached) return cached.promise
 
   const factory = translatorFactory()
   if (!factory) return Promise.reject(new Error('Нет встроенного перевода'))
@@ -365,10 +376,18 @@ function translatorFor(
       })
     }
   })
-  // Неудачное создание не кэшируем: со второй попытки модель может быть уже
-  // скачана.
-  created.catch(() => translators.delete(key))
-  translators.set(key, created)
+  const prepared: PreparedTranslator = { promise: created, instance: null }
+  void created.then(
+    (translator) => {
+      prepared.instance = translator
+    },
+    // Неудачное создание не кэшируем: со второй попытки модель может быть уже
+    // скачана.
+    () => {
+      if (translators.get(key) === prepared) translators.delete(key)
+    }
+  )
+  translators.set(key, prepared)
   return created
 }
 

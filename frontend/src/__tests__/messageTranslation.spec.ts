@@ -215,6 +215,44 @@ describe('перевод сообщения', () => {
     expect(localStorage.getItem('pismo_translate_to')).toBe('de')
   })
 
+  it('после перевода на немецкий другой язык переводится, а не падает', async () => {
+    // Симптом владельца: после перевода на немецкий переключение на другой язык
+    // давало «Не удалось перевести сообщение» — отмена освобождала пару вместе с
+    // уже готовым переводчиком, и следующий запуск брал уничтоженный объект.
+    installTranslator()
+    installDetector('en')
+    setTranslationTarget('de')
+    await translateMessage(50, 'Hello')
+    expect(translationOf(50)).toMatchObject({ status: 'ready', target: 'de' })
+
+    setTranslationTarget('ru')
+    await translateMessage(50, 'Hello')
+    expect(translationOf(50)).toMatchObject({ status: 'ready', target: 'ru', text: '[ru] Hello' })
+    expect(calls.destroyed).toBe(0)
+  })
+
+  it('отмена не уничтожает готовый переводчик — им ещё пользуются', async () => {
+    installTranslator()
+    installDetector('en')
+    await translateMessage(51, 'Hello')
+    expect(calls.destroyed).toBe(0)
+
+    // Второй запуск той же пары отменяем — переводчик должен остаться живым.
+    installTranslator({ pending: true })
+    void translateMessage(51, 'Hello again')
+    await vi.waitFor(() => {
+      expect(translationOf(51)?.status).toBe('running')
+    })
+    cancelTranslation(51)
+
+    // Проверяем самим фактом: перевод той же пары снова работает.
+    installTranslator()
+    installDetector('en')
+    await translateMessage(51, 'Third')
+    expect(translationOf(51)?.text).toBe('[ru] Third')
+    expect(calls.destroyed).toBe(0)
+  })
+
   it('переводчик одной пары берётся один раз (создание — дорогое)', async () => {
     installTranslator()
     installDetector('en')
