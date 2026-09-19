@@ -24,6 +24,7 @@ __all__ = [
     "Message",
     "MessageDraft",
     "MessageReaction",
+    "MessageReminder",
     "ModerationAction",
     "OtpCode",
     "PasswordLoginAttempt",
@@ -66,6 +67,7 @@ from .login_device import LoginDevice  # noqa: F401
 from .message import Message  # noqa: F401
 from .message_draft import MessageDraft  # noqa: F401
 from .message_reaction import MessageReaction  # noqa: F401
+from .message_reminder import MessageReminder  # noqa: F401
 from .moderation_action import ModerationAction  # noqa: F401
 from .otp_code import OtpCode  # noqa: F401
 from .password_login_attempt import PasswordLoginAttempt  # noqa: F401

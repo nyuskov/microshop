@@ -58,6 +58,7 @@
               :author-name="authorNameFor(item.row, item.index)"
               :series="seriesFor(item.index)"
               :members="members"
+              :reminder-at="reminderAtOf(item.row.message)"
               @quote-click="emit('quote-click', item.row.message)"
               @select-start="emit('select-start', item.row.message)"
               @toggle-select="emit('toggle-select', item.row.message)"
@@ -79,6 +80,7 @@
               @report="emit('report', item.row.message)"
               @open-image="emit('open-image', item.row.message)"
               @open-view-once="emit('open-view-once', item.row.message)"
+              @remind="emit('remind', item.row.message)"
             />
             <!-- Пост канала: просмотры и переход к комментариям (как в Telegram). -->
             <div
@@ -248,6 +250,11 @@ const props = defineProps<{
   channelPosts?: boolean
   /** Счётчики постов канала по id сообщения. */
   postMeta?: Record<number, ChannelPostCounters>
+  /**
+   * Время напоминания об этом сообщении (ISO) либо null — подставляется в строку,
+   * чтобы та знала про стоящий «будильник» (значок у времени и подпись в меню).
+   */
+  reminderAt?: (message: Message) => string | null
 }>()
 
 /** Счётчики поста канала (просмотры и комментарии). */
@@ -261,6 +268,9 @@ const EMPTY_COUNTERS: ChannelPostCounters = { views: 0, comments: 0 }
 /** Счётчики поста: без данных считаем нулями, чтобы шаблон был простым. */
 const postMetaOf = (messageId: number): ChannelPostCounters =>
   props.postMeta?.[messageId] ?? EMPTY_COUNTERS
+
+/** Время напоминания для строки: нет функции — считаем, что напоминаний нет. */
+const reminderAtOf = (message: Message): string | null => props.reminderAt?.(message) ?? null
 
 const emit = defineEmits<{
   (e: 'background-click'): void
@@ -292,6 +302,8 @@ const emit = defineEmits<{
   (e: 'open-image', message: Message): void
   /** Просмотр одноразового вложения (файл сервер отдаст ровно один раз). */
   (e: 'open-view-once', message: Message): void
+  /** «Напомнить»: выбрать время напоминания об этом сообщении. */
+  (e: 'remind', message: Message): void
   /** Пост канала просмотрен (счётчик просмотров растёт один раз). */
   (e: 'post-viewed', message: Message): void
   /** Открыть комментарии к посту канала. */

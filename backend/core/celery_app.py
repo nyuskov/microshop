@@ -118,6 +118,13 @@ def build_beat_schedule(config: Any) -> dict[str, dict[str, Any]]:
             "schedule": crontab(minute="*"),
             "options": {"queue": "microshop"},
         },
+        # Напоминания о сообщениях («напомнить мне»): та же причина — время
+        # выбирает человек, опоздание на минуту заметно.
+        "send-due-message-reminders": {
+            "task": "tasks.scheduled_tasks.send_due_message_reminders",
+            "schedule": crontab(minute="*"),
+            "options": {"queue": "microshop"},
+        },
         # Еженедельная чистка журнала безопасности (записи старше 180 дней).
         "prune-security-events-weekly": {
             "task": "tasks.security_tasks.prune_security_events",

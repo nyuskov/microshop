@@ -18,7 +18,7 @@
  */
 
 const CACHE_PREFIX = 'pismo-v'
-const CACHE_VERSION = 28
+const CACHE_VERSION = 29
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 // Кэш медиа живёт отдельно: обновление версии приложения не сбрасывает картинки.
 const MEDIA_CACHE_PREFIX = 'pismo-media-v'
@@ -279,7 +279,18 @@ async function handlePush(event) {
     data,
     // `payload.tag` приходит от сервера для уведомлений об истории (у них нет
     // ни чата, ни звонка): одна история — один тег, уведомления не копятся.
-    tag: payload.tag || (callId ? 'call-' + callId : chatId ? 'chat-' + chatId : undefined)
+    // Напоминание сервер тоже тегирует по своему id (два напоминания об одном
+    // чате не должны затирать друг друга); запасной вариант — на случай push
+    // без tag: собираем тег из id напоминания здесь.
+    tag:
+      payload.tag ||
+      (callId
+        ? 'call-' + callId
+        : data.type === 'reminder' && data.reminder_id
+          ? 'reminder-' + data.reminder_id
+          : chatId
+            ? 'chat-' + chatId
+            : undefined)
   }
   // Входящий звонок (приложение закрыто/в фоне): держим уведомление на экране,
   // со звуком и вибрацией (как входящий вызов), с кнопкой «Ответить».
@@ -599,10 +610,15 @@ self.addEventListener('notificationclick', (event) => {
       }
       // Тап по телу уведомления или «Ответить» — открываем/фокусируем чат.
       const wantReply = action === 'reply'
+      // Напоминание ведёт в тот же чат и к тому же сообщению, что и push о
+      // сообщении, но без кнопок: «Ответить» тут нечего, «прочитано» — тем более
+      // (новых сообщений напоминание не приносит).
+      const opensChat =
+        (data.type === 'message' || data.type === 'reminder') && Boolean(data.chat_id)
       for (const client of windows) {
         if ('focus' in client) {
           client.focus()
-          if (data.type === 'message' && data.chat_id) {
+          if (opensChat) {
             client.postMessage({
               type: 'open-chat',
               chat_id: data.chat_id,
@@ -614,12 +630,11 @@ self.addEventListener('notificationclick', (event) => {
         }
       }
       // Приложение закрыто — открываем чат (для «Ответить» — сразу к вводу).
-      const url =
-        data.type === 'message' && data.chat_id
-          ? '/?chat=' + encodeURIComponent(data.chat_id) + (wantReply ? '&reply=1' : '')
-          : '/'
+      const url = opensChat
+        ? '/?chat=' + encodeURIComponent(data.chat_id) + (wantReply ? '&reply=1' : '')
+        : '/'
       const win = await self.clients.openWindow(url)
-      if (win && data.type === 'message' && data.chat_id) {
+      if (win && opensChat) {
         win.postMessage({
           type: 'open-chat',
           chat_id: data.chat_id,

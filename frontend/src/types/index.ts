@@ -322,6 +322,23 @@ export interface CreateScheduledMessageRequest {
   encrypted?: boolean
 }
 
+/**
+ * Напоминание о сообщении («напомнить мне»).
+ *
+ * Живёт на сервере, как и отложенная отправка: напоминание должно прийти и с
+ * закрытым приложением (доставка — push). Текста в записи нет: напоминание
+ * ссылается на сообщение, а текст берётся из него в момент срабатывания.
+ */
+export interface MessageReminder {
+  id: number
+  chat_id: number
+  message_id: number
+  user_id: number
+  /** Момент напоминания (UTC, ISO). */
+  remind_at: string
+  created_at: string
+}
+
 export interface OpenPrivateChatRequest {
   user_id: number
 }

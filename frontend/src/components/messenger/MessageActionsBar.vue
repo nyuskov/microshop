@@ -45,6 +45,10 @@
         <q-icon :name="icon('bookmark')" size="16px" />
         <span>Сохранить в Сохранённые</span>
       </button>
+      <button class="more-item" @click="onRemind">
+        <q-icon :name="icon('notifications')" size="16px" />
+        <span>{{ hasReminder ? 'Изменить напоминание' : 'Напомнить' }}</span>
+      </button>
       <button v-if="canMakeSticker" class="more-item" @click="onMakeSticker">
         <q-icon :name="icon('add_reaction')" size="16px" />
         <span>В стикеры</span>
@@ -99,6 +103,8 @@ const props = defineProps<{
   canSave: boolean
   /** Можно ли сделать из сообщения стикер (только открытая картинка). */
   canMakeSticker?: boolean
+  /** Стоит ли напоминание об этом сообщении (меняет подпись пункта меню). */
+  hasReminder?: boolean
   /** Открыта ли палитра реакций (состояние представления). */
   emojiPickerOpen: boolean
   /** Строка уже доходила до экрана — только тогда рисуем панель. */
@@ -118,6 +124,8 @@ const emit = defineEmits<{
   (e: 'delete'): void
   (e: 'report'): void
   (e: 'toggle-pin'): void
+  /** «Напомнить»: выбрать время напоминания о сообщении. */
+  (e: 'remind'): void
 }>()
 
 /** Открыто ли меню «Ещё» (остальные действия). */
@@ -207,6 +215,11 @@ const onEdit = () => {
 const onSave = () => {
   moreOpen.value = false
   emit('save')
+}
+
+const onRemind = () => {
+  moreOpen.value = false
+  emit('remind')
 }
 
 const onMakeSticker = () => {

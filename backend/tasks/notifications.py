@@ -27,7 +27,7 @@ from core.amqp import publish_realtime_event
 from core.celery_app import celery_app
 from core.config import settings
 from core.mentions import mentioned_logins
-from core.models import Message, Profile, PushSubscription, RuStorePushToken, User
+from core.models import Chat, Message, Profile, PushSubscription, RuStorePushToken, User
 from core.quiet_hours import skips_push, utc_now
 from tasks.base import make_engine, make_session, run_async
 
@@ -590,6 +590,185 @@ async def _web_push_to_subscriptions(
         )
         await session.commit()
         logger.info("Удалено устаревших push-подписок: %s", len(stale_ids))
+
+
+#: Заголовок уведомления о напоминании: видно, что это не новое сообщение, а то,
+#: о чём человек сам просил напомнить.
+PUSH_REMINDER_TITLE = "Напоминание"
+#: Текст сообщения в подсказке обрезаем так же, как в push о сообщениях.
+PUSH_REMINDER_TEXT_LIMIT = 120
+
+
+def reminder_chat_label(
+    *,
+    chat: Chat | None,
+    user_id: int,
+    contact_name: str | None = None,
+) -> str:
+    """Название чата для уведомления о напоминании.
+
+    Грабля, на которой легко ошибиться (и уже ошиблись живьём): у личных чатов
+    ``Chat.name`` — техническое (`phone_81385ee1`), показывать его человеку
+    нельзя. Поэтому у личных чатов берём имя собеседника (личное имя из контактов
+    важнее), у групп и каналов — название, а «Сохранённые» называем словами.
+    """
+    if chat is None:
+        return "Чат"
+    if chat.is_self:
+        return "Сохранённые сообщения"
+    if chat.is_group or chat.is_channel:
+        return (chat.name or "").strip() or "Чат"
+    peer = next((item for item in chat.users if item.id != user_id), None)
+    if peer is None:
+        return "Чат"
+    return contact_name or _display_name(peer)
+
+
+def reminder_body(*, label: str, message: Message | None, preview: bool = True) -> str:
+    """Тело push о напоминании: в каком чате и о чём речь.
+
+    Три случая, которые легко перепутать (и потому вынесены в чистую функцию):
+    текст скрыт настройкой (тогда чат называем, а содержимого нет), E2EE-чат
+    (на сервере шифротекст — в уведомление он не уходит) и удалённое сообщение
+    (напоминание всё равно должно привести человека в чат).
+    """
+    if not preview:
+        return f"Сообщение в чате «{label}»"
+    if message is None:
+        return f"Чат «{label}»"
+    if message.encrypted:
+        # E2EE: содержимое серверу неизвестно, поэтому говорим только о защите.
+        what = (
+            "🔒 Вложение защищено сквозным шифрованием"
+            if message.file_url
+            else "🔒 Сообщение защищено сквозным шифрованием"
+        )
+    else:
+        text = (message.text or "").strip()
+        if text:
+            what = (
+                text
+                if len(text) <= PUSH_REMINDER_TEXT_LIMIT
+                else text[: PUSH_REMINDER_TEXT_LIMIT - 3] + "…"
+            )
+        elif message.file_name:
+            what = f"Вложение: {message.file_name}"
+        else:
+            what = ""
+    return f"Чат «{label}»: {what}" if what else f"Чат «{label}»"
+
+
+@celery_app.task(
+    name="tasks.notifications.send_reminder_push",
+    bind=True,
+    max_retries=2,
+    default_retry_delay=5,
+    soft_time_limit=60,
+)
+def send_reminder_push(
+    self,
+    reminder_id: int,
+    user_id: int,
+    chat_id: int,
+    message_id: int,
+) -> None:
+    """Push о напоминании о сообщении (Web Push + RuStore).
+
+    Ставится задачей разбора очереди (``tasks.scheduled_tasks``), когда время
+    напоминания наступило. Тихие часы здесь НЕ проверяем: это не уведомление
+    собеседника, а просьба самого человека вернуться к сообщению — он сам выбрал
+    время (то же правило, что у уведомлений безопасности).
+
+    ``reminder_id`` нужен только для тега уведомления (каждое напоминание —
+    своё), в тексте он не участвует.
+    """
+    if not _web_push_configured() and not rustore_push.is_configured():
+        return
+    run_async(_send_reminder_push_async(reminder_id, user_id, chat_id, message_id))
+
+
+async def _send_reminder_push_async(
+    reminder_id: int, user_id: int, chat_id: int, message_id: int
+) -> None:
+    # Импорт внутри функции: у воркера нет нужды держать модуль чатов на импорте.
+    from api_v1.chats.crud import get_chat_with_users
+
+    engine = make_engine()
+    session = make_session(engine)
+    try:
+        chat = await get_chat_with_users(session, chat_id)
+        message = await session.get(Message, message_id)
+        profiles = await _profiles_by_user(session, [user_id])
+        profile = profiles.get(user_id)
+
+        # Название чата в теле уведомления — иначе по обрезанному тексту не
+        # понять, куда идти (личное имя собеседника, если он записан контактом).
+        peer = None
+        if chat is not None and not (chat.is_group or chat.is_channel or chat.is_self):
+            peer = next((item for item in chat.users if item.id != user_id), None)
+        contact_names = (
+            await contact_names_for(session, owner_ids=[user_id], peer_id=peer.id)
+            if peer is not None
+            else {}
+        )
+        label = reminder_chat_label(
+            chat=chat,
+            user_id=user_id,
+            contact_name=contact_names.get(user_id),
+        )
+
+        # Текст берём из самого сообщения в момент срабатывания: его могли
+        # отредактировать, а напоминание всё равно должно быть узнаваемым.
+        # Настройка «скрывать текст в уведомлениях» соблюдается (см. reminder_body).
+        body = reminder_body(
+            label=label,
+            message=message,
+            preview=profile is None or profile.notification_preview,
+        )
+
+        data: dict[str, object] = {
+            "type": "reminder",
+            "reminder_id": reminder_id,
+            "chat_id": chat_id,
+            "message_id": message_id,
+        }
+
+        await _send_rustore_push(
+            session,
+            [user_id],
+            _rustore_message(
+                title=PUSH_REMINDER_TITLE,
+                body=body,
+                channel_id=PUSH_CHANNEL_MESSAGES,
+                data=data,
+            ),
+        )
+
+        if not _web_push_configured():
+            return
+        stmt = select(PushSubscription).where(PushSubscription.user_id == user_id)
+        subscriptions = list((await session.execute(stmt)).scalars().all())
+        if not subscriptions:
+            return
+        payload = json.dumps(
+            {
+                "title": PUSH_REMINDER_TITLE,
+                "body": body,
+                "icon": PUSH_ICON_DEFAULT,
+                "badge": PUSH_BADGE,
+                # Своё напоминание — своё уведомление: два напоминания об одном
+                # чате не должны заменять друг друга (тег по id напоминания).
+                "tag": f"reminder-{reminder_id}",
+                "data": data,
+            },
+            ensure_ascii=False,
+        )
+        await _web_push_to_subscriptions(
+            session, subscriptions, payload, PUSH_TTL_MESSAGE, PUSH_HEADERS_MESSAGE
+        )
+    finally:
+        await session.close()
+        await engine.dispose()
 
 
 @celery_app.task(

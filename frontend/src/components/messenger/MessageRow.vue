@@ -206,6 +206,16 @@
 
         <span class="msg-meta">
           <span v-if="message.edited_at" class="msg-edited" title="изменено">изменено</span>
+          <!-- Напоминание человека о своём сообщении: видно, что «будильник» уже
+               стоит (точное время — в подсказке и в диалоге напоминания). -->
+          <span
+            v-if="reminderAt"
+            class="msg-reminder"
+            :title="`Напоминание ${reminderLabel}`"
+            :aria-label="`Напоминание ${reminderLabel}`"
+          >
+            <q-icon :name="icon('notifications')" size="12px" aria-hidden="true" />
+          </span>
           <span class="msg-time">{{ formatMsgTime(message.timestamp) }}</span>
           <span v-if="isOwn" class="msg-ticks" :class="{ read: message.is_read }">✓✓</span>
         </span>
@@ -226,6 +236,7 @@
       :is-own="isOwn"
       :can-save="canSave"
       :can-make-sticker="canMakeSticker"
+      :has-reminder="Boolean(reminderAt)"
       :emoji-picker-open="emojiPickerOpen"
       :row-visible="rowVisible"
       @toggle-emoji-picker="emit('toggle-emoji-picker')"
@@ -239,9 +250,10 @@
       @delete="emit('delete')"
       @report="emit('report')"
       @toggle-pin="emit('toggle-pin')"
+      @remind="emit('remind')"
     />
 
-    <!-- Лист действий (удержание выделенного сообщения или правый клик) —
+    <!-- Лист действий (удержание выделенного сообщения или клавиатура) —
          в MessageActionSheet.vue вместе с фокус-ловушкой и позиционированием. -->
     <MessageActionSheet
       ref="sheetRef"
@@ -249,6 +261,7 @@
       :is-own="isOwn"
       :can-save="canSave"
       :can-make-sticker="canMakeSticker"
+      :has-reminder="Boolean(reminderAt)"
       :selectable="selectable"
       :selection-mode="selectionMode"
       :emoji-picker-open="emojiPickerOpen"
@@ -262,6 +275,7 @@
       @delete="emit('delete')"
       @report="emit('report')"
       @toggle-pin="emit('toggle-pin')"
+      @remind="emit('remind')"
     />
   </div>
 </template>
@@ -275,6 +289,7 @@ import { lastQuickReaction } from '@/utils/reactions'
 import { emojiLayout, type EmojiLayout } from '@/utils/emoji'
 import { haptic, HAPTIC_HOLD } from '@/utils/haptics'
 import { formatMsgTime } from '@/utils/format'
+import { formatScheduledAt } from '@/utils/scheduledSend'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import { highlightQuery, splitMessageText } from '@/utils/mentions'
 import { followLink } from '@/composables/useExternalLinkGuard'
@@ -405,6 +420,12 @@ const props = defineProps<{
    * Нет списка — показываем число, как раньше.
    */
   members?: ChatUser[]
+  /**
+   * Время напоминания об этом сообщении (ISO) либо null, если его нет.
+   * Так строка узнаёт, что «будильник» уже стоит: в меню меняется подпись, а у
+   * времени появляется значок.
+   */
+  reminderAt?: string | null
 }>()
 
 /** Текст плашки «Переслано от …» (null, если сообщение не переслано). */
@@ -420,6 +441,15 @@ const forwardLabel = computed<string | null>(() => {
 
 /** Плашка «Ответ на историю» (null, если это обычное сообщение). */
 const storyReply = computed(() => props.message.reply_to_story ?? null)
+
+/**
+ * Человеческая подпись к напоминанию («через час», «завтра в 9:00») — та же, что
+ * у отложенных сообщений: обе показывают будущее время, и разные подписи для
+ * одного и того же в интерфейсе выглядели бы случайными.
+ */
+const reminderLabel = computed<string>(() =>
+  props.reminderAt ? formatScheduledAt(props.reminderAt) : ''
+)
 
 /** Миниатюра истории: путь к нашему файлу, поэтому через `mediaUrl`. */
 const storyReplyThumb = computed<string>(() => {
@@ -458,6 +488,8 @@ const emit = defineEmits<{
   (e: 'open-image'): void
   /** Одноразовое вложение: открыть на просмотр (сервер отдаст файл один раз). */
   (e: 'open-view-once'): void
+  /** «Напомнить»: выбрать время напоминания об этом сообщении. */
+  (e: 'remind'): void
 }>()
 
 // Превью ссылки из текста: только у обычных текстовых сообщений — у
@@ -617,17 +649,31 @@ const sheetRef = ref<InstanceType<typeof MessageActionSheet> | null>(null)
 /** Панель действий при наведении: нужна, чтобы закрыть её меню и палитру. */
 const actionsBarRef = ref<InstanceType<typeof MessageActionsBar> | null>(null)
 
-/** Правый клик на компьютере открывает тот же лист действий. */
+/**
+ * Обработка `contextmenu` — событие приходит из трёх источников: правый клик
+ * мышью, СИСТЕМНОЕ меню от долгого нажатия (телефон) и клавиатура
+ * (`Shift+F10`/клавиша «Меню»). Само событие гасим всегда (`prevent`): своё меню
+ * браузера здесь не нужно.
+ *
+ * Лист действий открываем ТОЛЬКО с клавиатуры (у такого события нет координат):
+ * у мыши те же действия есть в панели при наведении («⋯»), а на телефоне
+ * сенсорное `contextmenu` открывало лист СЛУЧАЙНО — вместе с выделением по
+ * долгому нажатию, и перекрывало его.
+ */
 const openContextFromEvent = (event: MouseEvent): void => {
   if (props.selectionMode) return
+  // Сенсорное долгое нажатие: Android присылает `contextmenu` с координатами
+  // касания, а в Chrome это ещё и помечено `firesTouchEvents`. Проверяем оба
+  // признака — иначе на телефоне лист открывался бы вместе с выделением.
+  const touchGenerated = Boolean(
+    (event as MouseEvent & { sourceCapabilities?: { firesTouchEvents?: boolean } })
+      .sourceCapabilities?.firesTouchEvents
+  )
+  if (touchGenerated) return
   // Клавиатура (Shift+F10 или клавиша «Меню») присылает событие без координат —
   // открываем лист у самого сообщения, а не в левом верхнем углу экрана.
-  if (event.clientX === 0 && event.clientY === 0) {
-    openActions()
-    return
-  }
-  actionsBarRef.value?.closeFloating()
-  void sheetRef.value?.openAt(event.clientX, event.clientY)
+  if (event.clientX !== 0 || event.clientY !== 0) return
+  openActions()
 }
 
 /**
@@ -1110,6 +1156,14 @@ onBeforeUnmount(() => {
 
 .msg-time {
   font-size: var(--ms-fs-xs);
+  color: var(--ms-bubble-time);
+}
+
+/* Значок «об этом сообщении стоит напоминание» (точное время — в подсказке). */
+.msg-reminder {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 2px;
   color: var(--ms-bubble-time);
 }
 

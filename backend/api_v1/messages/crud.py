@@ -23,6 +23,7 @@ from core.models import (
     Chat,
     Message,
     MessageReaction,
+    MessageReminder,
     ScheduledMessage,
     Story,
     User,
@@ -1232,3 +1233,135 @@ async def send_due_scheduled_messages(
         await session.delete(item)
     await session.commit()
     return {"sent": sent, "dropped": dropped}
+
+
+# ---------- Напоминания о сообщении («напомнить мне») ----------
+
+#: До какого срока можно поставить напоминание. Год — уже «календарь», но в
+#: отличие от отправки напоминание ничего не пишет в чат, поэтому запас больше.
+MAX_REMIND_AHEAD = timedelta(days=365)
+#: Минимальный запас: очередь разбирается раз в минуту, «через секунду» означало
+#: бы непредсказуемую задержку.
+MIN_REMIND_AHEAD = timedelta(seconds=10)
+#: Сколько напоминаний разбираем за один проход задачи.
+DUE_REMINDER_BATCH_SIZE = 200
+
+
+async def create_message_reminder(
+    session: AsyncSession,
+    *,
+    message_id: int,
+    user_id: int,
+    remind_at: datetime,
+) -> MessageReminder:
+    """Ставит напоминание о сообщении (или переносит уже поставленное).
+
+    Чат берём из самого сообщения: клиент не может «напомнить» о чужом
+    сообщении, не состоя в чате. На одно сообщение у человека одно напоминание —
+    повторный вызов переносит срок, а не копит записи (см. UniqueConstraint).
+    """
+    message = await session.get(Message, message_id)
+    if message is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Сообщение не найдено",
+        )
+    await _ensure_chat_member_or_404(session, chat_id=message.chat_id, user_id=user_id)
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    remind_at_utc = as_utc(remind_at) or remind_at
+    remind_at_naive = remind_at_utc.replace(tzinfo=None)
+    if remind_at_naive < now + MIN_REMIND_AHEAD:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Время напоминания должно быть в будущем",
+        )
+    if remind_at_naive > now + MAX_REMIND_AHEAD:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Напомнить можно не дальше чем через год",
+        )
+
+    existing = await session.scalar(
+        select(MessageReminder).where(
+            MessageReminder.user_id == user_id,
+            MessageReminder.message_id == message_id,
+        )
+    )
+    if existing is not None:
+        existing.chat_id = message.chat_id
+        existing.remind_at = remind_at_naive
+        await session.commit()
+        await session.refresh(existing)
+        return existing
+
+    reminder = MessageReminder(
+        user_id=user_id,
+        chat_id=message.chat_id,
+        message_id=message_id,
+        remind_at=remind_at_naive,
+    )
+    session.add(reminder)
+    await session.commit()
+    await session.refresh(reminder)
+    return reminder
+
+
+async def list_message_reminders(
+    session: AsyncSession, *, user_id: int, chat_id: int | None = None
+) -> list[MessageReminder]:
+    """Мои напоминания (все или только по одному чату)."""
+    stmt = select(MessageReminder).where(MessageReminder.user_id == user_id)
+    if chat_id is not None:
+        stmt = stmt.where(MessageReminder.chat_id == chat_id)
+    stmt = stmt.order_by(MessageReminder.remind_at)
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def cancel_message_reminder(
+    session: AsyncSession, *, user_id: int, reminder_id: int
+) -> None:
+    """Снимает своё напоминание."""
+    reminder = await session.get(MessageReminder, reminder_id)
+    # Как и с отложенными: чужое отдаём как «не найдено», иначе по ответу можно
+    # было бы перебирать чужие id.
+    if reminder is None or reminder.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Напоминание не найдено",
+        )
+    await session.delete(reminder)
+    await session.commit()
+
+
+async def take_due_message_reminders(
+    session: AsyncSession, *, limit: int = DUE_REMINDER_BATCH_SIZE
+) -> list[dict[str, int]]:
+    """Забирает наступившие напоминания и удаляет их из очереди.
+
+    Возвращает «задания» для push-задачи: сам push отправляет воркер уведомлений
+    (у crud нет доступа к очереди задач). Запись удаляем сразу: пропущенный push
+    не должен превращаться в вечный цикл «напоминаем каждую минуту».
+    """
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    result = await session.execute(
+        select(MessageReminder)
+        .where(MessageReminder.remind_at <= now)
+        .order_by(MessageReminder.remind_at)
+        .limit(limit)
+    )
+    due = list(result.scalars().all())
+    payload = [
+        {
+            "reminder_id": item.id,
+            "user_id": item.user_id,
+            "chat_id": item.chat_id,
+            "message_id": item.message_id,
+        }
+        for item in due
+    ]
+    for item in due:
+        await session.delete(item)
+    await session.commit()
+    return payload

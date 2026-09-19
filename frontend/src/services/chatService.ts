@@ -16,6 +16,7 @@ import type {
   Message,
   CreateMessageRequest,
   CreateGroupRequest,
+  MessageReminder,
   OpenPrivateChatRequest,
   ScheduledMessage
 } from '@/types'
@@ -463,6 +464,36 @@ export const fetchScheduledMessages = async (chatId?: number): Promise<Scheduled
 /** Отменяет свою отложенную отправку. */
 export const cancelScheduledMessage = async (scheduledId: number): Promise<void> => {
   await api.delete(`/messages/scheduled/${scheduledId}/`)
+}
+
+/**
+ * Ставит напоминание о сообщении (повторный вызов переносит срок).
+ *
+ * Чат сервер берёт из самого сообщения: напомнить о строке из чужого чата
+ * нельзя. Доставка — push, поэтому напоминание сработает и с закрытым
+ * приложением.
+ */
+export const createMessageReminder = async (
+  messageId: number,
+  remindAt: string
+): Promise<MessageReminder> => {
+  const response = await api.post<MessageReminder>(`/messages/${messageId}/reminder/`, {
+    remind_at: remindAt
+  })
+  return response.data
+}
+
+/** Свои напоминания: все или только по одному чату. */
+export const fetchMessageReminders = async (chatId?: number): Promise<MessageReminder[]> => {
+  const response = await api.get<MessageReminder[]>('/messages/reminders/', {
+    params: chatId === undefined ? {} : { chat_id: chatId }
+  })
+  return response.data
+}
+
+/** Снимает своё напоминание. */
+export const cancelMessageReminder = async (reminderId: number): Promise<void> => {
+  await api.delete(`/messages/reminders/${reminderId}/`)
 }
 
 /** Ищет пользователей по логину или номеру телефона. */

@@ -46,6 +46,27 @@ class ScheduledMessageOut(BaseModel):
     created_at: datetime
 
 
+class MessageReminderCreate(BaseModel):
+    """Напоминание о сообщении: когда вернуть человека к этой строке."""
+
+    #: Момент напоминания (UTC, с явным смещением — как `timestamp` сообщений).
+    remind_at: datetime
+
+
+class MessageReminderOut(BaseModel):
+    """Напоминание о сообщении для списка на клиенте."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    chat_id: int
+    message_id: int
+    #: Напоминание принадлежит автору — поле отдаём, чтобы клиент не гадал.
+    user_id: int
+    remind_at: datetime
+    created_at: datetime
+
+
 class ForwardMessageRequest(BaseModel):
     """Переслать сообщение в другой чат."""
 

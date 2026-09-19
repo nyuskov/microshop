@@ -15,6 +15,8 @@ from api_v1.messages.schemas import (
 from api_v1.messages.schemas import Message as MessageSchema
 from api_v1.messages.schemas import (
     MessageCreate,
+    MessageReminderCreate,
+    MessageReminderOut,
     ScheduledMessageCreate,
     ScheduledMessageOut,
 )
@@ -22,7 +24,7 @@ from core.celery_app import get_task
 from core.config import settings
 from core.media_quota import enforce_media_quota, media_usage
 from core.media_store import VIEW_ONCE_PREFIX, store_media
-from core.models import ScheduledMessage, User, db_helper
+from core.models import MessageReminder, ScheduledMessage, User, db_helper
 from core.rate_limit import enforce_limit
 from core.timeutils import as_utc
 from core.upload_guard import validate_attachment_upload
@@ -402,6 +404,66 @@ def _scheduled_payload(row: ScheduledMessage) -> dict:
         "reply_to_id": row.reply_to_id,
         "send_at": as_utc(row.send_at),
         "created_at": created_at,
+    }
+
+
+# ---------- Напоминания о сообщении («напомнить мне») ----------
+
+
+@router.post("/{message_id}/reminder/", response_model=MessageReminderOut)
+async def create_reminder(
+    message_id: int,
+    payload: MessageReminderCreate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Ставит напоминание о сообщении (повторный вызов переносит срок).
+
+    Чат берём из сообщения: клиент не может напомнить о строке из чужого чата.
+    Приходит push, поэтому напоминание срабатывает и с закрытым приложением.
+    """
+    created = await crud.create_message_reminder(
+        session=session,
+        message_id=message_id,
+        user_id=user.id,
+        remind_at=payload.remind_at,
+    )
+    return _reminder_payload(created)
+
+
+@router.get("/reminders/", response_model=list[MessageReminderOut])
+async def list_reminders(
+    chat_id: int | None = Query(default=None),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Мои напоминания (все или только по одному чату)."""
+    rows = await crud.list_message_reminders(session, user_id=user.id, chat_id=chat_id)
+    return [_reminder_payload(row) for row in rows]
+
+
+@router.delete("/reminders/{reminder_id}/", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_reminder(
+    reminder_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Снимает своё напоминание."""
+    await crud.cancel_message_reminder(
+        session, user_id=user.id, reminder_id=reminder_id
+    )
+    return None
+
+
+def _reminder_payload(row: MessageReminder) -> dict:
+    """Напоминание в виде ответа API (времена — с пометкой UTC)."""
+    return {
+        "id": row.id,
+        "chat_id": row.chat_id,
+        "message_id": row.message_id,
+        "user_id": row.user_id,
+        "remind_at": as_utc(row.remind_at),
+        "created_at": as_utc(row.created_at) or as_utc(row.remind_at),
     }
 
 

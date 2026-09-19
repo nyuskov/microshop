@@ -107,7 +107,7 @@
               <!-- Действия с сообщением (реакции, ответить, закрепить, удалить,
                    пожаловаться) — кнопки в панели нет: на телефоне меню
                    открывается удержанием выбранного сообщения, на компьютере —
-                   наведением/правым щелчком по нему. -->
+                   наведением на сообщение (меню «⋯»). -->
               <button
                 class="icon-btn"
                 title="Переслать выбранные"
@@ -205,6 +205,7 @@
             :is-group-chat="isGroupChat(selectedChat)"
             :members="selectedChat.users"
             :unread-count="unreadAtOpen"
+            :reminder-at="reminderAtOf"
             :channel-posts="selectedIsChannel"
             :post-meta="channelPostMeta"
             @unread-seen="clearUnreadDivider"
@@ -232,6 +233,7 @@
             @report="openReportForMessage"
             @open-image="openImageFromMessage"
             @open-view-once="openViewOnce"
+            @remind="openReminderDialog"
           />
 
           <!-- Примечание E2EE (как в Telegram) над строкой ввода -->
@@ -418,6 +420,19 @@
     :chat-id="selectedChat.id"
     :chat-title="chatTitle(selectedChat, currentUserId)"
     @close="chatSoundOpen = false"
+  />
+
+  <!-- Напоминание о сообщении: время выбирается пресетами, живёт на сервере -->
+  <ReminderDialog
+    v-if="reminderTarget"
+    :message-id="reminderTarget.id"
+    :preview="reminderPreview"
+    :chat-title="selectedChat ? chatTitle(selectedChat, currentUserId) : ''"
+    :reminder="reminderFor(reminderTarget.id)"
+    :busy="reminderBusy"
+    @save="saveReminder"
+    @remove="removeReminder"
+    @close="reminderTarget = null"
   />
 
   <!-- Статистика чата: сообщения по дням, участники, вложения -->
@@ -639,7 +654,10 @@ import {
   joinGroupByInvite,
   createScheduledMessage,
   fetchScheduledMessages,
-  cancelScheduledMessage
+  cancelScheduledMessage,
+  createMessageReminder,
+  fetchMessageReminders,
+  cancelMessageReminder
 } from '@/services/chatService'
 import {
   ENCRYPTED_FALLBACK,
@@ -673,6 +691,7 @@ import type {
   EncryptedFileMeta,
   GroupInvitePreview,
   Message,
+  MessageReminder,
   ScheduledMessage
 } from '@/types'
 import { avatarUrlOf, chatPeer, chatTitle, displayName, isGroupChat } from '@/utils/user'
@@ -749,6 +768,9 @@ const GroupInviteDialog = defineAsyncComponent(
 const StoryViewer = defineAsyncComponent(() => import('@/components/stories/StoryViewer.vue'))
 const ChatSoundDialog = defineAsyncComponent(
   () => import('@/components/messenger/ChatSoundDialog.vue')
+)
+const ReminderDialog = defineAsyncComponent(
+  () => import('@/components/messenger/ReminderDialog.vue')
 )
 const ChatStatsDialog = defineAsyncComponent(
   () => import('@/components/messenger/ChatStatsDialog.vue')
@@ -2414,6 +2436,7 @@ const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {
   pinnedMessages.value = []
   scheduledMessages.value = []
   scheduledDecrypted.value = {}
+  reminders.value = []
   // В другом чате шторка закреплённых показывается снова.
   pinnedHidden.value = false
   clearPendingUploads()
@@ -2429,7 +2452,12 @@ const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {
   channelOverlaysRef.value?.closeAll()
   channelCard.value = null
   channelPostMeta.value = {}
-  await Promise.all([loadThreadLatest(chatId), loadPinned(chatId), loadScheduled(chatId)])
+  await Promise.all([
+    loadThreadLatest(chatId),
+    loadPinned(chatId),
+    loadScheduled(chatId),
+    loadReminders(chatId)
+  ])
   // Канал: карточка для шапки и счётчики постов для загруженной части ленты.
   if (isChannelChat(chats.value.find((item) => item.id === chatId))) {
     void loadChannelCard(chatId)
@@ -2648,6 +2676,96 @@ const cancelScheduled = async (scheduledId: number) => {
     sendError.value = getErrorMessage(error, 'Не удалось отменить отправку')
   } finally {
     if (chatId !== null) await loadScheduled(chatId)
+  }
+}
+
+// ---------- Напоминания о сообщении («напомнить мне») ----------
+//
+// Второй сценарий отложенного действия: «верни меня к этой строке». Живёт на
+// сервере (напоминание должно сработать с закрытым приложением — доставка push),
+// а клиент хранит только список напоминаний открытого чата: по нему строка
+// показывает значок у времени, а меню — «Изменить напоминание».
+
+/** Напоминания открытого чата. */
+const reminders = ref<MessageReminder[]>([])
+/** Сообщение, для которого открыт диалог напоминания. */
+const reminderTarget = ref<Message | null>(null)
+/** Запрос в полёте: кнопки диалога временно недоступны. */
+const reminderBusy = ref(false)
+
+/** Напоминание по id сообщения (null — его нет). */
+const reminderFor = (messageId: number): MessageReminder | null =>
+  reminders.value.find((item) => item.message_id === messageId) ?? null
+
+/** Время напоминания по id сообщения — для значка в строке (`MessageThread`). */
+const reminderAtOf = (message: Message): string | null => reminderFor(message.id)?.remind_at ?? null
+
+/** Начало текста сообщения для диалога (в E2EE — нейтральная подпись). */
+const reminderPreview = computed(() => {
+  const message = reminderTarget.value
+  if (!message) return ''
+  if (message.file && !message.text) return 'Вложение'
+  const text = (message.text ?? '').trim().replace(/\s+/g, ' ')
+  if (!text) return message.file ? 'Вложение' : ''
+  return text.length > 120 ? `${text.slice(0, 120)}…` : text
+})
+
+/**
+ * Подтягивает напоминания чата.
+ *
+ * Список вспомогательный: без него чат работает как обычно (значка у времени не
+ * будет, а поставить напоминание всё равно можно) — поэтому ошибку глотаем.
+ */
+const loadReminders = async (chatId: number) => {
+  try {
+    reminders.value = await fetchMessageReminders(chatId)
+  } catch {
+    reminders.value = []
+  }
+}
+
+/** Открывает диалог напоминания для сообщения (из меню строки). */
+const openReminderDialog = (message: Message) => {
+  if (message.kind === 'call') return
+  reminderTarget.value = message
+}
+
+/** Сохраняет (или переносит) напоминание в выбранное время. */
+const saveReminder = async (remindAt: string) => {
+  const message = reminderTarget.value
+  const chatId = selectedChatId.value
+  if (!message || chatId === null) return
+  reminderBusy.value = true
+  try {
+    await createMessageReminder(message.id, remindAt)
+    reminderTarget.value = null
+    await loadReminders(chatId)
+  } catch (error) {
+    sendError.value = getErrorMessage(error, 'Не удалось поставить напоминание')
+  } finally {
+    reminderBusy.value = false
+  }
+}
+
+/** Снимает напоминание у выбранного сообщения. */
+const removeReminder = async () => {
+  const message = reminderTarget.value
+  const chatId = selectedChatId.value
+  if (!message) return
+  const existing = reminderFor(message.id)
+  if (!existing) {
+    reminderTarget.value = null
+    return
+  }
+  reminderBusy.value = true
+  try {
+    await cancelMessageReminder(existing.id)
+    reminderTarget.value = null
+    if (chatId !== null) await loadReminders(chatId)
+  } catch (error) {
+    sendError.value = getErrorMessage(error, 'Не удалось убрать напоминание')
+  } finally {
+    reminderBusy.value = false
   }
 }
 

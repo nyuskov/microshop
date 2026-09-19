@@ -1,9 +1,12 @@
 <template>
   <!-- Лист действий.
        На телефоне меню по наведению (.msg-actions в MessageRow) недоступно,
-       поэтому все действия и реакции живут здесь: правый клик на компьютере или
-       удержание УЖЕ ВЫДЕЛЕННОГО сообщения открывает лист (первое удержание
-       выделяет, второе — показывает действия). -->
+       поэтому все действия и реакции живут здесь: удержание УЖЕ ВЫДЕЛЕННОГО
+       сообщения открывает лист (первое удержание выделяет, второе — показывает
+       действия), с клавиатуры — Shift+F10/клавиша «Меню». Правым кликом мышью и
+       сенсорным долгим нажатием лист НЕ открывается (см. openContextFromEvent):
+       у мыши те же действия есть в «⋯» при наведении, а на телефоне системное
+       contextmenu открывало его случайно. -->
   <Teleport to="body">
     <div v-if="ctxOpen" class="ctx-layer" @click="close">
       <div
@@ -69,6 +72,10 @@
           <q-icon :name="icon('bookmark')" size="18px" />
           <span>Сохранить в Сохранённые</span>
         </button>
+        <button class="ctx-item" @click="ctxAction('remind')">
+          <q-icon :name="icon('notifications')" size="18px" />
+          <span>{{ hasReminder ? 'Изменить напоминание' : 'Напомнить' }}</span>
+        </button>
         <button
           v-if="canMakeSticker && !message.view_once"
           class="ctx-item"
@@ -98,8 +105,8 @@
 /**
  * Лист действий с сообщением (мобильный аналог меню по наведению).
  *
- * Открывается правым кликом на компьютере или удержанием уже выделенного
- * сообщения; держит фокус внутри (модальный слой), подгоняет положение под края
+ * Открывается удержанием уже выделенного сообщения (телефон) или с клавиатуры
+ * (Shift+F10); держит фокус внутри (модальный слой), подгоняет положение под края
  * экрана и показывает быстрые реакции с возможностью раскрыть полный набор.
  *
  * Лист на ленту должен быть один: после перерисовки соседних строк на экране
@@ -128,6 +135,8 @@ const props = defineProps<{
   canSave: boolean
   /** Можно ли сделать из сообщения стикер (только открытая картинка). */
   canMakeSticker?: boolean
+  /** Стоит ли напоминание об этом сообщении (меняет подпись пункта меню). */
+  hasReminder?: boolean
   /** Доступны ли реакции и «ответить» (у служебных сообщений — нет). */
   selectable: boolean
   /** Режим выделения: в нём лист не нужен. */
@@ -148,6 +157,8 @@ const emit = defineEmits<{
   (e: 'delete'): void
   (e: 'report'): void
   (e: 'toggle-pin'): void
+  /** «Напомнить»: выбрать время напоминания о сообщении. */
+  (e: 'remind'): void
 }>()
 
 const ctxOpen = ref(false)
@@ -229,7 +240,17 @@ const pickCtxEmoji = (emoji: string): void => {
 
 /** Действие из листа: закрываем лист и повторяем обычный emit. */
 const ctxAction = (
-  action: 'reply' | 'forward' | 'copy' | 'pin' | 'save' | 'sticker' | 'edit' | 'report' | 'delete'
+  action:
+    | 'reply'
+    | 'forward'
+    | 'copy'
+    | 'pin'
+    | 'save'
+    | 'sticker'
+    | 'remind'
+    | 'edit'
+    | 'report'
+    | 'delete'
 ): void => {
   close()
   if (action === 'reply') emit('set-reply')
@@ -238,6 +259,7 @@ const ctxAction = (
   else if (action === 'pin') emit('toggle-pin')
   else if (action === 'save') emit('save')
   else if (action === 'sticker') emit('make-sticker')
+  else if (action === 'remind') emit('remind')
   else if (action === 'edit') emit('edit')
   else if (action === 'report') emit('report')
   else emit('delete')
