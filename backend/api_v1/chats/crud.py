@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from api_v1.events.service import notify_chat, notify_user
 from api_v1.moderation import crud as moderation_crud
 from api_v1.users.crud import display_name
+from core.message_visibility import hidden_for_user_filter
 from core.models import (
     Chat,
     ChatBan,
@@ -224,15 +225,20 @@ async def get_or_create_self_chat(session: AsyncSession, user: User) -> Chat:
 
 
 async def get_last_messages(
-    session: AsyncSession, chat_ids: list[int]
+    session: AsyncSession, chat_ids: list[int], viewer_id: int
 ) -> dict[int, Message]:
-    """Возвращает последнее сообщение для каждого чата."""
+    """Возвращает последнее ВИДИМОЕ сообщение для каждого чата.
+
+    Скрытое модерацией оставляем как есть (клиент рисует «скрыто до проверки»), а
+    «удалённое у меня» (см. ``core.message_visibility``) отсеиваем: иначе в списке
+    чатов осталось бы превью того, что человек только что убрал у себя.
+    """
     if not chat_ids:
         return {}
 
     stmt = (
         select(Message)
-        .where(Message.chat_id.in_(chat_ids))
+        .where(Message.chat_id.in_(chat_ids), hidden_for_user_filter(viewer_id))
         .order_by(Message.chat_id, Message.timestamp, Message.id)
     )
     result = await session.execute(stmt)
@@ -252,10 +258,14 @@ async def get_unread_counts(
     В групповых — сообщения, пришедшие после курсора прочтения участника
     (``chat_user_association.last_read_message_id``), т.к. на общий флаг
     ``Message.is_read`` опираться нельзя (его «прочитал» кто-то другой).
+
+    Скрытое «у меня» в счёт не идёт: иначе бейдж звал бы к сообщению, которое
+    человек у себя убрал.
     """
     if not chat_ids:
         return {}
 
+    visible = hidden_for_user_filter(user_id)
     rows = await session.execute(
         select(Chat.id, Chat.is_group).where(Chat.id.in_(chat_ids))
     )
@@ -284,6 +294,7 @@ async def get_unread_counts(
                     Message.chat_id == chat_id,
                     Message.user_id != user_id,
                     Message.id > cursors.get(chat_id, 0),
+                    visible,
                 )
             )
             count = await session.scalar(stmt)
@@ -297,6 +308,7 @@ async def get_unread_counts(
                 Message.chat_id.in_(private_ids),
                 Message.user_id != user_id,
                 Message.is_read.is_(False),
+                visible,
             )
             .group_by(Message.chat_id)
         )

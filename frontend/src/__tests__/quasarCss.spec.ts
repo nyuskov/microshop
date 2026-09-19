@@ -39,6 +39,7 @@ const COMPONENT_STYLES: Readonly<Record<string, readonly string[]>> = {
   'q-page-container': ['components/layout/QLayout.sass'],
   'q-input': ['components/input/QInput.sass', 'components/field/QField.sass'],
   'q-radio': ['components/radio/QRadio.sass', 'components/checkbox/QCheckbox.sass'],
+  'q-checkbox': ['components/checkbox/QCheckbox.sass'],
   'q-toggle': ['components/toggle/QToggle.sass', 'components/checkbox/QCheckbox.sass'],
   'q-separator': ['components/separator/QSeparator.sass'],
   'q-space': ['components/space/QSpace.sass'],

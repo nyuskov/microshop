@@ -420,9 +420,14 @@ export const removeMessageReaction = async (messageId: number): Promise<Message>
   return response.data
 }
 
-/** Удаляет сообщение (только своё). */
-export const deleteMessage = async (messageId: number): Promise<void> => {
-  await api.delete(`/messages/${messageId}/`)
+/**
+ * Убирает сообщение: `forAll=false` — скрыть только у себя, `true` — у всех.
+ *
+ * «Для всех» возможно только для своего сообщения (сервер ответит 403), «у меня» —
+ * для любого: чужое сообщение тоже можно убрать из своего интерфейса.
+ */
+export const deleteMessage = async (messageId: number, forAll = false): Promise<void> => {
+  await api.delete(`/messages/${messageId}/`, { params: { for_all: String(forAll) } })
 }
 
 /** Редактирует текст своего сообщения. */

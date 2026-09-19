@@ -438,6 +438,18 @@
     @close="closeReminderDialog"
   />
 
+  <!-- Удаление сообщения: «у себя» или галкой «Удалить для <имя>» (один диалог
+       и для одного сообщения, и для выделенных) -->
+  <DeleteMessageDialog
+    v-if="showDeleteMessageDialog"
+    :count="deleteMessageCount"
+    :can-delete-for-all="deleteMessageCanForAll"
+    :for-all-label="deleteForAllLabel"
+    :for-all-hint="deleteForAllHint"
+    @confirm="finishDeleteScope"
+    @close="finishDeleteScope(null)"
+  />
+
   <!-- Набор стикера: тап по стикеру показывает весь набор и даёт его добавить -->
   <StickerSetDialog
     v-if="stickerSet"
@@ -713,7 +725,6 @@ import type { CallHistoryItem } from '@/utils/callHistory'
 import { fetchChannel, fetchPostsMeta, markPostViewed } from '@/services/channelService'
 import { type Section } from '@/utils/mobileNav'
 import { mediaUrl } from '@/config'
-import { confirmDialog } from '@/utils/appDialogs'
 import { stickerFromMessage } from '@/services/stickers'
 import { useStickersStore } from '@/stores/stickers'
 import { chatIdFromUrl, isReplyLaunch, readStoredSection, storeSection } from '@/utils/chatUrl'
@@ -779,6 +790,9 @@ const ChatSoundDialog = defineAsyncComponent(
 )
 const ReminderDialog = defineAsyncComponent(
   () => import('@/components/messenger/ReminderDialog.vue')
+)
+const DeleteMessageDialog = defineAsyncComponent(
+  () => import('@/components/messenger/DeleteMessageDialog.vue')
 )
 const StickerSetDialog = defineAsyncComponent(
   () => import('@/components/messenger/StickerSetDialog.vue')
@@ -3082,7 +3096,8 @@ const {
   openForward: (sources) => openForward(sources),
   removeMessageFromThread: (messageId) => removeMessageFromThread(messageId),
   reloadChats: () => loadChats(),
-  reloadPinned: (chatId) => loadPinned(chatId)
+  reloadPinned: (chatId) => loadPinned(chatId),
+  askDeleteScope: (payload) => askDeleteScope(payload)
 })
 
 // Навигация: адрес `?chat=`, история приложения и системная «назад». Вызов здесь,
@@ -3310,16 +3325,70 @@ const {
   }
 })
 
-const deleteMessageOf = async (message: Message) => {
-  const agreed = await confirmDialog({
-    title: 'Удалить это сообщение?',
-    message: 'Оно исчезнет и у собеседника.',
-    okLabel: 'Удалить',
-    danger: true
+// ---------- Удаление сообщений: «только у меня» или «для всех» ----------
+//
+// Область выбирает человек в диалоге (`DeleteMessageDialog`), и диалог один на
+// два входа — удаление одного сообщения и удаление выделенных: вариантов два, а
+// «для всех» необратимо у собеседника, поэтому молча его выбирать нельзя.
+const deleteMessageCount = ref(0)
+const deleteMessageCanForAll = ref(false)
+const showDeleteMessageDialog = ref(false)
+/** Ожидающий ответа диалог: промис разрешается выбором человека. */
+let deleteScopeResolve: ((scope: 'me' | 'all' | null) => void) | null = null
+
+const askDeleteScope = (payload: {
+  count: number
+  canForAll: boolean
+}): Promise<'me' | 'all' | null> => {
+  deleteMessageCount.value = payload.count
+  deleteMessageCanForAll.value = payload.canForAll
+  showDeleteMessageDialog.value = true
+  return new Promise((resolve) => {
+    deleteScopeResolve = resolve
   })
-  if (!agreed) return
+}
+
+/**
+ * Подпись галки: в личном чате — имя собеседника (как в подписи чата), в группе —
+ * «Удалить для всех». Пустая строка — галки нет: в «Сохранённых сообщениях»
+ * удалять «для кого-то» нечего, там сообщение и так только моё.
+ */
+const deleteForAllLabel = computed<string>(() => {
+  const chat = selectedChat.value
+  if (!chat || chat.is_self) return ''
+  return isPrivateChat(chat)
+    ? `Удалить для ${chatTitle(chat, currentUserId.value)}`
+    : 'Удалить для всех'
+})
+
+/** Пояснение под отмеченной галкой: без него «вернуть нельзя» остаётся догадкой. */
+const deleteForAllHint = computed<string>(() => {
+  const chat = selectedChat.value
+  if (!chat || chat.is_self) return ''
+  const many = deleteMessageCount.value > 1
+  if (isPrivateChat(chat)) {
+    const name = chatTitle(chat, currentUserId.value)
+    return `${many ? 'Исчезнут' : 'Исчезнет'} и у ${name} — вернуть нельзя.`
+  }
+  return `${many ? 'Исчезнут' : 'Исчезнет'} у всех участников — вернуть нельзя.`
+})
+
+/** Ответ диалога: `null` — отмена или закрытие окна. */
+const finishDeleteScope = (scope: 'me' | 'all' | null): void => {
+  showDeleteMessageDialog.value = false
+  const resolve = deleteScopeResolve
+  deleteScopeResolve = null
+  resolve?.(scope)
+}
+
+const deleteMessageOf = async (message: Message) => {
+  const scope = await askDeleteScope({
+    count: 1,
+    canForAll: message.user_id === currentUserId.value
+  })
+  if (scope === null) return
   try {
-    await deleteMessage(message.id)
+    await deleteMessage(message.id, scope === 'all')
     removeMessageFromThread(message.id)
     const chatId = selectedChatId.value
     if (chatId !== null) {

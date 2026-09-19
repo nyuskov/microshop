@@ -81,7 +81,9 @@ def _serialize_chat(
 
 async def _serialize_chat_full(session: AsyncSession, chat: Chat, user_id: int) -> dict:
     """Сериализует один чат с учётом непрочитанных/mute/роли текущего юзера."""
-    last_messages = await crud.get_last_messages(session=session, chat_ids=[chat.id])
+    last_messages = await crud.get_last_messages(
+        session=session, chat_ids=[chat.id], viewer_id=user_id
+    )
     unread_counts = await crud.get_unread_counts(
         session=session, chat_ids=[chat.id], user_id=user_id
     )
@@ -138,7 +140,9 @@ async def get_my_chats(
     # Фронт поллит именно этот эндпоинт каждые ~3 c — здесь и обновляем присутствие.
     await touch_last_seen(user, session)
     chat_ids = [chat.id for chat in chats]
-    last_messages = await crud.get_last_messages(session=session, chat_ids=chat_ids)
+    last_messages = await crud.get_last_messages(
+        session=session, chat_ids=chat_ids, viewer_id=user.id
+    )
     unread_counts = await crud.get_unread_counts(
         session=session, chat_ids=chat_ids, user_id=user.id
     )

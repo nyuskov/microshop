@@ -22,6 +22,7 @@ __all__ = [
     "LinkPreview",
     "LoginDevice",
     "Message",
+    "MessageDeletion",
     "MessageDraft",
     "MessageReaction",
     "MessageReminder",
@@ -65,6 +66,7 @@ from .emoji_pref import EmojiFavorite, EmojiPackChoice  # noqa: F401
 from .link_preview import LinkPreview  # noqa: F401
 from .login_device import LoginDevice  # noqa: F401
 from .message import Message  # noqa: F401
+from .message_deletion import MessageDeletion  # noqa: F401
 from .message_draft import MessageDraft  # noqa: F401
 from .message_reaction import MessageReaction  # noqa: F401
 from .message_reminder import MessageReminder  # noqa: F401

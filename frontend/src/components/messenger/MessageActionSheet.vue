@@ -110,9 +110,10 @@
           <q-icon :name="icon('flag')" size="18px" />
           <span>Пожаловаться</span>
         </button>
-        <button v-if="isOwn" class="ctx-item danger" @click="ctxAction('delete')">
+        <!-- Удалить можно и чужое — тогда «у себя» (выбор области в диалоге). -->
+        <button class="ctx-item danger" @click="ctxAction('delete')">
           <q-icon :name="icon('delete')" size="18px" />
-          <span>Удалить</span>
+          <span>{{ isOwn ? 'Удалить' : 'Удалить у себя' }}</span>
         </button>
       </div>
     </div>

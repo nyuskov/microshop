@@ -13,7 +13,6 @@ import { computed, ref, type ComputedRef, type Ref } from 'vue'
 
 import { deleteMessage, forwardMessage } from '@/services/chatService'
 import { getErrorMessage } from '@/services/errors'
-import { confirmDialog } from '@/utils/appDialogs'
 import type { Chat, Message } from '@/types'
 
 export interface MessageSelectionDeps {
@@ -37,6 +36,13 @@ export interface MessageSelectionDeps {
   openForward: (sources: Message[]) => void
   /** Убрать сообщение из ленты (после удаления). */
   removeMessageFromThread: (messageId: number) => void
+  /**
+   * Спросить, как удалять: `me` — только у себя, `all` — у всех, `null` — отмена.
+   *
+   * Выбор области — диалог, а не `window.confirm`: вариантов два, и один из них
+   * («для всех») необратим у собеседника, поэтому его нельзя выбирать молча.
+   */
+  askDeleteScope: (payload: { count: number; canForAll: boolean }) => Promise<'me' | 'all' | null>
   /** Перечитать список чатов (превью «Сохранённых» обновилось). */
   reloadChats: () => Promise<void>
   /** Перечитать закреплённые — после массового удаления. */
@@ -64,7 +70,7 @@ export interface MessageSelectionApi {
   bulkForwardMessages: () => void
   /** Сохранить выбранные в «Сохранённые сообщения» (свой чат). */
   bulkSaveMessagesToSelf: () => Promise<void>
-  /** Удалить выбранные (только свои; чужие пропускаем). */
+  /** Удалить выбранные: «у меня» для любых, «для всех» — если всё выбранное своё. */
   bulkDeleteMessages: () => Promise<void>
 }
 
@@ -152,22 +158,17 @@ export function useMessageSelection(deps: MessageSelectionDeps): MessageSelectio
   }
 
   const bulkDeleteMessages = async (): Promise<void> => {
-    const own = selectable(selectedMessagesOf()).filter((m) => m.user_id === deps.currentUserId())
-    if (own.length === 0) {
-      exitMessageSelection()
-      return
-    }
-    const agreed = await confirmDialog({
-      title: `Удалить выбранные сообщения (${own.length})?`,
-      message: 'Удалятся и у собеседника — вернуть их нельзя.',
-      okLabel: 'Удалить',
-      danger: true
-    })
-    if (!agreed) return
+    const targets = selectable(selectedMessagesOf())
+    if (targets.length === 0) return
+    // «Для всех» возможно, только когда ВСЁ выбранное — мои сообщения: удалять
+    // чужое у всех нельзя (сервер отвечает 403), а половину — только у меня.
+    const canForAll = targets.every((message) => message.user_id === deps.currentUserId())
+    const scope = await deps.askDeleteScope({ count: targets.length, canForAll })
+    if (scope === null) return
     exitMessageSelection()
-    for (const message of own) {
+    for (const message of targets) {
       try {
-        await deleteMessage(message.id)
+        await deleteMessage(message.id, scope === 'all')
         deps.removeMessageFromThread(message.id)
       } catch (error) {
         console.error('Не удалось удалить сообщение:', getErrorMessage(error))

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
@@ -17,11 +18,13 @@ from api_v1.chats.crud import (
     is_user_chat_member,
     mark_group_chat_read,
 )
-from api_v1.events.service import notify_chat, notify_chat_read_elsewhere
+from api_v1.events.service import notify_chat, notify_chat_read_elsewhere, notify_user
 from api_v1.moderation import crud as moderation_crud
+from core.message_visibility import message_visibility_filter
 from core.models import (
     Chat,
     Message,
+    MessageDeletion,
     MessageReaction,
     MessageReminder,
     ScheduledMessage,
@@ -169,17 +172,14 @@ def _user_display_name(user: User) -> str:
     return user.username
 
 
-def _hide_filter(viewer_id: int):
-    """Условие выборки: скрытое модерацией видно только автору.
+def _hide_filter(viewer_id: int) -> ColumnElement[bool]:
+    """Что человек видит в ленте (скрытое модерацией и «удалённое у меня»).
 
-    Скрытие ставит автоматика (3 жалобы от разных людей) или модератор. Автор
-    должен видеть своё сообщение с пометкой «скрыто до проверки» — иначе он не
-    поймёт, куда оно пропало, и не сможет его исправить.
+    Само условие живёт в ``core.message_visibility``: им пользуется и список чатов
+    (превью и счётчик непрочитанных), а тянуть туда crud сообщений нельзя — он и
+    так импортирует crud чатов.
     """
-    return or_(
-        Message.hidden_at.is_(None),
-        Message.user_id == viewer_id,
-    )
+    return message_visibility_filter(viewer_id)
 
 
 def _forwarded_payload(message: Message) -> dict | None:
@@ -754,17 +754,45 @@ async def list_chat_media(
 
 
 async def delete_message(
-    session: AsyncSession, *, message_id: int, user_id: int
+    session: AsyncSession, *, message_id: int, user_id: int, for_all: bool = True
 ) -> None:
-    """Удаляет сообщение (только автор) и его файл-вложение с диска."""
+    """Убирает сообщение: «для всех» (только автор) или «только у меня».
+
+    Это два разных действия, и раньше было только первое: строка удалялась, и
+    сообщение исчезало у ВСЕХ участников. «У меня» строку не трогает — она
+    помечается скрытой для одного человека (``message_deletions``), а остальные
+    продолжают видеть сообщение. Так его убирают и у себя чужое — автор тут не
+    нужен, нужен только доступ к чату.
+
+    Файл вложения удаляем только при удалении «для всех»: при скрытии у себя он
+    нужен остальным.
+    """
     message = await _get_member_message(session, message_id, user_id)
+    chat_id = message.chat_id
+
+    if not for_all:
+        await _hide_for_user(session, message_id=message_id, user_id=user_id)
+        await session.commit()
+        # Своим другим устройствам говорим отдельно: у них сообщение тоже должно
+        # пропасть (собеседникам о скрытии знать нечего). Событие то же, что при
+        # удалении, — клиент просто перечитывает ленту.
+        await notify_user(
+            user_id,
+            {
+                "type": "message.changed",
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "kind": "hidden",
+            },
+        )
+        return
+
     if message.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Удалить можно только своё сообщение",
+            detail="Удалить для всех можно только своё сообщение",
         )
 
-    chat_id = message.chat_id
     file_path = _resolve_media_file(message.file_url)
     await session.delete(message)
     await session.commit()
@@ -787,6 +815,17 @@ async def delete_message(
         },
         exclude_user_id=user_id,
     )
+
+
+async def _hide_for_user(
+    session: AsyncSession, *, message_id: int, user_id: int
+) -> None:
+    """Помечает сообщение скрытым у одного человека (повторный вызов безвреден)."""
+    statement = pg_insert(MessageDeletion).values(
+        message_id=message_id, user_id=user_id
+    )
+    # Скрыть дважды (например, два тапа подряд) — не ошибка: строку не дублируем.
+    await session.execute(statement.on_conflict_do_nothing())
 
 
 def _resolve_media_file(file_url: str | None) -> Path | None:

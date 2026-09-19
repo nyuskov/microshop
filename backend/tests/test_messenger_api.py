@@ -473,13 +473,14 @@ async def test_forward_to_chat_where_not_member_forbidden(api: _ApiCtx) -> None:
 
 
 async def test_delete_message_author_only(api: _ApiCtx) -> None:
+    """Удаление «для всех» (по умолчанию) доступно только автору."""
     u1 = await api.make_user()
     u2 = await api.make_user()
     t1, t2 = await api.token_for(u1), await api.token_for(u2)
     chat = await api.private_chat(t1, u2.id)
     msg = await api.send(t1, chat["id"], "удалю это")
 
-    # Чужой удалить не может.
+    # Чужой удалить ДЛЯ ВСЕХ не может.
     foreign = await api.client.delete(
         f"/api/v1/messages/{msg['id']}/",
         headers=api.auth(t2),
@@ -494,6 +495,114 @@ async def test_delete_message_author_only(api: _ApiCtx) -> None:
     assert deleted.status_code == 204
     remaining = await api.list_messages(t1, chat["id"])
     assert all(m["id"] != msg["id"] for m in remaining)
+
+
+async def test_delete_message_for_me_hides_only_for_me(api: _ApiCtx) -> None:
+    """«Удалить у меня» убирает сообщение только у меня, у остальных оно остаётся.
+
+    Раньше удаление было одно и уносило строку: сообщение пропадало у ВСЕХ. Теперь
+    это два разных действия, и «у меня» доступно любому участнику — в том числе
+    для чужого сообщения (свой выбор человека, собеседника это не касается).
+    """
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    t1, t2 = await api.token_for(u1), await api.token_for(u2)
+    chat = await api.private_chat(t1, u2.id)
+    msg = await api.send(t1, chat["id"], "уберу у себя")
+
+    # Собеседник прячет ЧУЖОЕ сообщение у себя.
+    hidden = await api.client.delete(
+        f"/api/v1/messages/{msg['id']}/?for_all=false",
+        headers=api.auth(t2),
+    )
+    assert hidden.status_code == 204
+
+    # У него сообщения нет, у автора — есть.
+    assert all(m["id"] != msg["id"] for m in await api.list_messages(t2, chat["id"]))
+    assert any(m["id"] == msg["id"] for m in await api.list_messages(t1, chat["id"]))
+
+    # Повторный запрос (двойной тап) — не ошибка и без дублей.
+    again = await api.client.delete(
+        f"/api/v1/messages/{msg['id']}/?for_all=false",
+        headers=api.auth(t2),
+    )
+    assert again.status_code == 204
+
+    # Автор тоже может убрать СВОЁ только у себя: у собеседника оно останется.
+    own = await api.send(t1, chat["id"], "моё, уберу у себя")
+    own_hidden = await api.client.delete(
+        f"/api/v1/messages/{own['id']}/?for_all=false",
+        headers=api.auth(t1),
+    )
+    assert own_hidden.status_code == 204
+    assert all(m["id"] != own["id"] for m in await api.list_messages(t1, chat["id"]))
+    assert any(m["id"] == own["id"] for m in await api.list_messages(t2, chat["id"]))
+
+
+async def test_delete_message_for_me_hides_from_preview_and_search(
+    api: _ApiCtx,
+) -> None:
+    """Скрытое «у меня» не всплывает в превью, поиске, закреплённых и непрочитанных.
+
+    Забыть этот фильтр в одном из чтений легко, а выглядит это как сломанное
+    удаление: сообщение возвращается в списке чатов или зовёт бейджем.
+    """
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    t1, t2 = await api.token_for(u1), await api.token_for(u2)
+    chat = await api.private_chat(t1, u2.id)
+    visible = await api.send(t1, chat["id"], "осталось")
+    marker = f"найди-меня-{uuid.uuid4().hex[:6]}"
+    hidden = await api.send(t1, chat["id"], marker)
+    pin = await api.client.patch(
+        f"/api/v1/messages/{hidden['id']}/pin/",
+        json={"is_pinned": True},
+        headers=api.auth(t1),
+    )
+    assert pin.status_code == 200
+
+    # До скрытия: в превью именно это сообщение и два непрочитанных.
+    chats = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
+    peer_chat = next(item for item in chats if item["id"] == chat["id"])
+    assert peer_chat["last_message"]["id"] == hidden["id"]
+    assert peer_chat["unread_count"] == 2
+
+    resp = await api.client.delete(
+        f"/api/v1/messages/{hidden['id']}/?for_all=false", headers=api.auth(t2)
+    )
+    assert resp.status_code == 204
+
+    # Превью показывает предыдущее сообщение, непрочитанное — одно.
+    chats = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
+    peer_chat = next(item for item in chats if item["id"] == chat["id"])
+    assert peer_chat["last_message"]["id"] == visible["id"]
+    assert peer_chat["unread_count"] == 1
+
+    found = (
+        await api.client.get(
+            "/api/v1/messages/search/",
+            params={"q": marker},
+            headers=api.auth(t2),
+        )
+    ).json()
+    assert found == []
+
+    pinned = (
+        await api.client.get(
+            f"/api/v1/messages/{chat['id']}/pinned/", headers=api.auth(t2)
+        )
+    ).json()
+    assert all(item["id"] != hidden["id"] for item in pinned)
+
+    # У автора всё на месте: скрытие — личное дело того, кто его убрал.
+    found_author = (
+        await api.client.get(
+            "/api/v1/messages/search/",
+            params={"q": marker},
+            headers=api.auth(t1),
+        )
+    ).json()
+    assert [item["id"] for item in found_author] == [hidden["id"]]
 
 
 # --- Удаление чата: «для себя» и «для всех» -------------------------------

@@ -584,12 +584,24 @@ async def remove_reaction(
 @router.delete("/{message_id}/", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_message(
     message_id: int,
+    for_all: bool = Query(
+        True,
+        description=(
+            "true — удалить у всех (только своё сообщение), "
+            "false — скрыть только у себя"
+        ),
+    ),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
 ):
-    """Удаляет сообщение (только автор)."""
+    """Убирает сообщение: «для всех» (только автор) или «только у меня».
+
+    По умолчанию ``for_all=true``: так работали прежние клиенты, для которых
+    удаление всегда было «у всех» (в том числе Android-обёртка).
+    """
     await crud.delete_message(
         session=session,
         message_id=message_id,
         user_id=user.id,
+        for_all=for_all,
     )
