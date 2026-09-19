@@ -1,22 +1,28 @@
 #!/usr/bin/env bash
-# Ставит в crontab ЛОКАЛЬНОЙ машины ежедневный бэкап прод-сервера.
+# Ставит в crontab ЛОКАЛЬНОЙ машины ежедневный бэкап прод-сервера и догоняющий
+# запуск при включении машины.
 #
 # Вызывает scripts/backup/pull_prod_backup.sh (дамп БД + media + .env + метаданные
-# в ~/Документы/pismo_backup). Повторный запуск безопасен: строка с маркером
-# "# pismo-prod-backup" заменяется, дубликатов не появляется.
+# в ~/Документы/pismo_backup), а на `@reboot` — scripts/backup/backup_if_stale.sh:
+# cron НЕ повторяет пропущенные задачи, поэтому ночной бэкап в 04:15 пропускался
+# целиком у выключенного компьютера (проверено 2026-09-20: копий не было три дня).
+# Повторный запуск безопасен: строки с маркером "# pismo-prod-backup" заменяются,
+# дубликатов не появляется.
 #
 # Использование:
-#   ./scripts/backup/install_local_cron.sh                    # ежедневно в 04:15
+#   ./scripts/backup/install_local_cron.sh                    # ежедневно в 04:15 + при включении
 #   CRON_SCHEDULE='0 */6 * * *' ./scripts/backup/install_local_cron.sh
 #
-# Удалить задачу:
+# Удалить задачи:
 #   crontab -l | grep -v '# pismo-prod-backup' | crontab -
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT="$ROOT/scripts/backup/pull_prod_backup.sh"
+CATCHUP_SCRIPT="$ROOT/scripts/backup/backup_if_stale.sh"
 MARKER="# pismo-prod-backup"
+CATCHUP_MARKER="# pismo-prod-backup-catchup"
 CRON_SCHEDULE="${CRON_SCHEDULE:-15 4 * * *}"
 
 if ! command -v crontab >/dev/null 2>&1; then
@@ -27,32 +33,42 @@ fi
 if [[ ! -x "$SCRIPT" ]]; then
     chmod +x "$SCRIPT"
 fi
+if [[ ! -x "$CATCHUP_SCRIPT" ]]; then
+    chmod +x "$CATCHUP_SCRIPT"
+fi
 
 # Каталог проекта может содержать пробелы/кириллицу — экранируем для crontab.
 ESCAPED_SCRIPT="$(printf '%s' "$SCRIPT" | sed "s/'/'\\\\''/g")"
+ESCAPED_CATCHUP="$(printf '%s' "$CATCHUP_SCRIPT" | sed "s/'/'\\\\''/g")"
 # ВАЖНО: маркер идёт В КОНЦЕ строки. Спереди команды он превращал всю строку в
 # комментарий — cron исправно «выполнял» его, и бэкап не делался вовсе.
 CRON_LINE="$CRON_SCHEDULE '$ESCAPED_SCRIPT' $MARKER"
+# `@reboot` — догоняющий запуск: если копия старше STALE_HOURS (20 ч), снимаем её
+# сразу после включения; свежая — ничего не делаем (см. backup_if_stale.sh).
+CATCHUP_LINE="@reboot '$ESCAPED_CATCHUP' $CATCHUP_MARKER"
 
 CURRENT="$(crontab -l 2>/dev/null || true)"
+# Один фильтр на оба маркера: второй содержит первый как префикс.
 FILTERED="$(printf '%s\n' "$CURRENT" | grep -v -F "$MARKER" | sed '/^[[:space:]]*$/d' || true)"
 
 if [[ -n "$FILTERED" ]]; then
-    { printf '%s\n' "$FILTERED"; printf '%s\n' "$CRON_LINE"; } | crontab -
+    { printf '%s\n' "$FILTERED"; printf '%s\n' "$CRON_LINE"; printf '%s\n' "$CATCHUP_LINE"; } | crontab -
 else
-    printf '%s\n' "$CRON_LINE" | crontab -
+    { printf '%s\n' "$CRON_LINE"; printf '%s\n' "$CATCHUP_LINE"; } | crontab -
 fi
 
-echo "=== Задача установлена в локальный crontab ==="
+echo "=== Задачи установлены в локальный crontab ==="
 crontab -l | grep -F "$MARKER"
 echo
-echo "Расписание : $CRON_SCHEDULE"
+echo "Расписание : $CRON_SCHEDULE (+ догоняющий запуск при включении машины)"
 echo "Скрипт     : $SCRIPT"
+echo "Догоняющий : $CATCHUP_SCRIPT (порог STALE_HOURS=20)"
 echo "Куда кладёт: ${BACKUP_DIR:-$HOME/Документы/pismo_backup}"
 echo "Лог        : ${BACKUP_DIR:-$HOME/Документы/pismo_backup}/logs/backup.log"
 echo
 echo "Проверить прямо сейчас:"
 echo "  '$SCRIPT'"
+echo "  '$CATCHUP_SCRIPT' --check"
 echo
-echo "Удалить задачу:"
+echo "Удалить задачи:"
 echo "  crontab -l | grep -v '# pismo-prod-backup' | crontab -"

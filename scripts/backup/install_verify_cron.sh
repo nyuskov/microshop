@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Ставит в локальный crontab еженедельную автопроверку бэкапа (по умолчанию —
-# воскресенье 05:00).
+# воскресенье 12:00: ночью компьютер обычно выключен, а cron пропуск не
+# повторяет — в 05:00 проверка просто не запускалась).
 #
 # Вызывает scripts/backup/verify_prod_backup.sh: разворачивает последний дамп в
 # отдельную БД на прод-сервере, проверяет читаемость/схему/данные и при провале
@@ -18,7 +19,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT="$ROOT/scripts/backup/verify_prod_backup.sh"
 MARKER="# pismo-backup-verify"
-CRON_SCHEDULE="${CRON_SCHEDULE:-0 5 * * 0}"
+CRON_SCHEDULE="${CRON_SCHEDULE:-0 12 * * 0}"
 
 command -v crontab >/dev/null 2>&1 || {
     echo "!!! crontab не найден (sudo apt install cron)" >&2
