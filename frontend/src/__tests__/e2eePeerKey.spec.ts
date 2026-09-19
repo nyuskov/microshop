@@ -105,4 +105,69 @@ describe('peerPublicKey — отслеживание смены ключа', () 
 
     expect(changes).toEqual([])
   })
+
+  /**
+   * Многоустройность (A5). `public_key` на сервере — это ключ САМОГО СВЕЖЕГО
+   * устройства собеседника, поэтому у человека с телефоном и компьютером он
+   * законно перескакивает. Живая жалоба 19.09.2026: предупреждение вылезало
+   * при каждом входе, сколько бы раз ни нажимать «Понятно».
+   */
+  it('перескакивание между двумя устройствами предупреждает только один раз', async () => {
+    const e2ee = await loadModule()
+    const changes: unknown[] = []
+    e2ee.onPeerKeyChanged((change) => changes.push(change))
+
+    const keys = ['{"x":"phone"}', '{"x":"laptop"}']
+    for (const jwk of [keys[0], keys[1], keys[0], keys[1], keys[0]]) {
+      get.mockResolvedValue(keyResponse(jwk))
+      e2ee.resetE2eeSession()
+      await e2ee.peerPublicKey(2)
+    }
+
+    // Первое устройство — молча, второе (незнакомый ключ) — одно предупреждение.
+    expect(changes).toEqual([{ userId: 2, previous: '{"x":"phone"}', current: '{"x":"laptop"}' }])
+  })
+
+  it('после «Понятно» подтверждённый ключ молчит, даже если ключи чередуются', async () => {
+    const e2ee = await loadModule()
+    const changes: unknown[] = []
+    e2ee.onPeerKeyChanged((change) => changes.push(change))
+
+    get.mockResolvedValue(keyResponse('{"x":"phone"}'))
+    await e2ee.peerPublicKey(2)
+    e2ee.resetE2eeSession()
+    get.mockResolvedValue(keyResponse('{"x":"laptop"}'))
+    await e2ee.peerPublicKey(2)
+    expect(changes.length).toBe(1)
+
+    e2ee.acceptPeerKey(2, '{"x":"laptop"}')
+    for (const jwk of ['{"x":"phone"}', '{"x":"laptop"}', '{"x":"phone"}']) {
+      get.mockResolvedValue(keyResponse(jwk))
+      e2ee.resetE2eeSession()
+      await e2ee.peerPublicKey(2)
+    }
+
+    expect(changes.length).toBe(1)
+  })
+
+  it('старый формат хранения (один ключ строкой) читается как «уже видели»', async () => {
+    // Так выглядит localStorage у человека, который обновил приложение: раньше
+    // ключ собеседника лежал одной JSON-строкой, а не массивом.
+    window.localStorage.setItem('pismo_e2ee_v1_peer_v1_2', '{"x":"old"}')
+
+    const e2ee = await loadModule()
+    const changes: { userId: number; previous: string | null; current: string }[] = []
+    e2ee.onPeerKeyChanged((change) => changes.push(change))
+
+    get.mockResolvedValue(keyResponse('{"x":"old"}'))
+    await e2ee.peerPublicKey(2)
+    expect(changes).toEqual([])
+
+    e2ee.resetE2eeSession()
+    get.mockResolvedValue(keyResponse('{"x":"new"}'))
+    await e2ee.peerPublicKey(2)
+
+    // Прежний ключ берём из старого формата, а не показываем «нет ключа».
+    expect(changes).toEqual([{ userId: 2, previous: '{"x":"old"}', current: '{"x":"new"}' }])
+  })
 })

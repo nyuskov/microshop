@@ -70,18 +70,31 @@ export const GROUP_KEY_BYTES = 32
 const storageKeyFor = (userId: number): string => `${STORE_PREFIX}${userId}`
 
 /**
- * Ключ собеседника, который мы уже видели (`pismo_e2ee_peer_v1_<id>`).
+ * Ключи собеседника, которые мы уже видели (`pismo_e2ee_v1_peer_v2_<id>` —
+ * JSON-массив) и которые человек подтвердил кнопкой «Понятно»
+ * (`…peer_ok_v2_<id>`).
  *
- * Смысл — TOFU («доверяем первому ключу»): если у собеседника ПОМЕНЯЛСЯ
- * публичный ключ, то либо он зашёл с нового устройства/почистил браузер (всё
- * нормально), либо его аккаунт угнали и подсунули свой ключ, чтобы читать
- * переписку (MITM). Отличить одно от другого может только человек, поэтому
- * обязанность приложения — показать предупреждение, а не молча шифровать.
+ * Смысл — TOFU («доверяем первому ключу»): если у собеседника ПОЯВИЛСЯ
+ * незнакомый публичный ключ, то либо он зашёл с нового устройства/почистил
+ * браузер (всё нормально), либо его аккаунт угнали и подсунули свой ключ, чтобы
+ * читать переписку (MITM). Отличить одно от другого может только человек,
+ * поэтому обязанность приложения — показать предупреждение, а не молча шифровать.
+ *
+ * Почему НАБОР, а не одно значение: ключей у аккаунта может быть несколько
+ * (одно на устройство, см. A5), а `public_key` на сервере — это ключ САМОГО
+ * СВЕЖЕГО устройства. То есть у собеседника с телефоном и компьютером это поле
+ * законно перескакивает между устройствами. С одним запомненным ключом каждое
+ * перескакивание выглядело как «сменил ключ», и предупреждение возвращалось
+ * даже после «Понятно» (жалоба 19.09.2026). Теперь предупреждаем только про
+ * НЕЗНАКОМЫЙ ключ, а подтверждение помнит все подтверждённые.
  */
-const peerSeenKeyFor = (userId: number): string => `${STORE_PREFIX}peer_v1_${userId}`
+const peerSeenKeyFor = (userId: number): string => `${STORE_PREFIX}peer_v2_${userId}`
 
-/** Ключ собеседника, который человек подтвердил кнопкой «Понятно». */
-const peerAcceptedKeyFor = (userId: number): string => `${STORE_PREFIX}peer_ok_v1_${userId}`
+/** Ключи собеседника, которые человек подтвердил кнопкой «Понятно». */
+const peerAcceptedKeyFor = (userId: number): string => `${STORE_PREFIX}peer_ok_v2_${userId}`
+
+/** Сколько ключей собеседника помним (устройства копятся годами). */
+const MAX_PEER_KEYS = 8
 
 export interface PeerKeyChange {
   /** Собеседник, у которого сменился ключ. */
@@ -106,21 +119,62 @@ export function onPeerKeyChanged(listener: PeerKeyListener): () => void {
 
 /** Человек подтвердил новый ключ собеседника: больше не предупреждаем. */
 export function acceptPeerKey(userId: number, jwk: string): void {
-  safeSet(peerAcceptedKeyFor(userId), jwk)
+  rememberPeerKey(peerAcceptedKeyFor(userId), jwk)
 }
 
 /**
- * Замечает смену ключа собеседника и сообщает об этом интерфейсу.
+ * Список ключей собеседника из localStorage.
  *
- * Возвращает true, если человека нужно предупредить: ключ изменился и новый
- * ключ ещё не подтверждён вручную.
+ * Читает и СТАРЫЙ формат (одна JSON-строка с ключом — так было до
+ * многоустройности): иначе после обновления приложения человек получил бы
+ * предупреждение ещё раз на уже виденный ключ.
+ */
+function readPeerKeys(storageKey: string): string[] {
+  const raw = safeGet(storageKey)
+  if (!raw) return []
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item): item is string => typeof item === 'string')
+    }
+  } catch {
+    /* не JSON — значит формат ещё старее; считаем значение самим ключом */
+  }
+  return [raw]
+}
+
+/** Дописывает ключ в список (без повторов, с ограничением длины). */
+function rememberPeerKey(storageKey: string, jwk: string): void {
+  const keys = readPeerKeys(storageKey)
+  if (keys.includes(jwk)) return
+  keys.push(jwk)
+  safeSet(storageKey, JSON.stringify(keys.slice(-MAX_PEER_KEYS)))
+}
+
+/**
+ * Замечает появление НЕЗНАКОМОГО ключа собеседника и сообщает об этом интерфейсу.
+ *
+ * Возвращает true, если человека нужно предупредить: ключ нам раньше не
+ * встречался и человек его не подтверждал.
  */
 function trackPeerKey(userId: number, jwk: string): boolean {
-  const seen = safeGet(peerSeenKeyFor(userId))
-  safeSet(peerSeenKeyFor(userId), jwk)
-  if (!seen || seen === jwk) return false
-  if (safeGet(peerAcceptedKeyFor(userId)) === jwk) return false
-  const change: PeerKeyChange = { userId, previous: seen, current: jwk }
+  const seenKey = peerSeenKeyFor(userId)
+  const seen = readPeerKeys(seenKey)
+  // Знакомый ключ — молчим. Сюда попадает и второе устройство собеседника, и
+  // возврат к прежнему устройству: для человека это не событие.
+  if (seen.includes(jwk)) return false
+
+  const isFirstEver = seen.length === 0
+  rememberPeerKey(seenKey, jwk)
+  // Первый ключ собеседника — это и есть TOFU: сравнивать не с чем.
+  if (isFirstEver) return false
+  if (readPeerKeys(peerAcceptedKeyFor(userId)).includes(jwk)) return false
+
+  const change: PeerKeyChange = {
+    userId,
+    previous: seen[seen.length - 1] ?? null,
+    current: jwk
+  }
   for (const listener of peerKeyListeners) {
     try {
       listener(change)

@@ -803,7 +803,7 @@ onBeforeUnmount(() => {
 .post-comments {
   border: none;
   padding: 2px 4px;
-  border-radius: 8px;
+  border-radius: var(--ms-radius-xs);
   background: transparent;
   color: inherit;
   font-family: inherit;
@@ -837,7 +837,7 @@ onBeforeUnmount(() => {
   display: block;
   height: 38px;
   max-width: 70%;
-  border-radius: 12px;
+  border-radius: var(--ms-radius-md);
   background: linear-gradient(
     100deg,
     var(--ms-surface-2, #eef1f4) 30%,
@@ -877,7 +877,7 @@ onBeforeUnmount(() => {
   font-size: 12px;
   font-weight: 600;
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--ms-radius-pill);
 }
 
 /* ---------- Кнопка «вниз» ---------- */
@@ -949,7 +949,7 @@ onBeforeUnmount(() => {
   font-size: 12px;
   font-weight: 500;
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--ms-radius-pill);
   backdrop-filter: blur(12px) saturate(140%);
   -webkit-backdrop-filter: blur(12px) saturate(140%);
 }
@@ -984,14 +984,14 @@ onBeforeUnmount(() => {
   width: 44px;
   height: 44px;
   object-fit: cover;
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   flex-shrink: 0;
 }
 
 .pending-file-icon {
   width: 38px;
   height: 38px;
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   background: color-mix(in srgb, var(--ms-accent) 12%, transparent);
   color: var(--ms-accent, #2ea25e);
   flex-shrink: 0;

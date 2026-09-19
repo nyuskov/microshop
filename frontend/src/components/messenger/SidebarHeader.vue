@@ -335,7 +335,7 @@ onBeforeUnmount(() => {
   min-width: 200px;
   background: var(--ms-surface);
   border: 1px solid var(--ms-border);
-  border-radius: 12px;
+  border-radius: var(--ms-radius-lg);
   box-shadow: var(--ms-shadow-pop);
   padding: 6px;
   z-index: 120;
@@ -351,7 +351,7 @@ onBeforeUnmount(() => {
   border: none;
   background: transparent;
   padding: 9px 12px;
-  border-radius: 9px;
+  border-radius: var(--ms-radius-sm);
   cursor: pointer;
   text-align: left;
   font-size: 14px;

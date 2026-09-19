@@ -106,7 +106,7 @@ const onOtpVerified = () => {
 .login-dialog-card {
   width: min(420px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
-  border-radius: 20px;
+  /* Скругление задаёт общее правило окон (html .q-dialog__inner > .q-card). */
   background: var(--ms-surface) !important;
   color: var(--ms-text) !important;
   border: 1px solid var(--ms-border);

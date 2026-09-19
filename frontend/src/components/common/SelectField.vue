@@ -305,7 +305,7 @@ onBeforeUnmount(() => {
   color: var(--ms-text-strong);
   background: var(--ms-surface);
   border: 1.5px solid var(--ms-border);
-  border-radius: 11px;
+  border-radius: var(--ms-radius-md);
   cursor: pointer;
 }
 
@@ -334,7 +334,7 @@ onBeforeUnmount(() => {
   padding: 6px;
   background: var(--ms-surface);
   border: 1px solid var(--ms-border);
-  border-radius: 12px;
+  border-radius: var(--ms-radius-lg);
   box-shadow: var(--ms-shadow-pop);
 }
 
@@ -347,7 +347,7 @@ onBeforeUnmount(() => {
   color: var(--ms-text);
   background: var(--ms-surface-2);
   border: 1px solid var(--ms-border);
-  border-radius: 8px;
+  border-radius: var(--ms-radius-sm);
 }
 
 .sf-list {
@@ -371,7 +371,7 @@ onBeforeUnmount(() => {
   color: var(--ms-text);
   background: transparent;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--ms-radius-sm);
   cursor: pointer;
 }
 
@@ -405,7 +405,7 @@ onBeforeUnmount(() => {
   color: var(--ms-call-fg);
   background: var(--ms-call-surface);
   border-color: var(--ms-call-border);
-  border-radius: 9px;
+  border-radius: var(--ms-radius-md);
 }
 
 .sf-layer.v-call {

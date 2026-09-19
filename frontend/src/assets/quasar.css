@@ -27,9 +27,9 @@
 }
 
 /* --- Поверхности и текст --- */
-/* Уменьшаем отступы вокруг QDialog, чтобы карточке доставалось больше ширины */
+/* Отступ вокруг QDialog = --ms-dialog-inset, чтобы карточке доставалось больше ширины */
 html .q-dialog__inner {
-    padding: 16px;
+    padding: var(--ms-dialog-inset);
 }
 
 html .q-drawer,
@@ -41,9 +41,49 @@ html .q-card {
     color: var(--ms-text);
 }
 
-.q-dialog__inner>.q-card {
-    border-radius: var(--q-radius);
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+/* Единый вид модального окна: скругление, тень и высота берутся из токенов, а
+   не из `<style>` отдельного диалога. До этого каждый диалог задавал свой
+   радиус (14/16/18/20/22px) и свою тень — окна одного назначения выглядели
+   по-разному. Значение `border-radius` в компоненте теперь не нужно вовсе:
+   см. docs/design-system.md. */
+html .q-dialog__inner>.q-card {
+    border-radius: var(--ms-radius-xl);
+    box-shadow: var(--ms-shadow-pop);
+    max-height: calc(100vh - var(--ms-dialog-inset) * 2);
+    max-height: calc(100dvh - var(--ms-dialog-inset) * 2);
+}
+
+/* Всплывающие списки Quasar тоже приводим к нашей шкале (по умолчанию 4px). */
+html .q-menu {
+    border-radius: var(--ms-radius-lg);
+    box-shadow: var(--ms-shadow-pop);
+}
+
+/* Одна подложка у всех модальных слоёв — и у `q-dialog`, и у самодельных
+   оверлеев (`assets/overlays.css`), иначе затемнение «прыгает» между окнами. */
+html .q-dialog__backdrop {
+    background: var(--ms-backdrop);
+}
+
+/* --- Телефон: диалог-«задача» открывается листом снизу ---
+   Форма, выбор из списка и подтверждение на телефоне — не парящая карточка в
+   центре, а лист во всю ширину со скруглением сверху: до него достаёт большой
+   палец, и он не «висит» посреди переписки. Полноэкранные (maximized) разделы —
+   отдельный случай: их правило ниже с `!important` всё равно перебивает. */
+@media (max-width: 599px) {
+    html .q-dialog__inner {
+        align-items: flex-end;
+        padding: 0;
+    }
+
+    html .q-dialog__inner>.q-card {
+        width: 100%;
+        max-width: 100vw;
+        max-height: 92vh;
+        max-height: 92dvh;
+        padding-bottom: env(safe-area-inset-bottom);
+        border-radius: var(--ms-radius-xl) var(--ms-radius-xl) 0 0;
+    }
 }
 
 /* --- Поля ввода --- */

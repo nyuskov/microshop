@@ -140,7 +140,7 @@ const titleId = useId()
   place-items: center;
   width: 34px;
   height: 34px;
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   background: linear-gradient(160deg, #7b72ff, #3a32c9);
   box-shadow: 0 10px 24px -12px #6c63ff;
 }

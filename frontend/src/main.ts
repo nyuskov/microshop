@@ -31,6 +31,9 @@ import './assets/style.css'
 import './assets/appearance.css'
 // Общий вид «списков строк» (список чатов, поиск, контакты): область — .ms-rows.
 import './assets/rows.css'
+// Общий язык всплывающих окон для самодельных слоёв (.ms-overlay*):
+// у dialogs Quasar то же самое живет в quasar.css.
+import './assets/overlays.css'
 import './assets/quasar.css'
 import './assets/a11y.css'
 // Import the new theme store

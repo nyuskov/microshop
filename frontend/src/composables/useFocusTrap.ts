@@ -25,7 +25,7 @@
  * элемента — тогда фокус ставится на сам слой.
  */
 
-import { nextTick, onBeforeUnmount, ref, watch, type Ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
 
 /** Что считаем фокусируемым внутри слоя. */
 const FOCUSABLE_SELECTOR = [
@@ -127,17 +127,29 @@ export function useFocusTrap(isActive?: () => boolean) {
     previouslyFocused = null
   }
 
-  const stop = watch(
-    () => (isActive ? isActive() : true),
-    (open) => {
-      if (open) void activate()
-      else deactivate()
-    },
-    { immediate: true }
-  )
+  /*
+   * Наблюдатель регистрируем в `onMounted`, а не в setup: `watch` вычисляет
+   * источник СРАЗУ, а `isActive` обычно читает ref'ы, объявленные в
+   * `<script setup>` НИЖЕ вызова `useFocusTrap` — тогда setup падал с
+   * «Cannot access 'x' before initialization» (TDZ), и приложение показывало
+   * фатальный экран. Для уже открытого слоя порядок не меняется: `activate()`
+   * и сам ждёт `nextTick` перед переносом фокуса.
+   */
+  let stop: (() => void) | null = null
+
+  onMounted(() => {
+    stop = watch(
+      () => (isActive ? isActive() : true),
+      (open) => {
+        if (open) void activate()
+        else deactivate()
+      },
+      { immediate: true }
+    )
+  })
 
   onBeforeUnmount(() => {
-    stop()
+    stop?.()
     deactivate()
   })
 

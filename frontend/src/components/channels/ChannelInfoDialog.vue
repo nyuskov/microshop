@@ -203,6 +203,25 @@ type ChannelTabKey = 'settings' | 'people' | 'suggestions'
 
 const tab = ref<ChannelTabKey>('settings')
 
+/* Данные канала объявлены ДО `TABS` и `useHScroll` намеренно: `useHScroll`
+   читает свой источник при монтировании, а `TABS` смотрит на `canManage` и
+   `pending`. Если объявить их ниже, `watch` внутри `useHScroll` вычисляет
+   источник раньше — setup падает «Cannot access 'canManage' before
+   initialization», и вместо диалога показывается фатальный экран (TDZ). */
+const channel = ref<ChannelCard | null>(null)
+const people = ref<Person[]>([])
+const pending = ref<ChannelSuggestion[]>([])
+const title = ref('')
+const description = ref('')
+const isPublic = ref(false)
+const username = ref('')
+const saving = ref(false)
+const error = ref('')
+
+const isOwner = computed(() => props.role === 'creator')
+/** Править настройки могут владелец и админы (сервер проверяет то же самое). */
+const canManage = computed(() => props.role === 'creator' || props.role === 'admin')
+
 /** Вкладки диалога: подписи зависят от счётчиков, поэтому функции.
  *  Вкладки подписчиков и предложек видны только тем, кто ими управляет. */
 const TABS = computed<ReadonlyArray<{ key: ChannelTabKey; title: () => string }>>(() => {
@@ -229,19 +248,6 @@ const {
   onPointerMove: onTabsPointerMove,
   onPointerUp: onTabsPointerUp
 } = useHScroll(() => TABS.value.length)
-const channel = ref<ChannelCard | null>(null)
-const people = ref<Person[]>([])
-const pending = ref<ChannelSuggestion[]>([])
-const title = ref('')
-const description = ref('')
-const isPublic = ref(false)
-const username = ref('')
-const saving = ref(false)
-const error = ref('')
-
-const isOwner = computed(() => props.role === 'creator')
-/** Править настройки могут владелец и админы (сервер проверяет то же самое). */
-const canManage = computed(() => props.role === 'creator' || props.role === 'admin')
 const dirty = computed(() => {
   const current = channel.value
   if (!current) return false

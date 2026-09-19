@@ -35,6 +35,7 @@ docker-образов. Если интерпретатор не в `PATH`: `PY=/
 | `check-tokens.mjs` | новые **литеральные цвета** в `<style>` компонентов | `frontend/scripts/style-tokens-baseline.json` |
 | `check-contrast.mjs` | контраст токенов WCAG AA (светлая и тёмная темы) | `frontend/src/assets/appearance.css` |
 | `check-style-duplicates.mjs` | правила слоя `html .messenger-shell`, которые молча перебивают компоненты | `frontend/scripts/style-duplicates-baseline.json` |
+| `check-geometry.mjs` | новые **литеральные радиусы и тени** в `<style>` компонентов (смысл — шкала `--ms-radius-*`, см. `docs/design-system.md`) | `frontend/scripts/style-geometry-baseline.json` |
 | `check-bundle-size.mjs` | бюджет gzip по `dist/assets` (после сборки) | `frontend/scripts/bundle-size-baseline.json` |
 | `gitleaks` | секреты в диффе | `.github/workflows/ci.yml` |
 | `smoke_prod.sh` | прод отвечает после деплоя | `scripts/ci/smoke_prod.sh` |
@@ -66,13 +67,14 @@ docker-образов. Если интерпретатор не в `PATH`: `PY=/
 
 ## Как обновлять базы
 
-Все три «стилевые» проверки сравнивают с базовым файлом и падают только на НОВЫХ
+Все «стилевые» проверки сравнивают с базовым файлом и падают только на НОВЫХ
 нарушениях. Когда нарушение осознанное и его нужно зафиксировать:
 
 ```bash
 cd frontend
 node scripts/check-tokens.mjs --update-baseline
 node scripts/check-style-duplicates.mjs --update-baseline
+node scripts/check-geometry.mjs --update-baseline
 node scripts/check-bundle-size.mjs --update-baseline     # база снимается с собранного dist
 ```
 

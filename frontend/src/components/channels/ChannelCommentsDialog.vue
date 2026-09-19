@@ -170,7 +170,8 @@ watch(
   max-height: 82vh;
   display: flex;
   flex-direction: column;
-  border-radius: 16px;
+  /* Скругление, фон и тень задаёт общее правило окон
+     (`html .q-dialog__inner > .q-card`, см. docs/design-system.md). */
   background: var(--ms-surface, #fff);
   color: var(--ms-text, #141d26);
   font-family: var(--ms-font), sans-serif;
@@ -182,12 +183,19 @@ watch(
  * Класс-модификатор, а не расчёт на `.q-dialog__inner--maximized > div`: у
  * Quasar это «класс + элемент» (0,1,1), а правило компонента со scope-атрибутом
  * сильнее (0,2,0) — иначе карточка осталась бы по центру с полями.
+ *
+ * Селектор с предком обязателен: общее правило модальных окон
+ * (`html .q-dialog__inner > .q-card`, 0,2,1) задаёт скругление всем окнам и
+ * без предка перебило бы `border-radius: 0` у полноэкранной карточки.
  */
+html .q-dialog__inner > .ch-comments-card--full {
+  border-radius: 0;
+}
+
 .ch-comments-card--full {
   width: 100%;
   height: 100%;
   max-height: none;
-  border-radius: 0;
 }
 
 /* Низ экрана на телефоне занят жестовой полосой — кнопку отправки поднимаем. */
@@ -241,6 +249,15 @@ watch(
   display: flex;
   gap: 10px;
   align-items: flex-start;
+}
+
+/* Аватар в комментарии — компактный (в списках чатов он 46px): здесь строк
+   много, и крупные кружки съедали высоту. Размер задан явно, иначе картинка
+   рисуется в натуральную величину. */
+.ch-comment .avatar {
+  width: 34px;
+  height: 34px;
+  font-size: var(--ms-fs-sm);
 }
 
 .ch-comment-text {
@@ -321,7 +338,7 @@ watch(
 .ch-input {
   flex: 1;
   border: 1px solid var(--ms-border, #dfe5ea);
-  border-radius: 11px;
+  border-radius: var(--ms-radius-md);
   background: var(--ms-surface-2, #ffffff);
   color: var(--ms-text, #1c2733);
   padding: 8px 10px;

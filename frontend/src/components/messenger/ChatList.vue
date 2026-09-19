@@ -425,7 +425,7 @@ watch(
   gap: 5px;
   padding: 4px 4px;
   border: none;
-  border-radius: 11px;
+  border-radius: var(--ms-radius-sm);
   background: var(--ms-surface-2);
   color: var(--ms-muted);
   font: inherit;
@@ -468,7 +468,7 @@ watch(
 
 .chat-filter-count {
   padding: 0 5px;
-  border-radius: 8px;
+  border-radius: var(--ms-radius-pill);
   background: var(--ms-accent);
   color: var(--ms-on-accent);
   font-size: var(--ms-fs-xs);

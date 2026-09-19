@@ -1,13 +1,13 @@
 <template>
   <Teleport to="body">
     <div
-      class="shr-overlay"
+      class="ms-overlay shr-overlay"
       role="dialog"
       aria-modal="true"
       aria-label="Отправить в Pismo"
       @mousedown.self="emit('close')"
     >
-      <div ref="trapContainer" class="shr-card" tabindex="-1">
+      <div ref="trapContainer" class="ms-overlay-card shr-card" tabindex="-1">
         <!-- Шапка -->
         <header class="shr-head">
           <div class="shr-title">
@@ -177,28 +177,11 @@ const confirmShare = () => {
 </script>
 
 <style scoped>
-.shr-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 4500;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: var(--ms-backdrop);
-  font-family: var(--ms-font);
-}
-
+/* Подложка, центрирование, лист снизу на телефоне, ширина, фон, радиус,
+   тень и появление окна — в общем слое (assets/overlays.css, `.ms-overlay*`).
+   Здесь остаётся только содержимое списка чатов и превью. */
 .shr-card {
-  display: flex;
-  flex-direction: column;
-  width: min(440px, calc(100vw - 24px));
   max-height: min(620px, 88vh);
-  overflow: hidden;
-  background: var(--ms-surface, #ffffff);
-  color: var(--ms-text, #1c2733);
-  border: 1px solid var(--ms-border, #e2e6ea);
-  border-radius: var(--ms-radius-lg, 18px);
 }
 
 .shr-head {

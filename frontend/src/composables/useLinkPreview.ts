@@ -3,7 +3,7 @@
  * только удачный результат (если сайт недоступен — ничего не появляется).
  */
 
-import { onBeforeUnmount, ref, watch, type Ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
 import type { LinkPreview } from '@/types'
 import { firstLinkInText } from '@/utils/linkPreview'
 import { fetchLinkPreview } from '@/services/linkPreview'
@@ -41,24 +41,34 @@ export function useLinkPreview(
   // карточку актуального (сообщение могли отредактировать).
   let requestId = 0
 
-  watch(
-    () => {
-      if (options.enabled && !options.enabled()) return null
-      return firstLinkInText(getText())
-    },
-    async (link) => {
-      requestId += 1
-      const currentRequest = requestId
-      if (!link) {
-        preview.value = null
-        return
-      }
-      const result = await fetchLinkPreview(link)
-      if (currentRequest !== requestId) return
-      preview.value = result?.ok ? result : null
-    },
-    { immediate: true }
-  )
+  /*
+   * Наблюдатель — в `onMounted`: `watch` вычисляет источник сразу, а `getText`
+   * и `enabled` обычно читают ref'ы, объявленные в `<script setup>` НИЖЕ
+   * вызова, — иначе setup падает с «Cannot access 'x' before initialization»
+   * (TDZ) и приложение показывает фатальный экран. Для карточки это значит,
+   * что первый запрос уходит сразу после монтирования — на строку ленты это
+   * один и тот же кадр.
+   */
+  onMounted(() => {
+    watch(
+      () => {
+        if (options.enabled && !options.enabled()) return null
+        return firstLinkInText(getText())
+      },
+      async (link) => {
+        requestId += 1
+        const currentRequest = requestId
+        if (!link) {
+          preview.value = null
+          return
+        }
+        const result = await fetchLinkPreview(link)
+        if (currentRequest !== requestId) return
+        preview.value = result?.ok ? result : null
+      },
+      { immediate: true }
+    )
+  })
 
   onBeforeUnmount(() => {
     // После размонтирования ответ уже не нужен.

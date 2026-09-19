@@ -61,7 +61,7 @@ const iconName = computed(() => {
   padding: calc(6px + env(safe-area-inset-top, 0px)) 12px 6px;
   font-size: 13px;
   font-weight: 600;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--ms-shadow-md);
 }
 
 .offline-banner.restored {

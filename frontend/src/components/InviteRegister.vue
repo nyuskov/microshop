@@ -204,7 +204,7 @@ const submit = async () => {
 .brand-icon {
   width: 64px;
   height: 64px;
-  border-radius: 22px;
+  border-radius: var(--ms-radius-xl);
   background: linear-gradient(
     135deg,
     color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 86%, #ffffff) 0%,
@@ -261,7 +261,7 @@ const submit = async () => {
 
 .phone-input :deep(.q-field__control) {
   min-height: 52px;
-  border-radius: 14px;
+  border-radius: var(--ms-radius-lg);
   background: var(--ms-surface-2);
 }
 
@@ -285,7 +285,7 @@ const submit = async () => {
 .submit-btn.full {
   width: 100%;
   margin-top: 18px;
-  border-radius: 14px;
+  border-radius: var(--ms-radius-lg);
   min-height: 48px;
   font-size: 15px;
   font-weight: 700;
@@ -304,7 +304,7 @@ const submit = async () => {
 .login-message {
   margin-top: 16px;
   padding: 10px 14px;
-  border-radius: 12px;
+  border-radius: var(--ms-radius-md);
   font-size: 13.5px;
   text-align: center;
   width: 100%;

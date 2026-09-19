@@ -1,13 +1,13 @@
 <template>
   <Teleport to="body">
     <div
-      class="fwd-overlay"
+      class="ms-overlay fwd-overlay"
       role="dialog"
       aria-modal="true"
       aria-label="Переслать сообщение"
       @mousedown.self="emit('close')"
     >
-      <div ref="trapContainer" class="fwd-card" tabindex="-1">
+      <div ref="trapContainer" class="ms-overlay-card ms-overlay-card--lg fwd-card" tabindex="-1">
         <!-- Шапка -->
         <header class="fwd-head">
           <div class="fwd-title">
@@ -192,51 +192,9 @@ const confirmForward = () => {
 </script>
 
 <style scoped>
-.fwd-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 4000;
-  background: var(--ms-backdrop);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  animation: fwd-fade 0.15s ease-out;
-  font-family: var(--ms-font);
-}
-
-.fwd-card {
-  width: min(460px, 100%);
-  max-height: min(640px, calc(100vh - 40px));
-  display: flex;
-  flex-direction: column;
-  background: var(--ms-surface, #ffffff);
-  color: var(--ms-text, #1c2733);
-  border-radius: 18px;
-  box-shadow: var(--ms-shadow-pop);
-  overflow: hidden;
-  animation: fwd-pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
-}
-
-@keyframes fwd-fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes fwd-pop {
-  from {
-    opacity: 0;
-    transform: scale(0.92) translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
+/* Подложка, центрирование, лист снизу на телефоне, ширина, фон, радиус,
+   тень и появление окна — в общем слое (assets/overlays.css, `.ms-overlay*`).
+   Здесь остаётся только содержимое списка пересылки. */
 
 /* Шапка */
 .fwd-head {

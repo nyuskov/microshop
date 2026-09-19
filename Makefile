@@ -35,6 +35,7 @@ check-frontend:
 	cd $(FE) && node scripts/check-tokens.mjs
 	cd $(FE) && node scripts/check-contrast.mjs
 	cd $(FE) && node scripts/check-style-duplicates.mjs
+	cd $(FE) && node scripts/check-geometry.mjs
 	cd $(FE) && $(NODE_BIN)/vitest run
 
 test-backend:

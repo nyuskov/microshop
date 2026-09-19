@@ -270,6 +270,24 @@
               :count="section.images.length || section.emojis.length"
               :force="index <= forcedSectionsUpTo"
             >
+              <!-- «Добавить набор целиком» — только у встроенных наборов и
+                   только пока набор не добавлен себе. -->
+              <template #action>
+                <button
+                  v-if="
+                    standardSetOf(section.key) &&
+                    !stickersStore.isStandardSetImported(standardSetOf(section.key)?.key ?? '')
+                  "
+                  type="button"
+                  class="section-add"
+                  :disabled="isSetImporting"
+                  :title="'Добавить набор целиком — появятся в «Мои стикеры»'"
+                  :aria-label="`Добавить набор «${standardSetOf(section.key)?.title ?? ''}» целиком`"
+                  @click="addStandardSetByKey(section.key)"
+                >
+                  {{ setImportLabelFor(section.key) }}
+                </button>
+              </template>
               <div v-if="section.images.length" class="extras-grid stickers-grid">
                 <button
                   v-for="image in section.images"
@@ -348,7 +366,8 @@ import { STICKER_ACCEPT, type StickerItem } from '@/services/stickers'
 import { useHScroll } from '@/composables/useHScroll'
 import { schedulePresets, scheduledSendAt, type SchedulePreset } from '@/utils/scheduledSend'
 import PanelSection from '@/components/messenger/PanelSection.vue'
-import { STANDARD_STICKER_PACKS } from '@/utils/standardStickers'
+import { STANDARD_STICKER_PACKS, type StandardStickerPack } from '@/utils/standardStickers'
+import { useStandardSetImport } from '@/composables/useStandardSetImport'
 /**
  * Диалог «Мои стикеры» грузим лениво: он нужен только тем, кто открывает
  * панель стикеров и нажимает «Паки», а в основном чанке это лишние килобайты
@@ -480,6 +499,41 @@ const standardImages = (key: string): PanelImage[] =>
     url: sticker.url,
     alt: sticker.label
   }))
+
+/** Встроенные наборы по ключу секции панели: `standard:<key>` → набор. */
+const standardSets = computed<Record<string, StandardStickerPack>>(() =>
+  Object.fromEntries(STANDARD_STICKER_PACKS.map((pack) => [`standard:${pack.key}`, pack]))
+)
+
+const standardSetOf = (sectionKey: string): StandardStickerPack | undefined =>
+  standardSets.value[sectionKey]
+
+/**
+ * «Добавить весь набор» из панели стикеров — то же, что кнопка в окне
+ * «Мои стикеры» (общая логика в `useStandardSetImport`).
+ *
+ * Ошибку отдаём тем же путём, что и неудачную загрузку стикера
+ * (`sticker-error`): родитель показывает её плашкой, и в приложении это
+ * единственный способ сказать «почему не получилось».
+ */
+const {
+  isImporting: isSetImporting,
+  label: setImportLabel,
+  run: runSetImport
+} = useStandardSetImport()
+
+const setImportLabelFor = (sectionKey: string): string => {
+  const set = standardSetOf(sectionKey)
+  return set ? setImportLabel(set) : ''
+}
+
+const addStandardSetByKey = (sectionKey: string): void => {
+  const set = standardSetOf(sectionKey)
+  if (!set) return
+  void runSetImport(set).then((message) => {
+    if (message) emit('sticker-error', message)
+  })
+}
 
 /** Тап по картинке: уходит сообщением (стандартная — теми же байтами). */
 const tapImage = (image: PanelImage) => {
@@ -1156,13 +1210,13 @@ watch(newMessage, () => {
   background: var(--ms-tooltip-bg);
   color: var(--ms-tooltip-text);
   padding: 4px 10px;
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   font-size: var(--ms-fs-xs);
   font-weight: 600;
   white-space: nowrap;
   pointer-events: none;
   z-index: 12;
-  animation: record-hint-pop 0.15s ease-out;
+  animation: record-hint-pop var(--ms-dur-fast) var(--ms-ease);
 }
 
 @keyframes record-hint-pop {
@@ -1193,7 +1247,7 @@ watch(newMessage, () => {
   gap: 10px;
   background: var(--ms-surface);
   border-left: 3px solid var(--ms-info);
-  border-radius: 8px;
+  border-radius: var(--ms-radius-xs);
   padding: 6px 10px;
   margin-bottom: 8px;
 }
@@ -1224,7 +1278,7 @@ watch(newMessage, () => {
   align-items: center;
   gap: 8px;
   background: var(--ms-surface);
-  border-radius: 12px;
+  border-radius: var(--ms-radius-lg);
   padding: 5px 10px;
   position: relative;
 }
@@ -1338,7 +1392,7 @@ watch(newMessage, () => {
   overflow-y: auto;
   z-index: 30;
   padding: 6px;
-  border-radius: 14px;
+  border-radius: var(--ms-radius-lg);
   background: var(--ms-surface, #fff);
   border: 1px solid var(--ms-border, #e2e6ea);
   box-shadow: var(--ms-shadow-float, 0 6px 20px -8px rgba(15, 23, 42, 0.3));
@@ -1351,7 +1405,7 @@ watch(newMessage, () => {
   width: 100%;
   padding: 8px 10px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   background: transparent;
   color: var(--ms-text, #1c2733);
   font: inherit;
@@ -1409,7 +1463,7 @@ watch(newMessage, () => {
   right: 14px;
   width: min(360px, calc(100vw - 28px));
   background: var(--ms-surface);
-  border-radius: 16px;
+  border-radius: var(--ms-radius-lg);
   box-shadow: var(--ms-shadow-pop);
   padding: 8px;
   z-index: 30;
@@ -1430,7 +1484,7 @@ watch(newMessage, () => {
   flex: 1;
   border: none;
   background: transparent;
-  border-radius: 9px;
+  border-radius: var(--ms-radius-sm);
   padding: 6px 8px;
   font: inherit;
   font-size: 13px;
@@ -1475,7 +1529,7 @@ watch(newMessage, () => {
   /* Рамка есть всегда, меняется только её цвет: иначе значок при выборе
      дёргается на пиксель и «прыгает» в ленте. */
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   background: var(--ms-surface-2);
   font-size: var(--ms-fs-lg);
   line-height: 1;
@@ -1551,7 +1605,7 @@ watch(newMessage, () => {
   margin-left: auto;
   padding: 3px 8px;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   background: var(--ms-surface-2);
   color: var(--ms-muted);
   font: inherit;
@@ -1590,10 +1644,30 @@ watch(newMessage, () => {
   cursor: pointer;
   width: 48px;
   height: 48px;
-  border-radius: 12px;
+  border-radius: var(--ms-radius-md);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+/* «Добавить набор» в заголовке секции: кнопка наследует шрифт панели, но не
+   оформление заголовка — он строчный-верхний и с разрядкой, а тут обычный текст. */
+.section-add {
+  border: none;
+  background: transparent;
+  padding: 0 2px;
+  font: inherit;
+  font-size: var(--ms-fs-xs);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ms-accent);
+  cursor: pointer;
+}
+
+.section-add:disabled {
+  color: var(--ms-muted-2);
+  cursor: default;
 }
 
 .sticker-option:hover {

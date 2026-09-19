@@ -53,7 +53,7 @@ const dismiss = () => {
   display: block;
   margin: 0 0 16px;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   border: 1px solid var(--ms-border, #e2e6ea);
   background: var(--ms-surface-2, #f6f8f9);
   color: var(--ms-muted, #7c8a96);

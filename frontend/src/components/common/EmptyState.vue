@@ -32,8 +32,8 @@ withDefaults(
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 6px;
-  padding: 12px;
+  gap: var(--ms-space-1);
+  padding: var(--ms-space-3);
   color: var(--ms-muted, #7c8a96);
   user-select: none;
 }
@@ -42,42 +42,42 @@ withDefaults(
   font-size: 60px;
   line-height: 1;
   color: var(--ms-icon-3, #b9c6cf);
-  margin-bottom: 8px;
+  margin-bottom: var(--ms-space-2);
 }
 
 .empty-state__title {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--ms-fs-xl);
   font-weight: 600;
   line-height: 1.3;
-  color: var(--ms-icon-2, #52626f);
+  color: var(--ms-text);
 }
 
 .empty-state__hint {
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--ms-fs-md);
   line-height: 1.45;
   color: var(--ms-muted, #7c8a96);
   max-width: 320px;
 }
 
 .empty-state__action {
-  margin-top: 10px;
+  margin-top: var(--ms-space-2);
 }
 
 /* Компактный вариант для лент/списков: мелкий muted-текст без иконки */
 .empty-state--compact {
-  padding: 10px 12px;
+  padding: var(--ms-space-2) var(--ms-space-3);
   gap: 2px;
 }
 
 .empty-state--compact .empty-state__title {
-  font-size: 13.5px;
+  font-size: var(--ms-fs-md);
   font-weight: 500;
   color: var(--ms-muted-2, #8a98a3);
 }
 
 .empty-state--compact .empty-state__hint {
-  font-size: 12.5px;
+  font-size: var(--ms-fs-sm);
 }
 </style>

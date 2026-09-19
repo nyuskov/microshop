@@ -958,7 +958,7 @@ onBeforeUnmount(() => {
   gap: 6px;
   background: var(--ms-surface-2, #eef1f4);
   color: var(--ms-muted, #71808d);
-  border-radius: 14px;
+  border-radius: var(--ms-radius-pill);
   padding: 4px 12px;
   font-size: 12.5px;
 }
@@ -982,7 +982,7 @@ onBeforeUnmount(() => {
 .msg-bubble {
   position: relative;
   padding: 7px 11px 6px;
-  border-radius: 12px;
+  border-radius: var(--ms-radius-md);
   box-shadow: var(--ms-shadow-sm);
   min-width: 70px;
   /* Длинная лента: содержимое пузыря за экраном браузер не раскладывает и не
@@ -1154,7 +1154,7 @@ onBeforeUnmount(() => {
   font-family: var(--ms-font-mono);
   font-size: 0.92em;
   background: var(--ms-mark-bg);
-  border-radius: 5px;
+  border-radius: var(--ms-radius-xs);
   padding: 0 4px;
 }
 
@@ -1170,7 +1170,7 @@ onBeforeUnmount(() => {
 
 .msg-spoiler {
   background: var(--ms-mark-bg);
-  border-radius: 5px;
+  border-radius: var(--ms-radius-xs);
   padding: 0 3px;
   /* Размытие скрывает текст, но не ломает высоту строки, как display: none. */
   filter: blur(3.5px);
@@ -1260,7 +1260,7 @@ onBeforeUnmount(() => {
   gap: 5px;
   margin: -1px 0 4px;
   padding: 3px 7px;
-  border-radius: 7px;
+  border-radius: var(--ms-radius-xs);
   background: var(--ms-warn-bg);
   color: var(--ms-warn);
   font-size: var(--ms-fs-xs);
@@ -1314,7 +1314,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   background: color-mix(in srgb, var(--ms-icon) 8%, transparent);
   border-left: 3px solid var(--ms-info);
-  border-radius: 6px;
+  border-radius: var(--ms-radius-xs);
   padding: 5px 9px;
   margin-bottom: 5px;
   cursor: pointer;
@@ -1350,7 +1350,7 @@ onBeforeUnmount(() => {
   gap: 7px;
   background: color-mix(in srgb, var(--ms-icon) 8%, transparent);
   border-left: 3px solid var(--ms-accent);
-  border-radius: 6px;
+  border-radius: var(--ms-radius-xs);
   padding: 4px 9px 4px 6px;
   margin-bottom: 5px;
   min-width: 120px;
@@ -1587,6 +1587,6 @@ onBeforeUnmount(() => {
   inset: 0;
   z-index: 4;
   cursor: pointer;
-  border-radius: 14px;
+  border-radius: var(--ms-radius-lg);
 }
 </style>

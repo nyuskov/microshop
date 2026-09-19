@@ -1,9 +1,9 @@
 <template>
   <Teleport to="body">
-    <div v-if="pending" class="el-overlay" @mousedown.self="answer(false)">
+    <div v-if="pending" class="ms-overlay" @mousedown.self="answer(false)">
       <div
         ref="trapContainer"
-        class="el-card"
+        class="ms-overlay-card ms-overlay-card--sm el-card"
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="el-title"
@@ -71,27 +71,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <style scoped>
-.el-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 6000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: var(--ms-backdrop);
-  font-family: var(--ms-font);
-}
-
+/* Подложка, центрирование, лист снизу на телефоне, ширина, фон, радиус,
+   тень и появление окна — в общем слое (assets/overlays.css, `.ms-overlay*`).
+   Здесь остаётся только то, что специфично для этого окна. */
 .el-card {
-  display: flex;
-  flex-direction: column;
-  width: min(420px, calc(100vw - 24px));
-  padding: 20px;
-  background: var(--ms-surface, #ffffff);
-  color: var(--ms-text, #1c2733);
-  border: 1px solid var(--ms-border, #e2e6ea);
-  border-radius: var(--ms-radius-lg, 18px);
+  padding: var(--ms-dialog-pad);
 }
 
 .el-icon {
@@ -124,7 +108,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   flex-direction: column;
   gap: 2px;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   background: var(--ms-surface-2, #f0f2f5);
   overflow: hidden;
 }
@@ -159,7 +143,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   gap: 6px;
   padding: 10px 16px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   font: inherit;
   font-size: 14px;
   font-weight: 600;

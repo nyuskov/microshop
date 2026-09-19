@@ -58,7 +58,10 @@ describe('общий механизм прокрутки лент', () => {
     // тогда перетаскивание мышью и затухания краёв молча не делают ничего, и
     // лента выглядит непрокручиваемой (ровно так и случилось в панели эмодзи).
     const file = source(path)
-    const destructured = /el:\s*([A-Za-z0-9_]+)\s*,/.exec(file)?.[1] ?? null
+    // `el:` ищем как отдельный ключ деструктуризации: без границы слова шаблон
+    // находил `el:` внутри другого имени (`label: setImportLabel,`) и требовал
+    // в разметке `ref="setImportLabel"`.
+    const destructured = /(?:^|[\s,{])el:\s*([A-Za-z0-9_]+)\s*,/m.exec(file)?.[1] ?? null
     const spread = /:ref="([A-Za-z0-9_]+)\.el"/.exec(file)?.[1] ?? null
     expect(destructured ?? spread, 'элемент не передан в useHScroll').toBeTruthy()
     if (destructured) expect(file).toContain(`ref="${destructured}"`)

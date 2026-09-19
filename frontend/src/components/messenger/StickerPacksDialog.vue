@@ -33,6 +33,42 @@
           </button>
         </div>
 
+        <!-- Встроенные наборы приложения: у сервера их нет, поэтому «добавить» —
+             это скачать картинки и загрузить их своим паком. Так же устроено
+             «ДОБАВИТЬ СТИКЕРЫ» в Телеграме, только там набор лежит на сервере. -->
+        <section class="sets-block">
+          <h3 class="sets-title">Наборы приложения</h3>
+          <div v-for="set in STANDARD_STICKER_PACKS" :key="set.key" class="set-row">
+            <span class="set-preview" aria-hidden="true">
+              <img
+                v-for="preview in set.stickers.slice(0, 3)"
+                :key="preview.url"
+                :src="preview.url"
+                alt=""
+                loading="lazy"
+                decoding="async"
+              />
+            </span>
+            <span class="set-info">
+              <span class="set-name">{{ set.title }}</span>
+              <span class="set-count">{{ set.stickers.length }} шт.</span>
+            </span>
+            <span v-if="store.isStandardSetImported(set.key)" class="set-done">
+              <q-icon :name="icon('check')" size="16px" />
+              Добавлен
+            </span>
+            <button
+              v-else
+              type="button"
+              class="stickers-btn"
+              :disabled="isImporting"
+              @click="addStandardSet(set)"
+            >
+              {{ importLabel(set) }}
+            </button>
+          </div>
+        </section>
+
         <label v-if="creating" class="stickers-new">
           <span class="sr-only">Название нового пака</span>
           <input
@@ -129,6 +165,8 @@ import { nextTick, ref } from 'vue'
 import { mediaUrl } from '@/config'
 import { useStickersStore } from '@/stores/stickers'
 import { MAX_STICKER_BYTES, STICKER_ACCEPT, type StickerPack } from '@/services/stickers'
+import { STANDARD_STICKER_PACKS, type StandardStickerPack } from '@/utils/standardStickers'
+import { useStandardSetImport } from '@/composables/useStandardSetImport'
 import { confirmDialog } from '@/utils/appDialogs'
 import { icon } from '@/utils/icons'
 
@@ -147,6 +185,16 @@ const error = ref('')
 const startNewPack = (): void => {
   creating.value = true
   void nextTick(() => newPackInput.value?.focus())
+}
+/** Какой встроенный набор сейчас добавляем и как это показать — общая логика
+ *  с панелью стикеров (`composables/useStandardSetImport.ts`). */
+const { isImporting, label: importLabel, run: runImport } = useStandardSetImport()
+
+/** «Добавить весь набор»: текст ошибки показываем строкой под списком. */
+const addStandardSet = (set: StandardStickerPack): void => {
+  void runImport(set).then((message) => {
+    if (message) error.value = message
+  })
 }
 
 /** Создаёт пак (пустое название сервер заменит на «Мои стикеры»). */
@@ -425,5 +473,73 @@ void store.load()
   height: 1px;
   overflow: hidden;
   clip-path: inset(50%);
+}
+
+/* ---------- Встроенные наборы приложения ---------- */
+.sets-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ms-space-2);
+  padding: var(--ms-space-3);
+  margin-bottom: var(--ms-space-3);
+  border: 1px solid var(--ms-border);
+  border-radius: var(--ms-radius-lg);
+  background: var(--ms-surface-2);
+}
+
+.sets-title {
+  margin: 0;
+  font-size: var(--ms-fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ms-muted-2);
+}
+
+.set-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-2);
+}
+
+.set-preview {
+  display: inline-flex;
+  gap: 2px;
+  flex: none;
+}
+
+.set-preview img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+
+.set-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.set-name {
+  font-size: var(--ms-fs-base);
+  font-weight: 600;
+  color: var(--ms-text-strong);
+}
+
+.set-count {
+  font-size: var(--ms-fs-xs);
+  color: var(--ms-muted-2);
+}
+
+/* Отметка «уже добавлен»: тот же акцент, что у выбранного варианта в списках. */
+.set-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-size: var(--ms-fs-sm);
+  font-weight: 600;
+  color: var(--ms-accent);
 }
 </style>

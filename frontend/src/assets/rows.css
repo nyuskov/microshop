@@ -224,7 +224,7 @@
   font-weight: 700;
   min-width: 20px;
   height: 20px;
-  border-radius: 12px;
+  border-radius: var(--ms-radius-pill);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -295,7 +295,7 @@
 .ms-rows .search-status {
   padding: 14px;
   color: var(--ms-muted-2);
-  font-size: 13.5px;
+  font-size: var(--ms-fs-md);
   text-align: center;
 }
 
@@ -307,7 +307,7 @@
   margin: 0 12px 8px;
   padding: 7px 12px;
   background: var(--ms-surface-2);
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
 }
 
 .ms-rows .search-icon {

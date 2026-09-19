@@ -1208,7 +1208,7 @@ const leaveFrozen = () => {
 .brand-icon {
   width: 64px;
   height: 64px;
-  border-radius: 22px;
+  border-radius: var(--ms-radius-xl);
   background: linear-gradient(
     135deg,
     color-mix(in srgb, var(--ms-accent, var(--ms-accent)) 86%, #ffffff) 0%,
@@ -1260,7 +1260,7 @@ const leaveFrozen = () => {
 
 .phone-input :deep(.q-field__control) {
   min-height: 52px;
-  border-radius: 14px;
+  border-radius: var(--ms-radius-lg);
   background: var(--ms-surface-2);
 }
 
@@ -1291,7 +1291,7 @@ const leaveFrozen = () => {
   width: 100%;
   margin-top: 14px;
   border: none;
-  border-radius: 14px;
+  border-radius: var(--ms-radius-lg);
   padding: 13px 16px;
   font-size: 15px;
   font-weight: 700;
@@ -1406,7 +1406,7 @@ const leaveFrozen = () => {
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: var(--ms-radius-sm);
 }
 
 .link-btn:hover:not(:disabled) {
@@ -1423,7 +1423,7 @@ const leaveFrozen = () => {
   width: 100%;
   box-sizing: border-box;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: var(--ms-radius-md);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.35;

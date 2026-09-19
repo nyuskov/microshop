@@ -1,6 +1,25 @@
 /** Клиент API стикеров: паки, картинки и «в стикеры» из сообщения. */
 
 import { api } from './api'
+import type { StandardSticker } from '@/utils/standardStickers'
+
+/**
+ * Сколько секунд просит подождать сервер (из 429-ответа), или null — это не лимит.
+ *
+ * Нужно при добавлении ЦЕЛОГО набора: сервер принимает 10 загрузок в минуту
+ * (`message_upload_limit_per_minute`), а стикеров в наборе больше — на 11-м файле
+ * приходит 429 с `Retry-After`. Для человека «добавить набор» — одно действие,
+ * поэтому клиент ждёт и продолжает, а не бросает половину набора.
+ */
+export const uploadRetryAfterSeconds = (cause: unknown): number | null => {
+  const response = (
+    cause as { response?: { status?: number; headers?: Record<string, unknown> } } | undefined
+  )?.response
+  if (!response || response.status !== 429) return null
+  const raw = response.headers?.['retry-after']
+  const seconds = Number(raw)
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : 60
+}
 
 /** Один стикер в панели (файл отдаётся через `/media/...`). */
 export interface StickerItem {
@@ -84,6 +103,24 @@ export const updateSticker = async (
 /** Убирает стикер из библиотеки. */
 export const deleteSticker = async (stickerId: number): Promise<void> => {
   await api.delete(`/stickers/items/${stickerId}`)
+}
+
+/**
+ * Скачивает картинку ВСТРОЕННОГО набора и отдаёт её файлом для загрузки в пак.
+ *
+ * Встроенные наборы — статика приложения в `public/`
+ * (`utils/standardStickers.ts`): у сервера их нет, в `media/` они не лежат.
+ * Чтобы набор стал «своим» — как «ДОБАВИТЬ СТИКЕРЫ» в Телеграме, — клиент
+ * скачивает картинки и загружает их обычным путём: дальше это обычные свои
+ * стикеры, которые можно переименовать, переставить и удалить.
+ */
+export const fetchStandardStickerFile = async (sticker: StandardSticker): Promise<File> => {
+  const response = await fetch(sticker.url)
+  if (!response.ok) throw new Error(`Стикер недоступен (${response.status})`)
+  const blob = await response.blob()
+  const name = sticker.url.split('/').pop() ?? `${sticker.name}.png`
+  // Имя файла важно: сервер смотрит на расширение, а не на Content-Type.
+  return new File([blob], name, { type: blob.type || 'image/png' })
 }
 
 /**

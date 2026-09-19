@@ -110,7 +110,14 @@ export function useHScroll(
 
   onMounted(() => void nextTick(refresh))
   if (itemsSource) {
-    watch(itemsSource, () => void nextTick(refresh))
+    // Наблюдатель ставим ВНУТРИ `onMounted`, а не в setup: `watch` вычисляет
+    // источник сразу же, а источник обычно читает ref'ы, которые в
+    // `<script setup>` объявлены НИЖЕ вызова `useHScroll` — тогда setup падает
+    // с `Cannot access 'x' before initialization` (TDZ) и приложение показывает
+    // фатальный экран. К моменту `onMounted` все объявления инициализированы.
+    onMounted(() => {
+      watch(itemsSource, () => void nextTick(refresh))
+    })
   }
   onBeforeUnmount(() => {
     dragging = false

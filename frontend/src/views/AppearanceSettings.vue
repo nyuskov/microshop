@@ -369,7 +369,7 @@ const onReset = async () => {
   justify-content: center;
   gap: 7px;
   padding: 9px 10px;
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   border: 1px solid var(--ms-border, #e2e6ea);
   background: var(--ms-surface, #fff);
   color: var(--ms-text, #1c2733);
@@ -456,7 +456,7 @@ const onReset = async () => {
 
 .wallpaper-tile {
   border: 1px solid var(--ms-border, #e2e6ea);
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   background: var(--ms-surface, #fff);
   padding: 5px;
   cursor: pointer;
