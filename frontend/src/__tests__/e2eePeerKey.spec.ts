@@ -4,9 +4,15 @@
  * Ключ E2EE привязан к устройству и меняется при входе с нового телефона — это
  * нормально. Ровно так же выглядит подмена ключа тем, кто получил доступ к
  * аккаунту собеседника и хочет читать переписку (MITM). Клиент это различает
- * только одним способом: помнит, какой ключ видел раньше, и спрашивает
- * человека. Проверяем, что предупреждение приходит один раз на новый ключ, а
- * после подтверждения («Понятно, это его устройство») — не повторяется.
+ * только одним способом: помнит, какие ключи и устройства видел раньше, и
+ * спрашивает человека.
+ *
+ * Проверяем два главных правила (они появились после живой жалобы 19.09.2026,
+ * когда предупреждение вылезало при каждом входе):
+ * - у собеседника несколько устройств, и «самый свежий» ключ на сервере
+ *   законно перескакивает — это НЕ повод предупреждать;
+ * - знакомый ключ (в том числе подтверждённый кнопкой «Понятно») молчит навсегда,
+ *   поэтому предупреждение не может вернуться.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -24,150 +30,186 @@ const loadModule = async () => {
   return await import('../services/e2ee')
 }
 
-const keyResponse = (jwk: string | null) => ({
-  data: { user_id: 2, has_key: jwk !== null, public_key: jwk }
+interface FakeDevice {
+  device_id: string
+  public_key: string
+}
+
+/** Ответ `GET /keys/{id}/`: список устройств и ключ самого свежего из них. */
+const keyResponse = (devices: FakeDevice[]) => ({
+  data: {
+    user_id: 2,
+    has_key: devices.length > 0,
+    public_key: devices[0]?.public_key ?? null,
+    devices
+  }
 })
 
-describe('peerPublicKey — отслеживание смены ключа', () => {
+const device = (id: string, key: string): FakeDevice => ({ device_id: id, public_key: key })
+
+interface Change {
+  userId: number
+  previous: string | null
+  current: string
+  deviceId: string | null
+}
+
+describe('peerPublicKey — отслеживание смены ключа собеседника', () => {
+  let changes: Change[]
+
   beforeEach(() => {
     get.mockReset()
     window.localStorage.clear()
+    changes = []
   })
+
+  /** Загружает модуль и подписывается на предупреждения. */
+  const listen = async () => {
+    const e2ee = await loadModule()
+    e2ee.onPeerKeyChanged((change) => changes.push(change as Change))
+    return e2ee
+  }
+
+  /** Один запрос ключа собеседника «с чистого листа» (кэши сбрасываем). */
+  const fetchKey = async (
+    e2ee: Awaited<ReturnType<typeof loadModule>>,
+    devices: FakeDevice[]
+  ): Promise<string | null> => {
+    get.mockResolvedValue(keyResponse(devices))
+    e2ee.resetE2eeSession()
+    return await e2ee.peerPublicKey(2)
+  }
 
   it('первый ключ собеседника — не повод предупреждать', async () => {
-    const e2ee = await loadModule()
-    const changes: unknown[] = []
-    const off = e2ee.onPeerKeyChanged((change) => changes.push(change))
-    get.mockResolvedValue(keyResponse('{"x":"first"}'))
+    const e2ee = await listen()
 
-    expect(await e2ee.peerPublicKey(2)).toBe('{"x":"first"}')
-    expect(changes).toEqual([])
-    off()
-  })
-
-  it('тот же ключ второй раз предупреждения не вызывает', async () => {
-    const e2ee = await loadModule()
-    const changes: unknown[] = []
-    e2ee.onPeerKeyChanged((change) => changes.push(change))
-    get.mockResolvedValue(keyResponse('{"x":"same"}'))
-
-    await e2ee.peerPublicKey(2)
-    e2ee.resetE2eeSession()
-    await e2ee.peerPublicKey(2)
-
+    expect(await fetchKey(e2ee, [device('d1', '{"x":"first"}')])).toBe('{"x":"first"}')
     expect(changes).toEqual([])
   })
 
-  it('новый ключ сообщает прежний и текущий ключ', async () => {
-    const e2ee = await loadModule()
-    const changes: { userId: number; previous: string | null; current: string }[] = []
-    e2ee.onPeerKeyChanged((change) => changes.push(change))
+  it('тот же список устройств второй раз предупреждения не вызывает', async () => {
+    const e2ee = await listen()
+    const devices = [device('d1', '{"x":"same"}')]
 
-    get.mockResolvedValue(keyResponse('{"x":"old"}'))
-    await e2ee.peerPublicKey(2)
-
-    e2ee.resetE2eeSession()
-    get.mockResolvedValue(keyResponse('{"x":"new"}'))
-    await e2ee.peerPublicKey(2)
-
-    expect(changes).toEqual([{ userId: 2, previous: '{"x":"old"}', current: '{"x":"new"}' }])
-  })
-
-  it('после подтверждения новый ключ больше не предупреждает', async () => {
-    const e2ee = await loadModule()
-    const changes: unknown[] = []
-    e2ee.onPeerKeyChanged((change) => changes.push(change))
-
-    get.mockResolvedValue(keyResponse('{"x":"old"}'))
-    await e2ee.peerPublicKey(2)
-    e2ee.resetE2eeSession()
-    get.mockResolvedValue(keyResponse('{"x":"new"}'))
-    await e2ee.peerPublicKey(2)
-    expect(changes.length).toBe(1)
-
-    e2ee.acceptPeerKey(2, '{"x":"new"}')
-    e2ee.resetE2eeSession()
-    await e2ee.peerPublicKey(2)
-
-    expect(changes.length).toBe(1)
-  })
-
-  it('отсутствующий ключ запоминается как «нет ключа» и не сыплет предупреждениями', async () => {
-    const e2ee = await loadModule()
-    const changes: unknown[] = []
-    e2ee.onPeerKeyChanged((change) => changes.push(change))
-
-    get.mockResolvedValue(keyResponse(null))
-    expect(await e2ee.peerPublicKey(2)).toBeNull()
-    e2ee.resetE2eeSession()
-    get.mockResolvedValue(keyResponse(null))
-    expect(await e2ee.peerPublicKey(2)).toBeNull()
+    await fetchKey(e2ee, devices)
+    await fetchKey(e2ee, devices)
 
     expect(changes).toEqual([])
   })
 
   /**
-   * Многоустройность (A5). `public_key` на сервере — это ключ САМОГО СВЕЖЕГО
-   * устройства собеседника, поэтому у человека с телефоном и компьютером он
-   * законно перескакивает. Живая жалоба 19.09.2026: предупреждение вылезало
-   * при каждом входе, сколько бы раз ни нажимать «Понятно».
+   * Главная причина жалобы: `public_key` на сервере — ключ САМОГО СВЕЖЕГО
+   * устройства, поэтому у человека с телефоном и компьютером он перескакивает.
    */
-  it('перескакивание между двумя устройствами предупреждает только один раз', async () => {
-    const e2ee = await loadModule()
-    const changes: unknown[] = []
-    e2ee.onPeerKeyChanged((change) => changes.push(change))
+  it('новое устройство собеседника (свежий ключ впереди) предупреждения не даёт', async () => {
+    const e2ee = await listen()
 
-    const keys = ['{"x":"phone"}', '{"x":"laptop"}']
-    for (const jwk of [keys[0], keys[1], keys[0], keys[1], keys[0]]) {
-      get.mockResolvedValue(keyResponse(jwk))
-      e2ee.resetE2eeSession()
-      await e2ee.peerPublicKey(2)
-    }
+    await fetchKey(e2ee, [device('phone', '{"x":"phone"}')])
+    // Собеседник вошёл с компьютера: его ключ стал «самым свежим».
+    await fetchKey(e2ee, [device('laptop', '{"x":"laptop"}'), device('phone', '{"x":"phone"}')])
+    // И ещё раз туда-обратно — сколько угодно раз.
+    await fetchKey(e2ee, [device('phone', '{"x":"phone"}')])
+    await fetchKey(e2ee, [device('laptop', '{"x":"laptop"}'), device('phone', '{"x":"phone"}')])
 
-    // Первое устройство — молча, второе (незнакомый ключ) — одно предупреждение.
-    expect(changes).toEqual([{ userId: 2, previous: '{"x":"phone"}', current: '{"x":"laptop"}' }])
+    expect(changes).toEqual([])
   })
 
-  it('после «Понятно» подтверждённый ключ молчит, даже если ключи чередуются', async () => {
-    const e2ee = await loadModule()
-    const changes: unknown[] = []
-    e2ee.onPeerKeyChanged((change) => changes.push(change))
+  it('смена ключа у знакомого устройства сообщает прежний и текущий ключ', async () => {
+    const e2ee = await listen()
 
-    get.mockResolvedValue(keyResponse('{"x":"phone"}'))
-    await e2ee.peerPublicKey(2)
-    e2ee.resetE2eeSession()
-    get.mockResolvedValue(keyResponse('{"x":"laptop"}'))
-    await e2ee.peerPublicKey(2)
+    await fetchKey(e2ee, [device('d1', '{"x":"old"}')])
+    await fetchKey(e2ee, [device('d1', '{"x":"new"}')])
+
+    expect(changes).toEqual([
+      { userId: 2, previous: '{"x":"old"}', current: '{"x":"new"}', deviceId: 'd1' }
+    ])
+  })
+
+  it('после подтверждения смена ключа того же устройства больше не предупреждает', async () => {
+    const e2ee = await listen()
+
+    await fetchKey(e2ee, [device('d1', '{"x":"old"}')])
+    await fetchKey(e2ee, [device('d1', '{"x":"new"}')])
     expect(changes.length).toBe(1)
 
-    e2ee.acceptPeerKey(2, '{"x":"laptop"}')
-    for (const jwk of ['{"x":"phone"}', '{"x":"laptop"}', '{"x":"phone"}']) {
-      get.mockResolvedValue(keyResponse(jwk))
-      e2ee.resetE2eeSession()
-      await e2ee.peerPublicKey(2)
-    }
+    const change = changes[0]
+    e2ee.acceptPeerKey(change.userId, change.deviceId, change.current)
+    await fetchKey(e2ee, [device('d1', '{"x":"new"}')])
+    // Вернулся к прежнему ключу — он тоже знаком, молчим.
+    await fetchKey(e2ee, [device('d1', '{"x":"old"}')])
 
     expect(changes.length).toBe(1)
   })
 
-  it('старый формат хранения (один ключ строкой) читается как «уже видели»', async () => {
-    // Так выглядит localStorage у человека, который обновил приложение: раньше
-    // ключ собеседника лежал одной JSON-строкой, а не массивом.
-    window.localStorage.setItem('pismo_e2ee_v1_peer_v1_2', '{"x":"old"}')
+  /**
+   * Устройства старого клиента помечены одной меткой `legacy`, поэтому за ней
+   * могут стоять разные ключи разных браузеров. Раньше это давало предупреждение
+   * на каждом переключении — здесь проверяем, что оно приходит один раз.
+   */
+  it('чередование ключей у метки legacy предупреждает один раз', async () => {
+    const e2ee = await listen()
 
-    const e2ee = await loadModule()
-    const changes: { userId: number; previous: string | null; current: string }[] = []
-    e2ee.onPeerKeyChanged((change) => changes.push(change))
+    await fetchKey(e2ee, [device('legacy', '{"x":"old-browser"}')])
+    for (const key of [
+      '{"x":"another-browser"}',
+      '{"x":"old-browser"}',
+      '{"x":"another-browser"}'
+    ]) {
+      await fetchKey(e2ee, [device('legacy', key)])
+    }
 
-    get.mockResolvedValue(keyResponse('{"x":"old"}'))
-    await e2ee.peerPublicKey(2)
+    expect(changes.length).toBe(1)
+    expect(changes[0]?.current).toBe('{"x":"another-browser"}')
+  })
+
+  it('если знакомых устройств не осталось — «сменилась личность» и мы предупреждаем', async () => {
+    const e2ee = await listen()
+
+    await fetchKey(e2ee, [device('phone', '{"x":"phone"}')])
+    await fetchKey(e2ee, [device('attacker', '{"x":"other"}')])
+
+    expect(changes).toEqual([
+      { userId: 2, previous: '{"x":"phone"}', current: '{"x":"other"}', deviceId: 'attacker' }
+    ])
+  })
+
+  it('ключ, подтверждённый в прежней версии приложения, не предупреждает', async () => {
+    // Так выглядит localStorage у человека, который обновил приложение:
+    // раньше подтверждённый ключ собеседника лежал одной строкой под другим именем.
+    window.localStorage.setItem('pismo_e2ee_peer_ok_v1_2', '{"x":"old"}')
+    const e2ee = await listen()
+
+    await fetchKey(e2ee, [device('d1', '{"x":"old"}')])
     expect(changes).toEqual([])
 
-    e2ee.resetE2eeSession()
-    get.mockResolvedValue(keyResponse('{"x":"new"}'))
-    await e2ee.peerPublicKey(2)
+    // А незнакомый ключ из старой памяти всё равно спросит.
+    await fetchKey(e2ee, [device('d1', '{"x":"new"}')])
+    expect(changes).toEqual([
+      { userId: 2, previous: '{"x":"old"}', current: '{"x":"new"}', deviceId: 'd1' }
+    ])
+  })
 
-    // Прежний ключ берём из старого формата, а не показываем «нет ключа».
-    expect(changes).toEqual([{ userId: 2, previous: '{"x":"old"}', current: '{"x":"new"}' }])
+  it('старый сервер без списка устройств считается одним устройством legacy', async () => {
+    const e2ee = await listen()
+
+    get.mockResolvedValue({ data: { user_id: 2, has_key: true, public_key: '{"x":"old"}' } })
+    expect(await e2ee.peerPublicKey(2)).toBe('{"x":"old"}')
+    expect(changes).toEqual([])
+
+    get.mockResolvedValue({ data: { user_id: 2, has_key: true, public_key: '{"x":"new"}' } })
+    e2ee.resetE2eeSession()
+    expect(await e2ee.peerPublicKey(2)).toBe('{"x":"new"}')
+    expect(changes).toEqual([
+      { userId: 2, previous: '{"x":"old"}', current: '{"x":"new"}', deviceId: 'legacy' }
+    ])
+  })
+
+  it('отсутствующий ключ запоминается как «нет ключа» и не сыплет предупреждениями', async () => {
+    const e2ee = await listen()
+
+    expect(await fetchKey(e2ee, [])).toBeNull()
+    expect(await fetchKey(e2ee, [])).toBeNull()
+
+    expect(changes).toEqual([])
   })
 })

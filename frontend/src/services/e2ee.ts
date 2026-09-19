@@ -70,31 +70,63 @@ export const GROUP_KEY_BYTES = 32
 const storageKeyFor = (userId: number): string => `${STORE_PREFIX}${userId}`
 
 /**
- * Ключи собеседника, которые мы уже видели (`pismo_e2ee_v1_peer_v2_<id>` —
- * JSON-массив) и которые человек подтвердил кнопкой «Понятно»
- * (`…peer_ok_v2_<id>`).
+ * Доверие к ключам собеседника: `pismo_e2ee_v1_peer_dev_v2_<id>` — JSON-объект
+ * `device_id → подтверждённый публичный ключ`.
  *
- * Смысл — TOFU («доверяем первому ключу»): если у собеседника ПОЯВИЛСЯ
- * незнакомый публичный ключ, то либо он зашёл с нового устройства/почистил
- * браузер (всё нормально), либо его аккаунт угнали и подсунули свой ключ, чтобы
- * читать переписку (MITM). Отличить одно от другого может только человек,
- * поэтому обязанность приложения — показать предупреждение, а не молча шифровать.
+ * Смысл — TOFU («доверяем первому ключу»): если у собеседника появился НОВЫЙ
+ * ключ, это либо его новое устройство/почищенный браузер (нормально), либо его
+ * аккаунт угнали и подсунули свой ключ, чтобы читать переписку (MITM). Отличить
+ * одно от другого может только человек, поэтому приложение обязано спросить.
  *
- * Почему НАБОР, а не одно значение: ключей у аккаунта может быть несколько
- * (одно на устройство, см. A5), а `public_key` на сервере — это ключ САМОГО
- * СВЕЖЕГО устройства. То есть у собеседника с телефоном и компьютером это поле
- * законно перескакивает между устройствами. С одним запомненным ключом каждое
- * перескакивание выглядело как «сменил ключ», и предупреждение возвращалось
- * даже после «Понятно» (жалоба 19.09.2026). Теперь предупреждаем только про
- * НЕЗНАКОМЫЙ ключ, а подтверждение помнит все подтверждённые.
+ * Почему по УСТРОЙСТВАМ, а не по строкам ключей (переделано 19.09.2026 после
+ * жалобы «вылезает постоянно, даже когда нажал Понятно»):
+ *
+ * 1. Ключей у аккаунта столько же, сколько устройств, а `public_key` на сервере —
+ *    это ключ САМОГО СВЕЖЕГО устройства: у собеседника с телефоном и компьютером
+ *    оно законно перескакивает. При сравнении по строкам ключей каждое
+ *    перескакивание выглядело сменой ключа.
+ * 2. Список строк ключей ограничен, и у собеседника с десятком устройств
+ *    очередной «самый свежий» ключ выпадал из памяти → предупреждение
+ *    возвращалось бесконечно (в живой проверке: 19 устройств против 8 помнимых).
+ * 3. Идентификатор устройства СТАБИЛЕН, в отличие от «самого свежего» ключа.
+ *
+ * Предупреждаем только в двух случаях, и оба — про изменение, а не про
+ * «устройств стало больше»:
+ * - у ЗНАКОМОГО устройства сменился ключ (признак подмены: переустановка даёт
+ *   новое устройство, а не новый ключ у прежнего);
+ * - ни одного знакомого устройства не осталось, хотя переписка уже была (у
+ *   собеседника «сменилась личность» целиком).
+ *
+ * А любой ключ, который мы уже показывали человеку (или который он подтвердил
+ * кнопкой «Понятно»), молчит навсегда: без этого правила предупреждение
+ * возвращалось бы бесконечно при каждом перескакивании свежести ключей.
+ *
+ * Новое устройство собеседника запоминаем молча: это событие его аккаунта
+ * (как в Телеграме), а сверить личность всё равно можно кодом проверки —
+ * он показывается в карточке чата.
  */
-const peerSeenKeyFor = (userId: number): string => `${STORE_PREFIX}peer_v2_${userId}`
+const peerTrustKeyFor = (userId: number): string => `${STORE_PREFIX}peer_dev_v2_${userId}`
 
-/** Ключи собеседника, которые человек подтвердил кнопкой «Понятно». */
-const peerAcceptedKeyFor = (userId: number): string => `${STORE_PREFIX}peer_ok_v2_${userId}`
+/** Сколько устройств и ключей собеседника помним (устройства копятся годами). */
+const MAX_PEER_DEVICES = 40
+const MAX_PEER_KEYS = 40
 
-/** Сколько ключей собеседника помним (устройства копятся годами). */
-const MAX_PEER_KEYS = 8
+/**
+ * Память прежних версий: `peer_v1` (виденный ключ) и `peer_ok_v1`
+ * (подтверждённый), а также записи `_v2` и оба исторических префикса хранилища.
+ * Нужно ровно для миграции: если человек уже подтверждал ключ в прежней версии,
+ * спрашивать про него ещё раз нельзя.
+ */
+const LEGACY_STORE_PREFIXES = ['pismo_e2ee_v1_', 'pismo_e2ee_']
+const LEGACY_PEER_KEY_NAMES = ['peer_v2', 'peer_ok_v2', 'peer_v1', 'peer_ok_v1']
+
+/** Что мы помним про ключи собеседника. */
+interface PeerTrust {
+  /** Устройства собеседника: `device_id → виденный ключ` (для поиска подмены). */
+  devices: Record<string, string>
+  /** Ключи, которые мы уже видели или которые человек подтвердил. */
+  seen: string[]
+}
 
 export interface PeerKeyChange {
   /** Собеседник, у которого сменился ключ. */
@@ -103,6 +135,8 @@ export interface PeerKeyChange {
   previous: string | null
   /** Новый ключ (JWK, JSON). */
   current: string
+  /** Устройство, чей ключ изменился (null — если устройство неизвестно). */
+  deviceId: string | null
 }
 
 type PeerKeyListener = (change: PeerKeyChange) => void
@@ -117,64 +151,161 @@ export function onPeerKeyChanged(listener: PeerKeyListener): () => void {
   }
 }
 
-/** Человек подтвердил новый ключ собеседника: больше не предупреждаем. */
-export function acceptPeerKey(userId: number, jwk: string): void {
-  rememberPeerKey(peerAcceptedKeyFor(userId), jwk)
+/** Вся память про ключи собеседника (устройства + знакомые ключи). */
+function readPeerTrust(userId: number): PeerTrust {
+  const trust: PeerTrust = { devices: {}, seen: [] }
+  const raw = safeGet(peerTrustKeyFor(userId))
+  if (!raw) return trust
+  try {
+    const parsed = JSON.parse(raw) as { devices?: unknown; seen?: unknown }
+    if (parsed && typeof parsed === 'object') {
+      const devices = parsed.devices
+      if (devices && typeof devices === 'object' && !Array.isArray(devices)) {
+        for (const [deviceId, key] of Object.entries(devices as Record<string, unknown>)) {
+          if (typeof key === 'string' && key) trust.devices[deviceId] = key
+        }
+      }
+      if (Array.isArray(parsed.seen)) {
+        trust.seen = parsed.seen.filter(
+          (item): item is string => typeof item === 'string' && item.length > 0
+        )
+      }
+    }
+  } catch {
+    /* повреждённая запись — считаем, что доверия нет */
+  }
+  return trust
+}
+
+/** Сохраняет память про ключи собеседника, обрезая самые давние записи. */
+function writePeerTrust(userId: number, trust: PeerTrust): void {
+  const deviceIds = Object.keys(trust.devices)
+  for (const extra of deviceIds.slice(0, Math.max(0, deviceIds.length - MAX_PEER_DEVICES))) {
+    delete trust.devices[extra]
+  }
+  safeSet(
+    peerTrustKeyFor(userId),
+    JSON.stringify({ devices: trust.devices, seen: trust.seen.slice(-MAX_PEER_KEYS) })
+  )
 }
 
 /**
- * Список ключей собеседника из localStorage.
+ * Запоминает устройства и ключи собеседника как знакомые.
  *
- * Читает и СТАРЫЙ формат (одна JSON-строка с ключом — так было до
- * многоустройности): иначе после обновления приложения человек получил бы
- * предупреждение ещё раз на уже виденный ключ.
+ * Знакомый ключ — это гарантия молчания: он больше никогда не будет поводом для
+ * предупреждения, сколько бы раз ни оказался «самым свежим» на сервере.
  */
-function readPeerKeys(storageKey: string): string[] {
+function rememberPeerDevices(userId: number, devices: DevicePublicKey[], trust: PeerTrust): void {
+  for (const device of devices) {
+    trust.devices[device.device_id] = device.public_key
+    if (!trust.seen.includes(device.public_key)) trust.seen.push(device.public_key)
+  }
+  writePeerTrust(userId, trust)
+}
+
+/** Список ключей из localStorage; понимает и самый старый формат — ключ строкой. */
+function readKeyList(storageKey: string): string[] {
   const raw = safeGet(storageKey)
   if (!raw) return []
   try {
     const parsed: unknown = JSON.parse(raw)
     if (Array.isArray(parsed)) {
-      return parsed.filter((item): item is string => typeof item === 'string')
+      return parsed.filter((item): item is string => typeof item === 'string' && item.length > 0)
     }
+    if (typeof parsed === 'string' && parsed) return [parsed]
   } catch {
-    /* не JSON — значит формат ещё старее; считаем значение самим ключом */
+    /* не JSON — значит в значении лежит сам ключ */
   }
   return [raw]
 }
 
-/** Дописывает ключ в список (без повторов, с ограничением длины). */
-function rememberPeerKey(storageKey: string, jwk: string): void {
-  const keys = readPeerKeys(storageKey)
-  if (keys.includes(jwk)) return
-  keys.push(jwk)
-  safeSet(storageKey, JSON.stringify(keys.slice(-MAX_PEER_KEYS)))
+/** Ключи собеседника, которые помнит прежняя версия приложения. */
+function readLegacyKeys(userId: number): string[] {
+  const keys: string[] = []
+  for (const prefix of LEGACY_STORE_PREFIXES) {
+    for (const name of LEGACY_PEER_KEY_NAMES) {
+      keys.push(...readKeyList(`${prefix}${name}_${userId}`))
+    }
+  }
+  return [...new Set(keys)]
 }
 
 /**
- * Замечает появление НЕЗНАКОМОГО ключа собеседника и сообщает об этом интерфейсу.
+ * Человек подтвердил ключ собеседника: доверяем этому устройству и этому ключу.
  *
- * Возвращает true, если человека нужно предупредить: ключ нам раньше не
- * встречался и человек его не подтверждал.
+ * Подтверждённый ключ становится знакомым навсегда, а устройство запоминается с
+ * этим ключом: если позже то же устройство сообщит ДРУГОЙ ключ — это уже признак
+ * подмены, и предупреждение придёт снова.
  */
-function trackPeerKey(userId: number, jwk: string): boolean {
-  const seenKey = peerSeenKeyFor(userId)
-  const seen = readPeerKeys(seenKey)
-  // Знакомый ключ — молчим. Сюда попадает и второе устройство собеседника, и
-  // возврат к прежнему устройству: для человека это не событие.
-  if (seen.includes(jwk)) return false
+export function acceptPeerKey(userId: number, deviceId: string | null, jwk: string): void {
+  const trust = readPeerTrust(userId)
+  trust.devices[deviceId ?? 'legacy'] = jwk
+  if (!trust.seen.includes(jwk)) trust.seen.push(jwk)
+  writePeerTrust(userId, trust)
+}
 
-  const isFirstEver = seen.length === 0
-  rememberPeerKey(seenKey, jwk)
-  // Первый ключ собеседника — это и есть TOFU: сравнивать не с чем.
-  if (isFirstEver) return false
-  if (readPeerKeys(peerAcceptedKeyFor(userId)).includes(jwk)) return false
+/**
+ * Сверяет устройства собеседника с памятью и предупреждает об изменениях.
+ *
+ * Возвращает true, если человека нужно предупредить (подробности — в комментарии
+ * у `peerTrustKeyFor`).
+ */
+function trackPeerKey(userId: number, devices: DevicePublicKey[]): boolean {
+  const current = devices[0]
+  if (!current) return false
+  const trust = readPeerTrust(userId)
+  // Первый запуск после обновления приложения: ключи лежат в старых записях.
+  if (trust.seen.length === 0) trust.seen = readLegacyKeys(userId)
 
-  const change: PeerKeyChange = {
-    userId,
-    previous: seen[seen.length - 1] ?? null,
-    current: jwk
+  // Первое знакомство — это и есть TOFU: сравнивать не с чем.
+  if (trust.seen.length === 0 && Object.keys(trust.devices).length === 0) {
+    rememberPeerDevices(userId, devices, trust)
+    return false
   }
+
+  // Знакомый ключ молчит ВСЕГДА: иначе «Понятно» не помогает — у собеседника с
+  // несколькими устройствами «самый свежий» ключ перескакивает, и предупреждение
+  // возвращалось бы бесконечно (жалоба 19.09.2026: 19 устройств у собеседника).
+  if (trust.seen.includes(current.public_key)) {
+    rememberPeerDevices(userId, devices, trust)
+    return false
+  }
+
+  const replaced = devices.find(
+    (device) =>
+      trust.devices[device.device_id] !== undefined &&
+      trust.devices[device.device_id] !== device.public_key
+  )
+  const knownStillHere = devices.some(
+    (device) => trust.devices[device.device_id] === device.public_key
+  )
+  // Незнакомый ключ у НЕзнакомого устройства — просто ещё одно устройство
+  // собеседника: событие его аккаунта (как в Телеграме), а не подмена.
+  if (!replaced && knownStillHere) {
+    rememberPeerDevices(userId, devices, trust)
+    return false
+  }
+
+  const previous = replaced
+    ? (trust.devices[replaced.device_id] ?? null)
+    : (trust.seen[trust.seen.length - 1] ?? null)
+  rememberPeerDevices(userId, devices, trust)
+  notifyPeerKeyChange(
+    userId,
+    previous,
+    current.public_key,
+    replaced?.device_id ?? current.device_id
+  )
+  return true
+}
+
+function notifyPeerKeyChange(
+  userId: number,
+  previous: string | null,
+  current: string,
+  deviceId: string | null
+): void {
+  const change: PeerKeyChange = { userId, previous, current, deviceId }
   for (const listener of peerKeyListeners) {
     try {
       listener(change)
@@ -182,7 +313,6 @@ function trackPeerKey(userId: number, jwk: string): boolean {
       /* предупреждение не должно ломать шифрование */
     }
   }
-  return true
 }
 
 const safeGet = (key: string): string | null => {
@@ -367,18 +497,12 @@ export async function installKeyMaterial(
 /** Публичный JWK (JSON-строка) собеседника или null, если ключа нет. */
 export async function peerPublicKey(userId: number): Promise<string | null> {
   if (peerKeyCache.has(userId)) return peerKeyCache.get(userId) ?? null
-  let jwk: string | null = null
-  try {
-    const response = await api.get<{ has_key: boolean; public_key?: string | null }>(
-      `/keys/${userId}/`
-    )
-    if (response.data?.has_key && response.data.public_key) {
-      jwk = response.data.public_key
-    }
-  } catch {
-    jwk = null
-  }
-  if (jwk) trackPeerKey(userId, jwk)
+  // Берём СПИСОК устройств (кэш на сессию), а не одно поле `public_key`: сервер
+  // отдаёт устройства по свежести, поэтому первое — то же самое, но с device_id,
+  // а без него нельзя понять, «новое устройство» это или «подменили ключ».
+  const devices = await userDevices(userId)
+  const jwk = devices[0]?.public_key ?? null
+  if (jwk) trackPeerKey(userId, devices)
   peerKeyCache.set(userId, jwk)
   return jwk
 }

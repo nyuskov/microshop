@@ -106,10 +106,10 @@ const openPeerKeyChanged = (change: PeerKeyChange) => {
   showPeerKeyChanged.value = true
 }
 
-/** «Понятно, это его устройство»: запоминаем новый ключ и больше не спрашиваем. */
+/** «Понятно, это его устройство»: запоминаем устройство и ключ — больше не спрашиваем. */
 const acceptChangedPeerKey = () => {
   const change = peerKeyChanged.value
-  if (change) acceptPeerKey(change.userId, change.current)
+  if (change) acceptPeerKey(change.userId, change.deviceId, change.current)
   peerKeyChanged.value = null
 }
 

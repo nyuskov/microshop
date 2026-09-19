@@ -5,36 +5,33 @@
   >
     <q-card class="pk-card">
       <q-card-section class="pk-head">
+        <q-icon class="pk-shield" :name="icon('shield')" size="20px" aria-hidden="true" />
         <div class="pk-title">Собеседник сменил ключ шифрования</div>
         <q-space />
         <q-btn flat round dense :icon="icon('close')" v-close-popup aria-label="Закрыть" />
       </q-card-section>
       <q-separator />
       <q-card-section class="pk-body">
-        <p class="pk-text">
-          <template v-if="peerName">У «{{ peerName }}» </template>
-          <template v-else>У собеседника </template>
-          теперь другой ключ сквозного шифрования. Обычно так и бывает, если он зашёл с нового
-          телефона или почистил данные браузера — тогда переписка просто перешифровывается на новый
-          ключ.
+        <p class="pk-lead">{{ lead }}</p>
+
+        <p class="pk-danger">
+          <q-icon :name="icon('warning')" size="16px" aria-hidden="true" />
+          <span>
+            Если это не он, новые сообщения сможет читать тот, кто получил доступ к его аккаунту.
+          </span>
         </p>
-        <p class="pk-text">
-          Но такой же ключ мог подставить и тот, кто получил доступ к его аккаунту: тогда новые
-          сообщения он сможет читать.
+
+        <p class="pk-foot">
+          <q-icon :name="icon('lock')" size="15px" aria-hidden="true" />
+          <span>
+            Сверьте код проверки в карточке чата или спросите его лично. Пока не сверили — не
+            отправляйте сюда пароли и коды.
+          </span>
         </p>
-        <p class="pk-hint">
-          Если сомневаетесь — позвоните собеседнику по телефону и спросите, менял ли он устройство.
-          До ответа не отправляйте в этот чат пароли, коды и документы.
-        </p>
+
         <div class="pk-actions">
-          <q-btn
-            unelevated
-            no-caps
-            color="primary"
-            label="Понятно, это его устройство"
-            @click="accept"
-          />
-          <q-btn flat no-caps label="Закрыть" v-close-popup />
+          <q-btn unelevated no-caps color="primary" label="Это его устройство" @click="accept" />
+          <q-btn flat no-caps label="Проверю позже" v-close-popup />
         </div>
       </q-card-section>
     </q-card>
@@ -50,10 +47,16 @@
  * может и тот, кто угнал аккаунт, чтобы читать чужую переписку (MITM). Сервер
  * отличить эти случаи не может, а человек — может (он знает, менял ли друг
  * телефон), поэтому приложение обязано спросить, а не шифровать молча.
+ *
+ * Текст держим в три короткие строки с разной ролью: что случилось, чем это
+ * плохо, что делать. Длинные абзацы тут не читают (замечание 19.09.2026: «слишком
+ * много текста»), а решение человеку нужно принять за пару секунд.
  */
+import { computed } from 'vue'
+
 import { icon } from '@/utils/icons'
 
-defineProps<{
+const props = defineProps<{
   modelValue: boolean
   /** Имя собеседника для текста (пусто — если не смогли определить). */
   peerName?: string
@@ -61,9 +64,16 @@ defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
-  /** Человек подтвердил новый ключ — больше не предупреждаем. */
+  /** Человек подтвердил новое устройство — больше не предупреждаем. */
   (e: 'accept'): void
 }>()
+
+/** Что случилось: одна строка с именем собеседника, если оно известно. */
+const lead = computed<string>(() =>
+  props.peerName
+    ? `У «${props.peerName}» новое устройство — так бывает, когда входят с телефона или компьютера.`
+    : 'У собеседника новое устройство — так бывает, когда входят с телефона или компьютера.'
+)
 
 const accept = () => {
   emit('accept')
@@ -73,15 +83,20 @@ const accept = () => {
 
 <style scoped>
 .pk-card {
-  width: min(480px, calc(100vw - 32px));
+  width: min(440px, calc(100vw - 32px));
   border-radius: var(--ms-radius-lg, 18px);
 }
 
 .pk-head {
   display: flex;
   align-items: center;
+  gap: 8px;
   min-height: 52px;
   padding: 8px 8px 8px 20px;
+}
+
+.pk-shield {
+  color: var(--ms-accent);
 }
 
 .pk-title {
@@ -91,19 +106,36 @@ const accept = () => {
 .pk-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
-.pk-text {
+.pk-lead {
   margin: 0;
   font-size: 14px;
   line-height: 1.45;
 }
 
-.pk-hint {
+.pk-danger {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--ms-danger);
+  background: var(--ms-danger-bg);
+  border-radius: var(--ms-radius-sm, 10px);
+}
+
+.pk-foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   margin: 0;
   font-size: 13px;
-  color: var(--ms-muted, #93a0ab);
+  line-height: 1.4;
+  color: var(--ms-muted, #5c6a75);
 }
 
 .pk-actions {
