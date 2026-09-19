@@ -17,7 +17,7 @@
  */
 
 import { isNativeApp, nativeBridge } from './nativePush'
-import { loadAudioBuffer, pcmChunks, toPcm16Mono16k } from '@/utils/audioPcm'
+import { describeAudioError, loadAudioBuffer, pcmChunks, toPcm16Mono16k } from '@/utils/audioPcm'
 
 /** Сколько байт PCM отдаём нативному слою за один вызов (~6 с записи). */
 export const NATIVE_CHUNK_BYTES = 192 * 1024
@@ -155,7 +155,7 @@ export async function recognizeWithNative(
     settle({
       status: 'failed',
       text: '',
-      error: thrown instanceof Error ? thrown.message : 'Не удалось распознать голосовое'
+      error: describeAudioError(thrown)
     })
   }
 

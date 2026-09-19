@@ -45,7 +45,7 @@ import {
   nativeSpeechSupported,
   recognizeWithNative
 } from '@/services/nativeSpeech'
-import { loadAudioBuffer } from '@/utils/audioPcm'
+import { describeAudioError, loadAudioBuffer } from '@/utils/audioPcm'
 
 /** Состояние расшифровки одного голосового. */
 export type VoiceTranscriptStatus = 'running' | 'ready' | 'failed'
@@ -544,7 +544,7 @@ export const recognizeVoice = async (messageId: number, src: string): Promise<vo
     finish({
       status: 'failed',
       text: '',
-      error: thrown instanceof Error ? thrown.message : 'Не удалось распознать голосовое'
+      error: describeAudioError(thrown)
     })
   } finally {
     void ctx.close()
@@ -596,7 +596,7 @@ async function recognizeVoiceNatively(
     finish({
       status: 'failed',
       text: '',
-      error: thrown instanceof Error ? thrown.message : 'Не удалось распознать голосовое'
+      error: describeAudioError(thrown)
     })
   } finally {
     running.delete(messageId)

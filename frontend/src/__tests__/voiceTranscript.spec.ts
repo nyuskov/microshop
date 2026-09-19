@@ -293,6 +293,29 @@ describe('расшифровка голосового', () => {
     expect(transcriptOf(11)).toBeUndefined()
   })
 
+  it('нечитаемую запись объясняет по-русски, а не кодом браузера', async () => {
+    // Живьём: Chrome отвечал английским `EncodingError: Unable to decode audio
+    // data`, и человек видел ровно это вместо причины.
+    class BrokenContext extends FakeAudioContext {
+      decodeAudioData = async () => {
+        const error = new Error('Unable to decode audio data')
+        error.name = 'EncodingError'
+        throw error
+      }
+    }
+    globals.window.AudioContext = BrokenContext as unknown as typeof AudioContext
+
+    const running = recognizeVoice(17, 'blob:voice')
+    await running
+
+    expect(transcriptOf(17)).toEqual({
+      status: 'failed',
+      text: '',
+      error: 'Запись не удалось прочитать — возможно, файл повреждён'
+    })
+    clearTranscript(17)
+  })
+
   it('без распознавателя честно говорит, что браузер не умеет', async () => {
     delete (globals.window as { SpeechRecognition?: unknown }).SpeechRecognition
     delete (globals.window as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition

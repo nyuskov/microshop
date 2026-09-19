@@ -155,3 +155,20 @@ export function pcmChunks(pcm: Int16Array, chunkBytes: number): string[] {
   }
   return chunks
 }
+
+/**
+ * Понятный текст ошибки подготовки звука.
+ *
+ * ГРАБЛЯ, которую тут и обходим: браузер отвечает на нечитаемую запись английским
+ * `EncodingError: Unable to decode audio data`, и человек видел ровно это вместо
+ * причины («файл повреждён»). Русские сообщения от `loadAudioBuffer` (например,
+ * «Не удалось загрузить голосовое (404)») оставляем как есть.
+ */
+export function describeAudioError(thrown: unknown): string {
+  const name = thrown instanceof Error ? thrown.name : ''
+  const text = thrown instanceof Error ? thrown.message : String(thrown ?? '')
+  if (name === 'EncodingError' || /decode/i.test(text)) {
+    return 'Запись не удалось прочитать — возможно, файл повреждён'
+  }
+  return text || 'Не удалось распознать голосовое'
+}
