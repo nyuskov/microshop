@@ -1,0 +1,552 @@
+/**
+ * Расшифровка голосовых в текст — распознавание речи браузером.
+ *
+ * Почему так, а не сервер: текст голосового в E2EE-чате серверу неизвестен (там
+ * только шифротекст), а отправлять аудио на наш сервер ради расшифровки означало
+ * бы сломать обещание «сервер не читает переписку». Поэтому расшифровывает
+ * устройство: звук идёт в `SpeechRecognition` напрямую, наш сервер в этом не
+ * участвует.
+ *
+ * ЧЕСТНО ПРО ОГРАНИЧЕНИЯ (это важно для ожиданий, а не для кода):
+ *
+ * 1. `SpeechRecognition` по умолчанию слушает МИКРОФОН. Чтобы расшифровать файл,
+ *    используется расширение Chrome — `start(MediaStreamTrack)`: звук файла идёт
+ *    через `AudioContext` в `MediaStreamDestination`, а оттуда треком в
+ *    распознаватель. В браузерах, где этого расширения нет (Safari/Firefox),
+ *    кнопки «В текст» просто не будет — обещать недоступное нельзя.
+ * 2. У Chrome распознавание НЕ полностью локальное: звук уходит на его сервис
+ *    (в расшифровке это видно как ошибку `network`, когда сервис недоступен). Наш
+ *    сервер аудио не получает, но браузер — получает. Об этом напоминает подпись
+ *    в интерфейсе.
+ * 3. Язык распознавания по умолчанию — русский (интерфейс тоже русский), и его
+ *    можно выбрать вручную. Системный язык тут не годится: русская речь на
+ *    английской модели звучит как «привет» → «private» — человек с русским
+ *    языком и английским браузером получал бы чужой текст.
+ *
+ * ЧТО ДЕЛАЕТ ТОЧНОСТЬ ЛУЧШЕ (проверяемые рычаги, а не надежда):
+ *
+ * - запись идёт ЧАНКАМИ по ~15 секунд в режиме `continuous: false`: у Chrome
+ *   длительный continuous-режим и хуже разбирает слова, и теряет хвост;
+ * - после чанка ждём его финальный результат (`stop()` + короткое ожидание),
+ *   а не рвём `abort()` — рвать означало терять последние слова;
+ * - просим несколько альтернатив (`maxAlternatives`) и берём самую уверенную;
+ * - тихую запись усиливаем по пику (нормализация до ~0.5 от шкалы, не больше ×8):
+ *   «тихо записал» — частая причина пропущенных слов.
+ *
+ * Расшифровка живёт в памяти вкладки (модульная карта по id сообщения): она нужна
+ * только чтобы текст не пропадал при перерисовке ленты, сохранять её на сервере
+ * мы не имеем права.
+ */
+
+import { computed, reactive, ref } from 'vue'
+
+/** Состояние расшифровки одного голосового. */
+export type VoiceTranscriptStatus = 'running' | 'ready' | 'failed'
+
+export interface VoiceTranscript {
+  status: VoiceTranscriptStatus
+  text: string
+  /** Текст ошибки для интерфейса (человеческим языком). */
+  error?: string
+}
+
+/** Расшифровки по id сообщения (в памяти вкладки, на сервер не уходит). */
+const transcripts = reactive<Record<number, VoiceTranscript>>({})
+
+/** Идущие распознавания — чтобы остановить их при закрытии чата. */
+const running = new Map<number, () => void>()
+
+interface SpeechRecognitionLike {
+  lang: string
+  continuous: boolean
+  interimResults: boolean
+  maxAlternatives: number
+  addEventListener: (type: string, handler: (event: never) => void) => void
+  start: (track?: MediaStreamTrack) => void
+  stop: () => void
+  abort: () => void
+}
+
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike
+
+/** Конструктор распознавателя в этом браузере (в Chrome — с префиксом). */
+const recognitionCtor = (): SpeechRecognitionCtor | null => {
+  if (typeof window === 'undefined') return null
+  const holder = window as unknown as {
+    SpeechRecognition?: SpeechRecognitionCtor
+    webkitSpeechRecognition?: SpeechRecognitionCtor
+  }
+  return holder.SpeechRecognition ?? holder.webkitSpeechRecognition ?? null
+}
+
+/**
+ * Умеет ли браузер распознавать ФАЙЛ (а не только микрофон).
+ *
+ * Проверяем и наличие API, и аудио-граф (`AudioContext` +
+ * `createMediaStreamDestination`): без него трек из файла не получить. Точную
+ * поддержку `start(track)` заранее не спросить, поэтому считаем доступным и в
+ * случае отказа — тогда человек увидит понятную ошибку, а не пустую кнопку.
+ */
+export const speechRecognitionSupported = (): boolean => {
+  if (recognitionCtor() === null) return false
+  if (typeof AudioContext === 'undefined') return false
+  return 'createMediaStreamDestination' in AudioContext.prototype
+}
+
+/**
+ * Язык распознавания по умолчанию.
+ *
+ * Берём не системный язык браузера, а русский: интерфейс приложения русский, и
+ * большинство голосовых — русские. Системный язык давал «привет» → «private»:
+ * русская речь, разобранная английской моделью, превращается в ЧУЖИЕ слова, и
+ * человек думает, что распознавание сломано. Свой язык можно выбрать (см.
+ * `setSpeechLanguage`), в том числе вернуть системный.
+ */
+const DEFAULT_LANGUAGE = 'ru-RU'
+
+/** Язык распознавания — русский или выбранный человеком. */
+const recognitionLang = (): string => DEFAULT_LANGUAGE
+
+/** Куда помним выбранный язык (настройка устройства, не аккаунта). */
+const LANG_KEY = 'pismo_stt_lang'
+
+/**
+ * Языки, которые можно выбрать вручную.
+ *
+ * Зачем выбор вообще: язык ГОЛОСА не связан с языком интерфейса — человек с
+ * русским телефоном получает голосовое на английском и наоборот. По опыту это
+ * главная причина «распознаёт не то, что говорят». Без выбора остаётся один
+ * системный язык, и исправить это человек не может.
+ */
+export interface SpeechLanguage {
+  code: string
+  label: string
+}
+
+export const SPEECH_LANGUAGES: readonly SpeechLanguage[] = [
+  { code: 'ru-RU', label: 'Русский' },
+  { code: 'en-US', label: 'English' },
+  { code: 'uk-UA', label: 'Українська' },
+  { code: 'kk-KZ', label: 'Қазақша' },
+  { code: 'tr-TR', label: 'Türkçe' }
+]
+
+/** Выбранный язык распознавания (пустая строка — «как в системе»). */
+export const speechLanguage = ref<string>('')
+
+/** Читает сохранённый язык (вызывается один раз при старте модуля). */
+const readStoredLanguage = (): void => {
+  if (typeof localStorage === 'undefined') return
+  const stored = localStorage.getItem(LANG_KEY)
+  if (stored !== null) speechLanguage.value = stored
+}
+readStoredLanguage()
+
+/** Меняет язык распознавания и запоминает выбор на устройстве. */
+export const setSpeechLanguage = (code: string): void => {
+  speechLanguage.value = code
+  try {
+    if (code) localStorage.setItem(LANG_KEY, code)
+    else localStorage.removeItem(LANG_KEY)
+  } catch {
+    /* приватный режим — просто не помним выбор */
+  }
+}
+
+/** Язык для распознавателя: выбранный человеком или русский по умолчанию. */
+const effectiveLanguage = (): string => speechLanguage.value || recognitionLang()
+
+/**
+ * Язык, которым реально идёт распознавание — показывается в интерфейсе.
+ *
+ * Нужен не для красоты: если текст вышел чужими словами, человек должен видеть,
+ * на каком языке его слушали, а не догадываться («привет» → «private» — это
+ * английская модель, а не «сломалось распознавание»).
+ */
+export const speechLanguageInUse = computed<string>(() => effectiveLanguage())
+
+/** Текущее состояние расшифровки сообщения (undefined — не расшифровывали). */
+export const transcriptOf = (messageId: number): VoiceTranscript | undefined =>
+  transcripts[messageId]
+
+/** Что делает кнопка «В текст» при текущем состоянии. */
+export type TranscriptAction = 'recognize' | 'hide' | 'cancel'
+
+/**
+ * Действие кнопки по состоянию расшифровки.
+ *
+ * Кнопка в шапке голосового — единый переключатель: «В текст» → «Распознаём…»
+ * → «Скрыть текст». Ошибка — не исключение: скрытие везде на одном месте, и
+ * человек не ищет глазами, что кнопка делает СЕЙЧАС. А повтор живёт в самом
+ * блоке расшифровки («Ещё раз»), рядом с причиной ошибки — там он по делу.
+ */
+export const transcriptActionFor = (current?: VoiceTranscript): TranscriptAction => {
+  if (!current) return 'recognize'
+  if (current.status === 'running') return 'cancel'
+  return 'hide'
+}
+
+/** Убирает расшифровку (кнопка «Скрыть») — чтобы текст не оставался на экране. */
+export const clearTranscript = (messageId: number): void => {
+  stopRecognition(messageId)
+  delete transcripts[messageId]
+}
+
+/** Останавливает идущее распознавание (уход из чата, повторный запуск). */
+export const stopRecognition = (messageId: number): void => {
+  running.get(messageId)?.()
+}
+
+/** Останавливает все распознавания (сменился чат — старые не нужны). */
+export const stopAllRecognitions = (): void => {
+  for (const stop of Array.from(running.values())) stop()
+}
+
+/** Сколько секунд записи отдаём распознавателю за один проход. */
+const CHUNK_SECONDS = 15
+/** Сколько ждём финальный результат чанка после его конца (мс). */
+const CHUNK_FLUSH_MS = 1500
+/** Сколько секунд слушаем один чанк вместе с запасом (мс). */
+const CHUNK_LIMIT_MS = (CHUNK_SECONDS + 12) * 1000
+
+/**
+ * Готовит звук: декодирует файл и усиливает тихую запись.
+ *
+ * Нормализация по пику: если запись тихая (пик 0.1 от шкалы), распознаватель
+ * «не слышит» слова — домножаем до 0.5, но не больше ×8, чтобы не поднять шум
+ * вместе с речью.
+ */
+async function decodeAudio(ctx: AudioContext, src: string): Promise<AudioBuffer> {
+  const response = await fetch(src)
+  if (!response.ok) throw new Error(`Не удалось загрузить голосовое (${response.status})`)
+  const data = await response.arrayBuffer()
+  const buffer = await ctx.decodeAudioData(data)
+  let peak = 0
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    const samples = buffer.getChannelData(channel)
+    // Пик ищем по каждому 20-му сэмплу: для оценки уровня этого достаточно, а
+    // перебор десятков миллионов значений заметно тормозил бы интерфейс.
+    for (let index = 0; index < samples.length; index += 20) {
+      const value = Math.abs(samples[index])
+      if (value > peak) peak = value
+    }
+  }
+  if (peak > 0 && peak < 0.5) {
+    const gainValue = Math.min(8, 0.5 / peak)
+    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+      const samples = buffer.getChannelData(channel)
+      for (let index = 0; index < samples.length; index += 1) {
+        samples[index] = Math.max(-1, Math.min(1, samples[index] * gainValue))
+      }
+    }
+  }
+  return buffer
+}
+/** Ошибка распознавания → понятный текст (коды у браузеров общие). */
+const errorMessage = (code: string, heard: boolean): string => {
+  if (code === 'network') return 'Браузер не смог обратиться к своему сервису распознавания'
+  if (code === 'not-allowed' || code === 'service-not-allowed') {
+    return 'Браузер запретил распознавание речи'
+  }
+  if (code === 'aborted') return 'Распознавание отменено'
+  // «Слышал, но не разобрал» и «вообще не получил звук» — разные проблемы, и
+  // человеку важно знать, какую из них чинить (браузер/поток или сама запись).
+  if (code === 'no-speech' && !heard) {
+    return 'Распознавание не получило звук — попробуйте ещё раз'
+  }
+  if (code === 'no-speech') return 'Речь не разобрана — возможно, в записи тихо или шумно'
+  return 'Не удалось распознать голосовое'
+}
+
+/** Состояние одного прогона распознавания (отмена по кнопке и при уходе из чата). */
+interface RunState {
+  cancelled: boolean
+  cancelChunk: (() => void) | null
+}
+
+/** Итог распознавания одного куска записи. */
+interface ChunkResult {
+  text: string
+  heard: boolean
+  error: string | null
+}
+
+/** Альтернативы одного результата: у каждой свой текст и уверенность. */
+interface SpeechAlternative {
+  transcript: string
+  confidence?: number
+}
+
+/**
+ * Дописывает фрагмент речи, сохраняя границу между словами.
+ *
+ * Chrome не обязан добавлять пробел в конце фрагмента, и без этого склейка
+ * давала «приветмир».
+ */
+const appendPart = (base: string, part: string): string => {
+  if (!part) return base
+  if (!base) return part
+  return /\s$/.test(base) || /^\s/.test(part) ? `${base}${part}` : `${base} ${part}`
+}
+
+/**
+ * Текст самой уверенной альтернативы.
+ *
+ * Уверенность ставит только Chrome и только у финальных фрагментов; альтернатива
+ * обычно одна, поэтому выбор — страховка, а не основа. Свойство
+ * `maxAlternatives` не трогаем: Chrome его фактически не поддерживает, а лишний
+ * параметр может увести распознавание на другую ветку (и тогда язык перестаёт
+ * учитываться).
+ */
+const bestAlternative = (result: {
+  length: number
+  [index: number]: SpeechAlternative
+}): string => {
+  let best = result[0]
+  for (let index = 1; index < result.length; index += 1) {
+    const candidate = result[index]
+    if ((candidate.confidence ?? 0) > (best.confidence ?? 0)) best = candidate
+  }
+  return best ? best.transcript : ''
+}
+
+/**
+ * Распознаёт ОДИН кусок записи: отдаёт его звуком и ждёт фрагменты.
+ *
+ * Отдельный проход на кусок — потому что Chrome в длительном `continuous`-режиме
+ * разбирает слова хуже и не отдаёт нормальный финальный результат. Кусок
+ * заканчивается — просим `stop()` (он доводит фрагмент до финального) и ждём
+ * короткое окно; `abort()` здесь был бы ошибкой: он выбрасывает незавершённый
+ * фрагмент, из-за чего терялись последние слова.
+ */
+async function recognizeChunk(
+  Ctor: SpeechRecognitionCtor,
+  ctx: AudioContext,
+  buffer: AudioBuffer,
+  offset: number,
+  duration: number,
+  run: RunState,
+  onProgress: (text: string) => void
+): Promise<ChunkResult> {
+  const destination = ctx.createMediaStreamDestination()
+  const source = ctx.createBufferSource()
+  source.buffer = buffer
+  // Путь к `ctx.destination` через приглушённый усилитель: без него Chrome
+  // не рендерит граф, и в поток уходит тишина.
+  const silent = ctx.createGain()
+  silent.gain.value = 0
+  source.connect(destination)
+  source.connect(silent)
+  silent.connect(ctx.destination)
+  const track = destination.stream.getAudioTracks()[0]
+  if (!track) return { text: '', heard: false, error: 'Не удалось подготовить звук' }
+
+  const recognition = new Ctor()
+  recognition.lang = effectiveLanguage()
+  recognition.continuous = false
+  recognition.interimResults = true
+
+  let finalText = ''
+  let interimText = ''
+  let heard = false
+  let error: string | null = null
+  let done = false
+  let flushTimer: number | null = null
+
+  const collected = (): string => {
+    const base = finalText.trim()
+    if (!interimText) return base
+    return base ? `${base} ${interimText}` : interimText
+  }
+
+  await new Promise<void>((resolve) => {
+    const finish = () => {
+      if (done) return
+      done = true
+      if (flushTimer !== null) window.clearTimeout(flushTimer)
+      run.cancelChunk = null
+      resolve()
+    }
+    /** Гасим кусок сразу при отмене — ждать его конца человеку не за чем. */
+    const teardown = () => {
+      try {
+        recognition.abort()
+      } catch {
+        /* уже остановлено */
+      }
+      try {
+        source.stop()
+      } catch {
+        /* уже остановлен */
+      }
+    }
+    run.cancelChunk = () => {
+      teardown()
+      finish()
+    }
+
+    const limit = window.setTimeout(finish, CHUNK_LIMIT_MS)
+
+    recognition.addEventListener('soundstart', () => {
+      heard = true
+    })
+    recognition.addEventListener('speechstart', () => {
+      heard = true
+    })
+    recognition.addEventListener('result', (event: never) => {
+      const payload = event as unknown as {
+        resultIndex: number
+        results: {
+          length: number
+          [index: number]: { isFinal: boolean; length: number; [alt: number]: SpeechAlternative }
+        }
+      }
+      heard = true
+      let interim = ''
+      for (let index = payload.resultIndex; index < payload.results.length; index += 1) {
+        const result = payload.results[index]
+        const text = bestAlternative(result)
+        if (result.isFinal) finalText = appendPart(finalText, text)
+        else interim = appendPart(interim, text)
+      }
+      interimText = interim.trim()
+      onProgress(collected())
+    })
+    recognition.addEventListener('error', (event: never) => {
+      const code = String((event as unknown as { error?: string }).error ?? '')
+      // Текст уже есть — ошибку не показываем: для человека важен текст.
+      if (!collected()) error = errorMessage(code, heard)
+      window.clearTimeout(limit)
+      finish()
+    })
+    recognition.addEventListener('end', () => {
+      window.clearTimeout(limit)
+      finish()
+    })
+    source.addEventListener('ended', () => {
+      // Запись куска кончилась: доводим распознавание до финального результата.
+      try {
+        recognition.stop()
+      } catch {
+        /* уже остановлено */
+      }
+      flushTimer = window.setTimeout(finish, CHUNK_FLUSH_MS)
+    })
+
+    source.start(0, offset, duration)
+    try {
+      recognition.start(track)
+    } catch (thrown) {
+      error = thrown instanceof Error ? thrown.message : 'Не удалось запустить распознавание'
+      window.clearTimeout(limit)
+      finish()
+    }
+  })
+
+  // Освобождаем всё, что осталось от куска (при отмене это уже сделано —
+  // повторный вызов безвреден).
+  try {
+    recognition.abort()
+  } catch {
+    /* уже остановлено */
+  }
+  try {
+    source.stop()
+  } catch {
+    /* уже остановлен */
+  }
+  return { text: collected(), heard, error }
+}
+
+/**
+ * Расшифровывает голосовое сообщение.
+ *
+ * Текст никуда не отправляется: результат кладётся в память вкладки и
+ * показывается под сообщением. Запись идёт кусками по `CHUNK_SECONDS` — так
+ * точнее (см. `recognizeChunk`), а в интерфейсе текст появляется по мере
+ * готовности кусков.
+ */
+export const recognizeVoice = async (messageId: number, src: string): Promise<void> => {
+  const Ctor = recognitionCtor()
+  if (Ctor === null || !speechRecognitionSupported()) {
+    transcripts[messageId] = {
+      status: 'failed',
+      text: '',
+      error: 'Этот браузер не умеет распознавать готовые записи'
+    }
+    return
+  }
+  // Повторный запуск по тому же сообщению — начинаем заново.
+  stopRecognition(messageId)
+  transcripts[messageId] = { status: 'running', text: '' }
+
+  const run: RunState = { cancelled: false, cancelChunk: null }
+  running.set(messageId, () => {
+    run.cancelled = true
+    run.cancelChunk?.()
+  })
+
+  let finished = false
+  const finish = (state: VoiceTranscript) => {
+    if (finished) return
+    finished = true
+    running.delete(messageId)
+    // Уже скрытая расшифровка не должна появиться заново (человек нажал
+    // «Скрыть», пока распознавание шло).
+    if (transcripts[messageId]) transcripts[messageId] = state
+  }
+
+  const ctx = new AudioContext()
+  try {
+    // ГРАБЛЯ (симптом владельца: «речь всё время не распознана, хотя голос
+    // есть»): контекст создаётся ПОСЛЕ await'ов, то есть уже вне жеста
+    // пользователя — Chrome оставляет такой контекст в состоянии `suspended`,
+    // граф не рендерится, и распознаватель получает ТИШИНУ.
+    if (ctx.state === 'suspended') await ctx.resume()
+    const buffer = await decodeAudio(ctx, src)
+
+    const parts: string[] = []
+    let heardAny = false
+    let lastError: string | null = null
+
+    for (let offset = 0; offset < buffer.duration; offset += CHUNK_SECONDS) {
+      if (run.cancelled) break
+      const duration = Math.min(CHUNK_SECONDS, buffer.duration - offset)
+      const chunk = await recognizeChunk(Ctor, ctx, buffer, offset, duration, run, (progress) => {
+        const text = [...parts, progress].filter(Boolean).join(' ').trim()
+        transcripts[messageId] = { status: 'running', text }
+      })
+      if (chunk.text) parts.push(chunk.text)
+      heardAny = heardAny || chunk.heard
+      if (chunk.error) lastError = chunk.error
+      transcripts[messageId] = { status: 'running', text: parts.join(' ').trim() }
+    }
+
+    if (run.cancelled) {
+      finish({
+        status: 'failed',
+        text: parts.join(' ').trim(),
+        error: errorMessage('aborted', heardAny)
+      })
+      return
+    }
+    const text = parts.join(' ').trim()
+    if (text) {
+      finish({ status: 'ready', text })
+      return
+    }
+    finish({
+      status: 'failed',
+      text: '',
+      error: lastError ?? errorMessage('no-speech', heardAny)
+    })
+  } catch (thrown) {
+    finish({
+      status: 'failed',
+      text: '',
+      error: thrown instanceof Error ? thrown.message : 'Не удалось распознать голосовое'
+    })
+  } finally {
+    void ctx.close()
+  }
+}

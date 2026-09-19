@@ -45,7 +45,83 @@
       >
         {{ speedLabel(playbackSpeed) }}
       </button>
+      <!-- Расшифровка голосового: кнопка есть только там, где браузер умеет
+           распознавать записи (см. utils/voiceRecognition). -->
+      <button
+        v-if="recognitionAvailable"
+        class="am-transcribe"
+        :class="{ busy: transcript?.status === 'running' }"
+        :title="transcribeHint"
+        :aria-label="transcribeHint"
+        @click="toggleTranscript"
+      >
+        {{ transcribeLabel }}
+      </button>
     </div>
+
+    <!-- Расшифровка: распознаёт устройство, текст никуда не отправляется. -->
+    <div v-if="transcript && transcript.status !== 'running'" class="am-transcript">
+      <p v-if="transcript.status === 'ready'" class="am-transcript-text">{{ transcript.text }}</p>
+      <p v-else class="am-transcript-error">{{ transcript.error }}</p>
+      <!-- Кнопка в шапке — единый переключатель «В текст / Распознаём… / Скрыть
+           текст», поэтому здесь только то, чего в шапке нет: копирование
+           готового текста и повтор после ошибки. -->
+      <div
+        v-if="transcript.status === 'ready' || transcript.status === 'failed'"
+        class="am-transcript-actions"
+      >
+        <button
+          v-if="transcript.status === 'ready'"
+          class="am-transcript-btn"
+          @click="copyTranscript"
+        >
+          Скопировать
+        </button>
+        <!-- «Ещё раз» есть и при готовом тексте: после улучшений распознавания
+             старый текст хочется переиграть, а не только скрыть. -->
+        <button class="am-transcript-btn" @click="retryTranscript">Ещё раз</button>
+      </div>
+      <!-- Язык выбирается тут же, а не в настройках: неправильный язык —
+           главная причина чужого текста («Привет» → «private»). -->
+      <div class="am-lang">
+        <span class="am-lang-title">Язык речи</span>
+        <div class="am-lang-list">
+          <button
+            class="am-lang-btn"
+            :class="{ active: speechLanguage === '' }"
+            :aria-pressed="speechLanguage === ''"
+            @click="setSpeechLanguage('')"
+          >
+            Авто
+          </button>
+          <button
+            v-for="item in SPEECH_LANGUAGES"
+            :key="item.code"
+            class="am-lang-btn"
+            :class="{ active: speechLanguage === item.code }"
+            :aria-pressed="speechLanguage === item.code"
+            @click="setSpeechLanguage(item.code)"
+          >
+            {{ item.label }}
+          </button>
+        </div>
+        <p v-if="transcript.status === 'failed'" class="am-lang-hint">
+          Если слова не те — попробуйте другой язык и нажмите «Ещё раз».
+        </p>
+      </div>
+      <p class="am-transcript-note">
+        Распознаёт браузер устройства — в E2EE-чате текст на сервер не уходит, но распознавание
+        может обращаться к сервису браузера.
+      </p>
+    </div>
+
+    <p v-if="transcript?.status === 'running'" class="am-transcript-note am-transcript-note--live">
+      {{ transcript.text || 'Слушаем запись…' }}
+      <!-- Язык виден здесь, а не в настройках: если текст вышел чужими словами,
+           причина видна сразу («private» вместо «привет» — это английская
+           модель). -->
+      <span class="am-lang-used">{{ speechLanguageInUse }}</span>
+    </p>
   </div>
 </template>
 
@@ -54,8 +130,21 @@ import { icon } from '@/utils/icons'
 import { computed, onMounted, ref, watch } from 'vue'
 import { formatClock } from '@/services/recorder'
 import { cyclePlaybackSpeed, playbackSpeed, speedLabel } from '@/utils/playbackSpeed'
+import {
+  clearTranscript,
+  recognizeVoice,
+  setSpeechLanguage,
+  SPEECH_LANGUAGES,
+  speechLanguage,
+  speechLanguageInUse,
+  speechRecognitionSupported,
+  transcriptActionFor,
+  transcriptOf
+} from '@/utils/voiceRecognition'
 
-defineProps<{
+const props = defineProps<{
+  /** Id сообщения: по нему помним расшифровку при перерисовке ленты. */
+  messageId: number
   src: string
   name: string
   size?: number | null
@@ -149,6 +238,65 @@ watch(playbackSpeed, applySpeed)
 const onCycleSpeed = () => {
   cyclePlaybackSpeed()
   applySpeed()
+}
+
+// ---------- Расшифровка в текст (F4) ----------
+
+/** Умеет ли браузер распознавать записи — иначе кнопки нет вообще. */
+const recognitionAvailable = speechRecognitionSupported()
+
+/** Текущая расшифровка этого сообщения (undefined — не расшифровывали). */
+const transcript = computed(() => transcriptOf(props.messageId))
+
+const transcribeHint = computed(() => {
+  const action = transcriptActionFor(transcript.value)
+  if (action === 'cancel') return 'Распознаём — нажмите, чтобы отменить'
+  if (action === 'hide') return 'Скрыть расшифровку'
+  return 'Расшифровать голосовое в текст'
+})
+
+/** Подпись кнопки — по действию: на телефоне подсказка не видна, её заменяет текст. */
+const transcribeLabel = computed(() => {
+  const action = transcriptActionFor(transcript.value)
+  if (action === 'cancel') return 'Распознаём…'
+  if (action === 'hide') return 'Скрыть текст'
+  return 'В текст'
+})
+
+/**
+ * Кнопка «В текст»: расшифровывает, отменяет идущее распознавание или скрывает
+ * готовый текст — что именно, решает `transcriptActionFor` (единообразно).
+ */
+const toggleTranscript = () => {
+  const current = transcript.value
+  if (transcriptActionFor(current) === 'recognize') {
+    startRecognition()
+    return
+  }
+  clearTranscript(props.messageId)
+}
+
+/** Пробует распознать ещё раз — кнопка «Ещё раз» в блоке с ошибкой. */
+const retryTranscript = () => startRecognition()
+
+/**
+ * Запуск распознавания: сначала пауза воспроизведения — расшифровка «читает» тот
+ * же файл, и играющий звук сбивал бы и слух, и распознавание.
+ */
+const startRecognition = () => {
+  const audio = audioRef.value
+  if (audio && isPlaying.value) audio.pause()
+  void recognizeVoice(props.messageId, props.src)
+}
+
+const copyTranscript = async () => {
+  const text = transcript.value?.text
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    /* нет разрешения на буфер обмена — текст видно и так */
+  }
 }
 </script>
 
@@ -269,5 +417,125 @@ const onCycleSpeed = () => {
 
 .am-speed:hover {
   background: var(--ms-accent-soft, rgba(46, 162, 94, 0.12));
+}
+
+/* Кнопка «В текст»: рядом с подписью файла, вторичная по весу. */
+.am-transcribe {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--ms-accent, #2ea25e);
+  font-size: var(--ms-fs-xs);
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.am-transcribe:hover {
+  background: var(--ms-accent-soft, rgba(46, 162, 94, 0.12));
+}
+
+.am-transcribe.busy {
+  color: var(--ms-muted, #71808d);
+  cursor: default;
+}
+
+/* Расшифровка под голосовым: границу даёт полоса слева, как у цитаты. */
+.am-transcript {
+  margin-top: 6px;
+  padding-left: 8px;
+  border-left: 2px solid var(--ms-border, #dfe5ea);
+}
+
+.am-transcript-text {
+  margin: 0;
+  font-size: var(--ms-fs-sm);
+  line-height: 1.35;
+  color: var(--ms-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.am-transcript-error {
+  margin: 0;
+  font-size: var(--ms-fs-xs);
+  color: var(--ms-danger, #d64545);
+}
+
+.am-transcript-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.am-transcript-btn {
+  border: none;
+  background: transparent;
+  color: var(--ms-accent, #2ea25e);
+  font-size: var(--ms-fs-xs);
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+
+.am-transcript-note {
+  margin: 4px 0 0;
+  font-size: var(--ms-fs-xs);
+  line-height: 1.3;
+  color: var(--ms-muted, #71808d);
+}
+
+.am-transcript-note--live {
+  font-style: italic;
+}
+
+.am-lang-used {
+  margin-left: 4px;
+  font-style: normal;
+  color: var(--ms-muted, #71808d);
+}
+
+/* Язык речи: нужен там же, где и текст, — иначе человек не поймёт, почему
+   «Привет» распознался как «private». */
+.am-lang {
+  margin-top: 6px;
+}
+
+.am-lang-title {
+  display: block;
+  font-size: var(--ms-fs-xs);
+  color: var(--ms-muted, #71808d);
+}
+
+.am-lang-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.am-lang-btn {
+  border: 1px solid var(--ms-border, #dfe5ea);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ms-text);
+  font-size: var(--ms-fs-xs);
+  line-height: 1.2;
+  padding: 3px 7px;
+  cursor: pointer;
+}
+
+.am-lang-btn.active {
+  border-color: var(--ms-accent, #2ea25e);
+  background: var(--ms-accent-soft, rgba(46, 162, 94, 0.12));
+  color: var(--ms-accent, #2ea25e);
+}
+
+.am-lang-hint {
+  margin: 4px 0 0;
+  font-size: var(--ms-fs-xs);
+  line-height: 1.3;
+  color: var(--ms-muted, #71808d);
 }
 </style>

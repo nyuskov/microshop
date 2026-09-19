@@ -60,6 +60,7 @@
       ></video>
       <AudioMessage
         v-else-if="isAudioFile(file)"
+        :message-id="message.id"
         :src="fileUrl"
         :name="file.name"
         :size="file.size"

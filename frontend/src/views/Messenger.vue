@@ -696,6 +696,7 @@ import type {
   ScheduledMessage
 } from '@/types'
 import { avatarUrlOf, chatPeer, chatTitle, displayName, isGroupChat } from '@/utils/user'
+import { stopAllRecognitions } from '@/utils/voiceRecognition'
 import { usernameFromProfilePath } from '@/utils/profileLink'
 import { channelUsernameFromPath } from '@/utils/channelLink'
 import { inviteTokenFromPath } from '@/utils/groupInvite'
@@ -2456,6 +2457,9 @@ const openChatThread = async (chatId: number, options: { pushNav?: boolean } = {
   scheduledMessages.value = []
   scheduledDecrypted.value = {}
   reminders.value = []
+  // Расшифровка голосовых читает файл этого чата — в другом она не нужна, а
+  // `blob:`-ссылка вот-вот будет освобождена (releaseDecryptedMediaExcept).
+  stopAllRecognitions()
   // В другом чате шторка закреплённых показывается снова.
   pinnedHidden.value = false
   clearPendingUploads()
