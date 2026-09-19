@@ -1,6 +1,15 @@
 /* ------------------ Гудки (WebAudio, без внешних файлов) ------------------ */
 
-/** Мастер-громкость гудков (цепочка gain → компрессор → выход). */
+/**
+ * Мелодия синтезируется на месте: в PWA звуковой файл — лишний риск (его надо
+ * успеть скачать и не промахнуться с кэшем), а звонок это критический путь.
+ *
+ * Фраза собрана из НЕСКОЛЬКИХ «инструментов»: мягкий колокольчик ведёт мелодию,
+ * маримба-пиццикато играет арпеджио, тёплая подкладка держит гармонию, низ даёт
+ * опору, а высокий «блик» уходит в эхо и добавляет объём. Одним голосом (как
+ * было раньше) звонок звучал бедно.
+ */
+
 /** Контекст WebAudio для гудков (создаётся на время гудка). */
 let audioContext: AudioContext | null = null
 /** Таймер повтора фразы гудка. */
@@ -9,6 +18,8 @@ let ringTimer: number | undefined
 let unlockBound = false
 
 let ringGain: GainNode | null = null
+/** Шина эха: голоса шлют туда «блик», оттуда — в общий выход. */
+let ringEcho: GainNode | null = null
 
 /**
  * Общая громкость рингтона. Ниже единицы намеренно: звонок звучит в тишине
@@ -17,16 +28,31 @@ let ringGain: GainNode | null = null
 const RING_LEVEL = 0.8
 /** Плавное затухание при остановке: без него слышен щелчок обрыва. */
 const RING_FADE_MS = 220
+/** Атака ноты: 12 мс убирают щелчок, но не «смазывают» начало. */
+const RING_ATTACK_S = 0.012
 /** Пауза между повторами фразы: входящий — спокойный, исходящий — пореже. */
-const RING_INCOMING_LOOP_MS = 5000
-const RING_OUTGOING_LOOP_MS = 3200
+export const RING_INCOMING_LOOP_MS = 7200
+export const RING_OUTGOING_LOOP_MS = 4400
 
 /**
- * Цепочка вывода гудков: gain → компрессор → выход.
+ * «Инструменты» рингтона: голоса с разным тембром и атакой.
+ *
+ * Список экспортируется, чтобы тест мог проверить, что фраза действительно
+ * многоголосная (один инструмент на всё — это и был прежний звук).
+ */
+export type RingVoice = 'bell' | 'pluck' | 'pad' | 'bass' | 'shimmer'
+
+export const RING_VOICES: RingVoice[] = ['bell', 'pluck', 'pad', 'bass', 'shimmer']
+
+/**
+ * Цепочка вывода гудков: gain → компрессор → выход плюс шина эха.
  *
  * Компрессор здесь вместо простого gain: он мягко придерживает пики
- * перекрывающихся нот. Без него сумма нот уходила за 1.0, браузер срезал
- * верхушки — звук становился дребезжащим и раздражающим.
+ * перекрывающихся нот. Без него сумма пяти голосов уходила за 1.0, браузер
+ * срезал верхушки — звук становился дребезжащим и раздражающим.
+ *
+ * Эхо — короткая задержка с затуханием и фильтром: в него уходят только
+ * высокие «блики» (`shimmer`), иначе гармония превратилась бы в кашу.
  */
 function ensureRingChain(ctx: AudioContext): GainNode {
   if (ringGain) return ringGain
@@ -40,7 +66,26 @@ function ensureRingChain(ctx: AudioContext): GainNode {
   limiter.release.value = 0.35
   gain.connect(limiter)
   limiter.connect(ctx.destination)
+
+  const send = ctx.createGain()
+  const delay = ctx.createDelay(1)
+  delay.delayTime.value = 0.27
+  const feedback = ctx.createGain()
+  feedback.gain.value = 0.24
+  const damp = ctx.createBiquadFilter()
+  damp.type = 'lowpass'
+  damp.frequency.value = 2400
+  const wet = ctx.createGain()
+  wet.gain.value = 0.5
+  send.connect(delay)
+  delay.connect(damp)
+  damp.connect(feedback)
+  feedback.connect(delay)
+  damp.connect(wet)
+  wet.connect(gain)
+
   ringGain = gain
+  ringEcho = send
   return gain
 }
 
@@ -53,6 +98,7 @@ export function stopRingtone() {
   const gain = ringGain
   audioContext = null
   ringGain = null
+  ringEcho = null
   if (!ctx) return
   /* Плавно уводим громкость в ноль и только потом закрываем контекст: резкий
      close() посреди ноты слышен как щелчок — он и делал гудок «резким». */
@@ -71,64 +117,246 @@ export function stopRingtone() {
   }, RING_FADE_MS + 80)
 }
 
-type RingNote = { at: number; f: number; d: number; vol?: number }
+/** Нота фразы: когда играть (с), высота (Гц), длительность (с), громкость, панорама. */
+type RingNote = { at: number; f: number; d: number; vol?: number; pan?: number }
+/** Партия одного инструмента: голос и его ноты. */
+type RingPart = { voice: RingVoice; notes: RingNote[] }
+/** Фраза: партии и пауза до повтора. */
+type RingTune = { loopMs: number; parts: RingPart[] }
+
+/** Куда подключать ноту: с панорамой, если браузер это умеет. */
+function noteOut(ctx: AudioContext, pan: number): AudioNode {
+  const master = ringGain ?? ctx.destination
+  if (!pan || typeof ctx.createStereoPanner !== 'function') return master
+  const panner = ctx.createStereoPanner()
+  panner.pan.value = Math.max(-1, Math.min(1, pan))
+  panner.connect(master)
+  return panner
+}
 
 /**
- * Входящий звонок: спокойная «стеклянная» фраза в ля-мажорной пентатонике.
+ * Один тон с атакой и экспоненциальным затуханием.
  *
- * Прежний вариант был плотным маримбовым перезвоном из 12 нот с сильными
- * «бьющими» партиалами: на телефоне он звучал резко и успевал надоесть за
- * первый же гудок. Здесь ноты реже и тише, с длинными хвостами и мягкой опорой
- * в басу — слышно, но не раздражает.
+ * Затухание именно экспоненциальное: так гаснет живой инструмент, а линейный
+ * спад слышен как «выключение звука».
  */
-const INCOMING_RING: RingNote[] = [
-  { at: 0.0, f: 220.0, d: 3.4, vol: 0.1 }, // A3 — тёплая опора
-  { at: 0.0, f: 440.0, d: 2.6, vol: 0.14 }, // A4
-  { at: 0.34, f: 739.99, d: 1.9, vol: 0.3 }, // F#5
-  { at: 0.78, f: 880.0, d: 1.9, vol: 0.28 }, // A5
-  { at: 1.22, f: 1108.73, d: 2.2, vol: 0.26 }, // C#6
-  { at: 1.72, f: 880.0, d: 2.6, vol: 0.2 } // A5 — спокойное разрешение
-]
+function tone(
+  ctx: AudioContext,
+  out: AudioNode,
+  freq: number,
+  when: number,
+  dur: number,
+  vol: number,
+  options: {
+    type?: OscillatorType
+    attack?: number
+    decay?: number
+    detune?: number
+  } = {}
+) {
+  const osc = ctx.createOscillator()
+  const gain = ctx.createGain()
+  osc.type = options.type ?? 'sine'
+  osc.frequency.value = freq
+  if (options.detune) osc.detune.value = options.detune
+  const peak = Math.max(0.0002, vol)
+  const attack = options.attack ?? RING_ATTACK_S
+  const tail = Math.max(0.06, dur * (options.decay ?? 1))
+  gain.gain.setValueAtTime(0.0001, when)
+  gain.gain.exponentialRampToValueAtTime(peak, when + attack)
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + attack + tail)
+  osc.connect(gain)
+  gain.connect(out)
+  osc.start(when)
+  osc.stop(when + attack + tail + 0.05)
+}
 
-/** Гудки ожидания для звонящего: редкие тихие ноты вместо частых «бипов». */
-const OUTGOING_RING: RingNote[] = [
-  { at: 0.0, f: 196.0, d: 1.6, vol: 0.12 }, // G3
-  { at: 0.0, f: 392.0, d: 1.1, vol: 0.22 }, // G4
-  { at: 0.5, f: 523.25, d: 1.1, vol: 0.18 } // C5
-]
+/** Фильтрованный выход для голосов с «мягким» тембром. */
+function filteredOut(ctx: AudioContext, out: AudioNode, cutoff: number): AudioNode {
+  const filter = ctx.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.value = cutoff
+  filter.connect(out)
+  return filter
+}
 
-/**
- * Мягкая нота: чистый синус + очень тихая октава и слабый третий обертон.
- *
- * Никаких партиал ×4 и ×9.2 (как у маримбы): именно они давали металлический
- * призвук, от которого звонок быстро надоедал. Атака 12 мс убирает щелчок,
- * длинный экспоненциальный хвост — «стеклянный» шлейф.
- */
-function softNote(freq: number, when: number, dur: number, volume: number) {
-  if (!audioContext) return
+/** Играет одну ноту выбранным инструментом. */
+function playNote(voice: RingVoice, note: RingNote, when: number) {
   const ctx = audioContext
-  const out = ringGain ?? ctx.destination
-  const part = (ratio: number, rel: number, decay: number) => {
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = 'sine'
-    osc.frequency.value = freq * ratio
-    const peak = Math.max(0.0002, volume * rel)
-    gain.gain.setValueAtTime(0.0001, when)
-    gain.gain.exponentialRampToValueAtTime(peak, when + 0.012)
-    gain.gain.exponentialRampToValueAtTime(0.0001, when + dur * decay)
-    osc.connect(gain)
-    gain.connect(out)
-    osc.start(when)
-    osc.stop(when + dur + 0.05)
+  if (!ctx || !ringGain) return
+  const out = noteOut(ctx, note.pan ?? 0)
+  const vol = note.vol ?? 0.22
+  switch (voice) {
+    case 'bell':
+      // Колокольчик: чистый тон и два «не в строю» партиала (×2.76 и ×5.4).
+      // Именно они дают объём, поэтому уровни партиалов очень низкие — иначе
+      // появляется металлический призвук, от которого звонок быстро надоедает.
+      tone(ctx, out, note.f, when, note.d, vol)
+      tone(ctx, out, note.f * 2.76, when, note.d, vol * 0.2, { decay: 0.55 })
+      tone(ctx, out, note.f * 5.4, when, note.d, vol * 0.06, { decay: 0.35 })
+      break
+    case 'pluck': {
+      // Маримба-пиццикато: треугольник с коротким хвостом плюс тихая пила
+      // через фильтр — без неё нота звучала бы «пустой».
+      const filtered = filteredOut(ctx, out, Math.min(2600, note.f * 6))
+      tone(ctx, filtered, note.f, when, note.d, vol, { type: 'triangle', decay: 0.45 })
+      tone(ctx, filtered, note.f * 2, when, note.d, vol * 0.3, {
+        type: 'sawtooth',
+        decay: 0.25
+      })
+      break
+    }
+    case 'pad': {
+      // Тёплая подкладка: два расстроенных треугольника (биения дают «живое»
+      // звучание) через низкий фильтр и с медленной атакой.
+      const filtered = filteredOut(ctx, out, 1400)
+      tone(ctx, filtered, note.f, when, note.d, vol, { type: 'triangle', attack: 0.32 })
+      tone(ctx, filtered, note.f, when, note.d, vol * 0.7, {
+        type: 'triangle',
+        attack: 0.32,
+        detune: 7
+      })
+      break
+    }
+    case 'bass':
+      // Низ: синус со слабой октавой и мягкой атакой — опора без гула.
+      tone(ctx, out, note.f, when, note.d, vol, { attack: 0.05, decay: 0.95 })
+      tone(ctx, out, note.f * 2, when, note.d, vol * 0.18, { attack: 0.05, decay: 0.8 })
+      break
+    case 'shimmer':
+      // Высокий «блик»: тихо напрямую и чуть громче в эхо — объём без звона.
+      tone(ctx, out, note.f, when, note.d, vol * 0.5, { attack: 0.08, decay: 0.9 })
+      if (ringEcho) {
+        tone(ctx, ringEcho, note.f, when, note.d, vol * 0.4, { attack: 0.08, decay: 0.9 })
+      }
+      break
   }
-  part(1, 1, 1) // фундаментал
-  part(2, 0.18, 0.7) // октава — звучит мягче и «дороже»
-  part(3, 0.05, 0.45) // лёгкий блик на затухании
+}
+
+/**
+ * Входящий звонок: три такта по 2.4 с (A → D → F#m), повтор 7.2 с.
+ *
+ * Гармония — ля мажорная пентатоника: в ней нет полутонов, поэтому случайно
+ * совпавшие ноты не звучат «фальшиво» (это важно для синтеза, где всё статично).
+ * Мелодию ведёт колокольчик длинными нотами — её и узнают при следующем звонке.
+ */
+const INCOMING_TUNE: RingTune = {
+  loopMs: RING_INCOMING_LOOP_MS,
+  parts: [
+    {
+      voice: 'pad',
+      notes: [
+        { at: 0.0, f: 220.0, d: 2.8, vol: 0.1 },
+        { at: 0.0, f: 277.18, d: 2.8, vol: 0.07 },
+        { at: 0.0, f: 329.63, d: 2.8, vol: 0.06 },
+        { at: 2.4, f: 146.83, d: 2.8, vol: 0.1 },
+        { at: 2.4, f: 185.0, d: 2.8, vol: 0.07 },
+        { at: 2.4, f: 220.0, d: 2.8, vol: 0.06 },
+        { at: 4.8, f: 185.0, d: 2.8, vol: 0.1 },
+        { at: 4.8, f: 220.0, d: 2.8, vol: 0.07 },
+        { at: 4.8, f: 277.18, d: 2.8, vol: 0.06 }
+      ]
+    },
+    {
+      voice: 'bass',
+      notes: [
+        { at: 0.0, f: 110.0, d: 2.2, vol: 0.16 },
+        { at: 2.4, f: 146.83, d: 2.2, vol: 0.15 },
+        { at: 4.8, f: 92.5, d: 2.2, vol: 0.16 }
+      ]
+    },
+    {
+      // Арпеджио разведено по панораме: так слышен инструмент, а не сплошной аккорд.
+      voice: 'pluck',
+      notes: [
+        { at: 0.05, f: 440.0, d: 1.1, vol: 0.1, pan: -0.35 },
+        { at: 0.35, f: 554.37, d: 1.1, vol: 0.09, pan: 0.2 },
+        { at: 0.65, f: 659.25, d: 1.1, vol: 0.08, pan: -0.15 },
+        { at: 0.95, f: 880.0, d: 1.1, vol: 0.07, pan: 0.35 },
+        { at: 2.45, f: 369.99, d: 1.1, vol: 0.1, pan: -0.35 },
+        { at: 2.75, f: 440.0, d: 1.1, vol: 0.09, pan: 0.2 },
+        { at: 3.05, f: 587.33, d: 1.1, vol: 0.08, pan: -0.15 },
+        { at: 3.35, f: 739.99, d: 1.1, vol: 0.07, pan: 0.35 },
+        { at: 4.85, f: 369.99, d: 1.1, vol: 0.1, pan: -0.35 },
+        { at: 5.15, f: 440.0, d: 1.1, vol: 0.09, pan: 0.2 },
+        { at: 5.45, f: 554.37, d: 1.1, vol: 0.08, pan: -0.15 },
+        { at: 5.75, f: 659.25, d: 1.1, vol: 0.07, pan: 0.35 }
+      ]
+    },
+    {
+      voice: 'bell',
+      notes: [
+        { at: 0.15, f: 659.25, d: 2.0, vol: 0.26 },
+        { at: 1.15, f: 554.37, d: 1.2, vol: 0.2 },
+        { at: 2.55, f: 587.33, d: 1.6, vol: 0.26 },
+        { at: 3.35, f: 739.99, d: 1.2, vol: 0.2 },
+        { at: 4.95, f: 659.25, d: 1.4, vol: 0.24 },
+        { at: 5.75, f: 554.37, d: 1.3, vol: 0.2 }
+      ]
+    },
+    {
+      voice: 'shimmer',
+      notes: [
+        { at: 0.0, f: 1318.51, d: 1.2, vol: 0.07, pan: 0.4 },
+        { at: 2.4, f: 880.0, d: 1.2, vol: 0.06, pan: -0.4 },
+        { at: 4.8, f: 1108.73, d: 1.2, vol: 0.06, pan: 0.4 }
+      ]
+    }
+  ]
+}
+
+/**
+ * Исходящий — спокойнее и короче входящего: два такта (A → D), повтор 4.4 с.
+ *
+ * Так ждать ответа приятнее: частые «бипы» раздражают уже через полминуты.
+ */
+const OUTGOING_TUNE: RingTune = {
+  loopMs: RING_OUTGOING_LOOP_MS,
+  parts: [
+    {
+      voice: 'pad',
+      notes: [
+        { at: 0.0, f: 220.0, d: 2.4, vol: 0.09 },
+        { at: 0.0, f: 329.63, d: 2.4, vol: 0.06 },
+        { at: 2.2, f: 146.83, d: 2.4, vol: 0.09 },
+        { at: 2.2, f: 220.0, d: 2.4, vol: 0.06 }
+      ]
+    },
+    {
+      voice: 'bass',
+      notes: [
+        { at: 0.0, f: 110.0, d: 2.0, vol: 0.14 },
+        { at: 2.2, f: 146.83, d: 2.0, vol: 0.13 }
+      ]
+    },
+    {
+      voice: 'pluck',
+      notes: [
+        { at: 0.05, f: 440.0, d: 1.0, vol: 0.09, pan: -0.3 },
+        { at: 0.4, f: 554.37, d: 1.0, vol: 0.08, pan: 0.3 },
+        { at: 2.25, f: 369.99, d: 1.0, vol: 0.09, pan: -0.3 },
+        { at: 2.6, f: 587.33, d: 1.0, vol: 0.08, pan: 0.3 }
+      ]
+    },
+    {
+      voice: 'bell',
+      notes: [
+        { at: 0.15, f: 659.25, d: 1.4, vol: 0.2 },
+        { at: 2.35, f: 554.37, d: 1.4, vol: 0.18 }
+      ]
+    },
+    {
+      voice: 'shimmer',
+      notes: [
+        { at: 0.0, f: 1318.51, d: 1.0, vol: 0.05, pan: 0.35 },
+        { at: 2.2, f: 880.0, d: 1.0, vol: 0.05, pan: -0.35 }
+      ]
+    }
+  ]
 }
 
 /** Играет фразу (ноты перекрываются) и повторяет её после паузы. */
-function scheduleRing(notes: RingNote[], loopMs: number) {
+function scheduleRing(tune: RingTune) {
   if (ringTimer !== undefined) {
     window.clearTimeout(ringTimer)
   }
@@ -136,8 +364,10 @@ function scheduleRing(notes: RingNote[], loopMs: number) {
     const ctx = audioContext
     if (!ctx) return
     const base = ctx.currentTime + 0.06
-    notes.forEach((n) => softNote(n.f, base + n.at, n.d, n.vol ?? 0.3))
-    ringTimer = window.setTimeout(tick, loopMs)
+    tune.parts.forEach((part) => {
+      part.notes.forEach((note) => playNote(part.voice, note, base + note.at))
+    })
+    ringTimer = window.setTimeout(tick, tune.loopMs)
   }, 150)
 }
 
@@ -188,11 +418,11 @@ export function startRingtone(kind: 'outgoing' | 'incoming') {
     ensureRingChain(audioContext)
     bindAudioUnlockOnce()
     resumeAudioIfSuspended()
-    // Входящий — мягкий «стеклянный» перезвон; исходящему — редкие тихие гудки.
+    // Входящий — многоголосая фраза с колокольчиком; исходящему — спокойные гудки.
     if (kind === 'outgoing') {
-      scheduleRing(OUTGOING_RING, RING_OUTGOING_LOOP_MS)
+      scheduleRing(OUTGOING_TUNE)
     } else {
-      scheduleRing(INCOMING_RING, RING_INCOMING_LOOP_MS)
+      scheduleRing(INCOMING_TUNE)
       vibrateRing()
     }
   } catch {
