@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import AudioMessage from '@/components/media/AudioMessage.vue'
+import TranscriptionBlock from '@/components/media/TranscriptionBlock.vue'
 import {
   clearTranscript,
   recognizeVoice,
@@ -518,6 +519,26 @@ describe('кнопка «В текст» в голосовом', () => {
     wrapper.unmount()
   })
 
+  it('«Перевести» появляется только после готового текста (G1)', async () => {
+    // Переводить нечего, пока текста нет: кнопка обязана ждать расшифровку, иначе
+    // человек нажмёт её и получит перевод пустой строки.
+    const wrapper = mount(TranscriptionBlock, {
+      props: { messageId: 90, src: 'blob:voice' },
+      global: { stubs: { 'q-icon': true } }
+    })
+    expect(wrapper.text()).not.toContain('Перевести')
+
+    const running = recognizeVoice(90, 'blob:voice')
+    await settle()
+    recognition.emitResult('Hello there', true)
+    ended?.()
+    await running
+
+    expect(wrapper.text()).toContain('Перевести')
+    clearTranscript(90)
+    wrapper.unmount()
+  })
+
   it('кнопка ведёт на расшифровку и сообщает, что текст не уходит на сервер', () => {
     // Состояние живёт в памяти вкладки, а сама кнопка и блок вынесены в общие
     // компоненты (их же использует кружок), поэтому проверяем контракт по
@@ -525,6 +546,15 @@ describe('кнопка «В текст» в голосовом', () => {
     expect(button).toContain('recognizeVoice(props.messageId, props.src)')
     expect(button).toContain('speechRecognitionSupported()')
     expect(block).toContain('Распознаёт браузер устройства')
+  })
+
+  it('перевод расшифровки идёт тем же путём, что и пункт меню (G1)', () => {
+    // Одна функция на оба входа: у текста — пункт меню, у голосового и кружка —
+    // кнопка под расшифровкой. Иначе кнопки разошлись бы в подписях и действиях.
+    expect(block).toContain('toggleTranslation(props.messageId, text)')
+    expect(block).toContain('<MessageTranslation')
+    const row = readFileSync('src/components/messenger/MessageRow.vue', 'utf8')
+    expect(row).toContain('toggleTranslation(props.message.id, props.message.text)')
   })
 
   it('у голосового и кружка ОДНА оболочка сообщения', () => {
@@ -564,7 +594,8 @@ describe('кнопка «В текст» в голосовом', () => {
     })
 
     const labels = wrapper.findAll('.am-transcript-btn').map((item) => item.text())
-    expect(labels).toEqual(['Скопировать', 'Ещё раз'])
+    // «Перевести» — рядом с копированием: расшифровка и перевод в один шаг (G1).
+    expect(labels).toEqual(['Скопировать', 'Перевести', 'Ещё раз'])
 
     clearTranscript(5)
     wrapper.unmount()

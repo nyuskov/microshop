@@ -314,13 +314,7 @@ import { emojiLayout, type EmojiLayout } from '@/utils/emoji'
 import { haptic, HAPTIC_HOLD } from '@/utils/haptics'
 import { formatMsgTime } from '@/utils/format'
 import { formatScheduledAt } from '@/utils/scheduledSend'
-import {
-  cancelTranslation,
-  clearTranslation,
-  translateMessage,
-  translationActionFor,
-  translationOf
-} from '@/utils/translation'
+import { toggleTranslation, translationActionFor, translationOf } from '@/utils/translation'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import { highlightQuery, splitMessageText } from '@/utils/mentions'
 import { followLink } from '@/composables/useExternalLinkGuard'
@@ -341,7 +335,7 @@ import LinkPreviewCard from '@/components/messenger/LinkPreviewCard.vue'
 import MessageActionSheet from '@/components/messenger/MessageActionSheet.vue'
 import MessageActionsBar from '@/components/messenger/MessageActionsBar.vue'
 import MessageAttachment from '@/components/messenger/MessageAttachment.vue'
-import MessageTranslation from '@/components/messenger/MessageTranslation.vue'
+import MessageTranslation from '@/components/common/MessageTranslation.vue'
 import { useLinkPreview } from '@/composables/useLinkPreview'
 
 export interface MessageQuote {
@@ -513,19 +507,11 @@ const translationLabel = computed<string>(() => {
 
 /**
  * Меню сообщения → пункт «Перевести»: переводим текст, отменяем идущий перевод
- * или убираем готовый — что именно, решает `translationActionFor`.
+ * или убираем готовый — что именно, решает `toggleTranslation` (та же функция у
+ * кнопки под расшифровкой голосового).
  */
 const onTranslate = () => {
-  const action = translationActionFor(translationOf(props.message.id))
-  if (action === 'cancel') {
-    cancelTranslation(props.message.id)
-    return
-  }
-  if (action === 'hide') {
-    clearTranslation(props.message.id)
-    return
-  }
-  void translateMessage(props.message.id, props.message.text)
+  toggleTranslation(props.message.id, props.message.text)
 }
 
 /**

@@ -176,6 +176,27 @@ export const cancelTranslation = (messageId: number): void => {
 }
 
 /**
+ * «Перевести» одним действием: перевести, отменить идущий перевод или убрать
+ * готовый блок — что именно, решает `translationActionFor`.
+ *
+ * Одна функция на оба входа (пункт меню у текста и кнопка под расшифровкой
+ * голосового): раньше логика жила в `MessageRow.vue`, и вторая кнопка неизбежно
+ * разошлась бы с первой.
+ */
+export const toggleTranslation = (messageId: number, text: string): void => {
+  const action = translationActionFor(translations[messageId])
+  if (action === 'cancel') {
+    cancelTranslation(messageId)
+    return
+  }
+  if (action === 'hide') {
+    clearTranslation(messageId)
+    return
+  }
+  void translateMessage(messageId, text)
+}
+
+/**
  * Останавливает СКАЧИВАНИЕ модели (крестик у полоски прогресса).
  *
  * Блок при этом остаётся: человек отменил только загрузку, и предложение скачать

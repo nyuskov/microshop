@@ -7,6 +7,7 @@ import {
   clearTranslation,
   setTranslationTarget,
   stopTranslationWork,
+  toggleTranslation,
   TRANSLATION_TARGETS,
   translateMessage,
   translationActionFor,
@@ -483,7 +484,7 @@ describe('перевод сообщения', () => {
   })
 
   it('полоска прогресса есть в разметке блока', () => {
-    const block = readFileSync('src/components/messenger/MessageTranslation.vue', 'utf8')
+    const block = readFileSync('src/components/common/MessageTranslation.vue', 'utf8')
     // Во время скачивания есть только отмена: повтор предлагать нечего.
     expect(block).toContain("v-if=\"state.status === 'ready' || state.status === 'failed'\"")
     // Крестик живёт в строке прогресса и появляется вместе с ней — он отменяет
@@ -513,7 +514,7 @@ describe('перевод в ленте: текст на сервер не ухо
   const row = readFileSync('src/components/messenger/MessageRow.vue', 'utf8')
   const bar = readFileSync('src/components/messenger/MessageActionsBar.vue', 'utf8')
   const sheet = readFileSync('src/components/messenger/MessageActionSheet.vue', 'utf8')
-  const block = readFileSync('src/components/messenger/MessageTranslation.vue', 'utf8')
+  const block = readFileSync('src/components/common/MessageTranslation.vue', 'utf8')
 
   it('пункт «Перевести» есть и в меню по наведению, и в листе действий', () => {
     expect(bar).toContain("translationLabel || 'Перевести'")
@@ -549,5 +550,57 @@ describe('перевод в ленте: текст на сервер не ухо
     // перевод исчез бы именно там, где он нужнее всего.
     expect(row).toContain('v-if="message.text && translationVisible"')
     expect(row).not.toContain('!message.encrypted && translationVisible')
+  })
+})
+
+describe('перевод расшифровки голосового и кружка (G1)', () => {
+  const row = readFileSync('src/components/messenger/MessageRow.vue', 'utf8')
+
+  it('переводит именно текст расшифровки, а не пустую строку', async () => {
+    installTranslator()
+    installDetector('en')
+
+    toggleTranslation(60, 'Hello from the voice message')
+    await vi.waitFor(() => {
+      expect(translationOf(60)?.status).toBe('ready')
+    })
+
+    expect(calls.texts).toContain('Hello from the voice message')
+    expect(translationOf(60)?.text).toContain('[ru] Hello from the voice message')
+  })
+
+  it('повторное нажатие убирает блок, а идущий перевод отменяет', async () => {
+    installTranslator()
+    installDetector('en')
+    toggleTranslation(61, 'Hello')
+    await vi.waitFor(() => {
+      expect(translationOf(61)?.status).toBe('ready')
+    })
+
+    // Как пункт меню: второе нажатие не запускает перевод заново, а закрывает.
+    expect(translationActionFor(translationOf(61))).toBe('hide')
+    toggleTranslation(61, 'Hello')
+    expect(translationOf(61)).toBeUndefined()
+
+    installTranslator({ pending: true })
+    toggleTranslation(62, 'Hello')
+    await vi.waitFor(() => {
+      expect(translationOf(62)?.status).toBe('running')
+    })
+    expect(translationActionFor(translationOf(62))).toBe('cancel')
+    toggleTranslation(62, 'Hello')
+    expect(translationOf(62)).toBeUndefined()
+  })
+
+  it('блок перевода живёт в common: его зовут и лента, и медиа-сообщение', () => {
+    // Перенесён из `messenger/`, потому что теперь нужен обеим сторонам; импорты
+    // проверяем по исходникам, чтобы перенос не «откатили» случайно.
+    const media = readFileSync('src/components/media/TranscriptionBlock.vue', 'utf8')
+    expect(media).toContain(
+      "import MessageTranslation from '@/components/common/MessageTranslation.vue'"
+    )
+    expect(row).toContain(
+      "import MessageTranslation from '@/components/common/MessageTranslation.vue'"
+    )
   })
 })

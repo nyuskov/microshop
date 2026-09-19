@@ -13,10 +13,26 @@
       <button v-if="transcript.status === 'ready'" class="am-transcript-btn" @click="copy">
         Скопировать
       </button>
+      <!-- Перевод прямо здесь, а не в меню сообщения: иностранное голосовое
+           понимают в два шага — сначала текст, потом перевод, и искать пункт меню
+           между ними — лишняя работа. Для кружка это единственный вход: у него
+           текста в сообщении нет вовсе. -->
+      <button v-if="transcript.status === 'ready'" class="am-transcript-btn" @click="onTranslate">
+        {{ translationLabel }}
+      </button>
       <!-- «Ещё раз» есть и при готовом тексте: после улучшений распознавания
            старый текст хочется переиграть, а не только скрыть. -->
       <button class="am-transcript-btn" @click="retry">Ещё раз</button>
     </div>
+
+    <!-- Сам перевод (та же всплывающая карточка, что под текстом сообщения):
+         переводится ИМЕННО расшифровка, поэтому текста в пропе больше ниоткуда
+         не взять. -->
+    <MessageTranslation
+      v-if="transcript.status === 'ready' && translationState"
+      :message-id="messageId"
+      :text="transcript.text"
+    />
     <!-- Язык выбирается тут же, а не в настройках: неправильный язык — главная
          причина чужого текста («Привет» → «private»). -->
     <div class="am-lang">
@@ -70,6 +86,7 @@
  */
 import { computed } from 'vue'
 
+import MessageTranslation from '@/components/common/MessageTranslation.vue'
 import {
   clearTranscript,
   recognizeVoice,
@@ -79,6 +96,7 @@ import {
   speechLanguageInUse,
   transcriptOf
 } from '@/utils/voiceRecognition'
+import { toggleTranslation, translationActionFor, translationOf } from '@/utils/translation'
 
 const props = defineProps<{
   /** Id сообщения: по нему помним расшифровку при перерисовке ленты. */
@@ -88,6 +106,24 @@ const props = defineProps<{
 }>()
 
 const transcript = computed(() => transcriptOf(props.messageId))
+
+/** Есть ли перевод расшифровки (или идёт) — от этого зависит, рисуем ли блок. */
+const translationState = computed(() => translationOf(props.messageId))
+
+/** Подпись кнопки перевода по тому же состоянию, что и у пункта меню. */
+const translationLabel = computed<string>(() => {
+  const action = translationActionFor(translationState.value)
+  if (action === 'cancel') return 'Перевод…'
+  if (action === 'hide') return 'Скрыть перевод'
+  return 'Перевести'
+})
+
+/** Перевод расшифровки — тот же путь, что и у меню: `toggleTranslation`. */
+const onTranslate = () => {
+  const text = transcript.value?.text
+  if (!text) return
+  toggleTranslation(props.messageId, text)
+}
 
 const retry = () => {
   void recognizeVoice(props.messageId, props.src)

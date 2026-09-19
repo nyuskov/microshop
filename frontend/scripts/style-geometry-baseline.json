@@ -36,7 +36,7 @@
   "components/messenger/MessageActionsBar.vue": 4,
   "components/messenger/MessageActionSheet.vue": 3,
   "components/messenger/MessageAttachment.vue": 5,
-  "components/messenger/MessageTranslation.vue": 2,
+  "components/common/MessageTranslation.vue": 2,
   "components/messenger/ModerationReportsDialog.vue": 3,
   "components/messenger/PhoneImportDialog.vue": 5,
   "components/messenger/PinnedBar.vue": 2,
