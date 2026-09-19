@@ -228,6 +228,10 @@
   content: '\E0FD ';
 }
 
+.icon-languages::before {
+  content: '\E0FE ';
+}
+
 .icon-laptop::before {
   content: '\E1CD ';
 }

@@ -152,6 +152,8 @@ export const ICON_MAP: Record<string, string> = {
 
   // Прочее
   auto_stories: 'book-open',
+  // Перевод сообщений: в Lucide это `languages` (F5).
+  translate: 'languages',
   // Статистика чата: столбики (в Lucide это `chart-column`).
   bar_chart: 'chart-column',
   palette: 'palette',

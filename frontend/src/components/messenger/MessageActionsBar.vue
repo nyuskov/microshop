@@ -49,6 +49,12 @@
         <q-icon :name="icon('notifications')" size="16px" />
         <span>{{ hasReminder ? 'Изменить напоминание' : 'Напомнить' }}</span>
       </button>
+      <!-- Перевод — только у текста: переводить вложение нечем. Подпись меняется
+           по состоянию (переводим — можно отменить, готово — скрыть). -->
+      <button v-if="message.text" class="more-item" @click="onTranslate">
+        <q-icon :name="icon('translate')" size="16px" />
+        <span>{{ translationLabel || 'Перевести' }}</span>
+      </button>
       <button v-if="canMakeSticker" class="more-item" @click="onMakeSticker">
         <q-icon :name="icon('add_reaction')" size="16px" />
         <span>В стикеры</span>
@@ -105,6 +111,11 @@ const props = defineProps<{
   canMakeSticker?: boolean
   /** Стоит ли напоминание об этом сообщении (меняет подпись пункта меню). */
   hasReminder?: boolean
+  /**
+   * Подпись пункта «Перевести» по состоянию перевода: пусто — «Перевести»,
+   * «Перевод…» — идёт, «Скрыть перевод» — готовый перевод или ошибка.
+   */
+  translationLabel?: string
   /** Открыта ли палитра реакций (состояние представления). */
   emojiPickerOpen: boolean
   /** Строка уже доходила до экрана — только тогда рисуем панель. */
@@ -126,6 +137,8 @@ const emit = defineEmits<{
   (e: 'toggle-pin'): void
   /** «Напомнить»: выбрать время напоминания о сообщении. */
   (e: 'remind'): void
+  /** «Перевести»: перевести текст сообщения (или убрать перевод). */
+  (e: 'translate'): void
 }>()
 
 /** Открыто ли меню «Ещё» (остальные действия). */
@@ -220,6 +233,11 @@ const onSave = () => {
 const onRemind = () => {
   moreOpen.value = false
   emit('remind')
+}
+
+const onTranslate = () => {
+  moreOpen.value = false
+  emit('translate')
 }
 
 const onMakeSticker = () => {

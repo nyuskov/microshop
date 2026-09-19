@@ -76,6 +76,13 @@
           <q-icon :name="icon('notifications')" size="18px" />
           <span>{{ hasReminder ? 'Изменить напоминание' : 'Напомнить' }}</span>
         </button>
+        <!-- Перевод — только у текста (переводить вложение нечем). Подпись по
+             состоянию: пусто — «Перевести», идёт — «Перевод…», готово — «Скрыть
+             перевод». -->
+        <button v-if="message.text" class="ctx-item" @click="ctxAction('translate')">
+          <q-icon :name="icon('translate')" size="18px" />
+          <span>{{ translationLabel || 'Перевести' }}</span>
+        </button>
         <button
           v-if="canMakeSticker && !message.view_once"
           class="ctx-item"
@@ -137,6 +144,11 @@ const props = defineProps<{
   canMakeSticker?: boolean
   /** Стоит ли напоминание об этом сообщении (меняет подпись пункта меню). */
   hasReminder?: boolean
+  /**
+   * Подпись пункта «Перевести» по состоянию перевода: пусто — «Перевести»,
+   * «Перевод…» — идёт, «Скрыть перевод» — готовый перевод или ошибка.
+   */
+  translationLabel?: string
   /** Доступны ли реакции и «ответить» (у служебных сообщений — нет). */
   selectable: boolean
   /** Режим выделения: в нём лист не нужен. */
@@ -159,6 +171,8 @@ const emit = defineEmits<{
   (e: 'toggle-pin'): void
   /** «Напомнить»: выбрать время напоминания о сообщении. */
   (e: 'remind'): void
+  /** «Перевести»: перевести текст сообщения (или убрать перевод). */
+  (e: 'translate'): void
 }>()
 
 const ctxOpen = ref(false)
@@ -248,6 +262,7 @@ const ctxAction = (
     | 'save'
     | 'sticker'
     | 'remind'
+    | 'translate'
     | 'edit'
     | 'report'
     | 'delete'
@@ -260,6 +275,7 @@ const ctxAction = (
   else if (action === 'save') emit('save')
   else if (action === 'sticker') emit('make-sticker')
   else if (action === 'remind') emit('remind')
+  else if (action === 'translate') emit('translate')
   else if (action === 'edit') emit('edit')
   else if (action === 'report') emit('report')
   else emit('delete')

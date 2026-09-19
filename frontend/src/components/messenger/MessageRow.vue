@@ -164,6 +164,15 @@
         {{ expanded ? 'Свернуть' : 'Показать полностью' }}
       </button>
 
+      <!-- Перевод текста: встроенный переводчик браузера, текст никуда не уходит.
+           Блок появляется только когда перевод запросили через меню. В E2EE-чате
+           текст уже расшифрован на устройстве, поэтому переводится так же. -->
+      <MessageTranslation
+        v-if="message.text && translationVisible"
+        :message-id="message.id"
+        :text="message.text"
+      />
+
       <!-- Карточка внешней ссылки (превью сайта, как в Telegram) -->
       <LinkPreviewCard v-if="linkPreview" :preview="linkPreview" />
 
@@ -237,6 +246,7 @@
       :can-save="canSave"
       :can-make-sticker="canMakeSticker"
       :has-reminder="Boolean(reminderAt)"
+      :translation-label="translationLabel"
       :emoji-picker-open="emojiPickerOpen"
       :row-visible="rowVisible"
       @toggle-emoji-picker="emit('toggle-emoji-picker')"
@@ -251,6 +261,7 @@
       @report="emit('report')"
       @toggle-pin="emit('toggle-pin')"
       @remind="emit('remind')"
+      @translate="onTranslate"
     />
 
     <!-- Лист действий (удержание выделенного сообщения или клавиатура) —
@@ -262,6 +273,7 @@
       :can-save="canSave"
       :can-make-sticker="canMakeSticker"
       :has-reminder="Boolean(reminderAt)"
+      :translation-label="translationLabel"
       :selectable="selectable"
       :selection-mode="selectionMode"
       :emoji-picker-open="emojiPickerOpen"
@@ -276,6 +288,7 @@
       @report="emit('report')"
       @toggle-pin="emit('toggle-pin')"
       @remind="emit('remind')"
+      @translate="onTranslate"
     />
   </div>
 </template>
@@ -290,6 +303,13 @@ import { emojiLayout, type EmojiLayout } from '@/utils/emoji'
 import { haptic, HAPTIC_HOLD } from '@/utils/haptics'
 import { formatMsgTime } from '@/utils/format'
 import { formatScheduledAt } from '@/utils/scheduledSend'
+import {
+  cancelTranslation,
+  clearTranslation,
+  translateMessage,
+  translationActionFor,
+  translationOf
+} from '@/utils/translation'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import { highlightQuery, splitMessageText } from '@/utils/mentions'
 import { followLink } from '@/composables/useExternalLinkGuard'
@@ -307,6 +327,7 @@ import LinkPreviewCard from '@/components/messenger/LinkPreviewCard.vue'
 import MessageActionSheet from '@/components/messenger/MessageActionSheet.vue'
 import MessageActionsBar from '@/components/messenger/MessageActionsBar.vue'
 import MessageAttachment from '@/components/messenger/MessageAttachment.vue'
+import MessageTranslation from '@/components/messenger/MessageTranslation.vue'
 import { useLinkPreview } from '@/composables/useLinkPreview'
 
 export interface MessageQuote {
@@ -462,6 +483,36 @@ const storyReply = computed(() => props.message.reply_to_story ?? null)
 const reminderLabel = computed<string>(() =>
   props.reminderAt ? formatScheduledAt(props.reminderAt) : ''
 )
+
+// ---------- Перевод сообщения (F5) ----------
+
+/** Есть ли перевод этого сообщения (или идёт перевод). */
+const translationVisible = computed<boolean>(() => Boolean(translationOf(props.message.id)))
+
+/** Подпись пункта «Перевести» по состоянию перевода. */
+const translationLabel = computed<string>(() => {
+  const action = translationActionFor(translationOf(props.message.id))
+  if (action === 'cancel') return 'Перевод…'
+  if (action === 'hide') return 'Скрыть перевод'
+  return 'Перевести'
+})
+
+/**
+ * Меню сообщения → пункт «Перевести»: переводим текст, отменяем идущий перевод
+ * или убираем готовый — что именно, решает `translationActionFor`.
+ */
+const onTranslate = () => {
+  const action = translationActionFor(translationOf(props.message.id))
+  if (action === 'cancel') {
+    cancelTranslation(props.message.id)
+    return
+  }
+  if (action === 'hide') {
+    clearTranslation(props.message.id)
+    return
+  }
+  void translateMessage(props.message.id, props.message.text)
+}
 
 /**
  * «Моё» для РИСУНКА (сторона пузыря и галочки): пост канала — всегда содержимое
