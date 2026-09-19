@@ -46,6 +46,7 @@
     <template v-else-if="fileUrl">
       <RoundVideoMessage
         v-if="isRecordedVideoMessage(file)"
+        :message-id="message.id"
         :src="fileUrl"
         :name="file.name"
         :size="file.size"

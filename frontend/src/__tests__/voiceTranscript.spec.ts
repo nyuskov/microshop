@@ -26,7 +26,9 @@ import {
  * живёт только в памяти вкладки.
  */
 
-const audioMessage = readFileSync('src/components/media/AudioMessage.vue', 'utf8')
+const button = readFileSync('src/components/media/TranscribeButton.vue', 'utf8')
+const block = readFileSync('src/components/media/TranscriptionBlock.vue', 'utf8')
+const attachmentSource = readFileSync('src/components/messenger/MessageAttachment.vue', 'utf8')
 
 /** Заглушка распознавателя: события шлём руками. */
 class FakeRecognition {
@@ -491,11 +493,22 @@ describe('кнопка «В текст» в голосовом', () => {
   })
 
   it('кнопка ведёт на расшифровку и сообщает, что текст не уходит на сервер', () => {
-    // Модуль тянет состояние из памяти вкладки, поэтому проверяем контракт по
-    // исходнику: кнопку, запуск и честную подпись про распознавание браузером.
-    expect(audioMessage).toContain('recognizeVoice(props.messageId, props.src)')
-    expect(audioMessage).toContain('speechRecognitionSupported()')
-    expect(audioMessage).toContain('Распознаёт браузер устройства')
+    // Состояние живёт в памяти вкладки, а сама кнопка и блок вынесены в общие
+    // компоненты (их же использует кружок), поэтому проверяем контракт по
+    // исходникам: запуск, проверку поддержки и честную подпись.
+    expect(button).toContain('recognizeVoice(props.messageId, props.src)')
+    expect(button).toContain('speechRecognitionSupported()')
+    expect(block).toContain('Распознаёт браузер устройства')
+  })
+
+  it('расшифровка есть и у кружков (видеосообщений)', () => {
+    // Звук у кружка тот же, что у голосового, а смотреть его в шумном месте так
+    // же неудобно — поэтому кнопка и блок появились и там.
+    const round = readFileSync('src/components/media/RoundVideoMessage.vue', 'utf8')
+    expect(round).toContain('<TranscribeButton :message-id="messageId" :src="src" />')
+    expect(round).toContain('<TranscriptionBlock :message-id="messageId" :src="src" />')
+    // Кружок получает id сообщения от вложения, иначе расшифровка не запомнится.
+    expect(attachmentSource).toContain(':message-id="message.id"')
   })
 
   it('готовый текст можно и скопировать, и распознать заново', async () => {
