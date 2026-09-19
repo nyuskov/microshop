@@ -117,6 +117,34 @@ describe('захват медиа с «планом Б»', () => {
     expect(first.video).toMatchObject({ deviceId: { exact: 'cam-1' } })
     expect(second.video).not.toHaveProperty('deviceId')
   })
+
+  it('направление камеры (задняя) держится на каждой ступени форматов', async () => {
+    // Телефон в видеозвонке: человек просит заднюю камеру кнопкой «Сменить
+    // камеру». Если формат пришлось понизить, сторона теряться не должна —
+    // иначе переключение «сработало бы» только на первой попытке.
+    getUserMedia
+      .mockRejectedValueOnce(overconstrained())
+      .mockResolvedValueOnce(fakeStream(['video']))
+
+    await acquireCameraStream('', { facing: 'environment' })
+
+    const first = getUserMedia.mock.calls[0][0] as MediaStreamConstraints
+    const second = getUserMedia.mock.calls[1][0] as MediaStreamConstraints
+    expect(first.video).toMatchObject({ facingMode: { ideal: 'environment' } })
+    expect(second.video).toMatchObject({ facingMode: { ideal: 'environment' } })
+  })
+
+  it('выбранное устройство главнее стороны: просим deviceId, без facingMode', async () => {
+    // В «Устройствах звонка» человек выбрал конкретную камеру — это точнее, чем
+    // «передняя/задняя», и спорить с ним не надо.
+    getUserMedia.mockResolvedValue(fakeStream(['video']))
+
+    await acquireCameraStream('cam-9', { facing: 'environment' })
+
+    const constraints = getUserMedia.mock.calls[0][0] as MediaStreamConstraints
+    expect(constraints.video).toMatchObject({ deviceId: { exact: 'cam-9' } })
+    expect(constraints.video).not.toHaveProperty('facingMode')
+  })
 })
 
 describe('обработка микрофона', () => {

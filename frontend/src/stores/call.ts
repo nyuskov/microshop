@@ -103,6 +103,7 @@ import type {
   CallParticipant,
   CallPeer,
   CallStatus,
+  CameraFacing,
   SignalingMessage
 } from './call/types'
 
@@ -165,6 +166,15 @@ interface CallState {
   selectedCamera: string
   selectedMic: string
   selectedSpeaker: string
+  /**
+   * Нужна передняя камера или задняя.
+   *
+   * Отдельно от `selectedCamera`: выбор устройства в «Устройствах звонка» —
+   * явный (конкретный `deviceId`), а кнопка «Сменить камеру» просит сторону, и
+   * камеру выбирает браузер. Как только человек выбрал устройство вручную,
+   * направление перестаёт значить что-либо и сбрасывается.
+   */
+  cameraFacing: CameraFacing
   seconds: number
   connected: boolean
   notice: string
@@ -215,6 +225,7 @@ const DEFAULT_STATE: CallState = {
   selectedCamera: '',
   selectedMic: '',
   selectedSpeaker: '',
+  cameraFacing: 'user',
   seconds: 0,
   connected: false,
   notice: '',
@@ -2156,11 +2167,18 @@ export const useCallStore = defineStore('call', {
         this._sendScreenStatus(true)
         this._sendMediaState()
         this._tuneMedia()
-      } catch {
-        // Отказ от выбора окна в диалоге браузера — не ошибка.
+      } catch (error) {
+        // Молчать нельзя: владелец нажимал кнопку и не понимал, сработало ли
+        // («работает ли он — не понятно»). Отмена выбора окна — самое частое, но
+        // бывает и отказ браузера (встроенный браузер отвечает
+        // `NotSupportedError`, хотя функция объявлена).
         runtime.screenTrack = null
         runtime.screenSenders = []
-        this.notice = ''
+        const name = error instanceof Error ? error.name : ''
+        this.notice =
+          name === 'NotAllowedError'
+            ? 'Показ экрана не начался: выбор окна отменён'
+            : 'Браузер не дал показать экран — попробуйте обычный Chrome'
       }
     },
 
@@ -2328,12 +2346,17 @@ export const useCallStore = defineStore('call', {
       const base = this.isGroup ? GROUP_VIDEO_CONSTRAINTS : VIDEO_CONSTRAINTS
       const constraints: MediaTrackConstraints = { ...base }
       if (this.selectedCamera) constraints.deviceId = { exact: this.selectedCamera }
+      // Иначе — сторона камеры: задняя нужна, чтобы показать что-то собеседнику.
+      else if (this.cameraFacing === 'environment') {
+        constraints.facingMode = { ideal: 'environment' }
+      }
       return constraints
     },
 
     /** Сменить камеру по ходу звонка (готовим превью без перезапуска звонка). */
     async setCameraDevice(deviceId: string) {
       this.selectedCamera = deviceId
+      // Явный выбор устройства отменяет выбор стороны: дальше идём по deviceId.
       writeCallDevices({ camera: deviceId })
       if (this.status !== 'active' || this.screenSharing || this.kind !== 'video') return
       const senders = [...runtime.links.values()]
@@ -2353,6 +2376,46 @@ export const useCallStore = defineStore('call', {
         track.enabled = this.videoOn
         // Всем участникам одна и та же новая дорожка (mesh: у каждого своё
         // соединение, но источник медиа один — моя камера).
+        await Promise.all(senders.map((item) => item.replaceTrack(track).catch(() => undefined)))
+      } catch {
+        this.notice = 'Не удалось переключить камеру'
+      }
+    },
+
+    /**
+     * Переключить камеру: передняя ↔ задняя.
+     *
+     * Телефон в видеозвонке держат то на себя, то на то, что показывают, а
+     * списка камер там нет — метки вида «camera2 0, facing back» человеку ничего
+     * не говорят. Поэтому переключаем СТОРОНУ, а не устройство: камеру выбирает
+     * браузер (см. `facing` в `acquireCameraStream`).
+     */
+    async switchCameraFacing() {
+      this.cameraFacing = this.cameraFacing === 'user' ? 'environment' : 'user'
+      // Выбор стороны отменяет выбор конкретной камеры: иначе он бы её и оставил.
+      if (this.selectedCamera) {
+        this.selectedCamera = ''
+        writeCallDevices({ camera: '' })
+      }
+      if (this.status !== 'active' || this.screenSharing || this.kind !== 'video') return
+      const senders = [...runtime.links.values()]
+        .map((link) => link.pc.getSenders().find((item) => item.track?.kind === 'video'))
+        .filter((item): item is RTCRtpSender => Boolean(item))
+      if (senders.length === 0) return
+      try {
+        const stream = await acquireCameraStream('', {
+          group: this.isGroup,
+          facing: this.cameraFacing
+        })
+        const track = stream.getVideoTracks()[0]
+        if (!track) return
+        runtime.localMedia?.getVideoTracks().forEach((old) => {
+          old.stop()
+          runtime.localMedia?.removeTrack(old)
+        })
+        if (!runtime.localMedia) runtime.localMedia = new MediaStream()
+        runtime.localMedia.addTrack(track)
+        track.enabled = this.videoOn
         await Promise.all(senders.map((item) => item.replaceTrack(track).catch(() => undefined)))
       } catch {
         this.notice = 'Не удалось переключить камеру'

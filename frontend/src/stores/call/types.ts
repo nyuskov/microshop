@@ -1,7 +1,20 @@
 /** Тип вызова: только голос или голос + видео. */
 export type CallKind = 'audio' | 'video'
+/**
+ * Какая камера нужна: `user` — передняя (селфи), `environment` — задняя.
+ *
+ * Именно направление, а не `deviceId`: на телефоне список камер приходит без
+ * внятных имён, а браузер сам выбирает камеру нужной стороны.
+ */
+export type CameraFacing = 'user' | 'environment'
 /** Почему показ экрана недоступен (или 'ok', если всё в порядке). */
-export type ScreenShareSupport = 'ok' | 'insecure' | 'mobile' | 'unsupported'
+export type ScreenShareSupport =
+  | 'ok'
+  | 'insecure'
+  | 'mobile'
+  /** Встроенный браузер (Electron/VS Code): API есть, но не работает. */
+  | 'embedded'
+  | 'unsupported'
 
 export type CallStatus =
   | 'idle' // нет звонка

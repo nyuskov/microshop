@@ -15,6 +15,12 @@ export function screenShareSupport(): ScreenShareSupport {
     const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
     return isMobile ? 'mobile' : 'unsupported'
   }
+  // Встроенный браузер редактора (Electron/VS Code) объявляет
+  // `getDisplayMedia`, но захват не реализован: вызов отвечает
+  // `NotSupportedError: Not supported`. Проверено живьём 19.09.2026 — владелец
+  // нажал «Показать экран» в звонке и не понял, сработало ли («работает ли он —
+  // не понятно»), потому что интерфейс молчал. Лучше сказать заранее.
+  if (/\bElectron\b|Code\//.test(navigator.userAgent)) return 'embedded'
   return 'ok'
 }
 
@@ -25,6 +31,9 @@ export function screenShareNotice(support: ScreenShareSupport): string {
   }
   if (support === 'mobile') {
     return 'На телефоне показ экрана недоступен — включите его с компьютера'
+  }
+  if (support === 'embedded') {
+    return 'Во встроенном браузере захват экрана не работает — откройте приложение в обычном Chrome'
   }
   if (support === 'unsupported') return 'Браузер не поддерживает демонстрацию экрана'
   return ''

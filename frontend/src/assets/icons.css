@@ -420,6 +420,10 @@
   content: '\E178 ';
 }
 
+.icon-switch-camera::before {
+  content: '\E17C ';
+}
+
 .icon-trash::before {
   content: '\E18D ';
 }

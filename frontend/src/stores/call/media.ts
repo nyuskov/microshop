@@ -3,7 +3,7 @@ import { fetchIceServers } from '@/services/iceServers'
 import type { MicProcessing } from '@/utils/callDevices'
 
 import { WS_PATH } from './constants'
-import type { CallKind } from './types'
+import type { CallKind, CameraFacing } from './types'
 
 export const RELAY_ONLY_KEY = 'pismo_call_relay_only'
 
@@ -228,6 +228,14 @@ export interface MediaConstraintOptions {
   group?: boolean
   /** Режим обработки микрофона. */
   micProcessing?: MicProcessing
+  /**
+   * Какая камера нужна (передняя/задняя) — когда устройство не выбрано вручную.
+   *
+   * Держим именно направление: на телефоне метки камер бесполезны («camera2 0,
+   * facing back» или пустая строка до выдачи разрешения), а `facingMode` браузер
+   * понимает сам.
+   */
+  facing?: CameraFacing
 }
 
 /**
@@ -264,6 +272,10 @@ export async function acquireCameraStream(
   for (const [index, constraints] of ladder.entries()) {
     const video: MediaTrackConstraints = { ...constraints }
     if (cameraId && index === 0) video.deviceId = { exact: cameraId }
+    // Направление ставим на КАЖДУЮ ступень: иначе на запасном формате браузер
+    // вернул бы камеру по умолчанию — то есть переднюю, и переключение
+    // «сработало бы» только на первой попытке.
+    if (!cameraId && options.facing) video.facingMode = { ideal: options.facing }
     try {
       return await navigator.mediaDevices.getUserMedia({ video })
     } catch (error) {

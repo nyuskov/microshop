@@ -162,6 +162,12 @@
                   <q-icon :name="icon('videocam_off')" size="12px" aria-hidden="true" />
                   Видео приостановлено
                 </span>
+                <!-- Свой показ экрана видно и словами: раньше о нём говорила
+                     только подсвеченная кнопка, и было непонятно, идёт ли он. -->
+                <span v-if="callStore.screenSharing" class="call-badge share">
+                  <q-icon :name="icon('screen_share')" size="12px" aria-hidden="true" />
+                  Вы показываете экран
+                </span>
               </div>
               <span v-if="callStore.peerScreenSharing" class="call-sharing">
                 <q-icon :name="icon('screen_share')" size="13px" aria-hidden="true" />
@@ -214,6 +220,10 @@
                     <q-icon :name="icon('videocam_off')" size="12px" aria-hidden="true" />
                     Видео приостановлено
                   </span>
+                  <span v-if="callStore.screenSharing" class="call-badge share">
+                    <q-icon :name="icon('screen_share')" size="12px" aria-hidden="true" />
+                    Вы показываете экран
+                  </span>
                 </div>
                 <span v-if="callStore.peerScreenSharing" class="call-sharing video">
                   <q-icon :name="icon('screen_share')" size="12px" aria-hidden="true" />
@@ -235,6 +245,7 @@
               v-if="callStore.kind === 'video'"
               ref="localVideoEl"
               class="local-video"
+              :class="{ mirrored: mirrorLocal }"
               autoplay
               playsinline
               muted
@@ -260,6 +271,23 @@
                 @click="callStore.toggleCamera()"
               >
                 <q-icon :name="icon('videocam')" size="26px" />
+              </button>
+              <!-- Показ экрана — в самой панели: раньше он жил только в меню
+                   «Ещё», и владелец решил, что показ пропал («его нет уже
+                   давно»). На телефоне кнопки не будет вовсе: там
+                   `getDisplayMedia` нет, и место в панели тратить не на что. -->
+              <button
+                v-if="canShareScreen || callStore.screenSharing"
+                class="ctl-btn"
+                :class="{ 'screen-on': callStore.screenSharing }"
+                :title="callStore.screenSharing ? 'Остановить показ экрана' : 'Показать экран'"
+                :aria-pressed="callStore.screenSharing"
+                @click="callStore.toggleScreenShare()"
+              >
+                <q-icon
+                  :name="icon(callStore.screenSharing ? 'stop_screen_share' : 'screen_share')"
+                  size="26px"
+                />
               </button>
               <button
                 ref="moreBtnEl"
@@ -313,6 +341,29 @@
                   }}</span>
                   <q-icon
                     v-if="callStore.screenSharing"
+                    :name="icon('check')"
+                    size="16px"
+                    class="more-mark"
+                  />
+                </button>
+                <!-- Показа нет — говорим почему (телефон, http, браузер): без
+                     этой строки пункт просто исчезает, и это выглядит поломкой. -->
+                <p v-else-if="shareNotice" class="more-note">{{ shareNotice }}</p>
+                <!-- Камера в видеозвонке: передняя нужна для разговора, задняя —
+                     чтобы показать что-то вокруг (телефон). -->
+                <button
+                  v-if="callStore.kind === 'video' && !callStore.screenSharing && canSwitchCamera"
+                  class="more-row"
+                  :class="{ on: callStore.cameraFacing === 'environment' }"
+                  role="menuitem"
+                  @click="onSwitchCameraRow"
+                >
+                  <q-icon :name="icon('switch_camera')" size="20px" />
+                  <span>{{
+                    callStore.cameraFacing === 'environment' ? 'Передняя камера' : 'Задняя камера'
+                  }}</span>
+                  <q-icon
+                    v-if="callStore.cameraFacing === 'environment'"
                     :name="icon('check')"
                     size="16px"
                     class="more-mark"
@@ -505,7 +556,7 @@
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { peerQualityLine, screenShareSupport, useCallStore } from '@/stores/call'
+import { peerQualityLine, screenShareNotice, screenShareSupport, useCallStore } from '@/stores/call'
 import { mediaUrl } from '@/services/chatService'
 import CallGrid from '@/components/calls/CallGrid.vue'
 import SelectField from '@/components/common/SelectField.vue'
@@ -519,6 +570,18 @@ const remoteVideoEl = ref<HTMLVideoElement | null>(null)
 const localVideoEl = ref<HTMLVideoElement | null>(null)
 /** Доступен ли в этом окружении захват экрана (иначе пункт меню скрыт). */
 const canShareScreen = screenShareSupport() === 'ok'
+/** Почему показа экрана нет — покажем в меню, чтобы это не выглядело поломкой. */
+const shareNotice = canShareScreen ? '' : screenShareNotice(screenShareSupport())
+/** Есть ли из чего выбирать камеру: на телефоне их обычно две (передняя/задняя). */
+const canSwitchCamera = computed(() => callStore.cameras.length > 1)
+/**
+ * Зеркалить ли своё превью.
+ *
+ * Зеркалим ТОЛЬКО переднюю камеру: так человек видит себя как в зеркале. Задняя
+ * камера и показ экрана зеркальными быть не должны — там текст читался бы
+ * справа налево (раньше превью зеркалилось всегда, и показ экрана тоже).
+ */
+const mirrorLocal = computed(() => !callStore.screenSharing && callStore.cameraFacing === 'user')
 
 const noticeVisible = ref(false)
 let noticeTimer: ReturnType<typeof setTimeout> | undefined
@@ -536,7 +599,8 @@ const hasCallBadges = computed(
   () =>
     !callStore.peerMicOn ||
     callStore.connectionQuality !== 'good' ||
-    callStore.videoPausedForNetwork
+    callStore.videoPausedForNetwork ||
+    callStore.screenSharing
 )
 
 /** Открыта ли панель «Диагностика звонка». */
@@ -690,6 +754,18 @@ const toggleMore = () => {
 
 const onSpeakerRow = () => {
   toggleSpeaker()
+  moreOpen.value = false
+}
+
+/**
+ * Пункт «Сменить камеру»: просим сторону, а не устройство.
+ *
+ * Список камер на телефоне бесполезен («camera2 0, facing back»), поэтому
+ * переключаем переднюю/заднюю — камеру выберет браузер (см. `facing` в
+ * `acquireCameraStream`).
+ */
+const onSwitchCameraRow = () => {
+  void callStore.switchCameraFacing()
   moreOpen.value = false
 }
 
@@ -1244,8 +1320,12 @@ onBeforeUnmount(() => {
   background: #111;
   object-fit: cover;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  transform: scaleX(-1);
   z-index: 5;
+}
+
+/* Зеркало — только у передней камеры (см. `mirrorLocal`). */
+.local-video.mirrored {
+  transform: scaleX(-1);
 }
 
 .ctl-btn.speaker-on {
@@ -1343,6 +1423,21 @@ onBeforeUnmount(() => {
 
 .call-badge.bad {
   background: rgba(244, 67, 54, 0.3);
+}
+
+/* Свой показ экрана: не ошибка и не «плохая связь» — спокойный синий, как у
+   кнопки показа в активном состоянии. */
+.call-badge.share {
+  background: rgba(58, 166, 224, 0.3);
+}
+
+/* Пояснение в меню «ещё» (например, почему показа экрана нет). */
+.more-note {
+  margin: 0;
+  padding: 6px 10px;
+  font-size: var(--ms-fs-xs);
+  line-height: 1.3;
+  color: var(--ms-muted, #71808d);
 }
 
 /* ---------- Код сверки звонка ---------- */

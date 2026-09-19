@@ -144,6 +144,8 @@ export const ICON_MAP: Record<string, string> = {
   volume_off: 'volume-x',
   screen_share: 'screen-share',
   stop_screen_share: 'screen-share',
+  // Смена камеры в видеозвонке: передняя ↔ задняя (телефон).
+  switch_camera: 'switch-camera',
   devices: 'laptop',
   computer: 'monitor',
   phone_android: 'smartphone',
