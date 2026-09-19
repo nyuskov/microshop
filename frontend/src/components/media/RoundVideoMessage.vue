@@ -1,93 +1,92 @@
 <template>
-  <!-- Обёртка нужна, чтобы под кругом могли стоять расшифровка и её кнопка:
-       у круглого видеосообщения нет места для элементов внутри. -->
-  <div class="rvm-wrap">
-    <div
-      class="round-video-msg"
-      :class="{ playing: isPlaying, broken }"
-      :role="broken ? undefined : 'button'"
-      :tabindex="broken ? undefined : 0"
-      :title="broken ? 'Видео недоступно' : 'Воспроизвести видеосообщение'"
-      @click="togglePlay"
-      @keydown.enter.prevent="togglePlay"
-      @keydown.space.prevent="togglePlay"
-    >
-      <video
-        ref="videoRef"
-        class="rvm-video"
-        :src="src"
-        playsinline
-        preload="metadata"
-        :muted="muted"
-        @play="onPlay"
-        @pause="onPause"
-        @ended="onEnded"
-        @error="onError"
-      ></video>
+  <MediaMessageShell
+    class="rvm-shell"
+    :message-id="messageId"
+    :src="src"
+    :broken="broken"
+    broken-text="Видео недоступно"
+  >
+    <template #player>
+      <div
+        class="round-video-msg"
+        :class="{ playing: isPlaying, broken }"
+        :role="broken ? undefined : 'button'"
+        :tabindex="broken ? undefined : 0"
+        :title="broken ? 'Видео недоступно' : 'Воспроизвести видеосообщение'"
+        @click="togglePlay"
+        @keydown.enter.prevent="togglePlay"
+        @keydown.space.prevent="togglePlay"
+      >
+        <video
+          ref="videoRef"
+          class="rvm-video"
+          :src="src"
+          playsinline
+          preload="metadata"
+          :muted="muted"
+          @play="onPlay"
+          @pause="onPause"
+          @ended="onEnded"
+          @error="onError"
+        ></video>
 
-      <!-- Запись недоступна -->
-      <div v-if="broken" class="rvm-error">
-        <q-icon :name="icon('warning')" size="18px" />
-        <span>Видео недоступно</span>
-      </div>
+        <!-- Запись недоступна -->
+        <div v-if="broken" class="rvm-error">
+          <q-icon :name="icon('warning')" size="18px" />
+          <span>Видео недоступно</span>
+        </div>
 
-      <!-- Центральная кнопка play (когда не играет) -->
-      <div v-else-if="!isPlaying" class="rvm-center">
-        <span class="rvm-play">
-          <q-icon :name="icon('play_arrow')" size="30px" />
-        </span>
-      </div>
+        <!-- Центральная кнопка play (когда не играет) -->
+        <div v-else-if="!isPlaying" class="rvm-center">
+          <span class="rvm-play">
+            <q-icon :name="icon('play_arrow')" size="30px" />
+          </span>
+        </div>
 
-      <!-- Скорость воспроизведения (круговая: 1× → 1.5× → 2×), общая для всех
+        <!-- Скорость воспроизведения (круговая: 1× → 1.5× → 2×), общая для всех
          голосовых и видеосообщений -->
-      <button
-        v-else
-        class="rvm-chip rvm-speed"
-        :title="`Скорость ${speedLabel(playbackSpeed)} — нажмите, чтобы изменить`"
-        @click.stop="onCycleSpeed"
-      >
-        <span class="rvm-speed-label">{{ speedLabel(playbackSpeed) }}</span>
-      </button>
+        <button
+          v-else
+          class="rvm-chip rvm-speed"
+          :title="`Скорость ${speedLabel(playbackSpeed)} — нажмите, чтобы изменить`"
+          @click.stop="onCycleSpeed"
+        >
+          <span class="rvm-speed-label">{{ speedLabel(playbackSpeed) }}</span>
+        </button>
 
-      <!-- Управление звуком (только во время воспроизведения) -->
-      <button
-        v-if="isPlaying"
-        class="rvm-chip rvm-sound"
-        :title="muted ? 'Включить звук' : 'Выключить звук'"
-        @click.stop="toggleMute"
-      >
-        <q-icon :name="icon(muted ? 'volume_off' : 'volume_up')" size="18px" />
-      </button>
+        <!-- Управление звуком (только во время воспроизведения) -->
+        <button
+          v-if="isPlaying"
+          class="rvm-chip rvm-sound"
+          :title="muted ? 'Включить звук' : 'Выключить звук'"
+          @click.stop="toggleMute"
+        >
+          <q-icon :name="icon(muted ? 'volume_off' : 'volume_up')" size="18px" />
+        </button>
 
-      <!-- Развернуть на весь экран -->
-      <button
-        v-if="!broken"
-        class="rvm-chip rvm-expand"
-        :title="'Смотреть «' + name + '» на весь экран'"
-        @click.stop="openPreview"
-      >
-        <q-icon :name="icon('fullscreen')" size="18px" />
-      </button>
+        <!-- Развернуть на весь экран -->
+        <button
+          v-if="!broken"
+          class="rvm-chip rvm-expand"
+          :title="'Смотреть «' + name + '» на весь экран'"
+          @click.stop="openPreview"
+        >
+          <q-icon :name="icon('fullscreen')" size="18px" />
+        </button>
 
-      <!-- Плавающее окно: видео продолжает играть поверх других приложений.
+        <!-- Плавающее окно: видео продолжает играть поверх других приложений.
          У недоступной записи кнопка бессмысленна — играть нечего. -->
-      <button
-        v-if="canPictureInPicture && !broken"
-        class="rvm-chip rvm-pip"
-        title="Смотреть в плавающем окне"
-        @click.stop="openPictureInPicture"
-      >
-        <q-icon :name="icon('picture_in_picture')" size="18px" />
-      </button>
-    </div>
-
-    <!-- Расшифровка видеосообщения: звук у кружка тот же, что у голосового, и
-         распознаётся так же (см. TranscriptionBlock). -->
-    <div class="rvm-transcribe">
-      <TranscribeButton :message-id="messageId" :src="src" />
-    </div>
-    <TranscriptionBlock :message-id="messageId" :src="src" />
-  </div>
+        <button
+          v-if="canPictureInPicture && !broken"
+          class="rvm-chip rvm-pip"
+          title="Смотреть в плавающем окне"
+          @click.stop="openPictureInPicture"
+        >
+          <q-icon :name="icon('picture_in_picture')" size="18px" />
+        </button>
+      </div>
+    </template>
+  </MediaMessageShell>
 
   <!-- Просмотр крупно (полноценный плеер с контролами) -->
   <Teleport to="body">
@@ -112,8 +111,7 @@
 import { icon } from '@/utils/icons'
 import { computed, onMounted, ref, watch } from 'vue'
 import { cyclePlaybackSpeed, playbackSpeed, speedLabel } from '@/utils/playbackSpeed'
-import TranscribeButton from '@/components/media/TranscribeButton.vue'
-import TranscriptionBlock from '@/components/media/TranscriptionBlock.vue'
+import MediaMessageShell from '@/components/media/MediaMessageShell.vue'
 
 defineProps<{
   /** Id сообщения: нужен расшифровке, чтобы помнить текст при перерисовке ленты. */
@@ -211,24 +209,14 @@ const closePreview = () => {
 </script>
 
 <style scoped>
+/* Оболочка сообщения — шириной с сам круг: иначе длинный текст расшифровки
+   растягивал строку на всю ленту и уезжал далеко влево (владелец: «текст слишком
+   длинный и далеко уходит влево»). Теперь и текст, и кнопки идут столбцом точно
+   под кругом. */
+.rvm-shell {
+  max-width: min(300px, 66vw);
+}
 /* Круг и расшифровка под ним: колонка по левому краю, иначе круг «поедет». */
-.rvm-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-}
-
-/* Кнопка расшифровки под кругом: у кружка нет строки с названием, поэтому кнопка
-   стоит отдельно и не мешает нажатию на само видео. По правому краю — как у
-   голосового, где она стоит в конце строки с названием и скоростью. */
-.rvm-transcribe {
-  align-self: stretch;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  font-size: var(--ms-fs-xs);
-}
 
 /* Текст расшифровки у кружка не переопределяем: он должен выглядеть и вести себя
    ровно как у голосового (владелец: «как в аудио сделай») — та же полоса слева,

@@ -13,51 +13,46 @@
       @error="onError"
     ></audio>
 
-    <div class="am-row">
-      <button
-        class="am-play"
-        :class="{ playing: isPlaying }"
-        :title="isPlaying ? 'Пауза' : 'Слушать'"
-        @click="toggle"
-      >
-        <q-icon :name="icon(isPlaying ? 'pause' : 'play_arrow')" size="24px" />
-      </button>
-      <div class="am-track" title="Перемотка" @click="seek">
-        <div class="am-fill" :style="progressStyle()"></div>
-      </div>
-      <span class="am-time">{{ timeLabel }}</span>
-    </div>
+    <MediaMessageShell
+      :message-id="messageId"
+      :src="src"
+      :name="name"
+      :size-label="!durationKnown && size ? formatBytes(size) : ''"
+      :broken="broken"
+      broken-text="Не удалось воспроизвести аудио"
+    >
+      <template #player>
+        <div class="am-row">
+          <button
+            class="am-play"
+            :class="{ playing: isPlaying }"
+            :title="isPlaying ? 'Пауза' : 'Слушать'"
+            @click="toggle"
+          >
+            <q-icon :name="icon(isPlaying ? 'pause' : 'play_arrow')" size="24px" />
+          </button>
+          <div class="am-track" title="Перемотка" @click="seek">
+            <div class="am-fill" :style="progressStyle()"></div>
+          </div>
+          <span class="am-time">{{ timeLabel }}</span>
+        </div>
+      </template>
 
-    <div v-if="broken" class="am-sub">
-      <span class="am-error">Не удалось воспроизвести аудио</span>
-      <!-- Расшифровка нужна как раз здесь: человек не может послушать — пусть
-           хотя бы прочитает (см. feature-proposals G2). Если и прочитать запись
-           не удастся, он увидит честную причину. -->
-      <span class="am-transcribe-end">
-        <TranscribeButton :message-id="messageId" :src="src" />
-      </span>
-    </div>
-    <div v-else class="am-sub">
-      <span class="am-name">
+      <template #name-icon>
         <q-icon :name="icon('volume_up')" size="15px" />
-        {{ name }}
-      </span>
-      <span v-if="!durationKnown && size" class="am-size">{{ formatBytes(size) }}</span>
-      <!-- Скорость: 1× → 1.5× → 2×. Общая для всех голосовых (см. utils/playbackSpeed). -->
-      <button
-        class="am-speed"
-        :title="`Скорость ${speedLabel(playbackSpeed)} — нажмите, чтобы изменить`"
-        @click="onCycleSpeed"
-      >
-        {{ speedLabel(playbackSpeed) }}
-      </button>
-      <!-- Расшифровка голосового: кнопка есть только там, где браузер умеет
-           распознавать записи (см. TranscribeButton). -->
-      <TranscribeButton :message-id="messageId" :src="src" />
-    </div>
+      </template>
 
-    <!-- Расшифровка: текст и действия — в TranscriptionBlock.vue. -->
-    <TranscriptionBlock :message-id="messageId" :src="src" />
+      <!-- Скорость: 1× → 1.5× → 2×. Общая для всех голосовых (см. utils/playbackSpeed). -->
+      <template #extra>
+        <button
+          class="am-speed"
+          :title="`Скорость ${speedLabel(playbackSpeed)} — нажмите, чтобы изменить`"
+          @click="onCycleSpeed"
+        >
+          {{ speedLabel(playbackSpeed) }}
+        </button>
+      </template>
+    </MediaMessageShell>
   </div>
 </template>
 
@@ -66,8 +61,7 @@ import { icon } from '@/utils/icons'
 import { computed, onMounted, ref, watch } from 'vue'
 import { formatClock } from '@/services/recorder'
 import { cyclePlaybackSpeed, playbackSpeed, speedLabel } from '@/utils/playbackSpeed'
-import TranscribeButton from '@/components/media/TranscribeButton.vue'
-import TranscriptionBlock from '@/components/media/TranscriptionBlock.vue'
+import MediaMessageShell from '@/components/media/MediaMessageShell.vue'
 
 const props = defineProps<{
   /** Id сообщения: по нему помним расшифровку при перерисовке ленты. */
@@ -240,36 +234,6 @@ const onCycleSpeed = () => {
   text-align: right;
 }
 
-.am-sub {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-  font-size: var(--ms-fs-xs);
-  min-width: 0;
-}
-
-.am-name {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--ms-muted, #71808d);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-
-.am-size {
-  color: var(--ms-bubble-time, #8a98a3);
-  flex-shrink: 0;
-}
-
-.am-error {
-  color: var(--ms-danger, #d64545);
-  min-width: 0;
-}
-
 /* В «сломанном» состоянии кнопки скорости нет, поэтому к правому краю кнопку
    расшифровки двигаем отдельным правилом (иначе два `margin-left: auto` в одной
    строке растащили бы кнопки к центру). */
@@ -280,11 +244,6 @@ const onCycleSpeed = () => {
 /* В «сломанном» состоянии кнопки скорости нет, поэтому к правому краю кнопку
    расшифровки двигаем отдельным правилом (иначе два `margin-left: auto` в одной
    строке растащили бы кнопки к центру). */
-.am-transcribe-end {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
 /* Кнопка скорости воспроизведения (1×/1.5×/2×) */
 .am-speed {
   margin-left: auto;

@@ -480,7 +480,7 @@ describe('кнопка «В текст» в голосовом', () => {
     const wrapper = mountVoice()
     await wrapper.find('audio').trigger('error')
 
-    expect(wrapper.find('.am-error').exists()).toBe(true)
+    expect(wrapper.find('.mms-error').exists()).toBe(true)
     expect(wrapper.find('.am-transcribe').exists()).toBe(true)
     wrapper.unmount()
   })
@@ -501,19 +501,26 @@ describe('кнопка «В текст» в голосовом', () => {
     expect(block).toContain('Распознаёт браузер устройства')
   })
 
-  it('расшифровка есть и у кружков (видеосообщений)', () => {
-    // Звук у кружка тот же, что у голосового, а смотреть его в шумном месте так
-    // же неудобно — поэтому кнопка и блок появились и там.
+  it('у голосового и кружка ОДНА оболочка сообщения', () => {
+    // Владелец: «сделай, чтобы общим было сообщение целиком, как аудио» —
+    // поэтому строка с кнопкой и блок расшифровки живут в MediaMessageShell, а
+    // отличается только «плеер» (слот).
+    const audio = readFileSync('src/components/media/AudioMessage.vue', 'utf8')
     const round = readFileSync('src/components/media/RoundVideoMessage.vue', 'utf8')
-    expect(round).toContain('<TranscribeButton :message-id="messageId" :src="src" />')
-    expect(round).toContain('<TranscriptionBlock :message-id="messageId" :src="src" />')
-    // Кнопка прижата к правому краю — владелец: «у видео-кружка она должна быть
-    // справа, как у голосового».
-    expect(round).toContain('justify-content: flex-end')
-    // Сам блок расшифровки НЕ переопределяем: он должен выглядеть как у
-    // голосового (владелец: «как в аудио сделай»).
-    expect(round).not.toContain('.rvm-transcript')
-    expect(round).not.toContain('text-align: right')
+    const shell = readFileSync('src/components/media/MediaMessageShell.vue', 'utf8')
+    expect(audio).toContain('<MediaMessageShell')
+    expect(round).toContain('<MediaMessageShell')
+    expect(shell).toContain('<TranscribeButton')
+    expect(shell).toContain('<TranscriptionBlock')
+    // Кнопка — по правому краю, и у кружка тоже (владелец: «скорее справа и
+    // должен быть»), и живая подпись «Слушаем запись… ru-RU» — тоже справа, причём
+    // у голосового ровно так же.
+    expect(shell).toContain('margin-left: auto')
+    expect(block).toContain('text-align: right')
+    // У кружка оболочка шириной с сам круг, иначе текст расшифровки растягивал
+    // строку на всю ленту («текст слишком длинный и далеко уходит влево»).
+    expect(round).toContain('.rvm-shell')
+    expect(round).toContain('max-width: min(300px, 66vw)')
     // Кружок получает id сообщения от вложения, иначе расшифровка не запомнится.
     expect(attachmentSource).toContain(':message-id="message.id"')
   })

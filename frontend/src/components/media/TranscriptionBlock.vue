@@ -155,6 +155,10 @@ defineExpose({ hide: () => clearTranscript(props.messageId) })
 
 .am-transcript-note--live {
   font-style: italic;
+  /* Идущая расшифровка — по правому краю, как кнопка над ней (владелец: «и у
+     аудио так же»): тогда подпись не «уезжает» под текст, а стоит там же, где
+     орган управления. */
+  text-align: right;
 }
 
 .am-lang-used {
