@@ -1,8 +1,7 @@
 import Messenger from '../views/Messenger.vue' // Импортируем новый компонент
 // import Home from '../components/Home.vue' // Закомментируем старый
 // import Registration from '../components/Registration.vue' // Закомментировал импорт
-import Login from '../components/Login.vue'
-import InviteRegister from '../components/InviteRegister.vue'
+import AuthPage from '../views/AuthPage.vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth' // Import the auth store
 
@@ -45,7 +44,9 @@ const routes = [
   {
     path: '/auth/login/',
     name: 'Login',
-    component: Login
+    component: AuthPage,
+    // Та же обёртка, что у приглашения: центровка страницы, а поля задаёт сам экран.
+    props: { kind: 'login' }
   },
   // Персональная ссылка-приглашение на регистрацию: /invite/<токен>. Единственный
   // способ создать аккаунт, пока публичная регистрация выключена (см.
@@ -54,7 +55,8 @@ const routes = [
   {
     path: '/invite/:token',
     name: 'InviteRegister',
-    component: InviteRegister
+    component: AuthPage,
+    props: { kind: 'invite' }
   },
   // Неизвестный адрес — экран «Страница не найдена» в стиле приложения.
   // Раньше тут был редирект на главную: nginx отдаёт index.html для любого пути
