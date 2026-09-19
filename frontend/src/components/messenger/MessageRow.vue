@@ -10,7 +10,7 @@
     ref="rowRoot"
     class="msg"
     :class="[
-      isOwn ? 'out' : 'in',
+      shownOwn ? 'out' : 'in',
       `series-${props.series ?? 'single'}`,
       { 'msg-highlight': highlighted, selection: selectionMode, selected, 'msg-media': !!file }
     ]"
@@ -217,7 +217,7 @@
             <q-icon :name="icon('notifications')" size="12px" aria-hidden="true" />
           </span>
           <span class="msg-time">{{ formatMsgTime(message.timestamp) }}</span>
-          <span v-if="isOwn" class="msg-ticks" :class="{ read: message.is_read }">✓✓</span>
+          <span v-if="shownOwn" class="msg-ticks" :class="{ read: message.is_read }">✓✓</span>
         </span>
       </div>
     </div>
@@ -388,7 +388,19 @@ const stickerLayout = computed<EmojiLayout>(() => {
 
 const props = defineProps<{
   message: Message
+  /**
+   * Это моё сообщение (полный набор действий в меню).
+   *
+   * Для прав и меню, а НЕ для стороны пузыря: в канале свои посты рисуются как
+   * содержимое канала (слева) — см. `ownAsIncoming`.
+   */
   isOwn: boolean
+  /**
+   * Пост канала: даже своё показываем как «входящее» — слева и без галочек
+   * прочтения. В канале галочек быть не может (читать его может много людей), а
+   * под постом уже стоит счётчик просмотров/комментариев (`post-meta`).
+   */
+  ownAsIncoming?: boolean
   /** Id текущего зрителя — чтобы плашка была «Переслано от вас». */
   viewerId: number | null
   /** Подсветка при переходе к сообщению (из закреплённых/поиска). */
@@ -450,6 +462,12 @@ const storyReply = computed(() => props.message.reply_to_story ?? null)
 const reminderLabel = computed<string>(() =>
   props.reminderAt ? formatScheduledAt(props.reminderAt) : ''
 )
+
+/**
+ * «Моё» для РИСУНКА (сторона пузыря и галочки): пост канала — всегда содержимое
+ * канала, даже если его написал я. Права и меню остаются по `isOwn`.
+ */
+const shownOwn = computed<boolean>(() => props.isOwn && !props.ownAsIncoming)
 
 /** Миниатюра истории: путь к нашему файлу, поэтому через `mediaUrl`. */
 const storyReplyThumb = computed<string>(() => {

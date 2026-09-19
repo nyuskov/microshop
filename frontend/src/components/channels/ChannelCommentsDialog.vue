@@ -1,5 +1,5 @@
 <template>
-  <q-card class="ch-comments-card">
+  <q-card class="ch-comments-card" :class="{ 'ch-comments-card--full': fullscreen }">
     <q-card-section class="row no-wrap items-center ch-comments-head">
       <div class="text-subtitle1 text-weight-medium ellipsis">
         Комментарии<template v-if="comments.length"> · {{ comments.length }}</template>
@@ -10,7 +10,10 @@
     <q-separator />
 
     <q-card-section class="ch-comments-body">
-      <p v-if="postAuthor" class="ch-comments-post">Пост: {{ postAuthor }}</p>
+      <!-- О чём обсуждение: сначала автор поста, затем его текст. Раньше обе
+           строки шли с префиксом «Пост:», и короткий пост читался как подпись
+           автора («Пост: Имя2») — в Telegram на этом месте просто цитата. -->
+      <p v-if="postAuthor" class="ch-comments-author">{{ postAuthor }}</p>
       <p class="ch-comments-post">{{ postPreview }}</p>
 
       <p v-if="loading" class="ch-comments-empty">Загружаем…</p>
@@ -61,17 +64,19 @@
         :disabled="!canComment"
         @keydown.enter.exact.prevent="send"
       ></textarea>
-      <q-btn
-        round
-        dense
-        unelevated
-        color="primary"
-        :icon="icon('send')"
-        :loading="sending"
-        :disable="!canComment || !draft.trim()"
+      <button
+        class="ch-comments-send"
+        type="button"
+        :disabled="!canComment || !draft.trim() || sending"
         aria-label="Отправить комментарий"
         @click="send"
-      />
+      >
+        <!-- Крутилку красим наследованием от кнопки (`--ms-on-accent`), а не
+             пропом `color`: он берёт только палитру Quasar, и сторож
+             `quasarCss.spec.ts` справедливо ругается на `on-accent`. -->
+        <q-spinner v-if="sending" size="18px" />
+        <q-icon v-else :name="icon('send')" size="20px" />
+      </button>
     </q-card-section>
   </q-card>
 </template>
@@ -95,6 +100,11 @@ const props = defineProps<{
   postPreview?: string
   /** Подписан ли человек на канал (иначе комментарии только читает). */
   canComment: boolean
+  /**
+   * Открыт отдельным экраном (телефон/планшет), а не карточкой поверх ленты:
+   * тогда карточка занимает весь экран, без скруглений и с учётом safe-area.
+   */
+  fullscreen?: boolean
   open: boolean
 }>()
 
@@ -166,6 +176,25 @@ watch(
   font-family: var(--ms-font), sans-serif;
 }
 
+/**
+ * Отдельный экран (телефон/планшет): карточка на весь экран.
+ *
+ * Класс-модификатор, а не расчёт на `.q-dialog__inner--maximized > div`: у
+ * Quasar это «класс + элемент» (0,1,1), а правило компонента со scope-атрибутом
+ * сильнее (0,2,0) — иначе карточка осталась бы по центру с полями.
+ */
+.ch-comments-card--full {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  border-radius: 0;
+}
+
+/* Низ экрана на телефоне занят жестовой полосой — кнопку отправки поднимаем. */
+.ch-comments-card--full .ch-comments-compose {
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+}
+
 .ch-comments-head {
   padding: 12px 14px;
 }
@@ -177,10 +206,23 @@ watch(
   padding: 12px 14px;
 }
 
+.ch-comments-author {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ms-muted, #71808d);
+}
+
 .ch-comments-post {
   margin: 0 0 10px;
   font-size: 12px;
   color: var(--ms-muted, #71808d);
+  /* Текст поста — цитата: по левой полосе видно, где кончается пост и
+     начинаются комментарии. */
+  padding-left: 8px;
+  border-left: 2px solid var(--ms-border, #dfe5ea);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .ch-comments-empty {
@@ -241,9 +283,39 @@ watch(
 
 .ch-comments-compose {
   display: flex;
-  align-items: flex-end;
+  /* Кнопка по центру строки ввода, а не по её низу: у двухстрочного поля
+     нижнее выравнивание читалось как «съехавшая» кнопка. */
+  align-items: center;
   gap: 8px;
   padding: 10px 14px;
+}
+
+/* Кнопка отправки: обычная кнопка со своими стилями, а НЕ `q-btn` с настройками
+   размера. ГРАБЛЯ: проп `size` у `q-btn` задаёт высоту в `em` — вместе с нашей
+   шириной 38px получался овал 38×48, а иконка вырастала до 34px и упиралась в
+   край круга. Здесь и круг, и иконка заданы явно. */
+.ch-comments-send {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--ms-accent, #2ea25e);
+  color: var(--ms-on-accent, #ffffff);
+  cursor: pointer;
+}
+
+.ch-comments-send:hover:not(:disabled) {
+  background: var(--ms-accent-strong, #2b8b53);
+}
+
+.ch-comments-send:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .ch-input {

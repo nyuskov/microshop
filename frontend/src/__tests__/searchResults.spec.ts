@@ -58,6 +58,7 @@ const mountResults = (props: Record<string, unknown> = {}) =>
       mode: 'people' as const,
       users: [] as SearchUserResult[],
       messages: [] as Message[],
+      channels: [],
       loading: false,
       chats: [chat()],
       currentUserId: 1,
@@ -163,7 +164,7 @@ describe('SearchResults: переключатель режима', () => {
     const wrapper = mountResults({ mode: 'people' })
     const tabs = wrapper.findAll('.search-mode-tab')
 
-    expect(tabs.map((tab) => tab.text())).toEqual(['Люди', 'Сообщения'])
+    expect(tabs.map((tab) => tab.text())).toEqual(['Люди', 'Сообщения', 'Каналы'])
     expect(tabs[0].classes()).toContain('active')
 
     await tabs[1].trigger('click')

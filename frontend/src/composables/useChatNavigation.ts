@@ -9,6 +9,8 @@ export interface NavigationLayers {
   storyId: Ref<number | null>
   /** Открыт лайтбокс (номер кадра). */
   lightboxIndex: Ref<number | null>
+  /** Открыт экран комментариев к посту канала (отдельный экран). */
+  commentsOpen: () => boolean
   /** Открыт профиль (настройки). */
   profileOpen: Ref<boolean>
   /** Открыт экран информации о чате / группе. */
@@ -27,6 +29,8 @@ export interface NavigationHooks {
   profileInSection: () => boolean
   /** Профиль: «назад» выходит из раздела профиля к списку разделов. */
   backToProfileSections: () => void
+  /** Закрыть экран комментариев к посту канала. */
+  closeComments: () => void
   /** Закрыть карточку приглашения (у неё своя логика очистки адреса). */
   closeInvite: () => void
   /** Выйти из режима выбора сообщений. */
@@ -169,6 +173,7 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
     const step = decideBackStep({
       storyOpen: layers.storyId.value !== null,
       lightboxOpen: layers.lightboxIndex.value !== null,
+      commentsOpen: layers.commentsOpen(),
       profileOpen: layers.profileOpen.value,
       profileInSection: hooks.profileInSection(),
       chatInfoOpen: layers.chatInfoOpen.value,
@@ -190,6 +195,9 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
         return
       case 'lightbox':
         layers.lightboxIndex.value = null
+        return
+      case 'comments':
+        hooks.closeComments()
         return
       case 'profile-section':
         hooks.backToProfileSections()

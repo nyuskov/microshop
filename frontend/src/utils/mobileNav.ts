@@ -15,6 +15,8 @@ export type MobileBackStep =
   | { kind: 'story' }
   /** Закрыть просмотр изображения. */
   | { kind: 'lightbox' }
+  /** Закрыть комментарии к посту канала (отдельный экран, как в Telegram). */
+  | { kind: 'comments' }
   /** Вернуть список разделов внутри профиля. */
   | { kind: 'profile-section' }
   /** Закрыть модалки поверх всего. */
@@ -39,6 +41,8 @@ export type MobileBackStep =
 export interface BackSnapshot {
   storyOpen: boolean
   lightboxOpen: boolean
+  /** Открыт экран комментариев к посту канала. */
+  commentsOpen: boolean
   profileOpen: boolean
   /** Открыт ли внутри профиля конкретный раздел (а не список разделов). */
   profileInSection: boolean
@@ -75,6 +79,9 @@ export function decideBackStep(snapshot: BackSnapshot): MobileBackStep {
 
   if (snapshot.storyOpen) return { kind: 'story' }
   if (snapshot.lightboxOpen) return { kind: 'lightbox' }
+  // Комментарии открываются из поста и занимают экран целиком — «назад»
+  // возвращает в ленту канала, а не закрывает приложение/чат.
+  if (snapshot.commentsOpen) return { kind: 'comments' }
   // Приглашение — верхний слой: человек пришёл по ссылке и ещё ничего не
   // открывал, «назад» должно закрыть карточку, а не вывести из приложения.
   if (snapshot.inviteOpen) return { kind: 'invite' }

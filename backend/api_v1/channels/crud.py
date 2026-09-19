@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.chats.crud import get_member_role
@@ -296,11 +296,16 @@ async def list_my_channels(session: AsyncSession, user_id: int) -> list[dict[str
 async def search_public_channels(
     session: AsyncSession, *, query: str, user_id: int, limit: int = 30
 ) -> list[dict[str, Any]]:
-    """Поиск публичных каналов по адресу и названию."""
+    """Поиск публичных каналов по адресу и названию (для каталога).
+
+    Порядок: канал с ТОЧНО таким адресом — первым («ищу @pismo»), дальше новые
+    сверху. Служебные символы LIKE гасим: без этого запрос «%» находил бы все
+    публичные каналы, а «_» — любой один символ.
+    """
     text = query.strip().lstrip("@").lower()
     if not text:
         return []
-    pattern = f"%{text}%"
+    pattern = f"%{_escape_like(text)}%"
     stmt = (
         select(Chat)
         .where(
@@ -308,15 +313,27 @@ async def search_public_channels(
             Chat.is_public.is_(True),
             Chat.channel_username.is_not(None),
             or_(
-                func.lower(Chat.channel_username).like(pattern),
-                func.lower(Chat.name).like(pattern),
+                func.lower(Chat.channel_username).like(pattern, escape="\\"),
+                func.lower(Chat.name).like(pattern, escape="\\"),
             ),
         )
-        .order_by(Chat.id.desc())
+        .order_by(
+            case((func.lower(Chat.channel_username) == text, 0), else_=1),
+            Chat.id.desc(),
+        )
         .limit(limit)
     )
     chats = list((await session.execute(stmt)).scalars().all())
     return [await channel_card(session, chat, user_id) for chat in chats]
+
+
+def _escape_like(text: str) -> str:
+    """Гасит служебные символы LIKE в запросе человека.
+
+    Без этого поиск по «%» или «_» превращался бы в шаблон: «%» показывает все
+    публичные каналы, «_» — всё, где в адресе есть хоть один символ.
+    """
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 async def find_public_channel_by_username(

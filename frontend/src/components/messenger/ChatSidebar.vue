@@ -58,7 +58,7 @@
             v-model="searchQuery"
             class="panel-search-input"
             type="text"
-            placeholder="Поиск людей и сообщений"
+            placeholder="Поиск: люди, сообщения, каналы"
             aria-label="Глобальный поиск"
             @keydown.esc="closeSearch"
           />
@@ -88,12 +88,14 @@
             :mode="searchMode"
             :users="userResults"
             :messages="messageResults"
+            :channels="channelResults"
             :loading="searching"
             :chats="chats"
             :current-user-id="currentUserId"
             @set-mode="setSearchMode"
             @pick-user="openChatWithUser"
             @pick-message="openMessageResult"
+            @pick-channel="openChannelResult"
           />
 
           <!-- Список чатов: фильтры, скелетоны, строки (в ChatList.vue) -->
@@ -197,7 +199,7 @@ import ChatList from '@/components/messenger/ChatList.vue'
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import { openPrivateChat, type SearchUserResult } from '@/services/chatService'
-import type { Chat, ChatUser, Message } from '@/types'
+import type { ChannelCard, Chat, ChatUser, Message } from '@/types'
 import { useChatSelection } from '@/composables/useChatSelection'
 import {
   CHAT_FILTERS,
@@ -284,6 +286,8 @@ const emit = defineEmits<{
   (e: 'create-group'): void
   /** Открыть диалог «Новый канал». */
   (e: 'create-channel'): void
+  /** Выбран канал в поиске: открыть карточку подписки по адресу. */
+  (e: 'open-channel', username: string): void
   /** Открыть список заблокированных пользователей. */
   (e: 'open-blocked'): void
   /** История звонков (пункт меню «⋯» в шапке панели). */
@@ -440,6 +444,7 @@ const {
   mode: searchMode,
   users: userResults,
   messages: messageResults,
+  channels: channelResults,
   loading: searching,
   error: searchError,
   hasQuery: searchHasQuery,
@@ -672,6 +677,11 @@ const toggleSearch = () => {
 const closeSearch = () => {
   searchOpen.value = false
   resetSearch()
+}
+
+/** Выбран канал из результатов: карточку подписки показывает представление. */
+const openChannelResult = (channel: ChannelCard) => {
+  if (channel.username) emit('open-channel', channel.username)
 }
 
 const selectChat = (chatId: number) => {

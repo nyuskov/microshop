@@ -59,6 +59,7 @@
               :series="seriesFor(item.index)"
               :members="members"
               :reminder-at="reminderAtOf(item.row.message)"
+              :own-as-incoming="Boolean(channelPosts)"
               @quote-click="emit('quote-click', item.row.message)"
               @select-start="emit('select-start', item.row.message)"
               @toggle-select="emit('toggle-select', item.row.message)"

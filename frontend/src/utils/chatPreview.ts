@@ -26,6 +26,12 @@ import {
  * только от данных чата, поэтому чистая.
  */
 
+/**
+ * Канал: посты — содержимое канала, а не личные сообщения. Влияет на строку
+ * списка: у канала нет ни галочек прочтения, ни префикса «Вы: ».
+ */
+const isChannel = (chat: Chat): boolean => Boolean(chat.is_channel)
+
 /** Собеседник личного чата (для аватара и «в сети»). */
 export const chatPeerOf = (chat: Chat, currentUserId: number | null): ChatUser | undefined =>
   chatPeer(chat, currentUserId)
@@ -61,8 +67,15 @@ export const chatPeerOnline = (
 export const isChatTyping = (chat: Chat, typingChatIds?: number[]): boolean =>
   chat.users.length === 2 && (typingChatIds?.includes(chat.id) ?? false)
 
-/** Последнее сообщение чата отправлено мной. */
+/**
+ * Последнее сообщение чата отправлено мной.
+ *
+ * В КАНАЛЕ всегда false: посты — содержимое канала, а не моя личная переписка.
+ * Галочки прочтения в строке канала были бы враньём (пост читают много людей), и
+ * строка получала бы вид «моё сообщение» — как в ленте (см. MessageRow).
+ */
 export const lastMessageIsOut = (chat: Chat, currentUserId: number | null): boolean => {
+  if (isChannel(chat)) return false
   const last = chat.last_message
   return !!last && currentUserId !== null && last.user_id === currentUserId
 }
@@ -114,7 +127,8 @@ export const previewText = (chat: Chat, currentUserId: number | null): string =>
   if (isLockedFile(last)) return lockedFileLabel(last)
   if (last.encrypted && isEncryptedPayload(last.text)) return '🔒 Сообщение'
   const mine = currentUserId !== null && last.user_id === currentUserId
-  let prefix = mine ? 'Вы: ' : ''
+  // В канале «Вы: » не пишем: пост в канале — не личное сообщение от меня.
+  let prefix = mine && !isChannel(chat) ? 'Вы: ' : ''
   if (!mine && isGroupChat(chat)) {
     const author = lastMessageAuthor(chat, last)
     if (author) prefix = `${displayName(author)}: `

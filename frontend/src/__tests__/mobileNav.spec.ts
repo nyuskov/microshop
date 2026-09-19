@@ -15,6 +15,7 @@ import { decideBackStep, type BackSnapshot } from '@/utils/mobileNav'
 const base: BackSnapshot = {
   storyOpen: false,
   lightboxOpen: false,
+  commentsOpen: false,
   profileOpen: false,
   profileInSection: false,
   chatInfoOpen: false,
@@ -36,6 +37,9 @@ describe('decideBackStep', () => {
   it('закрывает верхние слои по одному, от верхнего к нижнему', () => {
     expect(step({ storyOpen: true, lightboxOpen: true })).toEqual({ kind: 'story' })
     expect(step({ lightboxOpen: true, profileOpen: true })).toEqual({ kind: 'lightbox' })
+    // Комментарии к посту канала — отдельный экран: закрываются раньше всего
+    // остального, что открыто поверх ленты.
+    expect(step({ commentsOpen: true, profileOpen: true })).toEqual({ kind: 'comments' })
     expect(step({ profileOpen: true, profileInSection: true })).toEqual({ kind: 'profile-section' })
     expect(step({ profileOpen: true, chatInfoOpen: true })).toEqual({ kind: 'overlays' })
     expect(step({ groupInfoOpen: true })).toEqual({ kind: 'overlays' })

@@ -65,6 +65,7 @@
         @chat-opened="onChatOpened"
         @create-group="openCreateGroup"
         @create-channel="openCreateChannel"
+        @open-channel="openChannelByUsername"
         @open-blocked="moderationOverlaysRef?.openBlocked()"
         @open-calls="callsOpen = true"
       />
@@ -1555,6 +1556,18 @@ const openCreateChannel = () => {
   channelOverlaysRef.value?.openCreate()
 }
 
+/**
+ * Открыть карточку канала по его адресу — результат поиска на вкладке «Каналы».
+ *
+ * Тот же экран, что по ссылке `/c/<адрес>`: там видно описание и кнопка
+ * «Подписаться»/«Открыть канал».
+ */
+const openChannelByUsername = (username: string) => {
+  if (!username) return
+  pushMobileNav()
+  channelOverlaysRef.value?.openJoin(username)
+}
+
 /** Открыть изображение из «Информации о чате» в лайтбоксе. */
 const openChatInfoImage = async (messageId: number) => {
   // Галерея показывает вложения всей истории, а в ленте загружены только
@@ -2098,8 +2111,14 @@ const onPostViewed = async (message: Message) => {
   }
 }
 
-/** Открыть комментарии к посту канала. */
+/**
+ * Открыть комментарии к посту канала.
+ *
+ * Как в Telegram: это отдельный экран, поэтому на телефоне кладём шаг в историю
+ * приложения — системная «назад» возвращает в ленту канала, а не из чата.
+ */
 const openChannelComments = (message: Message) => {
+  pushMobileNav()
   channelOverlaysRef.value?.openComments(message)
 }
 
@@ -3259,6 +3278,7 @@ const { syncChatUrl, goBackToList, pushMobileNav, revealDrawer, onAppPopState } 
     layers: {
       storyId: openStoryId,
       lightboxIndex,
+      commentsOpen: () => channelOverlaysRef.value?.isCommentsOpen() ?? false,
       profileOpen: showProfileModal,
       chatInfoOpen: showChatInfoModal,
       groupInfoOpen: showGroupInfoModal,
@@ -3269,6 +3289,7 @@ const { syncChatUrl, goBackToList, pushMobileNav, revealDrawer, onAppPopState } 
     hooks: {
       profileInSection: () => profileRef.value?.isInSection() ?? false,
       backToProfileSections: () => profileRef.value?.backToSections(),
+      closeComments: () => channelOverlaysRef.value?.closeComments(),
       closeInvite: () => closeInviteDialog(),
       exitMessageSelection: () => exitMessageSelection(),
       closeOpenChat: () => closeOpenChat()

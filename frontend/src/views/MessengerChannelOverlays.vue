@@ -15,8 +15,10 @@
     />
   </q-dialog>
 
-  <!-- Комментарии к посту канала -->
-  <q-dialog v-model="channelCommentsOpen">
+  <!-- Комментарии к посту канала.
+       Как в Telegram: на телефоне это ОТДЕЛЬНЫЙ ЭКРАН (maximized), а не
+       маленькое окошко поверх ленты — так видно и пост, и обсуждение. -->
+  <q-dialog v-model="channelCommentsOpen" :maximized="!isDesktop">
     <ChannelCommentsDialog
       v-if="channelCommentsFor && props.chatId !== null"
       :chat-id="props.chatId"
@@ -24,6 +26,7 @@
       :post-author="channelPostAuthor"
       :post-preview="channelCommentsFor.text"
       :can-comment="true"
+      :fullscreen="!isDesktop"
       :open="channelCommentsOpen"
       @count="onCommentsCount"
     />
@@ -89,7 +92,7 @@
  * (по нему находим имя автора поста в шапке комментариев).
  */
 import { computed, defineAsyncComponent, ref } from 'vue'
-import { Notify } from 'quasar'
+import { Notify, useQuasar } from 'quasar'
 import { suggestPost } from '@/services/channelService'
 import { getErrorMessage } from '@/services/errors'
 import { displayName } from '@/utils/user'
@@ -132,6 +135,12 @@ const emit = defineEmits<{
 }>()
 
 // Каналы: создание, карточка настроек, комментарии к посту, «предложить пост».
+const $q = useQuasar()
+/**
+ * Десктопный режим (≥1024px) — тот же порог, что у двухпанельного списка.
+ * На телефоне и планшете комментарии открываются отдельным экраном.
+ */
+const isDesktop = computed<boolean>(() => $q.screen.gt.sm)
 const showCreateChannelModal = ref(false)
 const showChannelInfoModal = ref(false)
 const channelCommentsFor = ref<Message | null>(null)
@@ -141,11 +150,29 @@ const channelSuggestOpen = ref(false)
 const channelSuggestText = ref('')
 const channelSuggestBusy = ref(false)
 
-/** Открыт экран подписки на канал (адрес из ссылки). */
-const channelJoinOpen = computed<boolean>(() => channelJoinUsername.value !== null)
+/**
+ * Открыт экран подписки на канал (адрес из ссылки).
+ *
+ * Computed ЗАПИСЫВАЕМЫЙ, и это не придирка: `q-dialog` закрывается, только
+ * эмитя `update:modelValue = false`. У readonly-computed запись отбрасывается
+ * (Vue пишет «Write operation failed» в консоль, а окно остаётся открытым) —
+ * так и выглядел баг «окно комментариев нельзя закрыть»: ни крестик, ни Esc, ни
+ * клик мимо не работали.
+ */
+const channelJoinOpen = computed<boolean>({
+  get: () => channelJoinUsername.value !== null,
+  set: (open) => {
+    if (!open) channelJoinUsername.value = null
+  }
+})
 
-/** Открыт диалог комментариев к посту. */
-const channelCommentsOpen = computed<boolean>(() => channelCommentsFor.value !== null)
+/** Открыт диалог комментариев к посту (тоже записываемый — см. выше). */
+const channelCommentsOpen = computed<boolean>({
+  get: () => channelCommentsFor.value !== null,
+  set: (open) => {
+    if (!open) channelCommentsFor.value = null
+  }
+})
 
 /** Автор поста, который комментируют (имя для шапки диалога). */
 const channelPostAuthor = computed<string | undefined>(() => {
@@ -203,6 +230,14 @@ const openComments = (message: Message) => {
   channelCommentsFor.value = message
 }
 
+/** Открыт ли экран комментариев (для системной «назад» на телефоне). */
+const isCommentsOpen = (): boolean => channelCommentsFor.value !== null
+
+/** Закрыть комментарии (системная «назад»). */
+const closeComments = () => {
+  channelCommentsFor.value = null
+}
+
 /** Открыть настройки канала. */
 const openInfo = () => {
   showChannelInfoModal.value = true
@@ -219,7 +254,16 @@ const closeAll = () => {
   channelCommentsFor.value = null
 }
 
-defineExpose({ openCreate, openJoin, openComments, openInfo, openSuggest, closeAll })
+defineExpose({
+  openCreate,
+  openJoin,
+  openComments,
+  isCommentsOpen,
+  closeComments,
+  openInfo,
+  openSuggest,
+  closeAll
+})
 </script>
 
 <style scoped>

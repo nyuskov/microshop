@@ -1,9 +1,14 @@
 /**
- * Состояние глобального поиска по людям и сообщениям (вкладки «Чаты»/«Контакты»).
+ * Состояние глобального поиска по людям, сообщениям и каналам (вкладки панели
+ * поиска).
  *
  * Зачем отдельный модуль: это самостоятельная единица — запрос, режим, результаты,
  * задержка и ошибка. В `ChatSidebar` остаётся только «открыт/закрыт» (панель,
  * значок в шапке, жесты), а сама логика покрывается юнит-тестом без DOM.
+ *
+ * Один запрос — одна вкладка: источники не опрашиваются веером, поэтому поиск
+ * не расходует лимиты за то, что человек не смотрит (люди, сообщения и каналы —
+ * три разных серверных лимита).
  *
  * ГРАБЛЯ-наследство: ошибку поиска пишет ещё и вкладка «Контакты» (открытие чата
  * из «найденных в мессенджере»). Показывается она в разметке вкладки «Чаты», то
@@ -14,19 +19,22 @@
 
 import { computed, onScopeDispose, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { getErrorMessage } from '@/services/errors'
+import { searchChannels } from '@/services/channelService'
 import { searchMessages, searchUsers, type SearchUserResult } from '@/services/chatService'
-import type { Message } from '@/types'
+import type { ChannelCard, Message } from '@/types'
 
 /** Пауза перед запросом: пока человек печатает, сервер не дёргаем. */
 export const SEARCH_DEBOUNCE_MS = 350
 
-export type SearchMode = 'people' | 'messages'
+export type SearchMode = 'people' | 'messages' | 'channels'
 
 export interface UseGlobalSearch {
   query: Ref<string>
   mode: Ref<SearchMode>
   users: Ref<SearchUserResult[]>
   messages: Ref<Message[]>
+  /** Публичные каналы (каталог): ищем по названию и адресу. */
+  channels: Ref<ChannelCard[]>
   loading: Ref<boolean>
   error: Ref<string>
   /** В запросе есть текст — поиск что-то ищет (результаты занимают место списка). */
@@ -42,6 +50,7 @@ export function useGlobalSearch(): UseGlobalSearch {
   const mode = ref<SearchMode>('people')
   const users = ref<SearchUserResult[]>([])
   const messages = ref<Message[]>([])
+  const channels = ref<ChannelCard[]>([])
   const loading = ref(false)
   const error = ref('')
   let timer: number | null = null
@@ -53,13 +62,18 @@ export function useGlobalSearch(): UseGlobalSearch {
     }
   }
 
+  const clearResults = () => {
+    users.value = []
+    messages.value = []
+    channels.value = []
+  }
+
   watch([query, mode], ([value, nextMode]) => {
     cancel()
     error.value = ''
     const text = value.trim()
     if (!text) {
-      users.value = []
-      messages.value = []
+      clearResults()
       loading.value = false
       return
     }
@@ -70,9 +84,15 @@ export function useGlobalSearch(): UseGlobalSearch {
         if (nextMode === 'messages') {
           messages.value = await searchMessages(text)
           users.value = []
+          channels.value = []
+        } else if (nextMode === 'channels') {
+          channels.value = await searchChannels(text)
+          users.value = []
+          messages.value = []
         } else {
           users.value = await searchUsers(text)
           messages.value = []
+          channels.value = []
         }
       } catch (err) {
         error.value = getErrorMessage(err, 'Не удалось выполнить поиск')
@@ -90,6 +110,7 @@ export function useGlobalSearch(): UseGlobalSearch {
     mode,
     users,
     messages,
+    channels,
     loading,
     error,
     hasQuery: computed(() => query.value.trim().length > 0),
@@ -102,8 +123,7 @@ export function useGlobalSearch(): UseGlobalSearch {
     reset: () => {
       cancel()
       query.value = ''
-      users.value = []
-      messages.value = []
+      clearResults()
       loading.value = false
       error.value = ''
     }

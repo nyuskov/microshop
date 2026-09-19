@@ -8,7 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user
+from core.config import settings
 from core.models import Chat, User, db_helper
+from core.rate_limit import enforce_limit
 
 from . import crud
 from .schemas import (
@@ -64,7 +66,18 @@ async def search_channels(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> list[dict[str, Any]]:
-    """Поиск публичных каналов по адресу (@username) и названию."""
+    """Поиск публичных каналов по адресу (@username) и названию.
+
+    Лимит per-user, как у поиска людей и сообщений: раньше эндпоинт вызывался
+    только из внутренних мест, а теперь это вкладка поиска в интерфейсе.
+    """
+    await enforce_limit(
+        scope="channels:search",
+        value=str(user.id),
+        limit=settings.channel_search_limit_per_minute,
+        window_seconds=60,
+        detail="Слишком много запросов. Попробуйте позже.",
+    )
     return await crud.search_public_channels(session, query=q, user_id=user.id)
 
 

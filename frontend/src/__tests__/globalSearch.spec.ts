@@ -13,16 +13,22 @@ vi.mock('@/services/chatService', () => ({
   searchMessages: vi.fn()
 }))
 
+vi.mock('@/services/channelService', () => ({
+  searchChannels: vi.fn()
+}))
+
 vi.mock('@/services/errors', () => ({
   // Возвращаем запасной текст: так тест фиксирует, что он показывается человеку.
   getErrorMessage: (_error: unknown, fallback: string) => fallback
 }))
 
 import { searchMessages, searchUsers } from '@/services/chatService'
-import type { Message } from '@/types'
+import { searchChannels } from '@/services/channelService'
+import type { ChannelCard, Message } from '@/types'
 
 const usersMock = vi.mocked(searchUsers)
 const messagesMock = vi.mocked(searchMessages)
+const channelsMock = vi.mocked(searchChannels)
 
 const foundUser = (id: number) => ({
   id,
@@ -44,6 +50,16 @@ const foundMessage = (id: number): Message =>
     created_at: '2026-09-13T10:00:00Z'
   }) as Message
 
+const foundChannel = (id: number): ChannelCard =>
+  ({
+    id,
+    title: 'Новости',
+    username: `chan${id}`,
+    subscribers: 3,
+    posts: 1,
+    role: null
+  }) as ChannelCard
+
 let scope: EffectScope
 let search: ReturnType<typeof useGlobalSearch>
 
@@ -51,6 +67,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   usersMock.mockReset()
   messagesMock.mockReset()
+  channelsMock.mockReset()
   scope = effectScope()
   scope.run(() => {
     search = useGlobalSearch()
@@ -124,6 +141,24 @@ describe('useGlobalSearch', () => {
     expect(search.users.value).toHaveLength(0)
   })
 
+  it('вкладка «Каналы» ищет каналы и очищает чужие результаты', async () => {
+    usersMock.mockResolvedValue([foundUser(1)])
+    channelsMock.mockResolvedValue([foundChannel(5)])
+
+    await type('нов')
+    expect(search.users.value).toHaveLength(1)
+
+    search.setMode('channels')
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS)
+
+    expect(channelsMock).toHaveBeenCalledWith('нов')
+    expect(search.channels.value).toHaveLength(1)
+    // Люди из прошлой вкладки не остаются рядом с каналами.
+    expect(search.users.value).toHaveLength(0)
+    expect(search.messages.value).toHaveLength(0)
+  })
+
   it('ошибку запроса показываем человеку', async () => {
     usersMock.mockRejectedValue(new Error('сеть'))
 
@@ -143,6 +178,7 @@ describe('useGlobalSearch', () => {
     expect(search.query.value).toBe('')
     expect(search.users.value).toHaveLength(0)
     expect(search.messages.value).toHaveLength(0)
+    expect(search.channels.value).toHaveLength(0)
     expect(search.loading.value).toBe(false)
     expect(search.error.value).toBe('')
     expect(search.hasQuery.value).toBe(false)

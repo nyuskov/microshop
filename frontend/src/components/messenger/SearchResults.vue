@@ -19,6 +19,15 @@
       >
         Сообщения
       </button>
+      <button
+        class="search-mode-tab"
+        :class="{ active: props.mode === 'channels' }"
+        role="tab"
+        :aria-selected="props.mode === 'channels'"
+        @click="emit('set-mode', 'channels')"
+      >
+        Каналы
+      </button>
     </div>
 
     <div v-if="props.loading" class="search-status">Поиск…</div>
@@ -64,7 +73,7 @@
     <div v-else-if="props.mode === 'people'" class="search-status">Никого не найдено</div>
 
     <!-- Сообщения (по всем диалогам) -->
-    <template v-else-if="props.messages.length">
+    <template v-else-if="props.mode === 'messages' && props.messages.length">
       <div class="section-label">Найдено в чатах</div>
       <button
         v-for="msg in props.messages"
@@ -99,14 +108,65 @@
         <q-icon :name="icon('chevron_right')" class="row-arrow" size="20px" />
       </button>
     </template>
+    <div v-else-if="props.mode === 'messages'" class="search-status">Ничего не найдено</div>
+
+    <!-- Каналы (каталог): публичные каналы по названию и адресу -->
+    <template v-else-if="props.channels.length">
+      <div class="section-label">Публичные каналы</div>
+      <button
+        v-for="channel in props.channels"
+        :key="channel.id"
+        class="row-item"
+        @click="emit('pick-channel', channel)"
+      >
+        <span class="avatar" :style="avatarStyle(channel.title)">
+          <img
+            v-if="channel.avatar_thumb_url || channel.avatar_url"
+            :src="(channel.avatar_thumb_url || channel.avatar_url) as string"
+            class="avatar-img"
+            alt=""
+            loading="lazy"
+            decoding="async"
+          />
+          <template v-else>{{ initials(channel.title) }}</template>
+        </span>
+        <span class="row-text">
+          <span class="row-title">
+            <template v-for="(part, i) in parts(channel.title)" :key="'c' + i">
+              <mark v-if="part.hit" class="search-hit">{{ part.text }}</mark>
+              <template v-else>{{ part.text }}</template>
+            </template>
+          </span>
+          <span class="row-sub">
+            <template v-if="channel.username">@{{ channel.username }} · </template>
+            {{ channel.subscribers }}
+            {{ channel.subscribers === 1 ? 'подписчик' : 'подписчиков' }}
+            <template v-if="channel.description"> · {{ channel.description }}</template>
+          </span>
+        </span>
+        <!-- Уже подписан — вместо стрелки метка: тап открывает карточку канала. -->
+        <q-icon
+          v-if="channel.role"
+          :name="icon('check')"
+          class="row-arrow"
+          size="20px"
+          title="Вы подписаны"
+        />
+        <q-icon v-else :name="icon('chevron_right')" class="row-arrow" size="20px" />
+      </button>
+    </template>
     <div v-else class="search-status">Ничего не найдено</div>
   </div>
 </template>
 
 <script setup lang="ts">
 /**
- * Результаты глобального поиска: переключатель «Люди/Сообщения», найденные люди
- * и сообщения по всем диалогам.
+ * Результаты глобального поиска: переключатель «Люди / Сообщения / Каналы»,
+ * найденные люди, сообщения по всем диалогам и публичные каналы (каталог).
+ *
+ * Одно место на все запросы — и один экран в интерфейсе: отдельный «каталог
+ * каналов» был бы вторым входом к тому же серверному поиску, а так человек ищет
+ * везде привычным полем в шапке и только переключает вкладку.
  *
  * Вынесено из `ChatSidebar.vue`: панель поиска (поле ввода, жесты, значок в
  * шапке) остаётся в сайдбаре, а отрисовка результатов живёт отдельно. Общие
@@ -114,7 +174,7 @@
  * здесь только то, что относится к самим результатам.
  */
 import { icon } from '@/utils/icons'
-import type { Chat, Message } from '@/types'
+import type { ChannelCard, Chat, Message } from '@/types'
 import type { SearchUserResult } from '@/services/chatService'
 import type { SearchMode } from '@/composables/useGlobalSearch'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
@@ -130,10 +190,12 @@ import {
 const props = defineProps<{
   /** Текущий запрос — по нему подсвечиваем совпадения. */
   query: string
-  /** Что показываем: людей или сообщения. */
+  /** Что показываем: людей, сообщения или публичные каналы. */
   mode: SearchMode
   users: SearchUserResult[]
   messages: Message[]
+  /** Найденные публичные каналы (каталог, вкладка «Каналы»). */
+  channels: ChannelCard[]
   loading: boolean
   /** Чаты пользователя: по ним определяем, в каком чате нашлось сообщение. */
   chats: Chat[]
@@ -144,6 +206,8 @@ const emit = defineEmits<{
   (e: 'set-mode', mode: SearchMode): void
   (e: 'pick-user', user: SearchUserResult): void
   (e: 'pick-message', message: Message): void
+  /** Выбран канал: показываем карточку подписки. */
+  (e: 'pick-channel', channel: ChannelCard): void
 }>()
 
 /** Части текста с подсветкой совпадений по текущему запросу. */
@@ -162,7 +226,7 @@ const snippetOf = (message: Message): string => messageSnippetText(message)
 
 <style scoped>
 /* Режимные вкладки прилипают к верху: результаты длинные и прокручиваются
-   внутри своей области, а переключатель «Люди/Сообщения» остаётся на месте. */
+   внутри своей области, а переключатель остаётся на месте. */
 .search-mode-tabs {
   display: flex;
   gap: 6px;
