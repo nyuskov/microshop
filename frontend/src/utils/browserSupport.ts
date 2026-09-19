@@ -1,0 +1,266 @@
+/**
+ * Что умеет ЭТО устройство и этот браузер.
+ *
+ * Самые частые «у меня не работает» — не про наше приложение, а про среду:
+ * встроенный браузер VS Code (Electron) не имеет сервиса моделей Chrome, WebView
+ * на телефоне — распознавания речи, мобильный браузер — показа экрана. Раньше это
+ * выяснялось перепиской с владельцем: сначала жалоба, потом догадка, потом
+ * просьба открыть консоль.
+ *
+ * Здесь только ДЕШЁВЫЕ проверки: наличие API и защищённый контекст. Модели не
+ * скачиваем и никуда не ходим — состояние моделей выяснится при первом нажатии
+ * (скачивание требует жеста человека, см. `utils/translation.ts`).
+ */
+import { screenShareNotice, screenShareSupport } from '@/stores/call/screenShare'
+import { translationSupported } from '@/utils/translation'
+import { speechRecognitionSupported } from '@/utils/voiceRecognition'
+
+/** Итог одной проверки. `partial` — работает, но с оговоркой (см. `text`). */
+export type DeviceSupportState = 'ok' | 'partial' | 'no'
+
+export interface DeviceSupportItem {
+  /** Устойчивый ключ для тестов и разметки. */
+  key: 'calls' | 'screen' | 'push' | 'speech' | 'translate' | 'playback'
+  title: string
+  state: DeviceSupportState
+  /** Что это значит на этом устройстве — одной фразой. */
+  text: string
+  /** Что сделать, если не работает (пусто — делать нечего). */
+  hint: string
+}
+
+/**
+ * Встроенный браузер приложения или редактора.
+ *
+ * `Code/` — VS Code, `Electron` — оболочки на нём, `; wv)` — Android WebView,
+ * `FBAN`/`FBAV`/`Instagram` — браузеры внутри приложений соцсетей: во всех них
+ * часть API есть, а сервисов (модели Chrome, распознавание) нет.
+ */
+export const isEmbeddedBrowser = (agent?: string): boolean => {
+  const ua = agent ?? (typeof navigator === 'undefined' ? '' : navigator.userAgent)
+  return /Electron|Code\/|;\s*wv\)|WebView|FBAN|FBAV|Instagram/i.test(ua)
+}
+
+/** Короткая строка про среду — идёт шапкой отчёта. */
+export const browserLabel = (): string => {
+  if (typeof navigator === 'undefined') return 'Неизвестное окружение'
+  if (isEmbeddedBrowser()) return 'Встроенный браузер (не Chrome)'
+  if (/Android/i.test(navigator.userAgent)) return 'Браузер на Android'
+  if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) return 'Браузер на iPhone или iPad'
+  return 'Обычный браузер'
+}
+
+/** Есть ли защищённое соединение: без него нет ни звонков, ни push, ни микрофона. */
+export const secureContext = (): boolean =>
+  typeof window === 'undefined' ? true : window.isSecureContext !== false
+
+/** Читает ли это устройство формат, в котором приложение записывает голосовые. */
+export const voicePlaybackSupport = (): boolean => {
+  if (typeof document === 'undefined') return false
+  const probe = document.createElement('audio')
+  if (typeof probe.canPlayType !== 'function') return false
+  // Пишем через `MediaRecorder` в webm/Opus; на части устройств читается только
+  // ogg/Opus или mp4 — тогда запись играется, но не там, где её записали.
+  return (
+    probe.canPlayType('audio/webm; codecs=opus') !== '' ||
+    probe.canPlayType('audio/ogg; codecs=opus') !== '' ||
+    probe.canPlayType('audio/mp4') !== ''
+  )
+}
+
+const calls = (): DeviceSupportItem => {
+  const hasPc = typeof window !== 'undefined' && typeof window.RTCPeerConnection === 'function'
+  const hasMic = typeof navigator !== 'undefined' && !!navigator.mediaDevices
+  if (!secureContext()) {
+    return {
+      key: 'calls',
+      title: 'Звонки',
+      state: 'no',
+      text: 'Нужно защищённое соединение (HTTPS)',
+      hint: 'Откройте приложение по адресу https://… — по http браузер не даёт ни микрофон, ни камеру'
+    }
+  }
+  if (!hasPc || !hasMic) {
+    return {
+      key: 'calls',
+      title: 'Звонки',
+      state: 'no',
+      text: 'Браузер не умеет WebRTC',
+      hint: 'Позвонить можно из Chrome, Safari или Firefox на компьютере и телефоне'
+    }
+  }
+  return {
+    key: 'calls',
+    title: 'Звонки',
+    state: 'ok',
+    text: 'Звуковые и видеозвонки работают',
+    hint: ''
+  }
+}
+
+const screen = (): DeviceSupportItem => {
+  const support = screenShareSupport()
+  if (support === 'ok') {
+    return {
+      key: 'screen',
+      title: 'Показ экрана',
+      state: 'ok',
+      text: 'Можно показать экран в звонке',
+      hint: ''
+    }
+  }
+  const hints: Record<string, string> = {
+    mobile: 'Включите показ экрана с компьютера — собеседник увидит его в том же звонке',
+    insecure: 'Откройте приложение по адресу https://… — по http браузер не даёт захват',
+    embedded: 'Это ограничение окружения, а не приложения: в обычном Chrome кнопка покажется'
+  }
+  return {
+    key: 'screen',
+    title: 'Показ экрана',
+    state: 'no',
+    text: screenShareNotice(support),
+    hint: hints[support] ?? 'Показывать экран умеют Chrome, Edge и Safari на компьютере'
+  }
+}
+
+const push = (): DeviceSupportItem => {
+  const hasSw = typeof navigator !== 'undefined' && 'serviceWorker' in navigator
+  const hasPush = typeof window !== 'undefined' && 'PushManager' in window
+  const hasNotify = typeof window !== 'undefined' && 'Notification' in window
+  if (!hasSw || !hasPush || !hasNotify) {
+    return {
+      key: 'push',
+      title: 'Уведомления о сообщениях',
+      state: 'no',
+      text: 'Браузер не умеет push-уведомления',
+      hint: isEmbeddedBrowser()
+        ? 'Во встроенном браузере push не приходят: откройте приложение в обычном Chrome и добавьте на главный экран'
+        : 'Установите приложение на главный экран (Chrome: «Установить приложение») — тогда push будут приходить'
+    }
+  }
+  if (!secureContext()) {
+    return {
+      key: 'push',
+      title: 'Уведомления о сообщениях',
+      state: 'no',
+      text: 'Нужно защищённое соединение (HTTPS)',
+      hint: 'По http браузер не выдаёт разрешение на уведомления'
+    }
+  }
+  const permission = typeof Notification === 'undefined' ? 'default' : Notification.permission
+  if (permission === 'denied') {
+    return {
+      key: 'push',
+      title: 'Уведомления о сообщениях',
+      state: 'no',
+      text: 'Уведомления запрещены в настройках браузера',
+      hint: 'Разрешите уведомления для этого сайта (значок замка в адресной строке) и обновите страницу'
+    }
+  }
+  if (permission === 'default') {
+    return {
+      key: 'push',
+      title: 'Уведомления о сообщениях',
+      state: 'partial',
+      text: 'Разрешение ещё не выдано',
+      hint: 'Включите уведомления в разделе «Уведомления» — браузер спросит разрешение'
+    }
+  }
+  return {
+    key: 'push',
+    title: 'Уведомления о сообщениях',
+    state: 'ok',
+    text: 'Уведомления разрешены',
+    hint: ''
+  }
+}
+
+const speech = (): DeviceSupportItem => {
+  if (speechRecognitionSupported()) {
+    return {
+      key: 'speech',
+      title: 'Расшифровка голосовых в текст',
+      state: 'ok',
+      text: 'Устройство умеет распознавать речь',
+      hint: ''
+    }
+  }
+  return {
+    key: 'speech',
+    title: 'Расшифровка голосовых в текст',
+    state: 'no',
+    text: 'У этого браузера нет распознавания речи',
+    hint: isEmbeddedBrowser()
+      ? 'Распознавание есть в обычном Chrome (и в приложении на Android) — во встроенном браузере редактора его нет'
+      : 'Расшифровка работает в Chrome на компьютере и Android; в Safari и Firefox кнопки не будет'
+  }
+}
+
+const translate = (): DeviceSupportItem => {
+  if (translationSupported()) {
+    return {
+      key: 'translate',
+      title: 'Перевод сообщений',
+      state: 'partial',
+      text: 'Переводит браузер устройства, модель скачается при первом переводе',
+      hint: 'Первые десятки мегабайт скачает браузер — текст при этом никуда не уходит'
+    }
+  }
+  return {
+    key: 'translate',
+    title: 'Перевод сообщений',
+    state: 'no',
+    text: 'У этого браузера нет встроенного переводчика',
+    hint: isEmbeddedBrowser()
+      ? 'Перевод есть в обычном Chrome 138+ — во встроенном браузере редактора нет сервиса моделей'
+      : 'Нужен Chrome 138+ (или браузер на том же движке): перевод идёт на устройстве, текст никуда не отправляется'
+  }
+}
+
+const playback = (): DeviceSupportItem => {
+  if (voicePlaybackSupport()) {
+    return {
+      key: 'playback',
+      title: 'Голосовые сообщения',
+      state: 'ok',
+      // «Формат знаком», а не «записи играются»: `canPlayType` — только обещание
+      // браузера, а живой файл может не прочитаться (проверено: Chromium
+      // объявляет webm/Opus, а `decodeAudioData` на записи отвечает отказом).
+      text: 'Формат записей (webm/Opus) устройству знаком',
+      hint: ''
+    }
+  }
+  return {
+    key: 'playback',
+    title: 'Голосовые сообщения',
+    state: 'no',
+    text: 'Устройство не умеет проигрывать формат записей (webm/Opus)',
+    hint: 'Записи не послушать, но их можно расшифровать в текст кнопкой «В текст» — если расшифровка доступна'
+  }
+}
+
+/**
+ * Полный отчёт по устройству — в порядке важности для человека.
+ *
+ * Функция чистая относительно состояния: ничего не меняет и ничего не качает,
+ * поэтому её можно звать при каждом открытии раздела.
+ */
+export const deviceReport = (): DeviceSupportItem[] => [
+  calls(),
+  push(),
+  screen(),
+  speech(),
+  translate(),
+  playback()
+]
+
+/** Сколько всего «работает» — для краткой строки в шапке раздела. */
+export const supportSummary = (items: DeviceSupportItem[]): string => {
+  const ok = items.filter((item) => item.state === 'ok').length
+  const partial = items.filter((item) => item.state === 'partial').length
+  const no = items.filter((item) => item.state === 'no').length
+  const parts = [`работает: ${ok}`]
+  if (partial) parts.push(`с оговоркой: ${partial}`)
+  if (no) parts.push(`недоступно: ${no}`)
+  return parts.join(' · ')
+}

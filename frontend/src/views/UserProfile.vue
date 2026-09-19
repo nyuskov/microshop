@@ -65,6 +65,16 @@ const MaintenanceSettings = defineAsyncComponent(
 )
 
 /**
+ * Раздел «Устройство» — что умеет этот браузер.
+ *
+ * Тоже ленивый: проверки простые, но разметка с подсказками нужна раз в жизни,
+ * а профиль грузится на телефоне.
+ */
+const DeviceSettings = defineAsyncComponent(
+  () => import('@/components/messenger/DeviceSettings.vue')
+)
+
+/**
  * Диалог резервной копии ключа шифрования — тоже ленивый: нужен редко, а чанк
  * профиля с ним внутри выходит за бюджет (`check-bundle-size.mjs`).
  */
@@ -193,6 +203,7 @@ type SettingsSection =
   | 'invites'
   | 'maintenance'
   | 'appearance'
+  | 'device'
   | 'about'
 
 interface SettingsRow {
@@ -231,6 +242,12 @@ const SETTINGS_ROWS: SettingsRow[] = [
     icon: 'palette',
     title: 'Внешний вид',
     desc: 'Тема, обои, размер текста'
+  },
+  {
+    key: 'device',
+    icon: 'devices',
+    title: 'Устройство',
+    desc: 'Что работает в этом браузере и что докачать'
   },
   { key: 'about', icon: 'info', title: 'О приложении', desc: 'Документы и версия' }
 ]
@@ -933,6 +950,13 @@ const onNotificationsToggle = async (val: boolean) => {
            закрывает приложение всем, кроме администраторов. -->
       <div v-if="section === 'maintenance' && authStore.isOwner" class="settings-embed">
         <MaintenanceSettings />
+      </div>
+
+      <!-- Устройство: что умеет ИМЕННО этот браузер. Самые частые «не работает»
+           про среду (WebView без распознавания, браузер редактора без моделей
+           Chrome) — раздел отвечает на это без переписки и консоли. -->
+      <div v-if="section === 'device'" class="settings-embed">
+        <DeviceSettings />
       </div>
 
       <transition name="fade">
