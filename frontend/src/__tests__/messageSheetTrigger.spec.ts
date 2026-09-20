@@ -1,5 +1,5 @@
 import { nextTick } from 'vue'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import MessageRow from '@/components/messenger/MessageRow.vue'
@@ -8,13 +8,13 @@ import type { Message } from '@/types'
 /**
  * Чем открывается лист действий с сообщением (`MessageActionSheet`).
  *
- * Раньше он открывался и правым кликом, и сенсорным долгим нажатием — причём на
- * телефоне системное `contextmenu` от долгого нажатия срабатывало ВМЕСТЕ с нашим
- * выделением и лист перекрывал сообщение («иногда мешает»). Теперь правый клик и
- * сенсорное меню его не открывают: у мыши те же действия есть в панели «⋯» при
- * наведении, а на телефоне путь один — удержание уже выделенного сообщения.
- * С клавиатуры (`Shift+F10`, координаты 0,0) лист по-прежнему открывается: это
- * доступность, а не дублирование.
+ * Путь на телефоне один и как в Телеграме — удержание сообщения (реакции сверху,
+ * действия ниже). Режим выделения входит пунктом «Выбрать» из этого же меню.
+ *
+ * Отдельно проверяем, что `contextmenu` его НЕ открывает: правый клик мышью и
+ * сенсорное системное меню раньше открывали лист вместе с выделением, и он
+ * перекрывал сообщение («иногда мешает»). С клавиатуры (`Shift+F10`, координаты
+ * 0,0) лист по-прежнему открывается: это доступность, а не дублирование.
  */
 
 const message = {
@@ -60,7 +60,56 @@ function contextMenuEvent(x: number, y: number): MouseEvent {
   })
 }
 
+/** Касание пальцем: событие мыши плюс поля указателя (в jsdom нет PointerEvent). */
+function pointerDownEvent(x: number, y: number): Event {
+  const event = new MouseEvent('pointerdown', { bubbles: true, clientX: x, clientY: y })
+  Object.defineProperty(event, 'pointerId', { value: 1 })
+  Object.defineProperty(event, 'pointerType', { value: 'touch' })
+  Object.defineProperty(event, 'isPrimary', { value: true })
+  return event
+}
+
 describe('лист действий с сообщением: чем открывается', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('удержание открывает лист рядом с сообщением — как в Телеграме', async () => {
+    vi.useFakeTimers()
+    const wrapper = mountRow()
+
+    wrapper.find('.msg').element.dispatchEvent(pointerDownEvent(120, 300))
+    vi.advanceTimersByTime(500)
+    await nextTick()
+    await nextTick()
+
+    expect(document.querySelector('.ctx-menu')).not.toBeNull()
+    // Выделение удержанием больше не включается: оно живёт пунктом «Выбрать»
+    // в этом же меню (раньше меню открывалось ВТОРЫМ удержанием).
+    expect(wrapper.emitted('select-start')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('«Выбрать» в листе включает режим выделения этого сообщения', async () => {
+    vi.useFakeTimers()
+    const wrapper = mountRow()
+
+    wrapper.find('.msg').element.dispatchEvent(pointerDownEvent(120, 300))
+    vi.advanceTimersByTime(500)
+    await nextTick()
+    await nextTick()
+
+    const select = Array.from(document.querySelectorAll<HTMLElement>('.ctx-item')).find(
+      (item) => item.textContent?.trim() === 'Выбрать'
+    )
+    expect(select).toBeTruthy()
+    select?.click()
+    await nextTick()
+
+    expect(wrapper.emitted('select-start')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
   it('правый клик мышью не открывает лист и гасит меню браузера', async () => {
     const wrapper = mountRow()
     const row = wrapper.find('.msg').element

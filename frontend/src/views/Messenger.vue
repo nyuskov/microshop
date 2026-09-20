@@ -90,73 +90,48 @@
         <template v-else>
           <!-- Режим выбора сообщений: панель вместо шапки (как в чатах) -->
           <header v-if="messageSelection" class="chat-select-header">
-            <div class="chat-select-row">
-              <button class="icon-btn" title="Выйти из выбора" @click="exitMessageSelection">
-                <q-icon :name="icon('close')" size="21px" />
-              </button>
-              <div class="chat-select-info">
-                <span class="chat-select-title">Выбрано: {{ selectedMessageIds.length }}</span>
-              </div>
-              <div class="chat-select-actions">
-                <button
-                  class="icon-btn"
-                  :class="{ on: allVisibleMessagesSelected }"
-                  title="Выбрать все"
-                  aria-label="Выбрать все"
-                  @click="toggleSelectAllMessages"
-                >
-                  <q-icon :name="icon('done_all')" size="20px" />
-                </button>
-                <!-- Действия с сообщением (реакции, ответить, закрепить, удалить,
-                   пожаловаться) — кнопки в панели нет: на телефоне меню
-                   открывается удержанием выбранного сообщения, на компьютере —
-                   наведением на сообщение (меню «⋯»). -->
-                <button
-                  class="icon-btn"
-                  title="Переслать выбранные"
-                  aria-label="Переслать выбранные"
-                  @click="bulkForwardMessages"
-                >
-                  <q-icon :name="icon('forward')" size="20px" />
-                </button>
-                <button
-                  class="icon-btn"
-                  title="Сохранить в «Сохранённые сообщения»"
-                  aria-label="Сохранить в «Сохранённые сообщения»"
-                  @click="bulkSaveMessagesToSelf"
-                >
-                  <q-icon :name="icon('bookmark')" size="20px" />
-                </button>
-                <button
-                  class="icon-btn danger"
-                  title="Удалить выбранные"
-                  aria-label="Удалить выбранные"
-                  @click="bulkDeleteMessages"
-                >
-                  <q-icon :name="icon('delete')" size="20px" />
-                </button>
-              </div>
+            <button class="icon-btn" title="Выйти из выбора" @click="exitMessageSelection">
+              <q-icon :name="icon('close')" size="21px" />
+            </button>
+            <div class="chat-select-info">
+              <span class="chat-select-title">Выбрано: {{ selectedMessageIds.length }}</span>
             </div>
-            <!-- Реакция в один жест: пока выбрано ровно одно сообщение, показываем
-                 полосу быстрых реакций. Иначе на телефоне до реакций два удержания
-                 (первое — выделение, второе — меню действий). Тот же набор, что в
-                 листе действий (`utils/reactions.ts`). -->
-            <div
-              v-if="selectedMessageIds.length === 1"
-              class="chat-select-reactions"
-              role="group"
-              aria-label="Быстрые реакции"
-            >
+            <div class="chat-select-actions">
               <button
-                v-for="emoji in QUICK_REACTIONS"
-                :key="emoji"
-                type="button"
-                class="chat-select-reaction"
-                :title="`Реакция ${emoji}`"
-                :aria-label="`Поставить реакцию ${emoji}`"
-                @click="reactToSelectedMessage(emoji)"
+                class="icon-btn"
+                :class="{ on: allVisibleMessagesSelected }"
+                title="Выбрать все"
+                aria-label="Выбрать все"
+                @click="toggleSelectAllMessages"
               >
-                {{ emoji }}
+                <q-icon :name="icon('done_all')" size="20px" />
+              </button>
+              <!-- Действия с сообщением (реакции, ответить, закрепить, удалить,
+                   пожаловаться) — кнопки в панели нет: меню открывается
+                   удержанием сообщения (телефон) или наведением (компьютер). -->
+              <button
+                class="icon-btn"
+                title="Переслать выбранные"
+                aria-label="Переслать выбранные"
+                @click="bulkForwardMessages"
+              >
+                <q-icon :name="icon('forward')" size="20px" />
+              </button>
+              <button
+                class="icon-btn"
+                title="Сохранить в «Сохранённые сообщения»"
+                aria-label="Сохранить в «Сохранённые сообщения»"
+                @click="bulkSaveMessagesToSelf"
+              >
+                <q-icon :name="icon('bookmark')" size="20px" />
+              </button>
+              <button
+                class="icon-btn danger"
+                title="Удалить выбранные"
+                aria-label="Удалить выбранные"
+                @click="bulkDeleteMessages"
+              >
+                <q-icon :name="icon('delete')" size="20px" />
               </button>
             </div>
           </header>
@@ -775,7 +750,6 @@ import { stickerFromMessage } from '@/services/stickers'
 import { useStickersStore } from '@/stores/stickers'
 import { chatIdFromUrl, isReplyLaunch, readStoredSection, storeSection } from '@/utils/chatUrl'
 import { haptic } from '@/utils/haptics'
-import { QUICK_REACTIONS } from '@/utils/reactions'
 import { usePeerActivity } from '@/composables/usePeerActivity'
 import { activityKindOfFile, peerActivityLabel, type PeerActivityKind } from '@/utils/peerActivity'
 import { useRealtimeSync } from '@/composables/useRealtimeSync'
@@ -2460,20 +2434,9 @@ const closePopups = () => {
 }
 
 /**
- * Быстрая реакция на единственное выбранное сообщение (панель выбора).
- *
- * Путь к реакции в один жест: удержание сообщения выделяет его, и там же теперь
- * рядом есть полоса реакций (на телефоне до меню действий — второе удержание).
- * После реакции выходим из режима выбора: он был нужен только ради неё.
+ * Действия с сообщением — в меню по удержанию (`MessageActionSheet`): там же
+ * реакции, ответ, закрепление и вход в режим выделения («Выбрать»).
  */
-const reactToSelectedMessage = (emoji: string) => {
-  const message = messages.value.find((item) => item.id === selectedMessageIds.value[0])
-  if (!message) return
-  haptic()
-  exitMessageSelection()
-  void toggleReaction(message, emoji)
-}
-
 const toggleReaction = async (message: Message, emoji: string) => {
   const mine = hasMyReaction(message, emoji)
   try {
@@ -5205,46 +5168,22 @@ useMobileLayer(() => inviteDialogOpen.value, closeInviteDialog)
 
 /* «Предложить пост»: карточка диалога переехала в MessengerChannelOverlays.vue. */
 
-/* Панель выбора сообщений — вместо шапки чата (как в списке чатов) */
+/**
+ * Панель выбора сообщений — вместо шапки чата (как в списке чатов).
+ * Действия с одним сообщением — в меню по удержанию (`MessageActionSheet`):
+ * реакции, ответ, закрепление и вход в это самое выделение («Выбрать»).
+ */
 .chat-select-header {
   position: relative;
   display: flex;
-  /* Колонка: сверху строка действий, под ней — полоса быстрых реакций. */
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 10px;
   padding: 8px 14px;
   background: var(--ms-surface, #ffffff);
   border-bottom: 1px solid var(--ms-border, #e2e6ea);
   box-shadow: var(--ms-shadow-sm);
   z-index: 2;
   flex: none;
-}
-
-.chat-select-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-}
-
-/* Быстрые реакции: те же 8 эмодзи, что в листе действий. Крупные — это
-   единственный путь к реакции в один жест. */
-.chat-select-reactions {
-  display: flex;
-  gap: 4px;
-  width: 100%;
-}
-
-.chat-select-reaction {
-  flex: 1 1 0;
-  min-width: 0;
-  height: 38px;
-  border: none;
-  border-radius: var(--ms-radius-sm);
-  background: var(--ms-surface-2, #f0f2f5);
-  font-size: 19px;
-  line-height: 1;
-  cursor: pointer;
 }
 
 .chat-select-info {
