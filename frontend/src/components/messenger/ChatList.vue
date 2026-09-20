@@ -134,6 +134,7 @@
             >
               <span
                 class="avatar"
+                :class="{ rounded: chatAvatarRounded(chat) }"
                 :style="
                   chat.is_self ? savedStyle : avatarStyle(chatTitleOf(chat, props.currentUserId))
                 "
@@ -247,7 +248,7 @@ import type { Chat } from '@/types'
 import { computed, onBeforeUnmount, nextTick, ref, watch } from 'vue'
 import { FOLDER_FILTER_PREFIX } from '@/utils/chatFolders'
 import { useHScroll } from '@/composables/useHScroll'
-import { avatarStyle, initials } from '@/utils/user'
+import { avatarStyle, chatAvatarRounded, initials } from '@/utils/user'
 import { formatChatTime } from '@/utils/format'
 import {
   chatActivityKind,

@@ -11,6 +11,7 @@
     >
       <span
         class="avatar chat-avatar"
+        :class="{ rounded: chatAvatarRounded(props.chat) }"
         :style="props.chat.is_self ? savedAvatarStyle : avatarStyle(title)"
       >
         <q-icon v-if="props.chat.is_self" :name="icon('bookmark')" size="22px" aria-hidden="true" />
@@ -143,6 +144,7 @@ import type { Chat } from '@/types'
 import {
   avatarStyle,
   avatarUrlOf,
+  chatAvatarRounded,
   chatPeer,
   chatTitle,
   groupAvatarUrl,
@@ -329,6 +331,12 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* Аватар группы и канала — скруглённый квадрат, личного чата — круг: форма
+   различает тип чата (см. `chatAvatarRounded` в `utils/user.ts`). */
+.avatar.rounded {
+  border-radius: var(--ms-radius-lg);
 }
 
 /* Индикатор «в сети» на аватаре собеседника */

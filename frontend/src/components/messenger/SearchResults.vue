@@ -162,7 +162,7 @@
         class="row-item"
         @click="emit('pick-channel', channel)"
       >
-        <span class="avatar" :style="avatarStyle(channel.title)">
+        <span class="avatar rounded" :style="avatarStyle(channel.title)">
           <img
             v-if="channel.avatar_thumb_url || channel.avatar_url"
             :src="(channel.avatar_thumb_url || channel.avatar_url) as string"
