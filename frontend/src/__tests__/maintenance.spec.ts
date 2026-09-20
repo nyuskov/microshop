@@ -121,9 +121,10 @@ describe('рубильник в админской панели', () => {
     expect(userRows).not.toContain("'maintenance'")
   })
 
-  it('«назад» из раздела возвращает к админскому списку, а не в профиль', () => {
+  it('«назад» из раздела возвращает к служебному списку, а не в профиль', () => {
+    // Служебных разделов теперь три: приглашения, техработы и жалобы.
     expect(profile).toMatch(
-      /const ADMIN_SECTIONS: SettingsSection\[\] = \['invites', 'maintenance'\]/
+      /const ADMIN_SECTIONS: SettingsSection\[\] = \['invites', 'maintenance', 'reports'\]/
     )
     expect(profile).toMatch(/ADMIN_SECTIONS\.includes\(section\.value\) \? 'admin' : 'root'/)
   })

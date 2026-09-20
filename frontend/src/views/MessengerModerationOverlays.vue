@@ -10,13 +10,14 @@
     @close="reportTarget = null"
     @sent="emit('sent')"
   />
+  <!-- Разбор жалоб живёт разделом в настройках («Администрирование» → «Жалобы»):
+       там есть кнопка «назад», а отдельное окно закрывало настройки и возвращало
+       человека в чат. -->
   <BlockedUsersDialog
     v-if="showBlockedUsers"
     @close="showBlockedUsers = false"
     @unblocked="emit('blockedChanged')"
   />
-  <!-- Разбор жалоб — только у администраторов (пункт «⋯» появляется им одним) -->
-  <ModerationReportsDialog v-if="showReports && isAdmin" @close="showReports = false" />
 </template>
 
 <script setup lang="ts">
@@ -34,9 +35,6 @@ import { useMobileLayer } from '@/composables/useMobileOverlay'
 const ReportDialog = defineAsyncComponent(() => import('@/components/messenger/ReportDialog.vue'))
 const BlockedUsersDialog = defineAsyncComponent(
   () => import('@/components/messenger/BlockedUsersDialog.vue')
-)
-const ModerationReportsDialog = defineAsyncComponent(
-  () => import('@/components/messenger/ModerationReportsDialog.vue')
 )
 
 /** Кого жалуем: пользователь и, если жалоба на сообщение, оно само. */
@@ -62,7 +60,6 @@ const emit = defineEmits<{
 
 const reportTarget = ref<ReportTarget | null>(null)
 const showBlockedUsers = ref(false)
-const showReports = ref(false)
 
 /** Открыть жалобу (на собеседника или на конкретное сообщение). */
 const openReport = (target: ReportTarget) => {
@@ -74,12 +71,7 @@ const openBlocked = () => {
   showBlockedUsers.value = true
 }
 
-/** Открыть разбор жалоб. */
-const openReports = () => {
-  showReports.value = true
-}
-
-defineExpose({ openReport, openBlocked, openReports })
+defineExpose({ openReport, openBlocked })
 
 // Диалоги модерации — слои общего стека: «назад» закрывает их по одному (иначе
 // на телефоне он закрывал бы чат под открытой жалобой или выходил из приложения).
@@ -93,12 +85,6 @@ useMobileLayer(
   () => showBlockedUsers.value,
   () => {
     showBlockedUsers.value = false
-  }
-)
-useMobileLayer(
-  () => showReports.value,
-  () => {
-    showReports.value = false
   }
 )
 </script>

@@ -1,14 +1,6 @@
 <template>
-  <q-dialog :model-value="true" @update:model-value="emit('close')">
-    <q-card class="mod-card">
-      <q-card-section class="row no-wrap items-center q-py-sm">
-        <div class="text-subtitle1 text-weight-medium">Жалобы</div>
-        <q-space />
-        <q-btn flat round dense icon="refresh" aria-label="Обновить" @click="load" />
-        <q-btn flat round dense icon="close" aria-label="Закрыть" @click="emit('close')" />
-      </q-card-section>
-      <q-separator />
-
+  <div class="mod-section">
+    <div class="mod-bar">
       <div class="mod-tabs">
         <button
           v-for="tab in STATUS_TABS"
@@ -23,128 +15,141 @@
           Журнал
         </button>
       </div>
+      <button
+        type="button"
+        class="mod-refresh"
+        title="Обновить"
+        aria-label="Обновить"
+        @click="reload"
+      >
+        <q-icon :name="icon('refresh')" size="18px" />
+      </button>
+    </div>
 
-      <q-card-section v-if="showJournal" class="mod-body">
-        <p class="mod-hint">
-          Журнал модерации: что и когда произошло с контентом — отправили жалобу, автомат скрыл
-          сообщение после нескольких жалоб, модератор подтвердил нарушение или восстановил контент.
-          Записи не меняются, поэтому на них можно ссылаться при разборе спорных случаев.
-        </p>
-        <p v-if="journalHidden !== null" class="mod-count">
-          Скрыто сейчас: {{ journalHidden }} · записей в журнале: {{ journalTotal }}
-        </p>
-        <div v-if="journalLoading" class="mod-empty">Загрузка…</div>
-        <div v-else-if="journal.length === 0" class="mod-empty">Журнал пуст.</div>
-        <template v-else>
-          <article v-for="entry in journal" :key="entry.id" class="mod-item">
-            <header class="mod-item-head">
-              <span class="mod-reason">{{ journalActionLabel(entry.action) }}</span>
-              <span
-                class="mod-status"
-                :class="entry.moderator_id === null ? 's-new' : 's-in_review'"
-              >
-                {{
-                  entry.moderator_id === null ? 'автоматика' : `модератор #${entry.moderator_id}`
-                }}
-              </span>
-              <q-space />
-              <span class="mod-date">{{ formatReportDate(entry.created_at) }}</span>
-            </header>
-            <p class="mod-muted">
-              {{ entry.note }}
-              <template v-if="entry.message_id"> · сообщение #{{ entry.message_id }}</template>
-              <template v-if="entry.report_id"> · жалоба #{{ entry.report_id }}</template>
-              <template v-if="entry.target_user_id"> · автор #{{ entry.target_user_id }} </template>
-            </p>
-            <div v-if="entry.target_user_id" class="mod-actions">
-              <q-btn
-                flat
-                no-caps
-                dense
-                color="primary"
-                label="Восстановить все сообщения автора"
-                :loading="busyUnhide === entry.target_user_id"
-                @click="restoreAuthorMessages(entry.target_user_id)"
-              />
-            </div>
-          </article>
-        </template>
-        <p v-if="journalError" class="mod-error" role="alert">{{ journalError }}</p>
-      </q-card-section>
+    <div v-if="showJournal" class="mod-body">
+      <p class="mod-hint">
+        Журнал модерации: что и когда произошло с контентом — отправили жалобу, автомат скрыл
+        сообщение после нескольких жалоб, модератор подтвердил нарушение или восстановил контент.
+        Записи не меняются, поэтому на них можно ссылаться при разборе спорных случаев.
+      </p>
+      <p v-if="journalHidden !== null" class="mod-count">
+        Скрыто сейчас: {{ journalHidden }} · записей в журнале: {{ journalTotal }}
+      </p>
+      <div v-if="journalLoading" class="mod-empty">Загрузка…</div>
+      <div v-else-if="journal.length === 0" class="mod-empty">Журнал пуст.</div>
+      <template v-else>
+        <article v-for="entry in journal" :key="entry.id" class="mod-item">
+          <header class="mod-item-head">
+            <span class="mod-reason">{{ journalActionLabel(entry.action) }}</span>
+            <span class="mod-status" :class="entry.moderator_id === null ? 's-new' : 's-in_review'">
+              {{ entry.moderator_id === null ? 'автоматика' : `модератор #${entry.moderator_id}` }}
+            </span>
+            <q-space />
+            <span class="mod-date">{{ formatReportDate(entry.created_at) }}</span>
+          </header>
+          <p class="mod-muted">
+            {{ entry.note }}
+            <template v-if="entry.message_id"> · сообщение #{{ entry.message_id }}</template>
+            <template v-if="entry.report_id"> · жалоба #{{ entry.report_id }}</template>
+            <template v-if="entry.target_user_id"> · автор #{{ entry.target_user_id }} </template>
+          </p>
+          <div v-if="entry.target_user_id" class="mod-actions">
+            <q-btn
+              flat
+              no-caps
+              dense
+              color="primary"
+              label="Восстановить все сообщения автора"
+              :loading="busyUnhide === entry.target_user_id"
+              @click="restoreAuthorMessages(entry.target_user_id)"
+            />
+          </div>
+        </article>
+      </template>
+      <p v-if="journalError" class="mod-error" role="alert">{{ journalError }}</p>
+    </div>
 
-      <q-card-section v-if="!showJournal" class="mod-body">
-        <p class="mod-hint">
-          Жалобы приходят из приложения: «Пожаловаться» в шапке диалога или в меню сообщения. Разбор
-          нигде, кроме этой таблицы, не отображается — статус нужен, чтобы не разбирать одно дважды.
-        </p>
+    <div v-else class="mod-body">
+      <p class="mod-hint">
+        Жалобы приходят из приложения: «Пожаловаться» в шапке диалога или в меню сообщения. Разбор
+        нигде, кроме этой таблицы, не отображается — статус нужен, чтобы не разбирать одно дважды.
+      </p>
 
-        <div v-if="loading" class="mod-empty">Загрузка…</div>
-        <div v-else-if="reports.length === 0" class="mod-empty">Жалоб в этом разделе нет.</div>
-        <template v-else>
-          <p class="mod-count">Всего: {{ total }}</p>
-          <article v-for="report in reports" :key="report.id" class="mod-item">
-            <header class="mod-item-head">
-              <span class="mod-reason">{{ reportReasonLabel(report.reason) }}</span>
-              <span class="mod-status" :class="`s-${report.status}`">
-                {{ REPORT_STATUS_LABELS[report.status] }}
-              </span>
-              <q-space />
-              <span class="mod-date">{{ formatReportDate(report.created_at) }}</span>
-            </header>
+      <div v-if="loading" class="mod-empty">Загрузка…</div>
+      <div v-else-if="reports.length === 0" class="mod-empty">Жалоб в этом разделе нет.</div>
+      <template v-else>
+        <p class="mod-count">Всего: {{ total }}</p>
+        <article v-for="report in reports" :key="report.id" class="mod-item">
+          <header class="mod-item-head">
+            <span class="mod-reason">{{ reportReasonLabel(report.reason) }}</span>
+            <span class="mod-status" :class="`s-${report.status}`">
+              {{ REPORT_STATUS_LABELS[report.status] }}
+            </span>
+            <q-space />
+            <span class="mod-date">{{ formatReportDate(report.created_at) }}</span>
+          </header>
 
-            <p class="mod-pair">
-              <strong>{{ report.reporter_name || `ID ${report.reporter_id}` }}</strong>
-              <span class="mod-muted">{{ report.reporter_phone || '' }}</span>
-              <q-icon :name="icon('arrow_forward')" size="14px" class="mod-arrow" />
-              <strong>{{ report.reported_name || `ID ${report.reported_id}` }}</strong>
-              <span class="mod-muted">{{ report.reported_phone || '' }}</span>
-            </p>
+          <p class="mod-pair">
+            <strong>{{ report.reporter_name || `ID ${report.reporter_id}` }}</strong>
+            <span class="mod-muted">{{ report.reporter_phone || '' }}</span>
+            <q-icon :name="icon('arrow_forward')" size="14px" class="mod-arrow" />
+            <strong>{{ report.reported_name || `ID ${report.reported_id}` }}</strong>
+            <span class="mod-muted">{{ report.reported_phone || '' }}</span>
+          </p>
 
-            <p v-if="report.message_text" class="mod-quote">«{{ report.message_text }}»</p>
-            <p v-else-if="report.message_id" class="mod-muted">
-              Сообщение #{{ report.message_id }} (вложение или удалено)
-            </p>
-            <p class="mod-muted">
-              Контекст: {{ contextLabel(report) }}
-              {{ report.note ? ` · заметка: ${report.note}` : '' }}
-            </p>
+          <p v-if="report.message_text" class="mod-quote">«{{ report.message_text }}»</p>
+          <p v-else-if="report.message_id" class="mod-muted">
+            Сообщение #{{ report.message_id }} (вложение или удалено)
+          </p>
+          <p class="mod-muted">
+            Контекст: {{ contextLabel(report) }}
+            {{ report.note ? ` · заметка: ${report.note}` : '' }}
+          </p>
 
-            <p v-if="report.comment" class="mod-comment">
-              Комментарий: <span>{{ report.comment }}</span>
-            </p>
+          <p v-if="report.comment" class="mod-comment">
+            Комментарий: <span>{{ report.comment }}</span>
+          </p>
 
-            <div class="mod-actions">
-              <input
-                v-model="notes[report.id]"
-                class="mod-note"
-                type="text"
-                maxlength="1000"
-                placeholder="Заметка (необязательно)"
-                :aria-label="`Заметка по жалобе ${report.id}`"
-              />
-              <q-btn
-                v-for="action in ACTIONS"
-                :key="action.status"
-                flat
-                no-caps
-                dense
-                :color="action.color"
-                :label="action.label"
-                :disable="report.status === action.status"
-                :loading="busyId === report.id"
-                @click="setStatus(report, action.status)"
-              />
-            </div>
-          </article>
-        </template>
+          <div class="mod-actions">
+            <input
+              v-model="notes[report.id]"
+              class="mod-note"
+              type="text"
+              maxlength="1000"
+              placeholder="Заметка (необязательно)"
+              :aria-label="`Заметка по жалобе ${report.id}`"
+            />
+            <q-btn
+              v-for="action in ACTIONS"
+              :key="action.status"
+              flat
+              no-caps
+              dense
+              :color="action.color"
+              :label="action.label"
+              :disable="report.status === action.status"
+              :loading="busyId === report.id"
+              @click="setStatus(report, action.status)"
+            />
+          </div>
+        </article>
+      </template>
 
-        <p v-if="error" class="mod-error" role="alert">{{ error }}</p>
-      </q-card-section>
-    </q-card>
-  </q-dialog>
+      <p v-if="error" class="mod-error" role="alert">{{ error }}</p>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
+/**
+ * Раздел настроек «Жалобы»: очередь разбора и журнал модерации.
+ *
+ * Раньше это было отдельное модальное окно (`ModerationReportsDialog.vue`),
+ * которое открывалось из служебного экрана и закрывало настройки: после закрытия
+ * человек оказывался в чате — «из жалоб назад дороги нет» (жалоба владельца).
+ * Теперь раздел живёт ВНУТРИ настроек, как «Технические работы»: своя шапка с
+ * кнопкой назад и общая прокрутка профиля.
+ */
 import { icon } from '@/utils/icons'
 import { onMounted, ref, watch } from 'vue'
 
@@ -162,10 +167,6 @@ import {
 } from '@/services/moderation'
 import { getErrorMessage } from '@/services/errors'
 import { parseServerTime } from '@/utils/format'
-
-const emit = defineEmits<{
-  (e: 'close'): void
-}>()
 
 /** Вкладки-фильтры по статусу разбора. */
 const STATUS_TABS: { value: ReportStatus | 'all'; label: string }[] = [
@@ -212,6 +213,12 @@ const load = async () => {
   }
 }
 
+/** Кнопка «Обновить»: перечитываем то, что открыто сейчас (список или журнал). */
+const reload = async () => {
+  if (showJournal.value) await loadJournal()
+  else await load()
+}
+
 /** Смена статуса; при фильтре по статусу карточка уходит из списка. */
 const setStatus = async (report: ModerationReport, status: ReportStatus) => {
   if (busyId.value !== null) return
@@ -254,7 +261,7 @@ watch(activeStatus, load)
 onMounted(load)
 
 // --- Журнал модерации (третья вкладка) ---
-// Отдельный вид в том же окне: модератору нужно видеть и очередь жалоб, и след
+// Отдельный вид в том же разделе: модератору нужно видеть и очередь жалоб, и след
 // принятых решений (требование магазинов к разбору UGC).
 const showJournal = ref(false)
 const journal = ref<ModerationJournalEntry[]>([])
@@ -305,16 +312,17 @@ const restoreAuthorMessages = async (userId: number) => {
 </script>
 
 <style scoped>
-.mod-card {
-  width: min(720px, calc(100vw - 32px));
-  border-radius: 18px;
+.mod-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .mod-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 10px 16px 0;
 }
 
 .mod-tab {
@@ -333,9 +341,24 @@ const restoreAuthorMessages = async (userId: number) => {
   background: var(--ms-accent-soft, rgba(0, 0, 0, 0.06));
 }
 
-.mod-body {
-  max-height: 68vh;
-  overflow: auto;
+/* Обновление — иконка справа от вкладок: раздел прокручивается вместе с
+   настройками, своей шапки у него нет (она у профиля). */
+.mod-refresh {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--ms-border, #dfe5ea);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ms-icon);
+  cursor: pointer;
+}
+
+.mod-refresh:hover {
+  background: var(--ms-hover);
 }
 
 .mod-hint,
@@ -359,7 +382,7 @@ const restoreAuthorMessages = async (userId: number) => {
 
 .mod-item {
   border: 1px solid var(--ms-border, #dfe5ea);
-  border-radius: 12px;
+  border-radius: var(--ms-radius-md, 12px);
   padding: 10px 12px;
   margin-bottom: 10px;
 }
@@ -438,7 +461,7 @@ const restoreAuthorMessages = async (userId: number) => {
   flex: 1 1 200px;
   min-width: 0;
   border: 1px solid var(--ms-border, #dfe5ea);
-  border-radius: 8px;
+  border-radius: var(--ms-radius-sm, 10px);
   padding: 6px 9px;
   font-size: 13px;
   font-family: inherit;

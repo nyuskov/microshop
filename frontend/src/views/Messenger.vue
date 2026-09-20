@@ -45,7 +45,6 @@
         :drafts="draftsByChatId"
         :self-name="selfName"
         :self-avatar-url="selfAvatarUrl"
-        :is-admin="authStore.isAdmin"
         @open-message="openGlobalMessage"
         @toggle-pin="toggleChatPinned"
         @toggle-mute="toggleChatMuted"
@@ -60,7 +59,6 @@
         @open-story="openStory"
         @to-chats="goToChats"
         @open-profile="goToProfile"
-        @open-admin="goToAdmin"
         @select-chat="selectChat"
         @chat-opened="onChatOpened"
         @create-group="openCreateGroup"
@@ -403,9 +401,8 @@
   <q-dialog v-model="showProfileModal" :maximized="!isDesktop" @hide="onProfileHidden">
     <q-card class="ms-modal ms-modal-profile" :class="{ 'ms-modal-full': !isDesktop }">
       <q-card-section class="row no-wrap items-center ms-modal-head">
-        <!-- Заголовок окна — название текущего экрана: обычные настройки или
-             админский раздел (в него входит «шестерёнка» из списка чатов). -->
-        <div class="text-subtitle1 text-weight-medium ellipsis">{{ profileTitle }}</div>
+        <!-- Заголовок окна — название экрана: настройки профиля. -->
+        <div class="text-subtitle1 text-weight-medium ellipsis">{{ PROFILE_TITLE }}</div>
         <q-space />
         <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
       </q-card-section>
@@ -413,12 +410,7 @@
       <q-card-section class="ms-modal-body">
         <Suspense>
           <template #default>
-            <UserProfile
-              ref="profileRef"
-              :start-section="profileStartSection"
-              @close-modal="showProfileModal = false"
-              @open-moderation="openModerationFromAdmin"
-            />
+            <UserProfile ref="profileRef" @close-modal="showProfileModal = false" />
           </template>
           <template #fallback>
             <div class="q-pa-md">Загрузка профиля...</div>
@@ -906,7 +898,7 @@ const channelOverlaysRef = ref<InstanceType<typeof MessengerChannelOverlays> | n
 const chatOverlaysRef = ref<InstanceType<typeof MessengerChatOverlays> | null>(null)
 /** Оверлеи входа и безопасности: методы setLoginVisible / openSecurityAlert / openPeerKeyChanged. */
 const accountOverlaysRef = ref<InstanceType<typeof MessengerAccountOverlays> | null>(null)
-/** Диалоги модерации: методы openReport / openBlocked / openReports. */
+/** Диалоги модерации: методы openReport / openBlocked. */
 const moderationOverlaysRef = ref<InstanceType<typeof MessengerModerationOverlays> | null>(null)
 
 // ---------- Quasar: адаптивный layout (drawer на телефоне) ----------
@@ -4184,47 +4176,20 @@ watch(view, (section) => storeSection(section))
 const goToChats = () => switchSection('chats')
 
 /**
- * С какого экрана открывать настройки.
+ * Название окна настроек.
  *
- * Профиль грузится отдельным чанком (defineAsyncComponent), поэтому в момент
- * первого открытия дочернего компонента ещё нет и вызов метода в него не
- * долетит. Начальный экран передаём пропом — его компонент читает при
- * монтировании; для уже открытого профиля тот же переход делается методом.
+ * Служебный экран («Администрирование») — теперь обычный раздел настроек, своя
+ * шапка с названием рисуется внутри самого профиля, поэтому окно всегда
+ * называется «Настройки».
  */
-const profileStartSection = ref<'root' | 'admin'>('root')
-
-/**
- * Заголовок окна настроек: у админского экрана он свой — «Администрирование».
- *
- * Своя шапка внутри админского экрана не рисуется (иначе два заголовка подряд),
- * поэтому название даёт само окно. Разделы, открытые ИЗ админского экрана
- * (например «Приглашения»), остаются под этим же заголовком.
- */
-const profileTitle = computed(() =>
-  profileStartSection.value === 'admin' ? 'Администрирование' : 'Настройки'
-)
+const PROFILE_TITLE = 'Настройки'
 
 const goToProfile = () => {
   // Профиль всегда открывается списком разделов — если в прошлый раз был
   // открыт конкретный раздел, возвращаемся к списку.
-  profileStartSection.value = 'root'
   profileRef.value?.backToSections()
   pushMobileNav()
   showProfileModal.value = true
-}
-
-/** Админская «шестерёнка» внизу списка чатов: служебные разделы и жалобы. */
-const goToAdmin = () => {
-  profileStartSection.value = 'admin'
-  pushMobileNav()
-  showProfileModal.value = true
-  void nextTick(() => profileRef.value?.openAdmin())
-}
-
-/** «Жалобы» из админского экрана: закрываем настройки и открываем разбор. */
-const openModerationFromAdmin = () => {
-  showProfileModal.value = false
-  void nextTick(() => moderationOverlaysRef.value?.openReports())
 }
 
 /** Закрытие профиля: сбрасываем раздел (следующее открытие — со списка). */

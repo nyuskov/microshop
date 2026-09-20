@@ -50,26 +50,22 @@ import QrCode from '@/components/common/QrCode.vue'
 import InvitesSettings from '@/components/messenger/InvitesSettings.vue'
 import AppearanceSettings from '@/views/AppearanceSettings.vue'
 
-const emit = defineEmits(['close-modal', 'open-moderation'])
-
-const props = withDefaults(
-  defineProps<{
-    /** С какого экрана открыть настройки: обычный список или админский. */
-    startSection?: 'root' | 'admin'
-  }>(),
-  { startSection: 'root' }
-)
+const emit = defineEmits(['close-modal'])
 
 const authStore = useAuthStore()
 
 /**
- * Раздел «Технические работы» грузится отдельным чанком: он нужен только
- * владельцу сервиса и лишь тогда, когда тот его откроет, а чанк профиля с ним
- * внутри выходил за бюджет размера (проверка `check-bundle-size.mjs`). Так же
- * подгружаются служебные диалоги модерации.
+ * Служебные разделы («Технические работы», «Жалобы») грузятся отдельными
+ * чанками: они нужны только администратору и лишь тогда, когда он их откроет, а
+ * чанк профиля с ними внутри выходил за бюджет размера
+ * (проверка `check-bundle-size.mjs`).
  */
 const MaintenanceSettings = defineAsyncComponent(
   () => import('@/components/messenger/MaintenanceSettings.vue')
+)
+
+const ModerationReportsSection = defineAsyncComponent(
+  () => import('@/components/messenger/ModerationReportsSection.vue')
 )
 
 /**
@@ -210,21 +206,37 @@ type SettingsSection =
   | 'admin'
   | 'invites'
   | 'maintenance'
+  | 'reports'
   | 'appearance'
   | 'device'
   | 'about'
 
 interface SettingsRow {
-  key: Exclude<SettingsSection, 'root' | 'admin' | 'invites'>
+  key: Exclude<SettingsSection, 'root' | 'admin' | 'invites' | 'maintenance' | 'reports'>
   icon: string
   title: string
   desc: string
 }
 
 /**
- * Пункт админского экрана: «invites» и «maintenance» — реальные разделы
- * настроек, а «reports» — команда (жалобы живут в своём диалоге, см.
- * MessengerModerationOverlays), на неё родитель открывает диалог через emit.
+ * Пункт в списке настроек: обычный раздел или админский экран.
+ *
+ * Служебные разделы (приглашения, жалобы, техработы) собраны на отдельном
+ * экране. Раньше в него вела плавающая «шестерёнка» внизу списка чатов, но значок
+ * в панели чатов читался как ещё один элемент списка и мешал (владелец: «значок
+ * администрирования убрать, добавить пунктом в настройки»).
+ */
+interface SettingsEntry {
+  key: SettingsRow['key'] | 'admin'
+  icon: string
+  title: string
+  desc: string
+}
+
+/**
+ * Пункт админского экрана: «invites», «maintenance» и «reports» — реальные
+ * разделы служебного экрана (раньше «reports» открывался отдельным диалогом
+ * модерации). Открываются по нажатию — как обычные строки настроек.
  */
 interface AdminRow {
   key: 'invites' | 'maintenance' | 'reports'
@@ -262,8 +274,8 @@ const SETTINGS_ROWS: SettingsRow[] = [
 
 // Раздел владельца сервиса: публичной регистрации нет, аккаунты заводятся по
 // личным ссылкам. Служебные вещи не мешаются в обычных настройках профиля —
-// они живут на отдельном экране, куда ведёт «шестерёнка» внизу списка чатов
-// (как управление в VS Code). Виден только аккаунту администратора.
+// они живут на отдельном экране, вход в который — пункт «Администрирование» в
+// списке настроек (виден только аккаунту администратора).
 const ADMIN_ROWS: AdminRow[] = [
   {
     key: 'invites',
@@ -299,16 +311,20 @@ const adminRows = computed<AdminRow[]>(() =>
   ADMIN_ROWS.filter((row) => row.key !== 'maintenance' || authStore.isOwner)
 )
 
-// Компонент грузится отдельным чанком: к моменту первого открытия настройки
-// родитель ещё не может вызвать openAdmin() (в него нечего вызывать), поэтому
-// стартовый экран приходит пропом. `immediate` нужен именно для этого случая —
-// к моменту монтирования проп уже установлен.
-watch(
-  () => props.startSection,
-  (value) => {
-    if (value) section.value = value
-  },
-  { immediate: true }
+/** Вход в служебный экран — самый последний пункт списка настроек. */
+const ADMIN_ENTRY: SettingsEntry = {
+  key: 'admin',
+  icon: 'admin_panel_settings',
+  title: 'Администрирование',
+  // Подпись в одну строку — как у остальных пунктов: длинная переносилась на
+  // две строки, и пункт выглядел выше и «криво» по сравнению с соседями
+  // (замечание владельца).
+  desc: 'Приглашения, жалобы, техработы'
+}
+
+/** Пункты настроек: обычные разделы и, у админа, вход в служебный экран. */
+const settingsEntries = computed<SettingsEntry[]>(() =>
+  authStore.isAdmin ? [...SETTINGS_ROWS, ADMIN_ENTRY] : SETTINGS_ROWS
 )
 
 /** Информация о сборке (подставляется vite при сборке). */
@@ -369,22 +385,17 @@ const currentSectionTitle = computed(() => {
 const settingsQuery = ref('')
 
 /** Разделы под поиском: ищем по названию и описанию. */
-const visibleSettingsRows = computed<SettingsRow[]>(() => {
+const visibleSettingsEntries = computed<SettingsEntry[]>(() => {
   const query = settingsQuery.value.trim().toLowerCase()
-  if (!query) return SETTINGS_ROWS
-  return SETTINGS_ROWS.filter(
+  if (!query) return settingsEntries.value
+  return settingsEntries.value.filter(
     (row) => row.title.toLowerCase().includes(query) || row.desc.toLowerCase().includes(query)
   )
 })
 
 /** Открыть раздел настроек. */
-const openSection = (key: SettingsRow['key']) => {
+const openSection = (key: SettingsEntry['key']) => {
   section.value = key
-}
-
-/** Открыть админский экран (это делает «шестерёнка» в списке чатов). */
-const openAdmin = () => {
-  section.value = 'admin'
 }
 
 /**
@@ -392,29 +403,25 @@ const openAdmin = () => {
  * обычного раздела — к списку настроек. Ведём себя как «назад» в приложении,
  * а не всегда выкидываем на главный экран.
  */
-const ADMIN_SECTIONS: SettingsSection[] = ['invites', 'maintenance']
+const ADMIN_SECTIONS: SettingsSection[] = ['invites', 'maintenance', 'reports']
 
 const backToSections = () => {
   section.value = ADMIN_SECTIONS.includes(section.value) ? 'admin' : 'root'
 }
 
-/** Нажатие в админском списке: раздел или команда (жалобы — отдельный диалог). */
+/** Нажатие в служебном списке: открываем раздел (своя шапка с «назад» — у него). */
 const openAdminRow = (key: AdminRow['key']) => {
-  if (key === 'reports') {
-    emit('open-moderation')
-    return
-  }
   section.value = key
 }
 
 // Родителю (Messenger) нужно знать, открыт ли РАЗДЕЛ настроек: тогда «назад»
 // возвращает к списку разделов, а не закрывает профиль целиком.
 //
-// Админский экран сюда НЕ входит: он отдельный вход (из «шестерёнки» в списке
-// чатов), и «назад» оттуда должен закрыть настройки — как возвращение туда, откуда
-// пришёл, а не прыжок в обычный профиль.
-const isInSection = () => section.value !== 'root' && section.value !== 'admin'
-defineExpose({ backToSections, isInSection, openAdmin })
+// Служебный экран («Администрирование») теперь такой же раздел: вход в него —
+// пункт списка настроек, поэтому «назад» из него возвращает к списку, а не
+// закрывает окно.
+const isInSection = () => section.value !== 'root'
+defineExpose({ backToSections, isInSection })
 
 // Раздел настроек (а не список разделов) — отдельный слой мобильной навигации:
 // системное «назад» возвращает к списку разделов, а не закрывает настройки и тем
@@ -422,7 +429,8 @@ defineExpose({ backToSections, isInSection, openAdmin })
 // него на два действия («к списку» + «закрыть настройки») приходился один шаг, и
 // второе нажатие уходило системе — на телефоне это выход из приложения прямо
 // из-под открытых настроек (см. `composables/useMobileOverlay.ts`).
-// Админский экран сюда не входит: это отдельный вход из «шестерёнки».
+// Служебный экран («Администрирование») — такой же раздел: вход в него идёт
+// пунктом списка настроек, значит и «назад» должен возвращать к списку.
 useMobileLayer(isInSection, backToSections)
 
 // ---------- Ссылка на профиль ----------
@@ -846,6 +854,17 @@ const onNotificationsToggle = async (val: boolean) => {
     </div>
 
     <template v-else>
+      <!-- Шапка раздела (стрелка назад + название) — СВЕРХУ, до содержимого:
+           заголовок служебного экрана стоял ниже списка, и «Администрирование»
+           читалось как подпись к списку, а не как заголовок экрана
+           (жалоба владельца). -->
+      <div v-if="section !== 'root'" class="settings-head">
+        <button type="button" class="settings-back" title="К разделам" @click="backToSections">
+          <q-icon :name="icon('arrow_back')" size="22px" />
+        </button>
+        <h2 class="settings-head-title">{{ currentSectionTitle }}</h2>
+      </div>
+
       <!-- Главный экран: карточка профиля -->
       <div v-if="section === 'root'" class="profile-hero">
         <div class="avatar-box">
@@ -923,27 +942,32 @@ const onNotificationsToggle = async (val: boolean) => {
             <q-icon :name="icon('close')" size="16px" />
           </button>
         </div>
-        <p v-if="!visibleSettingsRows.length" class="settings-empty">
+        <p v-if="!visibleSettingsEntries.length" class="settings-empty">
           Ничего не нашлось — попробуйте другое слово.
         </p>
-        <button
-          v-for="row in visibleSettingsRows"
-          :key="row.key"
-          type="button"
-          class="settings-link"
-          @click="openSection(row.key)"
-        >
-          <q-icon :name="icon(row.icon)" size="21px" class="settings-link-icon" />
-          <span class="settings-link-text">
-            <span class="settings-link-title">{{ row.title }}</span>
-            <span class="settings-link-desc">{{ row.desc }}</span>
-          </span>
-          <q-icon :name="icon('chevron_right')" size="20px" class="settings-link-chevron" />
-        </button>
+        <template v-for="row in visibleSettingsEntries" :key="row.key">
+          <!-- Полоса отделяет служебный вход — так же, как перед «Выйти из
+               аккаунта». Это отдельный элемент, а не рамка кнопки: рамка
+               читалась частью пункта (владелец: «не бордер, а полосу»). -->
+          <div v-if="row.key === 'admin'" class="settings-separator" aria-hidden="true"></div>
+          <button
+            type="button"
+            class="settings-link"
+            :class="{ 'settings-link--admin': row.key === 'admin' }"
+            @click="openSection(row.key)"
+          >
+            <q-icon :name="icon(row.icon)" size="21px" class="settings-link-icon" />
+            <span class="settings-link-text">
+              <span class="settings-link-title">{{ row.title }}</span>
+              <span class="settings-link-desc">{{ row.desc }}</span>
+            </span>
+            <q-icon :name="icon('chevron_right')" size="20px" class="settings-link-chevron" />
+          </button>
+        </template>
       </nav>
 
-      <!-- Админский экран: служебные разделы (в него ведёт «шестерёнка» внизу
-           списка чатов). Обычный пользователь сюда не попадёт. -->
+      <!-- Служебный экран: приглашения, жалобы, техработы. Вход — пункт
+           «Администрирование» в списке настроек. -->
       <nav v-if="section === 'admin'" class="settings-list" aria-label="Разделы администрирования">
         <button
           v-for="row in adminRows"
@@ -982,18 +1006,6 @@ const onNotificationsToggle = async (val: boolean) => {
         <p class="delete-account-hint">Аккаунт, переписка и вложения будут удалены безвозвратно.</p>
       </div>
 
-      <!-- Шапка раздела настроек (своя у каждого раздела: стрелка назад + название).
-           У админского экрана своей шапки НЕТ: его заголовок — название самого
-           окна («Администрирование»), а стрелки туда нет намеренно: это
-           отдельный вход из «шестерёнки», и возвращаться из него надо закрытием,
-           а не прыжком в обычный профиль, к которому человек не шёл. -->
-      <div v-if="section !== 'root' && section !== 'admin'" class="settings-head">
-        <button type="button" class="settings-back" title="К разделам" @click="backToSections">
-          <q-icon :name="icon('arrow_back')" size="22px" />
-        </button>
-        <h2 class="settings-head-title">{{ currentSectionTitle }}</h2>
-      </div>
-
       <!-- Внешний вид: тема, акцент, пузыри, размер текста и обои -->
       <div v-if="section === 'appearance'" class="settings-embed">
         <AppearanceSettings />
@@ -1002,6 +1014,13 @@ const onNotificationsToggle = async (val: boolean) => {
       <!-- Приглашения (только владелец сервиса): ссылки на регистрацию. -->
       <div v-if="section === 'invites'" class="settings-embed">
         <InvitesSettings />
+      </div>
+
+      <!-- Жалобы: очередь разбора и журнал модерации. Раздел, а не отдельное
+           окно — «назад» возвращает к служебному списку (жалоба владельца:
+           «из жалоб назад дороги нет»). -->
+      <div v-if="section === 'reports'" class="settings-embed">
+        <ModerationReportsSection />
       </div>
 
       <!-- Технические работы (только владелец сервиса): рубильник, который
@@ -1975,6 +1994,22 @@ const onNotificationsToggle = async (val: boolean) => {
 .settings-link-chevron {
   margin-left: auto;
   color: var(--ms-muted-3);
+}
+
+/* Полоса над служебным входом.
+
+   Ровно тот же приём, что у `.delete-account-row`: воздух сверху, штриховая
+   полоса во всю ширину списка, воздух снизу. Не рамка кнопки — иначе линия
+   читалась частью пункта и липла к его содержимому (владелец: «не бордер, а
+   как здесь просто полоса сверху»). */
+.settings-separator {
+  margin: var(--ms-space-3) 0;
+  border-top: 1px dashed var(--ms-border);
+}
+
+/* Служебный вход — обычная строка настроек, отличается только цветом иконки. */
+.settings-link--admin .settings-link-icon {
+  color: var(--ms-accent);
 }
 
 /* Шапка раздела: назад + название */
