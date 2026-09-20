@@ -875,7 +875,7 @@ const onNotificationsToggle = async (val: boolean) => {
             :disabled="avatarUploading"
             @click.stop="removeAvatarClick"
           >
-            <q-icon :name="icon('close')" size="15px" />
+            <q-icon :name="icon('delete')" size="14px" />
           </button>
           <input
             ref="avatarInput"
@@ -2103,15 +2103,18 @@ p.about-notice.field-hint {
   pointer-events: none;
 }
 
+/* Удаление фото: раньше это был красный крестик В ЛЕВОМ ВЕРХНЕМ углу аватара —
+   он читался как «ошибка» на снимке. Теперь это нейтральная кнопка в углу,
+   зеркально камере (та — справа внизу), с той же поверхностной подложкой. */
 .avatar-remove {
   position: absolute;
-  top: -6px;
-  right: -6px;
+  left: 6px;
+  bottom: 6px;
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  border: 2px solid var(--ms-surface);
-  background: var(--ms-danger);
+  border: none;
+  background: var(--ms-backdrop);
   color: var(--ms-on-accent);
   display: inline-flex;
   align-items: center;

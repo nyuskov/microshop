@@ -2129,6 +2129,9 @@ const selectedChatPeerOnline = computed<boolean>(() => {
 
 /** Подпись шапки личного чата: присутствие собеседника. */
 const presenceText = (chat: Chat): string => {
+  // Чат с собой («Сохранённые сообщения»): подписи нет — как в Телеграме.
+  // Раньше здесь висели логин и номер телефона: служебные данные в шапке.
+  if (chat.is_self) return ''
   const other = otherUserOfChat(chat)
   if (!other) return chat.name
   if (!isPrivateChat(chat)) {

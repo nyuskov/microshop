@@ -1043,7 +1043,9 @@ onBeforeUnmount(() => {
   position: relative;
   padding: 7px 11px 6px;
   border-radius: var(--ms-radius-md);
-  box-shadow: var(--ms-shadow-sm);
+  /* Тени нет намеренно: в Телеграме и WhatsApp пузыри плоские — объём даёт фон
+     чата, а тень превращала ленту в «веб-карточки». Тени остались у меню,
+     плашек и диалогов, где они и нужны. */
   min-width: 70px;
   /* Длинная лента: содержимое пузыря за экраном браузер не раскладывает и не
      рисует. DOM и логика не меняются, поэтому позиция скролла и разделители целы.
@@ -1116,10 +1118,6 @@ onBeforeUnmount(() => {
   font-size: calc(32px * var(--ms-text-scale, 1));
 }
 
-.msg-bubble.sticker-only .msg-meta {
-  color: var(--ms-muted-2);
-}
-
 /* Картинка-стикер: пузырь тоже прозрачный — в ленте это не «сообщение с
    картинкой», а сам стикер (в Telegram у стикеров подложки нет). Без этого
    прозрачная картинка лежала на тёмной подложке пузыря и читалась как «тёмное
@@ -1140,6 +1138,20 @@ onBeforeUnmount(() => {
   box-shadow: none;
   padding: 0 2px;
   max-width: 320px;
+}
+
+/* У «прозрачных» пузырей (стикер-эмодзи, картинка-стикер, «кружок»-видео)
+   внутри нет подложки, и время с галочками висело голой строкой под сообщением —
+   читалось как случайная подпись. Даём им плашку как у разделителя даты.
+   Правило стоит ПОСЛЕ правил стикеров: `__tests__/emojiStickers.spec.ts` читает
+   первое правило с `.msg-bubble.sticker-image` и проверяет в нём предел ширины. */
+.msg-bubble.sticker-only .msg-meta,
+.msg-bubble.sticker-image .msg-meta,
+.msg-bubble.round-video-only .msg-meta {
+  padding: 2px 7px;
+  border-radius: var(--ms-radius-pill);
+  background: var(--ms-date-pill);
+  backdrop-filter: blur(6px);
 }
 
 /* ---------- Свайп вправо = ответ ---------- */

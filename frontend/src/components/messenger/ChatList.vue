@@ -71,7 +71,6 @@
         </button>
       </div>
 
-      <div class="section-label">Недавние</div>
       <div v-if="!props.chats.length" class="empty-hint">
         <template v-if="isFolderKey(props.filter)">
           В папке пока нет чатов — добавьте их через «В папку» в меню чата.
@@ -161,7 +160,7 @@
                   <q-icon
                     v-if="chat.is_channel"
                     :name="icon('campaign')"
-                    size="15px"
+                    size="17px"
                     class="row-channel"
                     aria-hidden="true"
                   />
@@ -171,7 +170,7 @@
                   <q-icon
                     v-if="isMutedOf(chat.id)"
                     :name="icon('notifications_off')"
-                    size="14px"
+                    size="16px"
                     class="row-muted"
                     aria-hidden="true"
                   />

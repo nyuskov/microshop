@@ -30,12 +30,14 @@
             :class="{ empty: !mine }"
             :style="mine ? avatarStyle(myName) : undefined"
           >
-            <img v-if="myAvatar" :src="myAvatar" alt="" loading="lazy" decoding="async" />
+            <!-- Своей истории нет — в кружке «+», а не аватар/инициалы: рядом
+                 в шапке стоит аватар профиля, и два одинаковых кружка
+                 читались как один и тот же элемент. Поэтому «+» важнее
+                 аватара. -->
+            <q-icon v-if="!mine" :name="icon('add')" class="story-avatar-add" aria-hidden="true" />
+            <img v-else-if="myAvatar" :src="myAvatar" alt="" loading="lazy" decoding="async" />
             <template v-else>{{ myInitials }}</template>
           </span>
-          <!-- В шапке рядом два кружка с инициалами (этот и аватар профиля) —
-               маленький «+» объясняет, что этот кружок про истории. -->
-          <span v-if="mini && !mine" class="story-plus" aria-hidden="true">+</span>
         </button>
         <button
           v-if="!mini && !publishing"
@@ -428,26 +430,12 @@ const publish = async () => {
   border-color: var(--ms-accent);
 }
 
-/* Кружок без своей истории: значок «+» в углу. Без него вход в истории не
-   отличить от аватара профиля — рядом стоят два одинаковых кружка с инициалами
-   (подпись `title` на тач-устройствах не видна, а `aria-label` нужен только
-   скринридеру). */
-.mini .story-plus {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--ms-accent);
-  color: var(--ms-on-accent);
-  /* Знак «+» живёт в кружке 14 px: крупнее 11 px он не влезает, но множитель
-     настройки «Размер текста» учитываем. */
-  font-size: calc(11px * var(--ms-text-scale, 1));
-  font-weight: 700;
-  line-height: 14px;
-  text-align: center;
-  pointer-events: none;
+/* Своей истории нет — в кружке «+» (раньше в углу висел маленький значок, а в
+   кружке стояли инициалы — рядом в шапке те же буквы у аватара профиля, и два
+   кружка путались). Мягкая акцентная подложка говорит, что это действие. */
+.story-avatar-add {
+  font-size: 20px;
+  line-height: 1;
 }
 
 /* Полоса историй раскрыта: кружок в шапке подсвечен — как значок поиска в
@@ -547,8 +535,8 @@ const publish = async () => {
 }
 
 .story-avatar.empty {
-  background: var(--ms-surface-2);
-  color: var(--ms-muted);
+  background: var(--ms-accent-soft);
+  color: var(--ms-accent);
 }
 
 .story-avatar-btn {

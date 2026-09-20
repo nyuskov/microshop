@@ -1621,7 +1621,9 @@ watch(newMessage, () => {
   align-items: center;
   gap: 8px;
   background: var(--ms-surface);
-  border-radius: var(--ms-radius-lg);
+  /* Полная «пилюля» — как в Телеграме: строка ввода самое заметное поле в
+     приложении, а скругление 14px при высоте 48 читалось как прямоугольник. */
+  border-radius: var(--ms-radius-pill);
   padding: 5px 10px;
   position: relative;
 }

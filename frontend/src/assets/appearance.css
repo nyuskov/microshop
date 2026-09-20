@@ -102,8 +102,12 @@
     --ms-fs-xs: calc(11.5px * var(--ms-text-scale, 1));
     --ms-fs-sm: calc(12.5px * var(--ms-text-scale, 1));
     --ms-fs-md: calc(13.5px * var(--ms-text-scale, 1));
-    --ms-fs-base: calc(14.5px * var(--ms-text-scale, 1));
-    --ms-fs-lg: calc(16px * var(--ms-text-scale, 1));
+    /* Текст сообщений и полей — 15.5, а не 14.5: на телефоне прежний размер
+       читался мелко (в Телеграме сообщение ≈ 16). Второй уровень — 17: имена
+       чатов и заголовки, как в нативном клиенте. Множитель «Размер текста»
+       остаётся главным и умножает оба значения. */
+    --ms-fs-base: calc(15.5px * var(--ms-text-scale, 1));
+    --ms-fs-lg: calc(17px * var(--ms-text-scale, 1));
     --ms-fs-xl: calc(20px * var(--ms-text-scale, 1));
 
     /* Шкала отступов: однотипные панели должны совпадать по геометрии. */

@@ -170,7 +170,11 @@
           </div>
         </div>
         <div v-if="!rows.length && (pending ?? []).length === 0" class="chat-status">
-          <EmptyState compact title="Сообщений пока нет. Напишите первым!" />
+          <EmptyState
+            icon="forum"
+            title="Сообщений пока нет"
+            hint="Напишите первым — сообщение появится здесь"
+          />
         </div>
       </template>
     </div>
@@ -831,6 +835,15 @@ onBeforeUnmount(() => {
   padding-bottom: calc(12px + var(--ms-extras-h, 0px));
   display: flex;
   flex-direction: column;
+}
+
+/* Пустой чат: карточку держим по центру ленты, а не у верхнего края (сверху
+   сообщение выглядело «прилипшим» к шапке и вокруг была пустота на экран). */
+/* Пустая лента: подсказка держится по центру области, а не под шапкой.
+   `margin: auto` работает на обёртке (`.chat-status`), а не на самом
+   `.empty-state`: пустое состояние вложено в неё. */
+.messages-scroll > .chat-status {
+  margin: auto;
 }
 
 /* ---------- Счётчики поста канала (просмотры · комментарии) ---------- */
