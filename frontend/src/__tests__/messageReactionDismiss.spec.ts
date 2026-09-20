@@ -84,10 +84,26 @@ describe('панель действий закрывается после реа
   // считается видимой сразу — см. `useVisibleOnce`.
   beforeEach(() => {
     vi.stubGlobal('IntersectionObserver', undefined)
+    // Играем за телефон: гашение панели касается только грубого указателя
+    // (на компьютере панель живёт по наведению — см. `isCoarsePointer`).
+    vi.stubGlobal('matchMedia', () => ({ matches: true }))
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
+  })
+
+  it('на компьютере панель по реакции не гаснет — она живёт по наведению', async () => {
+    // Мышь: после гашения наведение перестало бы показывать панель, и открыть
+    // её можно было бы только нажатием — «теперь кликать надо на сообщение?».
+    vi.stubGlobal('matchMedia', () => ({ matches: false }))
+    const wrapper = await mountRowReady()
+
+    await wrapper.find('.msg-actions .quick-emoji').trigger('click')
+
+    expect(wrapper.emitted('toggle-reaction')).toHaveLength(1)
+    expect(barClasses(wrapper)).not.toContain('dismissed')
+    wrapper.unmount()
   })
 
   it('быстрая реакция ставится, а панель гаснет', async () => {
