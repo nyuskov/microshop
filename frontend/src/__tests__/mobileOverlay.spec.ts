@@ -7,12 +7,14 @@
  * истории остаётся пустой шаг) и закрываться сверху вниз — по одной за раз.
  */
 
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { effectScope, ref } from 'vue'
 
 import {
   closeTopMobileLayer,
   mobileLayerDepth,
+  pushMobileLayer,
   useMobileLayer
 } from '@/composables/useMobileOverlay'
 
@@ -119,5 +121,68 @@ describe('useMobileLayer', () => {
 
     scope.stop()
     expect(mobileLayerDepth()).toBe(0)
+  })
+})
+
+/**
+ * Окна, которые открывают императивно (`appDialogs`) и разделы настроек: у них
+ * нет обычного «слоя-компонента», и без явной регистрации системное «назад» на
+ * телефоне выходило из приложения из-под открытого вопроса, а в настройках
+ * тратило шаг истории впустую.
+ */
+describe('pushMobileLayer', () => {
+  it('добавляет слой и снимает его по возвращённой функции', () => {
+    const closed: string[] = []
+    const release = pushMobileLayer(() => closed.push('closed'))
+    expect(mobileLayerDepth()).toBe(1)
+
+    expect(closeTopMobileLayer()).toBe(true)
+    expect(closed).toEqual(['closed'])
+
+    release()
+    expect(mobileLayerDepth()).toBe(0)
+    // Повторное снятие (окно закрыли дважды: крестик и «Отмена») ничего не ломает.
+    release()
+    expect(mobileLayerDepth()).toBe(0)
+  })
+
+  it('императивное окно поверх модалки закрывается первым', () => {
+    const scope = effectScope()
+    const panel = modal(true)
+    scope.run(() => useMobileLayer(() => panel.isOpen.value, panel.close))
+
+    const released: string[] = []
+    // Как в `appDialogs`: «закрыть» прячет окно, а снятие слоя приходит из
+    // `onDismiss` — уже после того, как окно действительно скрылось.
+    let release: () => void = () => {}
+    release = pushMobileLayer(() => {
+      released.push('dialog')
+      release()
+    })
+    expect(mobileLayerDepth()).toBe(2)
+
+    closeTopMobileLayer()
+    expect(released).toEqual(['dialog'])
+    expect(panel.closed).toEqual([])
+    expect(mobileLayerDepth()).toBe(1)
+
+    closeTopMobileLayer()
+    expect(panel.closed).toEqual(['closed'])
+
+    scope.stop()
+  })
+})
+
+describe('слои подключены там, где ломалось «назад»', () => {
+  it('все окна подтверждения из appDialogs регистрируют слой', () => {
+    const source = readFileSync('src/utils/appDialogs.ts', 'utf8')
+    // confirmDialog, alertDialog, askTextDialog — три окна, три регистрации.
+    expect(source.match(/pushMobileLayer\(/g)).toHaveLength(3)
+    expect(source.match(/releaseLayer\(\)/g)).toHaveLength(3)
+  })
+
+  it('раздел настроек профиля — отдельный слой (возврат к списку разделов)', () => {
+    const profile = readFileSync('src/views/UserProfile.vue', 'utf8')
+    expect(profile).toMatch(/useMobileLayer\(isInSection, backToSections\)/)
   })
 })

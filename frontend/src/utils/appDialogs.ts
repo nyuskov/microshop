@@ -17,6 +17,8 @@
 
 import { Dialog } from 'quasar'
 
+import { pushMobileLayer } from '@/composables/useMobileOverlay'
+
 /** Общие поля любого окна: заголовок и текст вопроса. */
 interface BaseOptions {
   title: string
@@ -51,7 +53,7 @@ const DIALOG_CLASS = 'app-dialog'
 export const confirmDialog = (options: ConfirmOptions): Promise<boolean> =>
   new Promise((resolve) => {
     let answered = false
-    Dialog.create({
+    const dialog = Dialog.create({
       class: DIALOG_CLASS,
       title: options.title,
       message: options.message,
@@ -68,6 +70,10 @@ export const confirmDialog = (options: ConfirmOptions): Promise<boolean> =>
         noCaps: true
       }
     })
+    // Слой мобильной навигации: на телефоне системное «назад» закрывает вопрос
+    // (= «отмена»), а не выходит из приложения из-под него.
+    const releaseLayer = pushMobileLayer(() => dialog.hide())
+    dialog
       .onOk(() => {
         answered = true
         resolve(true)
@@ -77,8 +83,10 @@ export const confirmDialog = (options: ConfirmOptions): Promise<boolean> =>
         resolve(false)
       })
       .onDismiss(() => {
-        // Клик мимо окна/Esc — это «нет». Без этого промис остался бы висеть.
+        // Клик мимо окна/Esc/системное «назад» — это «нет». Без этого промис
+        // остался бы висеть.
         if (!answered) resolve(false)
+        releaseLayer()
       })
   })
 
@@ -91,7 +99,7 @@ export const alertDialog = (options: BaseOptions & { okLabel?: string }): Promis
       done = true
       resolve()
     }
-    Dialog.create({
+    const dialog = Dialog.create({
       class: DIALOG_CLASS,
       title: options.title,
       message: options.message,
@@ -103,8 +111,11 @@ export const alertDialog = (options: BaseOptions & { okLabel?: string }): Promis
         noCaps: true
       }
     })
-      .onOk(finish)
-      .onDismiss(finish)
+    const releaseLayer = pushMobileLayer(() => dialog.hide())
+    dialog.onOk(finish).onDismiss(() => {
+      finish()
+      releaseLayer()
+    })
   })
 
 /**
@@ -116,7 +127,7 @@ export const alertDialog = (options: BaseOptions & { okLabel?: string }): Promis
 export const askTextDialog = (options: AskTextOptions): Promise<string | null> =>
   new Promise((resolve) => {
     let answered = false
-    Dialog.create({
+    const dialog = Dialog.create({
       class: DIALOG_CLASS,
       title: options.title,
       message: options.message,
@@ -140,6 +151,8 @@ export const askTextDialog = (options: AskTextOptions): Promise<string | null> =
         noCaps: true
       }
     })
+    const releaseLayer = pushMobileLayer(() => dialog.hide())
+    dialog
       .onOk((value: string) => {
         answered = true
         resolve(value ?? '')
@@ -150,5 +163,6 @@ export const askTextDialog = (options: AskTextOptions): Promise<string | null> =
       })
       .onDismiss(() => {
         if (!answered) resolve(null)
+        releaseLayer()
       })
   })

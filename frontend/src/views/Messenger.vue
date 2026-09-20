@@ -872,11 +872,11 @@ const showProfileModal = ref(false)
 const openStoryId = ref<number | null>(null)
 const storiesStore = useStoriesStore()
 
-/** Разделы профиля (см. UserProfile): нужно, чтобы "назад" выходил из раздела. */
+/** Разделы профиля (см. UserProfile): профиль всегда открывается со списка. */
 interface ProfileHandle {
-  isInSection: () => boolean
+  /** Вернуть профиль к списку разделов (профиль открывается со списка). */
   backToSections: () => void
-  /** Открыть админский экран (служительные разделы: приглашения, жалобы). */
+  /** Открыть админский экран (служебные разделы: приглашения, жалобы). */
   openAdmin: () => void
 }
 const profileRef = ref<ProfileHandle | null>(null)
@@ -3298,8 +3298,6 @@ const { syncChatUrl, goBackToList, pushMobileNav, revealDrawer, onAppPopState } 
       messageSelection
     },
     hooks: {
-      profileInSection: () => profileRef.value?.isInSection() ?? false,
-      backToProfileSections: () => profileRef.value?.backToSections(),
       exitMessageSelection: () => exitMessageSelection(),
       closeOpenChat: () => closeOpenChat()
     }

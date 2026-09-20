@@ -17,7 +17,6 @@ const base: BackSnapshot = {
   storyOpen: false,
   lightboxOpen: false,
   profileOpen: false,
-  profileInSection: false,
   chatInfoOpen: false,
   groupInfoOpen: false,
   createGroupOpen: false,
@@ -40,7 +39,6 @@ describe('decideBackStep', () => {
     expect(step({ overlayLayers: 1, storyOpen: true })).toEqual({ kind: 'overlay' })
     expect(step({ storyOpen: true, lightboxOpen: true })).toEqual({ kind: 'story' })
     expect(step({ lightboxOpen: true, profileOpen: true })).toEqual({ kind: 'lightbox' })
-    expect(step({ profileOpen: true, profileInSection: true })).toEqual({ kind: 'profile-section' })
     expect(step({ profileOpen: true, chatInfoOpen: true })).toEqual({ kind: 'overlays' })
     expect(step({ groupInfoOpen: true })).toEqual({ kind: 'overlays' })
     expect(step({ createGroupOpen: true })).toEqual({ kind: 'overlays' })

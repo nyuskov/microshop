@@ -54,6 +54,22 @@ export function closeTopMobileLayer(): boolean {
 }
 
 /**
+ * Зарегистрировать слой вручную (без компонента): возвращает функцию снятия.
+ *
+ * Нужно там, где окно открывается императивно (`utils/appDialogs.ts` —
+ * подтверждение, сообщение, ввод текста): у такого окна нет флага состояния, за
+ * которым можно было бы следить. Без этого системное «назад» на телефоне
+ * выходило из приложения из-под открытого вопроса.
+ */
+export function pushMobileLayer(close: () => void): () => void {
+  const entry: MobileLayer = { close }
+  layers.value = [...layers.value, entry]
+  return () => {
+    layers.value = layers.value.filter((layer) => layer !== entry)
+  }
+}
+
+/**
  * Объявить модалку слоем: пока `open` истинно, она в стеке.
  *
  * Слой снимается и при закрытии (`open` стал false), и при исчезновении

@@ -21,8 +21,6 @@ export type MobileBackStep =
   | { kind: 'story' }
   /** Закрыть просмотр изображения. */
   | { kind: 'lightbox' }
-  /** Вернуть список разделов внутри профиля. */
-  | { kind: 'profile-section' }
   /** Закрыть модалки поверх всего. */
   | { kind: 'overlays' }
   /** Выйти из режима выбора сообщений. */
@@ -49,8 +47,6 @@ export interface BackSnapshot {
   storyOpen: boolean
   lightboxOpen: boolean
   profileOpen: boolean
-  /** Открыт ли внутри профиля конкретный раздел (а не список разделов). */
-  profileInSection: boolean
   chatInfoOpen: boolean
   groupInfoOpen: boolean
   createGroupOpen: boolean
@@ -87,7 +83,6 @@ export function decideBackStep(snapshot: BackSnapshot): MobileBackStep {
   if (snapshot.overlayLayers > 0) return { kind: 'overlay' }
   if (snapshot.storyOpen) return { kind: 'story' }
   if (snapshot.lightboxOpen) return { kind: 'lightbox' }
-  if (snapshot.profileOpen && snapshot.profileInSection) return { kind: 'profile-section' }
   if (
     snapshot.profileOpen ||
     snapshot.chatInfoOpen ||

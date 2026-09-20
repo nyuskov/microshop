@@ -22,10 +22,6 @@ export interface NavigationLayers {
 }
 
 export interface NavigationHooks {
-  /** Профиль открыт на конкретном разделе (а не на списке разделов). */
-  profileInSection: () => boolean
-  /** Профиль: «назад» выходит из раздела профиля к списку разделов. */
-  backToProfileSections: () => void
   /** Выйти из режима выбора сообщений. */
   exitMessageSelection: () => void
   /** Закрыть открытую переписку (сброс нити и адреса). */
@@ -182,7 +178,6 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
       storyOpen: layers.storyId.value !== null,
       lightboxOpen: layers.lightboxIndex.value !== null,
       profileOpen: layers.profileOpen.value,
-      profileInSection: hooks.profileInSection(),
       chatInfoOpen: layers.chatInfoOpen.value,
       groupInfoOpen: layers.groupInfoOpen.value,
       createGroupOpen: layers.createGroupOpen.value,
@@ -206,9 +201,6 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
         return
       case 'lightbox':
         layers.lightboxIndex.value = null
-        return
-      case 'profile-section':
-        hooks.backToProfileSections()
         return
       case 'overlays':
         layers.profileOpen.value = false

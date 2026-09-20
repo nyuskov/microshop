@@ -118,5 +118,9 @@ describe('админские разделы отделены от обычных
     expect(profile).toMatch(
       /const isInSection = \(\) => section\.value !== 'root' && section\.value !== 'admin'/
     )
+    // Сам раздел — отдельный слой мобильной навигации: он обязан иметь свой
+    // шаг в истории, иначе второе нажатие «назад» уходило системе и на телефоне
+    // закрывало приложение прямо из-под открытых настроек.
+    expect(profile).toMatch(/useMobileLayer\(isInSection, backToSections\)/)
   })
 })
