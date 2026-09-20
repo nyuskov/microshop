@@ -434,6 +434,14 @@ defineExpose({ openAt, close, isOpen })
   transition: background 0.12s ease;
 }
 
+/* Телефон: реакции — самые частые тапы в листе, 32 px по высоте для пальца
+   мало (у пунктов списка ниже высота ≈ 40 px). */
+@media (max-width: 600px) {
+  .ctx-emoji {
+    height: 40px;
+  }
+}
+
 .ctx-emoji:hover,
 .ctx-emoji:focus-visible {
   background: var(--ms-surface-2, #eef1f4);

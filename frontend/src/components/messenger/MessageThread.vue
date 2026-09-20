@@ -825,6 +825,10 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 12px 16px;
+  /* Запас снизу под открытую панель эмодзи/стикеров: она оверлей поверх ленты,
+     и без него последнее сообщение оказывается под ней. Высоту панели пишет
+     родитель в `--ms-extras-h` (см. MessageComposer/Messenger). */
+  padding-bottom: calc(12px + var(--ms-extras-h, 0px));
   display: flex;
   flex-direction: column;
 }

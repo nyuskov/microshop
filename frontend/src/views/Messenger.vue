@@ -90,49 +90,73 @@
         <template v-else>
           <!-- Режим выбора сообщений: панель вместо шапки (как в чатах) -->
           <header v-if="messageSelection" class="chat-select-header">
-            <button class="icon-btn" title="Выйти из выбора" @click="exitMessageSelection">
-              <q-icon :name="icon('close')" size="21px" />
-            </button>
-            <div class="chat-select-info">
-              <span class="chat-select-title">Выбрано: {{ selectedMessageIds.length }}</span>
-            </div>
-            <div class="chat-select-actions">
-              <button
-                class="icon-btn"
-                :class="{ on: allVisibleMessagesSelected }"
-                title="Выбрать все"
-                aria-label="Выбрать все"
-                @click="toggleSelectAllMessages"
-              >
-                <q-icon :name="icon('done_all')" size="20px" />
+            <div class="chat-select-row">
+              <button class="icon-btn" title="Выйти из выбора" @click="exitMessageSelection">
+                <q-icon :name="icon('close')" size="21px" />
               </button>
-              <!-- Действия с сообщением (реакции, ответить, закрепить, удалить,
+              <div class="chat-select-info">
+                <span class="chat-select-title">Выбрано: {{ selectedMessageIds.length }}</span>
+              </div>
+              <div class="chat-select-actions">
+                <button
+                  class="icon-btn"
+                  :class="{ on: allVisibleMessagesSelected }"
+                  title="Выбрать все"
+                  aria-label="Выбрать все"
+                  @click="toggleSelectAllMessages"
+                >
+                  <q-icon :name="icon('done_all')" size="20px" />
+                </button>
+                <!-- Действия с сообщением (реакции, ответить, закрепить, удалить,
                    пожаловаться) — кнопки в панели нет: на телефоне меню
                    открывается удержанием выбранного сообщения, на компьютере —
                    наведением на сообщение (меню «⋯»). -->
+                <button
+                  class="icon-btn"
+                  title="Переслать выбранные"
+                  aria-label="Переслать выбранные"
+                  @click="bulkForwardMessages"
+                >
+                  <q-icon :name="icon('forward')" size="20px" />
+                </button>
+                <button
+                  class="icon-btn"
+                  title="Сохранить в «Сохранённые сообщения»"
+                  aria-label="Сохранить в «Сохранённые сообщения»"
+                  @click="bulkSaveMessagesToSelf"
+                >
+                  <q-icon :name="icon('bookmark')" size="20px" />
+                </button>
+                <button
+                  class="icon-btn danger"
+                  title="Удалить выбранные"
+                  aria-label="Удалить выбранные"
+                  @click="bulkDeleteMessages"
+                >
+                  <q-icon :name="icon('delete')" size="20px" />
+                </button>
+              </div>
+            </div>
+            <!-- Реакция в один жест: пока выбрано ровно одно сообщение, показываем
+                 полосу быстрых реакций. Иначе на телефоне до реакций два удержания
+                 (первое — выделение, второе — меню действий). Тот же набор, что в
+                 листе действий (`utils/reactions.ts`). -->
+            <div
+              v-if="selectedMessageIds.length === 1"
+              class="chat-select-reactions"
+              role="group"
+              aria-label="Быстрые реакции"
+            >
               <button
-                class="icon-btn"
-                title="Переслать выбранные"
-                aria-label="Переслать выбранные"
-                @click="bulkForwardMessages"
+                v-for="emoji in QUICK_REACTIONS"
+                :key="emoji"
+                type="button"
+                class="chat-select-reaction"
+                :title="`Реакция ${emoji}`"
+                :aria-label="`Поставить реакцию ${emoji}`"
+                @click="reactToSelectedMessage(emoji)"
               >
-                <q-icon :name="icon('forward')" size="20px" />
-              </button>
-              <button
-                class="icon-btn"
-                title="Сохранить в «Сохранённые сообщения»"
-                aria-label="Сохранить в «Сохранённые сообщения»"
-                @click="bulkSaveMessagesToSelf"
-              >
-                <q-icon :name="icon('bookmark')" size="20px" />
-              </button>
-              <button
-                class="icon-btn danger"
-                title="Удалить выбранные"
-                aria-label="Удалить выбранные"
-                @click="bulkDeleteMessages"
-              >
-                <q-icon :name="icon('delete')" size="20px" />
+                {{ emoji }}
               </button>
             </div>
           </header>
@@ -194,6 +218,7 @@
           <!-- Сообщения -->
           <MessageThread
             ref="threadRef"
+            :style="threadExtrasStyle"
             :rows="messageRows"
             :loading="messagesLoading"
             :current-user-id="currentUserId"
@@ -275,6 +300,7 @@
               v-model:new-message="newMessage"
               :sending="sending"
               :send-error="sendError"
+              :can-retry-send="retrySend !== null"
               :reply-target="replyTarget"
               :reply-bar-name="replyBarName"
               :editing-message="editingMessage"
@@ -296,6 +322,10 @@
               @mic-cancel="onMicCancel"
               @mic-click="onMicClick"
               @toggle-extras="toggleExtras"
+              @close-extras="closeExtras"
+              @dismiss-error="sendError = ''"
+              @retry-error="retryFailedSend"
+              @extras-height="onExtrasHeight"
               @set-extras-tab="setExtrasTab"
               @gif-sent="onGifSent"
               @append-emoji="appendEmoji"
@@ -745,6 +775,7 @@ import { stickerFromMessage } from '@/services/stickers'
 import { useStickersStore } from '@/stores/stickers'
 import { chatIdFromUrl, isReplyLaunch, readStoredSection, storeSection } from '@/utils/chatUrl'
 import { haptic } from '@/utils/haptics'
+import { QUICK_REACTIONS } from '@/utils/reactions'
 import { usePeerActivity } from '@/composables/usePeerActivity'
 import { activityKindOfFile, peerActivityLabel, type PeerActivityKind } from '@/utils/peerActivity'
 import { useRealtimeSync } from '@/composables/useRealtimeSync'
@@ -1024,6 +1055,34 @@ const newMessage = ref('')
 const sending = ref(false)
 const sendingFile = ref(false)
 const sendError = ref('')
+
+/**
+ * Что повторить, если отправка не удалась (null — повторять нечего).
+ *
+ * Плашка ошибки — единственное место, где видно «не ушло», и она же теперь
+ * предлагает действие: раньше человек должен был сам вспомнить, что нажать
+ * (а для стикера в закрытой панели — ещё и найти его заново).
+ */
+const retrySend = ref<(() => void) | null>(null)
+
+/** Показать ошибку отправки и запомнить, чем её повторить. */
+const failSend = (message: string, retry: (() => void) | null = null) => {
+  sendError.value = message
+  retrySend.value = retry
+}
+
+// Ошибку погасили (крестик, автоскрытие, новая отправка) — повтор тоже не нужен.
+watch(sendError, (value) => {
+  if (!value) retrySend.value = null
+})
+
+/** «Повторить» в плашке: гасим ошибку и повторяем ту же отправку. */
+const retryFailedSend = () => {
+  const run = retrySend.value
+  if (!run) return
+  sendError.value = ''
+  run()
+}
 /** Паки стикеров: панель в композере и «В стикеры» из меню картинки. */
 const stickerStore = useStickersStore()
 const replyTarget = ref<Message | null>(null)
@@ -1033,6 +1092,44 @@ const emojiPickerFor = ref<number | null>(null)
 // Единое меню доп.контента поля ввода: 'emoji' | 'gif' | закрыто.
 const extrasTab = ref<'emoji' | 'stickers' | 'gif'>('emoji')
 const extrasPanel = ref<'none' | 'emoji' | 'stickers' | 'gif'>('none')
+
+/**
+ * Высота открытой панели доп. контента (её отдаёт композер).
+ *
+ * Панель — оверлей поверх ленты, и без запаса последнее сообщение оказывалось
+ * под ней (замер 20.09.2026: панель 345 px при экране 1248 px накрывала
+ * последнюю строку). Отдаём высоту в CSS-переменную, а лента добавляет её к
+ * своему отступу снизу.
+ */
+const extrasHeight = ref(0)
+const threadExtrasStyle = computed(() =>
+  extrasHeight.value > 0 ? { '--ms-extras-h': `${extrasHeight.value}px` } : undefined
+)
+
+const onExtrasHeight = (height: number) => {
+  const opening = extrasHeight.value === 0 && height > 0
+  // Если человек и так смотрел последние сообщения, остаёмся внизу: без этого
+  // отступ добавил бы место ПОД экраном и последнее сообщение осталось бы под
+  // панелью. Читающего историю не дёргаем (как в Телеграме).
+  const keepBottom = opening && (threadRef.value?.isNearBottom() ?? false)
+  extrasHeight.value = height
+  if (keepBottom) void nextTick(() => threadRef.value?.scrollToBottom())
+}
+
+/**
+ * Закрывает панель доп. контента в композере.
+ *
+ * Зовут её: кнопка «смайлы», клик мимо и Escape (из `MessageComposer` — событием
+ * `close-extras`), отправка сообщения/стикера/GIF, отправка «позже» и переход
+ * в другой чат. Раньше панель после отправки оставалась открытой: она закрывала
+ * ленту, и гасить её приходилось вручную — в Телеграме панель уходит сразу.
+ *
+ * Объявлена рядом с самим состоянием: её зовут и функции, объявленные выше по
+ * файлу (та же грабля TDZ, что описана в шапке `MessageComposer.vue`).
+ */
+const closeExtras = () => {
+  extrasPanel.value = 'none'
+}
 const pinnedOpen = ref(false)
 /** Шторка закреплённых скрыта в этом чате (крестик); при переходе в чат — снова видна. */
 const pinnedHidden = ref(false)
@@ -2359,7 +2456,22 @@ const onToggleEmojiPicker = (message: Message) => {
 
 const closePopups = () => {
   emojiPickerFor.value = null
-  extrasPanel.value = 'none'
+  closeExtras()
+}
+
+/**
+ * Быстрая реакция на единственное выбранное сообщение (панель выбора).
+ *
+ * Путь к реакции в один жест: удержание сообщения выделяет его, и там же теперь
+ * рядом есть полоса реакций (на телефоне до меню действий — второе удержание).
+ * После реакции выходим из режима выбора: он был нужен только ради неё.
+ */
+const reactToSelectedMessage = (emoji: string) => {
+  const message = messages.value.find((item) => item.id === selectedMessageIds.value[0])
+  if (!message) return
+  haptic()
+  exitMessageSelection()
+  void toggleReaction(message, emoji)
 }
 
 const toggleReaction = async (message: Message, emoji: string) => {
@@ -2606,6 +2718,8 @@ const sendText = async () => {
 
   sending.value = true
   sendError.value = ''
+  // Сообщение уходит — панель смайлов/стикеров больше не нужна (как в Телеграме).
+  closeExtras()
   try {
     const editing = editingMessage.value
     if (editing) {
@@ -2635,7 +2749,7 @@ const sendText = async () => {
       clearReply()
       void nextTick(scrollToBottom)
     } else {
-      sendError.value = getErrorMessage(error, 'Не удалось отправить сообщение')
+      failSend(getErrorMessage(error, 'Не удалось отправить сообщение'), () => void sendText())
     }
   } finally {
     sending.value = false
@@ -2665,6 +2779,7 @@ const {
   replyToId: () => replyTarget.value?.id ?? null,
   chatKeyOf: (chat) => chatKeyOf(chat),
   onScheduled: (chatId) => {
+    closeExtras()
     clearDraftFor(chatId)
     clearReply()
     sendTypingStop(chatId)
@@ -2713,6 +2828,8 @@ const sendSticker = async (sticker: string) => {
   if (chatId === null || !sticker || sending.value) return
   sending.value = true
   sendError.value = ''
+  // Стикер уходит сразу — панель закрываем, как в Телеграме: лента остаётся видна.
+  closeExtras()
   try {
     await deliverText(chatId, sticker, replyTarget.value?.id ?? null)
     clearReply()
@@ -2722,7 +2839,10 @@ const sendSticker = async (sticker: string) => {
       clearReply()
       void nextTick(scrollToBottom)
     } else {
-      sendError.value = getErrorMessage(error, 'Не удалось отправить стикер')
+      failSend(
+        getErrorMessage(error, 'Не удалось отправить стикер'),
+        () => void sendSticker(sticker)
+      )
     }
   } finally {
     sending.value = false
@@ -2752,7 +2872,10 @@ const makeStickerFromMessage = async (message: Message) => {
     // Библиотека изменилась — панель стикеров должна увидеть новый стикер сразу.
     await stickerStore.load(true)
   } catch (error) {
-    sendError.value = getErrorMessage(error, 'Не удалось добавить стикер')
+    failSend(
+      getErrorMessage(error, 'Не удалось добавить стикер'),
+      () => void makeStickerFromMessage(message)
+    )
   }
 }
 
@@ -2824,6 +2947,8 @@ const sendStickerImage = async (image: {
   if (chatId === null || sending.value) return
   sending.value = true
   sendError.value = ''
+  // Картинка-стикер уходит сразу: панель закрываем — как при отправке стикера-эмодзи.
+  closeExtras()
   try {
     const response = await fetch(image.url)
     if (!response.ok) throw new Error('Не удалось прочитать стикер')
@@ -2855,7 +2980,10 @@ const sendStickerImage = async (image: {
     messages.value = appendMessage(messages.value, message)
     scrollToBottom()
   } catch (error) {
-    sendError.value = getErrorMessage(error, 'Не удалось отправить стикер')
+    failSend(
+      getErrorMessage(error, 'Не удалось отправить стикер'),
+      () => void sendStickerImage(image)
+    )
   } finally {
     sending.value = false
   }
@@ -3729,7 +3857,7 @@ const onGifSent = () => {
   // закрываем панель, сбрасываем ответ/печать и коротко ждём появления GIF.
   // Если текст был подписью к гифке (его взял `GifPicker` из поля ввода), поле
   // очищаем — ровно как при отправке файла с подписью.
-  extrasPanel.value = 'none'
+  closeExtras()
   clearReply()
   const chatId = selectedChatId.value
   if (chatId === null) return
@@ -5081,14 +5209,42 @@ useMobileLayer(() => inviteDialogOpen.value, closeInviteDialog)
 .chat-select-header {
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  /* Колонка: сверху строка действий, под ней — полоса быстрых реакций. */
+  flex-direction: column;
+  gap: 4px;
   padding: 8px 14px;
   background: var(--ms-surface, #ffffff);
   border-bottom: 1px solid var(--ms-border, #e2e6ea);
   box-shadow: var(--ms-shadow-sm);
   z-index: 2;
   flex: none;
+}
+
+.chat-select-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+/* Быстрые реакции: те же 8 эмодзи, что в листе действий. Крупные — это
+   единственный путь к реакции в один жест. */
+.chat-select-reactions {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+}
+
+.chat-select-reaction {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 38px;
+  border: none;
+  border-radius: var(--ms-radius-sm);
+  background: var(--ms-surface-2, #f0f2f5);
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .chat-select-info {

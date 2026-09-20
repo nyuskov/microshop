@@ -88,7 +88,7 @@
     <Transition name="section" mode="out-in">
       <div :key="view" class="section-body">
         <template v-if="view === 'chats'">
-          <div v-if="searchError" class="inline-error">{{ searchError }}</div>
+          <ErrorNotice v-if="searchError" :message="searchError" @dismiss="setSearchError('')" />
 
           <!-- Результаты поиска: люди / сообщения (в SearchResults.vue) -->
           <SearchResults
@@ -125,6 +125,8 @@
               :drafts="drafts"
               :chat-activities="chatActivities"
               :muted-chat-ids="mutedChatIds"
+              :pinned-chat-ids="pinnedChatIds"
+              :archived-chat-ids="archivedChatIds"
               :online-user-ids="onlineUserIds"
               :handle-scroll="onChatsScroll"
               @update:filter="chatFilter = $event as ChatFilterValue"
@@ -134,6 +136,9 @@
               @row-pointer-down="onRowPointerDown"
               @row-pointer-up="onRowPointerUp"
               @row-pointer-cancel="onRowPointerCancel"
+              @swipe-pin="onSwipePin"
+              @swipe-archive="onSwipeArchive"
+              @swipe-mute="onSwipeMute"
             />
           </template>
         </template>
@@ -204,6 +209,7 @@ import SidebarHeader from '@/components/messenger/SidebarHeader.vue'
 import ContactNameDialog from '@/components/messenger/ContactNameDialog.vue'
 import PhoneImportDialog from '@/components/messenger/PhoneImportDialog.vue'
 import ChatList from '@/components/messenger/ChatList.vue'
+import ErrorNotice from '@/components/common/ErrorNotice.vue'
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import { openPrivateChat, type SearchUserResult } from '@/services/chatService'
@@ -503,6 +509,19 @@ const isMutedOf = (chatId: number): boolean => props.mutedChatIds?.includes(chat
 
 /** В архиве ли чат. */
 const isArchivedOf = (chatId: number): boolean => isChatArchived(chatId, props.archivedChatIds)
+
+// ---------- Свайпы по строке (телефон) ----------
+// Жест только выбирает действие — выполняет его тот же путь, что и в меню чата:
+// закрепление уходит в Messenger одним чатом, архив — общей пачкой (архив живёт
+// на клиенте, `useChatSelection` уже умеет её переключать).
+/** Свайп вправо: закрепить/открепить. */
+const onSwipePin = (chatId: number) => emit('toggle-pin', chatId)
+
+/** Свайп влево: в архив или обратно. */
+const onSwipeArchive = (chatId: number) => emit('bulk-archive', [chatId], !isArchivedOf(chatId))
+
+/** Свайп влево, когда в настройках выбраны «Уведомления» (выкл/вкл по чату). */
+const onSwipeMute = (chatId: number) => emit('toggle-mute', chatId)
 
 // ---------- Режим выделения чатов (long-press; как в Telegram) ----------
 // Вход: удержание на чате (~0,5 с). В режиме выделения клик по чату —
@@ -847,12 +866,7 @@ useMobileLayer(() => phoneImportOpen.value, closePhoneImport)
   outline-offset: 2px;
 }
 
-.inline-error {
-  color: var(--ms-danger);
-  font-size: 12px;
-  padding: 6px 14px;
-  background: var(--ms-danger-bg);
-}
+/* Плашка ошибки — общий компонент ErrorNotice: у него свой вид и крестик. */
 
 /* Плавная смена разделов нижнего меню. */
 .section-body {

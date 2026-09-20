@@ -40,9 +40,11 @@ const TOKENS_PATH = path.join(SRC, 'assets', 'appearance.css')
 
 /**
  * Токены, которых в `appearance.css` нет и не должно быть: их выставляет JS в
- * рантайме (`useVisualViewport` пишет высоту/смещение visualViewport).
+ * рантайме (`useVisualViewport` пишет высоту/смещение visualViewport,
+ * `MessageComposer` — высоту открытой панели эмодзи/стикеров, чтобы лента
+ * резервировала под неё место).
  */
-const RUNTIME_TOKENS = new Set(['--ms-vv-h', '--ms-vv-top'])
+const RUNTIME_TOKENS = new Set(['--ms-vv-h', '--ms-vv-top', '--ms-extras-h'])
 
 /** Пути относительно src/. Литеральные цвета здесь оправданы. */
 const ALLOWED = new Map([

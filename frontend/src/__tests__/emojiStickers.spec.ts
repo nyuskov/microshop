@@ -161,4 +161,37 @@ describe('связки в интерфейсе', () => {
     expect(computed).toContain('props.quote')
     expect(computed).toContain("if (props.selectionMode && props.selected) return 'text'")
   })
+
+  it('после отправки из панели панель закрывается', () => {
+    // Раньше панель оставалась висеть поверх ленты после отправки стикера,
+    // сообщения и GIF (проверено в живом приложении 20.09.2026): лента
+    // закрыта, а закрыть панель можно было только той же кнопкой «смайлы».
+    const stickerHandler = messenger.slice(
+      messenger.indexOf('const sendSticker'),
+      messenger.indexOf('const appendMessage')
+    )
+    expect(stickerHandler).toContain('closeExtras()')
+
+    const imageHandler = messenger.slice(
+      messenger.indexOf('const sendStickerImage'),
+      messenger.indexOf('const pendingSend')
+    )
+    expect(imageHandler).toContain('closeExtras()')
+
+    const textHandler = messenger.slice(
+      messenger.indexOf('const sendText'),
+      messenger.indexOf('// ---------- Отложенная отправка')
+    )
+    expect(textHandler).toContain('closeExtras()')
+  })
+
+  it('панель закрывают клик мимо неё и Escape', () => {
+    expect(composer).toContain("emit('close-extras')")
+    expect(composer).toContain("event.key !== 'Escape'")
+    // Слушатели висят только пока панель открыта — иначе они гасили бы Escape
+    // у диалогов и ловили бы клики по всей странице.
+    expect(composer).toContain("if (panel === 'none') return")
+    expect(messenger).toContain('@close-extras="closeExtras"')
+    expect(messenger).toContain('const closeExtras = ()')
+  })
 })

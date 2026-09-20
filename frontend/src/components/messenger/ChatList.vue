@@ -91,17 +91,35 @@
         @scroll.passive="props.handleScroll($event.currentTarget as HTMLElement)"
       >
         <div v-for="chat in props.chats" :key="chat.id" class="chat-row">
+          <!-- Подсказка свайпа: что произойдёт, если отпустить палец (как в
+               Телеграме). Показываем только во время жеста: строка прозрачная,
+               и подсказка под ней была бы видна всегда. -->
+          <div
+            v-if="swipeChatId === chat.id && swipeDx !== 0"
+            class="row-swipe"
+            :class="[swipeDx > 0 ? 'pin' : 'archive', { ready: swipeReady }]"
+            aria-hidden="true"
+          >
+            <q-icon :name="icon(swipeActionOf(chat.id).icon)" size="18px" />
+            <span>{{ swipeActionOf(chat.id).title }}</span>
+          </div>
           <button
             class="row-item"
             :class="{
               active: !props.selectionMode && props.selectedChatId === chat.id,
-              selected: isSelected(chat.id)
+              selected: isSelected(chat.id),
+              swiping: swipeChatId === chat.id
             }"
+            :style="rowSwipeStyle(chat.id)"
             @pointerdown="emit('row-pointer-down', chat.id)"
             @pointerup="emit('row-pointer-up')"
             @pointercancel="emit('row-pointer-cancel')"
             @pointerleave="emit('row-pointer-up')"
             @click="emit('row-click', chat.id)"
+            @touchstart.passive="onRowTouchStart(chat.id, $event)"
+            @touchmove.passive="onRowTouchMove"
+            @touchend.passive="onRowTouchEnd"
+            @touchcancel.passive="onRowTouchEnd"
           >
             <span
               v-if="props.selectionMode"
@@ -224,8 +242,9 @@
  * `utils/chatPreview.ts` и покрыты тестами.
  */
 import { icon } from '@/utils/icons'
+import { chatSwipeAction } from '@/utils/chatSwipe'
 import type { Chat } from '@/types'
-import { onBeforeUnmount, nextTick, watch } from 'vue'
+import { computed, onBeforeUnmount, nextTick, ref, watch } from 'vue'
 import { FOLDER_FILTER_PREFIX } from '@/utils/chatFolders'
 import { useHScroll } from '@/composables/useHScroll'
 import { avatarStyle, initials } from '@/utils/user'
@@ -263,6 +282,10 @@ const props = defineProps<{
   /** Виды активности по чатам: «печатает…», «записывает голосовое…» и т.п. */
   chatActivities?: Record<number, PeerActivityKind>
   mutedChatIds?: number[]
+  /** Закреплённые чаты: нужны подписи свайпа («Закрепить»/«Открепить»). */
+  pinnedChatIds?: number[]
+  /** Архивные чаты: подпись свайпа — «В архив» или «Из архива». */
+  archivedChatIds?: number[]
   onlineUserIds?: number[]
   /** Скролл списка: по нему видно, что человек листает чаты (жесты — в сайдбаре). */
   handleScroll: (el: HTMLElement) => void
@@ -279,7 +302,112 @@ const emit = defineEmits<{
   (e: 'row-pointer-down', chatId: number): void
   (e: 'row-pointer-up'): void
   (e: 'row-pointer-cancel'): void
+  /** Свайп вправо по строке: закрепить/открепить чат. */
+  (e: 'swipe-pin', chatId: number): void
+  /** Свайп влево по строке: в архив или из архива. */
+  (e: 'swipe-archive', chatId: number): void
+  /** Свайп влево, когда в настройках выбран вариант «Уведомления». */
+  (e: 'swipe-mute', chatId: number): void
 }>()
+
+// ---------- Свайпы по строке (телефон) ----------
+/**
+ * Вправо — закрепить/открепить, влево — в архив/из архива: те же действия, что
+ * в меню чата и в панели выделения, но без долгого тапа и двух нажатий.
+ *
+ * Жест только ПОДСКАЗЫВАЕТ и срабатывает по отпусканию: содержимое строки мы не
+ * сдвигаем на всю ширину, а показываем цветную подложку с подписью — сдвиг увёл
+ * бы правый край строки за границу списка и его срезало бы `overflow`.
+ */
+const SWIPE_ROW_MAX = 96
+/** Порог срабатывания: меньше него жест считается случайным и строка едет назад. */
+const SWIPE_ROW_TRIGGER = 64
+/** С какого движения решаем, что это свайп, а не листание списка. */
+const SWIPE_AXIS_MIN = 12
+
+const swipeChatId = ref<number | null>(null)
+const swipeDx = ref(0)
+let swipeStartX = 0
+let swipeStartY = 0
+let swipeAxis: 'none' | 'x' | 'y' = 'none'
+
+const swipeReady = computed(() => Math.abs(swipeDx.value) >= SWIPE_ROW_TRIGGER)
+
+const isPinnedOf = (chatId: number): boolean => props.pinnedChatIds?.includes(chatId) ?? false
+const isArchivedOf = (chatId: number): boolean => props.archivedChatIds?.includes(chatId) ?? false
+
+/** Подпись и значок подложки: зависят от направления и текущего состояния чата. */
+const swipeActionOf = (chatId: number): { icon: string; title: string } => {
+  if (swipeDx.value > 0) {
+    return { icon: 'push_pin', title: isPinnedOf(chatId) ? 'Открепить' : 'Закрепить' }
+  }
+  // Левый свайп настраивается (см. utils/chatSwipe.ts): подпись должна обещать
+  // ровно то действие, которое выполнится.
+  if (chatSwipeAction.value === 'mute') {
+    const muted = isMutedOf(chatId)
+    return {
+      icon: muted ? 'notifications' : 'notifications_off',
+      title: muted ? 'Включить уведомления' : 'Выключить уведомления'
+    }
+  }
+  return { icon: 'archive', title: isArchivedOf(chatId) ? 'Из архива' : 'В архив' }
+}
+
+const rowSwipeStyle = (chatId: number): Record<string, string> | undefined =>
+  swipeChatId.value === chatId && swipeDx.value
+    ? { transform: `translateX(${swipeDx.value}px)` }
+    : undefined
+
+const resetRowSwipe = () => {
+  swipeChatId.value = null
+  swipeDx.value = 0
+  swipeStartX = 0
+  swipeStartY = 0
+  swipeAxis = 'none'
+}
+
+const onRowTouchStart = (chatId: number, event: TouchEvent) => {
+  // В режиме выделения строки отмечают пальцем — свайп там только мешает.
+  if (props.selectionMode) return
+  const touch = event.touches[0]
+  if (!touch) return
+  resetRowSwipe()
+  swipeChatId.value = chatId
+  swipeStartX = touch.clientX
+  swipeStartY = touch.clientY
+}
+
+const onRowTouchMove = (event: TouchEvent) => {
+  if (swipeChatId.value === null || props.selectionMode) return
+  const touch = event.touches[0]
+  if (!touch) return
+  const dx = touch.clientX - swipeStartX
+  const dy = touch.clientY - swipeStartY
+  if (swipeAxis === 'none') {
+    if (Math.abs(dx) < SWIPE_AXIS_MIN && Math.abs(dy) < SWIPE_AXIS_MIN) return
+    swipeAxis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y'
+    if (swipeAxis === 'y') {
+      // Вертикальное листание списка: наш жест даже не начинался.
+      resetRowSwipe()
+      return
+    }
+    // Свайп отменяет удержание: иначе на медленном движении открылся бы режим
+    // выделения (он стартует через 480 мс, жест длится дольше).
+    emit('row-pointer-cancel')
+  }
+  if (swipeAxis !== 'x') return
+  swipeDx.value = Math.max(-SWIPE_ROW_MAX, Math.min(SWIPE_ROW_MAX, dx))
+}
+
+const onRowTouchEnd = () => {
+  const dx = swipeDx.value
+  const chatId = swipeChatId.value
+  resetRowSwipe()
+  if (chatId === null || Math.abs(dx) < SWIPE_ROW_TRIGGER) return
+  if (dx > 0) emit('swipe-pin', chatId)
+  else if (chatSwipeAction.value === 'mute') emit('swipe-mute', chatId)
+  else emit('swipe-archive', chatId)
+}
 
 // ---------- Чипы папок ----------
 // Фильтр папки приходит как `folder:<id>`: по этому префиксу отличаем свои папки
@@ -435,7 +563,9 @@ watch(
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 4px;
+  /* 6px, а не 4: чип — самая частая цель на телефоне, 26 px по высоте в него
+     не попадают; ряд всё равно влезает, высота ширину не меняет. */
+  padding: 6px 4px;
   border: none;
   border-radius: var(--ms-radius-sm);
   background: var(--ms-surface-2);
@@ -459,7 +589,7 @@ watch(
 }
 
 .chat-filter-add {
-  padding: 4px 7px;
+  padding: 6px 7px;
   border: 1px dashed var(--ms-border);
   background: transparent;
   color: var(--ms-muted-2);
@@ -475,7 +605,7 @@ watch(
 .chat-filter::after {
   content: '';
   position: absolute;
-  inset: -4px -2px;
+  inset: -5px -3px;
 }
 
 .chat-filter-count {
@@ -485,5 +615,46 @@ watch(
   color: var(--ms-on-accent);
   font-size: var(--ms-fs-xs);
   font-weight: 600;
+}
+
+/* ---------- Свайп по строке чата ---------- */
+/* Подложка лежит ПОД строкой: пока палец ведёт, видно, что случится. Место
+   взято у строки, саму строку мы не сдвигаем (см. swipeActionOf). */
+.row-swipe {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  background: var(--ms-surface-2);
+  color: var(--ms-muted);
+  font-size: var(--ms-fs-sm);
+  font-weight: 600;
+}
+
+.row-swipe .q-icon {
+  flex: 0 0 auto;
+}
+
+/* Свайп вправо — закрепление: подложка слева. */
+.row-swipe.pin {
+  justify-content: flex-start;
+}
+
+/* Свайп влево — архив: подложка справа. */
+.row-swipe.archive {
+  justify-content: flex-end;
+}
+
+/* Порог пройден — действие сработает по отпусканию. */
+.row-swipe.ready {
+  background: var(--ms-accent-soft);
+  color: var(--ms-accent);
+}
+
+/* Пока строка едет, она непрозрачная: сквозь неё была бы видна подложка. */
+.row-item.swiping {
+  background: var(--ms-surface);
 }
 </style>

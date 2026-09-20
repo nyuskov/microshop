@@ -172,6 +172,25 @@
       <p v-if="wallpaperError" class="wallpaper-error">{{ wallpaperError }}</p>
     </section>
 
+    <!-- Список чатов: жесты пальцем -->
+    <section class="appearance-section">
+      <h3 class="appearance-title">Список чатов</h3>
+      <div class="opt-row">
+        <button
+          v-for="opt in CHAT_SWIPE_OPTIONS"
+          :key="opt.key"
+          class="opt-pill"
+          :class="{ active: chatSwipeAction === opt.key }"
+          :aria-pressed="chatSwipeAction === opt.key"
+          :title="opt.hint"
+          @click="writeChatSwipeAction(opt.key)"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
+      <p class="hint">Что делает свайп влево по строке чата. Свайп вправо всегда закрепляет чат.</p>
+    </section>
+
     <!-- Сброс -->
     <section class="appearance-section reset-row">
       <button class="action-btn reset" @click="onReset">
@@ -195,6 +214,7 @@ import {
   type ThemeMode
 } from '@/stores/theme'
 import { scheduleSummary, scheduleTimeOptions } from '@/utils/themeSchedule'
+import { CHAT_SWIPE_OPTIONS, chatSwipeAction, writeChatSwipeAction } from '@/utils/chatSwipe'
 
 const themeStore = useThemeStore()
 

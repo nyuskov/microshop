@@ -31,7 +31,19 @@
           >
             <q-icon :name="icon(isPlaying ? 'pause' : 'play_arrow')" size="24px" />
           </button>
-          <div class="am-track" title="Перемотка" @click="seek">
+          <div
+            class="am-track"
+            role="slider"
+            :aria-label="'Перемотка'"
+            :aria-valuemin="0"
+            :aria-valuemax="Math.round(duration)"
+            :aria-valuenow="Math.round(current)"
+            title="Перемотка"
+            @pointerdown="onSeekStart"
+            @pointermove="onSeekMove"
+            @pointerup="onSeekEnd"
+            @pointercancel="onSeekEnd"
+          >
             <div class="am-fill" :style="progressStyle()"></div>
           </div>
           <span class="am-time">{{ timeLabel }}</span>
@@ -103,6 +115,8 @@ const onLoadedMetadata = () => {
 }
 
 const onTimeUpdate = () => {
+  // Во время перемотки пальцем позицию ведёт жест: `timeupdate` перебивал бы её скачками.
+  if (seekDragging.value) return
   const audio = audioRef.value
   if (audio) current.value = audio.currentTime
 }
@@ -147,16 +161,61 @@ const progressStyle = (): Record<string, string> => {
   return { width: `${clamped}%` }
 }
 
-const seek = (event: MouseEvent) => {
+/**
+ * Перемотка: тап по полосе и протяжка пальцем (как в Телеграме).
+ *
+ * Пока палец ведёт — двигаем только позицию на экране, а самому плееру отдаём
+ * её при отпускании: иначе запись «дёргается» на каждом сдвиге. Полоса тонкая,
+ * поэтому область нажатия расширена невидимым слоем (`.am-track::after`).
+ */
+const seekDragging = ref(false)
+/**
+ * Прямоугольник полосы на момент начала жеста.
+ *
+ * Считать долю от ЖИВОГО прямоугольника нельзя: пока палец ведёт, подпись
+ * времени меняет ширину, полоса (flex: 1) пересчитывается — и позиция начинает
+ * «убегать» от пальца (замер: на 75 % пальца выходило 59 %, на 90 % — 49 %).
+ */
+let seekRect: { left: number; width: number } | null = null
+
+const seekRatio = (
+  event: PointerEvent,
+  rect: DOMRect | { left: number; width: number }
+): number => {
+  if (rect.width <= 0) return 0
+  return Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
+}
+
+const onSeekStart = (event: PointerEvent) => {
   if (!durationKnown.value) return
-  const target = event.currentTarget as HTMLElement
-  const rect = target.getBoundingClientRect()
-  if (rect.width <= 0) return
-  const ratio = (event.clientX - rect.left) / rect.width
-  const audio = audioRef.value
-  if (audio) {
-    audio.currentTime = Math.min(duration.value, Math.max(0, ratio * duration.value))
+  if (event.pointerType === 'mouse' && event.button !== 0) return
+  seekDragging.value = true
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  seekRect = { left: rect.left, width: rect.width }
+  // Захват указателя: палец может уехать за пределы полосы — жест всё равно наш.
+  // ГРАБЛЯ: у синтетических событий и у уже отпущенного указателя захват бросает
+  // `NotFoundError`, а он через `app.config.errorHandler` показывал фатальный
+  // экран вместо перемотки. Без захвата жест тоже работает (просто обрывается на
+  // выходе за полосу), поэтому ошибку глушим.
+  try {
+    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  } catch {
+    /* указателя уже нет — перематываем без захвата */
   }
+  current.value = seekRatio(event, seekRect) * duration.value
+}
+
+const onSeekMove = (event: PointerEvent) => {
+  if (!seekDragging.value || !seekRect) return
+  current.value = seekRatio(event, seekRect) * duration.value
+}
+
+const onSeekEnd = () => {
+  if (!seekDragging.value) return
+  seekDragging.value = false
+  seekRect = null
+  const audio = audioRef.value
+  if (audio) audio.currentTime = current.value
 }
 
 const formatBytes = (size: number | null | undefined): string => {
@@ -233,7 +292,18 @@ const onCycleSpeed = () => {
   border-radius: 4px;
   background: color-mix(in srgb, var(--ms-bubble-text) 16%, transparent);
   cursor: pointer;
-  overflow: hidden;
+  /* `overflow` НЕ скрываем: оно срезало бы невидимую область нажатия (::after).
+     Сам наполнитель шире полосы не бывает — он растёт по ширине в процентах. */
+  position: relative;
+  /* Протяжка по полосе — наша: без этого браузер листал бы ею ленту. */
+  touch-action: none;
+}
+
+/* Палец толще полосы 6 px: область нажатия/протяжки выше и ниже неё. */
+.am-track::after {
+  content: '';
+  position: absolute;
+  inset: -14px 0;
 }
 
 .am-fill {

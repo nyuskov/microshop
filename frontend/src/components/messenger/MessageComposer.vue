@@ -1,6 +1,12 @@
 <template>
   <div class="input-area">
-    <div v-if="sendError" class="inline-error">{{ sendError }}</div>
+    <ErrorNotice
+      v-if="sendError"
+      :message="sendError"
+      :can-retry="canRetrySend"
+      @dismiss="emit('dismiss-error')"
+      @retry="emit('retry-error')"
+    />
 
     <!-- Редактирование сообщения -->
     <div v-if="editingMessage" class="reply-bar mode-bar">
@@ -30,8 +36,11 @@
       @send="(payload) => emit('voice-send', payload)"
     />
     <div v-else class="input-row">
-      <!-- Обёртка нужна, чтобы меню привязалось к кнопке, а не ко всей строке -->
-      <span v-if="!hasText" class="attach-wrap">
+      <!-- Обёртка нужна, чтобы меню привязалось к кнопке, а не ко всей строке.
+           Кнопка видна ВСЕГДА: пока она исчезала при наборе текста, поле ввода
+           разъезжалось на её ширину и текст в нём прыгал влево (в Телеграме
+           скрепка тоже остаётся). -->
+      <span class="attach-wrap">
         <button
           class="round-btn"
           title="Прикрепить файл"
@@ -79,9 +88,10 @@
         @paste="onTextPaste"
       ></textarea>
       <button
-        class="round-btn"
+        class="round-btn extras-toggle"
         :class="{ active: extrasPanel !== 'none' }"
         title="Эмодзи и GIF"
+        :aria-expanded="extrasPanel !== 'none'"
         @click="emit('toggle-extras')"
       >
         <q-icon :name="icon('sentiment_satisfied_alt')" size="20px" />
@@ -180,7 +190,16 @@
         </button>
       </div>
 
-      <div v-if="extrasPanel !== 'none'" class="extras-menu">
+      <div
+        v-if="extrasPanel !== 'none'"
+        ref="extrasMenuEl"
+        class="extras-menu"
+        :style="panelSwipeOffset ? { transform: `translateY(${panelSwipeOffset}px)` } : undefined"
+        @touchstart.passive="onPanelTouchStart"
+        @touchmove.passive="onPanelTouchMove"
+        @touchend.passive="onPanelTouchEnd"
+        @touchcancel.passive="onPanelTouchEnd"
+      >
         <div class="extras-tabs">
           <button
             type="button"
@@ -347,7 +366,16 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch
+} from 'vue'
+import ErrorNotice from '@/components/common/ErrorNotice.vue'
 import type { ChatUser, Message } from '@/types'
 import { messageSnippet } from '@/utils/media'
 import { applyMention, mentionBeforeCaret } from '@/utils/mentions'
@@ -401,6 +429,11 @@ const props = defineProps<{
    * в личном чате упоминать некого).
    */
   mentionMembers?: ChatUser[]
+  /**
+   * Неудачную отправку можно повторить: плашка ошибки показывает «Повторить»,
+   * а сам повтор делает родитель (у него содержимое отправки).
+   */
+  canRetrySend?: boolean
 }>()
 
 // Текст в поле ввода (v-model) изменяется в композере.
@@ -916,6 +949,158 @@ watch(
   }
 )
 
+/**
+ * Панель доп. контента закрывают не только её кнопка: тап мимо панели и Escape
+ * тоже — как в Телеграме. Иначе панель оставалась висеть поверх ленты, пока
+ * человек не вспомнит про значок «смайлы», и закрыть её случайным тапом было
+ * нельзя.
+ *
+ * Слушатели висят на документе только пока панель открыта (иначе они
+ * перехватывали бы Escape у диалогов и клики по всей странице).
+ */
+const insideExtrasArea = (target: EventTarget | null): boolean => {
+  const el = target instanceof Element ? target : null
+  if (!el) return false
+  // Сама панель и кнопка «смайлы» — её территория: кнопка переключает панель,
+  // из неё же панель и открывают. Всё остальное (поле ввода, лента, шапка)
+  // панель закрывает: тап по полю — это «буду печатать», и на телефоне за ним
+  // поднимается клавиатура, как в Телеграме.
+  return el.closest('.extras-menu') !== null || el.closest('.extras-toggle') !== null
+}
+
+const onDocumentPointerDown = (event: Event) => {
+  // Окно паков открыто поверх панели — его клики панель не закрывают.
+  if (stickerPacksOpen.value) return
+  if (insideExtrasArea(event.target)) return
+  emit('close-extras')
+}
+
+const onDocumentKeydown = (event: KeyboardEvent) => {
+  if (event.key !== 'Escape') return
+  // Подсказку упоминаний закрывает само поле ввода — не гасим панель вместе с ней.
+  if (mentionOpen.value) return
+  emit('close-extras')
+}
+
+const stopWatchingExtrasDismiss = () => {
+  globalThis.document.removeEventListener('pointerdown', onDocumentPointerDown, true)
+  globalThis.document.removeEventListener('keydown', onDocumentKeydown, true)
+}
+
+/**
+ * Высоту панели отдаём родителю — лента резервирует под неё место снизу.
+ *
+ * Следим за размером, а не меряем один раз: содержимое секций монтируется
+ * лениво (каталог эмодзи грузится динамическим импортом), и высота появляется
+ * уже после первого кадра.
+ */
+const extrasMenuEl = ref<HTMLElement | null>(null)
+let extrasResizeObserver: ResizeObserver | null = null
+
+const reportExtrasHeight = () => {
+  const el = extrasMenuEl.value
+  emit('extras-height', el ? Math.round(el.getBoundingClientRect().height) : 0)
+}
+
+const stopExtrasHeightWatch = () => {
+  extrasResizeObserver?.disconnect()
+  extrasResizeObserver = null
+}
+
+const startExtrasHeightWatch = () => {
+  stopExtrasHeightWatch()
+  reportExtrasHeight()
+  const el = extrasMenuEl.value
+  if (!el || typeof ResizeObserver === 'undefined') return
+  extrasResizeObserver = new ResizeObserver(reportExtrasHeight)
+  extrasResizeObserver.observe(el)
+}
+
+const syncExtrasHeightWatch = async (panel: string) => {
+  stopExtrasHeightWatch()
+  if (panel === 'none') {
+    emit('extras-height', 0)
+    return
+  }
+  await nextTick()
+  startExtrasHeightWatch()
+}
+
+watch(
+  () => props.extrasPanel,
+  (panel) => void syncExtrasHeightWatch(panel)
+)
+
+// Панель может быть открыта уже при появлении композера (смена чата с открытой
+// панелью) — тогда наблюдатель за пропом не сработает.
+onMounted(() => void syncExtrasHeightWatch(props.extrasPanel))
+
+onBeforeUnmount(stopExtrasHeightWatch)
+
+// ---------- Жесты и клавиатура внутри панели ----------
+
+/** Свайп вниз по панели её закрывает (телефон), как жест «убрать клавиатуру». */
+const PANEL_SWIPE_CLOSE_PX = 60
+const panelSwipeOffset = ref(0)
+let panelTouchStartY: number | null = null
+let panelTouchStartScrollTop = 0
+
+/** Захват начинаем, только если жест не отнимает прокрутку у списка секций. */
+const onPanelTouchStart = (event: TouchEvent) => {
+  const touch = event.touches[0]
+  if (!touch) return
+  const scroll = panelScrollEl.value
+  panelTouchStartScrollTop = scroll?.scrollTop ?? 0
+  panelTouchStartY = touch.clientY
+  panelSwipeOffset.value = 0
+}
+
+const onPanelTouchMove = (event: TouchEvent) => {
+  const touch = event.touches[0]
+  if (panelTouchStartY === null || !touch) return
+  const delta = touch.clientY - panelTouchStartY
+  // Вверх (прокрутка содержимого) не наш жест; вниз при прокрученном списке —
+  // человек читает дальше, а не закрывает панель.
+  if (delta <= 0 || (panelTouchStartScrollTop > 0 && panelScrollEl.value?.scrollTop !== 0)) {
+    panelSwipeOffset.value = 0
+    return
+  }
+  // Панель тянется за пальцем, но не дальше половины своей высоты.
+  panelSwipeOffset.value = Math.min(delta, 160)
+}
+
+const onPanelTouchEnd = () => {
+  const offset = panelSwipeOffset.value
+  panelTouchStartY = null
+  panelSwipeOffset.value = 0
+  if (offset >= PANEL_SWIPE_CLOSE_PX) emit('close-extras')
+}
+
+/**
+ * Стрелки и Tab в панели не перехватываем: приложение мобильное, панель
+ * проходится пальцем и прокруткой, а перехват стрелок только мешал бы
+ * прокрутке панели с клавиатуры.
+ */
+watch(
+  () => props.extrasPanel,
+  (panel) => {
+    stopWatchingExtrasDismiss()
+    if (panel === 'none') return
+    globalThis.document.addEventListener('pointerdown', onDocumentPointerDown, true)
+    globalThis.document.addEventListener('keydown', onDocumentKeydown, true)
+  }
+)
+
+// Панель может быть открыта уже при появлении композера — тогда наблюдатель за
+// пропом не сработает.
+onMounted(() => {
+  if (props.extrasPanel === 'none') return
+  globalThis.document.addEventListener('pointerdown', onDocumentPointerDown, true)
+  globalThis.document.addEventListener('keydown', onDocumentKeydown, true)
+})
+
+onBeforeUnmount(stopWatchingExtrasDismiss)
+
 /** Вставляет эмодзи и запоминает его для раздела «Недавние». */
 const pickEmoji = (emoji: string) => {
   emojiRecent.value = rememberEmoji(emojiRecent.value, emoji)
@@ -1002,6 +1187,17 @@ const emit = defineEmits<{
   (e: 'mic-cancel'): void
   (e: 'mic-click'): void
   (e: 'toggle-extras'): void
+  /** Закрыть панель доп. контента (клик мимо, Escape) — панель живёт у родителя. */
+  (e: 'close-extras'): void
+  /** Человек закрыл плашку ошибки крестиком. */
+  (e: 'dismiss-error'): void
+  /** Нажал «Повторить» в плашке ошибки отправки. */
+  (e: 'retry-error'): void
+  /**
+   * Высота открытой панели доп. контента в пикселях (0 — панель закрыта).
+   * Родитель резервирует под неё место в ленте: панель рисуется поверх неё.
+   */
+  (e: 'extras-height', height: number): void
   (e: 'set-extras-tab', tab: 'emoji' | 'stickers' | 'gif'): void
   (e: 'gif-sent'): void
   (e: 'append-emoji', emoji: string): void
@@ -1289,11 +1485,9 @@ watch(newMessage, () => {
   color: var(--ms-icon-3);
 }
 
-.inline-error {
-  color: var(--ms-danger);
-  font-size: 12px;
-  padding: 6px 14px;
-  background: var(--ms-danger-bg);
+/* Плашка ошибки — общий компонент (ErrorNotice), здесь только отступ до строки
+   ввода: свою геометрию он приносит с собой. */
+.input-area :deep(.error-notice) {
   margin-bottom: 6px;
 }
 
@@ -1481,6 +1675,15 @@ watch(newMessage, () => {
 
 .send-btn:hover {
   background: var(--ms-accent-strong);
+}
+
+/* Телефон: отправка — главное действие, 36 px для неё мало (соседние кнопки
+   в общем слое до 600 px — 38 px, у скрепки и микрофона те же габариты). */
+@media (max-width: 600px) {
+  .send-btn {
+    width: 40px;
+    height: 40px;
+  }
 }
 
 .hidden-file {
