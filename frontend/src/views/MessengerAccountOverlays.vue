@@ -28,6 +28,7 @@ import { useRouter } from 'vue-router'
 import LoginModal from '@/components/LoginModal.vue'
 import SecurityAlertDialog from '@/components/messenger/SecurityAlertDialog.vue'
 import PeerKeyChangedDialog from '@/components/messenger/PeerKeyChangedDialog.vue'
+import { useMobileLayer } from '@/composables/useMobileOverlay'
 import { acceptPeerKey, type PeerKeyChange } from '@/services/e2ee'
 
 const props = defineProps<{
@@ -114,4 +115,20 @@ const acceptChangedPeerKey = () => {
 }
 
 defineExpose({ setLoginVisible, openSecurityAlert, openPeerKeyChanged })
+
+// Модалки безопасности — слои: на телефоне «назад» закрывает их, а не выходит из
+// приложения (тревогу «новый вход» человек видит первым экраном и ничего ещё не
+// открывал). Экран входа слоем не делаем: без него в приложении делать нечего.
+useMobileLayer(
+  () => showSecurityAlert.value,
+  () => {
+    showSecurityAlert.value = false
+  }
+)
+useMobileLayer(
+  () => showPeerKeyChanged.value,
+  () => {
+    showPeerKeyChanged.value = false
+  }
+)
 </script>

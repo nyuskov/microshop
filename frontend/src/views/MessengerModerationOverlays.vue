@@ -29,6 +29,7 @@
  * последствия: жалоба отправлена и блокировка снята.
  */
 import { defineAsyncComponent, ref } from 'vue'
+import { useMobileLayer } from '@/composables/useMobileOverlay'
 
 const ReportDialog = defineAsyncComponent(() => import('@/components/messenger/ReportDialog.vue'))
 const BlockedUsersDialog = defineAsyncComponent(
@@ -79,4 +80,25 @@ const openReports = () => {
 }
 
 defineExpose({ openReport, openBlocked, openReports })
+
+// Диалоги модерации — слои общего стека: «назад» закрывает их по одному (иначе
+// на телефоне он закрывал бы чат под открытой жалобой или выходил из приложения).
+useMobileLayer(
+  () => reportTarget.value !== null,
+  () => {
+    reportTarget.value = null
+  }
+)
+useMobileLayer(
+  () => showBlockedUsers.value,
+  () => {
+    showBlockedUsers.value = false
+  }
+)
+useMobileLayer(
+  () => showReports.value,
+  () => {
+    showReports.value = false
+  }
+)
 </script>

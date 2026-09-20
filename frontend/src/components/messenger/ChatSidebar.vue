@@ -226,6 +226,7 @@ import {
 import { usePhoneImport } from '@/composables/usePhoneImport'
 import { useSlideDown } from '@/composables/useSlideDown'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
+import { useMobileLayer } from '@/composables/useMobileOverlay'
 
 /**
  * Панель результатов поиска и раздел «Контакты» нужны не при старте (вкладка
@@ -770,6 +771,17 @@ const {
 watch([() => props.view, () => props.selectedChatId], () => {
   if (searchOpen.value) closeSearch()
 })
+
+// Модалки сайдбара (личное имя контакта, импорт из телефонной книги) — слои:
+// «назад» на телефоне закрывает их, а не выходит из приложения и не уводит в
+// другой раздел (см. `useMobileOverlay`).
+useMobileLayer(
+  () => contactDialogOpen.value,
+  () => {
+    contactDialogOpen.value = false
+  }
+)
+useMobileLayer(() => phoneImportOpen.value, closePhoneImport)
 </script>
 
 <style scoped>

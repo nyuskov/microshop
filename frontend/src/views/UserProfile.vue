@@ -4,6 +4,7 @@ import { reactive, ref, watch, computed, nextTick, defineAsyncComponent } from '
 import { useAuthStore } from '@/stores/auth'
 import { getErrorMessage } from '@/services/errors'
 import { useAccountSecurity } from '@/composables/useAccountSecurity'
+import { useMobileLayer } from '@/composables/useMobileOverlay'
 import { removeAvatar, uploadAvatar } from '@/services/api'
 import { mediaUrl } from '@/services/chatService'
 import { optimizeAvatarFile } from '@/utils/media'
@@ -644,9 +645,23 @@ const {
 
 // ---------- Удаление аккаунта (требование RuStore/152-ФЗ) ----------
 const showDeleteAccount = ref(false)
-
 // ---------- Резервная копия ключа шифрования (F2) ----------
 const showE2eeBackup = ref(false)
+
+// Диалоги профиля — слои общего стека (см. `composables/useMobileOverlay.ts`):
+// с телефона «назад» закрывает открытый диалог, а не сами настройки целиком.
+useMobileLayer(
+  () => showDeleteAccount.value,
+  () => {
+    showDeleteAccount.value = false
+  }
+)
+useMobileLayer(
+  () => showE2eeBackup.value,
+  () => {
+    showE2eeBackup.value = false
+  }
+)
 
 /** Аккаунт удалён на сервере: чистим локальную сессию и закрываем профиль. */
 const onAccountDeleted = async () => {
@@ -877,14 +892,7 @@ const onNotificationsToggle = async (val: boolean) => {
         </div>
       </div>
 
-      <!-- Главный экран настроек: сверху «Выйти», ниже — разделы -->
-      <div v-if="section === 'root'" class="logout-row">
-        <button type="button" class="logout-btn" :disabled="saving" @click="doLogout">
-          <q-icon :name="icon('logout')" size="17px" />
-          Выйти из аккаунта
-        </button>
-      </div>
-
+      <!-- Главный экран настроек: сверху сразу разделы (поиск и список) -->
       <nav v-if="section === 'root'" class="settings-list" aria-label="Разделы настроек">
         <!-- Поиск по настройкам: разделов много, нужный искать долго -->
         <div class="settings-search">
@@ -944,9 +952,15 @@ const onNotificationsToggle = async (val: boolean) => {
         </button>
       </nav>
 
-      <!-- Удаление аккаунта — в самом низу главного экрана настроек
-           (требование RuStore и 152-ФЗ), на разделах не показываем -->
+      <!-- Низ главного экрана: выход и удаление аккаунта.
+           Выход переехал сюда сверху: там он тёрся о поиск по настройкам, а по
+           смыслу это завершающее действие экрана — как в Telegram, где «Выйти»
+           стоит в самом низу настроек. На разделах не показываем. -->
       <div v-if="section === 'root'" class="delete-account-row">
+        <button type="button" class="logout-btn" :disabled="saving" @click="doLogout">
+          <q-icon :name="icon('logout')" size="17px" />
+          Выйти из аккаунта
+        </button>
         <button
           type="button"
           class="delete-account-btn"
@@ -1382,11 +1396,21 @@ const onNotificationsToggle = async (val: boolean) => {
         <!-- Моя ссылка: по ней человек открывает чат с вами -->
         <section v-if="section === 'link'" class="card-section">
           <h3 class="section-title">Моя ссылка</h3>
-          <p class="profile-link-hint">
-            Дайте эту ссылку — по ней в Pismo откроется чат с вами. Номер телефона в ссылке не
-            виден: логин уникален и служит только адресом профиля.
-          </p>
           <template v-if="myProfileLink">
+            <!-- QR-код — первым, как в Telegram: по нему дают ссылку без
+                 пересылки (наводят камеру другого телефона). -->
+            <div class="profile-link-qr">
+              <QrCode :value="myProfileLink" :size="180" label="QR-код ссылки на ваш профиль" />
+              <p class="profile-link-qr-hint">
+                Наводят камеру другого телефона — чат со мной откроется сразу.
+              </p>
+            </div>
+            <!-- Пояснение — под кодом, а не над ним: первым человек должен видеть
+                 сам код, а не текст о нём. -->
+            <p class="profile-link-hint">
+              Дайте эту ссылку — по ней в Pismo откроется чат с вами. Номер телефона в ссылке не
+              виден: логин уникален и служит только адресом профиля.
+            </p>
             <div class="profile-link-row">
               <input
                 class="profile-link-input"
@@ -1398,13 +1422,6 @@ const onNotificationsToggle = async (val: boolean) => {
               <button type="button" class="btn ghost" @click="copyProfileLink">
                 <q-icon :name="icon('content_copy')" size="17px" /> Копировать
               </button>
-            </div>
-            <!-- QR-код: чтобы дать ссылку без пересылки — наводят камеру -->
-            <div class="profile-link-qr">
-              <QrCode :value="myProfileLink" :size="180" label="QR-код ссылки на ваш профиль" />
-              <p class="profile-link-qr-hint">
-                Наводят камеру другого телефона — чат со мной откроется сразу.
-              </p>
             </div>
             <p v-if="linkNotice" class="notice success">{{ linkNotice }}</p>
           </template>
@@ -1802,7 +1819,7 @@ const onNotificationsToggle = async (val: boolean) => {
             {{ updatingApp ? 'Проверяем…' : 'Проверить обновления' }}
           </button>
           <transition name="fade">
-            <p v-if="aboutNotice" class="field-hint">{{ aboutNotice }}</p>
+            <p v-if="aboutNotice" class="field-hint about-notice">{{ aboutNotice }}</p>
           </transition>
         </section>
 
@@ -1902,7 +1919,9 @@ const onNotificationsToggle = async (val: boolean) => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-top: 4px;
+  /* Отступ от «Выйти из аккаунта» (и шапки раздела): при 4px кнопка упиралась
+     в поле поиска вплотную. */
+  margin-top: var(--ms-space-3);
 }
 
 .settings-link {
@@ -1982,7 +2001,7 @@ const onNotificationsToggle = async (val: boolean) => {
 }
 
 .about-build {
-  margin: 10px 0 6px;
+  margin: 10px 0 var(--ms-space-3);
   font-size: 12.5px;
   color: var(--ms-muted);
 }
@@ -1997,6 +2016,13 @@ const onNotificationsToggle = async (val: boolean) => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Результат проверки («Обновлений нет…») — с отступом от кнопки: без него
+   строка липла к ней вплотную (`field-hint` — с нулевым отступом, и он
+   объявлен НИЖЕ по файлу, поэтому нужен селектор посильнее одиночного класса). */
+p.about-notice.field-hint {
+  margin-top: var(--ms-space-3);
 }
 
 .profile-hero {
@@ -2314,14 +2340,20 @@ const onNotificationsToggle = async (val: boolean) => {
 }
 
 /* Кнопки и уведомления */
-.logout-row {
+
+/* Безопасность: пароль и сессии.
+   Секция — колонка: раньше `gap` здесь ничего не делал (у блока нет `display:
+   flex`), и предупреждение, подсказка, форма пароля и кнопка выхода стояли
+   вплотную друг к другу. */
+.security-section {
   display: flex;
-  justify-content: flex-start;
+  flex-direction: column;
+  gap: 12px;
 }
 
-/* Безопасность: пароль и сессии */
-.security-section {
-  gap: 10px;
+/* Заголовок в колонке: свой `margin-bottom` (12px) складывался с gap секции */
+.security-section > .section-title {
+  margin-bottom: 0;
 }
 
 .security-alert {
@@ -2355,7 +2387,13 @@ const onNotificationsToggle = async (val: boolean) => {
 .security-form {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+}
+
+/* Поля формы пароля: подпись в 6px от своего поля, а между полями — 12px
+   (иначе «Новый пароль» прилипал к предыдущему полю). */
+.security-form .field-label:not(:first-child) {
+  margin-top: 6px;
 }
 
 .security-form input {
@@ -2865,12 +2903,13 @@ const onNotificationsToggle = async (val: boolean) => {
   color: var(--ms-text);
 }
 
-/* Удаление аккаунта (требование RuStore/152-ФЗ): заметно, но не кричит. */
+/* Выход и удаление аккаунта — низ главного экрана (требование RuStore/152-ФЗ
+   для удаления): выход нейтральный, красный цвет — только у удаления. */
 .delete-account-row {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: 10px;
   margin-top: 14px;
   padding-top: 14px;
   border-top: 1px dashed var(--ms-border);
@@ -2931,9 +2970,9 @@ const onNotificationsToggle = async (val: boolean) => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--ms-danger-bg);
-  color: var(--ms-danger);
-  border: none;
+  background: var(--ms-surface-2);
+  color: var(--ms-text);
+  border: 1px solid var(--ms-border);
   border-radius: 11px;
   padding: 10px 14px;
   font-size: 13.5px;
@@ -2943,7 +2982,7 @@ const onNotificationsToggle = async (val: boolean) => {
 }
 
 .logout-btn:hover:not(:disabled) {
-  background: var(--ms-danger-bg);
+  background: var(--ms-hover);
 }
 
 .logout-btn:disabled {
@@ -3079,13 +3118,13 @@ const onNotificationsToggle = async (val: boolean) => {
   font-size: 14px;
 }
 
-/* QR-код под строкой адреса: по центру, с короткой подсказкой */
+/* QR-код над строкой адреса: первым в карточке (как в Telegram), по центру */
 .profile-link-qr {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--ms-space-2);
-  margin-top: var(--ms-space-4);
+  margin-bottom: var(--ms-space-4);
 }
 
 .profile-link-qr-hint {

@@ -17,7 +17,9 @@ LOCAL_DUMP_DIR="${LOCAL_DUMP_DIR:-$(cd "$(dirname "$0")/../.." && pwd)/db_dump}"
 # Поддиректория с архивами локальных дампов
 ARCHIVE_SUBDIR="${ARCHIVE_SUBDIR:-archive}"
 # Сколько последних архивных копий выгружать (0 = все)
-ARCHIVE_KEEP_OFFSITE="${ARCHIVE_KEEP_OFFSITE:-30}"
+# По умолчанию 7 — как и локальная ротация дампов (`ARCHIVE_KEEP`), чтобы в облаке
+# не копились копии, которые мы уже удалили у себя.
+ARCHIVE_KEEP_OFFSITE="${ARCHIVE_KEEP_OFFSITE:-7}"
 # Лог
 LOG_FILE="${LOG_FILE:-${LOCAL_DUMP_DIR}/logs/offsite.log}"
 

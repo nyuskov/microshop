@@ -63,8 +63,10 @@
 - звонковая обвязка UI ↔ стор — `composables/useCallSession.ts` (экран ожидания
   «Входящий звонок…», системный «будильник», кнопки push, 4 watcher'а);
 - URL и системная «назад» — `composables/useChatNavigation.ts` (адрес `?chat=`,
-  `pushMobileNav`/`stepBackInApp`, обработка popstate, 3 watcher'а истории) —
-  владелец состояния нашёлся именно в composable, `utils/` остались чистыми;
+  `pushMobileNav`/`stepBackInApp`, обработка popstate, watcher'ы истории), выбор
+  шага — `utils/mobileNav.ts`, реестр модалок-«слоёв» —
+  `composables/useMobileOverlay.ts`. Владелец состояния нашёлся именно в
+  composable, `utils/` остались чистыми;
 - оверлеи тремя компонентами: каналы (`MessengerChannelOverlays.vue`), «чат и
   группа» (`MessengerChatOverlays.vue`) и «вход и безопасность»
   (`MessengerAccountOverlays.vue`), плюс `MessengerModerationOverlays.vue`

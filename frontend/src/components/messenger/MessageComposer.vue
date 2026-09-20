@@ -365,6 +365,7 @@ import { mediaUrl } from '@/config'
 import { useStickersStore } from '@/stores/stickers'
 import { STICKER_ACCEPT, type StickerItem } from '@/services/stickers'
 import { useHScroll } from '@/composables/useHScroll'
+import { useMobileLayer } from '@/composables/useMobileOverlay'
 import { schedulePresets, scheduledSendAt, type SchedulePreset } from '@/utils/scheduledSend'
 import PanelSection from '@/components/messenger/PanelSection.vue'
 import { STANDARD_STICKER_PACKS, type StandardStickerPack } from '@/utils/standardStickers'
@@ -414,6 +415,14 @@ const stickersStore = useStickersStore()
 /** Диалог «Мои стикеры» (паки, загрузка, порядок). */
 const stickerPacksOpen = ref(false)
 
+// Диалог — слой общего стека (см. `useMobileOverlay`): на телефоне «назад»
+// закрывает его, а не выходит из приложения.
+useMobileLayer(
+  () => stickerPacksOpen.value,
+  () => {
+    stickerPacksOpen.value = false
+  }
+)
 const emojiRecent = ref<string[]>(readRecentEmoji(globalThis.localStorage))
 
 /**

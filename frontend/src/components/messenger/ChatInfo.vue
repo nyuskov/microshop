@@ -177,6 +177,7 @@ import { fetchChatMedia } from '@/services/chatService'
 import { getErrorMessage } from '@/services/errors'
 import ContactNameDialog from '@/components/messenger/ContactNameDialog.vue'
 import SafetyNumberDialog from '@/components/messenger/SafetyNumberDialog.vue'
+import { useMobileLayer } from '@/composables/useMobileOverlay'
 import { useContactsStore } from '@/stores/contacts'
 import { avatarStyle, avatarUrlOf, chatPeer, chatPeerTitle, initials } from '@/utils/user'
 import { formatBytes, formatMsgTime } from '@/utils/format'
@@ -214,7 +215,6 @@ const onToggleE2ee = (val: boolean | string | null) => {
 
 /** Открыт экран сверки ключей (safety number). */
 const safetyOpen = ref(false)
-
 const peer = computed<ChatUser | undefined>(() => chatPeer(props.chat, props.currentUserId))
 
 /**
@@ -230,6 +230,22 @@ const isSelfChat = computed<boolean>(() => props.chat.is_self === true)
 /** Личное имя собеседника (пусто — не добавлен в контакты / не назван). */
 const contactsStore = useContactsStore()
 const contactDialogOpen = ref(false)
+
+// Диалоги внутри карточки чата (переименование контакта, номер безопасности) —
+// слои: «назад» закрывает верхний из них, а не всю карточку вместе с чатом
+// (см. `useMobileOverlay`).
+useMobileLayer(
+  () => contactDialogOpen.value,
+  () => {
+    contactDialogOpen.value = false
+  }
+)
+useMobileLayer(
+  () => safetyOpen.value,
+  () => {
+    safetyOpen.value = false
+  }
+)
 const contactName = computed<string>(() => (peer.value ? contactsStore.nameOf(peer.value.id) : ''))
 
 const peerName = computed<string>(() => {

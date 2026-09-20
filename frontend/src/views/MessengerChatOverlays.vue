@@ -87,6 +87,7 @@
  * здесь — оно в этих шагах не участвует, а наружу отдаётся лишь подтверждение.
  */
 import { computed, defineAsyncComponent, ref } from 'vue'
+import { useMobileLayer } from '@/composables/useMobileOverlay'
 import { chatPeer, displayName, isGroupChat } from '@/utils/user'
 import type { Chat, ChatUser, Message } from '@/types'
 
@@ -195,6 +196,15 @@ const confirmDelete = () => {
 }
 
 defineExpose({ openDelete, openBulkDelete })
+
+// Подтверждение удаления чата — тоже слой: человек может передумать и нажать
+// «назад» вместо «Отмена», и это не должно закрывать сам чат.
+useMobileLayer(
+  () => showDeleteChatModal.value,
+  () => {
+    showDeleteChatModal.value = false
+  }
+)
 </script>
 
 <style scoped>

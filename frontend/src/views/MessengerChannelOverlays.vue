@@ -93,6 +93,7 @@
  */
 import { computed, defineAsyncComponent, ref } from 'vue'
 import { Notify, useQuasar } from 'quasar'
+import { useMobileLayer } from '@/composables/useMobileOverlay'
 import { suggestPost } from '@/services/channelService'
 import { getErrorMessage } from '@/services/errors'
 import { displayName } from '@/utils/user'
@@ -230,14 +231,6 @@ const openComments = (message: Message) => {
   channelCommentsFor.value = message
 }
 
-/** Открыт ли экран комментариев (для системной «назад» на телефоне). */
-const isCommentsOpen = (): boolean => channelCommentsFor.value !== null
-
-/** Закрыть комментарии (системная «назад»). */
-const closeComments = () => {
-  channelCommentsFor.value = null
-}
-
 /** Открыть настройки канала. */
 const openInfo = () => {
   showChannelInfoModal.value = true
@@ -254,12 +247,45 @@ const closeAll = () => {
   channelCommentsFor.value = null
 }
 
+// Каждый диалог канала — свой слой: и «назад» его закрывает по одному, и шаг в
+// истории ставится/гасится автоматически (см. `useMobileOverlay`). Раньше
+// маркер ставило представление при открытии, а закрытие крестиком его не гасило:
+// следующее «назад» закрывало уже чат под диалогом.
+useMobileLayer(
+  () => showCreateChannelModal.value,
+  () => {
+    showCreateChannelModal.value = false
+  }
+)
+useMobileLayer(
+  () => channelJoinUsername.value !== null,
+  () => {
+    channelJoinUsername.value = null
+  }
+)
+useMobileLayer(
+  () => channelCommentsFor.value !== null,
+  () => {
+    channelCommentsFor.value = null
+  }
+)
+useMobileLayer(
+  () => showChannelInfoModal.value,
+  () => {
+    showChannelInfoModal.value = false
+  }
+)
+useMobileLayer(
+  () => channelSuggestOpen.value,
+  () => {
+    channelSuggestOpen.value = false
+  }
+)
+
 defineExpose({
   openCreate,
   openJoin,
   openComments,
-  isCommentsOpen,
-  closeComments,
   openInfo,
   openSuggest,
   closeAll

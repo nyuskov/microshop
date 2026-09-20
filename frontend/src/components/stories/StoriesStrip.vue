@@ -136,6 +136,7 @@ import { mediaUrl } from '@/config'
 import { useAuthStore } from '@/stores/auth'
 import { useStoriesStore } from '@/stores/stories'
 import { useHScroll } from '@/composables/useHScroll'
+import { useMobileLayer } from '@/composables/useMobileOverlay'
 import type { StoryGroup } from '@/services/stories'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 
@@ -262,6 +263,10 @@ const cancelPublish = () => {
   pendingFile.value = null
   caption.value = ''
 }
+
+// Диалог подписи к новой истории — слой общего стека (см. `useMobileOverlay`):
+// «назад» закрывает его, а не выходит из приложения.
+useMobileLayer(() => captionOpen.value, cancelPublish)
 
 const publish = async () => {
   const file = pendingFile.value

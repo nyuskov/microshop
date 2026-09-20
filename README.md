@@ -171,7 +171,7 @@ CRON_SCHEDULE='0 */6 * * *' ./scripts/backup/install_server_cron.sh
 - запускается `scripts/db/dump_db.sh` — обновляется `db_dump/microshop_latest.sql` и создаётся архивная копия `db_dump/archive/microshop_<дата>.sql`;
 - запускается `scripts/backup/backup_media.sh` — обновляется `db_dump/media_latest.tar.gz` (вложения/аватары из `backend/media` либо docker-тома `*_media_data`) и создаётся архив `db_dump/archive/media_<дата>.tar.gz`;
 - пишется лог в `db_dump/logs/cron.log`;
-- хранится только последние **30** архивных копий каждого типа (лимит задаётся переменной `ARCHIVE_KEEP`, лог — `DUMP_LOG_FILE`).
+- хранится последние **7** дампов БД и снимки media по одному за день за **2** дня (лимиты `ARCHIVE_KEEP`, `ARCHIVE_KEEP_MEDIA`, лог — `DUMP_LOG_FILE`).
 
 Проверка/удаление задачи:
 

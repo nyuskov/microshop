@@ -751,6 +751,7 @@ import { useRealtimeSync } from '@/composables/useRealtimeSync'
 import { useRecordButton } from '@/composables/useRecordButton'
 import { useCallSession } from '@/composables/useCallSession'
 import { useChatNavigation } from '@/composables/useChatNavigation'
+import { useMobileLayer } from '@/composables/useMobileOverlay'
 import { useChatFolders } from '@/composables/useChatFolders'
 import { useChatUnreadState } from '@/composables/useChatUnreadState'
 import { useDrafts } from '@/composables/useDrafts'
@@ -1534,7 +1535,7 @@ const openViewOnce = async (message: Message) => {
   try {
     const url = await fetchViewOnceUrl(message)
     if (!url) return
-    pushMobileNav()
+    // Слой общего стека (см. `useMobileOverlay`): маркер истории ставится сам.
     viewOnceOpened.add(message.id)
     // Сервер уже отдал файл — в ленте показываем «Просмотрено».
     message.view_once_opened = true
@@ -1582,11 +1583,15 @@ const openChatInfo = () => {
     infoRailOpen.value = !infoRailOpen.value
     return
   }
-  pushMobileNav()
   if (chat?.is_channel) {
+    // Настройки канала — слой общего стека: свой шаг в истории он и ставит, и
+    // гасит сам (см. `composables/useMobileOverlay.ts`).
     channelOverlaysRef.value?.openInfo()
     void refreshChannelCard()
-  } else if (chat && isGroupChat(chat)) {
+    return
+  }
+  pushMobileNav()
+  if (chat && isGroupChat(chat)) {
     showGroupInfoModal.value = true
   } else {
     showChatInfoModal.value = true
@@ -1595,7 +1600,6 @@ const openChatInfo = () => {
 
 /** Открыть диалог «Новый канал» из меню «⋯» в списке чатов. */
 const openCreateChannel = () => {
-  pushMobileNav()
   channelOverlaysRef.value?.openCreate()
 }
 
@@ -1607,7 +1611,6 @@ const openCreateChannel = () => {
  */
 const openChannelByUsername = (username: string) => {
   if (!username) return
-  pushMobileNav()
   channelOverlaysRef.value?.openJoin(username)
 }
 
@@ -2203,11 +2206,10 @@ const onPostViewed = async (message: Message) => {
 /**
  * Открыть комментарии к посту канала.
  *
- * Как в Telegram: это отдельный экран, поэтому на телефоне кладём шаг в историю
- * приложения — системная «назад» возвращает в ленту канала, а не из чата.
+ * Как в Telegram: это отдельный экран (на телефоне — во весь экран). Маркер
+ * истории не ставим — комментарии слой общего стека (`useMobileOverlay`).
  */
 const openChannelComments = (message: Message) => {
-  pushMobileNav()
   channelOverlaysRef.value?.openComments(message)
 }
 
@@ -3289,19 +3291,15 @@ const { syncChatUrl, goBackToList, pushMobileNav, revealDrawer, onAppPopState } 
     layers: {
       storyId: openStoryId,
       lightboxIndex,
-      commentsOpen: () => channelOverlaysRef.value?.isCommentsOpen() ?? false,
       profileOpen: showProfileModal,
       chatInfoOpen: showChatInfoModal,
       groupInfoOpen: showGroupInfoModal,
       createGroupOpen: showCreateGroupModal,
-      messageSelection,
-      inviteOpen: () => inviteDialogOpen.value
+      messageSelection
     },
     hooks: {
       profileInSection: () => profileRef.value?.isInSection() ?? false,
       backToProfileSections: () => profileRef.value?.backToSections(),
-      closeComments: () => channelOverlaysRef.value?.closeComments(),
-      closeInvite: () => closeInviteDialog(),
       exitMessageSelection: () => exitMessageSelection(),
       closeOpenChat: () => closeOpenChat()
     }
@@ -4417,9 +4415,9 @@ const resolveInviteLink = async () => {
     }
     inviteJoinToken.value = token
     invitePreview.value = preview
+    // Карточка приглашения — слой общего стека: маркер истории ставится сам
+    // (`useMobileOverlay`), и она же его гасит при закрытии.
     inviteDialogOpen.value = true
-    // Диалог — «слой»: системная кнопка «назад» на телефоне должна его закрыть.
-    pushMobileNav()
   } catch (error) {
     Notify.create({
       type: 'negative',
@@ -4721,9 +4719,9 @@ const handleWindowMessage = (event: MessageEvent) => {
   }
   if (data.type === 'security-alert') {
     // Service worker получил тап по уведомлению о новом входе — разбираемся
-    // в приложении (завершить чужие сессии или заморозить аккаунт).
+    // в приложении (завершить чужие сессии или заморозить аккаунт). Маркер
+    // истории ставит сам слой тревоги (см. `useMobileOverlay`).
     accountOverlaysRef.value?.openSecurityAlert()
-    pushMobileNav()
     return
   }
   if (data.type === 'call-notification') {
@@ -4828,6 +4826,73 @@ watch(
   },
   { immediate: true }
 )
+
+// ---------- Модалки как слои (см. composables/useMobileOverlay.ts) ----------
+//
+// Каждая модалка, состояние которой живёт здесь флагом, объявляет себя слоем:
+// пока она открыта, системное «назад» закрывает ИМЕННО её — по одной за раз, как
+// страницы в браузере, — а не выходит из приложения и не закрывает чат под
+// модалкой. Раньше такие модалки приходилось перечислять по имени в
+// `useChatNavigation`, и «назад» ломался на каждой забытой (а закрытие крестиком
+// оставляло висеть шаг в истории — «назад не работает»).
+//
+// Блок стоит В КОНЦЕ `<script setup>` не случайно: закрывающие функции
+// (`cancelSend`, `finishDeleteScope`, `cancelNativeShare`, `onVideoCancel`,
+// `cancelForward` …) объявлены выше только к этому месту — вызов раньше дал бы
+// «использование до объявления» (TDZ).
+useMobileLayer(() => pendingSend.value !== null, cancelSend)
+useMobileLayer(() => forwardSource.value !== null, cancelForward)
+useMobileLayer(
+  () => reactionUsersFor.value !== null,
+  () => {
+    reactionUsersFor.value = null
+  }
+)
+useMobileLayer(() => nativeShare.value !== null, cancelNativeShare)
+useMobileLayer(
+  () => chatSoundOpen.value,
+  () => {
+    chatSoundOpen.value = false
+  }
+)
+useMobileLayer(() => reminderTarget.value !== null, closeReminderDialog)
+useMobileLayer(
+  () => showDeleteMessageDialog.value,
+  () => finishDeleteScope(null)
+)
+useMobileLayer(
+  () => stickerSet.value !== null,
+  () => {
+    stickerSet.value = null
+  }
+)
+useMobileLayer(
+  () => chatStatsOpen.value,
+  () => {
+    chatStatsOpen.value = false
+  }
+)
+useMobileLayer(
+  () => foldersOpen.value,
+  () => {
+    foldersOpen.value = false
+  }
+)
+useMobileLayer(
+  () => folderPickerChatIds.value !== null,
+  () => {
+    folderPickerChatIds.value = null
+  }
+)
+useMobileLayer(
+  () => callsOpen.value,
+  () => {
+    callsOpen.value = false
+  }
+)
+useMobileLayer(() => videoRecOpen.value, onVideoCancel)
+useMobileLayer(() => viewOnceView.value !== null, closeViewOnce)
+useMobileLayer(() => inviteDialogOpen.value, closeInviteDialog)
 </script>
 
 <style scoped>

@@ -1,5 +1,6 @@
 import { computed, watch, type ComputedRef, type Ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { closeTopMobileLayer, mobileLayerDepth } from '@/composables/useMobileOverlay'
 import { chatUrlWith } from '@/utils/chatUrl'
 import { decideBackStep, type Section } from '@/utils/mobileNav'
 
@@ -9,8 +10,6 @@ export interface NavigationLayers {
   storyId: Ref<number | null>
   /** Открыт лайтбокс (номер кадра). */
   lightboxIndex: Ref<number | null>
-  /** Открыт экран комментариев к посту канала (отдельный экран). */
-  commentsOpen: () => boolean
   /** Открыт профиль (настройки). */
   profileOpen: Ref<boolean>
   /** Открыт экран информации о чате / группе. */
@@ -20,8 +19,6 @@ export interface NavigationLayers {
   createGroupOpen: Ref<boolean>
   /** Активен режим выбора сообщений. */
   messageSelection: Ref<boolean>
-  /** Открыта карточка приглашения в группу (объявляется ниже по файлу — поэтому геттер). */
-  inviteOpen: () => boolean
 }
 
 export interface NavigationHooks {
@@ -29,10 +26,6 @@ export interface NavigationHooks {
   profileInSection: () => boolean
   /** Профиль: «назад» выходит из раздела профиля к списку разделов. */
   backToProfileSections: () => void
-  /** Закрыть экран комментариев к посту канала. */
-  closeComments: () => void
-  /** Закрыть карточку приглашения (у неё своя логика очистки адреса). */
-  closeInvite: () => void
   /** Выйти из режима выбора сообщений. */
   exitMessageSelection: () => void
   /** Закрыть открытую переписку (сброс нити и адреса). */
@@ -129,8 +122,15 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
 
   /** Идёт обработка системного «назад» — программные шаги назад не нужны. */
   let handlingSystemBack = false
-  /** Маркер гасим сами (программным шагом назад) — обработчик popstate молчит. */
-  let programmaticBack = false
+  /**
+   * Сколько маркеров гасим сами (`history.go(-1)`): обработчик popstate
+   * пропускает ровно столько же шагов. Счётчик, а не флаг: когда снимаются
+   * сразу два слоя (переключили чат — модалки закрылись разом), уходит два
+   * «назад», и первый popstate не должен снимать защиту со второго.
+   */
+  let programmaticBacks = 0
+  /** Страховка от «залипшего» счётчика: popstate может не прийти (гасить нечего). */
+  let programmaticReset: number | null = null
   /** Drawer открылся сам (по системному «назад») — маркер уже израсходован. */
   let drawerOpenedByBack = false
   /** Drawer открыли мы сами (переход в раздел) — чужие маркеры не гасим. */
@@ -155,11 +155,18 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
     if (twoPane.value || handlingSystemBack) return false
     const state = window.history.state as { pismoNav?: boolean } | null
     if (!state?.pismoNav) return false
-    programmaticBack = true
+    programmaticBacks += 1
+    if (programmaticReset !== null) window.clearTimeout(programmaticReset)
+    // Если popstate почему-то не придёт, защита не должна «съесть» следующее
+    // настоящее «назад» — снимаем её по таймауту (popstate приходит за миллисекунды).
+    programmaticReset = window.setTimeout(() => {
+      programmaticBacks = 0
+      programmaticReset = null
+    }, 250)
     try {
       router.options.history.go(-1)
     } catch {
-      programmaticBack = false
+      programmaticBacks -= 1
       return false
     }
     return true
@@ -171,15 +178,14 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
    */
   const handleAppBack = (state: { pismoView?: Section } | null) => {
     const step = decideBackStep({
+      overlayLayers: mobileLayerDepth(),
       storyOpen: layers.storyId.value !== null,
       lightboxOpen: layers.lightboxIndex.value !== null,
-      commentsOpen: layers.commentsOpen(),
       profileOpen: layers.profileOpen.value,
       profileInSection: hooks.profileInSection(),
       chatInfoOpen: layers.chatInfoOpen.value,
       groupInfoOpen: layers.groupInfoOpen.value,
       createGroupOpen: layers.createGroupOpen.value,
-      inviteOpen: layers.inviteOpen(),
       messageSelection: layers.messageSelection.value,
       chatSelection: deps.chatSelection(),
       currentView: view.value,
@@ -190,14 +196,16 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
     })
 
     switch (step.kind) {
+      case 'overlay':
+        // Верхняя модалка закрывает себя сама — стек об этом узнаёт и гасит её
+        // шаг в истории (см. watcher `mobileLayerDepth` ниже).
+        closeTopMobileLayer()
+        return
       case 'story':
         layers.storyId.value = null
         return
       case 'lightbox':
         layers.lightboxIndex.value = null
-        return
-      case 'comments':
-        hooks.closeComments()
         return
       case 'profile-section':
         hooks.backToProfileSections()
@@ -207,9 +215,6 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
         layers.chatInfoOpen.value = false
         layers.groupInfoOpen.value = false
         layers.createGroupOpen.value = false
-        return
-      case 'invite':
-        hooks.closeInvite()
         return
       case 'message-selection':
         hooks.exitMessageSelection()
@@ -242,9 +247,13 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
   }
 
   const onAppPopState = (event: PopStateEvent) => {
-    // Маркер погасили сами (экран уже закрыт вручную) — обрабатывать нечего.
-    if (programmaticBack) {
-      programmaticBack = false
+    // Маркер(ы) погасили сами (экран уже закрыт вручную) — обрабатывать нечего.
+    if (programmaticBacks > 0) {
+      programmaticBacks -= 1
+      if (programmaticBacks === 0 && programmaticReset !== null) {
+        window.clearTimeout(programmaticReset)
+        programmaticReset = null
+      }
       return
     }
     if (twoPane.value) return
@@ -269,7 +278,32 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
     (active, wasActive) => {
       if (active === wasActive) return
       if (active) pushMobileNav()
-      else stepBackInApp()
+      else if (mobileLayerDepth() === 0) stepBackInApp()
+    },
+    { flush: 'sync' }
+  )
+
+  /**
+   * Модалки (общий стек слоёв): на каждый открытый слой — свой шаг в истории.
+   *
+   * Именно из-за этого «назад» ведёт себя как браузер: открыл три модалки —
+   * три раза «назад» закрывают их по одной, и только потом дело доходит до чата,
+   * раздела или выхода из приложения. Закрытие модалки ЛЮБЫМ способом (крестик,
+   * клик по фону, Esc, выбор действия) слой снимает — и его шаг гасится тут же
+   * (`stepBackInApp`), иначе следующее «назад» уйдёт в пустоту.
+   */
+  let trackedLayerDepth = mobileLayerDepth()
+  watch(
+    () => mobileLayerDepth(),
+    (depth) => {
+      const delta = depth - trackedLayerDepth
+      trackedLayerDepth = depth
+      for (let i = 0; i < Math.abs(delta); i += 1) {
+        if (delta > 0) pushMobileNav()
+        // Внутри системного «назад» маркер уже израсходован — `stepBackInApp`
+        // сам молчит при `handlingSystemBack`.
+        else stepBackInApp()
+      }
     },
     { flush: 'sync' }
   )
@@ -278,6 +312,9 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
    * Экран поверх (модалки, просмотрщик истории, лайтбокс) закрыли ЛЮБЫМ способом —
    * крестиком, кликом по фону, жестом. Гасим маркер истории: иначе следующее
    * системное «назад» потратится на пустой шаг («назад не работает»).
+   *
+   * Если сверху ещё есть модалка из стека, не трогаем маркер: верхний — её, и
+   * погасит его она сама.
    */
   const overlayOpen = computed(
     () =>
@@ -291,7 +328,7 @@ export function useChatNavigation(deps: ChatNavigationDeps) {
   watch(
     overlayOpen,
     (open, wasOpen) => {
-      if (wasOpen && !open) stepBackInApp()
+      if (wasOpen && !open && mobileLayerDepth() === 0) stepBackInApp()
     },
     { flush: 'sync' }
   )

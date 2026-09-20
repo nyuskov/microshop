@@ -21,6 +21,7 @@ from typing import Any
 from celery import Celery  # type: ignore[import-untyped]
 from celery.schedules import crontab  # type: ignore[import-untyped]
 from kombu import Exchange, Queue  # type: ignore[import-untyped]
+from kombu.transport import pyamqp  # type: ignore[import-untyped]
 
 from core.config import settings
 
@@ -80,6 +81,34 @@ celery_app.conf.update(
     # локальном запуске; состояние не критично (расписание задано в коде).
     beat_schedule_filename="/tmp/celerybeat-schedule",
 )
+
+
+# Prefetch: просим у брокера НЕ глобальный QoS.
+#
+# Celery выбирает, какой QoS просить, по признаку
+# ``kombu.Connection.qos_semantics_matches_spec``: для RabbitMQ >= 3.3 kombu
+# отдаёт False (считает, что «старая» семантика из спеки не действует), и тогда
+# Celery выставляет ``a_global=True`` — «prefetch на весь канал». В RabbitMQ 4.x
+# глобальный QoS объявлен deprecated и по умолчанию НЕ разрешён: на каждом
+# подключении воркера брокер пишет в лог
+# ``Deprecated features: `global_qos`: ... By default, this feature is not
+# permitted anymore`` (уровень error), а сама фича «будет удалена в будущей
+# мажорной версии независимо от конфигурации» — то есть готовиться надо уже
+# сейчас, а не разрешать её через ``deprecated_features.permit.global_qos``.
+#
+# Возвращаем True — Celery просит per-consumer prefetch (a_global=False), как
+# и рекомендует RabbitMQ (docs/consumer-prefetch). Для нас это то же самое
+# поведение: очередь одна, консьюмер в воркере один, prefetch = 4 × concurrency
+# (80 при 20 процессах) — ровно столько же, сколько давал глобальный режим.
+#
+# Убрать шим можно, когда kombu сам перестанет считать семантику «несовпадающей»
+# (сейчас 5.6.2 — считает: docs «removal of global QoS» в анонсах RabbitMQ 4.0).
+def _qos_semantics_match_spec(self: Any, connection: Any) -> bool:
+    """Признак «семантика QoS совпадает со спекой» — всегда True (см. выше)."""
+    return True
+
+
+setattr(pyamqp.Transport, "qos_semantics_matches_spec", _qos_semantics_match_spec)
 
 
 # Периодические задачи (celery beat). Каждая задача просто объявляется; сам

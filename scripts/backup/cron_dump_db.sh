@@ -5,11 +5,13 @@
 # ./scripts/backup/install_server_cron.sh) и делает то же самое, что
 # scripts/db/dump_db.sh, но:
 #   * пишет лог в db_dump/logs/cron.log (не в stdout, т.к. cron собирает вывод сам);
-#   * ограничивает число архивных копий (по умолчанию хранятся последние 30).
+#   * ограничивает число архивных копий: дампы — 7 последних, media — по одному
+#     снимку за день за последние 2 дня.
 #
 # Переменные окружения (необязательно):
-#   ARCHIVE_KEEP   — сколько архивных копий хранить (по умолчанию 30);
-#   DUMP_LOG_FILE  — путь к файлу лога (по умолчанию db_dump/logs/cron.log).
+#   ARCHIVE_KEEP       — сколько дампов БД хранить (по умолчанию 7);
+#   ARCHIVE_KEEP_MEDIA — сколько ДНЕЙ хранить снимки media (по умолчанию 2);
+#   DUMP_LOG_FILE      — путь к файлу лога (по умолчанию db_dump/logs/cron.log).
 
 set -euo pipefail
 
@@ -21,7 +23,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 cd "$ROOT"
 
-ARCHIVE_KEEP="${ARCHIVE_KEEP:-30}"
+ARCHIVE_KEEP="${ARCHIVE_KEEP:-7}"
+# Медиа-архив — это ВСЕ вложения целиком, поэтому по дням, а не «последние N»:
+# два запуска подряд (ручной + cron) давали две почти одинаковые копии.
+ARCHIVE_KEEP_MEDIA="${ARCHIVE_KEEP_MEDIA:-2}"
 LOG_FILE="${DUMP_LOG_FILE:-$ROOT/db_dump/logs/cron.log}"
 ARCHIVE_DIR="$ROOT/db_dump/archive"
 
@@ -61,19 +66,32 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
             log "Удалён старый архив: $file"
         done
 
-        # Архивы media: имена media_YYYYMMDD_HHMMSS.tar.gz.
-        mapfile -t old_media < <(
-            ls -1 "$ARCHIVE_DIR" 2>/dev/null \
-                | grep -E '^media_[0-9]{8}_[0-9]{6}\.tar\.gz$' \
-                | sort -r \
-                | tail -n +$((ARCHIVE_KEEP + 1)) || true
-        )
-        for file in "${old_media[@]:-}"; do
-            [[ -z "$file" ]] && continue
-            rm -f -- "$ARCHIVE_DIR/$file"
-            log "Удалён старый media-архив: $file"
-        done
+        # Архивы media: оставляем только САМЫЙ СВЕЖИЙ снимок за каждый день,
+        # за последние ARCHIVE_KEEP_MEDIA дней (та же логика, что у бэкапа прода —
+        # см. scripts/backup/pull_prod_backup.sh).
+        if [[ "$ARCHIVE_KEEP_MEDIA" =~ ^[0-9]+$ ]] && [[ "$ARCHIVE_KEEP_MEDIA" -gt 0 ]]; then
+            declare -A media_days
+            kept_days=0
+            mapfile -t media_files < <(
+                ls -1 "$ARCHIVE_DIR" 2>/dev/null \
+                    | grep -E '^media_[0-9]{8}_[0-9]{6}\.tar\.gz$' \
+                    | sort -r || true
+            )
+            for file in "${media_files[@]:-}"; do
+                [[ -z "$file" ]] && continue
+                day="${file#media_}"
+                day="${day%%_*}"
+                if [[ -z "${media_days[$day]:-}" ]] && [[ "$kept_days" -lt "$ARCHIVE_KEEP_MEDIA" ]]; then
+                    media_days[$day]=1
+                    kept_days=$((kept_days + 1))
+                    continue
+                fi
+                media_days[$day]=1
+                rm -f -- "$ARCHIVE_DIR/$file"
+                log "Удалён старый media-архив: $file"
+            done
+        fi
     fi
 
-    log "=== Готово (архив хранится: последние ${ARCHIVE_KEEP} копий) ==="
+    log "=== Готово (хранится: дампов ${ARCHIVE_KEEP}, снимков media за ${ARCHIVE_KEEP_MEDIA} дн.) ==="
 } >> "$LOG_FILE" 2>&1

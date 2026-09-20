@@ -11,18 +11,20 @@
 export type Section = 'chats' | 'contacts'
 
 export type MobileBackStep =
+  /**
+   * Закрыть верхнюю модалку из общего стека слоёв
+   * (см. `composables/useMobileOverlay.ts`): карточки чата, стикеры, папки,
+   * пересылка, одноразовое медиа, жалоба, настройки канала и т. д.
+   */
+  | { kind: 'overlay' }
   /** Закрыть просмотр истории. */
   | { kind: 'story' }
   /** Закрыть просмотр изображения. */
   | { kind: 'lightbox' }
-  /** Закрыть комментарии к посту канала (отдельный экран, как в Telegram). */
-  | { kind: 'comments' }
   /** Вернуть список разделов внутри профиля. */
   | { kind: 'profile-section' }
   /** Закрыть модалки поверх всего. */
   | { kind: 'overlays' }
-  /** Закрыть карточку приглашения в группу (открыта по ссылке `/j/<токен>`). */
-  | { kind: 'invite' }
   /** Выйти из режима выбора сообщений. */
   | { kind: 'message-selection' }
   /** Выйти из режима выбора чатов. */
@@ -39,18 +41,19 @@ export type MobileBackStep =
   | { kind: 'exit' }
 
 export interface BackSnapshot {
+  /**
+   * Сколько модалок открыто (общий стек слоёв). Больше нуля — «назад» закрывает
+   * верхнюю из них, а не выходит из приложения и не закрывает чат под ней.
+   */
+  overlayLayers: number
   storyOpen: boolean
   lightboxOpen: boolean
-  /** Открыт экран комментариев к посту канала. */
-  commentsOpen: boolean
   profileOpen: boolean
   /** Открыт ли внутри профиля конкретный раздел (а не список разделов). */
   profileInSection: boolean
   chatInfoOpen: boolean
   groupInfoOpen: boolean
   createGroupOpen: boolean
-  /** Открыта карточка приглашения в группу (ссылка `/j/<токен>`). */
-  inviteOpen: boolean
   messageSelection: boolean
   chatSelection: boolean
   currentView: Section
@@ -77,14 +80,13 @@ export function decideBackStep(snapshot: BackSnapshot): MobileBackStep {
   /** Нужно ли на этом шаге показать список раздела (телефон). */
   const needsList = !snapshot.twoPane && (snapshot.chatOpen || !snapshot.drawerOpen)
 
+  // Модалки — самый верхний слой и проверяются ПЕРВЫМИ: они открываются и
+  // поверх чата, и поверх профиля, и поверх ленты канала. Раньше их приходилось
+  // перечислять по имени, и «назад» на забытой модалке закрывал то, что под ней
+  // (или выходил из приложения).
+  if (snapshot.overlayLayers > 0) return { kind: 'overlay' }
   if (snapshot.storyOpen) return { kind: 'story' }
   if (snapshot.lightboxOpen) return { kind: 'lightbox' }
-  // Комментарии открываются из поста и занимают экран целиком — «назад»
-  // возвращает в ленту канала, а не закрывает приложение/чат.
-  if (snapshot.commentsOpen) return { kind: 'comments' }
-  // Приглашение — верхний слой: человек пришёл по ссылке и ещё ничего не
-  // открывал, «назад» должно закрыть карточку, а не вывести из приложения.
-  if (snapshot.inviteOpen) return { kind: 'invite' }
   if (snapshot.profileOpen && snapshot.profileInSection) return { kind: 'profile-section' }
   if (
     snapshot.profileOpen ||

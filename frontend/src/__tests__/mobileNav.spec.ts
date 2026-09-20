@@ -13,15 +13,14 @@ import { decideBackStep, type BackSnapshot } from '@/utils/mobileNav'
 
 /** Снимок: человек на списке чатов, ничего не открыто. */
 const base: BackSnapshot = {
+  overlayLayers: 0,
   storyOpen: false,
   lightboxOpen: false,
-  commentsOpen: false,
   profileOpen: false,
   profileInSection: false,
   chatInfoOpen: false,
   groupInfoOpen: false,
   createGroupOpen: false,
-  inviteOpen: false,
   messageSelection: false,
   chatSelection: false,
   currentView: 'chats',
@@ -35,22 +34,29 @@ const step = (patch: Partial<BackSnapshot> = {}) => decideBackStep({ ...base, ..
 
 describe('decideBackStep', () => {
   it('закрывает верхние слои по одному, от верхнего к нижнему', () => {
+    // Модалки из общего стека — верхний слой и закрываются раньше всего: одна
+    // за раз, сколько бы их ни было.
+    expect(step({ overlayLayers: 2, profileOpen: true })).toEqual({ kind: 'overlay' })
+    expect(step({ overlayLayers: 1, storyOpen: true })).toEqual({ kind: 'overlay' })
     expect(step({ storyOpen: true, lightboxOpen: true })).toEqual({ kind: 'story' })
     expect(step({ lightboxOpen: true, profileOpen: true })).toEqual({ kind: 'lightbox' })
-    // Комментарии к посту канала — отдельный экран: закрываются раньше всего
-    // остального, что открыто поверх ленты.
-    expect(step({ commentsOpen: true, profileOpen: true })).toEqual({ kind: 'comments' })
     expect(step({ profileOpen: true, profileInSection: true })).toEqual({ kind: 'profile-section' })
     expect(step({ profileOpen: true, chatInfoOpen: true })).toEqual({ kind: 'overlays' })
     expect(step({ groupInfoOpen: true })).toEqual({ kind: 'overlays' })
     expect(step({ createGroupOpen: true })).toEqual({ kind: 'overlays' })
   })
 
-  it('закрывает карточку приглашения в группу (пришёл по ссылке)', () => {
-    // Человек открыл `/j/<токен>`: карточка — верхний слой, «назад» закрывает
-    // её, а не выводит из приложения.
-    expect(step({ inviteOpen: true })).toEqual({ kind: 'invite' })
-    expect(step({ inviteOpen: true, chatOpen: true })).toEqual({ kind: 'invite' })
+  it('последний тап на модалке закрывает её, а не выходит из приложения', () => {
+    // Регрессия: модалку открывают на списке чатов, где шагов истории больше
+    // нет. Раньше такая модалка не учавствовала в решении вовсе, и «назад»
+    // выходило из приложения прямо из-под открытой карточки.
+    expect(step({ overlayLayers: 1 })).toEqual({ kind: 'overlay' })
+    expect(step({ overlayLayers: 1, chatOpen: true, drawerOpen: false })).toEqual({
+      kind: 'overlay'
+    })
+    expect(step({ overlayLayers: 1, chatOpen: true, drawerOpen: true })).toEqual({
+      kind: 'overlay'
+    })
   })
 
   it('выходит из режимов выделения, а не уводит из чата', () => {

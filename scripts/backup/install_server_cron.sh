@@ -54,7 +54,8 @@ echo
 echo "Расписание : $CRON_SCHEDULE"
 echo "Скрипт     : $SCRIPT"
 echo "Лог        : $ROOT/db_dump/logs/cron.log"
-echo "Архив      : $ROOT/db_dump/archive/ (хранится последние ${ARCHIVE_KEEP:-30} копий)"
+echo "Архив      : $ROOT/db_dump/archive/ (дампы: последние ${ARCHIVE_KEEP:-7},"
+echo "             media: снимки за ${ARCHIVE_KEEP_MEDIA:-2} дн.)"
 echo
 echo "Проверить прямо сейчас:"
 echo "  '$SCRIPT'"
