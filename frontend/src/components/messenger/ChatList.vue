@@ -107,6 +107,7 @@
             :class="{
               active: !props.selectionMode && props.selectedChatId === chat.id,
               selected: isSelected(chat.id),
+              unread: chat.unread_count > 0,
               swiping: swipeChatId === chat.id
             }"
             :style="rowSwipeStyle(chat.id)"
@@ -522,8 +523,9 @@ watch(
 /* Ряд чипов: листается мышью и пальцем, поэтому курсор-«рука». */
 .chat-filters {
   display: flex;
-  gap: 4px;
-  padding: 8px 12px 4px;
+  align-items: center;
+  gap: var(--ms-space-1);
+  padding: var(--ms-space-1) var(--ms-space-3) var(--ms-space-2);
   overflow-x: auto;
   /* Прокрутка ряда не должна утаскивать за собой список чатов при достижении края. */
   overscroll-behavior-x: contain;
@@ -531,22 +533,22 @@ watch(
 }
 
 /* Затухание у того края, где действительно есть скрытые чипы: это подсказка,
-   что ряд листается (колесом, трекпадом или свайпом). Ширина затухания —
-   в пределах бокового отступа, поэтому влезающий ряд не подтемняется. */
+   что ряд листается (колесом, трекпадом или свайпом). Ширина — 16px: при 10px
+   обрезанный чип у края читался как «сломанная вёрстка», а не как «есть ещё». */
 .chat-filters.fade-end {
-  mask-image: linear-gradient(to right, black calc(100% - 10px), transparent);
+  mask-image: linear-gradient(to right, black calc(100% - 16px), transparent);
 }
 
 .chat-filters.fade-start {
-  mask-image: linear-gradient(to right, transparent, black 10px);
+  mask-image: linear-gradient(to right, transparent, black 16px);
 }
 
 .chat-filters.fade-start.fade-end {
   mask-image: linear-gradient(
     to right,
     transparent,
-    black 10px,
-    black calc(100% - 10px),
+    black 16px,
+    black calc(100% - 16px),
     transparent
   );
 }
@@ -562,18 +564,25 @@ watch(
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  /* 6px, а не 4: чип — самая частая цель на телефоне, 26 px по высоте в него
-     не попадают; ряд всё равно влезает, высота ширину не меняет. */
-  padding: 6px 4px;
+  /* Таблетка, а не прямоугольник: фильтры стоят рядом с круглыми кнопками шапки
+     и аватарами строк, и прямоугольные плашки из общего ряда выбивались.
+     Воздух внутри — 6/11: при 4px по бокам подпись упиралась в край плашки. */
+  padding: 6px 11px;
   border: none;
-  border-radius: var(--ms-radius-sm);
+  border-radius: var(--ms-radius-pill);
   background: var(--ms-surface-2);
   color: var(--ms-muted);
   font: inherit;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
+  transition: background var(--ms-dur-fast) var(--ms-ease);
+}
+
+.chat-filter:hover {
+  background: var(--ms-hover);
+  color: var(--ms-text);
 }
 
 .chat-filter.active {
@@ -588,23 +597,23 @@ watch(
 }
 
 .chat-filter-add {
-  padding: 6px 7px;
-  border: 1px dashed var(--ms-border);
+  padding: 6px 9px;
+  border: none;
   background: transparent;
   color: var(--ms-muted-2);
 }
 
 .chat-filter-add:hover {
-  color: var(--ms-text);
-  border-color: var(--ms-accent-border);
+  color: var(--ms-accent);
+  background: var(--ms-accent-soft);
 }
 
 /* Сам чип компактный (шесть фильтров должны влезать в 320–390 px), а область
-   нажатия расширена невидимым слоем — палец толще чипа 25 px. */
+   нажатия расширена невидимым слоем — палец толще чипа. */
 .chat-filter::after {
   content: '';
   position: absolute;
-  inset: -5px -3px;
+  inset: -4px -2px;
 }
 
 .chat-filter-count {

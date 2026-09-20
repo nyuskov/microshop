@@ -268,16 +268,19 @@ onBeforeUnmount(() => {
 
 <style scoped>
 /* ---------- Заголовки панелей ---------- */
+/* Шапка — один ряд иконок; вертикальные отступы равные, иначе ряд «прилипал» к
+   полосе фильтров снизу и казался выше, чем есть. */
 .panel-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 12px 4px;
+  padding: var(--ms-space-2) var(--ms-space-3);
   background: var(--ms-surface);
 }
 
 .panel-header-right {
   display: flex;
+  align-items: center;
   gap: 2px;
   /* Правая группа иконок прижата к краю: слева — значок приложения и истории. */
   margin-left: auto;
@@ -289,13 +292,16 @@ onBeforeUnmount(() => {
 }
 
 /* Кнопка «Профиль»: вместо иконки показываем мини-аватар пользователя.
-   Размер — как у иконки «Информация о чате» в шапке чата (40px). */
+   Размер — как у иконок рядом (круг 36px у иконок 40px выглядел крупнее всех и
+   перетягивал внимание на себя), с тонкой обводкой — она отделяет круг от фона
+   и держит ряд единым. */
 .self-profile-btn {
   background: none;
   border: none;
   padding: 0;
-  width: 40px;
-  height: 40px;
+  margin-left: var(--ms-space-1);
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
@@ -314,13 +320,14 @@ onBeforeUnmount(() => {
    раздувался до размера аватара строки чата (46px).
    padding-top — оптическая центровка: прописные инициалы без строчных букв
    сидят выше центра, потому что строка центрируется с запасом под выносные
-   элементы. Сдвиг равен отступу (box-sizing — чтобы круг остался 40px). */
+   элементы. Сдвиг равен отступу (box-sizing — чтобы круг остался кругом). */
 .self-profile-btn .self-avatar {
   box-sizing: border-box;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   padding-top: 2px;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
+  box-shadow: 0 0 0 1px var(--ms-hairline);
 }
 
 /* Dropdown-меню «⋯» */
