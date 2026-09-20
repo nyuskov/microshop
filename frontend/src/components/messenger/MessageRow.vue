@@ -747,14 +747,25 @@ const onSelectClick = () => {
   emit('toggle-select')
 }
 
+/** Что считаем доступным с клавиатуры (Tab): на такое уход фокуса — настоящий. */
+const TAB_STOP = 'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
+
 /**
  * Фокус ушёл из строки (Tab, нажатие в пустое место) — панель больше не нужна.
  *
- * Уход ВНУТРЬ строки (с сообщения на кнопку панели) панель не гасит.
+ * Уход ВНУТРЬ строки (с сообщения на кнопку панели) панель не гасит. И служебная
+ * смена фокуса тоже: тап по неинтерактивному месту переводит фокус на ближайший
+ * контейнер (`tabindex="-1"` — `.messenger-shell`), и это НЕ «человек ушёл».
+ * Замер в приложении (390×844, тап по сообщению со скрытой панелью):
+ * `pointerdown` (панель открылась) → `pointerup` → `mousedown` → `focusout` на
+ * `.messenger-shell` → `click`; `focusout` приходил уже ПОСЛЕ `pointerup`, из-за
+ * чего панель гасла сразу после открытия — «на мобилке невозможно работать с
+ * меню быстрых реакций».
  */
 const onFocusOut = (event: FocusEvent) => {
-  const next = event.relatedTarget as Node | null
+  const next = event.relatedTarget as Element | null
   if (next && rowRoot.value?.contains(next)) return
+  if (next && !next.matches(TAB_STOP)) return
   actionsBarRef.value?.dismiss()
 }
 

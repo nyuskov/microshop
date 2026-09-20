@@ -16,7 +16,7 @@
     <div
       ref="containerRef"
       class="messages-scroll"
-      @click="emit('background-click')"
+      @click="onThreadClick"
       @scroll.passive="onScroll"
     >
       <!-- Скелетоны вместо текста «Загрузка сообщений…»: показываем структуру ленты -->
@@ -320,6 +320,17 @@ const ownsUnreadDivider = (messageId: number): boolean => {
 
 const emit = defineEmits<{
   (e: 'background-click'): void
+  /**
+   * Клик пришёлся на САМО сообщение (не на его панель действий).
+   *
+   * Отделено от «клика мимо»: панель действий (реакции, ответ, пересылка) живёт
+   * ПОД сообщением, и на телефоне открыть её можно только нажатием. Пока клик по
+   * сообщению считался «кликом мимо», один и тот же тап успевал открыть панель
+   * (`pointerdown` строки) и сразу погасить её (`click` до `.messages-scroll`) —
+   * «на мобилке невозможно работать с меню быстрых реакций». Комментарий в
+   * `onThreadClick`.
+   */
+  (e: 'message-click'): void
   /** Лента прокрутилась: плавающие панели (реакции, действия) нужно убрать. */
   (e: 'scrolled'): void
   (e: 'reach-top'): void
@@ -608,6 +619,25 @@ const authorNameFor = (row: ThreadRow, index: number): string => {
 
 /** Место сообщения в серии — форма пузыря (MessageRow). */
 const seriesFor = (index: number): SeriesKind => seriesKindFor(props.rows, index)
+
+/**
+ * Клик в ленте: по пустому месту («мимо») или по самому сообщению.
+ *
+ * Тап по сообщению — это НЕ «клик мимо»: иначе на телефоне панель действий не
+ * открыть вовсе. Открывает её `pointerdown` строки, а следом за ним приходит
+ * `click` того же тапа: пока он считался кликом по фону, панель гасилась в том
+ * же жесте и мелькала вместо работы (замер: `pointerdown` → класс `dismissed`
+ * снят, `click` → снова надет). Клик по панели сюда не доходит — в ней
+ * `@click.stop`.
+ */
+const onThreadClick = (event: MouseEvent) => {
+  const target = event.target as Element | null
+  if (target?.closest('.msg')) {
+    emit('message-click')
+    return
+  }
+  emit('background-click')
+}
 
 const onScroll = () => {
   const container = containerRef.value

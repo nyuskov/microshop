@@ -147,7 +147,6 @@ describe('панель действий закрывается после реа
 
   it('фокус ушёл из строки — панель гаснет, а внутри строки — нет', async () => {
     const wrapper = await mountRowReady()
-    const row = wrapper.find('.msg').element
     const button = wrapper.find('.msg-actions .round-btn').element
 
     // Уход фокуса ВНУТРЬ строки (с сообщения на кнопку панели) панель не гасит.
@@ -160,13 +159,70 @@ describe('панель действий закрывается после реа
     await nextTick()
     expect(barClasses(wrapper)).not.toContain('dismissed')
 
-    // Уход из строки (клик/Tab в пустое место) — гасит.
-    button.dispatchEvent(
-      new FocusEvent('focusout', { bubbles: true, relatedTarget: row.parentElement })
-    )
+    // Уход из строки на ДРУГОЙ элемент, доступный с клавиатуры (клик по полю
+    // ввода, Tab) — гасит.
+    const outside = document.createElement('input')
+    document.body.appendChild(outside)
+    button.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: outside }))
     await nextTick()
     expect(barClasses(wrapper)).toContain('dismissed')
+
+    outside.remove()
     wrapper.unmount()
+  })
+
+  it('служебная смена фокуса (на контейнер ленты) панель не гасит', async () => {
+    // Замер в приложении (390×844): тап по сообщению со скрытой панелью —
+    // `pointerdown` (панель открывается) → `pointerup` → `mousedown` →
+    // `focusout` на `.messenger-shell` (`tabindex="-1"`) → `click`. Панель
+    // гасла сразу после открытия: «на мобилке невозможно работать с меню».
+    const wrapper = await mountRowReady()
+    const row = wrapper.find('.msg').element
+
+    await wrapper.find('.msg-actions .quick-emoji').trigger('click')
+    expect(barClasses(wrapper)).toContain('dismissed')
+
+    row.dispatchEvent(pointerDownEvent(120, 300))
+    await nextTick()
+    expect(barClasses(wrapper)).not.toContain('dismissed')
+
+    const layout = document.createElement('div')
+    layout.tabIndex = -1
+    document.body.appendChild(layout)
+    row.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: layout }))
+    await nextTick()
+    expect(barClasses(wrapper)).not.toContain('dismissed')
+
+    // А вот уход на КЛАВИАТУРНЫЙ элемент (поле ввода) — настоящий уход.
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    row.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: input }))
+    await nextTick()
+    expect(barClasses(wrapper)).toContain('dismissed')
+
+    layout.remove()
+    input.remove()
+    wrapper.unmount()
+  })
+
+  it('клик по сообщению не считается «кликом мимо» (лента различает их)', () => {
+    // Один и тот же тап открывал панель (`pointerdown` строки) и гасил её же
+    // (`click` до `.messages-scroll`). Поэтому лента различает два случая.
+    const thread = readFileSync('src/components/messenger/MessageThread.vue', 'utf8')
+    expect(thread).toContain('@click="onThreadClick"')
+    const handler = thread.slice(thread.indexOf('const onThreadClick'))
+    const body = handler.slice(0, handler.indexOf('\n}'))
+    expect(body).toContain("closest('.msg')")
+    expect(body).toContain("emit('message-click')")
+    expect(body).toContain("emit('background-click')")
+
+    const messenger = readFileSync('src/views/Messenger.vue', 'utf8')
+    expect(messenger).toContain('@message-click="onMessageClick"')
+    const onMessageClick = messenger.slice(messenger.indexOf('const onMessageClick'))
+    const fn = onMessageClick.slice(0, onMessageClick.indexOf('\n}'))
+    expect(fn).toContain('emojiPickerFor.value = null')
+    // Панель действий здесь НЕ гасим — её открывает тот же тап.
+    expect(fn).not.toContain('hideMessageActions')
   })
 
   it('погашенная панель не перехватывает нажатия (правило в стилях)', () => {

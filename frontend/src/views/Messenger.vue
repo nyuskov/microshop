@@ -215,6 +215,7 @@
             @retry-pending="retryOutboxItem"
             @drop-pending="dropOutboxItem"
             @background-click="closePopups"
+            @message-click="onMessageClick"
             @scrolled="onThreadScrolled"
             @reach-top="loadOlderMessages"
             @quote-click="quoteClick"
@@ -2431,6 +2432,18 @@ const closePopups = () => {
   // Панель действий живёт на CSS-`:hover`, а на телефоне hover от тапа
   // остаётся на сообщении: гасим её явно (см. `MessageActionsBar::dismiss`).
   hideMessageActions()
+}
+
+/**
+ * Тап по САМОМУ сообщению (не «мимо»).
+ *
+ * Панель действий под сообщением не гасим: на телефоне её открывает тот же тап,
+ * и раньше она успевала мелькнуть и закрыться — «невозможно работать с меню
+ * быстрых реакций». Закрываем только палитру реакций: панель действий видна по
+ * `:hover` строки, а палитра — отдельный слой, и клик по сообщению для неё «мимо».
+ */
+const onMessageClick = () => {
+  emojiPickerFor.value = null
 }
 
 /**
