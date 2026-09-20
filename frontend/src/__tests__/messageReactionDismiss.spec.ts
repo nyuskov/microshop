@@ -84,25 +84,71 @@ describe('панель действий закрывается после реа
   // считается видимой сразу — см. `useVisibleOnce`.
   beforeEach(() => {
     vi.stubGlobal('IntersectionObserver', undefined)
-    // Играем за телефон: гашение панели касается только грубого указателя
-    // (на компьютере панель живёт по наведению — см. `isCoarsePointer`).
-    vi.stubGlobal('matchMedia', () => ({ matches: true }))
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
   })
 
-  it('на компьютере панель по реакции не гаснет — она живёт по наведению', async () => {
-    // Мышь: после гашения наведение перестало бы показывать панель, и открыть
-    // её можно было бы только нажатием — «теперь кликать надо на сообщение?».
-    vi.stubGlobal('matchMedia', () => ({ matches: false }))
+  it('гашение снимает фокус с кнопки панели', async () => {
+    // `.msg:focus-within .msg-actions` держало панель открытой, даже когда
+    // человек ушёл (мышь в поле ввода, другое сообщение, шапка) — «увод фокуса
+    // не закрывает панель».
     const wrapper = await mountRowReady()
+    const button = wrapper.find('.msg-actions .quick-emoji').element as HTMLElement
+    button.focus()
+    expect(document.activeElement).toBe(button)
 
     await wrapper.find('.msg-actions .quick-emoji').trigger('click')
 
-    expect(wrapper.emitted('toggle-reaction')).toHaveLength(1)
+    expect(barClasses(wrapper)).toContain('dismissed')
+    expect(document.activeElement).not.toBe(button)
+    wrapper.unmount()
+  })
+
+  it('мышь ушла из области панели — она снова живёт по наведению', async () => {
+    // Панель возвращает наведение: иначе после реакции она открывалась только
+    // нажатием — «теперь кликать надо на сообщение, чтобы заработало меню?».
+    const wrapper = await mountRowReady()
+    const row = wrapper.find('.msg').element
+    const bar = wrapper.find('.msg-actions').element as HTMLElement
+    // Панель «лежит» в 100…200 — курсор в 300 вне панели (jsdom сам не считает).
+    const box = { left: 100, top: 100, right: 200, bottom: 200 } as DOMRect
+    bar.getBoundingClientRect = () => box
+
+    await wrapper.find('.msg-actions .quick-emoji').trigger('click')
+    expect(barClasses(wrapper)).toContain('dismissed')
+
+    row.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 300, clientY: 300 }))
+    await nextTick()
     expect(barClasses(wrapper)).not.toContain('dismissed')
+    wrapper.unmount()
+  })
+
+  it('мышь внутри области панели гашение не снимает', async () => {
+    // Иначе панель возвращалась бы под курсором сразу же после реакции.
+    const wrapper = await mountRowReady()
+    const row = wrapper.find('.msg').element
+    const bar = wrapper.find('.msg-actions').element as HTMLElement
+    const box = { left: 100, top: 100, right: 200, bottom: 200 } as DOMRect
+    bar.getBoundingClientRect = () => box
+
+    await wrapper.find('.msg-actions .quick-emoji').trigger('click')
+    row.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 150, clientY: 150 }))
+    await nextTick()
+    expect(barClasses(wrapper)).toContain('dismissed')
+    wrapper.unmount()
+  })
+
+  it('на телефоне движение «мыши» гашение не снимает', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }))
+    const wrapper = await mountRowReady()
+    const row = wrapper.find('.msg').element
+
+    await wrapper.find('.msg-actions .quick-emoji').trigger('click')
+    row.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 300, clientY: 300 }))
+    await nextTick()
+    expect(barClasses(wrapper)).toContain('dismissed')
     wrapper.unmount()
   })
 

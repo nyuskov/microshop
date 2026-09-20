@@ -21,6 +21,7 @@
     @pointerup="onPointerUp"
     @pointercancel="onPointerCancel"
     @dblclick.stop="onDoubleTap"
+    @mousemove="onHoverMove"
     @focusout="onFocusOut"
     @contextmenu.prevent
   >
@@ -749,6 +750,32 @@ const onSelectClick = () => {
 
 /** Что считаем доступным с клавиатуры (Tab): на такое уход фокуса — настоящий. */
 const TAB_STOP = 'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
+
+/**
+ * Мышь идёт по строке — панель снова живёт по наведению.
+ *
+ * Гашение (класс `dismissed`) сильнее `.msg:hover .msg-actions`, поэтому после
+ * клика по реакции панель на компьютере не возвращалась наведением — открыть её
+ * можно было только нажатием («теперь кликать надо на сообщение?»). Снимаем
+ * гашение, как только курсор вышел из области панели: клик по реакции её и
+ * правда гасит (курсор в этот момент на панели), а вернуться достаточно
+ * навести мышь на сообщение.
+ */
+const onHoverMove = (event: MouseEvent) => {
+  // Палец «мышью» не водит: на тач-устройствах панель возвращает нажатие.
+  if (window.matchMedia?.('(pointer: coarse)').matches) return
+  const bar = rowRoot.value?.querySelector<HTMLElement>('.msg-actions')
+  if (bar) {
+    const rect = bar.getBoundingClientRect()
+    const onBar =
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom
+    if (onBar) return
+  }
+  actionsBarRef.value?.reveal()
+}
 
 /**
  * Фокус ушёл из строки (Tab, нажатие в пустое место) — панель больше не нужна.
