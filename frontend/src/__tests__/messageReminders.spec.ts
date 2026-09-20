@@ -23,7 +23,6 @@ const messenger = readFileSync('src/views/Messenger.vue', 'utf8')
 const reminders = readFileSync('src/composables/useMessageReminders.ts', 'utf8')
 const service = readFileSync('src/services/chatService.ts', 'utf8')
 const bar = readFileSync('src/components/messenger/MessageActionsBar.vue', 'utf8')
-const sheet = readFileSync('src/components/messenger/MessageActionSheet.vue', 'utf8')
 const row = readFileSync('src/components/messenger/MessageRow.vue', 'utf8')
 const thread = readFileSync('src/components/messenger/MessageThread.vue', 'utf8')
 
@@ -132,10 +131,10 @@ describe('подключение напоминаний', () => {
 
   it('пункт «Напомнить» есть и в меню по наведению, и в листе действий', () => {
     expect(bar).toContain("emit('remind')")
-    expect(sheet).toContain("ctxAction('remind')")
+    expect(bar).toContain('@click="onRemind"')
     // У сообщения с напоминанием подпись меняется: человек видит, что «будильник» стоит.
     expect(bar).toContain("hasReminder ? 'Изменить напоминание' : 'Напомнить'")
-    expect(sheet).toContain("hasReminder ? 'Изменить напоминание' : 'Напомнить'")
+    expect(bar).toContain("hasReminder ? 'Изменить напоминание' : 'Напомнить'")
   })
 
   it('время сообщения помечается значком, если напоминание стоит', () => {

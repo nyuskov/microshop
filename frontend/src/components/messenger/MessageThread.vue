@@ -385,6 +385,12 @@ let flashTimer: ReturnType<typeof setTimeout> | undefined
  * Обёртка ленты без отступов, поэтому `left/right: 0` у полосы — это ровно
  * ширина панели чата. Позицию и высоту берём у строки: так полоса остаётся на
  * сообщении и после догрузки истории.
+ *
+ * Полоса не заходит под плашку даты. Плашка «прилипает» к верху ленты и
+ * полупрозрачна (`--ms-date-pill` + blur), поэтому подсветка просвечивала через
+ * неё и выглядела как зелёная полоса ВМЕСТЕ с датой. Обрезаем подсветку по
+ * нижней границе перекрывающей плашки — тогда полоса «уходит» под дату, а не
+ * светит сквозь неё.
  */
 const measureBands = (): void => {
   const wrap = wrapRef.value
@@ -394,6 +400,9 @@ const measureBands = (): void => {
     return
   }
   const wrapBox = wrap.getBoundingClientRect()
+  const dividers = Array.from(container.querySelectorAll<HTMLElement>('.day-divider')).map(
+    (divider) => divider.getBoundingClientRect()
+  )
   const collect = (ids: number[], selected: boolean): ThreadBand[] =>
     ids.flatMap((id) => {
       // Продолжения альбома в ленте не нарисованы — полосу ставим на головное
@@ -402,11 +411,22 @@ const measureBands = (): void => {
       const row = container.querySelector<HTMLElement>(`[data-message-id="${target}"]`)
       if (!row) return []
       const box = row.getBoundingClientRect()
+      let top = box.top - wrapBox.top
+      let height = box.height
+      for (const divider of dividers) {
+        // Плашка накрывает верх полосы: опускаем начало до её нижней границы.
+        const cut = divider.bottom - box.top
+        if (cut > 0 && cut < height) {
+          top += cut
+          height -= cut
+        }
+      }
+      if (height <= 0) return []
       return [
         {
           key: `${selected ? 'sel' : 'flash'}-${id}`,
-          top: box.top - wrapBox.top,
-          height: box.height,
+          top,
+          height,
           selected
         }
       ]

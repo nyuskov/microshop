@@ -514,12 +514,11 @@ describe('перевод сообщения', () => {
 describe('перевод в ленте: текст на сервер не уходит', () => {
   const row = readFileSync('src/components/messenger/MessageRow.vue', 'utf8')
   const bar = readFileSync('src/components/messenger/MessageActionsBar.vue', 'utf8')
-  const sheet = readFileSync('src/components/messenger/MessageActionSheet.vue', 'utf8')
   const block = readFileSync('src/components/common/MessageTranslation.vue', 'utf8')
 
-  it('пункт «Перевести» есть и в меню по наведению, и в листе действий', () => {
+  it('пункт «Перевести» есть в меню сообщения', () => {
     expect(bar).toContain("translationLabel || 'Перевести'")
-    expect(sheet).toContain("translationLabel || 'Перевести'")
+    expect(bar).toContain("translationLabel || 'Перевести'")
     expect(row).toContain('@translate="onTranslate"')
   })
 
@@ -609,7 +608,6 @@ describe('перевод расшифровки голосового и круж
 describe('перевод не предлагается там, где его нечем сделать', () => {
   const row = readFileSync('src/components/messenger/MessageRow.vue', 'utf8')
   const bar = readFileSync('src/components/messenger/MessageActionsBar.vue', 'utf8')
-  const sheet = readFileSync('src/components/messenger/MessageActionSheet.vue', 'utf8')
   const media = readFileSync('src/components/media/TranscriptionBlock.vue', 'utf8')
 
   it('без встроенного переводчика пункт не предлагается', () => {
@@ -617,7 +615,7 @@ describe('перевод не предлагается там, где его н�
     // всегда, и на телефоне нажатие давало «браузер не умеет переводить».
     expect(canOfferTranslation()).toBe(false)
     expect(bar).toContain('v-if="message.text && canTranslate"')
-    expect(sheet).toContain('v-if="message.text && canTranslate"')
+    expect(bar).toContain('v-if="message.text && canTranslate"')
     expect(media).toContain("transcript.status === 'ready' && canTranslate")
   })
 

@@ -18,7 +18,6 @@ const composer = readFileSync('src/components/messenger/MessageComposer.vue', 'u
 const messenger = readFileSync('src/views/Messenger.vue', 'utf8')
 const service = readFileSync('src/services/chatService.ts', 'utf8')
 const actionsBar = readFileSync('src/components/messenger/MessageActionsBar.vue', 'utf8')
-const actionSheet = readFileSync('src/components/messenger/MessageActionSheet.vue', 'utf8')
 const viewer = readFileSync('src/components/media/ViewOnceViewer.vue', 'utf8')
 
 const messageWith = (extra: Partial<Message>): Message =>
@@ -161,10 +160,9 @@ describe('просмотр одноразового вложения', () => {
 })
 
 describe('пересылка одноразового запрещена в интерфейсе', () => {
-  it('в панели действий и в листе нет кнопки пересылки', () => {
+  it('в панели действий нет кнопки пересылки', () => {
     expect(actionsBar).toContain('v-if="!message.view_once"')
-    expect(actionSheet).toContain('v-if="!message.view_once"')
     // И сохранение/стикеры тоже: они копируют содержимое.
-    expect(actionSheet).toContain('canSave && !message.view_once')
+    expect(actionsBar).toContain('canSave && !message.view_once')
   })
 })

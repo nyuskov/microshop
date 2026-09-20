@@ -24,7 +24,6 @@ const service = read('src/services/chatService.ts')
 const selection = read('src/composables/useMessageSelection.ts')
 const messenger = read('src/views/Messenger.vue')
 const bar = read('src/components/messenger/MessageActionsBar.vue')
-const sheet = read('src/components/messenger/MessageActionSheet.vue')
 const router = read('src/router/index.ts')
 const authPage = read('src/views/AuthPage.vue')
 
@@ -68,7 +67,7 @@ describe('где предлагается удаление', () => {
     // Раньше пункт был под `v-if="isOwn"`: чужое сообщение убрать было нельзя.
     expect(bar).not.toMatch(/v-if="isOwn"[^>]*@click="onDelete"/)
     expect(bar).toContain("{{ isOwn ? 'Удалить' : 'Удалить у себя' }}")
-    expect(sheet).toContain("{{ isOwn ? 'Удалить' : 'Удалить у себя' }}")
+    expect(bar).toContain("{{ isOwn ? 'Удалить' : 'Удалить у себя' }}")
   })
 
   it('массовое удаление спрашивает область и удаляет всё выбранное', () => {

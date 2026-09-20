@@ -2437,8 +2437,8 @@ const closePopups = () => {
 }
 
 /**
- * Действия с сообщением — в меню по удержанию (`MessageActionSheet`): там же
- * реакции, ответ, закрепление и вход в режим выделения («Выбрать»).
+ * Действия с сообщением — в мини-панели под ним (`MessageActionsBar`): реакции,
+ * ответ, пересылка и «Ещё». Удержание сообщения включает режим выделения.
  */
 const toggleReaction = async (message: Message, emoji: string) => {
   const mine = hasMyReaction(message, emoji)
@@ -5173,8 +5173,8 @@ useMobileLayer(() => inviteDialogOpen.value, closeInviteDialog)
 
 /**
  * Панель выбора сообщений — вместо шапки чата (как в списке чатов).
- * Действия с одним сообщением — в меню по удержанию (`MessageActionSheet`):
- * реакции, ответ, закрепление и вход в это самое выделение («Выбрать»).
+ * Вход в неё — удержание сообщения; действия с одним сообщением — в мини-панели
+ * под ним (`MessageActionsBar`).
  */
 .chat-select-header {
   position: relative;

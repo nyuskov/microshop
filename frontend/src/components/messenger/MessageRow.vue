@@ -21,7 +21,7 @@
     @pointerup="onPointerUp"
     @pointercancel="onPointerCancel"
     @dblclick.stop="onDoubleTap"
-    @contextmenu.prevent="openContextFromEvent($event)"
+    @contextmenu.prevent
   >
     <!-- Подсказка свайпа: тянем сообщение вправо — отвечаем на него -->
     <span v-if="swipeX > 0" class="swipe-reply" :class="{ ready: swipeReady }">
@@ -271,40 +271,6 @@
       @remind="emit('remind')"
       @translate="onTranslate"
     />
-
-    <!-- Лист действий: удержание сообщения (телефон) или клавиатура —
-         в MessageActionSheet.vue вместе с фокус-ловушкой и позиционированием. -->
-    <MessageActionSheet
-      ref="sheetRef"
-      :message="message"
-      :is-own="isOwn"
-      :can-save="canSave"
-      :can-make-sticker="canMakeSticker"
-      :has-reminder="Boolean(reminderAt)"
-      :translation-label="translationLabel"
-      :can-translate="canTranslate"
-      :selectable="selectable"
-      :selection-mode="selectionMode"
-      :emoji-picker-open="emojiPickerOpen"
-      :can-add-set="canAddSet"
-      :add-set-title="addSetTitle"
-      :can-open-image="canOpenImage"
-      @toggle-reaction="emit('toggle-reaction', $event)"
-      @set-reply="emit('set-reply')"
-      @forward="emit('forward')"
-      @copy="emit('copy')"
-      @edit="emit('edit')"
-      @save="emit('save')"
-      @make-sticker="emit('make-sticker')"
-      @add-set="emit('add-set')"
-      @select="emit('select-start')"
-      @open-image="emit('open-image')"
-      @delete="emit('delete')"
-      @report="emit('report')"
-      @toggle-pin="emit('toggle-pin')"
-      @remind="emit('remind')"
-      @translate="onTranslate"
-    />
   </div>
 </template>
 
@@ -341,7 +307,6 @@ import { presetSetOfFileName } from '@/utils/presetStickers'
 import { importedSetPackId } from '@/utils/stickerSetImports'
 import type { SeriesKind } from '@/utils/thread'
 import LinkPreviewCard from '@/components/messenger/LinkPreviewCard.vue'
-import MessageActionSheet from '@/components/messenger/MessageActionSheet.vue'
 import MessageActionsBar from '@/components/messenger/MessageActionsBar.vue'
 import MessageAttachment from '@/components/messenger/MessageAttachment.vue'
 import MessageTranslation from '@/components/common/MessageTranslation.vue'
@@ -692,11 +657,10 @@ const onPointerDown = (event: PointerEvent) => {
   holdTimer = window.setTimeout(() => {
     holdTimer = null
     suppressNextSelect = true
-    // Удержание открывает лист действий рядом с сообщением — как в Телеграме:
-    // реакции, ответ, копирование, закрепление — всё в одном меню и одним
-    // жестом. Раньше первое удержание включало выделение, а меню открывалось
-    // вторым — лишний шаг на самый частый жест (владелец: «долгий тап вообще не
-    // к месту»). Теперь в режим выделения входят пунктом «Выбрать» из листа.
+    // Удержание включает режим выделения сообщений — как было и как в чатах.
+    // Действия с сообщением живут в мини-панели под ним (реакции, ответить,
+    // переслать, «Ещё»), отдельного листа по удержанию больше нет: владелец
+    // «долгий тап с меню не нужен».
     if (props.selectionMode && !props.selected) {
       // Уже в выделении: удержание ДОБАВЛЯЕТ сообщение к выбору — так удобно
       // набрать несколько, не попадая в мелкий кружок выбора.
@@ -704,7 +668,7 @@ const onPointerDown = (event: PointerEvent) => {
       return
     }
     haptic(HAPTIC_HOLD)
-    openActions()
+    emit('select-start')
   }, 480)
 }
 
@@ -770,62 +734,8 @@ const onSelectClick = () => {
   emit('toggle-select')
 }
 
-/**
- * Лист действий открыт/закрыт: нужно, чтобы повторное удержание закрывало
- * открытое меню, а не открывало второе.
- */
-const sheetRef = ref<InstanceType<typeof MessageActionSheet> | null>(null)
-/** Панель действий при наведении: нужна, чтобы закрыть её меню и палитру. */
+/** Панель действий при наведении (и по тапу): закрыть её меню и палитру. */
 const actionsBarRef = ref<InstanceType<typeof MessageActionsBar> | null>(null)
-
-/**
- * Обработка `contextmenu` — событие приходит из трёх источников: правый клик
- * мышью, СИСТЕМНОЕ меню от долгого нажатия (телефон) и клавиатура
- * (`Shift+F10`/клавиша «Меню»). Само событие гасим всегда (`prevent`): своё меню
- * браузера здесь не нужно.
- *
- * Лист действий открываем ТОЛЬКО с клавиатуры (у такого события нет координат):
- * у мыши те же действия есть в панели при наведении («⋯»), а на телефоне
- * сенсорное `contextmenu` открывало лист СЛУЧАЙНО — вместе с выделением по
- * долгому нажатию, и перекрывало его.
- */
-const openContextFromEvent = (event: MouseEvent): void => {
-  if (props.selectionMode) return
-  // Сенсорное долгое нажатие: Android присылает `contextmenu` с координатами
-  // касания, а в Chrome это ещё и помечено `firesTouchEvents`. Проверяем оба
-  // признака — иначе на телефоне лист открывался бы вместе с выделением.
-  const touchGenerated = Boolean(
-    (event as MouseEvent & { sourceCapabilities?: { firesTouchEvents?: boolean } })
-      .sourceCapabilities?.firesTouchEvents
-  )
-  if (touchGenerated) return
-  // Клавиатура (Shift+F10 или клавиша «Меню») присылает событие без координат —
-  // открываем лист у самого сообщения, а не в левом верхнем углу экрана.
-  if (event.clientX !== 0 || event.clientY !== 0) return
-  openActions()
-}
-
-/**
- * Открыть лист действий у самого сообщения.
- *
- * Вызывается удержанием уже выделенного сообщения: на телефоне это
- * единственный путь к действиям (реакции, ответить, удалить, пожаловаться),
- * потому что первое удержание занято выделением.
- */
-const openActions = (): void => {
-  const sheet = sheetRef.value
-  if (!sheet) return
-  if (sheet.isOpen()) {
-    sheet.close()
-    return
-  }
-  const bubble = rowRoot.value?.querySelector<HTMLElement>('.msg-bubble')
-  const rect = bubble?.getBoundingClientRect()
-  const x = rect ? rect.left + Math.min(rect.width / 2, 120) : 40
-  const y = rect ? rect.top + rect.height / 2 : 120
-  actionsBarRef.value?.closeFloating()
-  void sheet.openAt(x, y)
-}
 
 /**
  * Двойной тап на телефоне — быстрая реакция (последняя использованная).
@@ -1655,9 +1565,20 @@ onBeforeUnmount(() => {
   color: var(--ms-on-accent);
 }
 
+/* Область отметки в режиме выделения.
+ *
+ * Выходит далеко за пределы строки (`.msg` ограничен 60% ширины ленты, а
+ * кружок-чек вынесен ещё дальше вбок): тап по пустому месту строки, по кружку
+ * или по краю ленты на высоте сообщения тоже переключает выбор. Владелец: «в
+ * любое место выделенного сообщения тыкнуть — его развыделяет». Вылезшее за
+ * ленту обрезается её `overflow-x: hidden`, поэтому соседние строки не задеваем:
+ * по вертикали область ограничена самой строкой.
+ *
+ * Кружок `.row-selector` лежит выше по z-index, но у него `pointer-events: none`,
+ * поэтому тап по нему достаётся этой области. */
 .msg-select-hit {
   position: absolute;
-  inset: 0;
+  inset: 0 -50vw;
   z-index: 4;
   cursor: pointer;
   border-radius: var(--ms-radius-lg);

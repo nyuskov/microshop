@@ -1,31 +1,47 @@
 <template>
   <div v-if="rowVisible" ref="barRef" class="msg-actions" @click.stop @pointerdown.stop>
-    <button
-      class="round-btn"
-      :class="{ active: emojiPickerOpen }"
-      title="Реакция"
-      @click="onReaction"
-    >
-      <q-icon :name="icon('sentiment_satisfied_alt')" size="20px" />
-    </button>
-    <button class="round-btn" title="Ответить" @click="onReply">
-      <q-icon :name="icon('reply')" size="20px" />
-    </button>
-    <!-- Пересылку одноразового вложения не предлагаем: сервер её и так
-         запрещает, а кнопка обещала бы недоступное. -->
-    <button v-if="!message.view_once" class="round-btn" title="Переслать" @click="onForward">
-      <q-icon :name="icon('forward')" size="20px" />
-    </button>
-    <button
-      class="round-btn"
-      :class="{ active: moreOpen }"
-      title="Ещё"
-      aria-haspopup="true"
-      :aria-expanded="moreOpen"
-      @click="toggleMore"
-    >
-      <q-icon :name="icon('more_horiz')" size="20px" />
-    </button>
+    <!-- Быстрые реакции — первой строкой панели, как в Телеграме: самый частый
+         жест без открывания палитры. Полный набор — за кнопкой «Реакция». -->
+    <div class="quick-row" role="group" aria-label="Быстрые реакции">
+      <button
+        v-for="emoji in QUICK_REACTIONS"
+        :key="emoji"
+        class="quick-emoji"
+        :class="{ active: hasMyReaction(message, emoji) }"
+        :title="`Реакция ${emoji}`"
+        @click="onQuickReaction(emoji)"
+      >
+        {{ emoji }}
+      </button>
+    </div>
+    <div class="bar-row">
+      <button
+        class="round-btn"
+        :class="{ active: emojiPickerOpen }"
+        title="Все реакции"
+        @click="onReaction"
+      >
+        <q-icon :name="icon('sentiment_satisfied_alt')" size="20px" />
+      </button>
+      <button class="round-btn" title="Ответить" @click="onReply">
+        <q-icon :name="icon('reply')" size="20px" />
+      </button>
+      <!-- Пересылку одноразового вложения не предлагаем: сервер её и так
+           запрещает, а кнопка обещала бы недоступное. -->
+      <button v-if="!message.view_once" class="round-btn" title="Переслать" @click="onForward">
+        <q-icon :name="icon('forward')" size="20px" />
+      </button>
+      <button
+        class="round-btn"
+        :class="{ active: moreOpen }"
+        title="Ещё"
+        aria-haspopup="true"
+        :aria-expanded="moreOpen"
+        @click="toggleMore"
+      >
+        <q-icon :name="icon('more_horiz')" size="20px" />
+      </button>
+    </div>
 
     <!-- Остальные действия — в выпадающем меню -->
     <div v-if="moreOpen" class="more-menu" :class="{ up: popoverUp }" @click.stop>
@@ -45,7 +61,9 @@
         <q-icon :name="icon('edit')" size="16px" />
         <span>Редактировать</span>
       </button>
-      <button v-if="canSave" class="more-item" @click="onSave">
+      <!-- Одноразовое вложение не сохраняем и не превращаем в стикер: это
+           копия содержимого, а оно живёт до первого просмотра. -->
+      <button v-if="canSave && !message.view_once" class="more-item" @click="onSave">
         <q-icon :name="icon('bookmark')" size="16px" />
         <span>Сохранить в Сохранённые</span>
       </button>
@@ -61,7 +79,7 @@
         <q-icon :name="icon('translate')" size="16px" />
         <span>{{ translationLabel || 'Перевести' }}</span>
       </button>
-      <button v-if="canMakeSticker" class="more-item" @click="onMakeSticker">
+      <button v-if="canMakeSticker && !message.view_once" class="more-item" @click="onMakeSticker">
         <q-icon :name="icon('add_reaction')" size="16px" />
         <span>В стикеры</span>
       </button>
@@ -100,19 +118,28 @@
 
 <script setup lang="ts">
 /**
- * Панель действий при наведении на сообщение: реакции, ответ, пересылка и меню
- * «Ещё» с остальными действиями.
+ * Панель действий с сообщением: тап по сообщению (и наведение мышью на
+ * компьютере) показывает её под пузырём. Внутри — быстрые реакции, «Все
+ * реакции», ответ, пересылка и «Ещё» с остальными действиями.
  *
- * Живёт рядом с листом действий (`MessageActionSheet.vue`) — на телефоне меню по
- * наведению недоступно, поэтому там работает лист. Палитра реакций — состояние
- * представления (`emojiPickerOpen`): её открывают и панель, и лист, и двойной тап.
+ * Раньше на телефоне эти действия жили в отдельном листе по удержанию, а
+ * удержание занималось выделением. Владелец: «это меню по долгому тапу не
+ * нужно» — лист убран, панель осталась единственным путём к действиям, поэтому
+ * она открывается и нажатием (браузер сам применяет `:hover` к элементу после
+ * тапа). Палитра реакций — состояние представления (`emojiPickerOpen`): её
+ * открывают и панель, и двойной тап.
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import type { Message } from '@/types'
 import { icon } from '@/utils/icons'
 import { haptic } from '@/utils/haptics'
 import { isStickerMessage } from '@/utils/media'
-import { REACTION_EMOJIS, hasMyReaction, rememberQuickReaction } from '@/utils/reactions'
+import {
+  REACTION_EMOJIS,
+  QUICK_REACTIONS,
+  hasMyReaction,
+  rememberQuickReaction
+} from '@/utils/reactions'
 
 const props = defineProps<{
   /** Сообщение, к которому относится панель. */
@@ -241,6 +268,11 @@ const onPickEmoji = (emoji: string) => {
   emit('toggle-reaction', emoji)
 }
 
+/** Быстрая реакция прямо из панели: палитру не открываем. */
+const onQuickReaction = (emoji: string) => {
+  onPickEmoji(emoji)
+}
+
 const onPin = () => {
   moreOpen.value = false
   emit('toggle-pin')
@@ -303,9 +335,13 @@ defineExpose({ closeFloating })
 </script>
 
 <style scoped>
-/* Действия при наведении — панель прижата к НИЖНЕМУ краю сообщения.
-   Зазора НЕТ (top:100%), иначе при опускании мыши панель пропадала бы.
-   Визуальный отступ и «мост» для курсора даёт прозрачная верхняя кромка. */
+/* Действия при наведении (и по тапу на телефоне) — панель прижата к НИЖНЕМУ
+   краю сообщения. Зазора НЕТ (top:100%), иначе при опускании мыши панель
+   пропадала бы. Визуальный отступ и «мост» для курсора даёт прозрачная
+   верхняя кромка.
+
+   Панель — два ряда: сверху быстрые реакции, снизу кнопки. В один ряд с
+   восемью эмодзи она не влезала в 390px и вылезала за край пузыря. */
 .msg-actions {
   position: absolute;
   top: 100%;
@@ -314,12 +350,46 @@ defineExpose({ closeFloating })
   border-radius: 18px;
   box-shadow: var(--ms-shadow-md);
   display: flex;
+  flex-direction: column;
   gap: 2px;
-  padding: 0 4px 1px;
+  padding: 4px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.12s;
   z-index: 5;
+}
+
+.bar-row {
+  display: flex;
+  gap: 2px;
+}
+
+/* Быстрые реакции: компактнее кнопок, без подложки — эмодзи сами читаются */
+.quick-row {
+  display: flex;
+  gap: 1px;
+}
+
+.quick-emoji {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quick-emoji:hover {
+  background: var(--ms-hover);
+}
+
+.quick-emoji.active {
+  background: var(--ms-accent-soft);
 }
 
 .msg.in .msg-actions {
