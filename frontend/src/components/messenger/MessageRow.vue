@@ -21,6 +21,7 @@
     @pointerup="onPointerUp"
     @pointercancel="onPointerCancel"
     @dblclick.stop="onDoubleTap"
+    @focusout="onFocusOut"
     @contextmenu.prevent
   >
     <!-- Подсказка свайпа: тянем сообщение вправо — отвечаем на него -->
@@ -446,6 +447,15 @@ const props = defineProps<{
    * (см. `utils/albums.ts`). Пусто — обычное одиночное вложение.
    */
   album?: Message[]
+  /**
+   * Счётчик «погасить панель действий» (см. `Messenger.vue`).
+   *
+   * Меняется при прокрутке ленты и при нажатии по пустому месту: на телефоне
+   * `:hover` от тапа остаётся на сообщении, и панель без внешнего сигнала висела
+   * бы поверх соседних сообщений (владелец: «фокус чтобы когда уходил — тоже
+   * закрывалось»).
+   */
+  actionsReset?: number
 }>()
 
 /** Текст плашки «Переслано от …» (null, если сообщение не переслано). */
@@ -647,6 +657,9 @@ const cancelHold = () => {
 const onPointerDown = (event: PointerEvent) => {
   if (!props.selectable) return
   if (event.button !== 0) return
+  // Новое нажатие по сообщению возвращает панель действий, если её погасили
+  // выбранной реакцией (на телефоне `:hover` от тапа не сбрасывается сам).
+  actionsBarRef.value?.reveal()
   // Готовим свайп-ответ: решение по оси принимаем на первом движении.
   swipeStartX = event.clientX
   swipeStartY = event.clientY
@@ -734,8 +747,25 @@ const onSelectClick = () => {
   emit('toggle-select')
 }
 
+/**
+ * Фокус ушёл из строки (Tab, нажатие в пустое место) — панель больше не нужна.
+ *
+ * Уход ВНУТРЬ строки (с сообщения на кнопку панели) панель не гасит.
+ */
+const onFocusOut = (event: FocusEvent) => {
+  const next = event.relatedTarget as Node | null
+  if (next && rowRoot.value?.contains(next)) return
+  actionsBarRef.value?.dismiss()
+}
+
 /** Панель действий при наведении (и по тапу): закрыть её меню и палитру. */
 const actionsBarRef = ref<InstanceType<typeof MessageActionsBar> | null>(null)
+
+// Прокрутка ленты или нажатие по пустому месту — панель убираем принудительно.
+watch(
+  () => props.actionsReset,
+  () => actionsBarRef.value?.dismiss()
+)
 
 /**
  * Двойной тап на телефоне — быстрая реакция (последняя использованная).

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
@@ -127,6 +128,46 @@ describe('просмотр фото: жесты', () => {
     expect(wrapper.emitted('next')).toBeUndefined()
     expect(wrapper.emitted('prev')).toBeUndefined()
     wrapper.unmount()
+  })
+
+  it('клик по стрелкам листает кадры в обе стороны', async () => {
+    const wrapper = mountLightbox(1)
+    // Разметка телепортирована в `body` — нажимаем элементы документа.
+    const clickButton = async (selector: string): Promise<void> => {
+      const button = document.querySelector<HTMLElement>(selector)
+      expect(button, selector).not.toBeNull()
+      button!.click()
+      await nextTick()
+    }
+    await clickButton('.lb-prev')
+    expect(wrapper.emitted('prev')).toHaveLength(1)
+    await clickButton('.lb-next')
+    expect(wrapper.emitted('next')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  /**
+   * Страж слоёв: кнопки лайтбокса обязаны быть ВЫШЕ кадра.
+   *
+   * Кадр `.lb-image` стоит в потоке и в разметке идёт после кнопки «назад», а
+   * без своего `z-index` рисуется поверх неё и забирает нажатие (у кадра
+   * `@click.stop`). Замер живьём в 390×844: `elementFromPoint` в центре
+   * `.lb-prev` возвращал класс `lb-image` на всех 10 кадрах чата — стрелка
+   * «назад» не была видна и не нажималась, а «вперёд» (она после кадра в
+   * разметке) работала. Владелец: «не работает стрелка назад в лайтбоксе».
+   */
+  it('кнопки и шапка просмотра лежат выше кадра', () => {
+    const source = readFileSync('src/components/media/ImageLightbox.vue', 'utf8')
+    const blockOf = (selector: string): string => {
+      const start = source.indexOf(`${selector} {`)
+      expect(start).toBeGreaterThan(-1)
+      return source.slice(start, source.indexOf('}', start))
+    }
+    for (const selector of ['.lb-nav', '.lb-topbar']) {
+      const zIndex = /z-index:\s*(\d+)/.exec(blockOf(selector))
+      expect(zIndex, `${selector} без z-index`).not.toBeNull()
+      expect(Number(zIndex![1])).toBeGreaterThan(0)
+    }
   })
 })
 

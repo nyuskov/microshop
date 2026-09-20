@@ -1,5 +1,12 @@
 <template>
-  <div v-if="rowVisible" ref="barRef" class="msg-actions" @click.stop @pointerdown.stop>
+  <div
+    v-if="rowVisible"
+    ref="barRef"
+    class="msg-actions"
+    :class="{ dismissed }"
+    @click.stop
+    @pointerdown.stop
+  >
     <!-- Быстрые реакции — первой строкой панели, как в Телеграме: самый частый
          жест без открывания палитры. Полный набор — за кнопкой «Реакция». -->
     <div class="quick-row" role="group" aria-label="Быстрые реакции">
@@ -202,6 +209,28 @@ const emit = defineEmits<{
 /** Открыто ли меню «Ещё» (остальные действия). */
 const moreOpen = ref(false)
 
+/**
+ * Панель погашена после действия (реакция выбрана) или после ухода человека.
+ *
+ * На телефоне браузер оставляет `:hover` на сообщении после нажатия, а при
+ * прокрутке ленты и тапе по пустому месту панель оставалась бы висеть поверх
+ * соседних сообщений. Владелец: «когда быструю реакцию нажал, чтобы меню
+ * закрывалось», «фокус чтобы когда уходил — тоже закрывалось». Возвращает
+ * панель следующее нажатие по сообщению: `MessageRow` зовёт `reveal()`.
+ */
+const dismissed = ref(false)
+
+/** Погасить панель: после реакции, прокрутки или ухода фокуса она не нужна. */
+const dismiss = () => {
+  moreOpen.value = false
+  dismissed.value = true
+}
+
+/** Вернуть панель: человек снова нажал на сообщение. */
+const reveal = () => {
+  dismissed.value = false
+}
+
 /** Поповер (меню/палитра) раскрыт ПОД панелью действий, а не над ней. */
 const popoverUp = ref(false)
 /** Корень панели действий — для замера места под/над ней. */
@@ -261,11 +290,18 @@ const onForward = () => {
   emit('forward')
 }
 
+/**
+ * Выбор эмодзи: запомнить, отдать реакцию и погасить панель.
+ *
+ * Палитру реакций закрывает родитель: при успешной реакции он сам сбрасывает
+ * `emojiPickerFor` (см. `toggleReaction` в Messenger).
+ */
 const onPickEmoji = (emoji: string) => {
   moreOpen.value = false
   rememberQuickReaction(emoji)
   haptic()
   emit('toggle-reaction', emoji)
+  dismiss()
 }
 
 /** Быстрая реакция прямо из панели: палитру не открываем. */
@@ -331,7 +367,7 @@ const onReport = () => {
   emit('report')
 }
 
-defineExpose({ closeFloating })
+defineExpose({ closeFloating, reveal, dismiss })
 </script>
 
 <style scoped>
@@ -404,6 +440,16 @@ defineExpose({ closeFloating })
 .msg:focus-within .msg-actions {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* Панель погашена после выбранной реакции.
+ *
+ * На телефоне `:hover` от тапа остаётся на сообщении — без этого правила панель
+ * висела бы и дальше, перекрывая соседние сообщения. Специфичность выше, чем у
+ * `.msg:hover .msg-actions`, поэтому правило надёжно побеждает. */
+.msg .msg-actions.dismissed {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .msg-actions .round-btn {

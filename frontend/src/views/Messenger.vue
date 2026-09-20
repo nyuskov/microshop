@@ -210,12 +210,14 @@
             :reminder-at="reminderAtOf"
             :channel-posts="selectedIsChannel"
             :post-meta="channelPostMeta"
+            :actions-reset="actionsReset"
             @unread-seen="clearUnreadDivider"
             @post-viewed="onPostViewed"
             @open-comments="openChannelComments"
             @retry-pending="retryOutboxItem"
             @drop-pending="dropOutboxItem"
             @background-click="closePopups"
+            @scrolled="onThreadScrolled"
             @reach-top="loadOlderMessages"
             @quote-click="quoteClick"
             @select-start="startMessageSelection"
@@ -2434,6 +2436,28 @@ const onToggleEmojiPicker = (message: Message) => {
 const closePopups = () => {
   emojiPickerFor.value = null
   closeExtras()
+  // Панель действий живёт на CSS-`:hover`, а на телефоне hover от тапа
+  // остаётся на сообщении: гасим её явно (см. `MessageActionsBar::dismiss`).
+  hideMessageActions()
+}
+
+/**
+ * Панели действий у сообщений — гасим принудительно.
+ *
+ * Счётчик меняется при прокрутке ленты и нажатии по пустому месту. Работает без
+ * состояния строк: каждая строка сама следит за числом и гасит свою панель
+ * (владелец: «фокус чтобы когда уходил — тоже закрывалось»).
+ */
+const actionsReset = ref(0)
+
+const hideMessageActions = () => {
+  actionsReset.value += 1
+}
+
+/** Лента прокрутилась: панель действий и палитра реакций убираются. */
+const onThreadScrolled = () => {
+  emojiPickerFor.value = null
+  hideMessageActions()
 }
 
 /**

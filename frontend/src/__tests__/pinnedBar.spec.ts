@@ -92,6 +92,18 @@ describe('закреплённые: выделение тоном, без рам
     expect(thread).not.toContain('box-shadow: 0 0 0 3px')
   })
 
+  it('полоса выделения не обрезается плашкой даты', () => {
+    // Раньше полоса обрезалась по нижней границе плашки: при висящей дате
+    // верхняя часть строки оставалась без подсветки, и полоса выглядела
+    // «перекрытой» (жалоба владельца). Теперь она идёт ровно по строке, а плашка
+    // даты плотнее и просто накрывает её.
+    const measure = thread.slice(thread.indexOf('const measureBands'))
+    const body = measure.slice(0, measure.indexOf('const flash'))
+
+    expect(body).not.toContain('day-divider')
+    expect(body).toContain('height: box.height')
+  })
+
   it('выделенные сообщения светятся той же полосой, но держатся', () => {
     const selected = ruleBody(thread, '.highlight-band.selected')
     expect(selected).toContain('animation: none')

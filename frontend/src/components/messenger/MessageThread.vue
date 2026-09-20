@@ -61,6 +61,7 @@
               :reminder-at="reminderAtOf(item.row.message)"
               :own-as-incoming="Boolean(channelPosts)"
               :album="albumOf(item.row.message)"
+              :actions-reset="actionsReset"
               @quote-click="emit('quote-click', item.row.message)"
               @select-start="emit('select-start', item.row.message)"
               @toggle-select="emit('toggle-select', item.row.message)"
@@ -264,6 +265,11 @@ const props = defineProps<{
    * чтобы та знала про стоящий «будильник» (значок у времени и подпись в меню).
    */
   reminderAt?: (message: Message) => string | null
+  /**
+   * Счётчик «погасить панель действий»: лента передаёт его строкам, а меняет
+   * родитель — при прокрутке и нажатии по пустому месту (см. `MessageRow`).
+   */
+  actionsReset?: number
 }>()
 
 /** Счётчики поста канала (просмотры и комментарии). */
@@ -314,6 +320,8 @@ const ownsUnreadDivider = (messageId: number): boolean => {
 
 const emit = defineEmits<{
   (e: 'background-click'): void
+  /** Лента прокрутилась: плавающие панели (реакции, действия) нужно убрать. */
+  (e: 'scrolled'): void
   (e: 'reach-top'): void
   /** Лента дочитана до конца — непрочитанных больше нет. */
   (e: 'unread-seen'): void
@@ -386,11 +394,12 @@ let flashTimer: ReturnType<typeof setTimeout> | undefined
  * ширина панели чата. Позицию и высоту берём у строки: так полоса остаётся на
  * сообщении и после догрузки истории.
  *
- * Полоса не заходит под плашку даты. Плашка «прилипает» к верху ленты и
- * полупрозрачна (`--ms-date-pill` + blur), поэтому подсветка просвечивала через
- * неё и выглядела как зелёная полоса ВМЕСТЕ с датой. Обрезаем подсветку по
- * нижней границе перекрывающей плашки — тогда полоса «уходит» под дату, а не
- * светит сквозь неё.
+ * Полоса идёт ровно по строке сообщения: плашку даты она просто уходит ПОД
+ * (плашка рисуется поверх, `z-index: 1` у `.day-divider`). Дата — прозрачная
+ * пилюля с размытием (`--ms-date-pill` + `backdrop-filter`), поэтому подсветка
+ * под ней размывается, а не вырезается: раньше полоса обрезалась по нижней
+ * границе плашки, и при висящей дате верхняя часть строки оставалась без
+ * подсветки — визуально полоса была «перекрыта» (жалоба владельца).
  */
 const measureBands = (): void => {
   const wrap = wrapRef.value
@@ -400,9 +409,6 @@ const measureBands = (): void => {
     return
   }
   const wrapBox = wrap.getBoundingClientRect()
-  const dividers = Array.from(container.querySelectorAll<HTMLElement>('.day-divider')).map(
-    (divider) => divider.getBoundingClientRect()
-  )
   const collect = (ids: number[], selected: boolean): ThreadBand[] =>
     ids.flatMap((id) => {
       // Продолжения альбома в ленте не нарисованы — полосу ставим на головное
@@ -411,22 +417,11 @@ const measureBands = (): void => {
       const row = container.querySelector<HTMLElement>(`[data-message-id="${target}"]`)
       if (!row) return []
       const box = row.getBoundingClientRect()
-      let top = box.top - wrapBox.top
-      let height = box.height
-      for (const divider of dividers) {
-        // Плашка накрывает верх полосы: опускаем начало до её нижней границы.
-        const cut = divider.bottom - box.top
-        if (cut > 0 && cut < height) {
-          top += cut
-          height -= cut
-        }
-      }
-      if (height <= 0) return []
       return [
         {
           key: `${selected ? 'sel' : 'flash'}-${id}`,
-          top,
-          height,
+          top: box.top - wrapBox.top,
+          height: box.height,
           selected
         }
       ]
@@ -620,6 +615,10 @@ const onScroll = () => {
   // Лента едет вместе с сообщениями — полосы подсветки едут с ней.
   if (bands.value.length) measureBands()
   updateScrollState()
+  // Прокрутка убирает плавающие панели: иначе панель действий «залипала»
+  // поверх соседних сообщений (жалоба владельца), а палитра реакций оставалась
+  // открытой при уехавшем из-под неё сообщении.
+  emit('scrolled')
 }
 
 const scrollToBottom = () => {
@@ -1022,10 +1021,9 @@ onBeforeUnmount(() => {
 /* Плашка полупрозрачная, а фон под ней размывается — как плавающая дата в
    Telegram: сообщение за плашкой не «исчезает», а мягко уходит в размытие.
    Тени нет: размытие уже отделяет плашку от ленты. */
-/* Плашка даты — как в Telegram: полупрозрачная, а фон под ней размывается,
-   поэтому сообщение за плашкой не исчезает, а уходит в мягкое размытие.
-   Фон берём из токена: прозрачность работает без `backdrop-filter` и без
-   `color-mix`, а блюр — добавка там, где браузер его умеет. */
+/* Плашка даты — как в Telegram: прозрачный фон + размытие того, что за ней.
+   Полоса выделения проходит ПОД плашкой целой, а размытие делает её мягкой
+   под датой (поэтому резкой зелёной полосы «вместе с датой» не видно). */
 .day-divider span {
   background: var(--ms-date-pill);
   color: var(--ms-muted);

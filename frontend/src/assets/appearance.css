@@ -73,7 +73,7 @@
     /* Плашка даты в ленте: полупрозрачная, фон под ней размывается (Telegram).
        Значение задано rgba, а не `color-mix`: прозрачность должна работать и в
        браузерах без поддержки color-mix. */
-    --ms-date-pill: rgba(255, 255, 255, 0.62);
+    --ms-date-pill: rgba(255, 255, 255, 0.55);
 
     /* Производные (пересчитываются браузером из --ms-accent) */
     --ms-accent-strong: color-mix(in srgb, var(--ms-accent) 88%, #000000);
@@ -252,7 +252,7 @@ html[data-theme='amoled'] {
 
     --ms-chat-bg: #0f141b;
     --ms-chat-dots: radial-gradient(circle at 1px 1px, rgba(150, 170, 190, 0.08) 1px, transparent 0);
-    --ms-date-pill: rgba(23, 30, 38, 0.72);
+    --ms-date-pill: rgba(23, 30, 38, 0.55);
 
     --ms-accent-soft: color-mix(in srgb, var(--ms-accent) 22%, #171e26);
     --ms-accent-border: color-mix(in srgb, var(--ms-accent) 60%, #171e26);

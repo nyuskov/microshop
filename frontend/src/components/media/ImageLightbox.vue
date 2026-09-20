@@ -351,6 +351,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   padding: 10px 14px;
   background: linear-gradient(rgba(0, 0, 0, 0.55), transparent);
   color: #fff;
+  /* Кадр стоит в потоке и в разметке вставлен ПОСЛЕ кнопок: без своего слоя
+     он рисуется поверх них и забирает нажатие (у кадра `@click.stop`).
+     Замер живьём (390×844): центр `.lb-prev` отдавал `elementFromPoint`
+     класс `lb-image` — «стрелка назад» не видна и не работает. */
+  z-index: 2;
 }
 
 .lb-name {
@@ -394,6 +399,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   transform: translateY(-50%);
   width: 46px;
   height: 46px;
+  /* См. `.lb-topbar`: слой выше кадра. Особенно заметно на телефоне: кадр
+     шириной 92vw достаёт до стрелок, и левая уходила под него целиком. */
+  z-index: 2;
 }
 
 .lb-prev {
