@@ -245,12 +245,14 @@ describe('панели списка чатов', () => {
 
     const body = fnBody('const onPanelTouchMove')
     expect(body).toContain('SWIPE_COLLAPSE_PX')
-    // Движение уступаем списку только когда палец пошёл по ПРОКРУЧЕННОМУ
-    // списку. При обычном списке (он почти всегда прокручен) старое условие
-    // «сжимать только у самого верха» делало жест мёртвым: закрыть истории и
-    // поиск смахом вверх по шапке было нельзя.
-    expect(body).toContain('const listOwnsGesture = pullFromList && listIsScrolled(list)')
-    expect(body).toContain('!listOwnsGesture')
+    // Смах вверх закрывает панель где угодно: по шапке, поиску, полосе историй и
+    // по самому списку — прокручен он или нет. Раньше жест требовал списка в
+    // самом верху, поэтому с обычным списком чатов закрыть панели было нечем.
+    expect(body).toContain('distance <= -SWIPE_COLLAPSE_PX && collapseTopPanels()')
+    expect(body).not.toContain('listOwnsGesture')
+    // Прокрутка, которую браузер начал тем же движением (listener passive), не
+    // должна сжать вторую панель: следующее событие скролла только задаст отсчёт.
+    expect(body).toContain('storiesResetPending = true')
     expect(body).toContain('collapseTopPanels()')
     // Одна панель за жест: закрывать все разом не надо (так же на других телефонах).
     expect(body).not.toContain('while (collapseTopPanels()')
