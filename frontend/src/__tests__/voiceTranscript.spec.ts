@@ -359,26 +359,32 @@ describe('расшифровка голосового', () => {
     expect(transcriptOf(12)?.error).toContain('не умеет распознавать готовые записи')
   })
 
-  it('в мобильном браузере расшифровки нет: там распознаётся микрофон, а не запись', async () => {
-    // Жалоба владельца (21.09.2026): на телефоне в браузере «В текст» заканчивалось
-    // «Распознавание не получило звук», хотя звук в записи есть — Chrome на Android
-    // слушает микрофон и переданный трек молча игнорирует. Кнопки в таком браузере
-    // нет вовсе, а ошибка (если её всё-таки запустить) называет причину и выход.
+  it('в мобильном браузере кнопка есть, но распознавание не запускается', async () => {
+    // Жалобы владельца (21.09.2026), подряд: сначала «Распознавание не получило
+    // звук, хотя он там есть», потом «в мобилке теперь вообще пропала кнопка в
+    // текст». Поэтому кнопку показываем везде, где есть API, а само распознавание
+    // в мобильном браузере НЕ запускаем: распознаватель ушёл бы в микрофон
+    // (запрос доступа + «не получило звук»), запись он не читает.
     vi.stubGlobal('navigator', { userAgent: ANDROID_CHROME_UA, userAgentData: { mobile: true } })
-
-    expect(speechRecognitionSupported()).toBe(false)
+    expect(speechRecognitionSupported()).toBe(true)
 
     await recognizeVoice(30, 'blob:voice')
+    expect(transcriptOf(30)?.error).toContain('только микрофон')
     expect(transcriptOf(30)?.error).toContain('приложении Pismo')
+    // Распознаватель даже не запускали — микрофон не спрашиваем.
+    expect(recognition.started).toBe(false)
     clearTranscript(30)
   })
 
-  it('Safari и Firefox кнопки не получают: распознавать запись они не умеют', () => {
-    // У Safari распознаватель есть, поэтому одной проверки наличия API мало: он
-    // тоже слушает только микрофон.
+  it('Safari слушает только микрофон — распознавание тоже не запускаем', async () => {
+    // У Safari распознаватель есть, поэтому одной проверки наличия API мало.
     vi.stubGlobal('navigator', { userAgent: SAFARI_UA })
+    expect(speechRecognitionSupported()).toBe(true)
 
-    expect(speechRecognitionSupported()).toBe(false)
+    await recognizeVoice(31, 'blob:voice')
+    expect(transcriptOf(31)?.error).toContain('только микрофон')
+    expect(recognition.started).toBe(false)
+    clearTranscript(31)
   })
 })
 
