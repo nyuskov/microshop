@@ -12,8 +12,12 @@
  * 1. `SpeechRecognition` по умолчанию слушает МИКРОФОН. Чтобы расшифровать файл,
  *    используется расширение Chrome — `start(MediaStreamTrack)`: звук файла идёт
  *    через `AudioContext` в `MediaStreamDestination`, а оттуда треком в
- *    распознаватель. В браузерах, где этого расширения нет (Safari/Firefox),
- *    кнопки «В текст» просто не будет — обещать недоступное нельзя.
+ *    распознаватель. Расширение есть только в Chrome на КОМПЬЮТЕРЕ: в Safari и
+ *    Firefox его нет вовсе, а мобильный Chrome слушает микрофон и переданный
+ *    трек игнорирует (человек видел «Распознавание не получило звук», хотя звук
+ *    в записи есть). Там, где пути нет, кнопки «В текст» не будет — обещать
+ *    недоступное нельзя; на телефоне расшифровка есть в приложении Pismo, где
+ *    распознаёт само устройство (`services/nativeSpeech.ts`).
  * 2. У Chrome распознавание НЕ полностью локальное: звук уходит на его сервис
  *    (в расшифровке это видно как ошибку `network`, когда сервис недоступен). Наш
  *    сервер аудио не получает, но браузер — получает. Об этом напоминает подпись
@@ -45,6 +49,7 @@ import {
   nativeSpeechSupported,
   recognizeWithNative
 } from '@/services/nativeSpeech'
+import { isNativeApp } from '@/services/nativePush'
 import { describeAudioError, loadAudioBuffer } from '@/utils/audioPcm'
 
 /** Состояние расшифровки одного голосового. */
@@ -87,22 +92,70 @@ const recognitionCtor = (): SpeechRecognitionCtor | null => {
 }
 
 /**
+ * Какой это браузер: мобильный ли он и на движке ли Chromium.
+ *
+ * Нужно, чтобы отличить Chrome на КОМПЬЮТЕРЕ (он умеет распознавать запись) от
+ * Chrome на телефоне (он умеет только микрофон). Точный ответ даёт
+ * `navigator.userAgentData.mobile`, но он есть только в Chromium — остальным
+ * смотрим на строку User-Agent.
+ */
+const browserKind = (): { mobile: boolean; chromium: boolean } => {
+  if (typeof navigator === 'undefined') return { mobile: false, chromium: false }
+  const ua = navigator.userAgent ?? ''
+  const data = (navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData
+  const known = typeof data?.mobile === 'boolean'
+  return {
+    mobile: known ? Boolean(data?.mobile) : /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua),
+    chromium: known || /Chrome\/|Chromium\//.test(ua)
+  }
+}
+
+/**
+ * Есть ли в этом браузере путь «звук ЗАПИСИ в распознаватель».
+ *
+ * Расширение `start(MediaStreamTrack)` есть только в Chrome на КОМПЬЮТЕРЕ. В
+ * мобильном браузере (Chrome на Android, Safari) распознаватель слушает
+ * МИКРОФОН, а переданный трек молча игнорирует — человек получал «Распознавание
+ * не получило звук», хотя звук в записи есть (жалоба владельца, 21.09.2026).
+ * Узнать это вызовом нельзя (ошибки нет), а пообещать хуже, чем не показывать
+ * кнопку: поэтому на телефоне в браузере пути нет — распознаёт приложение Pismo,
+ * где это делает само устройство (`services/nativeSpeech.ts`).
+ */
+const fileSpeechCapable = (): boolean => {
+  const kind = browserKind()
+  return kind.chromium && !kind.mobile
+}
+
+/**
  * Можно ли расшифровать запись на этом устройстве.
  *
  * Путей два, и оба честно проверяются:
  *  * в Android-обёртке распознаёт САМО устройство (Web Speech в WebView нет) —
  *    см. `services/nativeSpeech.ts`;
- *  * в браузере — Web Speech API, но только если он умеет распознавать ФАЙЛ: нужен
- *    и `SpeechRecognition`, и аудио-граф (`AudioContext` +
- *    `createMediaStreamDestination`), иначе трек из записи не получить.
- * Точную поддержку `start(track)` заранее не спросить, поэтому считаем доступным
- * и в случае отказа — тогда человек увидит понятную ошибку, а не пустую кнопку.
+ *  * в браузере — Web Speech API, но только если он умеет распознавать ФАЙЛ:
+ *    нужен и `SpeechRecognition`, и аудио-граф (`AudioContext` +
+ *    `createMediaStreamDestination`), и он должен быть Chrome на компьютере
+ *    (см. `fileSpeechCapable`).
  */
 export const speechRecognitionSupported = (): boolean => {
   if (nativeSpeechSupported()) return true
   if (recognitionCtor() === null) return false
   if (typeof AudioContext === 'undefined') return false
-  return 'createMediaStreamDestination' in AudioContext.prototype
+  return 'createMediaStreamDestination' in AudioContext.prototype && fileSpeechCapable()
+}
+
+/**
+ * Почему расшифровки нет — текст для человека, если её всё-таки запустили.
+ *
+ * Кнопки в таких браузерах нет вовсе (см. `speechRecognitionSupported`), но
+ * ошибка обязана называть причину и выход, а не «не поддерживается».
+ */
+const unsupportedReason = (): string => {
+  if (isNativeApp()) return 'Распознавание недоступно на этом устройстве'
+  if (browserKind().mobile) {
+    return 'В мобильном браузере распознаётся только микрофон — расшифровка есть в приложении Pismo'
+  }
+  return 'Этот браузер не умеет распознавать готовые записи'
 }
 
 /**
@@ -472,7 +525,7 @@ export const recognizeVoice = async (messageId: number, src: string): Promise<vo
     transcripts[messageId] = {
       status: 'failed',
       text: '',
-      error: 'Этот браузер не умеет распознавать готовые записи'
+      error: unsupportedReason()
     }
     return
   }

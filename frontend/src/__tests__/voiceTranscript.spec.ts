@@ -133,6 +133,21 @@ const globals = globalThis as unknown as {
   window: Window & { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }
 }
 
+/**
+ * Chrome на КОМПЬЮТЕРЕ — единственный браузер, который умеет распознавать запись
+ * (см. `fileSpeechCapable` в `utils/voiceRecognition.ts`). Остальные играем отдельно.
+ */
+const DESKTOP_CHROME_UA =
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
+
+/** Chrome на телефоне: расширения `start(track)` нет — распознаватель слушает микрофон. */
+const ANDROID_CHROME_UA =
+  'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36'
+
+/** Safari: распознаватель есть, но файл он не умеет — только микрофон. */
+const SAFARI_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15'
+
 beforeEach(() => {
   ended = null
   audioSeconds = 4
@@ -144,6 +159,7 @@ beforeEach(() => {
     return recognition
   }
   globals.window.AudioContext = FakeAudioContext as unknown as typeof AudioContext
+  vi.stubGlobal('navigator', { userAgent: DESKTOP_CHROME_UA, userAgentData: { mobile: false } })
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }))
@@ -341,6 +357,28 @@ describe('расшифровка голосового', () => {
     await recognizeVoice(12, 'blob:voice')
 
     expect(transcriptOf(12)?.error).toContain('не умеет распознавать готовые записи')
+  })
+
+  it('в мобильном браузере расшифровки нет: там распознаётся микрофон, а не запись', async () => {
+    // Жалоба владельца (21.09.2026): на телефоне в браузере «В текст» заканчивалось
+    // «Распознавание не получило звук», хотя звук в записи есть — Chrome на Android
+    // слушает микрофон и переданный трек молча игнорирует. Кнопки в таком браузере
+    // нет вовсе, а ошибка (если её всё-таки запустить) называет причину и выход.
+    vi.stubGlobal('navigator', { userAgent: ANDROID_CHROME_UA, userAgentData: { mobile: true } })
+
+    expect(speechRecognitionSupported()).toBe(false)
+
+    await recognizeVoice(30, 'blob:voice')
+    expect(transcriptOf(30)?.error).toContain('приложении Pismo')
+    clearTranscript(30)
+  })
+
+  it('Safari и Firefox кнопки не получают: распознавать запись они не умеют', () => {
+    // У Safari распознаватель есть, поэтому одной проверки наличия API мало: он
+    // тоже слушает только микрофон.
+    vi.stubGlobal('navigator', { userAgent: SAFARI_UA })
+
+    expect(speechRecognitionSupported()).toBe(false)
   })
 })
 

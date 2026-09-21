@@ -297,4 +297,20 @@ describe('панель действий закрывается после реа
     expect(block).toContain('opacity: 0')
     expect(block).toContain('pointer-events: none')
   })
+
+  it('на телефоне панель появляется с задержкой, а гаснет сразу', () => {
+    // Жалоба владельца (мобильный браузер): «мелькает — просто на миллисекунды
+    // появляется». Причина: на тач-устройстве `:hover` появляется с самого
+    // касания, а жест прокрутки в том же нажатии панель гасит — видно мигание.
+    // Задержка появления (только для пальца) гасит это, модель показа не меняя:
+    // на компьютере поведение прежнее — по наведению.
+    const source = readFileSync('src/components/messenger/MessageActionsBar.vue', 'utf8')
+    // Медиа-блок стоит последним в стилях — берём всё от него и до конца.
+    const block = source.slice(source.lastIndexOf('@media (pointer: coarse)'))
+
+    expect(block).toContain('.msg:hover .msg-actions')
+    expect(block).toContain('transition: opacity 0.12s ease 0.1s')
+    expect(block).toContain('.msg .msg-actions.dismissed')
+    expect(block).toContain('transition: none')
+  })
 })
