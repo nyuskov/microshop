@@ -54,7 +54,9 @@ describe('подписи рядом с кружком убраны, кружок
   it('восстановление чата: только кружок', () => {
     const messenger = read('src/views/Messenger.vue')
     const block = messenger.slice(messenger.indexOf('class="chat-restoring"'))
-    expect(block.slice(0, 200)).toContain('<BrandSpinner :size="56" label="Открываю чат" />')
+    expect(block.slice(0, 200)).toContain(
+      '<BrandSpinner :size="56" :label="t(\'Открываю чат\')" />'
+    )
     // Подпись и прежний мелкий спиннер не вернулись.
     expect(messenger).not.toContain('>Открываю чат…<')
     expect(messenger).not.toContain('<q-spinner size="30px" color="primary" />')

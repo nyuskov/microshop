@@ -1,4 +1,5 @@
 import type { Chat, ChatUser, Message } from '@/types'
+import { t } from '@/i18n'
 import { isEncryptedPayload } from '@/services/e2ee'
 import type { PeerActivityKind } from '@/utils/peerActivity'
 import {
@@ -132,22 +133,22 @@ export const previewCallOf = (message: Message | null | undefined): PreviewCall 
  */
 export const previewText = (chat: Chat, currentUserId: number | null): string => {
   const last = chat.last_message
-  if (!last) return 'Нет сообщений'
+  if (!last) return t('Нет сообщений')
   // Скрытое модерацией: сервер не отдаёт ни текст, ни файл — показываем пометку,
   // а не пустую строку (иначе выглядит как сбой).
-  if (last.hidden) return 'Скрыто до проверки модератором'
+  if (last.hidden) return t('Скрыто до проверки модератором')
   // Зашифрованное вложение: содержимое и имя файла серверу неизвестны.
   if (isLockedFile(last)) return lockedFileLabel(last)
-  if (last.encrypted && isEncryptedPayload(last.text)) return '🔒 Сообщение'
+  if (last.encrypted && isEncryptedPayload(last.text)) return t('🔒 Сообщение')
   const mine = currentUserId !== null && last.user_id === currentUserId
   // В канале «Вы: » не пишем: пост в канале — не личное сообщение от меня.
-  let prefix = mine && !isChannel(chat) ? 'Вы: ' : ''
+  let prefix = mine && !isChannel(chat) ? t('Вы: ') : ''
   if (!mine && isGroupChat(chat)) {
     const author = lastMessageAuthor(chat, last)
     if (author) prefix = `${displayName(author)}: `
   }
   const body = lastBody(last)
-  if (last.forwarded_from) return `${prefix}↪ Переслано: ${body}`
+  if (last.forwarded_from) return t('{prefix}↪ Переслано: {body}', { prefix, body })
   return `${prefix}${body}`
 }
 

@@ -11,17 +11,19 @@
         @change="onFiles"
       />
       <q-card-section class="row no-wrap items-center q-py-sm">
-        <div class="stickers-title">Мои стикеры</div>
+        <div class="stickers-title">{{ t('Мои стикеры') }}</div>
         <q-space />
-        <q-btn flat round dense icon="close" aria-label="Закрыть" @click="emit('close')" />
+        <q-btn flat round dense icon="close" :aria-label="t('Закрыть')" @click="emit('close')" />
       </q-card-section>
       <q-separator />
 
       <q-card-section class="stickers-body">
         <p class="stickers-hint">
-          Стикер — картинка из вашего набора: в переписке он отправляется тапом в панели стикеров и
-          показывается без пузыря. Подходят PNG, WebP и GIF до 512 КБ; крупные картинки сервер сам
-          уменьшает, а анимацию оставляет как есть.
+          {{
+            t(
+              'Стикер — картинка из вашего набора: в переписке он отправляется тапом в панели стикеров и показывается без пузыря. Подходят PNG, WebP и GIF до 512 КБ; крупные картинки сервер сам уменьшает, а анимацию оставляет как есть.'
+            )
+          }}
         </p>
 
         <p v-if="error" class="stickers-error">{{ error }}</p>
@@ -29,7 +31,7 @@
         <div class="stickers-actions">
           <button type="button" class="stickers-btn" @click="startNewPack">
             <q-icon :name="icon('add')" size="18px" />
-            Новый пак
+            {{ t('Новый пак') }}
           </button>
         </div>
 
@@ -37,7 +39,7 @@
              это скачать картинки и загрузить их своим паком. Так же устроено
              «ДОБАВИТЬ СТИКЕРЫ» в Телеграме, только там набор лежит на сервере. -->
         <section class="sets-block">
-          <h3 class="sets-title">Наборы приложения</h3>
+          <h3 class="sets-title">{{ t('Наборы приложения') }}</h3>
           <div v-for="set in STANDARD_STICKER_PACKS" :key="set.key" class="set-row">
             <span class="set-preview" aria-hidden="true">
               <img
@@ -51,11 +53,11 @@
             </span>
             <span class="set-info">
               <span class="set-name">{{ set.title }}</span>
-              <span class="set-count">{{ set.stickers.length }} шт.</span>
+              <span class="set-count">{{ t('{count} шт.', { count: set.stickers.length }) }}</span>
             </span>
             <span v-if="store.isStandardSetImported(set.key)" class="set-done">
               <q-icon :name="icon('check')" size="16px" />
-              Добавлен
+              {{ t('Добавлен') }}
             </span>
             <button
               v-else
@@ -70,27 +72,29 @@
         </section>
 
         <label v-if="creating" class="stickers-new">
-          <span class="sr-only">Название нового пака</span>
+          <span class="sr-only">{{ t('Название нового пака') }}</span>
           <input
             ref="newPackInput"
             v-model="newPackTitle"
             type="text"
             :maxlength="MAX_PACK_TITLE"
-            placeholder="Название пака"
+            :placeholder="t('Название пака')"
             @keydown.enter.prevent="createPack"
             @blur="createPack"
           />
         </label>
 
-        <p v-if="store.loading && !store.packs.length" class="stickers-empty">Загружаем…</p>
+        <p v-if="store.loading && !store.packs.length" class="stickers-empty">
+          {{ t('Загружаем…') }}
+        </p>
         <p v-else-if="!store.packs.length" class="stickers-empty">
-          Паков пока нет. Создайте первый — и добавьте в него картинки.
+          {{ t('Паков пока нет. Создайте первый — и добавьте в него картинки.') }}
         </p>
 
         <section v-for="pack in store.packs" :key="pack.id" class="pack-block">
           <div class="pack-head">
             <label class="pack-title-field">
-              <span class="sr-only">Название пака</span>
+              <span class="sr-only">{{ t('Название пака') }}</span>
               <input
                 :value="pack.title"
                 type="text"
@@ -99,7 +103,7 @@
                 @blur="rename(pack.id, $event)"
               />
             </label>
-            <span class="pack-count">{{ pack.stickers.length }} шт.</span>
+            <span class="pack-count">{{ t('{count} шт.', { count: pack.stickers.length }) }}</span>
             <!-- Публикация набора (только владелец): он появится у всех в блоке
                  «Наборы приложения», и любой добавит его себе целиком. -->
             <button
@@ -109,12 +113,12 @@
               :class="{ published: pack.is_preset }"
               :aria-pressed="Boolean(pack.is_preset)"
               :aria-label="
-                pack.is_preset ? 'Снять набор с публикации' : 'Опубликовать набор для всех'
+                pack.is_preset ? t('Снять набор с публикации') : t('Опубликовать набор для всех')
               "
               :title="
                 pack.is_preset
-                  ? 'Набор публичный: его видят все и могут добавить себе'
-                  : 'Опубликовать набор: его увидят все и смогут добавить себе'
+                  ? t('Набор публичный: его видят все и могут добавить себе')
+                  : t('Опубликовать набор: его увидят все и смогут добавить себе')
               "
               @click="togglePreset(pack)"
             >
@@ -124,7 +128,7 @@
               type="button"
               class="pack-icon-btn"
               :disabled="store.packs.indexOf(pack) === 0"
-              aria-label="Пак выше"
+              :aria-label="t('Пак выше')"
               @click="store.movePack(pack.id, -1)"
             >
               <q-icon :name="icon('keyboard_arrow_up')" size="18px" />
@@ -133,7 +137,7 @@
               type="button"
               class="pack-icon-btn"
               :disabled="store.packs.indexOf(pack) === store.packs.length - 1"
-              aria-label="Пак ниже"
+              :aria-label="t('Пак ниже')"
               @click="store.movePack(pack.id, 1)"
             >
               <q-icon :name="icon('keyboard_arrow_down')" size="18px" />
@@ -143,7 +147,7 @@
             <button
               type="button"
               class="pack-icon-btn danger"
-              aria-label="Удалить пак"
+              :aria-label="t('Удалить пак')"
               @click="removePack(pack)"
             >
               <q-icon :name="icon('delete')" size="18px" />
@@ -154,24 +158,24 @@
             <div v-for="sticker in pack.stickers" :key="sticker.id" class="pack-item">
               <img
                 :src="mediaUrl(sticker.file_url)"
-                :alt="`Стикер в паке ${pack.title}`"
+                :alt="t('Стикер в паке {title}', { title: pack.title })"
                 loading="lazy"
               />
               <button
                 type="button"
                 class="pack-item-remove"
-                :aria-label="`Удалить стикер из пака ${pack.title}`"
+                :aria-label="t('Удалить стикер из пака {title}', { title: pack.title })"
                 @click="removeSticker(sticker.id)"
               >
                 <q-icon :name="icon('close')" size="14px" />
               </button>
             </div>
           </div>
-          <p v-else class="pack-hint">В паке пусто.</p>
+          <p v-else class="pack-hint">{{ t('В паке пусто.') }}</p>
 
           <button type="button" class="stickers-btn" @click="pickFiles(pack.id)">
             <q-icon :name="icon('image')" size="18px" />
-            Добавить стикеры
+            {{ t('Добавить стикеры') }}
           </button>
         </section>
       </q-card-section>
@@ -183,6 +187,7 @@
 import { nextTick, ref } from 'vue'
 
 import { mediaUrl } from '@/config'
+import { t } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useStickersStore } from '@/stores/stickers'
 import { getErrorMessage } from '@/services/errors'
@@ -203,7 +208,7 @@ const emit = defineEmits<{ (e: 'close'): void }>()
  */
 const togglePreset = (pack: StickerPack): void => {
   void store.setPackPreset(pack.id, !pack.is_preset).catch((cause: unknown) => {
-    error.value = getErrorMessage(cause, 'Не удалось изменить публикацию')
+    error.value = getErrorMessage(cause, t('Не удалось изменить публикацию'))
   })
 }
 
@@ -244,7 +249,7 @@ const createPack = (): void => {
       await store.createPack(title || undefined)
       error.value = ''
     } catch (cause) {
-      error.value = getErrorMessage(cause, 'Не удалось создать пак')
+      error.value = getErrorMessage(cause, t('Не удалось создать пак'))
     }
   })()
 }
@@ -258,16 +263,19 @@ const rename = (packId: number, event: Event): void => {
     return
   }
   void store.renamePack(packId, title).catch((cause: unknown) => {
-    error.value = getErrorMessage(cause, 'Не удалось переименовать пак')
+    error.value = getErrorMessage(cause, t('Не удалось переименовать пак'))
     input.value = current.title
   })
 }
 
 const removePack = async (pack: StickerPack): Promise<void> => {
   const agreed = await confirmDialog({
-    title: `Удалить пак «${pack.title}»?`,
-    message: `${pack.stickers.length} стикеров исчезнут из библиотеки. Отправленные сообщения со стикерами останутся.`,
-    okLabel: 'Удалить',
+    title: t('Удалить пак «{title}»?', { title: pack.title }),
+    message: t(
+      '{count} стикеров исчезнут из библиотеки. Отправленные сообщения со стикерами останутся.',
+      { count: pack.stickers.length }
+    ),
+    okLabel: t('Удалить'),
     danger: true
   })
   if (!agreed) return
@@ -275,13 +283,13 @@ const removePack = async (pack: StickerPack): Promise<void> => {
     await store.removePack(pack.id)
     error.value = ''
   } catch (cause) {
-    error.value = getErrorMessage(cause, 'Не удалось удалить пак')
+    error.value = getErrorMessage(cause, t('Не удалось удалить пак'))
   }
 }
 
 const removeSticker = (stickerId: number): void => {
   void store.removeSticker(stickerId).catch((cause: unknown) => {
-    error.value = getErrorMessage(cause, 'Не удалось удалить стикер')
+    error.value = getErrorMessage(cause, t('Не удалось удалить стикер'))
   })
 }
 
@@ -314,7 +322,9 @@ const onFiles = (event: Event): void => {
     const failed: string[] = []
     for (const file of files) {
       if (file.size > MAX_STICKER_BYTES) {
-        failed.push(`${file.name} — больше ${MAX_STICKER_BYTES / 1024} КБ`)
+        failed.push(
+          t('{name} — больше {size} КБ', { name: file.name, size: MAX_STICKER_BYTES / 1024 })
+        )
         continue
       }
       try {
@@ -325,7 +335,7 @@ const onFiles = (event: Event): void => {
       }
     }
     if (failed.length) {
-      error.value = `Не добавились: ${failed.join('; ')}`
+      error.value = t('Не добавились: {list}', { list: failed.join('; ') })
     }
   })()
 }

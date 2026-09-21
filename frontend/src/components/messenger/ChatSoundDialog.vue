@@ -2,9 +2,9 @@
   <q-dialog :model-value="true" @update:model-value="emit('close')">
     <q-card class="sound-card">
       <q-card-section class="row no-wrap items-center q-py-sm">
-        <div class="sound-title">Звук уведомлений</div>
+        <div class="sound-title">{{ t('Звук уведомлений') }}</div>
         <q-space />
-        <q-btn flat round dense icon="close" aria-label="Закрыть" @click="emit('close')" />
+        <q-btn flat round dense icon="close" :aria-label="t('Закрыть')" @click="emit('close')" />
       </q-card-section>
       <q-separator />
 
@@ -16,7 +16,7 @@
           тихо.
         </p>
 
-        <ul class="sound-list" role="radiogroup" aria-label="Звук уведомлений">
+        <ul class="sound-list" role="radiogroup" :aria-label="t('Звук уведомлений')">
           <li v-for="preset in presets" :key="preset.key">
             <button
               class="sound-row"
@@ -45,7 +45,7 @@
               @click="pick(null)"
             >
               <q-icon :name="icon('undo')" size="18px" aria-hidden="true" />
-              <span class="sound-name">Как в остальных чатах</span>
+              <span class="sound-name">{{ t('Как в остальных чатах') }}</span>
               <q-icon v-if="current === null" :name="icon('check')" size="18px" />
             </button>
           </li>
@@ -59,6 +59,7 @@
 import { ref, watch } from 'vue'
 
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 import {
   chatSoundKey,
   MESSAGE_SOUNDS,

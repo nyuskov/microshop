@@ -99,7 +99,7 @@
            из предустановленного набора, которого у человека ещё нет. -->
       <button v-if="canAddSet" class="more-item" @click="emit('add-set')">
         <q-icon :name="icon('add')" size="16px" />
-        <span>Добавить набор{{ addSetTitle ? ` «${addSetTitle}»` : '' }}</span>
+        <span>{{ t('Добавить набор') }}{{ addSetTitle ? ` «${addSetTitle}»` : '' }}</span>
       </button>
       <!-- Жалоба на чужое сообщение — требование RuStore для UGC-приложений. -->
       <button v-if="!isOwn" class="more-item" @click="onReport">

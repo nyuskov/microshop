@@ -1,34 +1,39 @@
 <template>
   <div class="invites">
     <p class="invites-hint">
-      Публичной регистрации нет: аккаунт создаётся только по личной ссылке. Ссылка одноразовая —
-      после успешной регистрации гаснет, а передать её нужно лично приглашённому.
+      {{
+        t(
+          'Публичной регистрации нет: аккаунт создаётся только по личной ссылке. Ссылка одноразовая — после успешной регистрации гаснет, а передать её нужно лично приглашённому.'
+        )
+      }}
     </p>
 
     <!-- Создание -->
-    <h3 class="invites-title">Новая ссылка</h3>
+    <h3 class="invites-title">{{ t('Новая ссылка') }}</h3>
     <div class="invites-form">
-      <label class="invites-label" for="invite-phone-new">Номер телефона (необязательно)</label>
+      <label class="invites-label" for="invite-phone-new">
+        {{ t('Номер телефона (необязательно)') }}
+      </label>
       <PhoneInput
         id="invite-phone-new"
         v-model="phone"
         placeholder="+7 (900) 111-00-01"
-        aria-label="Номер телефона для приглашения"
+        :aria-label="t('Номер телефона для приглашения')"
         :disable="busy"
       />
 
-      <label class="invites-label gap" for="invite-note">Заметка для себя</label>
+      <label class="invites-label gap" for="invite-note">{{ t('Заметка для себя') }}</label>
       <input
         id="invite-note"
         v-model="note"
         class="invites-field"
         type="text"
         maxlength="200"
-        placeholder="Например: для Пети"
+        :placeholder="t('Например: для Пети')"
         :disabled="busy"
       />
 
-      <span id="invite-days" class="invites-label gap">Срок действия</span>
+      <span id="invite-days" class="invites-label gap">{{ t('Срок действия') }}</span>
       <div class="invites-chips" role="radiogroup" aria-labelledby="invite-days">
         <button
           v-for="option in EXPIRY_OPTIONS"
@@ -41,13 +46,13 @@
           :disabled="busy"
           @click="expiresDays = option.days"
         >
-          {{ option.label }}
+          {{ t(option.label) }}
         </button>
       </div>
 
       <button class="invites-btn primary" type="button" :disabled="busy" @click="createInvite">
         <q-icon :name="icon('add')" size="17px" />
-        <span>{{ busy ? 'Создаём…' : 'Создать ссылку' }}</span>
+        <span>{{ busy ? t('Создаём…') : t('Создать ссылку') }}</span>
       </button>
     </div>
 
@@ -56,7 +61,7 @@
 
     <!-- Только что созданная ссылка: её и нужно отдать человеку -->
     <div v-if="created" class="invites-created">
-      <span class="invites-created-title">Ссылка готова</span>
+      <span class="invites-created-title">{{ t('Ссылка готова') }}</span>
       <input
         class="invites-link"
         type="text"
@@ -67,29 +72,30 @@
       <div class="invites-row">
         <button class="invites-btn" type="button" @click="copy(linkOf(created))">
           <q-icon :name="icon('content_copy')" size="16px" />
-          <span>Скопировать</span>
+          <span>{{ t('Скопировать') }}</span>
         </button>
         <button v-if="canShare" class="invites-btn" type="button" @click="share(linkOf(created))">
           <q-icon :name="icon('share')" size="16px" />
-          <span>Отправить</span>
+          <span>{{ t('Отправить') }}</span>
         </button>
       </div>
       <!-- QR-код: приглашение можно показать рядом сидящему человеку с телефоном -->
       <div class="invites-qr">
-        <QrCode :value="linkOf(created)" :size="168" label="QR-код ссылки-приглашения" />
+        <QrCode :value="linkOf(created)" :size="168" :label="t('QR-код ссылки-приглашения')" />
       </div>
     </div>
 
     <!-- Список -->
     <h3 class="invites-title">
-      Выданные ссылки
-      <span v-if="activeCount > 0" class="invites-count"
-        >{{ activeCount }} {{ pluralRu(activeCount, 'действует', 'действуют', 'действуют') }}</span
-      >
+      {{ t('Выданные ссылки') }}
+      <span v-if="activeCount > 0" class="invites-count">
+        {{ activeCount }}
+        {{ plural(activeCount, ['действует', 'действуют', 'действуют'], ['active', 'active']) }}
+      </span>
     </h3>
 
-    <p v-if="loading" class="invites-hint">Загружаем…</p>
-    <p v-else-if="!invites.length" class="invites-hint">Ссылок пока нет.</p>
+    <p v-if="loading" class="invites-hint">{{ t('Загружаем…') }}</p>
+    <p v-else-if="!invites.length" class="invites-hint">{{ t('Ссылок пока нет.') }}</p>
 
     <ul v-else class="invites-list">
       <li v-for="invite in invites" :key="invite.id" class="invites-item">
@@ -98,10 +104,16 @@
           <span class="invites-item-title">{{ titleOf(invite) }}</span>
         </div>
         <p class="invites-item-meta">
-          создано {{ dateOf(invite.created_at) }}
-          <template v-if="invite.expires_at"> · до {{ dateOf(invite.expires_at) }}</template>
-          <template v-if="invite.used_at"> · использовано {{ dateOf(invite.used_at) }}</template>
-          <template v-if="invite.revoked_at"> · отозвано {{ dateOf(invite.revoked_at) }}</template>
+          {{ t('создано {date}', { date: dateOf(invite.created_at) }) }}
+          <template v-if="invite.expires_at">
+            · {{ t('до {date}', { date: dateOf(invite.expires_at) }) }}
+          </template>
+          <template v-if="invite.used_at">
+            · {{ t('использовано {date}', { date: dateOf(invite.used_at) }) }}
+          </template>
+          <template v-if="invite.revoked_at">
+            · {{ t('отозвано {date}', { date: dateOf(invite.revoked_at) }) }}
+          </template>
         </p>
         <div class="invites-row">
           <button
@@ -111,7 +123,7 @@
             @click="copy(linkOf(invite))"
           >
             <q-icon :name="icon('content_copy')" size="16px" />
-            <span>Скопировать</span>
+            <span>{{ t('Скопировать') }}</span>
           </button>
           <button
             v-if="stateOf(invite) === 'active'"
@@ -121,7 +133,7 @@
             @click="revoke(invite)"
           >
             <q-icon :name="icon('cancel')" size="16px" />
-            <span>Отозвать</span>
+            <span>{{ t('Отозвать') }}</span>
           </button>
         </div>
       </li>
@@ -145,7 +157,8 @@ import {
   type RegistrationInvite
 } from '@/services/invites'
 import { icon } from '@/utils/icons'
-import { parseServerTime, pluralRu } from '@/utils/format'
+import { dateLocale, plural, t } from '@/i18n'
+import { parseServerTime } from '@/utils/format'
 import { formatPhoneForBackend, formatPhoneInput, isValidPhoneNumber } from '@/utils/phone'
 
 /**
@@ -199,15 +212,17 @@ const STATE_LABELS: Record<InviteState, string> = {
   revoked: 'отозвана',
   expired: 'истекла'
 }
-const stateLabel = (invite: RegistrationInvite): string => STATE_LABELS[stateOf(invite)]
+// Подпись состояния переводим при показе: язык меняется на лету.
+const stateLabel = (invite: RegistrationInvite): string => t(STATE_LABELS[stateOf(invite)])
 
 const titleOf = (invite: RegistrationInvite): string =>
-  invite.note || (invite.phone_number ? formatPhoneInput(invite.phone_number).value : 'Без заметки')
+  invite.note ||
+  (invite.phone_number ? formatPhoneInput(invite.phone_number).value : t('Без заметки'))
 
 const dateOf = (iso: string | null): string => {
   if (!iso) return ''
   const date = parseServerTime(iso)
-  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('ru-RU')
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString(dateLocale())
 }
 
 const selectAll = (event: Event) => {
@@ -223,7 +238,7 @@ async function load() {
     invites.value = data.items
     activeCount.value = data.active
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось загрузить приглашения')
+    error.value = getErrorMessage(err, t('Не удалось загрузить приглашения'))
   } finally {
     loading.value = false
   }
@@ -238,7 +253,7 @@ async function createInvite() {
   if (rawPhone) {
     const normalized = formatPhoneForBackend(rawPhone)
     if (!isValidPhoneNumber(normalized)) {
-      error.value = 'Номер заполнен не полностью — либо очистите поле, либо введите его целиком.'
+      error.value = t('Номер заполнен не полностью — либо очистите поле, либо введите его целиком.')
       return
     }
   }
@@ -253,10 +268,10 @@ async function createInvite() {
     created.value = invite
     phone.value = ''
     note.value = ''
-    notice.value = 'Ссылка создана — скопируйте и передайте её лично.'
+    notice.value = t('Ссылка создана — скопируйте и передайте её лично.')
     await load()
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось создать приглашение')
+    error.value = getErrorMessage(err, t('Не удалось создать приглашение'))
   } finally {
     busy.value = false
   }
@@ -269,10 +284,10 @@ async function revoke(invite: RegistrationInvite) {
   try {
     await revokeRegistrationInvite(invite.id)
     if (created.value?.id === invite.id) created.value = null
-    notice.value = 'Ссылка отозвана — по ней больше нельзя зарегистрироваться.'
+    notice.value = t('Ссылка отозвана — по ней больше нельзя зарегистрироваться.')
     await load()
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось отозвать ссылку')
+    error.value = getErrorMessage(err, t('Не удалось отозвать ссылку'))
   } finally {
     busyId.value = null
   }
@@ -283,16 +298,16 @@ async function copy(link: string) {
   error.value = ''
   try {
     await navigator.clipboard.writeText(link)
-    notice.value = 'Ссылка скопирована'
+    notice.value = t('Ссылка скопирована')
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось скопировать ссылку')
+    error.value = getErrorMessage(err, t('Не удалось скопировать ссылку'))
   }
 }
 
 async function share(link: string) {
   error.value = ''
   try {
-    await navigator.share({ url: link, title: 'Приглашение в Pismo' })
+    await navigator.share({ url: link, title: t('Приглашение в Pismo') })
   } catch {
     /* Пользователь закрыл системное окно «Поделиться» — это не ошибка. */
   }

@@ -82,24 +82,26 @@
              Подписи рядом с кружком нет: кольцо само говорит об ожидании
              (решение владельца), а для диктора подпись осталась в aria-label. -->
         <div v-else-if="!selectedChat" class="chat-restoring">
-          <BrandSpinner :size="56" label="Открываю чат" />
+          <BrandSpinner :size="56" :label="t('Открываю чат')" />
         </div>
 
         <template v-else>
           <!-- Режим выбора сообщений: панель вместо шапки (как в чатах) -->
           <header v-if="messageSelection" class="chat-select-header">
-            <button class="icon-btn" title="Выйти из выбора" @click="exitMessageSelection">
+            <button class="icon-btn" :title="t('Выйти из выбора')" @click="exitMessageSelection">
               <q-icon :name="icon('close')" size="21px" />
             </button>
             <div class="chat-select-info">
-              <span class="chat-select-title">Выбрано: {{ selectedMessageIds.length }}</span>
+              <span class="chat-select-title">
+                {{ t('Выбрано: {count}', { count: selectedMessageIds.length }) }}
+              </span>
             </div>
             <div class="chat-select-actions">
               <button
                 class="icon-btn"
                 :class="{ on: allVisibleMessagesSelected }"
-                title="Выбрать все"
-                aria-label="Выбрать все"
+                :title="t('Выбрать все')"
+                :aria-label="t('Выбрать все')"
                 @click="toggleSelectAllMessages"
               >
                 <q-icon :name="icon('done_all')" size="20px" />
@@ -109,24 +111,24 @@
                    удержанием сообщения (телефон) или наведением (компьютер). -->
               <button
                 class="icon-btn"
-                title="Переслать выбранные"
-                aria-label="Переслать выбранные"
+                :title="t('Переслать выбранные')"
+                :aria-label="t('Переслать выбранные')"
                 @click="bulkForwardMessages"
               >
                 <q-icon :name="icon('forward')" size="20px" />
               </button>
               <button
                 class="icon-btn"
-                title="Сохранить в «Сохранённые сообщения»"
-                aria-label="Сохранить в «Сохранённые сообщения»"
+                :title="t('Сохранить в «Сохранённые сообщения»')"
+                :aria-label="t('Сохранить в «Сохранённые сообщения»')"
                 @click="bulkSaveMessagesToSelf"
               >
                 <q-icon :name="icon('bookmark')" size="20px" />
               </button>
               <button
                 class="icon-btn danger"
-                title="Удалить выбранные"
-                aria-label="Удалить выбранные"
+                :title="t('Удалить выбранные')"
+                :aria-label="t('Удалить выбранные')"
                 @click="bulkDeleteMessages"
               >
                 <q-icon :name="icon('delete')" size="20px" />
@@ -251,13 +253,13 @@
           <div v-if="selectedIsChannel && !canPostInChannel" class="channel-write-bar">
             <span class="channel-write-hint">
               <q-icon :name="icon('campaign')" size="17px" aria-hidden="true" />
-              Публикуют владелец и админы канала
+              {{ t('Публикуют владелец и админы канала') }}
             </span>
             <q-btn
               unelevated
               no-caps
               color="primary"
-              label="Предложить пост"
+              :label="t('Предложить пост')"
               @click="openChannelSuggest"
             />
           </div>
@@ -316,7 +318,11 @@
       <!-- Правая панель (≥1280px): информация о чате/группе и общие медиа рядом с
            перепиской, а не модалкой поверх неё. Ключ по id чата — при смене чата
            компонент пересоздаётся и заново читает данные о нём. -->
-      <aside v-if="railVisible && selectedChat" class="chat-rail" aria-label="Информация о чате">
+      <aside
+        v-if="railVisible && selectedChat"
+        class="chat-rail"
+        :aria-label="t('Информация о чате')"
+      >
         <ChatInfo
           v-if="!isGroupChat(selectedChat)"
           :key="selectedChat.id"
@@ -3645,7 +3651,7 @@ const deleteForAllLabel = computed<string>(() => {
   const chat = selectedChat.value
   if (!chat || chat.is_self) return ''
   return isPrivateChat(chat)
-    ? `Удалить для ${chatTitle(chat, currentUserId.value)}`
+    ? t('Удалить для {name}', { name: chatTitle(chat, currentUserId.value) })
     : t('Удалить для всех')
 })
 

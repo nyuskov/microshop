@@ -9,17 +9,17 @@
           :class="{ active: activeStatus === tab.value }"
           @click="activeStatus = tab.value"
         >
-          {{ tab.label }}
+          {{ t(tab.label) }}
         </button>
         <button class="mod-tab" :class="{ active: showJournal }" @click="toggleJournal">
-          Журнал
+          {{ t('Журнал') }}
         </button>
       </div>
       <button
         type="button"
         class="mod-refresh"
-        title="Обновить"
-        aria-label="Обновить"
+        :title="t('Обновить')"
+        :aria-label="t('Обновить')"
         @click="reload"
       >
         <q-icon :name="icon('refresh')" size="18px" />
@@ -28,30 +28,47 @@
 
     <div v-if="showJournal" class="mod-body">
       <p class="mod-hint">
-        Журнал модерации: что и когда произошло с контентом — отправили жалобу, автомат скрыл
-        сообщение после нескольких жалоб, модератор подтвердил нарушение или восстановил контент.
-        Записи не меняются, поэтому на них можно ссылаться при разборе спорных случаев.
+        {{
+          t(
+            'Журнал модерации: что и когда произошло с контентом — отправили жалобу, автомат скрыл сообщение после нескольких жалоб, модератор подтвердил нарушение или восстановил контент. Записи не меняются, поэтому на них можно ссылаться при разборе спорных случаев.'
+          )
+        }}
       </p>
       <p v-if="journalHidden !== null" class="mod-count">
-        Скрыто сейчас: {{ journalHidden }} · записей в журнале: {{ journalTotal }}
+        {{
+          t('Скрыто сейчас: {hidden} · записей в журнале: {total}', {
+            hidden: journalHidden,
+            total: journalTotal
+          })
+        }}
       </p>
-      <div v-if="journalLoading" class="mod-empty">Загрузка…</div>
-      <div v-else-if="journal.length === 0" class="mod-empty">Журнал пуст.</div>
+      <div v-if="journalLoading" class="mod-empty">{{ t('Загрузка…') }}</div>
+      <div v-else-if="journal.length === 0" class="mod-empty">{{ t('Журнал пуст.') }}</div>
       <template v-else>
         <article v-for="entry in journal" :key="entry.id" class="mod-item">
           <header class="mod-item-head">
             <span class="mod-reason">{{ journalActionLabel(entry.action) }}</span>
             <span class="mod-status" :class="entry.moderator_id === null ? 's-new' : 's-in_review'">
-              {{ entry.moderator_id === null ? 'автоматика' : `модератор #${entry.moderator_id}` }}
+              {{
+                entry.moderator_id === null
+                  ? t('автоматика')
+                  : t('модератор #{id}', { id: entry.moderator_id })
+              }}
             </span>
             <q-space />
             <span class="mod-date">{{ formatReportDate(entry.created_at) }}</span>
           </header>
           <p class="mod-muted">
             {{ entry.note }}
-            <template v-if="entry.message_id"> · сообщение #{{ entry.message_id }}</template>
-            <template v-if="entry.report_id"> · жалоба #{{ entry.report_id }}</template>
-            <template v-if="entry.target_user_id"> · автор #{{ entry.target_user_id }} </template>
+            <template v-if="entry.message_id">
+              · {{ t('сообщение #{id}', { id: entry.message_id }) }}
+            </template>
+            <template v-if="entry.report_id">
+              · {{ t('жалоба #{id}', { id: entry.report_id }) }}
+            </template>
+            <template v-if="entry.target_user_id">
+              · {{ t('автор #{id}', { id: entry.target_user_id }) }}
+            </template>
           </p>
           <div v-if="entry.target_user_id" class="mod-actions">
             <q-btn
@@ -59,7 +76,7 @@
               no-caps
               dense
               color="primary"
-              label="Восстановить все сообщения автора"
+              :label="t('Восстановить все сообщения автора')"
               :loading="busyUnhide === entry.target_user_id"
               @click="restoreAuthorMessages(entry.target_user_id)"
             />
@@ -71,19 +88,24 @@
 
     <div v-else class="mod-body">
       <p class="mod-hint">
-        Жалобы приходят из приложения: «Пожаловаться» в шапке диалога или в меню сообщения. Разбор
-        нигде, кроме этой таблицы, не отображается — статус нужен, чтобы не разбирать одно дважды.
+        {{
+          t(
+            'Жалобы приходят из приложения: «Пожаловаться» в шапке диалога или в меню сообщения. Разбор нигде, кроме этой таблицы, не отображается — статус нужен, чтобы не разбирать одно дважды.'
+          )
+        }}
       </p>
 
-      <div v-if="loading" class="mod-empty">Загрузка…</div>
-      <div v-else-if="reports.length === 0" class="mod-empty">Жалоб в этом разделе нет.</div>
+      <div v-if="loading" class="mod-empty">{{ t('Загрузка…') }}</div>
+      <div v-else-if="reports.length === 0" class="mod-empty">
+        {{ t('Жалоб в этом разделе нет.') }}
+      </div>
       <template v-else>
-        <p class="mod-count">Всего: {{ total }}</p>
+        <p class="mod-count">{{ t('Всего: {total}', { total }) }}</p>
         <article v-for="report in reports" :key="report.id" class="mod-item">
           <header class="mod-item-head">
-            <span class="mod-reason">{{ reportReasonLabel(report.reason) }}</span>
+            <span class="mod-reason">{{ t(reportReasonLabel(report.reason)) }}</span>
             <span class="mod-status" :class="`s-${report.status}`">
-              {{ REPORT_STATUS_LABELS[report.status] }}
+              {{ t(REPORT_STATUS_LABELS[report.status]) }}
             </span>
             <q-space />
             <span class="mod-date">{{ formatReportDate(report.created_at) }}</span>
@@ -99,15 +121,15 @@
 
           <p v-if="report.message_text" class="mod-quote">«{{ report.message_text }}»</p>
           <p v-else-if="report.message_id" class="mod-muted">
-            Сообщение #{{ report.message_id }} (вложение или удалено)
+            {{ t('Сообщение #{id} (вложение или удалено)', { id: report.message_id }) }}
           </p>
           <p class="mod-muted">
-            Контекст: {{ contextLabel(report) }}
-            {{ report.note ? ` · заметка: ${report.note}` : '' }}
+            {{ t('Контекст: {context}', { context: contextLabel(report) }) }}
+            {{ report.note ? t(' · заметка: {note}', { note: report.note }) : '' }}
           </p>
 
           <p v-if="report.comment" class="mod-comment">
-            Комментарий: <span>{{ report.comment }}</span>
+            {{ t('Комментарий:') }} <span>{{ report.comment }}</span>
           </p>
 
           <div class="mod-actions">
@@ -116,8 +138,8 @@
               class="mod-note"
               type="text"
               maxlength="1000"
-              placeholder="Заметка (необязательно)"
-              :aria-label="`Заметка по жалобе ${report.id}`"
+              :placeholder="t('Заметка (необязательно)')"
+              :aria-label="t('Заметка по жалобе {id}', { id: report.id })"
             />
             <q-btn
               v-for="action in ACTIONS"
@@ -126,7 +148,7 @@
               no-caps
               dense
               :color="action.color"
-              :label="action.label"
+              :label="t(action.label)"
               :disable="report.status === action.status"
               :loading="busyId === report.id"
               @click="setStatus(report, action.status)"
@@ -152,6 +174,7 @@
  */
 import { icon } from '@/utils/icons'
 import { onMounted, ref, watch } from 'vue'
+import { dateLocale, t } from '@/i18n'
 
 import {
   JOURNAL_ACTION_LABELS,
@@ -207,7 +230,7 @@ const load = async () => {
       notes.value[report.id] = report.note ?? ''
     }
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось загрузить жалобы')
+    error.value = getErrorMessage(err, t('Не удалось загрузить жалобы'))
   } finally {
     loading.value = false
   }
@@ -234,7 +257,7 @@ const setStatus = async (report: ModerationReport, status: ReportStatus) => {
       reports.value = reports.value.map((item) => (item.id === updated.id ? updated : item))
     }
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось изменить статус')
+    error.value = getErrorMessage(err, t('Не удалось изменить статус'))
   } finally {
     busyId.value = null
   }
@@ -242,7 +265,7 @@ const setStatus = async (report: ModerationReport, status: ReportStatus) => {
 
 /** Дата жалобы в коротком виде (дд.мм чч:мм). */
 const formatReportDate = (iso: string): string =>
-  new Date(parseServerTime(iso)).toLocaleString('ru-RU', {
+  new Date(parseServerTime(iso)).toLocaleString(dateLocale(), {
     day: '2-digit',
     month: '2-digit',
     hour: '2-digit',
@@ -252,9 +275,9 @@ const formatReportDate = (iso: string): string =>
 /** Где произошло нарушение: чат и/или конкретное сообщение. */
 const contextLabel = (report: ModerationReport): string => {
   const parts: string[] = []
-  if (report.chat_id) parts.push(`чат #${report.chat_id}`)
-  if (report.message_id) parts.push(`сообщение #${report.message_id}`)
-  return parts.length > 0 ? parts.join(', ') : 'без чата (жалоба на профиль)'
+  if (report.chat_id) parts.push(t('чат #{id}', { id: report.chat_id }))
+  if (report.message_id) parts.push(t('сообщение #{id}', { id: report.message_id }))
+  return parts.length > 0 ? parts.join(', ') : t('без чата (жалоба на профиль)')
 }
 
 watch(activeStatus, load)
@@ -271,7 +294,7 @@ const journalLoading = ref(false)
 const journalError = ref('')
 const busyUnhide = ref<number | null>(null)
 
-const journalActionLabel = (action: string): string => JOURNAL_ACTION_LABELS[action] ?? action
+const journalActionLabel = (action: string): string => t(JOURNAL_ACTION_LABELS[action] ?? action)
 
 const loadJournal = async () => {
   journalLoading.value = true
@@ -282,7 +305,7 @@ const loadJournal = async () => {
     journalTotal.value = data.total
     journalHidden.value = data.hidden_messages
   } catch (err) {
-    journalError.value = getErrorMessage(err, 'Не удалось загрузить журнал')
+    journalError.value = getErrorMessage(err, t('Не удалось загрузить журнал'))
   } finally {
     journalLoading.value = false
   }
@@ -304,7 +327,7 @@ const restoreAuthorMessages = async (userId: number) => {
     await unhideUserMessages(userId)
     await loadJournal()
   } catch (err) {
-    journalError.value = getErrorMessage(err, 'Не удалось восстановить сообщения')
+    journalError.value = getErrorMessage(err, t('Не удалось восстановить сообщения'))
   } finally {
     busyUnhide.value = null
   }

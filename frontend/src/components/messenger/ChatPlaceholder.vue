@@ -2,8 +2,8 @@
   <div class="chat-placeholder">
     <EmptyState
       icon="forum"
-      title="Выберите, кому хотели бы написать"
-      hint="Начните переписку: найдите собеседника по логину или телефону."
+      :title="t('Выберите, кому хотели бы написать')"
+      :hint="t('Начните переписку: найдите собеседника по логину или телефону.')"
     >
       <template #action>
         <q-btn
@@ -13,7 +13,7 @@
           class="ghost-btn q-mt-sm"
           @click="emit('open-contacts')"
         >
-          Открыть контакты
+          {{ t('Открыть контакты') }}
         </q-btn>
       </template>
     </EmptyState>
@@ -22,6 +22,7 @@
 
 <script setup lang="ts">
 import EmptyState from '@/components/common/EmptyState.vue'
+import { t } from '@/i18n'
 
 const emit = defineEmits<{
   (e: 'open-contacts'): void

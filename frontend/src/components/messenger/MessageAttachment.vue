@@ -12,7 +12,7 @@
         :key="tile.message.id"
         type="button"
         class="album-tile"
-        :title="`Открыть изображение «${tile.name}»`"
+        :title="t('Открыть изображение «{name}»', { name: tile.name })"
         @click.stop="emit('open-image', tile.message)"
       >
         <img
@@ -38,16 +38,16 @@
       class="attachment attachment-view-once"
       :class="{ opened: viewOnceOpened }"
       :disabled="viewOnceOpened"
-      :title="viewOnceOpened ? 'Вложение просмотрено' : 'Открыть (сгорит после просмотра)'"
+      :title="viewOnceOpened ? t('Вложение просмотрено') : t('Открыть (сгорит после просмотра)')"
       @click.stop="emit('open-view-once')"
     >
       <q-icon :name="icon(viewOnceOpened ? 'done_all' : 'visibility')" size="22px" />
       <span class="attachment-view-once-text">
         <span class="attachment-name">
-          {{ viewOnceOpened ? 'Просмотрено' : viewOnceLabel }}
+          {{ viewOnceOpened ? t('Просмотрено') : viewOnceLabel }}
         </span>
         <span class="attachment-meta">
-          {{ viewOnceOpened ? 'Медиа больше недоступно' : 'Сгорит после открытия' }}
+          {{ viewOnceOpened ? t('Медиа больше недоступно') : t('Сгорит после открытия') }}
         </span>
       </span>
     </button>
@@ -56,7 +56,11 @@
       class="attachment attachment-image-btn"
       :class="{ sticker: props.sticker, wide: props.wide }"
       type="button"
-      :title="props.sticker ? 'Открыть набор стикеров' : `Открыть изображение «${file.name}»`"
+      :title="
+        props.sticker
+          ? t('Открыть набор стикеров')
+          : t('Открыть изображение «{name}»', { name: file.name })
+      "
       @click.stop="openAttachment()"
     >
       <img
@@ -134,6 +138,7 @@
  */
 import { computed, ref, watch } from 'vue'
 import type { Message } from '@/types'
+import { t } from '@/i18n'
 import { mediaUrl } from '@/config'
 import { formatBytes } from '@/utils/format'
 import { icon } from '@/utils/icons'
@@ -207,7 +212,9 @@ const openAttachment = (): void => {
 const viewOnce = computed(() => props.message.view_once === true)
 const viewOnceOpened = computed(() => props.message.view_once_opened === true)
 const viewOnceLabel = computed(() =>
-  (props.message.file?.mime ?? '').startsWith('video/') ? 'Одноразовое видео' : 'Одноразовое фото'
+  (props.message.file?.mime ?? '').startsWith('video/')
+    ? t('Одноразовое видео')
+    : t('Одноразовое фото')
 )
 
 const mediaAbsolute = (path: string): string => mediaUrl(path)
@@ -233,7 +240,7 @@ const fileUrl = computed<string>(() => {
 })
 
 const lockedLabel = computed<string>(() =>
-  decrypted.value?.status === 'failed' ? '🔒 Не удалось расшифровать' : '🔒 Расшифровываем…'
+  decrypted.value?.status === 'failed' ? t('🔒 Не удалось расшифровать') : t('🔒 Расшифровываем…')
 )
 
 /**
@@ -249,7 +256,7 @@ watch(fileUrl, () => {
 })
 
 const brokenLabel = computed<string>(() =>
-  props.sticker ? 'Стикер недоступен' : 'Изображение недоступно'
+  props.sticker ? t('Стикер недоступен') : t('Изображение недоступно')
 )
 
 // ---------- Альбом ----------
@@ -295,7 +302,7 @@ const albumTiles = computed<AlbumTile[]>(() =>
         : ''
     return {
       message,
-      name: attachment?.name ?? 'Изображение',
+      name: attachment?.name ?? t('Изображение'),
       url,
       broken: brokenAlbumImages.value.has(message.id)
     }

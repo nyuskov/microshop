@@ -48,7 +48,7 @@ describe('плашка одноразового вложения', () => {
     expect(attachment).toContain('attachment-view-once')
     expect(attachment).toContain("emit('open-view-once')")
     // Содержимое не грузим до нажатия: ссылка на файл остаётся только в данных.
-    expect(attachment).toContain("viewOnceOpened ? 'Просмотрено' : viewOnceLabel")
+    expect(attachment).toContain("viewOnceOpened ? t('Просмотрено') : viewOnceLabel")
   })
 
   it('вместо картинки показывает «открыть», а не превью', () => {

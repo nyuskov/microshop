@@ -4,14 +4,16 @@
       class="ms-overlay-card ms-overlay-card--sm"
       role="dialog"
       aria-modal="true"
-      :aria-label="`Набор «${set.title}»`"
+      :aria-label="t('Набор «{title}»', { title: set.title })"
     >
       <div class="ms-overlay-head">
         <h2 class="ms-overlay-title">
           <span class="sticker-set-name">{{ set.title }}</span>
-          <span class="sticker-set-count">{{ set.images.length }} шт.</span>
+          <span class="sticker-set-count">{{
+            t('{count} шт.', { count: set.images.length })
+          }}</span>
         </h2>
-        <button type="button" class="icon-btn" aria-label="Закрыть" @click="emit('close')">
+        <button type="button" class="icon-btn" :aria-label="t('Закрыть')" @click="emit('close')">
           <q-icon :name="icon('close')" size="20px" />
         </button>
       </div>
@@ -24,22 +26,24 @@
             :key="image.url"
             type="button"
             class="sticker-set-item"
-            :title="`Отправить: ${image.alt}`"
-            :aria-label="`Отправить стикер ${image.alt}`"
+            :title="t('Отправить: {name}', { name: image.alt })"
+            :aria-label="t('Отправить стикер {name}', { name: image.alt })"
             @click="emit('send', stickerSendRef(set, image))"
           >
             <img :src="image.url" alt="" loading="lazy" decoding="async" />
           </button>
         </div>
-        <p v-if="!set.images.length" class="sticker-set-empty">В наборе пока нет стикеров.</p>
+        <p v-if="!set.images.length" class="sticker-set-empty">
+          {{ t('В наборе пока нет стикеров.') }}
+        </p>
       </div>
 
       <div class="ms-overlay-foot">
         <!-- Свой набор добавлять некуда: он уже в «Моих стикерах». -->
-        <span v-if="set.own" class="sticker-set-note">Это ваш набор</span>
+        <span v-if="set.own" class="sticker-set-note">{{ t('Это ваш набор') }}</span>
         <span v-else-if="added" class="sticker-set-note added">
           <q-icon :name="icon('check')" size="18px" />
-          Добавлен
+          {{ t('Добавлен') }}
         </span>
         <button
           v-else
@@ -71,6 +75,7 @@
 import { computed, ref } from 'vue'
 
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 import { stickerSendRef, type StickerSetRef, type StickerSendRef } from '@/utils/stickerSet'
 import { useStickersStore } from '@/stores/stickers'
 import { getErrorMessage } from '@/services/errors'
@@ -113,7 +118,7 @@ const added = computed<boolean>(() => {
 
 const buttonLabel = computed<string>(() => {
   if (busy.value && standardSet.value) return setImportLabel(standardSet.value)
-  return busy.value ? 'Добавляем…' : 'Добавить весь набор'
+  return busy.value ? t('Добавляем…') : t('Добавить весь набор')
 })
 
 /** «Добавить весь набор»: серверный копируется одним запросом, встроенный — импортом. */
@@ -124,7 +129,7 @@ const add = (): void => {
     void store
       .addPreset(packId)
       .catch((cause: unknown) => {
-        emit('error', getErrorMessage(cause, 'Не удалось добавить набор'))
+        emit('error', getErrorMessage(cause, t('Не удалось добавить набор')))
       })
       .finally(() => {
         copying.value = false

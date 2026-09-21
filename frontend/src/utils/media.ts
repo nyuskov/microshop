@@ -34,10 +34,10 @@ export const isLockedFile = (message: Message): boolean =>
 /** Подпись зашифрованного вложения для списка чатов и цитат. */
 export const lockedFileLabel = (message: Message): string => {
   const mime = message.file?.mime ?? ''
-  if (mime.startsWith('image/')) return '🔒 Изображение'
-  if (mime.startsWith('video/')) return '🔒 Видео'
-  if (mime.startsWith('audio/')) return '🔒 Голосовое'
-  return '🔒 Вложение'
+  if (mime.startsWith('image/')) return t('🔒 Изображение')
+  if (mime.startsWith('video/')) return t('🔒 Видео')
+  if (mime.startsWith('audio/')) return t('🔒 Голосовое')
+  return t('🔒 Вложение')
 }
 
 /** Видео, записанное через кнопку «видеосообщение» (имя файла video_*), — кружок. */
@@ -76,10 +76,10 @@ export const isStickerMessage = (message: Message): boolean => {
 }
 
 export const mediaTypeLabel = (file: MessageFile): string => {
-  if (isImageFile(file)) return 'Изображение'
-  if (isAudioFile(file)) return 'Голосовое сообщение'
-  if (isVideoFile(file)) return 'Видеосообщение'
-  return `Файл: ${file.name}`
+  if (isImageFile(file)) return t('Изображение')
+  if (isAudioFile(file)) return t('Голосовое сообщение')
+  if (isVideoFile(file)) return t('Видеосообщение')
+  return t('Файл: {name}', { name: file.name })
 }
 
 /**
@@ -100,7 +100,7 @@ export const fileIcon = (file: MessageFile): string => {
 export const messageSnippet = (message: Message): string => {
   if (message.kind === 'call') {
     const callText = callMessageText(message)
-    return callText ? `📞 ${callText}` : '📞 Звонок'
+    return callText ? `📞 ${callText}` : t('📞 Звонок')
   }
   // Зашифрованное вложение, которое ещё не расшифровано (превью из списка чатов).
   if (isLockedFile(message)) return lockedFileLabel(message)
@@ -108,12 +108,12 @@ export const messageSnippet = (message: Message): string => {
   if (file) {
     // Зашифрованное вложение: в тексте лежит конверт, «🔒» подчёркивает защиту.
     const lock = message.e2ee_file ? '🔒 ' : ''
-    if (isImageFile(file)) return `${lock}📷 Изображение`
-    if (isAudioFile(file)) return `${lock}🎤 Голосовое`
-    if (isVideoFile(file)) return `${lock}🎥 Видео`
+    if (isImageFile(file)) return `${lock}${t('📷 Изображение')}`
+    if (isAudioFile(file)) return `${lock}${t('🎤 Голосовое')}`
+    if (isVideoFile(file)) return `${lock}${t('🎥 Видео')}`
     return `${lock}📎 ${file.name}`
   }
-  if (message.encrypted && isEncryptedPayload(message.text)) return '🔒 Сообщение'
+  if (message.encrypted && isEncryptedPayload(message.text)) return t('🔒 Сообщение')
   // Служебные символы разметки в цитате/превью не показываем: `*жирный*`
   // читается как звёздочки, а не как текст сообщения.
   return plainMessageText(message.text || '')

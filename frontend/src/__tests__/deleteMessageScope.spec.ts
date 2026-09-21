@@ -50,7 +50,9 @@ describe('диалог удаления сообщения', () => {
 
   it('подпись галки — с именем собеседника', () => {
     // Пустая подпись (группа-сам с собой/некуда удалять) = галки нет.
-    expect(messenger).toMatch(/Удалить для \$\{chatTitle\(chat, currentUserId\.value\)\}/)
+    expect(messenger).toMatch(
+      /t\('Удалить для \{name\}', \{ name: chatTitle\(chat, currentUserId\.value\) \}\)/
+    )
     expect(messenger).toContain("'Удалить для всех'")
     expect(messenger).toMatch(/if \(!chat \|\| chat\.is_self\) return ''/)
   })

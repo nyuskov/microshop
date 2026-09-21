@@ -144,7 +144,7 @@ describe('раздел «Жалобы»', () => {
     expect(reportsSection).toContain('fetchJournal')
     expect(reportsSection).toContain('unhideUserMessages')
     expect(reportsSection).toContain('Журнал')
-    expect(reportsSection).toContain('aria-label="Обновить"')
+    expect(reportsSection).toContain(':aria-label="t(\'Обновить\')"')
     // Заголовок и крестик закрытия больше не нужны: их даёт окно настроек.
     expect(reportsSection).not.toContain('q-dialog')
     expect(reportsSection).not.toContain('aria-label="Закрыть"')
