@@ -12,6 +12,7 @@ import {
   localSpeechSupported,
   ownSpeechAssetsAvailable,
   setLocalSpeechEngine,
+  setLocalSpeechImporter,
   setLocalSpeechModel,
   transcribeWithLocalSpeech,
   type LocalSpeechEngine,
@@ -75,6 +76,7 @@ beforeEach(() => {
 
 afterEach(() => {
   setLocalSpeechEngine(null)
+  setLocalSpeechImporter(null)
   vi.unstubAllGlobals()
   localStorage.clear()
 })
@@ -241,6 +243,14 @@ describe('модель распознавания на устройстве', ()
     )
     expect(await ownSpeechAssetsAvailable()).toBe(true)
 
+    // Одного флага «модели наши» мало: без имени файла движка брать нечего.
+    setLocalSpeechEngine(null)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, json: async () => ({ models: true }) }))
+    )
+    expect(await ownSpeechAssetsAvailable()).toBe(false)
+
     // Нет файлов вовсе — тоже спокойно, работаем с CDN.
     setLocalSpeechEngine(null)
     vi.stubGlobal(
@@ -251,5 +261,94 @@ describe('модель распознавания на устройстве', ()
     )
     expect(await ownSpeechAssetsAvailable()).toBe(false)
     setLocalSpeechEngine(async () => engine)
+  })
+
+  it('со своих файлов берём движок, рантайм ONNX и модели', async () => {
+    // Прода: `/stt/` отдаёт собранный движок (820 КБ), рантайм onnxruntime-web
+    // (21 МБ) и модели Whisper. Рантайм обязан называться явно (`wasmPaths`),
+    // иначе движок потащит `.wasm` с чужого CDN — а он из мобильных сетей РФ
+    // недоступен, из-за чего расшифровка и не запускалась на телефоне.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ engine: 'transformers-bundled.js', models: true })
+      }))
+    )
+    const imported: string[] = []
+    const ownEngine: LocalSpeechEngine = {
+      env: { allowLocalModels: false, useBrowserCache: true },
+      async pipeline() {
+        return pipeline
+      }
+    }
+    setLocalSpeechEngine(null)
+    setLocalSpeechImporter(async (url) => {
+      imported.push(url)
+      return ownEngine
+    })
+
+    await ensureLocalSpeech('tiny')
+
+    expect(imported).toEqual(['/stt/transformers-bundled.js'])
+    expect(ownEngine.env.backends?.onnx?.wasm?.wasmPaths).toBe('/stt/')
+    expect(ownEngine.env.remoteHost).toBe(`${location.origin}/stt`)
+    expect(ownEngine.env.remotePathTemplate).toBe('models/{model}/resolve/main/')
+  })
+
+  it('движок есть, моделей нет — модели остаются с Hugging Face', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, json: async () => ({ engine: 'transformers-bundled.js' }) }))
+    )
+    const ownEngine: LocalSpeechEngine = {
+      env: { allowLocalModels: false, useBrowserCache: true },
+      async pipeline() {
+        return pipeline
+      }
+    }
+    setLocalSpeechEngine(null)
+    setLocalSpeechImporter(async () => ownEngine)
+
+    await ensureLocalSpeech('tiny')
+
+    expect(ownEngine.env.backends?.onnx?.wasm?.wasmPaths).toBe('/stt/')
+    expect(ownEngine.env.remoteHost).toBeUndefined()
+  })
+
+  it('свои файлы не отдались — берём движок с CDN, а не падаем', async () => {
+    // Файлы могли не доехать при выкладке. Отказ на ровном месте человеку не нужен:
+    // молча уходим на публичный CDN (в разработке он и так основной путь).
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ engine: 'transformers-bundled.js', models: true })
+      }))
+    )
+    const imported: string[] = []
+    const cdnEngine: LocalSpeechEngine = {
+      env: { allowLocalModels: false, useBrowserCache: true },
+      async pipeline() {
+        return pipeline
+      }
+    }
+    setLocalSpeechEngine(null)
+    setLocalSpeechImporter(async (url) => {
+      imported.push(url)
+      if (url.startsWith('/stt/')) throw new Error('Failed to fetch dynamically imported module')
+      return cdnEngine
+    })
+
+    await ensureLocalSpeech('tiny')
+
+    expect(imported[0]).toBe('/stt/transformers-bundled.js')
+    expect(imported[1]).toContain('cdn.jsdelivr.net')
+    // С чужим движком модели тоже чужие: свой каталог больше не считаем своим.
+    expect(cdnEngine.env.remoteHost).toBeUndefined()
+    expect(await ownSpeechAssetsAvailable()).toBe(false)
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
   })
 })

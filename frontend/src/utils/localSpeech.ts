@@ -46,7 +46,7 @@ const ENGINE_CDN = `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${ENG
 /**
  * Своя раздача движка и моделей (`/stt/…`): если наш сервер их отдаёт, берём оттуда
  * — тогда распознавание не зависит от чужого CDN (важно для сетей, где он медленный).
- * Как положить файлы — см. `docs/gotchas.md`, раздел про модель распознавания.
+ * Как положить и обновить файлы — см. `docs/on-device-transcription.md`.
  */
 const ASSET_BASE = '/stt/'
 
@@ -75,6 +75,8 @@ export interface LocalSpeechEngine {
     /** Откуда брать файлы модели (нужно для своей раздачи). */
     remoteHost?: string
     remotePathTemplate?: string
+    /** Рантайм ONNX: без явных путей он тянет .wasm с чужого CDN. */
+    backends?: { onnx?: { wasm?: { wasmPaths?: unknown } } }
   }
 }
 
@@ -98,34 +100,64 @@ let engineLoader: (() => Promise<LocalSpeechEngine>) | null = null
 export const setLocalSpeechEngine = (loader: (() => Promise<LocalSpeechEngine>) | null): void => {
   engineLoader = loader
   pipelines.clear()
-  ownAssets = null
+  // `undefined` — «ещё не проверяли»: `null` здесь означал бы «проверили, своих
+  // файлов нет» и запретил бы пробу на весь сеанс.
+  ownAssets = undefined
+}
+
+/** Чем поднимаем движок по URL: обычный динамический импорт. */
+type EngineImporter = (url: string) => Promise<LocalSpeechEngine>
+
+const defaultImporter: EngineImporter = (url) =>
+  import(/* @vite-ignore */ url) as unknown as Promise<LocalSpeechEngine>
+
+let importEngine: EngineImporter = defaultImporter
+
+/**
+ * Подменить импорт движка — для тестов.
+ *
+ * Настоящий импорт тянет из сети мегабайты и запускает ONNX: в юнит-тестах это
+ * невозможно, а проверить надо, что из своего каталога мы берём и рантайм, и
+ * модели, а при сбое честно откатываемся на публичный CDN.
+ */
+export const setLocalSpeechImporter = (importer: EngineImporter | null): void => {
+  importEngine = importer ?? defaultImporter
+  engine = null
+  ownAssets = undefined
+  pipelines.clear()
 }
 
 /** Есть ли в браузере WebAssembly — без него модель не запустить. */
 export const localSpeechSupported = (): boolean => typeof WebAssembly !== 'undefined'
 
 /**
- * Отдаёт ли наш сервер движок и модели (`/stt/manifest.json`).
+ * Что лежит у нас на сервере в `/stt/` (файл `manifest.json`).
  *
- * ГРАБЛЯ ПРОДА (поймана живьём 21.09.2026): nginx отдаёт на неизвестные пути
- * SPA-фолбэк — 200 и `index.html`. Одного `response.ok` мало: движок «загружался»
- * из HTML и падал СРАЗУ («не удалось скачать модель, проверьте подключение»).
- * Поэтому читаем манифест как JSON и ждём в нём нашу запись.
+ * `engine` — имя файла с движком (собранным нами одним модулем: у пакета из npm
+ * есть внешние зависимости, в браузере их взять неоткуда). `models` — лежат ли
+ * там же модели: без них берём с Hugging Face, как раньше.
  */
-let ownAssets: boolean | null = null
+interface OwnAssets {
+  engine: string
+  models: boolean
+}
 
-const ownAssetsAvailable = async (): Promise<boolean> => {
-  if (ownAssets !== null) return ownAssets
-  ownAssets = false
+let ownAssets: OwnAssets | null | undefined = undefined
+
+const ownAssetsManifest = async (): Promise<OwnAssets | null> => {
+  if (ownAssets !== undefined) return ownAssets
+  ownAssets = null
   try {
     const response = await fetch(`${ASSET_BASE}manifest.json`, { cache: 'no-store' })
     if (response.ok) {
-      const manifest = (await response.json()) as { engine?: unknown } | null
-      ownAssets = typeof manifest?.engine === 'string'
+      const manifest = (await response.json()) as { engine?: unknown; models?: unknown } | null
+      if (typeof manifest?.engine === 'string' && manifest.engine) {
+        ownAssets = { engine: manifest.engine, models: manifest.models === true }
+      }
     }
   } catch {
-    // Нет своего каталога — это нормально: работает и на публичном CDN.
-    ownAssets = false
+    // Нет своего каталога — нормально: работаем через публичный CDN.
+    ownAssets = null
   }
   return ownAssets
 }
@@ -133,10 +165,11 @@ const ownAssetsAvailable = async (): Promise<boolean> => {
 /**
  * Есть ли у нас своя раздача движка и моделей — для тестов и раздела «Устройство».
  *
- * Наружу открыта именно ради проверки грабли с фолбэком: без неё легко снова
- * решить, что файлы есть, и упасть на первом же импорте.
+ * Наружу открыта ради проверки грабли с фолбэком: без неё легко снова решить,
+ * что файлы есть, и упасть на первом же импорте.
  */
-export const ownSpeechAssetsAvailable = async (): Promise<boolean> => await ownAssetsAvailable()
+export const ownSpeechAssetsAvailable = async (): Promise<boolean> =>
+  (await ownAssetsManifest()) !== null
 
 /** Загруженный движок: один на вкладку. */
 let engine: Promise<LocalSpeechEngine> | null = null
@@ -144,19 +177,49 @@ let engine: Promise<LocalSpeechEngine> | null = null
 const loadEngine = async (): Promise<LocalSpeechEngine> => {
   if (engineLoader) return await engineLoader()
   if (engine) return await engine
-  const url = (await ownAssetsAvailable()) ? `${ASSET_BASE}transformers.web.js` : ENGINE_CDN
-  engine = (async () => {
+  const assets = await ownAssetsManifest()
+
+  /**
+   * Поднимает движок: со своего сервера или с публичного CDN.
+   *
+   * В своём режиме рядом с движком лежат и файлы рантайма ONNX — говорим об этом
+   * явно (`wasmPaths`), иначе движок потянул бы `.wasm` с чужого CDN, а именно
+   * из-за него расшифровка и не запускалась на телефоне (владелец: «всё равно не
+   * удалось загрузить движок с телефона»).
+   */
+  const setup = async (mode: 'own' | 'cdn'): Promise<LocalSpeechEngine> => {
+    const url = mode === 'own' && assets ? `${ASSET_BASE}${assets.engine}` : ENGINE_CDN
     // Импорт по URL: сборщик сюда не лезет (`@vite-ignore`), а модуль попадает в
     // бандл только на телефоне и только при первом распознавании.
-    const module = (await import(/* @vite-ignore */ url)) as unknown as LocalSpeechEngine
+    const module = await importEngine(url)
     module.env.allowLocalModels = false
     module.env.useBrowserCache = true
-    if (await ownAssetsAvailable()) {
-      // Своя раздача: и модель, и файлы рантайма берём с нашего сервера.
-      module.env.remoteHost = new URL(ASSET_BASE, location.origin).toString().replace(/\/$/, '')
-      module.env.remotePathTemplate = 'models/{model}/resolve/main/'
+    if (mode === 'own' && assets) {
+      module.env.backends ??= {}
+      module.env.backends.onnx ??= {}
+      module.env.backends.onnx.wasm ??= {}
+      module.env.backends.onnx.wasm.wasmPaths = ASSET_BASE
+      if (assets.models) {
+        module.env.remoteHost = new URL(ASSET_BASE, location.origin).toString().replace(/\/$/, '')
+        module.env.remotePathTemplate = 'models/{model}/resolve/main/'
+      }
     }
     return module
+  }
+
+  engine = (async () => {
+    if (assets) {
+      try {
+        return await setup('own')
+      } catch (error) {
+        // Свои файлы могли не дойти — тогда всё берём с публичного CDN (и модели в
+        // том числе), а не оставляем человека с отказом на ровном месте. Причину
+        // пишем в консоль: по ней потом видно, что именно не отдал сервер.
+        console.warn('[stt] свой движок не поднялся, беру с CDN', error)
+        ownAssets = null
+      }
+    }
+    return await setup('cdn')
   })()
   return await engine
 }
