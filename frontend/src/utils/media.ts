@@ -1,6 +1,7 @@
 /** Утилиты определения и описания вложений сообщений. */
 
 import type { Message, MessageFile } from '@/types'
+import { t } from '@/i18n'
 import { isEncryptedPayload } from '@/services/e2ee'
 import { plainMessageText } from '@/utils/mentions'
 
@@ -122,7 +123,7 @@ export const messageSnippet = (message: Message): string => {
 export const callMessageText = (message: Message): string | null => {
   if (message.kind !== 'call') return null
   const isVideo = message.call_kind === 'video'
-  const name = isVideo ? 'Видеозвонок' : 'Аудиозвонок'
+  const name = isVideo ? t('Видеозвонок') : t('Аудиозвонок')
   if (message.call_state === 'completed') {
     const total = message.call_duration ?? 0
     const mm = Math.floor(total / 60)
@@ -130,9 +131,9 @@ export const callMessageText = (message: Message): string | null => {
     return `${name} · ${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
   }
   if (message.call_state === 'missed') {
-    return `Пропущенный ${isVideo ? 'видеозвонок' : 'звонок'}`
+    return isVideo ? t('Пропущенный видеозвонок') : t('Пропущенный звонок')
   }
-  if (message.call_state === 'declined') return `${name} отклонён`
+  if (message.call_state === 'declined') return t('{name} отклонён', { name })
   return name
 }
 

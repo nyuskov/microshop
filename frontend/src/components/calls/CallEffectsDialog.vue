@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 
+import { t } from '@/i18n'
 import { icon } from '@/utils/icons'
 import { useCallStore } from '@/stores/call'
 import {
@@ -31,8 +32,9 @@ const supported = computed(() => isVideoEffectsSupported())
 
 onMounted(() => {
   if (!supported.value) {
-    callStore.videoEffectsUnavailable =
+    callStore.videoEffectsUnavailable = t(
       'Браузер не умеет обрабатывать видео на лету — эффекты недоступны'
+    )
   }
 })
 
@@ -57,24 +59,24 @@ const resetMask = () => {
       class="ms-overlay-card fx-card"
       role="dialog"
       aria-modal="true"
-      aria-label="Эффекты видео"
+      :aria-label="t('Эффекты видео')"
       tabindex="-1"
     >
       <div class="ms-overlay-head">
-        <h2 class="ms-overlay-title">Эффекты видео</h2>
-        <button class="icon-btn" type="button" title="Закрыть" @click="emit('close')">
+        <h2 class="ms-overlay-title">{{ t('Эффекты видео') }}</h2>
+        <button class="icon-btn" type="button" :title="t('Закрыть')" @click="emit('close')">
           <q-icon :name="icon('close')" size="20px" />
         </button>
       </div>
 
       <div class="ms-overlay-body fx-body">
         <p v-if="!supported || callStore.videoEffectsUnavailable" class="fx-note" role="status">
-          {{ callStore.videoEffectsUnavailable || 'Эффекты недоступны на этом устройстве' }}
+          {{ callStore.videoEffectsUnavailable || t('Эффекты недоступны на этом устройстве') }}
         </p>
 
         <template v-else>
-          <h3 class="fx-title">Цвет</h3>
-          <div class="fx-chips" role="radiogroup" aria-label="Эффект кадра">
+          <h3 class="fx-title">{{ t('Цвет') }}</h3>
+          <div class="fx-chips" role="radiogroup" :aria-label="t('Эффект кадра')">
             <button
               v-for="preset in VIDEO_EFFECTS"
               :key="preset.id"
@@ -85,12 +87,12 @@ const resetMask = () => {
               :aria-checked="callStore.videoEffect === preset.id"
               @click="callStore.setVideoEffect(preset.id)"
             >
-              {{ preset.title }}
+              {{ t(preset.title) }}
             </button>
           </div>
 
-          <h3 class="fx-title">Маска</h3>
-          <div class="fx-chips" role="radiogroup" aria-label="Маска на видео">
+          <h3 class="fx-title">{{ t('Маска') }}</h3>
+          <div class="fx-chips" role="radiogroup" :aria-label="t('Маска на видео')">
             <button
               type="button"
               class="fx-chip"
@@ -99,7 +101,7 @@ const resetMask = () => {
               :aria-checked="callStore.videoMask === null"
               @click="callStore.setVideoMask(null)"
             >
-              Без маски
+              {{ t('Без маски') }}
             </button>
             <button
               v-for="mask in VIDEO_MASKS"
@@ -111,7 +113,7 @@ const resetMask = () => {
               :aria-checked="callStore.videoMask === mask.id"
               @click="callStore.setVideoMask(mask.id)"
             >
-              {{ mask.title }}
+              {{ t(mask.title) }}
             </button>
           </div>
 
@@ -124,8 +126,8 @@ const resetMask = () => {
                 type="button"
                 class="fx-btn fx-size"
                 :disabled="!canScaleDown"
-                title="Маска меньше"
-                aria-label="Маска меньше"
+                :title="t('Маска меньше')"
+                :aria-label="t('Маска меньше')"
                 @click="scaleMask(-0.08)"
               >
                 −
@@ -134,15 +136,17 @@ const resetMask = () => {
                 type="button"
                 class="fx-btn fx-size"
                 :disabled="!canScaleUp"
-                title="Маска больше"
-                aria-label="Маска больше"
+                :title="t('Маска больше')"
+                :aria-label="t('Маска больше')"
                 @click="scaleMask(0.08)"
               >
                 +
               </button>
-              <button type="button" class="fx-btn" @click="resetMask">По центру</button>
+              <button type="button" class="fx-btn" @click="resetMask">{{ t('По центру') }}</button>
             </div>
-            <p class="fx-hint">Потяните маску на своём видео, чтобы поставить её по лицу.</p>
+            <p class="fx-hint">
+              {{ t('Потяните маску на своём видео, чтобы поставить её по лицу.') }}
+            </p>
           </template>
 
           <button
@@ -151,12 +155,15 @@ const resetMask = () => {
             class="fx-btn fx-reset"
             @click="callStore.resetVideoEffects()"
           >
-            Убрать все эффекты
+            {{ t('Убрать все эффекты') }}
           </button>
 
           <p class="fx-note">
-            Эффекты считаются на вашем устройстве: кадр никуда не отправляется и собеседник видит
-            уже готовую картинку.
+            {{
+              t(
+                'Эффекты считаются на вашем устройстве: кадр никуда не отправляется и собеседник видит уже готовую картинку.'
+              )
+            }}
           </p>
         </template>
       </div>

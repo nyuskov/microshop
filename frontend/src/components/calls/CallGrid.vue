@@ -21,7 +21,7 @@
           aria-hidden="true"
         />
         <span class="grid-avatar-name">
-          {{ ringing(participant.id) ? 'Звоним…' : participant.name }}
+          {{ ringing(participant.id) ? t('Звоним…') : participant.name }}
         </span>
       </div>
       <!-- Сброс участника: не поднял трубку — прекращаем вызов; уже в разговоре —
@@ -30,8 +30,16 @@
       <button
         class="grid-drop"
         type="button"
-        :title="`${ringing(participant.id) ? 'Сбросить вызов' : 'Убрать из звонка'}: ${participant.name}`"
-        :aria-label="`${ringing(participant.id) ? 'Сбросить вызов' : 'Убрать из звонка'}: ${participant.name}`"
+        :title="
+          t(ringing(participant.id) ? 'Сбросить вызов: {name}' : 'Убрать из звонка: {name}', {
+            name: participant.name
+          })
+        "
+        :aria-label="
+          t(ringing(participant.id) ? 'Сбросить вызов: {name}' : 'Убрать из звонка: {name}', {
+            name: participant.name
+          })
+        "
         @click.stop="emit('drop', participant.id)"
       >
         <q-icon :name="icon('call_end')" size="18px" />
@@ -42,14 +50,14 @@
           size="15px"
           class="grid-mic"
           :class="{ off: !participant.micOn }"
-          :title="participant.micOn ? 'Микрофон включён' : 'Микрофон выключен'"
+          :title="participant.micOn ? t('Микрофон включён') : t('Микрофон выключен')"
         />
         <span class="grid-name">{{ participant.name }}</span>
         <q-icon
           v-if="participant.screenSharing"
           :name="icon('screen_share')"
           size="15px"
-          title="Показывает экран"
+          :title="t('Показывает экран')"
         />
       </div>
     </div>
@@ -64,7 +72,7 @@
       ></video>
       <div v-else class="grid-avatar">
         <q-icon :name="icon('person')" size="34px" aria-hidden="true" />
-        <span class="grid-avatar-name">Вы</span>
+        <span class="grid-avatar-name">{{ t('Вы') }}</span>
       </div>
       <div class="grid-plate">
         <q-icon
@@ -73,12 +81,12 @@
           class="grid-mic"
           :class="{ off: !callStore.micOn }"
         />
-        <span class="grid-name">Вы</span>
+        <span class="grid-name">{{ t('Вы') }}</span>
         <q-icon
           v-if="callStore.screenSharing"
           :name="icon('screen_share')"
           size="15px"
-          title="Показываете экран"
+          :title="t('Показываете экран')"
         />
       </div>
     </div>
@@ -89,6 +97,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import { useCallStore } from '@/stores/call'
+import { t } from '@/i18n'
 import { icon } from '@/utils/icons'
 
 /**

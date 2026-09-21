@@ -6,6 +6,7 @@
  * иконки, фильтры и группировка по дням — чистые функции, чтобы правила
  * проверялись тестами, а не в разметке.
  */
+import { t } from '@/i18n'
 import type { ChatUser } from '@/types'
 import { dayLabel, formatChatTime, formatMsgTime } from '@/utils/format'
 
@@ -75,7 +76,7 @@ export const formatCallDuration = (seconds: number): string => {
 
 /** Тип звонка словом. */
 export const callKindLabel = (item: CallHistoryItem): string =>
-  item.call_kind === 'video' ? 'Видео' : 'Аудио'
+  item.call_kind === 'video' ? t('Видео') : t('Аудио')
 
 /**
  * Подпись строки: исход, направление и длительность.
@@ -86,14 +87,16 @@ export const callKindLabel = (item: CallHistoryItem): string =>
  * «вам отказали».
  */
 export const callHistoryLabel = (item: CallHistoryItem): string => {
-  if (isMissedCall(item)) return 'Пропущенный'
+  if (isMissedCall(item)) return t('Пропущенный')
   const kind = callKindLabel(item)
   if (item.call_state === 'declined') {
-    return item.outgoing ? `${kind} · отклонён` : `${kind} · не ответили`
+    return item.outgoing ? t('{kind} · отклонён', { kind }) : t('{kind} · не ответили', { kind })
   }
   const duration = formatCallDuration(item.call_duration)
-  const direction = item.outgoing ? 'Исходящий' : 'Входящий'
-  return duration ? `${direction} · ${kind} · ${duration}` : `${direction} · ${kind}`
+  const direction = item.outgoing ? t('Исходящий') : t('Входящий')
+  return duration
+    ? t('{direction} · {kind} · {duration}', { direction, kind, duration })
+    : t('{direction} · {kind}', { direction, kind })
 }
 
 /** Время записи: сегодня — «14:05», раньше — «16.09 14:05». */
@@ -113,9 +116,9 @@ export const callHistoryDay = (item: CallHistoryItem): string => dayLabel(new Da
 /** Имя собеседника для экрана (пусто — покажем «Удалённый аккаунт»). */
 export const callPeerName = (item: CallHistoryItem): string => {
   const peer = item.peer
-  if (!peer) return 'Удалённый аккаунт'
+  if (!peer) return t('Удалённый аккаунт')
   const name = [peer.first_name, peer.last_name].filter(Boolean).join(' ').trim()
-  return name || peer.username || 'Без имени'
+  return name || peer.username || t('Без имени')
 }
 
 /** Фильтрует записи по выбранному фильтру (пустой фильтр — всё). */

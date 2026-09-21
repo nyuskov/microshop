@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import type { ScreenShareSupport } from './types'
 
 /**
@@ -27,14 +28,16 @@ export function screenShareSupport(): ScreenShareSupport {
 /** Текст для пользователя: почему показа экрана не будет. */
 export function screenShareNotice(support: ScreenShareSupport): string {
   if (support === 'insecure') {
-    return 'Показ экрана работает только по защищённому соединению (HTTPS)'
+    return t('Показ экрана работает только по защищённому соединению (HTTPS)')
   }
   if (support === 'mobile') {
-    return 'На телефоне показ экрана недоступен — включите его с компьютера'
+    return t('На телефоне показ экрана недоступен — включите его с компьютера')
   }
   if (support === 'embedded') {
-    return 'Во встроенном браузере захват экрана не работает — откройте приложение в обычном Chrome'
+    return t(
+      'Во встроенном браузере захват экрана не работает — откройте приложение в обычном Chrome'
+    )
   }
-  if (support === 'unsupported') return 'Браузер не поддерживает демонстрацию экрана'
+  if (support === 'unsupported') return t('Браузер не поддерживает демонстрацию экрана')
   return ''
 }

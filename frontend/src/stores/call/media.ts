@@ -1,4 +1,5 @@
 import { ICE_SERVERS as CONFIG_ICE_SERVERS, WS_ORIGIN } from '@/config'
+import { t } from '@/i18n'
 import { fetchIceServers } from '@/services/iceServers'
 import type { MicProcessing } from '@/utils/callDevices'
 
@@ -182,18 +183,18 @@ export function hasLiveTrack(stream: MediaStream, kind: 'audio' | 'video'): bool
  */
 export function mediaErrorMessage(error: unknown, kind: CallKind): string {
   const name = error instanceof Error ? error.name : ''
-  const subject = kind === 'video' ? 'камере и микрофону' : 'микрофону'
+  const subject = kind === 'video' ? t('камере и микрофону') : t('микрофону')
   if (name === 'NotAllowedError' || name === 'SecurityError') {
-    return `Доступ к ${subject} запрещён — разрешите его в настройках браузера`
+    return t('Доступ к {subject} запрещён — разрешите его в настройках браузера', { subject })
   }
   if (name === 'NotFoundError' || name === 'OverconstrainedError') {
-    const device = kind === 'video' ? 'камеру и микрофон' : 'микрофон'
-    return `Не нашлось подходящего устройства: проверьте ${device}`
+    const device = kind === 'video' ? t('камеру и микрофон') : t('микрофон')
+    return t('Не нашлось подходящего устройства: проверьте {device}', { device })
   }
   if (name === 'NotReadableError' || name === 'AbortError') {
-    return 'Камера или микрофон заняты другим приложением — закройте его и попробуйте снова'
+    return t('Камера или микрофон заняты другим приложением — закройте его и попробуйте снова')
   }
-  return `Не удалось получить доступ к ${subject}`
+  return t('Не удалось получить доступ к {subject}', { subject })
 }
 
 export function socketUrl(token: string): string {
@@ -283,7 +284,7 @@ export async function acquireCameraStream(
       if (isFatalCaptureError(error)) throw error
     }
   }
-  throw lastError ?? new Error('нет видеодорожки')
+  throw lastError ?? new Error(t('нет видеодорожки'))
 }
 
 /** Итог захвата медиа: поток и режим, в котором звонок реально может идти. */
@@ -321,7 +322,7 @@ export async function acquireLocalMedia(
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio, video })
       if (stream.getVideoTracks().length > 0) return { stream, kind: 'video' }
-      lastError = lastError ?? new Error('нет видеодорожки')
+      lastError = lastError ?? new Error(t('нет видеодорожки'))
     } catch (error) {
       lastError = error
       if (isFatalCaptureError(error)) throw error

@@ -1,4 +1,5 @@
 import { computed, ref, watch, type ComputedRef } from 'vue'
+import { t } from '@/i18n'
 import { useCallStore } from '@/stores/call'
 import { isCallStillPending } from '@/services/pendingCall'
 import { closeCallRings, showIncomingCallRing } from '@/services/pwa'
@@ -97,7 +98,7 @@ export function useCallSession({ ready, findPeerUser }: CallSessionDeps) {
     if (callLaunch.value?.callId !== callId) return
     callLaunch.value = null
     stopCallLaunchScreen()
-    callStore.notice = 'Звонок завершён'
+    callStore.notice = t('Звонок завершён')
   }
 
   const showCallLaunchRing = () => {
@@ -238,8 +239,8 @@ export function useCallSession({ ready, findPeerUser }: CallSessionDeps) {
     const peerName =
       callStore.peerName && !callStore.peerName.startsWith('@') ? callStore.peerName : ''
     return {
-      title: peerName || 'Входящий звонок',
-      body: callStore.kind === 'video' ? 'Видеозвонок' : 'Аудиозвонок',
+      title: peerName || t('Входящий звонок'),
+      body: callStore.kind === 'video' ? t('Видеозвонок') : t('Аудиозвонок'),
       callId: callStore.callId ?? '',
       peerId: callStore.peerId ?? 0
     }

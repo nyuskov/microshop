@@ -22,13 +22,21 @@
             </span>
             <h2 class="call-name">{{ displayName }}</h2>
             <p class="call-subtitle">
-              Входящий {{ callStore.kind === 'video' ? 'видеозвонок' : 'звонок' }}
+              {{ callStore.kind === 'video' ? t('Входящий видеозвонок') : t('Входящий звонок') }}
             </p>
             <div class="call-controls incoming-controls">
-              <button class="ctl-btn danger big" title="Отклонить" @click="callStore.declineCall()">
+              <button
+                class="ctl-btn danger big"
+                :title="t('Отклонить')"
+                @click="callStore.declineCall()"
+              >
                 <q-icon :name="icon('call_end')" size="28px" />
               </button>
-              <button class="ctl-btn accept big" title="Ответить" @click="callStore.acceptCall()">
+              <button
+                class="ctl-btn accept big"
+                :title="t('Ответить')"
+                @click="callStore.acceptCall()"
+              >
                 <q-icon
                   :name="icon(callStore.kind === 'video' ? 'videocam' : 'call')"
                   size="28px"
@@ -47,8 +55,12 @@
               <!-- Та же верхняя строка, что и в разговоре: подпись слева,
                    кнопка отмены справа. Плитки ниже — их кнопки сброса видны. -->
               <div class="group-ringing">
-                <p class="call-subtitle">Звоним…</p>
-                <button class="ctl-btn danger big" title="Отменить" @click="callStore.cancelCall()">
+                <p class="call-subtitle">{{ t('Звоним…') }}</p>
+                <button
+                  class="ctl-btn danger big"
+                  :title="t('Отменить')"
+                  @click="callStore.cancelCall()"
+                >
                   <q-icon :name="icon('call_end')" size="28px" />
                 </button>
               </div>
@@ -67,9 +79,13 @@
               <template v-else>{{ displayNameInitials }}</template>
             </span>
             <h2 class="call-name">{{ displayName }}</h2>
-            <p class="call-subtitle">Звоним…</p>
+            <p class="call-subtitle">{{ t('Звоним…') }}</p>
             <div class="call-controls incoming-controls">
-              <button class="ctl-btn danger big" title="Отменить" @click="callStore.cancelCall()">
+              <button
+                class="ctl-btn danger big"
+                :title="t('Отменить')"
+                @click="callStore.cancelCall()"
+              >
                 <q-icon :name="icon('call_end')" size="28px" />
               </button>
             </div>
@@ -113,7 +129,7 @@
               <template v-else>{{ displayNameInitials }}</template>
             </span>
             <!-- В аудиозвонке это норма, подпись нужна только видеозвонку. -->
-            <p class="peer-video-off-text">Камера собеседника выключена</p>
+            <p class="peer-video-off-text">{{ t('Камера собеседника выключена') }}</p>
           </div>
 
           <div
@@ -134,16 +150,17 @@
               </span>
               <h2 class="call-name audio-name">{{ displayName }}</h2>
               <p class="call-subtitle audio-sub">
-                Голосовой звонок · <span class="call-timer">{{ callStore.formattedTime }}</span>
+                {{ t('Голосовой звонок') }} ·
+                <span class="call-timer">{{ callStore.formattedTime }}</span>
               </p>
               <div v-if="hasCallBadges" class="call-badges">
                 <span
                   v-if="!callStore.peerMicOn"
                   class="call-badge"
-                  title="Собеседник выключил микрофон"
+                  :title="t('Собеседник выключил микрофон')"
                 >
                   <q-icon :name="icon('mic_off')" size="12px" aria-hidden="true" />
-                  Микрофон собеседника выключен
+                  {{ t('Микрофон собеседника выключен') }}
                 </span>
                 <span
                   v-if="callStore.connectionQuality !== 'good'"
@@ -152,26 +169,26 @@
                   :title="callStore.diagnosticsSummary"
                 >
                   <q-icon :name="icon('wifi_off')" size="12px" aria-hidden="true" />
-                  Плохая связь
+                  {{ t('Плохая связь') }}
                 </span>
                 <span
                   v-if="callStore.videoPausedForNetwork"
                   class="call-badge fair"
-                  title="Связь слабая — видео приостановлено, чтобы не пропадал звук"
+                  :title="t('Связь слабая — видео приостановлено, чтобы не пропадал звук')"
                 >
                   <q-icon :name="icon('videocam_off')" size="12px" aria-hidden="true" />
-                  Видео приостановлено
+                  {{ t('Видео приостановлено') }}
                 </span>
                 <!-- Свой показ экрана видно и словами: раньше о нём говорила
                      только подсвеченная кнопка, и было непонятно, идёт ли он. -->
                 <span v-if="callStore.screenSharing" class="call-badge share">
                   <q-icon :name="icon('screen_share')" size="12px" aria-hidden="true" />
-                  Вы показываете экран
+                  {{ t('Вы показываете экран') }}
                 </span>
               </div>
               <span v-if="callStore.peerScreenSharing" class="call-sharing">
                 <q-icon :name="icon('screen_share')" size="13px" aria-hidden="true" />
-                Собеседник показывает экран
+                {{ t('Собеседник показывает экран') }}
               </span>
               <span class="call-e2ee" :title="callStore.callRouteHint">
                 <q-icon :name="icon('lock')" size="11px" aria-hidden="true" />
@@ -198,10 +215,10 @@
                   <span
                     v-if="!callStore.peerMicOn"
                     class="call-badge"
-                    title="Собеседник выключил микрофон"
+                    :title="t('Собеседник выключил микрофон')"
                   >
                     <q-icon :name="icon('mic_off')" size="12px" aria-hidden="true" />
-                    Микрофон выключен
+                    {{ t('Микрофон выключен') }}
                   </span>
                   <span
                     v-if="callStore.connectionQuality !== 'good'"
@@ -210,24 +227,24 @@
                     :title="callStore.diagnosticsSummary"
                   >
                     <q-icon :name="icon('wifi_off')" size="12px" aria-hidden="true" />
-                    Плохая связь
+                    {{ t('Плохая связь') }}
                   </span>
                   <span
                     v-if="callStore.videoPausedForNetwork"
                     class="call-badge fair"
-                    title="Связь слабая — видео приостановлено (верните в меню «Ещё»)"
+                    :title="t('Связь слабая — видео приостановлено (верните в меню «Ещё»)')"
                   >
                     <q-icon :name="icon('videocam_off')" size="12px" aria-hidden="true" />
-                    Видео приостановлено
+                    {{ t('Видео приостановлено') }}
                   </span>
                   <span v-if="callStore.screenSharing" class="call-badge share">
                     <q-icon :name="icon('screen_share')" size="12px" aria-hidden="true" />
-                    Вы показываете экран
+                    {{ t('Вы показываете экран') }}
                   </span>
                 </div>
                 <span v-if="callStore.peerScreenSharing" class="call-sharing video">
                   <q-icon :name="icon('screen_share')" size="12px" aria-hidden="true" />
-                  Собеседник показывает экран
+                  {{ t('Собеседник показывает экран') }}
                 </span>
                 <span class="call-e2ee video" :title="callStore.callRouteHint">
                   <q-icon :name="icon('lock')" size="10px" aria-hidden="true" />
@@ -264,7 +281,7 @@
               <button
                 class="ctl-btn"
                 :class="{ off: !callStore.micOn }"
-                title="Микрофон"
+                :title="t('Микрофон')"
                 @click="callStore.toggleMic()"
               >
                 <q-icon :name="icon('mic')" size="26px" />
@@ -273,7 +290,7 @@
                 v-if="callStore.kind === 'video' && !callStore.screenSharing"
                 class="ctl-btn"
                 :class="{ off: !callStore.videoOn }"
-                title="Камера"
+                :title="t('Камера')"
                 @click="callStore.toggleCamera()"
               >
                 <q-icon :name="icon('videocam')" size="26px" />
@@ -286,7 +303,9 @@
                 v-if="canShareScreen || callStore.screenSharing"
                 class="ctl-btn"
                 :class="{ 'screen-on': callStore.screenSharing }"
-                :title="callStore.screenSharing ? 'Остановить показ экрана' : 'Показать экран'"
+                :title="
+                  callStore.screenSharing ? t('Остановить показ экрана') : t('Показать экран')
+                "
                 :aria-pressed="callStore.screenSharing"
                 @click="callStore.toggleScreenShare()"
               >
@@ -299,14 +318,18 @@
                 ref="moreBtnEl"
                 class="ctl-btn"
                 :class="{ 'screen-on': callStore.screenSharing, 'speaker-on': moreOpen }"
-                :title="moreOpen ? 'Скрыть меню' : 'Ещё'"
+                :title="moreOpen ? t('Скрыть меню') : t('Ещё')"
                 :aria-expanded="moreOpen"
                 :aria-pressed="moreOpen"
                 @click="toggleMore"
               >
                 <q-icon :name="icon(moreOpen ? 'close' : 'more_vert')" size="26px" />
               </button>
-              <button class="ctl-btn danger big" title="Завершить" @click="callStore.endCall()">
+              <button
+                class="ctl-btn danger big"
+                :title="t('Завершить')"
+                @click="callStore.endCall()"
+              >
                 <q-icon :name="icon('call_end')" size="28px" />
               </button>
             </div>
@@ -318,7 +341,7 @@
               <div v-if="moreOpen" class="call-more" role="menu">
                 <button class="more-row" role="menuitem" @click="onSpeakerRow">
                   <q-icon :name="icon(speakerOn ? 'volume_up' : 'volume_down')" size="20px" />
-                  <span>{{ speakerOn ? 'Обычный режим' : 'Громкая связь' }}</span>
+                  <span>{{ speakerOn ? t('Обычный режим') : t('Громкая связь') }}</span>
                   <q-icon v-if="speakerOn" :name="icon('check')" size="16px" class="more-mark" />
                 </button>
                 <!-- Видео могло «встать» само из-за плохой связи: возврат — решением человека. -->
@@ -329,7 +352,7 @@
                   @click="onResumeVideoRow"
                 >
                   <q-icon :name="icon('videocam')" size="20px" />
-                  <span>Вернуть видео</span>
+                  <span>{{ t('Вернуть видео') }}</span>
                 </button>
                 <button
                   v-if="canShareScreen || callStore.screenSharing"
@@ -343,7 +366,7 @@
                     size="20px"
                   />
                   <span>{{
-                    callStore.screenSharing ? 'Остановить показ экрана' : 'Показать экран'
+                    callStore.screenSharing ? t('Остановить показ экрана') : t('Показать экран')
                   }}</span>
                   <q-icon
                     v-if="callStore.screenSharing"
@@ -366,7 +389,9 @@
                 >
                   <q-icon :name="icon('switch_camera')" size="20px" />
                   <span>{{
-                    callStore.cameraFacing === 'environment' ? 'Передняя камера' : 'Задняя камера'
+                    callStore.cameraFacing === 'environment'
+                      ? t('Передняя камера')
+                      : t('Задняя камера')
                   }}</span>
                   <q-icon
                     v-if="callStore.cameraFacing === 'environment'"
@@ -382,7 +407,7 @@
                   @click="onDevicesRow"
                 >
                   <q-icon :name="icon('tune')" size="20px" />
-                  <span>Устройства звонка</span>
+                  <span>{{ t('Устройства звонка') }}</span>
                   <q-icon v-if="settingsOpen" :name="icon('check')" size="16px" class="more-mark" />
                 </button>
                 <!-- Эффекты видео: цвет кадра и маска. Показ экрана их выключает
@@ -395,7 +420,7 @@
                   @click="onEffectsRow"
                 >
                   <q-icon :name="icon('palette')" size="20px" />
-                  <span>Эффекты видео</span>
+                  <span>{{ t('Эффекты видео') }}</span>
                   <q-icon v-if="effectsOpen" :name="icon('check')" size="16px" class="more-mark" />
                 </button>
                 <!-- Картинка в картинке: разговор можно свернуть в плавающее окно
@@ -407,7 +432,7 @@
                   @click="onPictureInPictureRow"
                 >
                   <q-icon :name="icon('picture_in_picture')" size="20px" />
-                  <span>Окно поверх других</span>
+                  <span>{{ t('Окно поверх других') }}</span>
                 </button>
                 <!-- Диагностика: куда идёт медиа (напрямую/через релей) и как оно
                    себя чувствует. Нужна, когда «нет звука» или «чёрный экран». -->
@@ -418,7 +443,7 @@
                   @click="onDiagnosticsRow"
                 >
                   <q-icon :name="icon('wifi')" size="20px" />
-                  <span>Диагностика звонка</span>
+                  <span>{{ t('Диагностика звонка') }}</span>
                   <q-icon
                     v-if="diagnosticsOpen"
                     :name="icon('check')"
@@ -436,7 +461,7 @@
                   @click="onVerifyRow"
                 >
                   <q-icon :name="icon('verified_user')" size="20px" />
-                  <span>Код сверки</span>
+                  <span>{{ t('Код сверки') }}</span>
                   <q-icon v-if="verifyOpen" :name="icon('check')" size="16px" class="more-mark" />
                 </button>
               </div>
@@ -444,24 +469,26 @@
               <!-- Панель кода сверки: те же 6 цифр у обоих участников. -->
               <div v-if="verifyOpen" class="call-verify">
                 <p v-if="!callStore.verificationCode" class="diagnostics-hint">
-                  Код появится, когда соединение установится.
+                  {{ t('Код появится, когда соединение установится.') }}
                 </p>
                 <template v-else>
-                  <div class="verify-code" aria-label="Код сверки">
+                  <div class="verify-code" :aria-label="t('Код сверки')">
                     {{ formatVerificationCode(callStore.verificationCode) }}
                   </div>
                 </template>
                 <p class="verify-hint">
-                  Сравните код с собеседником вслух — по телефону или голосом. Совпал — разговор
-                  идёт именно между вами, сервер в середине отсутствует. Код меняется у каждого
-                  нового звонка: сверять надо каждый раз.
+                  {{
+                    t(
+                      'Сравните код с собеседником вслух — по телефону или голосом. Совпал — разговор идёт именно между вами, сервер в середине отсутствует. Код меняется у каждого нового звонка: сверять надо каждый раз.'
+                    )
+                  }}
                 </p>
               </div>
 
               <!-- Панель диагностики соединения -->
               <div v-if="diagnosticsOpen" class="call-diagnostics">
                 <p v-if="!callStore.diagnostics" class="diagnostics-hint">
-                  Собираем данные о соединении…
+                  {{ t('Собираем данные о соединении…') }}
                 </p>
                 <template v-else>
                   <div v-for="row in diagRows" :key="row.label" class="diag-row">
@@ -481,11 +508,11 @@
                       :name="icon(copiedDiagnostics ? 'check' : 'content_copy')"
                       size="14px"
                     />
-                    {{ copiedDiagnostics ? 'Скопировано' : 'Скопировать' }}
+                    {{ copiedDiagnostics ? t('Скопировано') : t('Скопировать') }}
                   </button>
                   <button class="diag-btn" @click="callStore.refreshDiagnostics()">
                     <q-icon :name="icon('refresh')" size="14px" />
-                    Обновить
+                    {{ t('Обновить') }}
                   </button>
                 </div>
               </div>
@@ -495,46 +522,46 @@
                    поля (жалоба 15.09.2026). -->
               <div v-if="settingsOpen" class="call-settings">
                 <div v-if="callStore.cameras.length" class="settings-row">
-                  <span class="settings-label">Камера</span>
+                  <span class="settings-label">{{ t('Камера') }}</span>
                   <SelectField
                     :model-value="callStore.selectedCamera"
                     :options="cameraOptions"
                     variant="call"
-                    aria-label="Камера"
+                    :aria-label="t('Камера')"
                     @update:model-value="onCameraPick"
                   />
                 </div>
 
                 <div v-if="callStore.microphones.length" class="settings-row">
-                  <span class="settings-label">Микрофон</span>
+                  <span class="settings-label">{{ t('Микрофон') }}</span>
                   <SelectField
                     :model-value="callStore.selectedMic"
                     :options="micOptions"
                     variant="call"
-                    aria-label="Микрофон"
+                    :aria-label="t('Микрофон')"
                     @update:model-value="onMicPick"
                   />
                 </div>
 
                 <!-- Шумодав на части телефонов делает голос «роботом»: даём выбор. -->
                 <div class="settings-row">
-                  <span class="settings-label">Обработка звука</span>
+                  <span class="settings-label">{{ t('Обработка звука') }}</span>
                   <SelectField
                     :model-value="callStore.micProcessing"
                     :options="micModeOptions"
                     variant="call"
-                    aria-label="Обработка звука"
+                    :aria-label="t('Обработка звука')"
                     @update:model-value="onMicModePick"
                   />
                 </div>
 
                 <div v-if="callStore.speakers.length && canSelectSpeaker" class="settings-row">
-                  <span class="settings-label">Звук</span>
+                  <span class="settings-label">{{ t('Звук') }}</span>
                   <SelectField
                     :model-value="callStore.selectedSpeaker"
                     :options="speakerOptions"
                     variant="call"
-                    aria-label="Звук"
+                    :aria-label="t('Звук')"
                     @update:model-value="onSpeakerPick"
                   />
                 </div>
@@ -543,7 +570,9 @@
                   v-if="!callStore.cameras.length && !callStore.microphones.length"
                   class="settings-hint"
                 >
-                  Список устройств появится после разрешения доступа к камере и микрофону.
+                  {{
+                    t('Список устройств появится после разрешения доступа к камере и микрофону.')
+                  }}
                 </p>
               </div>
             </div>
@@ -561,7 +590,7 @@
       <div v-if="callStore.reconnecting || noticeVisible" class="call-floats">
         <div v-if="callStore.reconnecting" class="call-reconnect">
           <span class="call-reconnect-spinner" aria-hidden="true"></span>
-          Переподключаемся…
+          {{ t('Переподключаемся…') }}
         </div>
 
         <div v-if="noticeVisible" class="call-notice" @click="hideNotice">
@@ -578,6 +607,7 @@
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { t } from '@/i18n'
 import { peerQualityLine, screenShareNotice, screenShareSupport, useCallStore } from '@/stores/call'
 import { mediaUrl } from '@/services/chatService'
 import CallGrid from '@/components/calls/CallGrid.vue'
@@ -639,20 +669,22 @@ const routeLabel = computed<string>(() => {
   const diag = callStore.diagnostics
   if (!diag) return '—'
   if (diag.candidateType === 'relay') {
-    return `через релей (TURN${diag.relayProtocol ? `, ${diag.relayProtocol}` : ''})`
+    return t('через релей (TURN{protocol})', {
+      protocol: diag.relayProtocol ? `, ${diag.relayProtocol}` : ''
+    })
   }
   if (diag.candidateType === 'srflx' || diag.candidateType === 'prflx') {
-    return 'напрямую через NAT'
+    return t('напрямую через NAT')
   }
-  if (diag.candidateType === 'host') return 'напрямую'
-  return 'определяем…'
+  if (diag.candidateType === 'host') return t('напрямую')
+  return t('определяем…')
 })
 
 /** Что ограничивает отправку — понятными словами (см. `utils/callStats.ts`). */
 const limitationLabel = (value: string): string => {
-  if (value === 'bandwidth') return 'полоса'
-  if (value === 'cpu') return 'процессор'
-  if (value === 'other') return 'прочее'
+  if (value === 'bandwidth') return t('полоса')
+  if (value === 'cpu') return t('процессор')
+  if (value === 'other') return t('прочее')
   return '—'
 }
 
@@ -660,27 +692,32 @@ const limitationLabel = (value: string): string => {
 const diagRows = computed<Array<{ label: string; value: string }>>(() => {
   const diag = callStore.diagnostics
   if (!diag) return []
+  const ms = (value: number): string => t('{value} мс', { value })
+  const kbps = (value: number): string => t('{value} кбит/с', { value })
   return [
-    { label: 'Соединение', value: `ICE: ${diag.iceState} · ${diag.connectionState}` },
-    { label: 'Маршрут', value: routeLabel.value },
-    { label: 'Задержка', value: `${diag.rttMs} мс` },
-    { label: 'Потери', value: `${diag.lossPercent}%` },
+    { label: t('Соединение'), value: `ICE: ${diag.iceState} · ${diag.connectionState}` },
+    { label: t('Маршрут'), value: routeLabel.value },
+    { label: t('Задержка'), value: ms(diag.rttMs) },
+    { label: t('Потери'), value: `${diag.lossPercent}%` },
     // Потери нашего потока у собеседника: на мобильной сети страдает именно отправка.
-    { label: 'Потери у собеседника', value: `${diag.remoteLossPercent}%` },
-    { label: 'Дрожание', value: `${diag.jitterMs} мс` },
-    { label: 'Буфер воспроизведения', value: `${diag.jitterBufferDelayMs} мс` },
-    { label: 'Приём', value: `${diag.inboundKbps} кбит/с` },
-    { label: 'Отправка', value: `${diag.outboundKbps} кбит/с` },
+    { label: t('Потери у собеседника'), value: `${diag.remoteLossPercent}%` },
+    { label: t('Дрожание'), value: ms(diag.jitterMs) },
+    { label: t('Буфер воспроизведения'), value: ms(diag.jitterBufferDelayMs) },
+    { label: t('Приём'), value: kbps(diag.inboundKbps) },
+    { label: t('Отправка'), value: kbps(diag.outboundKbps) },
     {
-      label: 'Полоса (оценка)',
-      value: diag.availableOutgoingKbps > 0 ? `${diag.availableOutgoingKbps} кбит/с` : '—'
+      label: t('Полоса (оценка)'),
+      value: diag.availableOutgoingKbps > 0 ? kbps(diag.availableOutgoingKbps) : '—'
     },
-    { label: 'Ограничивает', value: limitationLabel(diag.qualityLimitation) },
+    { label: t('Ограничивает'), value: limitationLabel(diag.qualityLimitation) },
     {
-      label: 'Видео теряется',
-      value: `${diag.freezeCount} заморозок · ${diag.framesDropped} кадров`
+      label: t('Видео теряется'),
+      value: t('{freezes} заморозок · {dropped} кадров', {
+        freezes: diag.freezeCount,
+        dropped: diag.framesDropped
+      })
     },
-    { label: 'Кодеки', value: diag.codecs.join(', ') || '—' }
+    { label: t('Кодеки'), value: diag.codecs.join(', ') || '—' }
   ]
 })
 
@@ -702,11 +739,16 @@ const peerDiagRows = computed<Array<{ label: string; value: string }>>(() => {
 /** Текст отчёта для копирования в поддержку/чат. */
 const diagnosticsText = computed<string>(() =>
   [
-    `Звонок: ${callStore.kind === 'video' ? 'видео' : 'аудио'}, ${callStore.formattedTime}`,
+    t('Звонок: {kind}, {time}', {
+      kind: callStore.kind === 'video' ? t('видео') : t('аудио'),
+      time: callStore.formattedTime
+    }),
     ...diagRows.value.map((row) => `${row.label}: ${row.value}`),
     // В группе — по строке на участника: «плохо слышно» относится к конкретному.
-    ...peerDiagRows.value.map((row) => `Участник ${row.label}: ${row.value}`),
-    `Итого: ${callStore.diagnosticsSummary}`
+    ...peerDiagRows.value.map((row) =>
+      t('Участник {name}: {value}', { name: row.label, value: row.value })
+    ),
+    t('Итого: {summary}', { summary: callStore.diagnosticsSummary })
   ].join('\n')
 )
 
@@ -908,10 +950,10 @@ const onCameraPick = (value: SelectValue) => void callStore.setCameraDevice(Stri
 const onMicPick = (value: SelectValue) => void callStore.setMicDevice(String(value))
 
 /** Режимы обработки микрофона: шумодав или естественный звук. */
-const micModeOptions = [
-  { value: 'clean', label: 'Чистый голос' },
-  { value: 'natural', label: 'Естественный' }
-]
+const micModeOptions = computed(() => [
+  { value: 'clean', label: t('Чистый голос') },
+  { value: 'natural', label: t('Естественный') }
+])
 
 /** Смена обработки звука (перезапрашивает микрофон — см. `setMicProcessing`). */
 const onMicModePick = (value: SelectValue) =>
@@ -927,15 +969,15 @@ const onSpeakerPick = (value: SelectValue) => void callStore.setSpeakerDevice(St
 
 /** Варианты для списков устройств (значение — deviceId, подпись — имя устройства). */
 const cameraOptions = computed(() =>
-  callStore.cameras.map((cam) => ({ value: cam.deviceId, label: cam.label || 'Камера' }))
+  callStore.cameras.map((cam) => ({ value: cam.deviceId, label: cam.label || t('Камера') }))
 )
 
 const micOptions = computed(() =>
-  callStore.microphones.map((mic) => ({ value: mic.deviceId, label: mic.label || 'Микрофон' }))
+  callStore.microphones.map((mic) => ({ value: mic.deviceId, label: mic.label || t('Микрофон') }))
 )
 
 const speakerOptions = computed(() =>
-  callStore.speakers.map((spk) => ({ value: spk.deviceId, label: spk.label || 'Динамик' }))
+  callStore.speakers.map((spk) => ({ value: spk.deviceId, label: spk.label || t('Динамик') }))
 )
 
 /** Направляет звук на выбранный динамик (Safari/iOS не поддерживают — молча пропускаем). */
@@ -975,7 +1017,7 @@ const avatarUrl = computed<string | undefined>(() => {
 
 const displayName = computed<string>(() => {
   const name = callStore.peerName.trim()
-  return name ? name : `Пользователь ${callStore.peerId ?? ''}`.trim()
+  return name ? name : t('Пользователь {id}', { id: callStore.peerId ?? '' }).trim()
 })
 
 const displayNameInitials = computed<string>(() => userInitials(displayName.value))

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 
+import { t } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 import { kindAfterScreenShare } from '@/utils/callMode'
 import {
@@ -402,7 +403,7 @@ export const useCallStore = defineStore('call', {
           if (alive) {
             return
           }
-          this._forceEnd('Связь потеряна — звонок завершён')
+          this._forceEnd(t('Связь потеряна — звонок завершён'))
           return
         }
         this._scheduleSocketRetry()
@@ -832,7 +833,7 @@ export const useCallStore = defineStore('call', {
       if (runtime.mediaWatchdogRestarts >= MEDIA_WATCHDOG_MAX_RESTARTS) {
         // Сами не починили — дальше только предупреждаем, звонок не рвём.
         this._clearMediaWatchdog()
-        this.notice = 'Звук и видео не идут — попробуйте переключить сеть или перезвонить'
+        this.notice = t('Звук и видео не идут — попробуйте переключить сеть или перезвонить')
         return
       }
       runtime.mediaWatchdogRestarts += 1
@@ -868,7 +869,7 @@ export const useCallStore = defineStore('call', {
         this._patchParticipant(link.peerId, { connected: false })
         // Все связи мертвы — вот тогда звонок действительно закончился.
         if (!this._hasLiveLink()) {
-          this._forceEnd('Связь потеряна — звонок завершён')
+          this._forceEnd(t('Связь потеряна — звонок завершён'))
         }
         return
       }
@@ -1153,7 +1154,7 @@ export const useCallStore = defineStore('call', {
         case 'call-cancel': {
           if (this.status === 'incoming' && this.callId === callId) {
             this._cleanup()
-            this.notice = 'Звонок отменён'
+            this.notice = t('Звонок отменён')
           }
           break
         }
@@ -1169,7 +1170,7 @@ export const useCallStore = defineStore('call', {
             this._dropParticipant(from)
             if (this.participants.length === 0) {
               this._cleanup()
-              this.notice = 'Никто не ответил'
+              this.notice = t('Никто не ответил')
             }
             break
           }
@@ -1177,10 +1178,10 @@ export const useCallStore = defineStore('call', {
             this._cleanup()
             this.notice =
               message.reason === 'busy'
-                ? 'Абонент занят'
+                ? t('Абонент занят')
                 : message.reason === 'failed'
-                  ? 'Собеседник не смог ответить'
-                  : 'Абонент отклонил звонок'
+                  ? t('Собеседник не смог ответить')
+                  : t('Абонент отклонил звонок')
           }
           break
         }
@@ -1192,7 +1193,7 @@ export const useCallStore = defineStore('call', {
           // давно разговаривают, а «Отменить» им уже не отправить.
           if (message.reason === 'dropped') {
             this._cleanup()
-            this.notice = 'Вас убрали из звонка'
+            this.notice = t('Вас убрали из звонка')
             break
           }
           // В группе «завершение» от одного участника значит, что вышел именно
@@ -1201,12 +1202,12 @@ export const useCallStore = defineStore('call', {
             this._dropParticipant(from)
             if (this.participants.length === 0) {
               this._cleanup()
-              this.notice = 'Звонок завершён'
+              this.notice = t('Звонок завершён')
             }
             break
           }
           this._cleanup()
-          this.notice = 'Звонок завершён'
+          this.notice = t('Звонок завершён')
           break
         }
         case 'call-ended-elsewhere': {
@@ -1223,7 +1224,8 @@ export const useCallStore = defineStore('call', {
             failed: 'На другом устройстве не удалось ответить',
             busy: 'На другом устройстве уже идёт звонок'
           }
-          this.notice = elsewhere[String(message.reason)] ?? 'Звонок отклонён на другом устройстве'
+          const answeredElsewhere = String(message.reason)
+          this.notice = t(elsewhere[answeredElsewhere] ?? 'Звонок отклонён на другом устройстве')
           break
         }
         case 'call-parked': {
@@ -1232,8 +1234,8 @@ export const useCallStore = defineStore('call', {
           // уходит, только если у него включены push-уведомления.
           this.notice =
             message.notified === false
-              ? 'Собеседник не в сети без уведомлений — звонок ждёт его в приложении'
-              : 'Собеседник не в сети — отправили уведомление о звонке'
+              ? t('Собеседник не в сети без уведомлений — звонок ждёт его в приложении')
+              : t('Собеседник не в сети — отправили уведомление о звонке')
           break
         }
         case 'call-unavailable': {
@@ -1243,8 +1245,10 @@ export const useCallStore = defineStore('call', {
             const full = message.reason === 'full'
             this._cleanup()
             this.notice = full
-              ? `В звонке уже ${MAX_GROUP_PARTICIPANTS} человека — больше не помещается`
-              : 'Абонент сейчас недоступен'
+              ? t('В звонке уже {count} человека — больше не помещается', {
+                  count: MAX_GROUP_PARTICIPANTS
+                })
+              : t('Абонент сейчас недоступен')
           }
           break
         }
@@ -1294,7 +1298,7 @@ export const useCallStore = defineStore('call', {
       const connected = await this.connect()
       if (!connected) {
         this._cleanup()
-        this.notice = 'Не удалось подключиться к серверу звонков'
+        this.notice = t('Не удалось подключиться к серверу звонков')
         return
       }
 
@@ -1356,7 +1360,7 @@ export const useCallStore = defineStore('call', {
       const connected = await this.connect()
       if (!connected) {
         this._cleanup()
-        this.notice = 'Не удалось подключиться к серверу звонков'
+        this.notice = t('Не удалось подключиться к серверу звонков')
         return
       }
 
@@ -1410,7 +1414,7 @@ export const useCallStore = defineStore('call', {
       const connected = await this.connect()
       if (!connected) {
         this._cleanup()
-        this.notice = 'Не удалось ответить: нет связи с сервером'
+        this.notice = t('Не удалось ответить: нет связи с сервером')
         return
       }
       try {
@@ -1559,7 +1563,7 @@ export const useCallStore = defineStore('call', {
       if (!callId || this.callId !== callId) return
       if (this.status !== 'incoming' && this.status !== 'outgoing') return
       this._cleanup()
-      this.notice = 'Звонок завершён'
+      this.notice = t('Звонок завершён')
     },
 
     /** Входящий рингтон для экрана «Входящий звонок…» (до доставки offer). */
@@ -1646,7 +1650,7 @@ export const useCallStore = defineStore('call', {
       this._dropParticipant(peerId)
       if (this.isGroup && this.participants.length === 0) {
         this.endCall()
-        this.notice = 'Звонок завершён'
+        this.notice = t('Звонок завершён')
       }
     },
 
@@ -1914,7 +1918,7 @@ export const useCallStore = defineStore('call', {
       for (const link of [...runtime.links.values()]) await this._pauseVideoOnLink(link)
       // Собеседник видит аватар, а не «замершую» картинку.
       this._sendMediaState()
-      this.notice = 'Связь слабая — видео приостановлено, чтобы не пропадал звук'
+      this.notice = t('Связь слабая — видео приостановлено, чтобы не пропадал звук')
     },
 
     /** Снимает с видео-передатчиков дорожку и запоминает их, чтобы вернуть. */
@@ -2034,7 +2038,7 @@ export const useCallStore = defineStore('call', {
         return true
       } catch {
         this._cleanup()
-        this.notice = 'Звонок завершён: не удалось восстановить связь'
+        this.notice = t('Звонок завершён: не удалось восстановить связь')
         return false
       }
     },
@@ -2050,7 +2054,7 @@ export const useCallStore = defineStore('call', {
             link.pc.iceConnectionState === 'connected' || link.pc.connectionState === 'connected'
         )
         if (alive) return
-        this._forceEnd('Собеседник недоступен — звонок завершён')
+        this._forceEnd(t('Собеседник недоступен — звонок завершён'))
       }, CALL_REJOIN_TIMEOUT_MS)
     },
 
@@ -2128,7 +2132,7 @@ export const useCallStore = defineStore('call', {
       if (requested === actual) return
       this.kind = 'audio'
       this.videoOn = false
-      this.notice = 'Камера недоступна — звонок продолжается без видео'
+      this.notice = t('Камера недоступна — звонок продолжается без видео')
     },
 
     /* ---------------- Демонстрация экрана ---------------- */
@@ -2216,8 +2220,8 @@ export const useCallStore = defineStore('call', {
         const name = error instanceof Error ? error.name : ''
         this.notice =
           name === 'NotAllowedError'
-            ? 'Показ экрана не начался: выбор окна отменён'
-            : 'Браузер не дал показать экран — попробуйте обычный Chrome'
+            ? t('Показ экрана не начался: выбор окна отменён')
+            : t('Браузер не дал показать экран — попробуйте обычный Chrome')
       }
     },
 
@@ -2275,7 +2279,7 @@ export const useCallStore = defineStore('call', {
       try {
         const stream = await acquireCameraStream(this.selectedCamera, { group: this.isGroup })
         const track = stream.getVideoTracks()[0]
-        if (!track) throw new Error('нет видеодорожки')
+        if (!track) throw new Error(t('нет видеодорожки'))
         // Эффекты и маски возвращаются вместе с камерой: настройки всё время
         // лежали в сторе, поэтому пересобираем обработку из той же камеры.
         const outgoing = await this._outgoingCameraTrack(track)
@@ -2425,7 +2429,7 @@ export const useCallStore = defineStore('call', {
         // соединение, но источник медиа один — моя камера).
         await Promise.all(senders.map((item) => item.replaceTrack(outgoing).catch(() => undefined)))
       } catch {
-        this.notice = 'Не удалось переключить камеру'
+        this.notice = t('Не удалось переключить камеру')
       }
     },
 
@@ -2467,7 +2471,7 @@ export const useCallStore = defineStore('call', {
         if (previousRaw && previousRaw !== track && previousRaw !== outgoing) previousRaw.stop()
         await Promise.all(senders.map((item) => item.replaceTrack(outgoing).catch(() => undefined)))
       } catch {
-        this.notice = 'Не удалось переключить камеру'
+        this.notice = t('Не удалось переключить камеру')
       }
     },
 
@@ -2508,8 +2512,9 @@ export const useCallStore = defineStore('call', {
       runtime.rawCameraTrack = raw
       if (!this._effectsWanted()) return raw
       if (!isVideoEffectsSupported()) {
-        this.videoEffectsUnavailable =
+        this.videoEffectsUnavailable = t(
           'Браузер не умеет обрабатывать видео на лету — эффекты недоступны'
+        )
         return raw
       }
       try {
@@ -2529,7 +2534,7 @@ export const useCallStore = defineStore('call', {
         return runtime.videoEffects.track
       } catch (error) {
         runtime.videoEffects = null
-        this.videoEffectsUnavailable = getErrorMessage(error, 'Не удалось включить эффекты')
+        this.videoEffectsUnavailable = getErrorMessage(error, t('Не удалось включить эффекты'))
         return raw
       }
     },
@@ -2621,7 +2626,7 @@ export const useCallStore = defineStore('call', {
       writeCallDevices({ mic: deviceId })
       if (this.status !== 'active') return
       const ok = await this._replaceMicrophone(audioConstraints(deviceId, this.micProcessing))
-      if (!ok) this.notice = 'Не удалось переключить микрофон'
+      if (!ok) this.notice = t('Не удалось переключить микрофон')
     },
 
     /**
@@ -2642,7 +2647,7 @@ export const useCallStore = defineStore('call', {
         // Не вышло — возвращаем прежний режим, чтобы подпись в интерфейсе не врала.
         this.micProcessing = previous
         writeCallDevices({ micProcessing: previous })
-        this.notice = 'Не удалось изменить обработку звука'
+        this.notice = t('Не удалось изменить обработку звука')
       }
     },
 
@@ -2718,7 +2723,7 @@ export const useCallStore = defineStore('call', {
       this.ringOutTimer = window.setTimeout(() => {
         if (this.status === 'outgoing') {
           this.cancelCall()
-          this.notice = this.isGroup ? 'Никто не ответил' : 'Абонент не отвечает'
+          this.notice = this.isGroup ? t('Никто не ответил') : t('Абонент не отвечает')
         }
       }, RING_OUT_TIMEOUT_MS)
     },
@@ -2763,7 +2768,7 @@ export const useCallStore = defineStore('call', {
       if (this.status !== 'incoming') return false
       if (!runtime.incomingDeadline || Date.now() < runtime.incomingDeadline) return false
       this._cleanup()
-      this.notice = 'Звонок завершён'
+      this.notice = t('Звонок завершён')
       return true
     },
 

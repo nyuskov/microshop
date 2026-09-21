@@ -16,6 +16,7 @@
  * работы, а разница на экране не видна.
  */
 
+import { t } from '@/i18n'
 import {
   drawMask,
   drawVideoFrame,
@@ -75,17 +76,17 @@ export function startVideoEffects(
   canvas.width = size.width
   canvas.height = size.height
   const context = canvas.getContext('2d')
-  if (!context) throw new Error('Canvas недоступен — эффекты включить нельзя')
+  if (!context) throw new Error(t('Canvas недоступен — эффекты включить нельзя'))
 
   const capture =
     canvas.captureStream?.bind(canvas) ??
     (
       canvas as HTMLCanvasElement & { mozCaptureStream?: (fps?: number) => MediaStream }
     ).mozCaptureStream?.bind(canvas)
-  if (!capture) throw new Error('Браузер не умеет снимать поток с canvas')
+  if (!capture) throw new Error(t('Браузер не умеет снимать поток с canvas'))
   const output = capture(options.fps ?? CAPTURE_FPS)
   const track = output.getVideoTracks()[0]
-  if (!track) throw new Error('Не удалось получить обработанную дорожку')
+  if (!track) throw new Error(t('Не удалось получить обработанную дорожку'))
 
   let running = true
   let rafId = 0

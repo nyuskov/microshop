@@ -16,6 +16,8 @@
  * экран звонка живут в стор/компоненте, чтобы правила проверялись тестами.
  */
 
+import { t } from '@/i18n'
+
 /** Сколько цифр в коде сверки: 6 — как в Signal, читается вслух за раз. */
 export const VERIFICATION_DIGITS = 6
 
@@ -90,9 +92,9 @@ export function callRoute(candidateType: string | null | undefined): CallRoute {
 
 /** Подпись маршрута для бейджа в звонке. */
 export function routeLabel(route: CallRoute): string {
-  if (route === 'relay') return 'Через релей'
-  if (route === 'direct') return 'Напрямую (P2P)'
-  return 'Маршрут: определяем…'
+  if (route === 'relay') return t('Через релей')
+  if (route === 'direct') return t('Напрямую (P2P)')
+  return t('Маршрут: определяем…')
 }
 
 /**
@@ -103,10 +105,12 @@ export function routeLabel(route: CallRoute): string {
  */
 export function routeHint(route: CallRoute): string {
   if (route === 'relay') {
-    return 'Медиа шифруется между участниками (DTLS-SRTP), релей только пересылает зашифрованные пакеты и расшифровать их не может'
+    return t(
+      'Медиа шифруется между участниками (DTLS-SRTP), релей только пересылает зашифрованные пакеты и расшифровать их не может'
+    )
   }
   if (route === 'direct') {
-    return 'Медиа идёт напрямую между устройствами и защищено сквозным шифрованием (DTLS-SRTP)'
+    return t('Медиа идёт напрямую между устройствами и защищено сквозным шифрованием (DTLS-SRTP)')
   }
-  return 'Соединение ещё устанавливается'
+  return t('Соединение ещё устанавливается')
 }

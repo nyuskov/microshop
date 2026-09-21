@@ -12,6 +12,8 @@
  * их легко проверить тестами.
  */
 
+import { t } from '@/i18n'
+
 /** Куда пошёл звонок: напрямую, через NAT или через наш релей. */
 export type CandidateKind = 'host' | 'srflx' | 'prflx' | 'relay' | 'unknown'
 
@@ -282,12 +284,15 @@ export function diagnosticsSummary(diagnostics: CallDiagnostics | null): string 
   if (!diagnostics) return ''
   const route =
     diagnostics.candidateType === 'relay'
-      ? `через релей${diagnostics.relayProtocol ? ` (${diagnostics.relayProtocol})` : ''}`
+      ? t('через релей{protocol}', {
+          protocol: diagnostics.relayProtocol ? ` (${diagnostics.relayProtocol})` : ''
+        })
       : diagnostics.candidateType === 'srflx'
-        ? 'напрямую через NAT'
-        : 'напрямую'
-  const loss = diagnostics.lossPercent > 0 ? `, потери ${diagnostics.lossPercent}%` : ''
-  return `${route} · ${diagnostics.rttMs} мс${loss}`
+        ? t('напрямую через NAT')
+        : t('напрямую')
+  const loss =
+    diagnostics.lossPercent > 0 ? t(', потери {loss}%', { loss: diagnostics.lossPercent }) : ''
+  return t('{route} · {rtt} мс{loss}', { route, rtt: diagnostics.rttMs, loss })
 }
 
 /**

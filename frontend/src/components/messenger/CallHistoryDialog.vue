@@ -2,17 +2,24 @@
   <q-dialog :model-value="true" @update:model-value="emit('close')">
     <q-card class="ch-card">
       <q-card-section class="row no-wrap items-center q-py-sm">
-        <div class="ch-title">Звонки</div>
+        <div class="ch-title">{{ t('Звонки') }}</div>
         <q-space />
-        <q-btn flat round dense :icon="icon('close')" aria-label="Закрыть" @click="emit('close')" />
+        <q-btn
+          flat
+          round
+          dense
+          :icon="icon('close')"
+          :aria-label="t('Закрыть')"
+          @click="emit('close')"
+        />
       </q-card-section>
       <q-separator />
 
       <!-- Фильтры: «Пропущенные» — то, что чаще всего ищут (не ответил или
            отменил вызов). Ряд листается колесом, как чипы списка чатов. -->
-      <div class="ch-filters" role="tablist" aria-label="Фильтр звонков">
+      <div class="ch-filters" role="tablist" :aria-label="t('Фильтр звонков')">
         <button
-          v-for="filter in CALL_FILTERS"
+          v-for="filter in filters"
           :key="filter.key"
           class="ch-filter"
           :class="{ active: activeFilter === filter.key }"
@@ -20,22 +27,22 @@
           :aria-selected="activeFilter === filter.key"
           @click="activeFilter = filter.key"
         >
-          {{ filter.label }}
+          {{ filter.title }}
         </button>
       </div>
 
       <q-card-section class="ch-body">
-        <p v-if="loading && !items.length" class="ch-status">Загружаем звонки…</p>
+        <p v-if="loading && !items.length" class="ch-status">{{ t('Загружаем звонки…') }}</p>
         <p v-else-if="error" class="ch-status error">{{ error }}</p>
 
         <EmptyState
           v-else-if="!visibleItems.length"
           icon="call"
-          :title="activeFilter === 'missed' ? 'Пропущенных нет' : 'Звонков пока нет'"
+          :title="activeFilter === 'missed' ? t('Пропущенных нет') : t('Звонков пока нет')"
           :hint="
             activeFilter === 'missed'
-              ? 'Здесь появятся звонки, на которые вы не ответили.'
-              : 'Позвоните собеседнику из шапки чата — звонок появится здесь.'
+              ? t('Здесь появятся звонки, на которые вы не ответили.')
+              : t('Позвоните собеседнику из шапки чата — звонок появится здесь.')
           "
         />
 
@@ -71,8 +78,8 @@
               <button
                 class="ch-call"
                 type="button"
-                :title="entry.call_kind === 'video' ? 'Перезвонить видео' : 'Перезвонить'"
-                :aria-label="`Перезвонить: ${contactName(entry)}`"
+                :title="entry.call_kind === 'video' ? t('Перезвонить видео') : t('Перезвонить')"
+                :aria-label="t('Перезвонить: {name}', { name: contactName(entry) })"
                 @click="emit('call-back', entry)"
               >
                 <q-icon
@@ -90,7 +97,7 @@
               dense
               color="primary"
               :loading="loading"
-              label="Показать ещё"
+              :label="t('Показать ещё')"
               @click="loadMore"
             />
           </div>
@@ -114,6 +121,7 @@
 import { computed, onMounted, ref } from 'vue'
 
 import EmptyState from '@/components/common/EmptyState.vue'
+import { t } from '@/i18n'
 import { icon } from '@/utils/icons'
 import { avatarStyle, initials } from '@/utils/user'
 import { getErrorMessage } from '@/services/errors'
@@ -150,6 +158,11 @@ const activeFilter = ref<CallFilterKey>('all')
 
 const visibleItems = computed(() => filterCallHistory(items.value, activeFilter.value))
 
+/** Подписи фильтров переводим здесь, а не в списке: язык меняется на лету. */
+const filters = computed(() =>
+  CALL_FILTERS.map((filter) => ({ ...filter, title: t(filter.label) }))
+)
+
 /** Имя собеседника с учётом локального прозвища контакта (видит только я). */
 const contactName = (item: CallHistoryItem): string =>
   item.peer ? contactsStore.nameOf(item.peer.id) || callPeerName(item) : callPeerName(item)
@@ -171,7 +184,7 @@ const load = async () => {
     items.value = page.items
     total.value = page.total
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось загрузить историю звонков')
+    error.value = getErrorMessage(err, t('Не удалось загрузить историю звонков'))
   } finally {
     loading.value = false
   }
@@ -191,7 +204,7 @@ const loadMore = async () => {
     items.value = [...items.value, ...page.items.filter((item) => !known.has(item.id))]
     total.value = page.total
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось загрузить историю звонков')
+    error.value = getErrorMessage(err, t('Не удалось загрузить историю звонков'))
   } finally {
     loading.value = false
   }

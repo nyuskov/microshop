@@ -28,6 +28,7 @@
  * в `stores/call.ts`), а не одной общей ступенью.
  */
 
+import { t } from '@/i18n'
 import type { CallDiagnostics } from '@/utils/callStats'
 
 /**
@@ -264,9 +265,9 @@ export function shouldPauseForQuality(steps: QualityStep[]): boolean {
 
 /** Ступень качества словами (для панели диагностики). */
 export function stepLabel(step: QualityStep): string {
-  if (step === 'bad') return 'плохая'
-  if (step === 'fair') return 'средняя'
-  return 'хорошая'
+  if (step === 'bad') return t('плохая')
+  if (step === 'fair') return t('средняя')
+  return t('хорошая')
 }
 
 /**
@@ -276,13 +277,15 @@ export function stepLabel(step: QualityStep): string {
  * видно, что «нас плохо слышно», хотя у нас самих приём чистый.
  */
 export function peerQualityLine(diagnostics: CallDiagnostics | null): string {
-  if (!diagnostics) return 'нет данных'
-  const parts = [`задержка ${diagnostics.rttMs} мс`]
-  if (diagnostics.lossPercent > 0) parts.push(`приём: потери ${diagnostics.lossPercent}%`)
-  if (diagnostics.remoteLossPercent > 0) {
-    parts.push(`наш поток: потери ${diagnostics.remoteLossPercent}%`)
+  if (!diagnostics) return t('нет данных')
+  const parts = [t('задержка {rtt} мс', { rtt: diagnostics.rttMs })]
+  if (diagnostics.lossPercent > 0) {
+    parts.push(t('приём: потери {loss}%', { loss: diagnostics.lossPercent }))
   }
-  parts.push(`ступень: ${stepLabel(qualityStepFor(diagnostics))}`)
+  if (diagnostics.remoteLossPercent > 0) {
+    parts.push(t('наш поток: потери {loss}%', { loss: diagnostics.remoteLossPercent }))
+  }
+  parts.push(t('ступень: {step}', { step: stepLabel(qualityStepFor(diagnostics)) }))
   return parts.join(' · ')
 }
 

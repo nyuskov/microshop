@@ -4,6 +4,7 @@
  * удержание ~0,5 c — переключить тип (аудио ⇄ видео), не звоня.
  */
 import { onScopeDispose, ref } from 'vue'
+import { t } from '@/i18n'
 
 export interface CallButtonOptions {
   /** Вызывается по короткому клику (без удержания). */
@@ -37,7 +38,8 @@ export function useCallButton(options: CallButtonOptions) {
 
   const callLabel = (kind: CallKind): string => {
     const option = CALL_OPTIONS.find((item) => item.kind === kind)
-    return option ? option.label : ''
+    // Подпись переводим при показе: язык меняется на лету.
+    return option ? t(option.label) : ''
   }
 
   const clearCallTimer = () => {
