@@ -2,7 +2,11 @@
   <template v-if="file">
     <!-- Альбом: несколько картинок одной отправки — сеткой, как в мессенджерах.
          Плитка знает своё сообщение и открывает лайтбокс именно на нём. -->
-    <div v-if="albumTiles.length > 1" class="album-grid" :class="`cols-${albumColumns}`">
+    <div
+      v-if="albumTiles.length > 1"
+      class="album-grid"
+      :class="[`cols-${albumColumns}`, { wide: props.wide }]"
+    >
       <button
         v-for="tile in albumTiles"
         :key="tile.message.id"
@@ -50,7 +54,7 @@
     <button
       v-else-if="isImageFile(file)"
       class="attachment attachment-image-btn"
-      :class="{ sticker: props.sticker }"
+      :class="{ sticker: props.sticker, wide: props.wide }"
       type="button"
       :title="props.sticker ? 'Открыть набор стикеров' : `Открыть изображение «${file.name}»`"
       @click.stop="openAttachment()"
@@ -60,6 +64,7 @@
         :src="fileUrl"
         :alt="file.name"
         class="attachment-image"
+        :class="{ wide: props.wide }"
         loading="lazy"
         decoding="async"
         @error="imageBroken = true"
@@ -80,6 +85,7 @@
       <video
         v-else-if="isVideoFile(file)"
         class="attachment-video"
+        :class="{ wide: props.wide }"
         :src="fileUrl"
         controls
         preload="metadata"
@@ -157,6 +163,13 @@ const props = defineProps<{
    * (см. `utils/albums.ts`). Пусто или одно — обычное одиночное вложение.
    */
   album?: Message[]
+  /**
+   * Пост канала: строка занимает всю ширину ленты, поэтому и вложение растёт
+   * вместе с ней (в чате картинка ограничена 300px, а видео — 320px: там рядом
+   * ещё пузырь собеседника). Предел по ВЫСОТЕ остаётся — вертикальное фото на
+   * всю ширину растянуло бы один пост на несколько экранов.
+   */
+  wide?: boolean
 }>()
 
 /**
@@ -344,6 +357,28 @@ const albumTiles = computed<AlbumTile[]>(() =>
   width: 100%;
   height: 100%;
   color: var(--ms-muted);
+}
+
+/* Канал: пост занимает всю ширину, поэтому и вложение растёт вместе с ним.
+   Правила стоят ДО правила стикера: у стикера своя специфичность выше
+   (`.attachment-image-btn.sticker .attachment-image`), поэтому квадратик 160px
+   в канале остаётся квадратиком — растягивать «эмоцию» во всю ширину незачем. */
+.attachment-image.wide,
+.attachment-video.wide {
+  max-width: 100%;
+  /* Высота ограничена: вертикальное фото во всю ширину заняло бы весь экран. */
+  max-height: min(70vh, 520px);
+}
+
+.album-grid.wide {
+  width: 100%;
+}
+
+/* Кнопка-обёртка тоже во всю ширину: у неё `width: auto` — это «по содержимому»,
+   и процентный `max-width` у картинки разрешался в её же ширину (замер: картинка
+   получала 0px). С заданной шириной кнопки процент считается от пузыря. */
+.attachment-image-btn.wide {
+  width: 100%;
 }
 
 .attachment-image-btn {

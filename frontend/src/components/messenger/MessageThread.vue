@@ -59,7 +59,7 @@
               :series="seriesFor(item.index)"
               :members="members"
               :reminder-at="reminderAtOf(item.row.message)"
-              :own-as-incoming="Boolean(channelPosts)"
+              :channel="Boolean(channelPosts)"
               :album="albumOf(item.row.message)"
               :actions-reset="actionsReset"
               @quote-click="emit('quote-click', item.row.message)"

@@ -12,7 +12,13 @@
     :class="[
       shownOwn ? 'out' : 'in',
       `series-${props.series ?? 'single'}`,
-      { 'msg-highlight': highlighted, selection: selectionMode, selected, 'msg-media': !!file }
+      {
+        'msg-highlight': highlighted,
+        selection: selectionMode,
+        selected,
+        'msg-media': !!file,
+        channel: props.channel
+      }
     ]"
     :data-message-id="message.id"
     :style="swipeStyle"
@@ -126,6 +132,7 @@
         :row-visible="rowVisible"
         :sticker="isStickerMessage(message)"
         :album="album"
+        :wide="props.channel"
         @open-image="emit('open-image', $event)"
         @open-sticker="emit('open-sticker')"
         @open-view-once="emit('open-view-once')"
@@ -408,15 +415,16 @@ const props = defineProps<{
    * Это моё сообщение (полный набор действий в меню).
    *
    * Для прав и меню, а НЕ для стороны пузыря: в канале свои посты рисуются как
-   * содержимое канала (слева) — см. `ownAsIncoming`.
+   * содержимое канала (слева) — см. `channel`.
    */
   isOwn: boolean
   /**
-   * Пост канала: даже своё показываем как «входящее» — слева и без галочек
-   * прочтения. В канале галочек быть не может (читать его может много людей), а
-   * под постом уже стоит счётчик просмотров/комментариев (`post-meta`).
+   * Пост канала. Второй стороны в канале нет, поэтому строка занимает ВСЮ
+   * ширину ленты (в чатах предел 60%), свои посты идут как содержимое канала —
+   * слева и без галочек прочтения (читать пост может много людей, а под постом
+   * уже стоит счётчик просмотров и комментариев — `post-meta` в MessageThread).
    */
-  ownAsIncoming?: boolean
+  channel?: boolean
   /** Id текущего зрителя — чтобы плашка была «Переслано от вас». */
   viewerId: number | null
   /** Подсветка при переходе к сообщению (из закреплённых/поиска). */
@@ -529,7 +537,7 @@ const onTranslate = () => {
  * «Моё» для РИСУНКА (сторона пузыря и галочки): пост канала — всегда содержимое
  * канала, даже если его написал я. Права и меню остаются по `isOwn`.
  */
-const shownOwn = computed<boolean>(() => props.isOwn && !props.ownAsIncoming)
+const shownOwn = computed<boolean>(() => props.isOwn && !props.channel)
 
 /** Миниатюра истории: путь к нашему файлу, поэтому через `mediaUrl`. */
 const storyReplyThumb = computed<string>(() => {
@@ -1031,6 +1039,22 @@ onBeforeUnmount(() => {
    у текстовых строк предел 60% — вложение выходило за строку и край ленты. */
 .msg-media {
   max-width: 100%;
+}
+
+/* ---------- Канал: пост во всю ширину ----------
+ * Второй стороны в канале нет, поэтому делить ширину с собеседником не с кем и
+ * лента идёт ровной колонкой постов во всю ширину. Пузырь растёт вместе со
+ * строкой: короткий пост в канале — такая же широкая плашка, как длинный, иначе
+ * колонка выглядит рваной. Исключение — «прозрачные» пузыри (стикер-эмодзи,
+ * картинка-стикер, кружок): у них нет фона, и во всю ширину подпись времени
+ * уехала бы от картинки в другой край экрана. */
+.msg.channel {
+  max-width: 100%;
+  width: 100%;
+}
+
+.msg.channel .msg-bubble:not(.sticker-only):not(.sticker-image):not(.round-video-only) {
+  width: 100%;
 }
 
 .msg-bubble {
