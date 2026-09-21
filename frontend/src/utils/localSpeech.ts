@@ -104,20 +104,39 @@ export const setLocalSpeechEngine = (loader: (() => Promise<LocalSpeechEngine>) 
 /** Есть ли в браузере WebAssembly — без него модель не запустить. */
 export const localSpeechSupported = (): boolean => typeof WebAssembly !== 'undefined'
 
-/** Отдаёт ли наш сервер движок и модели (`/stt/manifest.json`). */
+/**
+ * Отдаёт ли наш сервер движок и модели (`/stt/manifest.json`).
+ *
+ * ГРАБЛЯ ПРОДА (поймана живьём 21.09.2026): nginx отдаёт на неизвестные пути
+ * SPA-фолбэк — 200 и `index.html`. Одного `response.ok` мало: движок «загружался»
+ * из HTML и падал СРАЗУ («не удалось скачать модель, проверьте подключение»).
+ * Поэтому читаем манифест как JSON и ждём в нём нашу запись.
+ */
 let ownAssets: boolean | null = null
 
 const ownAssetsAvailable = async (): Promise<boolean> => {
   if (ownAssets !== null) return ownAssets
+  ownAssets = false
   try {
     const response = await fetch(`${ASSET_BASE}manifest.json`, { cache: 'no-store' })
-    ownAssets = response.ok
+    if (response.ok) {
+      const manifest = (await response.json()) as { engine?: unknown } | null
+      ownAssets = typeof manifest?.engine === 'string'
+    }
   } catch {
     // Нет своего каталога — это нормально: работает и на публичном CDN.
     ownAssets = false
   }
   return ownAssets
 }
+
+/**
+ * Есть ли у нас своя раздача движка и моделей — для тестов и раздела «Устройство».
+ *
+ * Наружу открыта именно ради проверки грабли с фолбэком: без неё легко снова
+ * решить, что файлы есть, и упасть на первом же импорте.
+ */
+export const ownSpeechAssetsAvailable = async (): Promise<boolean> => await ownAssetsAvailable()
 
 /** Загруженный движок: один на вкладку. */
 let engine: Promise<LocalSpeechEngine> | null = null
@@ -302,6 +321,9 @@ export const describeLocalSpeechError = (thrown: unknown): string => {
   }
   if (/memory|allocation|array buffer|out of/i.test(text)) {
     return 'Модель не поместилась в память устройства — попробуйте модель «быстрая»'
+  }
+  if (/dynamically imported module|import|module/i.test(text)) {
+    return 'Не удалось загрузить движок распознавания — проверьте подключение к интернету'
   }
   if (/fetch|network|load|connect|abort/i.test(text)) {
     return 'Не удалось скачать модель — проверьте подключение к интернету и попробуйте снова'

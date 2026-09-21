@@ -10,6 +10,7 @@ import {
   localSpeechModel,
   localSpeechModelInfo,
   localSpeechSupported,
+  ownSpeechAssetsAvailable,
   setLocalSpeechEngine,
   setLocalSpeechModel,
   transcribeWithLocalSpeech,
@@ -207,5 +208,48 @@ describe('модель распознавания на устройстве', ()
     expect(describeLocalSpeechError(new Error('RuntimeError: out of memory'))).toContain('память')
     expect(describeLocalSpeechError(new Error('странное'))).toBe('странное')
     expect(describeLocalSpeechError(undefined)).toBe('Не удалось распознать запись на устройстве')
+  })
+
+  it('сбой загрузки движка объясняется как движок, а не как модель', () => {
+    // Живьём (21.09.2026) человек видел «не удалось скачать модель» СРАЗУ: падал
+    // импорт движка, а причина называлась чужая.
+    const failure = new Error(
+      'Failed to fetch dynamically imported module: /stt/transformers.web.js'
+    )
+    expect(describeLocalSpeechError(failure)).toContain('движок')
+  })
+
+  it('свои файлы признаём только по НАСТОЯЩЕМУ манифесту, а не по 200', async () => {
+    // ГРАБЛЯ ПРОДА: nginx отдаёт на неизвестные пути SPA-фолбэк — 200 и
+    // `index.html`. Из-за этого движок «загружался» из HTML и падал сразу.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => {
+          throw new SyntaxError('Unexpected token <')
+        }
+      }))
+    )
+    expect(await ownSpeechAssetsAvailable()).toBe(false)
+
+    // А свой манифест (с записью про движок) — признаём.
+    setLocalSpeechEngine(null)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, json: async () => ({ engine: 'transformers.web.js' }) }))
+    )
+    expect(await ownSpeechAssetsAvailable()).toBe(true)
+
+    // Нет файлов вовсе — тоже спокойно, работаем с CDN.
+    setLocalSpeechEngine(null)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('Failed to fetch')
+      })
+    )
+    expect(await ownSpeechAssetsAvailable()).toBe(false)
+    setLocalSpeechEngine(async () => engine)
   })
 })
