@@ -12,7 +12,7 @@
  * (скачивание требует жеста человека, см. `utils/translation.ts`).
  */
 import { screenShareNotice, screenShareSupport } from '@/stores/call/screenShare'
-import { translationSupported } from '@/utils/translation'
+import { canOfferTranslation } from '@/utils/translation'
 import { localSpeechModelInfo } from '@/utils/localSpeech'
 import { speechEngineKind } from '@/utils/voiceRecognition'
 
@@ -219,7 +219,10 @@ const speech = (): DeviceSupportItem => {
 }
 
 const translate = (): DeviceSupportItem => {
-  if (translationSupported()) {
+  // Спрашиваем то же, что и интерфейс (`canOfferTranslation`), а не наличие API:
+  // в мобильном Chrome переводчик может быть объявлен, но мы его там не
+  // предлагаем — и раздел не должен обещать то, чего кнопка не даст.
+  if (canOfferTranslation()) {
     return {
       key: 'translate',
       title: 'Перевод сообщений',

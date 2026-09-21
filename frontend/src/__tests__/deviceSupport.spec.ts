@@ -129,6 +129,7 @@ describe('отчёт по устройству', () => {
   it('с переводчиком честно предупреждает про скачивание модели', () => {
     // Модель скачивается только по нажатию (жест человека) — раздел не должен
     // обещать «уже готово».
+    stubUa('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36')
     vi.stubGlobal('Translator', function TranslatorStub() {
       /* только статики, как у настоящего API */
     })
@@ -136,6 +137,18 @@ describe('отчёт по устройству', () => {
     expect(translate?.state).toBe('partial')
     expect(translate?.text).toContain('скачается при первом переводе')
     expect(translate?.hint).toContain('никуда не уходит' /* текст не уходит с устройства */)
+  })
+
+  it('в мобильном браузере перевода нет, даже если API объявлен', () => {
+    // Владелец: «на мобилке не открывался перевод расшифрованной записи» —
+    // предложение считается по платформе, как и у распознавания записи.
+    stubUa('Mozilla/5.0 (Linux; Android 13; Pixel 7) Chrome/140.0.0.0 Mobile Safari/537.36')
+    vi.stubGlobal('Translator', function TranslatorStub() {
+      /* API есть, а перевода на устройстве нет */
+    })
+    const translate = deviceReport().find((item) => item.key === 'translate')
+    expect(translate?.state).toBe('no')
+    expect(translate?.hint).toContain('компьютере')
   })
 
   it('проигрывание записей проверяется через canPlayType, а не по вере', () => {

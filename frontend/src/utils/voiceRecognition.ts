@@ -62,6 +62,7 @@ import {
 } from '@/utils/localSpeech'
 import { toMono16k, describeAudioError, loadAudioBuffer } from '@/utils/audioPcm'
 import { confirmDialog } from '@/utils/appDialogs'
+import { browserKind, isDesktopChromium } from '@/utils/browserKind'
 
 /** Состояние расшифровки одного голосового. */
 export type VoiceTranscriptStatus = 'running' | 'ready' | 'failed'
@@ -122,25 +123,6 @@ const recognitionCtor = (): SpeechRecognitionCtor | null => {
 }
 
 /**
- * Какой это браузер: мобильный ли он и на движке ли Chromium.
- *
- * Нужно, чтобы отличить Chrome на КОМПЬЮТЕРЕ (он умеет распознавать запись) от
- * Chrome на телефоне (он умеет только микрофон). Точный ответ даёт
- * `navigator.userAgentData.mobile`, но он есть только в Chromium — остальным
- * смотрим на строку User-Agent.
- */
-const browserKind = (): { mobile: boolean; chromium: boolean } => {
-  if (typeof navigator === 'undefined') return { mobile: false, chromium: false }
-  const ua = navigator.userAgent ?? ''
-  const data = (navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData
-  const known = typeof data?.mobile === 'boolean'
-  return {
-    mobile: known ? Boolean(data?.mobile) : /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua),
-    chromium: known || /Chrome\/|Chromium\//.test(ua)
-  }
-}
-
-/**
  * Есть ли в этом браузере путь «звук ЗАПИСИ в распознаватель».
  *
  * Расширение `start(MediaStreamTrack)` есть только в Chrome на КОМПЬЮТЕРЕ. В
@@ -151,10 +133,7 @@ const browserKind = (): { mobile: boolean; chromium: boolean } => {
  * распознавание в таком браузере не запускаем: иначе вылез бы запрос доступа к
  * микрофону, а затем тот же отказ (см. `recognizeVoice`).
  */
-const fileSpeechCapable = (): boolean => {
-  const kind = browserKind()
-  return kind.chromium && !kind.mobile
-}
+const fileSpeechCapable = (): boolean => isDesktopChromium()
 
 /**
  * Готов ли путь «браузер» на самом деле: платформа И наличие распознавателя.

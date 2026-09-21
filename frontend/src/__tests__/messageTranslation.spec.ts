@@ -619,6 +619,18 @@ describe('перевод не предлагается там, где его н�
     expect(media).toContain("transcript.status === 'ready' && canTranslate")
   })
 
+  it('на телефоне пункт не предлагается, даже если API переводчика объявлен', () => {
+    // Владелец (21.09.2026): «на мобилке не открывался перевод расшифрованной
+    // записи». Платформу проверяем тем же признаком, что и распознавание записи.
+    installTranslator()
+    vi.stubGlobal('navigator', {
+      userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) Chrome/140.0.0.0 Mobile Safari/537.36',
+      userAgentData: { mobile: true }
+    })
+    expect(canOfferTranslation()).toBe(false)
+    vi.unstubAllGlobals()
+  })
+
   it('решение принимается по одному признаку устройства', () => {
     // Три входа (меню, лист, кнопка у расшифровки) — один ответ, иначе они
     // разошлись бы, как только появится новый вход.
