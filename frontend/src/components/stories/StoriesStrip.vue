@@ -111,6 +111,12 @@
               placeholder="Подпись (необязательно)"
               @keyup.enter="publish"
             />
+            <!-- Проверка видео на месте: браузер бывает не в силах его проиграть,
+                 и тогда историю перекодирует сервер (иначе был бы чёрный экран). -->
+            <p v-if="videoNeedsTranscode" class="story-caption-warning">
+              Это видео не проигрывается в браузере — его перекодирует сервер. Это может занять до
+              минуты.
+            </p>
             <p v-if="stories.error" class="story-caption-error">{{ stories.error }}</p>
           </q-card-section>
           <q-card-actions align="right">
@@ -140,6 +146,7 @@ import { useStoriesStore } from '@/stores/stories'
 import { useHScroll } from '@/composables/useHScroll'
 import { useMobileLayer } from '@/composables/useMobileOverlay'
 import type { StoryGroup } from '@/services/stories'
+import { probeVideoPlayback, type VideoProbe } from '@/utils/stories'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 
 const emit = defineEmits<{
@@ -196,6 +203,14 @@ const pendingFile = ref<File | null>(null)
 const caption = ref('')
 const captionOpen = ref(false)
 const publishing = computed(() => stories.publishing)
+
+/**
+ * Проверка выбранного видео в браузере. Запускается сразу при выборе файла (это
+ * быстро, файл локальный), а `publish` дожидается результата — иначе человек
+ * успел бы нажать «Опубликовать» раньше, чем проверка закончится.
+ */
+let videoProbe: Promise<VideoProbe> | null = null
+const videoNeedsTranscode = ref(false)
 
 const mine = computed(() => stories.mine)
 
@@ -257,6 +272,17 @@ const onFileSelected = (event: Event) => {
   }
   pendingFile.value = file
   caption.value = ''
+  videoProbe = null
+  videoNeedsTranscode.value = false
+  if (file.type.startsWith('video/')) {
+    // «unknown» (не дождались первого кадра) — не повод предупреждать: решение
+    // всё равно принимает сервер по кодекам файла.
+    const probe = probeVideoPlayback(file)
+    videoProbe = probe
+    void probe.then((result) => {
+      if (pendingFile.value === file) videoNeedsTranscode.value = result === 'unsupported'
+    })
+  }
   captionOpen.value = true
 }
 
@@ -264,6 +290,8 @@ const cancelPublish = () => {
   captionOpen.value = false
   pendingFile.value = null
   caption.value = ''
+  videoProbe = null
+  videoNeedsTranscode.value = false
 }
 
 // Диалог подписи к новой истории — слой общего стека (см. `useMobileOverlay`):
@@ -273,7 +301,13 @@ useMobileLayer(() => captionOpen.value, cancelPublish)
 const publish = async () => {
   const file = pendingFile.value
   if (!file) return
-  const ok = await stories.publish(file, caption.value.trim())
+  // Ждём проверку видео (её могли запустить секунду назад): если браузер файл не
+  // играет, просим сервер перекодировать — иначе зрители увидят чёрный экран.
+  const probe = file.type.startsWith('video/') ? videoProbe : null
+  const result = probe ? await probe : 'unknown'
+  const ok = await stories.publish(file, caption.value.trim(), {
+    transcode: result === 'unsupported'
+  })
   if (!ok) {
     Notify.create({ message: stories.error || 'Не удалось опубликовать историю', timeout: 4000 })
     return
@@ -625,6 +659,14 @@ const publish = async () => {
   margin: 8px 0 0;
   font-size: 12.5px;
   color: var(--ms-danger);
+}
+
+/* Предупреждение, а не ошибка: публикация возможна, просто её ждёт
+   перекодирование на сервере (`core/video_transcode.py`). */
+.story-caption-warning {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--ms-warn);
 }
 
 .mini-spinner {

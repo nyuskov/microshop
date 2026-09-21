@@ -77,7 +77,27 @@
         playsinline
         @ended="next"
         @timeupdate="onVideoProgress"
+        @error="onVideoError"
       ></video>
+
+      <!-- Видео не проигралось: вместо чёрного экрана объясняем и продолжаем
+           показ. Так бывает, если файл записан в формате, который браузер не
+           декодирует (см. core/video_transcode.py на сервере). -->
+      <div v-if="videoFailed" class="viewer-failed" role="status">
+        <q-icon :name="icon('warning')" size="30px" aria-hidden="true" />
+        <p class="viewer-failed-text">
+          Это видео не проигрывается в этом браузере — файл записан в формате, который он не умеет
+          читать. Дальше показ продолжится.
+        </p>
+        <a
+          class="viewer-failed-link"
+          :href="mediaUrl(current.story.media_url)"
+          target="_blank"
+          rel="noopener"
+        >
+          Открыть файл
+        </a>
+      </div>
 
       <!-- Вспышки быстрых реакций: «сердечко» вылетает из точки тапа по центру. -->
       <span
@@ -288,6 +308,9 @@ const emit = defineEmits<{
 /**: Сколько показывать картинку, если это не видео. */
 const IMAGE_DURATION_MS = 5000
 
+/** Сколько держим плашку «видео не проигрывается», прежде чем листнуть дальше. */
+const VIDEO_FAIL_DURATION_MS = 6000
+
 const stories = useStoriesStore()
 const videoEl = ref<HTMLVideoElement | null>(null)
 const currentId = ref(props.startStoryId)
@@ -338,6 +361,9 @@ const authorInitials = computed(() => initials(authorName.value || 'П'))
 
 const age = computed(() => formatStoryAge(current.value?.story.created_at ?? ''))
 
+/** Сбой видео: файл в формате, который браузер не декодирует (или битый). */
+const videoFailed = ref(false)
+
 /** Ширина полоски: пройденные — целиком, текущая — по прогрессу показа. */
 const barWidth = (index: number): string => {
   const entry = current.value
@@ -361,6 +387,17 @@ const startTimer = () => {
     void videoEl.value?.play().catch(() => undefined)
     return
   }
+  startImageTimer(IMAGE_DURATION_MS)
+}
+
+/**
+ * Показ «как картинку»: таймер заканчивается — листаем дальше.
+ *
+ * Так же показываем и не проигравшееся видео (`onVideoError`): событие `ended`
+ * от него не придёт, и без этого лента застряла бы на этой истории навсегда.
+ */
+const startImageTimer = (durationMs: number) => {
+  stopTimer()
   startedAt = Date.now()
   const tick = () => {
     if (paused.value) {
@@ -370,14 +407,20 @@ const startTimer = () => {
       return
     }
     const elapsed = Date.now() - startedAt
-    progress.value = Math.min(1, elapsed / IMAGE_DURATION_MS)
-    if (elapsed >= IMAGE_DURATION_MS) {
+    progress.value = Math.min(1, elapsed / durationMs)
+    if (elapsed >= durationMs) {
       next()
       return
     }
     raf = window.requestAnimationFrame(tick)
   }
   raf = window.requestAnimationFrame(tick)
+}
+
+/** Видео не декодировалось: говорим об этом прямо и всё равно листаем дальше. */
+const onVideoError = () => {
+  videoFailed.value = true
+  startImageTimer(VIDEO_FAIL_DURATION_MS)
 }
 
 /* ---------------- Жесты ---------------- */
@@ -721,6 +764,8 @@ watch(currentId, () => {
   bursts.value = []
   // Недописанный ответ тоже не переносим на следующую историю.
   replyText.value = ''
+  // Плашка сбоя видео — про конкретный файл: у следующей истории её нет.
+  videoFailed.value = false
   // Аудитория тоже про конкретную историю: закрываем и забываем загруженное.
   audienceOpen.value = false
   audience.value = null
@@ -847,6 +892,35 @@ watch(flat, (list) => {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+
+/* Видео не проигралось: вместо чёрного полотна — объяснение и ссылка на файл
+   (в Safari он может открыться: движки декодируют разные форматы). */
+.viewer-failed {
+  position: absolute;
+  inset: auto 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 16px;
+  border-radius: var(--ms-radius-lg);
+  background: rgba(0, 0, 0, 0.62);
+  color: #e8edf2;
+  text-align: center;
+}
+
+.viewer-failed-text {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.viewer-failed-link {
+  color: var(--ms-accent);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
 }
 
 .viewer-zone {

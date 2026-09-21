@@ -1,6 +1,9 @@
 # Use a alpine Python image
 FROM python:3.13-alpine
 
+# ffmpeg: проверка кодека и перекодирование видео историй (core/video_transcode.py).
+RUN apk add --no-cache ffmpeg
+
 # Install poetry
 RUN pip install poetry
 

@@ -3,6 +3,11 @@ FROM python:3.13-alpine
 
 WORKDIR /app
 
+# ffmpeg нужен приложению: по кодекам решаем, проиграет ли видео браузер, и
+# непроигрываемое перекодируем в H.264/AAC (core/video_transcode.py), — иначе
+# старая запись с телефона превращается в чёрный экран истории.
+RUN apk add --no-cache ffmpeg
+
 # Не-root пользователь (uid 1000 совпадает с uid хоста, чтобы dev-том ./backend:/app
 # оставался доступным на запись; медиа/кеши пишутся не от root).
 RUN addgroup -S -g 1000 microshop \

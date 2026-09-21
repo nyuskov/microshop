@@ -17,6 +17,7 @@ from core.upload_guard import (
     normalize_ext,
     validate_attachment_upload,
 )
+from core.video_transcode import prepare_video
 
 from . import crud
 from .notify import notify_reaction
@@ -57,6 +58,7 @@ async def create_story(
     filename: str = Query("story.jpg", max_length=255),
     mime: str = Query("image/jpeg", max_length=120),
     caption: str = Query("", max_length=255),
+    transcode: bool = Query(False),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
 ) -> StoryItem:
@@ -64,7 +66,20 @@ async def create_story(
 
     Файл кладётся в общий каталог media, а в квоте хранилища учитывается так же,
     как вложения сообщений (``core/media_quota.py``).
+
+    ``transcode=1`` — клиент сам попробовал проиграть файл и убедился, что его
+    браузер этого не умеет: тогда перекодируем даже формально совместимый формат
+    (см. ``core/video_transcode.py``).
     """
+    # Перекодирование видео — работа для процессора, причём внутри этого запроса,
+    # поэтому частота публикаций ограничена (на аккаунт, как у реакций).
+    await enforce_limit(
+        scope="stories:publish",
+        value=str(user.id),
+        limit=settings.story_publish_limit_per_minute,
+        window_seconds=60,
+        detail="Слишком много новых историй за минуту. Попробуйте позже.",
+    )
     content = await request.body()
     if not content:
         raise HTTPException(
@@ -79,11 +94,31 @@ async def create_story(
     validate_attachment_upload(filename, content)
     # История — это фото или видео. Документ/аудио в ленте выглядели бы как
     # пустой экран, поэтому отсекаем сразу (вложения в чат остаются любыми).
-    if normalize_ext(filename) not in (SAFE_IMAGE_EXTS | SAFE_MEDIA_EXTS):
+    ext = normalize_ext(filename)
+    if ext not in (SAFE_IMAGE_EXTS | SAFE_MEDIA_EXTS):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="История может быть фото или видео",
         )
+    suffix = _suffix_of(filename)
+    if ext in SAFE_MEDIA_EXTS:
+        # Видео (и аудио, которое историей быть не может) проверяем ДО записи в
+        # хранилище: непроигрываемый ролик — это чёрный экран у всех зрителей.
+        prepared = await prepare_video(
+            content, suffix=suffix, mime=mime, force=transcode
+        )
+        content = prepared.data
+        suffix = prepared.suffix
+        mime = prepared.mime
+        if len(content) > MAX_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=(
+                    "После перекодирования видео получилось больше "
+                    f"{MAX_UPLOAD_MB} МБ — выберите файл короче"
+                ),
+            )
+    # Квоту считаем по итоговому файлу: после перекодирования размер меняется.
     await enforce_media_quota(session, user_id=user.id, incoming_bytes=len(content))
 
     active = await crud.count_active(session, user_id=user.id)
@@ -99,7 +134,7 @@ async def create_story(
     story = await crud.create_story(
         session,
         user_id=user.id,
-        media_url=store_media(content, suffix=_suffix_of(filename)),
+        media_url=store_media(content, suffix=suffix),
         media_name=filename,
         mime_type=mime,
         media_size=len(content),

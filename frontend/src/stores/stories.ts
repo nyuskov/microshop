@@ -81,12 +81,21 @@ export const useStoriesStore = defineStore('stories', {
       return feedLoad
     },
 
-    /** Публикует историю и обновляет ленту. */
-    async publish(file: File, caption = ''): Promise<boolean> {
+    /** Публикует историю и обновляет ленту.
+     *
+     * `transcode` — браузер не смог проиграть выбранное видео (см.
+     * `probeVideoPlayback` в `utils/stories.ts`): сервер перекодирует его, чтобы
+     * история не оказалась чёрным экраном у зрителей.
+     */
+    async publish(
+      file: File,
+      caption = '',
+      options: { transcode?: boolean } = {}
+    ): Promise<boolean> {
       if (this.publishing) return false
       this.publishing = true
       try {
-        await publishStory(file, caption)
+        await publishStory(file, caption, options)
         await this.load()
         return true
       } catch (error) {

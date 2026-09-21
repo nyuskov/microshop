@@ -2,6 +2,13 @@
 
 import { api } from './api'
 
+/**
+ * Таймаут публикации истории. Обычного (15 с из `api.ts`) не хватает: если
+ * видео не проигрывается в браузере, сервер перекодирует его прямо в этом
+ * запросе (core/video_transcode.py) — на телефоне это десятки секунд.
+ */
+const STORY_PUBLISH_TIMEOUT_MS = 120_000
+
 /** Автор истории — данные для аватарки и подписи. */
 export interface StoryAuthor {
   id: number
@@ -106,15 +113,26 @@ export const fetchStories = async (): Promise<StoryFeed> => {
   }
 }
 
-/** Публикует историю: файл уходит телом запроса, остальное — параметрами. */
-export const publishStory = async (file: File, caption = ''): Promise<StoryItem> => {
+/** Публикует историю: файл уходит телом запроса, остальное — параметрами.
+ *
+ * `transcode` — клиент уже проверил файл и знает, что его браузер это видео не
+ * проигрывает (`probeVideoPlayback`): сервер перекодирует его в H.264/AAC.
+ * Поэтому у запроса увеличенный таймаут: перекодирование идёт внутри него.
+ */
+export const publishStory = async (
+  file: File,
+  caption = '',
+  options: { transcode?: boolean } = {}
+): Promise<StoryItem> => {
   const response = await api.post<StoryItem>('/stories/', file, {
     params: {
       filename: file.name || 'story.jpg',
       mime: file.type || 'image/jpeg',
-      caption
+      caption,
+      ...(options.transcode ? { transcode: 1 } : {})
     },
-    headers: { 'Content-Type': file.type || 'application/octet-stream' }
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    timeout: STORY_PUBLISH_TIMEOUT_MS
   })
   return response.data
 }

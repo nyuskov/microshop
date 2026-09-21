@@ -104,6 +104,59 @@ export function isVideoStory(mimeType: string | null): boolean {
   return Boolean(mimeType?.startsWith('video/'))
 }
 
+/* ---------------- Проверка видео перед публикацией ---------------- */
+
+/** Сколько ждём первый кадр выбранного файла, прежде чем считать проверку неудачной. */
+export const VIDEO_PROBE_TIMEOUT_MS = 6000
+
+/** Чем закончилась проверка: играет, не играет или не дождались (неизвестно). */
+export type VideoProbe = 'playable' | 'unsupported' | 'unknown'
+
+/**
+ * Пробует проиграть выбранный файл прямо в браузере.
+ *
+ * Зачем: телефон может записать видео в формате, который браузер не декодирует
+ * вовсе (MPEG-4 Visual `mp4v` + звук AMR в 3GP-контейнере из старого аппарата —
+ * Chromium отвечает «no supported streams»). Такое видео нельзя перекодировать
+ * на клиенте: декодера для него у браузера нет. Поэтому мы всего лишь честно
+ * сообщаем об этом и просим сервер перекодировать файл (см. `publish`).
+ *
+ * Ждём именно ПЕРВЫЙ КАДР (`loadeddata`), а не метаданные: метаданные Chromium
+ * отдаёт и для файла, который затем отказывается декодировать.
+ */
+export function probeVideoPlayback(
+  file: File,
+  options: { timeoutMs?: number; createVideo?: () => HTMLVideoElement } = {}
+): Promise<VideoProbe> {
+  const createVideo =
+    options.createVideo ?? ((): HTMLVideoElement => document.createElement('video'))
+  const timeoutMs = options.timeoutMs ?? VIDEO_PROBE_TIMEOUT_MS
+  return new Promise((resolve) => {
+    const url = typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : ''
+    const element = createVideo()
+    let settled = false
+    const finish = (result: VideoProbe) => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timer)
+      element.removeEventListener('loadeddata', onLoaded)
+      element.removeEventListener('error', onError)
+      element.removeAttribute('src')
+      if (url) URL.revokeObjectURL(url)
+      resolve(result)
+    }
+    const onLoaded = () => finish('playable')
+    const onError = () => finish('unsupported')
+    element.addEventListener('loadeddata', onLoaded)
+    element.addEventListener('error', onError)
+    element.preload = 'auto'
+    // Звук не нужен: проверяем только то, декодируется ли картинка.
+    element.muted = true
+    element.src = url
+    const timer = window.setTimeout(() => finish('unknown'), timeoutMs)
+  })
+}
+
 /* ---------------- Реакции ---------------- */
 
 /** Порядок как на сервере: сначала популярные, при равенстве — порядок набора. */

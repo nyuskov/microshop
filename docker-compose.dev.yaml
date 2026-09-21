@@ -65,6 +65,12 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+    # Сеть указываем ЯВНО, как у остальных сервисов. Без неё compose кладёт БД в
+    # сеть проекта по умолчанию (`<проект>_default`), а web/worker/nginx живут в
+    # `server_network` — имя `db` в них не разрешается, и dev-стек падает
+    # (грабля: ровно это случилось, когда этот файл запустили поверх основного).
+    networks:
+      - server_network
 
   nginx:
     logging: *default-logging

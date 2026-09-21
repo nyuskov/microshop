@@ -58,11 +58,24 @@ class _ApiCtx:
     def auth(self, token: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {token}"}
 
-    async def publish(self, token: str, *, caption: str = "", name: str = "story.png"):
+    async def publish(
+        self,
+        token: str,
+        *,
+        caption: str = "",
+        name: str = "story.png",
+        mime: str = "image/png",
+        content: bytes = PNG_BYTES,
+        transcode: bool = False,
+    ):
+        """Публикует историю. ``transcode`` — просьба клиента перекодировать видео."""
+        params: dict[str, object] = {"filename": name, "mime": mime, "caption": caption}
+        if transcode:
+            params["transcode"] = 1
         return await self.client.post(
             "/api/v1/stories/",
-            params={"filename": name, "mime": "image/png", "caption": caption},
-            content=PNG_BYTES,
+            params=params,
+            content=content,
             headers=self.auth(token),
         )
 
