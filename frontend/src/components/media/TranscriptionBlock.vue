@@ -67,13 +67,12 @@
       </p>
     </div>
     <p class="am-transcript-note">
-      Распознаёт браузер устройства — в E2EE-чате текст на сервер не уходит, но распознавание может
-      обращаться к сервису браузера.
+      {{ engineNote }}
     </p>
   </div>
 
   <p v-if="transcript?.status === 'running'" class="am-transcript-note am-transcript-note--live">
-    {{ transcript.text || 'Слушаем запись…' }}
+    {{ runningLabel }}
     <!-- Язык виден здесь, а не в настройках: если текст вышел чужими словами,
          причина видна сразу («private» вместо «привет» — это английская модель). -->
     <span class="am-lang-used">{{ speechLanguageInUse }}</span>
@@ -144,6 +143,45 @@ const onTranslate = () => {
 const retry = () => {
   void recognizeVoice(props.messageId, props.src)
 }
+
+/**
+ * Подпись во время работы — по этапу.
+ *
+ * Скачивание модели занимает десятки мегабайт, и общее «Слушаем запись…» на
+ * этом этапе врало бы: человек ждёт и не понимает, почему так долго.
+ */
+const runningLabel = computed<string>(() => {
+  const state = transcript.value
+  if (!state || state.status !== 'running') return ''
+  if (state.text) return state.text
+  if (state.stage === 'audio') return 'Готовим запись…'
+  if (state.stage === 'download') {
+    const percent = state.progress ? Math.round(state.progress * 100) : 0
+    return percent > 0
+      ? `Скачиваем модель распознавания… ${percent}%`
+      : 'Скачиваем модель распознавания…'
+  }
+  if (state.stage === 'recognize') return 'Распознаём на устройстве…'
+  return 'Слушаем запись…'
+})
+
+/**
+ * Честная подпись о том, кто распознавал.
+ *
+ * Три пути звучат по-разному: сервис браузера (Chrome на компьютере) звук
+ * получает, модель на устройстве и системный распознаватель его не отправляют
+ * никуда — и человек должен видеть, к какому из них относится этот текст.
+ */
+const engineNote = computed<string>(() => {
+  const via = transcript.value?.via
+  if (via === 'device') {
+    return 'Распознано на устройстве моделью в браузере — звук и текст никуда не отправлялись.'
+  }
+  if (via === 'system') {
+    return 'Распознано распознавателем устройства — наш сервер звук не получает.'
+  }
+  return 'Распознаёт браузер устройства — в E2EE-чате текст на сервер не уходит, но распознавание может обращаться к сервису браузера.'
+})
 
 const copy = async () => {
   const text = transcript.value?.text

@@ -135,6 +135,9 @@ export const ICON_MAP: Record<string, string> = {
   // Архив: «короб с крышкой». В Lucide такого глифа нет, нарисован вручную —
   // см. DRAWN_GLYPHS ниже и assets/icons-drawn.css.
   archive: 'archive',
+  // Расшифровка записи в текст: стрелка «↳» и буква A — как в Telegram.
+  // Глиф нарисован вручную (см. DRAWN_GLYPHS и assets/icons-drawn.css).
+  transcribe: 'transcribe',
   // Папки чатов: свой список диалогов с ручным порядком.
   folder: 'folder',
   mic: 'mic',
@@ -181,7 +184,7 @@ export const ICON_MAP: Record<string, string> = {
  * Добавили рисованный глиф — впишите его сюда И нарисуйте в icons-drawn.css,
  * иначе иконка отрендерится пустотой (страх в тестах это проверяет).
  */
-export const DRAWN_GLYPHS: ReadonlySet<string> = new Set(['round-video', 'archive'])
+export const DRAWN_GLYPHS: ReadonlySet<string> = new Set(['round-video', 'archive', 'transcribe'])
 
 /** Иконка по умолчанию: если имени нет в мэппинге. */
 const FALLBACK_ICON = 'circle-help'

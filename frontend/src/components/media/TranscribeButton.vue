@@ -1,15 +1,18 @@
 <template>
-  <!-- Кнопка расшифровки: подпись по состоянию, чтобы на телефоне (где подсказка
-       не видна) было понятно, что произойдёт. -->
+  <!-- Кнопка расшифровки — ЗНАЧКОМ, как в Telegram (владелец: «пусть как значок
+       будет как в телеграме»): в строке голосового подписи места нет (рядом имя
+       файла и скорость), а на телефоне подсказка всё равно не видна. Смысл несёт
+       форма глифа («↳A»), а слова остались в `title`/`aria-label` — их читают
+       скринридеры, их же видно при наведении мышью. -->
   <button
     v-if="available"
     class="am-transcribe"
-    :class="{ busy: transcript?.status === 'running' }"
+    :class="{ busy: action === 'cancel', active: action === 'hide' }"
     :title="hint"
     :aria-label="hint"
     @click="toggle"
   >
-    {{ label }}
+    <q-icon :name="icon('transcribe')" size="20px" aria-hidden="true" />
   </button>
 </template>
 
@@ -24,6 +27,7 @@
  */
 import { computed } from 'vue'
 
+import { icon } from '@/utils/icons'
 import {
   clearTranscript,
   recognizeVoice,
@@ -44,22 +48,23 @@ const transcript = computed(() => transcriptOf(props.messageId))
 /** Умеет ли это устройство распознавать записи — иначе кнопки нет вовсе. */
 const available = speechRecognitionSupported()
 
-const hint = computed(() => {
-  const action = transcriptActionFor(transcript.value)
-  if (action === 'cancel') return 'Распознаём — нажмите, чтобы отменить'
-  if (action === 'hide') return 'Скрыть расшифровку'
-  return 'Расшифровать в текст'
-})
+/** Что сейчас делает кнопка: распознать, отменить или скрыть текст. */
+const action = computed(() => transcriptActionFor(transcript.value))
 
-const label = computed(() => {
-  const action = transcriptActionFor(transcript.value)
-  if (action === 'cancel') return 'Распознаём…'
-  if (action === 'hide') return 'Скрыть текст'
-  return 'В текст'
+/**
+ * Подсказка по состоянию — единственный текст у этого значка.
+ *
+ * Она же уходит в `aria-label`: иконка без подписи обязана быть понятной тем,
+ * кто её не видит.
+ */
+const hint = computed(() => {
+  if (action.value === 'cancel') return 'Распознаём — нажмите, чтобы отменить'
+  if (action.value === 'hide') return 'Скрыть текст расшифровки'
+  return 'Расшифровать запись в текст'
 })
 
 const toggle = () => {
-  if (transcriptActionFor(transcript.value) === 'recognize') {
+  if (action.value === 'recognize') {
     void recognizeVoice(props.messageId, props.src)
     return
   }
@@ -68,21 +73,36 @@ const toggle = () => {
 </script>
 
 <style scoped>
+/* Значок расшифровки — как в Telegram: голый глиф без подложки и без ореола
+ * (владелец: «сделай как в телеграме, и размер соответствующий»). Цвет — текста
+ * сообщения: он единственный, который уже гарантированно читаем и на своём
+ * пузыре, и на входящем, в обеих темах (голубой меты владелец отверг: «нам не в
+ * тему, этот цвет у нас нигде не используется»). Нажимаемость показываем цветом
+ * акцента, а не заливкой. Размер: глиф 20 при поле 28 — вровень с иконкой
+ * проигрывания в строке записи (24), и в поле можно попасть пальцем. */
 .am-transcribe {
   border: none;
   background: transparent;
-  color: var(--ms-accent, #2ea25e);
-  font-size: var(--ms-fs-xs);
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 8px;
+  color: inherit;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
 }
 
-.am-transcribe:hover {
-  background: var(--ms-accent-soft, rgba(46, 162, 94, 0.12));
+/* Наведение и показанный текст — акцент: действие называется цветом, а не
+ * подложкой (поэтому же нет и «ореола»). */
+.am-transcribe:hover,
+.am-transcribe.active {
+  color: var(--ms-accent, #2ea25e);
 }
 
+/* Идёт распознавание: приглушаем, но значок остаётся на месте — по нему видно,
+ * где ждать текст. */
 .am-transcribe.busy {
   color: var(--ms-muted, #71808d);
   cursor: default;

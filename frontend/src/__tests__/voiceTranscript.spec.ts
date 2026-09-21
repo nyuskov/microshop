@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs'
+import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import AudioMessage from '@/components/media/AudioMessage.vue'
 import TranscriptionBlock from '@/components/media/TranscriptionBlock.vue'
+import { setLocalSpeechEngine, type LocalSpeechEngine } from '@/utils/localSpeech'
 import {
   clearTranscript,
   recognizeVoice,
@@ -15,6 +17,15 @@ import {
   transcriptActionFor,
   transcriptOf
 } from '@/utils/voiceRecognition'
+
+/**
+ * Окно согласия на скачивание модели (мобильный браузер) — заглушка.
+ *
+ * Поднимать в тестах настоящий Quasar-диалог незачем: проверяем не его, а то, что
+ * без согласия человека модель не скачивается.
+ */
+const { confirmMock } = vi.hoisted(() => ({ confirmMock: vi.fn(async () => true) }))
+vi.mock('@/utils/appDialogs', () => ({ confirmDialog: confirmMock }))
 
 /**
  * Расшифровка голосовых в текст (F4).
@@ -148,6 +159,20 @@ const ANDROID_CHROME_UA =
 const SAFARI_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15'
 
+/** Заглушка движка модели на устройстве: тексты и сбои задаёт тест. */
+const localEngines: string[] = []
+let localAnswer = 'привет с устройства'
+let localFailure: unknown = null
+
+const fakeLocalEngine: LocalSpeechEngine = {
+  env: { allowLocalModels: false, useBrowserCache: true },
+  async pipeline(_task, model) {
+    if (localFailure) throw localFailure
+    localEngines.push(model)
+    return async () => ({ text: localAnswer })
+  }
+}
+
 beforeEach(() => {
   ended = null
   audioSeconds = 4
@@ -164,11 +189,19 @@ beforeEach(() => {
     'fetch',
     vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }))
   )
+  // Модель на устройстве: по умолчанию отвечаем «скачать можно», текст задаёт тест.
+  confirmMock.mockResolvedValue(true)
+  confirmMock.mockClear()
+  localEngines.length = 0
+  localAnswer = 'привет с устройства'
+  localFailure = null
+  setLocalSpeechEngine(async () => fakeLocalEngine)
   setSpeechLanguage('')
 })
 
 afterEach(() => {
   stopAllRecognitions()
+  setLocalSpeechEngine(null)
   delete (globals.window as { SpeechRecognition?: unknown }).SpeechRecognition
   delete (globalThis as { Translator?: unknown }).Translator
   vi.unstubAllGlobals()
@@ -222,7 +255,7 @@ describe('расшифровка голосового', () => {
     ended?.()
     await running
 
-    expect(transcriptOf(7)).toEqual({ status: 'ready', text: 'привет тест' })
+    expect(transcriptOf(7)).toEqual({ status: 'ready', text: 'привет тест', via: 'browser' })
   })
 
   it('ошибка браузера объясняется человеческим языком', async () => {
@@ -235,6 +268,7 @@ describe('расшифровка голосового', () => {
     expect(transcriptOf(8)).toEqual({
       status: 'failed',
       text: '',
+      via: 'browser',
       error: 'Браузер не смог обратиться к своему сервису распознавания'
     })
   })
@@ -274,7 +308,7 @@ describe('расшифровка голосового', () => {
     ended?.()
     await running
 
-    expect(transcriptOf(14)).toEqual({ status: 'ready', text: 'это текст' })
+    expect(transcriptOf(14)).toEqual({ status: 'ready', text: 'это текст', via: 'browser' })
   })
 
   it('ошибка после полученного текста не отменяет текст', async () => {
@@ -285,7 +319,7 @@ describe('расшифровка голосового', () => {
     recognition.emit('error', { error: 'no-speech' })
     await running
 
-    expect(transcriptOf(15)).toEqual({ status: 'ready', text: 'часть речи' })
+    expect(transcriptOf(15)).toEqual({ status: 'ready', text: 'часть речи', via: 'browser' })
   })
 
   it('браузер сам закрыл распознавание — отдаём то, что успели собрать', async () => {
@@ -296,7 +330,7 @@ describe('расшифровка голосового', () => {
     recognition.emit('end')
     await running
 
-    expect(transcriptOf(16)).toEqual({ status: 'ready', text: 'начало фразы' })
+    expect(transcriptOf(16)).toEqual({ status: 'ready', text: 'начало фразы', via: 'browser' })
   })
 
   it('уход из чата останавливает распознавание', async () => {
@@ -344,14 +378,19 @@ describe('расшифровка голосового', () => {
     expect(transcriptOf(17)).toEqual({
       status: 'failed',
       text: '',
+      via: 'browser',
       error: 'Запись не удалось прочитать — файл повреждён или формат не поддерживается устройством'
     })
     clearTranscript(17)
   })
 
-  it('без распознавателя честно говорит, что браузер не умеет', async () => {
+  it('без распознавателя и без WebAssembly честно говорит, что браузер не умеет', async () => {
+    // Мобильный браузер: Web Speech есть, но запись он не умеет; WebAssembly нет —
+    // значит и модель не запустить. Распознать запись нечем вовсе.
+    vi.stubGlobal('navigator', { userAgent: ANDROID_CHROME_UA, userAgentData: { mobile: true } })
     delete (globals.window as { SpeechRecognition?: unknown }).SpeechRecognition
     delete (globals.window as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition
+    vi.stubGlobal('WebAssembly', undefined)
     expect(speechRecognitionSupported()).toBe(false)
 
     await recognizeVoice(12, 'blob:voice')
@@ -359,32 +398,135 @@ describe('расшифровка голосового', () => {
     expect(transcriptOf(12)?.error).toContain('не умеет распознавать готовые записи')
   })
 
-  it('в мобильном браузере кнопка есть, но распознавание не запускается', async () => {
-    // Жалобы владельца (21.09.2026), подряд: сначала «Распознавание не получило
-    // звук, хотя он там есть», потом «в мобилке теперь вообще пропала кнопка в
-    // текст». Поэтому кнопку показываем везде, где есть API, а само распознавание
-    // в мобильном браузере НЕ запускаем: распознаватель ушёл бы в микрофон
-    // (запрос доступа + «не получило звук»), запись он не читает.
+  it('в мобильном браузере распознаём моделью на устройстве — микрофон не трогаем', async () => {
+    // Две жалобы владельца подряд, из-за которых появился этот путь: сначала
+    // Chrome на Android отвечал «Распознавание не получило звук» (он слушает
+    // микрофон, а переданный трек игнорирует), потом кнопку за это убрали — и
+    // владелец её не нашёл: «в мобилке теперь вообще пропала кнопка в текст».
     vi.stubGlobal('navigator', { userAgent: ANDROID_CHROME_UA, userAgentData: { mobile: true } })
     expect(speechRecognitionSupported()).toBe(true)
 
     await recognizeVoice(30, 'blob:voice')
-    expect(transcriptOf(30)?.error).toContain('только микрофон')
-    expect(transcriptOf(30)?.error).toContain('приложении Pismo')
-    // Распознаватель даже не запускали — микрофон не спрашиваем.
+
+    expect(transcriptOf(30)).toMatchObject({
+      status: 'ready',
+      text: 'привет с устройства',
+      via: 'device'
+    })
+    expect(localEngines[0]).toContain('whisper')
+    // Микрофонный распознаватель даже не запускали — доступа к микрофону не просим.
     expect(recognition.started).toBe(false)
     clearTranscript(30)
   })
 
-  it('Safari слушает только микрофон — распознавание тоже не запускаем', async () => {
-    // У Safari распознаватель есть, поэтому одной проверки наличия API мало.
-    vi.stubGlobal('navigator', { userAgent: SAFARI_UA })
-    expect(speechRecognitionSupported()).toBe(true)
+  it('перед скачиванием модели спрашиваем согласие и говорим размер', async () => {
+    // Десятки мегабайт — это трафик человека, поэтому только с его согласия.
+    vi.stubGlobal('navigator', { userAgent: ANDROID_CHROME_UA, userAgentData: { mobile: true } })
 
     await recognizeVoice(31, 'blob:voice')
-    expect(transcriptOf(31)?.error).toContain('только микрофон')
-    expect(recognition.started).toBe(false)
+
+    expect(confirmMock).toHaveBeenCalledTimes(1)
+    const options = confirmMock.mock.calls[0][0] as { title?: string; message?: string }
+    expect(options.title).toContain('на устройстве')
+    expect(options.message).toContain('МБ')
+    expect(options.message).toContain('один раз')
     clearTranscript(31)
+  })
+
+  it('отказался скачивать модель — расшифровки не будет, и причина названа', async () => {
+    vi.stubGlobal('navigator', { userAgent: ANDROID_CHROME_UA, userAgentData: { mobile: true } })
+    confirmMock.mockResolvedValueOnce(false)
+
+    await recognizeVoice(32, 'blob:voice')
+
+    expect(transcriptOf(32)?.error).toContain('модель не скачана')
+    expect(localEngines).toHaveLength(0)
+    clearTranscript(32)
+  })
+
+  it('этапы видны по ходу: скачивание с процентом, потом распознавание', async () => {
+    vi.stubGlobal('navigator', { userAgent: ANDROID_CHROME_UA, userAgentData: { mobile: true } })
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const heldEngine: LocalSpeechEngine = {
+      env: { allowLocalModels: false, useBrowserCache: true },
+      async pipeline(_task, _model, options) {
+        const callback = (options as { progress_callback?: (event: unknown) => void })
+          ?.progress_callback
+        callback?.({
+          status: 'progress',
+          file: 'encoder.onnx',
+          loaded: 20_000_000,
+          total: 20_000_000
+        })
+        await gate
+        return async () => ({ text: 'готово' })
+      }
+    }
+    setLocalSpeechEngine(async () => heldEngine)
+
+    const running = recognizeVoice(33, 'blob:voice')
+    await vi.waitFor(() => expect(transcriptOf(33)?.stage).toBe('download'))
+    const state = transcriptOf(33)
+    expect(state?.progress).toBeGreaterThan(0)
+    expect(state?.progress).toBeLessThan(1)
+
+    const wrapper = mount(TranscriptionBlock, {
+      props: { messageId: 33, src: 'blob:voice' },
+      global: { stubs: { 'q-icon': true } }
+    })
+    expect(wrapper.text()).toContain('Скачиваем модель распознавания')
+    expect(wrapper.text()).toContain('%')
+
+    release()
+    await running
+    await nextTick()
+
+    expect(transcriptOf(33)).toMatchObject({ status: 'ready', text: 'готово', via: 'device' })
+    // Подпись под текстом честная: звук считался на устройстве, а не у браузера.
+    expect(wrapper.text()).toContain('Распознано на устройстве моделью в браузере')
+    wrapper.unmount()
+    clearTranscript(33)
+  })
+
+  it('сбой модели объясняется словами: нет сети, мало места, мало памяти', async () => {
+    vi.stubGlobal('navigator', { userAgent: ANDROID_CHROME_UA, userAgentData: { mobile: true } })
+    localFailure = new Error('Failed to fetch')
+    await recognizeVoice(34, 'blob:voice')
+    expect(transcriptOf(34)?.error).toContain('интернет')
+
+    localFailure = new Error('QuotaExceededError')
+    await recognizeVoice(35, 'blob:voice')
+    expect(transcriptOf(35)?.error).toContain('места')
+
+    localFailure = null
+    clearTranscript(34)
+    clearTranscript(35)
+  })
+
+  it('Safari тоже считает моделью на устройстве (файл он не умеет)', async () => {
+    // У Safari распознаватель есть, поэтому одной проверки наличия API мало: он
+    // слушает только микрофон — идём тем же путём, что и на телефоне.
+    vi.stubGlobal('navigator', { userAgent: SAFARI_UA })
+
+    await recognizeVoice(36, 'blob:voice')
+
+    expect(transcriptOf(36)).toMatchObject({ status: 'ready', via: 'device' })
+    expect(recognition.started).toBe(false)
+    clearTranscript(36)
+  })
+
+  it('без WebAssembly распознать запись нечем — говорим причину и выход', async () => {
+    vi.stubGlobal('navigator', { userAgent: ANDROID_CHROME_UA, userAgentData: { mobile: true } })
+    vi.stubGlobal('WebAssembly', undefined)
+
+    await recognizeVoice(37, 'blob:voice')
+
+    expect(transcriptOf(37)?.error).toContain('только микрофон')
+    expect(transcriptOf(37)?.error).toContain('приложении Pismo')
+    clearTranscript(37)
   })
 })
 
@@ -406,7 +548,11 @@ describe('точность распознавания', () => {
     ended?.()
 
     await running
-    expect(transcriptOf(20)).toEqual({ status: 'ready', text: 'первая часть вторая часть' })
+    expect(transcriptOf(20)).toEqual({
+      status: 'ready',
+      text: 'первая часть вторая часть',
+      via: 'browser'
+    })
     // Кусок 2 начинается там, где кончился первый, и не длиннее 15 секунд.
     expect(chunks).toEqual([
       { offset: 0, duration: 15 },
@@ -691,7 +837,10 @@ describe('кнопка «В текст» в голосовом', () => {
     await vi.waitFor(() => {
       expect(wrapper.find('.am-transcript-error').exists()).toBe(true)
     })
-    expect(wrapper.find('.am-transcribe').text()).toBe('Скрыть текст')
+    // Кнопка — значок: подпись живёт в `aria-label` (по ней её читает скринридер),
+    // а состояние — классом.
+    expect(wrapper.find('.am-transcribe').attributes('aria-label')).toContain('Скрыть')
+    expect(wrapper.find('.am-transcribe').classes()).toContain('active')
 
     const retry = wrapper.findAll('.am-transcript-btn').find((item) => item.text() === 'Ещё раз')
     expect(retry).toBeTruthy()
@@ -711,7 +860,7 @@ describe('кнопка «В текст» в голосовом', () => {
     })
 
     // …а в спокойном состоянии верхняя кнопка убирает расшифровку.
-    expect(wrapper.find('.am-transcribe').text()).toBe('Скрыть текст')
+    expect(wrapper.find('.am-transcribe').classes()).toContain('active')
     await wrapper.find('.am-transcribe').trigger('click')
     expect(wrapper.find('.am-transcript').exists()).toBe(false)
 

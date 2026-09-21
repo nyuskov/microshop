@@ -45,3 +45,16 @@
   -webkit-mask-image: var(--icon-glyph);
   mask-image: var(--icon-glyph);
 }
+
+/* Расшифровка записи в текст: стрелка «↳» и буква A — как в Telegram (владелец:
+ * «пусть как значок будет как в телеграме»). Такого глифа в Lucide нет, а
+ * подпись в строке голосового места не имеет (рядом — имя файла и скорость) и на
+ * телефоне всё равно не видна: смысл несёт форма, а слова остались в подсказке и
+ * в `aria-label`.
+ * Сетка и штрих — как у Lucide: поле 24, штрих 2, скруглённые концы; стрелка
+ * занимает левую половину (3…13), буква — правую (14…21.5). */
+.icon-transcribe {
+  --icon-glyph: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23fff'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M3%206.5h3.2a4%204%200%200%201%204%204v3.2'/%3E%3Cpath%20d='M6.6%2010.4%2010.2%2014l3.6-3.6'/%3E%3Cpath%20d='M14.2%2020.5%2017.8%208l3.6%2012.5'/%3E%3Cpath%20d='M15.5%2016.6h4.6'/%3E%3C/svg%3E");
+  -webkit-mask-image: var(--icon-glyph);
+  mask-image: var(--icon-glyph);
+}

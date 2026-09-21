@@ -15,10 +15,10 @@
  *    распознаватель. Расширение есть только в Chrome на КОМПЬЮТЕРЕ: в Safari и
  *    Firefox его нет вовсе, а мобильный Chrome слушает микрофон и переданный
  *    трек игнорирует (человек видел «Распознавание не получило звук», хотя звук
- *    в записи есть). Кнопку «В текст» там всё равно показываем (прятать её
- *    значит скрывать возможность там, где она есть), но распознавание не
- *    запускаем — сразу объясняем причину и выход (приложение Pismo, где
- *    распознаёт само устройство, см. `services/nativeSpeech.ts`).
+ *    в записи есть). Там, где так распознать нельзя, считаем МОДЕЛЬЮ НА
+ *    УСТРОЙСТВЕ — она скачивается в браузер один раз (`utils/localSpeech.ts`),
+ *    работает офлайн и звук никуда не отправляет. Так расшифровка есть и в PWA
+ *    на телефоне — без сервера, то есть без нарушения обещания E2EE.
  * 2. У Chrome распознавание НЕ полностью локальное: звук уходит на его сервис
  *    (в расшифровке это видно как ошибку `network`, когда сервис недоступен). Наш
  *    сервер аудио не получает, но браузер — получает. Об этом напоминает подпись
@@ -51,16 +51,45 @@ import {
   recognizeWithNative
 } from '@/services/nativeSpeech'
 import { isNativeApp } from '@/services/nativePush'
-import { describeAudioError, loadAudioBuffer } from '@/utils/audioPcm'
+import {
+  describeLocalSpeechError,
+  ensureLocalSpeech,
+  localSpeechCached,
+  localSpeechModel,
+  localSpeechModelInfo,
+  localSpeechSupported,
+  transcribeWithLocalSpeech
+} from '@/utils/localSpeech'
+import { toMono16k, describeAudioError, loadAudioBuffer } from '@/utils/audioPcm'
+import { confirmDialog } from '@/utils/appDialogs'
 
 /** Состояние расшифровки одного голосового. */
 export type VoiceTranscriptStatus = 'running' | 'ready' | 'failed'
+
+/**
+ * Что происходит прямо сейчас — для подписи под записью.
+ *
+ * Нужно на пути «модель на устройстве»: скачивание модели — это десятки мегабайт,
+ * и общее «Слушаем запись…» здесь было бы враньём (человек ждёт и не понимает,
+ * почему долго).
+ */
+export type VoiceTranscriptStage = 'audio' | 'download' | 'recognize'
 
 export interface VoiceTranscript {
   status: VoiceTranscriptStatus
   text: string
   /** Текст ошибки для интерфейса (человеческим языком). */
   error?: string
+  /** Этап работы (пусто — обычное распознавание браузером). */
+  stage?: VoiceTranscriptStage
+  /** Доля выполненного этапа (0–1) — показываем процент скачивания модели. */
+  progress?: number
+  /**
+   * Кто распознавал — от этого зависит честная подпись под текстом:
+   * `browser` — сервис браузера, `device` — модель в браузере (звук не уходит),
+   * `system` — распознаватель самого устройства в приложении.
+   */
+  via?: 'browser' | 'device' | 'system'
 }
 
 /** Расшифровки по id сообщения (в памяти вкладки, на сервер не уходит). */
@@ -128,22 +157,47 @@ const fileSpeechCapable = (): boolean => {
 }
 
 /**
+ * Готов ли путь «браузер» на самом деле: платформа И наличие распознавателя.
+ *
+ * Одной платформы мало: во встроенных браузерах (Electron, редактор) строка
+ * User-Agent тоже хромовая, а сервиса распознавания нет — там падаем на модель
+ * на устройстве, которая работает везде (проверено в этой же среде).
+ */
+const browserFileSpeech = (): boolean => fileSpeechCapable() && recognitionCtor() !== null
+
+/**
+ * Каким путём на этом устройстве распознаётся ГОТОВАЯ запись.
+ *
+ * `system` — распознаватель самого устройства (приложение Pismo, Android 13+);
+ * `browser` — Web Speech с передачей звука записи (Chrome на КОМПЬЮТЕРЕ);
+ * `device` — модель, скачанная в браузер (`utils/localSpeech.ts`) — путь для
+ * телефона и Safari; `null` — распознать нечем.
+ *
+ * Нужна и интерфейсу (раздел «Устройство»), и самому распознаванию: это
+ * единственное место, где решается, какой из трёх путей взять.
+ */
+export type SpeechEngineKind = 'system' | 'browser' | 'device'
+
+export const speechEngineKind = (): SpeechEngineKind | null => {
+  if (nativeSpeechSupported()) return 'system'
+  if (browserFileSpeech()) return 'browser'
+  if (localSpeechSupported()) return 'device'
+  return null
+}
+
+/**
  * Можно ли показать кнопку «В текст».
  *
- * Путей два, и оба честно проверяются:
- *  * в Android-обёртке распознаёт САМО устройство (Web Speech в WebView нет) —
- *    см. `services/nativeSpeech.ts`;
- *  * в браузере — Web Speech API, но только если он умеет работать со ЗВУКОМ
- *    ЗАПИСИ: нужен и `SpeechRecognition`, и аудио-граф (`AudioContext` +
- *    `createMediaStreamDestination`).
- *
- * Готовность браузера распознать именно ЗАПИСЬ здесь НЕ проверяется — кнопку
- * показываем по наличию API: убрать её совсем значит спрятать возможность там,
- * где она есть (владелец, 21.09.2026: «в мобилке теперь вообще пропала кнопка в
- * текст»). От лишнего запуска защищает `fileSpeechCapable` в `recognizeVoice`.
+ * Путей три (см. `speechEngineKind`), и здесь проверяется только наличие хоть
+ * какого-нибудь: кнопку показываем, а какой путь выбрать — решает
+ * `recognizeVoice`. Прятать её оказалось плохо — владелец: «в мобилке теперь
+ * вообще пропала кнопка в текст».
  */
 export const speechRecognitionSupported = (): boolean => {
-  if (nativeSpeechSupported()) return true
+  if (speechEngineKind() !== null) return true
+  // Последний случай: WebAssembly нет (очень старый браузер), но Web Speech с
+  // аудио-графом есть. Распознать запись он всё равно не сможет — кнопку
+  // оставляем, чтобы человек прочитал причину, а не искал пропавшую функцию.
   if (recognitionCtor() === null) return false
   if (typeof AudioContext === 'undefined') return false
   return 'createMediaStreamDestination' in AudioContext.prototype
@@ -161,10 +215,10 @@ const unsupportedReason = (): string => {
 }
 
 /**
- * Почему нельзя распознать запись, хотя распознавание речи в браузере есть.
+ * Почему запись не распознать даже моделью — нет WebAssembly (старый браузер).
  *
- * Так у мобильных браузеров (и у Safari на компьютере): API на месте, но
- * слушает он микрофон, а не запись.
+ * Так у мобильных браузеров без WASM и у встроенных браузеров редакторов: Web
+ * Speech есть, но слушает он микрофон, а не запись.
  */
 const microphoneOnlyReason = (): string =>
   browserKind().mobile
@@ -247,13 +301,13 @@ export const speechLanguageInUse = computed<string>(() => effectiveLanguage())
 export const transcriptOf = (messageId: number): VoiceTranscript | undefined =>
   transcripts[messageId]
 
-/** Что делает кнопка «В текст» при текущем состоянии. */
+/** Что делает значок расшифровки при текущем состоянии. */
 export type TranscriptAction = 'recognize' | 'hide' | 'cancel'
 
 /**
  * Действие кнопки по состоянию расшифровки.
  *
- * Кнопка в шапке голосового — единый переключатель: «В текст» → «Распознаём…»
+ * Кнопка в шапке голосового — единый значок-переключатель: распознать → «Распознаём…»
  * → «Скрыть текст». Ошибка — не исключение: скрытие везде на одном месте, и
  * человек не ищет глазами, что кнопка делает СЕЙЧАС. А повтор живёт в самом
  * блоке расшифровки («Ещё раз»), рядом с причиной ошибки — там он по делу.
@@ -528,47 +582,52 @@ async function recognizeChunk(
  * Расшифровывает голосовое сообщение.
  *
  * Текст никуда не отправляется: результат кладётся в память вкладки и
- * показывается под сообщением. Путь выбирается по возможностям устройства: в
- * Android-обёртке распознаёт САМО устройство (в WebView Web Speech нет), в
- * браузере — Web Speech API кусками по `CHUNK_SECONDS` (так точнее, см.
- * `recognizeChunk`), и текст виден по мере готовности кусков.
+ * показывается под сообщением. Путь выбирается по возможностям устройства:
+ * в Android-обёртке распознаёт САМО устройство (в WebView Web Speech нет),
+ * в Chrome на компьютере — Web Speech API кусками по `CHUNK_SECONDS` (так точнее,
+ * см. `recognizeChunk`), в остальных браузерах (телефон, Safari) — модель,
+ * скачанная в браузер (`utils/localSpeech.ts`).
  */
 export const recognizeVoice = async (messageId: number, src: string): Promise<void> => {
-  if (!speechRecognitionSupported()) {
+  const kind = speechEngineKind()
+  if (kind === null) {
+    // Распознать запись нечем: объясняем причину (и выход) вместо пустого экрана.
     transcripts[messageId] = {
       status: 'failed',
       text: '',
-      error: unsupportedReason()
+      error: speechRecognitionSupported() ? microphoneOnlyReason() : unsupportedReason()
     }
     return
   }
   // Повторный запуск по тому же сообщению — начинаем заново.
   stopRecognition(messageId)
 
-  // Распознавание в браузере идёт ЗАПИСЬЮ только в Chrome на компьютере: в
-  // мобильном браузере распознаватель ушёл бы в МИКРОФОН (запрос доступа, а
-  // потом «не получило звук», хотя звук в записи есть). Поэтому сразу объясняем
-  // причину и называем выход, а не тратим время человека на отказ.
-  if (!nativeSpeechSupported() && !fileSpeechCapable()) {
-    transcripts[messageId] = {
-      status: 'failed',
-      text: '',
-      error: microphoneOnlyReason()
-    }
+  // Модель на устройстве: так распознаём там, где Web Speech ушёл бы в МИКРОФОН
+  // (мобильный браузер, Safari, Firefox). Звук остаётся на устройстве, модель
+  // скачивается один раз и только с согласия человека.
+  if (kind === 'device') {
+    transcripts[messageId] = { status: 'running', text: '', via: 'device' }
+    await recognizeVoiceLocally(messageId, src, transcriptFinisher(messageId, 'device'))
     return
   }
 
+  // Распознаватель самого устройства (приложение Pismo).
+  if (kind === 'system') {
+    transcripts[messageId] = { status: 'running', text: '' }
+    await recognizeVoiceNatively(messageId, src, transcriptFinisher(messageId, 'system'))
+    return
+  }
+
+  // Остался `browser`: Web Speech с передачей звука ЗАПИСИ (Chrome на компьютере).
   transcripts[messageId] = { status: 'running', text: '' }
 
   const finish = transcriptFinisher(messageId)
 
-  if (nativeSpeechSupported()) {
-    await recognizeVoiceNatively(messageId, src, finish)
+  const Ctor = recognitionCtor()
+  if (Ctor === null) {
+    finish({ status: 'failed', text: '', error: microphoneOnlyReason() })
     return
   }
-
-  const Ctor = recognitionCtor()
-  if (Ctor === null) return
 
   const run: RunState = { cancelled: false, cancelChunk: null }
   running.set(messageId, () => {
@@ -634,14 +693,112 @@ export const recognizeVoice = async (messageId: number, src: string): Promise<vo
 /**
  * Общий «завершитель» расшифровки: закрывает прогон ровно один раз и не даёт
  * вернуть уже скрытый текст (человек мог нажать «Скрыть», пока шло распознавание).
+ *
+ * `via` — кто распознавал: подпись под текстом говорит разное про браузер (звук
+ * может уходить его сервису) и про модель на устройстве (не уходит никуда).
  */
-function transcriptFinisher(messageId: number): (state: VoiceTranscript) => void {
+function transcriptFinisher(
+  messageId: number,
+  via: VoiceTranscript['via'] = 'browser'
+): (state: VoiceTranscript) => void {
   let finished = false
   return (state: VoiceTranscript) => {
     if (finished) return
     finished = true
     running.delete(messageId)
-    if (transcripts[messageId]) transcripts[messageId] = state
+    if (transcripts[messageId]) transcripts[messageId] = { via, ...state }
+  }
+}
+
+/**
+ * Расшифровка моделью НА УСТРОЙСТВЕ (браузер: телефон, Safari, Firefox).
+ *
+ * Порядок такой, и он важен человеку: сначала спрашиваем согласие на скачивание
+ * (десятки мегабайт), потом готовим звук, потом скачиваем модель и, наконец,
+ * считаем. Каждый этап виден в подписи под записью — иначе ожидание выглядит
+ * как «зависло».
+ */
+async function recognizeVoiceLocally(
+  messageId: number,
+  src: string,
+  finish: (state: VoiceTranscript) => void
+): Promise<void> {
+  const model = localSpeechModel()
+  const info = localSpeechModelInfo(model)
+
+  if (!(await localSpeechCached(model))) {
+    // Скачивание модели — это расход трафика на устройстве человека, поэтому
+    // только с его согласия и с честным размером в подписи.
+    const agreed = await confirmDialog({
+      title: 'Расшифровка на устройстве',
+      message:
+        `Скачается модель распознавания (${info.title}, ~${info.sizeMb} МБ) — один раз. ` +
+        'Дальше расшифровка работает без интернета, звук и текст остаются на устройстве.',
+      okLabel: 'Скачать',
+      cancelLabel: 'Отменить'
+    })
+    if (!agreed) {
+      finish({
+        status: 'failed',
+        text: '',
+        error: 'Расшифровка отменена — модель не скачана'
+      })
+      return
+    }
+  }
+
+  let cancelled = false
+  running.set(messageId, () => {
+    cancelled = true
+  })
+
+  const stage = (patch: Partial<VoiceTranscript>): void => {
+    transcripts[messageId] = { status: 'running', text: '', via: 'device', ...patch }
+  }
+
+  try {
+    // Звук: декодируем запись и приводим к 16 кГц моно — как у браузерного пути,
+    // вместе с усилением тихой записи.
+    stage({ stage: 'audio' })
+    const ctx = new AudioContext()
+    let audio: Float32Array
+    try {
+      if (ctx.state === 'suspended') await ctx.resume()
+      audio = await toMono16k(await loadAudioBuffer(ctx, src))
+    } finally {
+      void ctx.close()
+    }
+    if (cancelled) {
+      finish({ status: 'failed', text: '', error: errorMessage('aborted', true) })
+      return
+    }
+
+    stage({ stage: 'download' })
+    const pipeline = await ensureLocalSpeech(model, (share) => {
+      stage({ stage: 'download', progress: share })
+    })
+    if (cancelled) {
+      finish({ status: 'failed', text: '', error: errorMessage('aborted', true) })
+      return
+    }
+
+    stage({ stage: 'recognize' })
+    const text = await transcribeWithLocalSpeech(pipeline, audio, effectiveLanguage())
+    if (cancelled) {
+      finish({ status: 'failed', text: '', error: errorMessage('aborted', true) })
+      return
+    }
+    if (text) {
+      finish({ status: 'ready', text })
+      return
+    }
+    // Модель прослушала запись и не нашла речи: это не «не получило звук», а
+    // «не разобрала» — говорим именно так.
+    finish({ status: 'failed', text: '', error: errorMessage('no-speech', true) })
+  } catch (thrown) {
+    finish({ status: 'failed', text: '', error: describeLocalSpeechError(thrown) })
+  } finally {
+    running.delete(messageId)
   }
 }
 

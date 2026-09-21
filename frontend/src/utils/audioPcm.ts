@@ -87,7 +87,7 @@ export async function toPcm16Mono16k(buffer: AudioBuffer): Promise<Int16Array> {
 }
 
 /** Моно-дорожка в 16 кГц (без упаковки в 16 бит). */
-async function toMono16k(buffer: AudioBuffer): Promise<Float32Array> {
+export async function toMono16k(buffer: AudioBuffer): Promise<Float32Array> {
   const Ctor = offlineCtor()
   if (Ctor !== null && buffer.length > 0) {
     const length = Math.max(1, Math.round((buffer.length / buffer.sampleRate) * PCM_SAMPLE_RATE))

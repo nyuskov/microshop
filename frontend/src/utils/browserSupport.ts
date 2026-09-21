@@ -13,7 +13,8 @@
  */
 import { screenShareNotice, screenShareSupport } from '@/stores/call/screenShare'
 import { translationSupported } from '@/utils/translation'
-import { speechRecognitionSupported } from '@/utils/voiceRecognition'
+import { localSpeechModelInfo } from '@/utils/localSpeech'
+import { speechEngineKind } from '@/utils/voiceRecognition'
 
 /** Итог одной проверки. `partial` — работает, но с оговоркой (см. `text`). */
 export type DeviceSupportState = 'ok' | 'partial' | 'no'
@@ -176,13 +177,34 @@ const push = (): DeviceSupportItem => {
 }
 
 const speech = (): DeviceSupportItem => {
-  if (speechRecognitionSupported()) {
+  const kind = speechEngineKind()
+  if (kind === 'system') {
     return {
       key: 'speech',
       title: 'Расшифровка голосовых в текст',
       state: 'ok',
-      text: 'Устройство умеет распознавать речь',
+      text: 'Распознаёт распознаватель устройства',
       hint: ''
+    }
+  }
+  if (kind === 'browser') {
+    return {
+      key: 'speech',
+      title: 'Расшифровка голосовых в текст',
+      state: 'ok',
+      text: 'Распознаёт Chrome: звук записи уходит в сервис браузера',
+      hint: ''
+    }
+  }
+  if (kind === 'device') {
+    // Телефон, Safari, Firefox: расшифровка есть, но нужна модель на устройстве.
+    const model = localSpeechModelInfo()
+    return {
+      key: 'speech',
+      title: 'Расшифровка голосовых в текст',
+      state: 'partial',
+      text: 'Распознаём на устройстве моделью — она скачается один раз',
+      hint: `Модель «${model.title}» (~${model.sizeMb} МБ) скачается в браузер при первом нажатии значка расшифровки у записи; звук и текст при этом остаются на устройстве`
     }
   }
   return {
@@ -191,8 +213,8 @@ const speech = (): DeviceSupportItem => {
     state: 'no',
     text: 'У этого браузера нет распознавания речи',
     hint: isEmbeddedBrowser()
-      ? 'Распознавание есть в Chrome на компьютере (и в приложении на Android) — во встроенном браузере редактора его нет'
-      : 'Расшифровка есть в Chrome на компьютере и в приложении Pismo: распознаётся запись, а мобильный браузер слушает микрофон'
+      ? 'Откройте Pismo в обычном браузере или в приложении: во встроенном браузере редактора модель распознавания не запускается'
+      : 'Нужен браузер с WebAssembly (Chrome, Firefox, Safari) либо приложение Pismo на Android'
   }
 }
 
@@ -235,7 +257,7 @@ const playback = (): DeviceSupportItem => {
     title: 'Голосовые сообщения',
     state: 'no',
     text: 'Устройство не умеет проигрывать формат записей (webm/Opus)',
-    hint: 'Записи не послушать, но их можно расшифровать в текст кнопкой «В текст» — если расшифровка доступна'
+    hint: 'Записи не послушать, но их можно расшифровать в текст значком ↳A у записи — если расшифровка доступна'
   }
 }
 

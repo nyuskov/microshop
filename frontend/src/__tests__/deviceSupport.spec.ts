@@ -76,16 +76,47 @@ describe('отчёт по устройству', () => {
     ])
   })
 
-  it('без распознавания речи объясняет, что делать (Chrome на телефоне)', () => {
+  it('модель на устройстве: расшифровка есть, но модель скачается один раз', () => {
+    // Так на телефоне: Web Speech умеет только микрофон, поэтому считаем моделью,
+    // скачанной в браузер. Это не «работает» и не «недоступно», а «с оговоркой».
+    const speech = deviceReport().find((item) => item.key === 'speech')
+    expect(speech?.state).toBe('partial')
+    expect(speech?.text).toContain('на устройстве')
+    expect(speech?.hint).toContain('МБ')
+    expect(speech?.hint).toContain('остаются на устройстве')
+  })
+
+  it('Chrome на компьютере распознаёт запись и предупреждает про сервис браузера', () => {
+    stubUa('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36')
+    vi.stubGlobal('SpeechRecognition', function RecognitionStub() {
+      /* только наличие — как в браузере */
+    })
+    const speech = deviceReport().find((item) => item.key === 'speech')
+    expect(speech?.state).toBe('ok')
+    expect(speech?.text).toContain('сервис браузера')
+    expect(speech?.hint).toBe('')
+  })
+
+  it('в приложении распознаёт распознаватель устройства', () => {
+    stubUa(
+      'Mozilla/5.0 (Linux; Android 13; PismoAndroid/1.0; wv) Chrome/140.0.0.0 Mobile Safari/537.36'
+    )
+    vi.stubGlobal('PismoNative', {
+      speechSupported: () => true,
+      speechBegin: () => true,
+      speechChunk: () => undefined
+    })
+    const speech = deviceReport().find((item) => item.key === 'speech')
+    expect(speech?.state).toBe('ok')
+    expect(speech?.text).toContain('распознаватель устройства')
+  })
+
+  it('распознать нечем: без WebAssembly и без распознавателя — говорим причину', () => {
+    stubUa('Mozilla/5.0 Chrome/140.0 Electron/32.0 Code/1.100')
+    vi.stubGlobal('WebAssembly', undefined)
     const speech = deviceReport().find((item) => item.key === 'speech')
     expect(speech?.state).toBe('no')
     expect(speech?.text).toContain('нет распознавания речи')
-    expect(speech?.hint).toContain('Chrome')
-  })
-
-  it('в браузере редактора подсказка называет причину средой', () => {
-    stubUa('Mozilla/5.0 Chrome/140.0 Electron/32.0 Code/1.100')
-    const speech = deviceReport().find((item) => item.key === 'speech')
     expect(speech?.hint).toContain('встроенном браузере')
   })
 
@@ -119,7 +150,7 @@ describe('отчёт по устройству', () => {
     const playback = deviceReport().find((item) => item.key === 'playback')
     expect(playback?.state).toBe('no')
     // Выход из положения назван: расшифровка текстом.
-    expect(playback?.hint).toContain('В текст')
+    expect(playback?.hint).toContain('расшифровать в текст')
   })
 
   it('все «недоступно» сопровождаются подсказкой, а «работает» — нет', () => {
