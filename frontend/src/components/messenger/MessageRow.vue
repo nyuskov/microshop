@@ -25,9 +25,14 @@
     @focusout="onFocusOut"
     @contextmenu.prevent
   >
-    <!-- Подсказка свайпа: тянем сообщение вправо — отвечаем на него -->
-    <span v-if="swipeX > 0" class="swipe-reply" :class="{ ready: swipeReady }">
+    <!-- Подсказки свайпа (по одной на сторону): тянем сообщение вправо —
+         отвечаем, влево — пересылаем. Значок едет вместе с сообщением и
+         «загорается», когда порог пройден: видно, что отпускание сработает. -->
+    <span v-if="swipeX > 0" class="swipe-reply" :class="{ ready: swipeReplyReady }">
       <q-icon :name="icon('reply')" size="18px" aria-hidden="true" />
+    </span>
+    <span v-else-if="swipeX < 0" class="swipe-forward" :class="{ ready: swipeForwardReady }">
+      <q-icon :name="icon('forward')" size="18px" aria-hidden="true" />
     </span>
     <!-- Режим выделения: кружок-чек сбоку от пузыря -->
     <span
@@ -320,12 +325,18 @@ export interface MessageQuote {
   text: string
 }
 
-/* ---------- Свайп вправо = ответ на сообщение ---------- */
-const SWIPE_REPLY_DISTANCE = 84
-const SWIPE_REPLY_THRESHOLD = 56
+/* ---------- Свайпы по сообщению: вправо — ответ, влево — пересылка ----------
+ * Стороны симметричны: одно расстояние и один порог, значок появляется с той
+ * стороны, куда тянем. Жест работает только у сообщений (`selectable`) и только
+ * вне режима выделения. */
+const SWIPE_DISTANCE = 84
+const SWIPE_THRESHOLD = 56
 
 const swipeX = ref(0)
-const swipeReady = computed(() => swipeX.value >= SWIPE_REPLY_THRESHOLD)
+const swipeReplyReady = computed(() => swipeX.value >= SWIPE_THRESHOLD)
+const swipeForwardReady = computed(() => swipeX.value <= -SWIPE_THRESHOLD)
+/** Порог пройден в любую сторону: по этому даём отклик один раз за жест. */
+const swipeReady = computed(() => swipeReplyReady.value || swipeForwardReady.value)
 const swipeStyle = computed<Record<string, string> | undefined>(() =>
   swipeX.value ? { transform: `translateX(${swipeX.value}px)` } : undefined
 )
@@ -703,8 +714,12 @@ const onPointerMove = (event: PointerEvent) => {
     cancelHold()
   }
   if (swipeAxis !== 'x') return
-  swipeX.value = Math.max(0, Math.min(SWIPE_REPLY_DISTANCE, dx))
-  // Дошли до порога ответа — короткий отклик, чтобы это чувствовалось без взгляда
+  // Влево — пересылка; вправо — ответ. У одноразового вложения пересылки нет
+  // (сервер её запрещает, и кнопки такой в панели действий нет), поэтому в эту
+  // сторону строку не тянем вовсе: жест не должен обещать недоступное.
+  const minX = props.message.view_once ? 0 : -SWIPE_DISTANCE
+  swipeX.value = Math.max(minX, Math.min(SWIPE_DISTANCE, dx))
+  // Дошли до порога — короткий отклик, чтобы это чувствовалось без взгляда
   // на экран (дальше в этом жесте больше не повторяем).
   if (swipeReady.value && !swipeFeedback) {
     swipeFeedback = true
@@ -728,8 +743,9 @@ const onPointerUp = () => {
     resetSwipe()
     return
   }
-  // Дотянули до порога — отвечаем на сообщение (жест вместо меню действий).
-  if (swipeReady.value) emit('set-reply')
+  // Дотянули до порога — отвечаем или пересылаем (жест вместо меню действий).
+  if (swipeReplyReady.value) emit('set-reply')
+  else if (swipeForwardReady.value) emit('forward')
   resetSwipe()
 }
 
@@ -1132,16 +1148,18 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(6px);
 }
 
-/* ---------- Свайп вправо = ответ ---------- */
+/* ---------- Свайпы: вправо — ответ, влево — пересылка ---------- */
 .msg {
-  /* Горизонталь обрабатываем сами (свайп-ответ), вертикаль оставляем ленте. */
+  /* Горизонталь обрабатываем сами (свайпы), вертикаль оставляем ленте. */
   touch-action: pan-y;
   transition: transform 0.16s ease;
 }
 
-.swipe-reply {
+/* Значок жеста: у ответа он слева от строки, у пересылки — справа (значит,
+ * показываем ровно тот, в какую сторону тянут). */
+.swipe-reply,
+.swipe-forward {
   position: absolute;
-  left: -4px;
   top: 50%;
   transform: translateY(-50%);
   display: inline-flex;
@@ -1155,9 +1173,24 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
+.swipe-reply {
+  left: -4px;
+}
+
+.swipe-forward {
+  right: -4px;
+}
+
+/* Порог пройден: значок «загорается» — отпускание сработает. Цвета разные,
+ * чтобы ответ и пересылку не путать на бегу. */
 .swipe-reply.ready {
   background: var(--ms-accent-soft);
   color: var(--ms-accent);
+}
+
+.swipe-forward.ready {
+  background: var(--ms-info-bg);
+  color: var(--ms-info);
 }
 
 /* Свёрнутый длинный текст: 12 строк и кнопка «Показать полностью». */
@@ -1611,7 +1644,10 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  z-index: 6;
+  /* Своего z-index у кружка НЕТ нарочно: прилипшая плашка даты в ленте —
+     `z-index: 1` (`.day-divider` в MessageThread) и обязана оставаться поверх
+     содержимого строки. С `z-index: 6` галка перекрывала дату, когда строка
+     проезжала под ней (владелец: «перекрывают галки плавающее время»). */
   pointer-events: none;
   flex: none;
   transition:
