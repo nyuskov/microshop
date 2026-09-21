@@ -14,14 +14,33 @@
 /** Частота, которую ждёт системный распознаватель Android. */
 export const PCM_SAMPLE_RATE = 16000
 
+/**
+ * До какого уровня выравниваем запись по громкости речи (доля от шкалы).
+ *
+ * Считаем не по пику, а по среднеквадратичному: пик может дать один щелчок, и
+ * тихая речь останется тихой — а на тихой записи распознаватель уверенно выдаёт
+ * «похожие по звучанию» слова и целые повторы. Проверено живьём: выравнивание
+ * глухой тихой записи до этого уровня убрало из расшифровки первые ошибки
+ * («Путером я в столрана» → «утром я встал рано»), а одно только усиление по
+ * пику не меняло ничего.
+ */
+const TARGET_RMS = 0.1
+
 /** Во сколько раз максимум усиливаем тихую запись (вместе с речью растёт и шум). */
-const MAX_GAIN = 8
+const MAX_GAIN = 16
 
-/** До какого уровня поднимаем тихую запись (доля от полной шкалы). */
-const TARGET_PEAK = 0.5
+/** Потолок по пику: выше него запись распознаётся с искажениями. */
+const PEAK_CEILING = 0.95
 
-/** Ниже этого уровня запись считаем тихой и усиливаем. */
-const QUIET_PEAK = 0.5
+/**
+ * Ниже этой частоты звук срезаем: речи там нет, а мусора много.
+ *
+ * Гул, ветер, стук по корпусу телефона и дыхание у микрофона живут именно в самых
+ * низких частотах, а распознавателю нужен голос. Срез мягкий (−3 дБ на 80 Гц),
+ * поэтому голос (даже низкий мужской) не страдает: смысл несут гармоники, а не
+ * основной тон.
+ */
+const HIGHPASS_HZ = 80
 
 /** Конструктор офлайн-рендера (в Safari — с префиксом). */
 const offlineCtor = (): typeof OfflineAudioContext | null => {
@@ -33,10 +52,52 @@ const offlineCtor = (): typeof OfflineAudioContext | null => {
 }
 
 /**
- * Загружает и декодирует запись, усиливая тихую.
+ * Уровень звука: пик и среднеквадратичное (RMS) значение.
  *
- * Нормализация по пику: если пик записи 0.05 от шкалы, распознаватель «не слышит»
- * слова — домножаем до 0.5, но не больше ×8, чтобы не поднять шум вместе с речью.
+ * Смотрим каждый 4-й отсчёт: для оценки уровня этого достаточно, а полный
+ * перебор миллионов значений на длинной записи заметно тормозил бы интерфейс.
+ */
+export interface AudioLevel {
+  peak: number
+  rms: number
+}
+
+/** Уровень одного канала. */
+export const audioLevel = (samples: Float32Array): AudioLevel => {
+  let peak = 0
+  let sum = 0
+  let count = 0
+  for (let index = 0; index < samples.length; index += 4) {
+    const value = samples[index]
+    const magnitude = Math.abs(value)
+    if (magnitude > peak) peak = magnitude
+    sum += value * value
+    count += 1
+  }
+  return { peak, rms: count > 0 ? Math.sqrt(sum / count) : 0 }
+}
+
+/** Уровень записи целиком: пик — максимум по каналам, RMS — среднее по каналам. */
+const bufferLevel = (buffer: AudioBuffer): AudioLevel => {
+  let peak = 0
+  let sum = 0
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    const level = audioLevel(buffer.getChannelData(channel))
+    peak = Math.max(peak, level.peak)
+    sum += level.rms * level.rms
+  }
+  const channels = Math.max(1, buffer.numberOfChannels)
+  return { peak, rms: Math.sqrt(sum / channels) }
+}
+
+/**
+ * Загружает и декодирует запись, выравнивая её громкость.
+ *
+ * Разные записи приходят с разным уровнем (кто-то говорит у самого микрофона,
+ * кто-то в стороне). Распознавателю нужен один уровень: на тихой записи он
+ * выдаёт похожие по звучанию слова и повторы, на громкой с переполнением —
+ * треск. Поэтому тихую поднимаем, громкую приглушаем, но не больше, чем
+ * позволяет пик.
  */
 export async function loadAudioBuffer(ctx: AudioContext, src: string): Promise<AudioBuffer> {
   const response = await fetch(src)
@@ -44,22 +105,21 @@ export async function loadAudioBuffer(ctx: AudioContext, src: string): Promise<A
   const data = await response.arrayBuffer()
   const buffer = await ctx.decodeAudioData(data)
 
-  let peak = 0
-  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
-    const samples = buffer.getChannelData(channel)
-    // Пик ищем по каждому 20-му сэмплу: для оценки уровня этого достаточно, а
-    // перебор десятков миллионов значений заметно тормозил бы интерфейс.
-    for (let index = 0; index < samples.length; index += 20) {
-      const value = Math.abs(samples[index])
-      if (value > peak) peak = value
-    }
-  }
-  if (peak > 0 && peak < QUIET_PEAK) {
-    const gain = Math.min(MAX_GAIN, TARGET_PEAK / peak)
-    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
-      const samples = buffer.getChannelData(channel)
-      for (let index = 0; index < samples.length; index += 1) {
-        samples[index] = clampSample(samples[index] * gain)
+  const level = bufferLevel(buffer)
+  if (level.rms > 0) {
+    // Выравниваем всегда: так распознаватель получает записи одной громкости,
+    // как бы близко человек ни держал микрофон.
+    const gain = Math.min(
+      MAX_GAIN,
+      TARGET_RMS / level.rms,
+      PEAK_CEILING / Math.max(level.peak, 1e-6)
+    )
+    if (Math.abs(gain - 1) > 0.01) {
+      for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+        const samples = buffer.getChannelData(channel)
+        for (let index = 0; index < samples.length; index += 1) {
+          samples[index] = clampSample(samples[index] * gain)
+        }
       }
     }
   }
@@ -88,8 +148,9 @@ export async function toPcm16Mono16k(buffer: AudioBuffer): Promise<Int16Array> {
 
 /** Моно-дорожка в 16 кГц (без упаковки в 16 бит). */
 export async function toMono16k(buffer: AudioBuffer): Promise<Float32Array> {
+  if (buffer.length === 0) return new Float32Array(0)
   const Ctor = offlineCtor()
-  if (Ctor !== null && buffer.length > 0) {
+  if (Ctor !== null) {
     const length = Math.max(1, Math.round((buffer.length / buffer.sampleRate) * PCM_SAMPLE_RATE))
     try {
       const offline = new Ctor(1, length, PCM_SAMPLE_RATE)
@@ -98,12 +159,51 @@ export async function toMono16k(buffer: AudioBuffer): Promise<Float32Array> {
       source.connect(offline.destination)
       source.start()
       const rendered = await offline.startRendering()
-      return rendered.getChannelData(0)
+      const mono = rendered.getChannelData(0)
+      // ГРАБЛЯ: на части мобильных сборок Chrome офлайн-рендер отдаёт тишину,
+      // хотя в записи звук есть (слышно по исходнику). Молча кормить
+      // распознаватель тишиной нельзя: на ней он выдаёт целые «фразы» и повторы.
+      // Если пусто, а в записи звук — пересчитываем сами (линейно).
+      if (audioLevel(mono).peak > 0 || bufferLevel(buffer).peak === 0)
+        return cutLowFrequencies(mono)
     } catch {
       /* нет офлайн-рендера — считаем сами (см. ниже) */
     }
   }
-  return linearResample(buffer)
+  return cutLowFrequencies(linearResample(buffer))
+}
+
+/**
+ * Срезает низкие частоты фильтром Баттерворта второго порядка (80 Гц).
+ *
+ * Считаем сами, а не графом браузера: фильтр нужен и на запасном пути пересчёта
+ * (линейная интерполяция), а граф там недоступен.
+ */
+function cutLowFrequencies(samples: Float32Array): Float32Array {
+  const omega = (2 * Math.PI * HIGHPASS_HZ) / PCM_SAMPLE_RATE
+  const cos = Math.cos(omega)
+  // Q = 1/√2 — «ровная» характеристика без горба на срезе.
+  const alpha = Math.sin(omega) / Math.SQRT2
+  const b0 = (1 + cos) / 2
+  const b1 = -(1 + cos)
+  const b2 = (1 + cos) / 2
+  const a0 = 1 + alpha
+  const a1 = -2 * cos
+  const a2 = 1 - alpha
+  let x1 = 0
+  let x2 = 0
+  let y1 = 0
+  let y2 = 0
+  for (let index = 0; index < samples.length; index += 1) {
+    const x0 = samples[index]
+    const y0 = (b0 / a0) * x0 + (b1 / a0) * x1 + (b2 / a0) * x2 - (a1 / a0) * y1 - (a2 / a0) * y2
+    x2 = x1
+    x1 = x0
+    y2 = y1
+    y1 = y0
+    samples[index] = y0
+  }
+  return samples
 }
 
 /** Линейная интерполяция в моно 16 кГц (запасной путь). */

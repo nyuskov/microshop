@@ -60,7 +60,7 @@ import {
   localSpeechSupported,
   transcribeWithLocalSpeech
 } from '@/utils/localSpeech'
-import { toMono16k, describeAudioError, loadAudioBuffer } from '@/utils/audioPcm'
+import { toMono16k, audioLevel, describeAudioError, loadAudioBuffer } from '@/utils/audioPcm'
 import { confirmDialog } from '@/utils/appDialogs'
 import { browserKind, isDesktopChromium } from '@/utils/browserKind'
 
@@ -218,6 +218,17 @@ const DEFAULT_LANGUAGE = 'ru-RU'
 /** Язык распознавания — русский или выбранный человеком. */
 const recognitionLang = (): string => DEFAULT_LANGUAGE
 
+/**
+ * Ниже этого уровня запись считаем тишиной.
+ *
+ * Порог низкий намеренно: уровень смотрим ПОСЛЕ выравнивания громкости
+ * (`loadAudioBuffer`), поэтому «совсем тихо» здесь означает «звука нет вообще» —
+ * микрофон не услышал голоса. Такую запись распознавателю отдавать нельзя: на
+ * тишине он уверенно сочиняет слова и целые повторы, и человек видит «чушь»
+ * вместо честного «в записи не слышно речи».
+ */
+const SILENT_RMS = 0.002
+
 /** Куда помним выбранный язык (настройка устройства, не аккаунта). */
 const LANG_KEY = 'pismo_stt_lang'
 
@@ -314,8 +325,7 @@ export const stopAllRecognitions = (): void => {
 }
 
 /** Сколько секунд записи отдаём распознавателю за один проход. */
-const CHUNK_SECONDS = 15
-/** Сколько ждём финальный результат чанка после его конца (мс). */
+const CHUNK_SECONDS = 15 /** Сколько ждём финальный результат чанка после его конца (мс). */
 const CHUNK_FLUSH_MS = 1500
 /** Сколько секунд слушаем один чанк вместе с запасом (мс). */
 const CHUNK_LIMIT_MS = (CHUNK_SECONDS + 12) * 1000
@@ -354,6 +364,8 @@ const errorMessage = (code: string, heard: boolean): string => {
     return 'Распознавание не получило звук — попробуйте ещё раз'
   }
   if (code === 'no-speech') return 'Речь не разобрана — возможно, в записи тихо или шумно'
+  // Не «не получило звук» и не «не разобрало»: запись есть, но в ней тишина.
+  if (code === 'silent') return 'В записи не слышно речи — проверьте микрофон и попробуйте снова'
   return 'Не удалось распознать голосовое'
 }
 
@@ -749,6 +761,14 @@ async function recognizeVoiceLocally(
     }
     if (cancelled) {
       finish({ status: 'failed', text: '', error: errorMessage('aborted', true) })
+      return
+    }
+    // Тишину распознавателю не отдаём: на ней он выдаёт целые «фразы» и повторы,
+    // и человек получает уверенную чушь вместо честного ответа. Уровень смотрим
+    // после выравнивания громкости, поэтому порог низкий: если звука в записи нет
+    // совсем, усиление его не создаст.
+    if (audioLevel(audio).rms < SILENT_RMS) {
+      finish({ status: 'failed', text: '', error: errorMessage('silent', false) })
       return
     }
 

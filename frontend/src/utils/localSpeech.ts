@@ -227,12 +227,20 @@ const loadEngine = async (): Promise<LocalSpeechEngine> => {
 /** Загруженные модели: одна на вкладку (десятки мегабайт, пересоздавать незачем). */
 const pipelines = new Map<LocalSpeechModelKey, Promise<LocalSpeechPipeline>>()
 
-/** Слабое устройство: тогда берём модель поменьше, иначе она не успеет. */
+/**
+ * Слабое устройство: тогда берём модель поменьше, иначе она не успеет.
+ *
+ * Порог — 4 ядра и 4 ГБ. Так телефон, у которого браузер показывает ровно 4 ГБ
+ * (частый случай у Android), получает модель «точнее»: на «быстрой» он уверенно
+ * путает слова, а расшифровка нужна именно ради слов. Совсем слабые устройства
+ * (2 ГБ или 2 ядра) всё равно остаются на «быстрой» — большая модель там не
+ * поместится в память.
+ */
 const deviceIsWeak = (): boolean => {
   const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory
   const cores = navigator.hardwareConcurrency
-  if (typeof memory === 'number' && memory > 0 && memory <= 4) return true
-  return typeof cores === 'number' && cores > 0 && cores <= 4
+  if (typeof memory === 'number' && memory > 0 && memory < 4) return true
+  return typeof cores === 'number' && cores > 0 && cores < 4
 }
 
 /** Модель по умолчанию для этого устройства. */
@@ -351,24 +359,87 @@ export async function ensureLocalSpeech(
 }
 
 /**
+ * Со скольких слов фраза считается повтором, а не обычной речью.
+ *
+ * Два слова — минимум: повтор в два слова модель выдаёт десятками («продолжение
+ * следует», «спасибо за просмотр»), а одиночные слова не трогаем вовсе — иначе
+ * «да да да» превратилось бы в «да».
+ */
+const MIN_REPEAT_WORDS = 2
+
+/**
+ * Схлопывает зацикливание модели: фраза три раза подряд — это сбой, а не речь.
+ *
+ * На тихой или шумной записи Whisper уходит в повтор: одни и те же слова идут
+ * десятками («спасибо за просмотр», «продолжение следует»). Человеку это читать
+ * незачем, а в записи это не исправить — поэтому оставляем фразу один раз, а
+ * остальное убираем. Повторить фразу трижды подряд человек почти не может, а
+ * короткое «да, да, да» под правило не попадает (это одно слово, не фраза).
+ */
+export const collapseRepeats = (text: string): string => {
+  const trimmed = text.trim()
+  const words = trimmed.split(/\s+/).filter(Boolean)
+  if (words.length < 9) return trimmed
+  const kept: string[] = []
+  let index = 0
+  while (index < words.length) {
+    let collapsed = false
+    // Размер фразы перебираем ОТ МАЛОГО к большему: у повтора в два слова
+    // («продолжение следует») больший размер захватил бы сразу несколько копий и
+    // оставил их в тексте.
+    for (let size = MIN_REPEAT_WORDS; size <= 12; size += 1) {
+      if (index + size * 3 > words.length) break
+      const phrase = words.slice(index, index + size).join(' ')
+      let count = 1
+      // Сравниваем без регистра: повтор начинается с заглавного слова («Спасибо
+      // за просмотр»), а дальше идёт со строчных — с учётом регистра повтор
+      // распознался бы только со второго круга, и в тексте остались бы две копии.
+      const key = phrase.toLowerCase()
+      while (
+        words
+          .slice(index + count * size, index + (count + 1) * size)
+          .join(' ')
+          .toLowerCase() === key
+      ) {
+        count += 1
+      }
+      if (count >= 3) {
+        kept.push(phrase)
+        index += count * size
+        collapsed = true
+        break
+      }
+    }
+    if (!collapsed) {
+      kept.push(words[index])
+      index += 1
+    }
+  }
+  return kept.join(' ')
+}
+
+/**
  * Распознаёт звук готовым распознавателем.
  *
- * `language` — код вида `ru-RU`; Whisper ждёт короткий код (`ru`), а пустая строка
- * означает «определи сам».
+ * `language` — код вида `ru-RU`, Whisper ждёт короткий (`ru`).
+ *
+ * Пустую строку переводим в РУССКИЙ, а не «определи сам»: без языка движок молча
+ * берёт английский и ПЕРЕВОДИТ русскую речь — живьём вышло «Hi. How are you?».
+ * Тот же выбор по умолчанию в `voiceRecognition.ts` (`DEFAULT_LANGUAGE`).
  */
 export async function transcribeWithLocalSpeech(
   pipeline: LocalSpeechPipeline,
   audio: Float32Array,
   language: string
 ): Promise<string> {
-  const short = language ? language.split('-')[0]?.toLowerCase() : ''
+  const short = (language || 'ru').split('-')[0]?.toLowerCase() || 'ru'
   const result = await pipeline(audio, {
     task: 'transcribe',
     chunk_length_s: 30,
     stride_length_s: 5,
-    ...(short ? { language: short } : {})
+    language: short
   })
-  return (result.text ?? '').trim()
+  return collapseRepeats(result.text ?? '')
 }
 
 /**

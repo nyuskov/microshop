@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   LOCAL_SPEECH_MODELS,
+  collapseRepeats,
   defaultLocalSpeechModel,
   describeLocalSpeechError,
   ensureLocalSpeech,
@@ -87,9 +88,14 @@ describe('модель распознавания на устройстве', ()
   })
 
   it('модель по умолчанию — по устройству, а выбранная помнится', () => {
-    // «Точнее» по умолчанию, но на слабом устройстве (мало ядер или памяти) —
-    // «быстрая»: большая модель там не успеет отработать.
+    // «Точнее» по умолчанию, а на слабом устройстве (мало ядер или памяти) —
+    // «быстрая»: большая модель там не поместится и не успеет.
     vi.stubGlobal('navigator', { hardwareConcurrency: 8, deviceMemory: 8 })
+    expect(defaultLocalSpeechModel()).toBe('base')
+
+    // 4 ГБ и 4 ядра — это обычный телефон, и модель «точнее» он тянет: на
+    // «быстрой» он путает слова, а расшифровка нужна ради слов.
+    vi.stubGlobal('navigator', { hardwareConcurrency: 4, deviceMemory: 4 })
     expect(defaultLocalSpeechModel()).toBe('base')
 
     vi.stubGlobal('navigator', { hardwareConcurrency: 2, deviceMemory: 2 })
@@ -161,14 +167,37 @@ describe('модель распознавания на устройстве', ()
     expect(calls).toHaveLength(2)
   })
 
-  it('язык уходит в модель коротким кодом, пустой — «определи сам»', async () => {
+  it('язык уходит в модель коротким кодом, а пустой становится русским', async () => {
+    // Проверено живьём: без языка движок молча берёт АНГЛИЙСКИЙ и переводит
+    // русскую речь — вышло «Hi. How are you?». Поэтому пустой язык — русский.
     const pipe = await ensureLocalSpeech('base')
     await transcribeWithLocalSpeech(pipe, new Float32Array(16000), 'ru-RU')
     await transcribeWithLocalSpeech(pipe, new Float32Array(16000), '')
 
     expect(optionsSeen[0]).toMatchObject({ language: 'ru', task: 'transcribe' })
-    expect(optionsSeen[1]).not.toHaveProperty('language')
+    expect(optionsSeen[1]).toMatchObject({ language: 'ru' })
     expect(audioSeen[0]).toHaveLength(16000)
+  })
+
+  it('зацикливание модели схлопывается', () => {
+    // Whisper на тихой/шумной записи уходит в повтор: одна фраза десятками.
+    const loop = 'спасибо за просмотр '.repeat(8).trim()
+    expect(collapseRepeats(loop)).toBe('спасибо за просмотр')
+
+    // Обычную речь и короткое «да, да, да» не трогаем.
+    const speech = 'Привет! Я сегодня задержусь на работе и вернусь к восьми вечера.'
+    expect(collapseRepeats(speech)).toBe(speech)
+    expect(collapseRepeats('да да да')).toBe('да да да')
+    const once = 'Сначала послушаем, потом решим.'
+    expect(collapseRepeats(`${once} ${once}`)).toBe(`${once} ${once}`)
+  })
+
+  it('повторы убираются и в готовой расшифровке', async () => {
+    answer = `Продолжение следует ${'Продолжение следует '.repeat(5)}`.trim()
+    const pipe = await ensureLocalSpeech('base')
+    expect(await transcribeWithLocalSpeech(pipe, new Float32Array(16000), 'ru-RU')).toBe(
+      'Продолжение следует'
+    )
   })
 
   it('текст отдаётся без лишних пробелов', async () => {

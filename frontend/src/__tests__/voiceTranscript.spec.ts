@@ -5,6 +5,7 @@ import { mount } from '@vue/test-utils'
 
 import AudioMessage from '@/components/media/AudioMessage.vue'
 import TranscriptionBlock from '@/components/media/TranscriptionBlock.vue'
+import { audioLevel } from '@/utils/audioPcm'
 import { setLocalSpeechEngine, type LocalSpeechEngine } from '@/utils/localSpeech'
 import {
   clearTranscript,
@@ -99,6 +100,15 @@ let ended: (() => void) | null
 let audioSeconds = 4
 /** Сэмплы «записи» — по ним видно нормализацию тихого звука. */
 let samples: Float32Array
+
+/** Тон «как речь»: у постоянного сигнала нет ни частоты, ни громкости речи. */
+const makeTone = (sampleRate: number, seconds: number, peak: number, hz = 220) => {
+  const data = new Float32Array(Math.round(sampleRate * seconds))
+  for (let index = 0; index < data.length; index += 1) {
+    data[index] = peak * Math.sin((2 * Math.PI * hz * index) / sampleRate)
+  }
+  return data
+}
 /** Запущенные куски: смещение и длительность (проверяем нарезку). */
 let chunks: { offset: number; duration: number }[]
 
@@ -176,8 +186,10 @@ const fakeLocalEngine: LocalSpeechEngine = {
 beforeEach(() => {
   ended = null
   audioSeconds = 4
-  // Пик 1.0 — «нормальная» громкость: нормализация тут ничего не меняет.
-  samples = new Float32Array(48000 * 4).fill(1)
+  // Пик 0.5 — «нормальная» громкость. Тон, а не постоянное число: постоянное
+  // напряжение — не звук, и фильтр низких частот в `toMono16k` его убирает (как
+  // и должно: он срезает всё ниже 80 Гц, включая постоянную составляющую).
+  samples = makeTone(48000, 4, 0.5)
   chunks = []
   recognition = new FakeRecognition()
   globals.window.SpeechRecognition = function () {
@@ -535,7 +547,7 @@ describe('точность распознавания', () => {
     // Длинный `continuous` у Chrome разбирает слова хуже и теряет хвост записи,
     // поэтому звук идёт кусками по 15 секунд, а результаты собираются вместе.
     audioSeconds = 25
-    samples = new Float32Array(48000 * 25).fill(1)
+    samples = makeTone(48000, 25, 0.5)
     const running = recognizeVoice(20, 'blob:voice')
     await settle()
     expect(recognition.continuous).toBe(false)
@@ -598,16 +610,18 @@ describe('точность распознавания', () => {
     expect(transcriptOf(25)?.text).toBe('привет мир')
   })
 
-  it('тихую запись усиливает перед распознаванием', async () => {
-    // Симптом: «записал тихо — слов не разобрал».
-    samples = new Float32Array(48000).fill(0.05)
+  it('тихую запись выравнивает по громкости перед распознаванием', async () => {
+    // Симптом: «записал тихо — слов не разобрал». Уровень подтягиваем по
+    // среднеквадратичному (громкость речи), а не по пику: пик может дать один
+    // щелчок, и тихая речь осталась бы тихой — а на тихой записи распознаватель
+    // выдаёт «похожие по звучанию» слова и повторы.
+    samples = makeTone(48000, 1, 0.05)
     const running = recognizeVoice(23, 'blob:voice')
     await settle()
     ended?.()
     await running
 
-    // Пик поднят до 0.4 (×8 — предел, чтобы не поднимать шум вместе с речью).
-    expect(samples[0]).toBeCloseTo(0.4, 5)
+    expect(audioLevel(samples).rms).toBeCloseTo(0.1, 2)
   })
 
   it('язык по умолчанию русский — иначе «привет» превращается в «private»', async () => {

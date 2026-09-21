@@ -6,7 +6,7 @@ import {
   nativeSpeechSupported,
   recognizeWithNative
 } from '@/services/nativeSpeech'
-import { loadAudioBuffer, pcmChunks, toPcm16Mono16k } from '@/utils/audioPcm'
+import { audioLevel, loadAudioBuffer, pcmChunks, toMono16k, toPcm16Mono16k } from '@/utils/audioPcm'
 
 /**
  * Расшифровка голосовых силами УСТРОЙСТВА (Android-обёртка).
@@ -73,6 +73,25 @@ class FakeAudioContext {
 /** Буфер с ровным сигналом (по умолчанию — полная шкала). */
 const makeBuffer = (seconds: number, sampleRate: number, value = 1) => {
   const samples = new Float32Array(Math.round(seconds * sampleRate)).fill(value)
+  return {
+    numberOfChannels: 1,
+    length: samples.length,
+    sampleRate,
+    duration: seconds,
+    getChannelData: () => samples
+  } as unknown as AudioBuffer
+}
+
+/**
+ * Сигнал «как речь»: синус — у него пик выше среднего уровня (крест-фактор ~√2).
+ *
+ * Ровным сигналом уровень речи не проверить: у него среднее равно пику.
+ */
+const makeToneBuffer = (seconds: number, sampleRate: number, peak: number, hz = 300) => {
+  const samples = new Float32Array(Math.round(seconds * sampleRate))
+  for (let index = 0; index < samples.length; index += 1) {
+    samples[index] = peak * Math.sin((2 * Math.PI * hz * index) / sampleRate)
+  }
   return {
     numberOfChannels: 1,
     length: samples.length,
@@ -190,22 +209,77 @@ describe('звук для распознавателя', () => {
 
     // 2 секунды при 16 кГц — это 32000 отсчётов, независимо от частоты записи.
     expect(pcm.length).toBe(32000)
-    expect(pcm[0]).toBe(32767)
+    expect(Math.abs(pcm[0])).toBeGreaterThan(0)
   })
 
   it('не выходит за пределы 16 бит на громкой записи', async () => {
     const pcm = await toPcm16Mono16k(makeBuffer(0.5, 16000, 2))
-    expect(pcm[0]).toBe(32767)
+    expect(Math.max(...pcm)).toBeLessThanOrEqual(32767)
+    expect(Math.min(...pcm)).toBeGreaterThanOrEqual(-32767)
   })
 
-  it('тихую запись усиливает (иначе слов не разобрать)', async () => {
-    const quiet = makeBuffer(1, 16000, 0.05)
+  it('выравнивает громкость записи по уровню речи', async () => {
+    // Тихую поднимаем до одного уровня, громкую приглушаем — распознавателю нужна
+    // одна и та же громкость, иначе он выдаёт похожие по звучанию слова.
+    const quiet = makeToneBuffer(1, 16000, 0.05)
     const ctx = new FakeAudioContext()
     ctx.decodeAudioData = async () => quiet
     await loadAudioBuffer(ctx as unknown as AudioContext, 'blob:voice')
 
-    // Пик поднят до 0.4: ×8 — предел, чтобы не поднять шум вместе с речью.
-    expect(quiet.getChannelData(0)[0]).toBeCloseTo(0.4, 5)
+    const samples = quiet.getChannelData(0)
+    const level = audioLevel(samples)
+    expect(level.rms).toBeCloseTo(0.1, 2)
+    expect(level.peak).toBeLessThanOrEqual(0.95)
+  })
+
+  it('громкую запись не выводит за шкалу', async () => {
+    const loud = makeToneBuffer(1, 16000, 1)
+    const ctx = new FakeAudioContext()
+    ctx.decodeAudioData = async () => loud
+    await loadAudioBuffer(ctx as unknown as AudioContext, 'blob:voice')
+
+    const level = audioLevel(loud.getChannelData(0))
+    expect(level.peak).toBeLessThanOrEqual(0.95)
+    expect(level.rms).toBeCloseTo(0.1, 2)
+  })
+
+  it('тишину не трогает и не усиливает шум', async () => {
+    const silence = makeBuffer(1, 16000, 0)
+    const ctx = new FakeAudioContext()
+    ctx.decodeAudioData = async () => silence
+    await loadAudioBuffer(ctx as unknown as AudioContext, 'blob:voice')
+
+    expect(audioLevel(silence.getChannelData(0)).peak).toBe(0)
+  })
+
+  it('срезает низкие частоты, а голос не трогает', async () => {
+    // Гул и ветер живут ниже 80 Гц; распознавателю нужен голос, а не мусор.
+    const rumble = makeToneBuffer(1, 16000, 0.5, 40)
+    const mono = await toMono16k(rumble)
+    const level = audioLevel(mono.slice(4000))
+
+    expect(level.rms).toBeLessThan(0.1)
+  })
+
+  it('если офлайн-пересчёт отдал тишину — считаем сами', async () => {
+    // ГРАБЛЯ: на части мобильных сборок Chrome офлайн-рендер возвращает тишину,
+    // хотя в записи звук есть. Тишина в распознавателе превращается в «фразы» и
+    // повторы, поэтому такой результат отбрасываем.
+    class SilentOffline {
+      createBufferSource() {
+        return { buffer: null, connect: () => undefined, start: () => undefined }
+      }
+      get destination() {
+        return {}
+      }
+      startRendering = async () => ({ getChannelData: () => new Float32Array(16000) })
+    }
+    vi.stubGlobal('OfflineAudioContext', SilentOffline)
+
+    const mono = await toMono16k(makeToneBuffer(1, 16000, 0.5))
+
+    expect(mono.length).toBe(16000)
+    expect(audioLevel(mono).peak).toBeGreaterThan(0)
   })
 
   it('base64 режется на куски, которые складываются в исходный звук', () => {
