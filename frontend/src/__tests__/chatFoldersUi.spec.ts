@@ -74,7 +74,7 @@ describe('чипы папок в списке чатов', () => {
   })
 
   it('кнопка «+» создаёт папку', () => {
-    expect(list).toContain('aria-label="Новая папка чатов"')
+    expect(list).toContain(':aria-label="t(\'Новая папка чатов\')"')
     expect(list).toContain('@click="emit(\'create-folder\')"')
     expect(messenger).toContain('@create-folder="openFolderManager()"')
   })

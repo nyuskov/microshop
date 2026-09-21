@@ -5,7 +5,7 @@
         Комментарии<template v-if="comments.length"> · {{ comments.length }}</template>
       </div>
       <q-space />
-      <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
+      <q-btn flat round dense icon="close" v-close-popup :aria-label="t('Закрыть')" />
     </q-card-section>
     <q-separator />
 
@@ -16,7 +16,7 @@
       <p v-if="postAuthor" class="ch-comments-author">{{ postAuthor }}</p>
       <p class="ch-comments-post">{{ postPreview }}</p>
 
-      <p v-if="loading" class="ch-comments-empty">Загружаем…</p>
+      <p v-if="loading" class="ch-comments-empty">{{ t('Загружаем…') }}</p>
       <p v-else-if="!comments.length" class="ch-comments-empty">
         Пока никто не комментировал. Будьте первым.
       </p>
@@ -41,7 +41,7 @@
                 v-if="comment.can_delete"
                 type="button"
                 class="ch-comment-del"
-                aria-label="Удалить комментарий"
+                :aria-label="t('Удалить комментарий')"
                 @click="remove(comment)"
               >
                 <q-icon :name="icon('delete')" size="14px" />
@@ -60,7 +60,7 @@
         class="ch-input ch-textarea"
         rows="2"
         maxlength="4096"
-        :placeholder="canComment ? 'Ваш комментарий' : 'Комментировать могут подписчики'"
+        :placeholder="canComment ? t('Ваш комментарий') : t('Комментировать могут подписчики')"
         :disabled="!canComment"
         @keydown.enter.exact.prevent="send"
       ></textarea>
@@ -68,7 +68,7 @@
         class="ch-comments-send"
         type="button"
         :disabled="!canComment || !draft.trim() || sending"
-        aria-label="Отправить комментарий"
+        :aria-label="t('Отправить комментарий')"
         @click="send"
       >
         <!-- Крутилку красим наследованием от кнопки (`--ms-on-accent`), а не
@@ -87,6 +87,7 @@ import { Notify } from 'quasar'
 
 import { addComment, deleteComment, fetchComments } from '@/services/channelService'
 import { getErrorMessage } from '@/services/errors'
+import { t } from '@/i18n'
 import { avatarStyle, initials } from '@/utils/user'
 import { formatMsgTime } from '@/utils/format'
 import { icon } from '@/utils/icons'

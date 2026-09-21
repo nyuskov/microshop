@@ -133,7 +133,7 @@ describe('связки в интерфейсе', () => {
     // невидимым «Повторить» для уже исчезнувшей ошибки).
     expect(messenger).toContain('if (!value) retrySend.value = null')
     // Повторяемые отправки называют его при сбое.
-    expect(messenger).toContain("getErrorMessage(error, 'Не удалось отправить стикер'),")
+    expect(messenger).toContain("getErrorMessage(error, t('Не удалось отправить стикер')),")
     expect(messenger).toContain('() => void sendSticker(sticker)')
   })
 })

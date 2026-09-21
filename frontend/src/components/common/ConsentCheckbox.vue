@@ -8,21 +8,26 @@
       @change="emit('update:modelValue', ($event.target as HTMLInputElement).checked)"
     />
     <span class="consent-text">
-      Я принимаю
-      <a href="/privacy.html" target="_blank" rel="noopener" @click.stop
-        >политику конфиденциальности</a
+      {{ t('Я принимаю') }}
+      <a href="/privacy.html" target="_blank" rel="noopener" @click.stop>{{
+        t('политику конфиденциальности')
+      }}</a
       >,
-      <a href="/terms.html" target="_blank" rel="noopener" @click.stop
-        >пользовательское соглашение</a
-      >
-      и
-      <a href="/community.html" target="_blank" rel="noopener" @click.stop>правила сообщества</a>, а
-      также даю согласие на обработку персональных данных.
+      <a href="/terms.html" target="_blank" rel="noopener" @click.stop>{{
+        t('пользовательское соглашение')
+      }}</a>
+      {{ t('и') }}
+      <a href="/community.html" target="_blank" rel="noopener" @click.stop>{{
+        t('правила сообщества')
+      }}</a
+      >{{ t('а также даю согласие на обработку персональных данных.') }}
     </span>
   </label>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * Галка принятия документов сервиса — для регистрации.
  *

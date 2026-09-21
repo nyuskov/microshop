@@ -2,7 +2,7 @@
   <!-- Шапка держит переключение между основными списками и быстрые действия. -->
   <!-- Режим выделения чатов (вход по удержанию) -->
   <div v-if="selectionMode" class="selection-bar">
-    <button class="icon-btn" title="Отмена" @click="emit('exit-selection')">
+    <button class="icon-btn" :title="t('Отмена')" @click="emit('exit-selection')">
       <q-icon :name="icon('close')" size="20px" />
     </button>
     <span class="selection-count">{{ selectedCount }}</span>
@@ -10,8 +10,8 @@
       <button
         class="icon-btn"
         :class="{ on: selectionAllMuted }"
-        :title="selectionAllMuted ? 'Включить уведомления' : 'Замьютить выбранные'"
-        aria-label="Мьют/анмьют выбранных"
+        :title="selectionAllMuted ? t('Включить уведомления') : t('Замьютить выбранные')"
+        :aria-label="t('Мьют/анмьют выбранных')"
         @click="emit('bulk-mute')"
       >
         <q-icon
@@ -22,8 +22,8 @@
       <button
         class="icon-btn"
         :class="{ on: selectionAllPinned }"
-        :title="selectionAllPinned ? 'Открепить выбранные' : 'Закрепить выбранные'"
-        aria-label="Пин/анпин выбранных"
+        :title="selectionAllPinned ? t('Открепить выбранные') : t('Закрепить выбранные')"
+        :aria-label="t('Пин/анпин выбранных')"
         @click="emit('bulk-pin')"
       >
         <q-icon :name="icon('push_pin')" size="20px" />
@@ -31,24 +31,24 @@
       <button
         class="icon-btn"
         :class="{ on: selectionAllArchived }"
-        :title="selectionAllArchived ? 'Убрать из архива' : 'В архив'"
-        aria-label="В архив/из архива выбранных"
+        :title="selectionAllArchived ? t('Убрать из архива') : t('В архив')"
+        :aria-label="t('В архив/из архива выбранных')"
         @click="emit('bulk-archive')"
       >
         <q-icon :name="icon('archive')" size="20px" />
       </button>
       <button
         class="icon-btn"
-        title="В папку"
-        aria-label="Добавить выбранные чаты в папку"
+        :title="t('В папку')"
+        :aria-label="t('Добавить выбранные чаты в папку')"
         @click="emit('bulk-folders')"
       >
         <q-icon :name="icon('folder')" size="20px" />
       </button>
       <button
         class="icon-btn danger"
-        title="Удалить выбранные"
-        aria-label="Удалить выбранные"
+        :title="t('Удалить выбранные')"
+        :aria-label="t('Удалить выбранные')"
         @click="emit('bulk-delete')"
       >
         <q-icon :name="icon('delete')" size="20px" />
@@ -56,8 +56,8 @@
       <button
         class="icon-btn"
         :class="{ on: allVisibleSelected }"
-        title="Выбрать все"
-        aria-label="Выбрать все"
+        :title="t('Выбрать все')"
+        :aria-label="t('Выбрать все')"
         @click="emit('toggle-select-all')"
       >
         <q-icon :name="icon('done_all')" size="20px" />
@@ -81,8 +81,8 @@
       <button
         v-if="view === 'chats'"
         class="icon-btn"
-        title="Контакты"
-        aria-label="Открыть контакты"
+        :title="t('Контакты')"
+        :aria-label="t('Открыть контакты')"
         @click="emit('to-contacts')"
       >
         <q-icon :name="icon('group')" size="20px" />
@@ -90,8 +90,8 @@
       <button
         v-else
         class="icon-btn"
-        title="Чаты"
-        aria-label="Открыть чаты"
+        :title="t('Чаты')"
+        :aria-label="t('Открыть чаты')"
         @click="emit('to-chats')"
       >
         <q-icon :name="icon('forum')" size="20px" />
@@ -100,8 +100,8 @@
         v-if="view === 'chats'"
         class="icon-btn"
         :class="{ open: searchOpen }"
-        :title="searchOpen ? 'Закрыть поиск' : 'Поиск'"
-        :aria-label="searchOpen ? 'Закрыть поиск' : 'Поиск'"
+        :title="searchOpen ? t('Закрыть поиск') : t('Поиск')"
+        :aria-label="searchOpen ? t('Закрыть поиск') : t('Поиск')"
         @click="emit('toggle-search')"
       >
         <q-icon :name="icon('search')" size="20px" />
@@ -109,8 +109,8 @@
       <button
         v-if="view === 'contacts'"
         class="icon-btn"
-        title="Добавить из контактов телефона"
-        aria-label="Добавить из контактов телефона"
+        :title="t('Добавить из контактов телефона')"
+        :aria-label="t('Добавить из контактов телефона')"
         @click="emit('add-from-phone')"
       >
         <q-icon :name="icon('contacts')" size="20px" />
@@ -119,8 +119,8 @@
         <button
           class="icon-btn"
           :class="{ open: settingsMenuOpen }"
-          title="Ещё"
-          aria-label="Ещё"
+          :title="t('Ещё')"
+          :aria-label="t('Ещё')"
           @click="toggleSettingsMenu"
         >
           <q-icon :name="icon('more_vert')" size="20px" />
@@ -139,8 +139,8 @@
       </span>
       <button
         class="self-profile-btn"
-        title="Настройки профиля"
-        aria-label="Настройки профиля"
+        :title="t('Настройки профиля')"
+        :aria-label="t('Настройки профиля')"
         @click="emit('open-profile')"
       >
         <span class="avatar self-avatar" :style="avatarStyle(selfName)">
@@ -162,6 +162,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 import { avatarStyle, initials } from '@/utils/user'
 import StoriesStrip from '@/components/stories/StoriesStrip.vue'
 
@@ -220,10 +221,10 @@ const toggleSettingsMenu = () => {
 // профиля.
 const settingsActions = computed<SettingsAction[]>(() => [
   // «Звонки» — первым: это то, что человек ищет чаще, чем создание новых сущностей.
-  { key: 'calls', label: 'Звонки', icon: 'call' },
-  { key: 'group', label: 'Новая группа', icon: 'group_add' },
-  { key: 'channel', label: 'Новый канал', icon: 'campaign' },
-  { key: 'blocked', label: 'Заблокированные', icon: 'block' }
+  { key: 'calls', label: t('Звонки'), icon: 'call' },
+  { key: 'group', label: t('Новая группа'), icon: 'group_add' },
+  { key: 'channel', label: t('Новый канал'), icon: 'campaign' },
+  { key: 'blocked', label: t('Заблокированные'), icon: 'block' }
 ])
 
 const runSettingsAction = (action: SettingsAction) => {

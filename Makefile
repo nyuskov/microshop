@@ -36,6 +36,7 @@ check-frontend:
 	cd $(FE) && node scripts/check-contrast.mjs
 	cd $(FE) && node scripts/check-style-duplicates.mjs
 	cd $(FE) && node scripts/check-geometry.mjs
+	cd $(FE) && node scripts/check-i18n.mjs
 	cd $(FE) && $(NODE_BIN)/vitest run
 	@# Сборка и бюджет веса: это тоже шаги CI. Без них проверка проходила, а сборка
 	@# падала на «бюджет размера бандла превышен» — новый импорт незаметно

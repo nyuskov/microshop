@@ -11,10 +11,10 @@
     <!-- Редактирование сообщения -->
     <div v-if="editingMessage" class="reply-bar mode-bar">
       <div class="reply-bar-info">
-        <span class="reply-bar-name">Редактирование</span>
+        <span class="reply-bar-name">{{ t('Редактирование') }}</span>
         <span class="reply-bar-text">{{ editingMessage.text }}</span>
       </div>
-      <button class="icon-btn" title="Отмена" @click="emit('cancel-edit')">
+      <button class="icon-btn" :title="t('Отмена')" @click="emit('cancel-edit')">
         <q-icon :name="icon('close')" size="20px" />
       </button>
     </div>
@@ -25,7 +25,7 @@
         <span class="reply-bar-name">{{ replyBarName }}</span>
         <span class="reply-bar-text">{{ messageSnippet(replyTarget) }}</span>
       </div>
-      <button class="icon-btn" title="Отменить ответ" @click="emit('clear-reply')">
+      <button class="icon-btn" :title="t('Отменить ответ')" @click="emit('clear-reply')">
         <q-icon :name="icon('close')" size="20px" />
       </button>
     </div>
@@ -43,7 +43,7 @@
       <span class="attach-wrap">
         <button
           class="round-btn"
-          title="Прикрепить файл"
+          :title="t('Прикрепить файл')"
           :aria-expanded="attachMenuOpen"
           @click="attachMenuOpen = !attachMenuOpen"
         >
@@ -54,14 +54,14 @@
           <div class="attach-menu">
             <button type="button" class="attach-item" @click="pickAttachment(false)">
               <q-icon :name="icon('attach_file')" size="18px" />
-              <span>Файл или фото</span>
+              <span>{{ t('Файл или фото') }}</span>
             </button>
             <button type="button" class="attach-item" @click="pickAttachment(true)">
               <q-icon :name="icon('schedule')" size="18px" />
-              <span>Посмотреть один раз</span>
+              <span>{{ t('Посмотреть один раз') }}</span>
             </button>
             <p class="attach-hint">
-              Одноразовое медиа сгорит после первого просмотра: его нельзя переслать.
+              {{ t('Одноразовое медиа сгорит после первого просмотра: его нельзя переслать.') }}
             </p>
           </div>
         </q-menu>
@@ -72,7 +72,7 @@
         type="file"
         multiple
         :accept="viewOncePick ? 'image/*,video/*' : undefined"
-        aria-label="Прикрепить файл"
+        :aria-label="t('Прикрепить файл')"
         @change="onFileSelected"
       />
       <textarea
@@ -80,8 +80,8 @@
         v-model="newMessage"
         class="text-input"
         rows="1"
-        placeholder="Сообщение"
-        aria-label="Сообщение"
+        :placeholder="t('Сообщение')"
+        :aria-label="t('Сообщение')"
         @keydown="onTextKeydown"
         @input="onTextInput"
         @click="updateMentions"
@@ -90,7 +90,7 @@
       <button
         class="round-btn extras-toggle"
         :class="{ active: extrasPanel !== 'none' }"
-        title="Эмодзи и GIF"
+        :title="t('Эмодзи и GIF')"
         :aria-expanded="extrasPanel !== 'none'"
         @click="emit('toggle-extras')"
       >
@@ -105,13 +105,13 @@
           }"
           :title="
             recordMode === 'video'
-              ? 'Видеосообщение (нажмите). Удерживайте 2 секунды — голосовое'
-              : 'Голосовое сообщение (нажмите). Удерживайте 2 секунды — видеосообщение'
+              ? t('Видеосообщение (нажмите). Удерживайте 2 секунды — голосовое')
+              : t('Голосовое сообщение (нажмите). Удерживайте 2 секунды — видеосообщение')
           "
           :aria-label="
             recordMode === 'video'
-              ? 'Записать видеосообщение. Удерживайте 2 секунды для голосового'
-              : 'Записать голосовое сообщение. Удерживайте 2 секунды для видеосообщения'
+              ? t('Записать видеосообщение. Удерживайте 2 секунды для голосового')
+              : t('Записать голосовое сообщение. Удерживайте 2 секунды для видеосообщения')
           "
           @click="emit('mic-click')"
           @pointerdown="emit('mic-down')"
@@ -128,7 +128,7 @@
       <span v-if="newMessage.trim()" class="send-wrap">
         <button
           class="send-btn"
-          title="Отправить. Удерживайте или нажмите правой кнопкой — отправить позже"
+          :title="t('Отправить. Удерживайте или нажмите правой кнопкой — отправить позже')"
           :disabled="sending"
           @click="onSendClick"
           @pointerdown="startScheduleHold"
@@ -235,19 +235,19 @@
                паки стикеров), ниже — содержимое столбиком. Лента служит быстрым
                переходом к секции и подсвечивает ту, что сейчас на экране. -->
           <div v-if="extrasPanel === 'stickers'" class="stickers-bar">
-            <span class="stickers-hint">Стикер уходит сразу — как сообщение.</span>
+            <span class="stickers-hint">{{ t('Стикер уходит сразу — как сообщение.') }}</span>
             <button type="button" class="stickers-tool" @click="pickStickers">
               <q-icon :name="icon('image')" size="16px" />
-              Добавить
+              {{ t('Добавить') }}
             </button>
             <button
               type="button"
               class="stickers-tool"
-              title="Мои паки стикеров"
+              :title="t('Мои паки стикеров')"
               @click="stickerPacksOpen = true"
             >
               <q-icon :name="icon('tune')" size="16px" />
-              Паки
+              {{ t('Паки') }}
             </button>
           </div>
           <div
@@ -256,7 +256,7 @@
             class="panel-strip"
             :class="{ 'fade-start': panelStripEdges.start, 'fade-end': panelStripEdges.end }"
             role="tablist"
-            :aria-label="extrasPanel === 'emoji' ? 'Категории эмодзи' : 'Паки стикеров'"
+            :aria-label="extrasPanel === 'emoji' ? t('Категории эмодзи') : t('Паки стикеров')"
             @scroll.passive="panelStripRefresh"
             @wheel.passive="panelStrip.onWheel"
             @pointerdown="panelStrip.onPointerDown"
@@ -295,8 +295,8 @@
                   v-for="image in section.images"
                   :key="image.url"
                   class="sticker-option sticker-image"
-                  :title="`Отправить: ${image.alt}`"
-                  :aria-label="`Отправить стикер ${image.alt}`"
+                  :title="t('Отправить: {alt}', { alt: image.alt })"
+                  :aria-label="t('Отправить стикер {alt}', { alt: image.alt })"
                   @click="tapImage(image)"
                 >
                   <img :src="image.url" alt="" loading="lazy" />
@@ -307,15 +307,15 @@
                   v-for="emoji in section.emojis"
                   :key="emoji"
                   class="sticker-option"
-                  :title="`Отправить ${emoji}`"
-                  :aria-label="`Отправить ${emoji}`"
+                  :title="t('Отправить {emoji}', { emoji })"
+                  :aria-label="t('Отправить {emoji}', { emoji })"
                   @click="section.kind === 'emoji-pick' ? pickEmoji(emoji) : sendSticker(emoji)"
                 >
                   {{ emoji }}
                 </button>
               </div>
               <p v-else class="emoji-hint">
-                {{ section.emptyHint ?? 'Здесь пока пусто.' }}
+                {{ section.emptyHint ?? t('Здесь пока пусто.') }}
               </p>
               <!-- Одна кнопка набора под сеткой — как «ДОБАВИТЬ СТИКЕРЫ» в
                    Телеграме: и действие, и его ход видно сразу, искать «⋯» и
@@ -335,7 +335,7 @@
                 <span>{{ setAddLabelOf(section) }}</span>
               </button>
             </PanelSection>
-            <p v-if="!panelSections.length" class="emoji-hint">Загружаем…</p>
+            <p v-if="!panelSections.length" class="emoji-hint">{{ t('Загружаем…') }}</p>
           </div>
           <!-- Скрытый input: файлы уходят в первый пак (см. onStickersSelected). -->
           <input
@@ -366,6 +366,7 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 import {
   computed,
   defineAsyncComponent,
@@ -391,6 +392,7 @@ import {
 import type { EmojiCategory } from '@/utils/emojiCatalog'
 import { mediaUrl } from '@/config'
 import { useStickersStore } from '@/stores/stickers'
+import { getErrorMessage } from '@/services/errors'
 import { STICKER_ACCEPT, type StickerItem } from '@/services/stickers'
 import { useHScroll } from '@/composables/useHScroll'
 import { useMobileLayer } from '@/composables/useMobileOverlay'
@@ -553,7 +555,7 @@ interface PanelImage {
 /** Стикер с сервера → картинка панели (лежит в `media/`, отдаётся через API). */
 const mediaImage = (sticker: StickerItem): PanelImage => ({
   url: mediaUrl(sticker.file_url),
-  alt: 'Стикер',
+  alt: t('Стикер'),
   sticker
 })
 
@@ -637,12 +639,12 @@ const setAddStateOf = (section: PanelSectionItem): SetAddState | null => {
 /** Подпись кнопки: у добавления виден счётчик, у ожидания лимита — секунды. */
 const setAddLabelOf = (section: PanelSectionItem): string => {
   const state = setAddStateOf(section)
-  if (state === 'added') return 'Добавлен'
+  if (state === 'added') return t('Добавлен')
   const set = standardSetOf(section.key)
   // `setImportLabel` отдаёт прогресс, пока набор добавляется (там же ожидание
   // лимита загрузок), поэтому его берём только для хода добавления.
-  if (state === 'busy') return set ? setImportLabel(set) : 'Добавляем…'
-  return 'Добавить весь набор'
+  if (state === 'busy') return set ? setImportLabel(set) : t('Добавляем…')
+  return t('Добавить весь набор')
 }
 
 /**
@@ -658,7 +660,7 @@ const addSetFromPanel = (section: PanelSectionItem): void => {
     void stickersStore
       .addPreset(presetPackId)
       .catch((cause: unknown) => {
-        emit('sticker-error', cause instanceof Error ? cause.message : 'Не удалось добавить набор')
+        emit('sticker-error', getErrorMessage(cause, 'Не удалось добавить набор'))
       })
       .finally(() => {
         presetBusyPackId.value = null
@@ -708,7 +710,7 @@ const emojiPanelSections = computed<PanelSectionItem[]>(() => [
     ? [
         {
           key: 'emoji:recent',
-          title: 'Недавние',
+          title: t('Недавние'),
           kind: 'emoji-pick' as const,
           icon: '🕒',
           imageUrl: null,
@@ -750,7 +752,7 @@ const stickerPanelSections = computed<PanelSectionItem[]>(() => [
       emojis: [],
       images: pack.stickers.map((sticker) => ({
         url: mediaUrl(sticker.file_url),
-        alt: 'Стикер',
+        alt: t('Стикер'),
         pack: { packId: pack.id, position: sticker.position }
       })),
       presetPackId: pack.id
@@ -759,7 +761,7 @@ const stickerPanelSections = computed<PanelSectionItem[]>(() => [
     ? [
         {
           key: 'sticker:recent',
-          title: 'Недавние',
+          title: t('Недавние'),
           kind: 'sticker-send' as const,
           icon: '🕒',
           imageUrl: mediaUrl(stickersStore.recent[0]?.file_url ?? '') ?? null,
@@ -779,13 +781,13 @@ const stickerPanelSections = computed<PanelSectionItem[]>(() => [
       ...mediaImage(sticker),
       pack: { packId: pack.id, position: sticker.position }
     })),
-    emptyHint: 'В паке пусто. Добавьте картинки кнопкой «Добавить».'
+    emptyHint: t('В паке пусто. Добавьте картинки кнопкой «Добавить».')
   })),
   ...(emojiStickerRecent.value.length
     ? [
         {
           key: 'emoji-send:recent',
-          title: 'Недавние эмодзи',
+          title: t('Недавние эмодзи'),
           kind: 'emoji-send' as const,
           icon: '🕒',
           imageUrl: null,
@@ -1155,15 +1157,16 @@ const onStickersSelected = (event: Event) => {
         try {
           await stickersStore.addSticker(packId, file)
         } catch (cause) {
-          failed.push(cause instanceof Error ? cause.message : file.name)
+          // Запасной текст — имя файла: в пачке понятно, какой именно не прошёл.
+          failed.push(getErrorMessage(cause, file.name))
         }
       }
       if (failed.length) {
-        emit('sticker-error', `Не добавились: ${failed.join('; ')}`)
+        emit('sticker-error', t('Не добавились: {list}', { list: failed.join('; ') }))
         return
       }
     } catch (cause) {
-      emit('sticker-error', cause instanceof Error ? cause.message : 'Не удалось добавить стикер')
+      emit('sticker-error', getErrorMessage(cause, 'Не удалось добавить стикер'))
     }
   })()
 }

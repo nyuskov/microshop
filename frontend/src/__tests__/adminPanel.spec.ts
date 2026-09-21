@@ -34,7 +34,7 @@ describe('вход в служебные разделы — пункт наст�
 
   it('пункт «Администрирование» добавляется только администратору', () => {
     expect(profile).toMatch(
-      /const settingsEntries = computed<SettingsEntry\[\]>\(\(\) =>\s*authStore\.isAdmin \? \[\.\.\.SETTINGS_ROWS, ADMIN_ENTRY\] : SETTINGS_ROWS/
+      /const settingsEntries = computed<SettingsEntry\[\]>\(\(\) =>\s*\(authStore\.isAdmin \? \[\.\.\.SETTINGS_ROWS, ADMIN_ENTRY\] : SETTINGS_ROWS\)\.map\(/
     )
     expect(profile).toMatch(/key: 'admin',/)
     // Пункт идёт последним и попадает в поиск по настройкам (единый список).
@@ -78,7 +78,7 @@ describe('служебные разделы отделены от обычных
 
   it('служебный список рисуется по section === "admin"', () => {
     expect(profile).toMatch(/v-if="section === 'admin'"/)
-    expect(profile).toMatch(/aria-label="Разделы администрирования"/)
+    expect(profile).toMatch(/:aria-label="t\('Разделы администрирования'\)"/)
   })
 
   it('«назад» из служебного раздела возвращает к служебному списку', () => {
@@ -98,8 +98,8 @@ describe('служебные разделы отделены от обычных
     expect(profile).toMatch(/class="settings-back"/)
 
     const headIndex = profile.indexOf('class="settings-head"')
-    const adminListIndex = profile.indexOf('aria-label="Разделы администрирования"')
-    const settingsListIndex = profile.indexOf('aria-label="Разделы настроек"')
+    const adminListIndex = profile.indexOf(':aria-label="t(\'Разделы администрирования\')"')
+    const settingsListIndex = profile.indexOf(':aria-label="t(\'Разделы настроек\')"')
 
     expect(headIndex).toBeLessThan(adminListIndex)
     expect(headIndex).toBeLessThan(settingsListIndex)
@@ -111,9 +111,9 @@ describe('служебные разделы отделены от обычных
   })
 
   it('окно настроек называется «Настройки»: заголовок раздела даёт сам раздел', () => {
-    expect(messenger).toMatch(/const PROFILE_TITLE = 'Настройки'/)
-    expect(messenger).toMatch(/\{\{ PROFILE_TITLE \}\}/)
-    expect(profile).toContain("if (section.value === 'admin') return 'Администрирование'")
+    expect(messenger).toMatch(/const profileTitle = computed<string>\(\(\) => t\('Настройки'\)\)/)
+    expect(messenger).toMatch(/\{\{ profileTitle \}\}/)
+    expect(profile).toContain("if (section.value === 'admin') return t('Администрирование')")
   })
 
   it('«Жалобы» больше не живут ни в меню «⋯», ни отдельным окном', () => {

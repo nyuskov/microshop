@@ -2,7 +2,7 @@
   <div class="chats-panel">
     <!-- Скелетоны: показываем структуру списка вместо текста «Загрузка…» -->
     <div v-if="props.loading" class="sk-list" aria-busy="true">
-      <span class="sr-only">Загрузка диалогов…</span>
+      <span class="sr-only">{{ t('Загрузка диалогов…') }}</span>
       <div v-for="n in 6" :key="n" class="sk-row">
         <span class="sk-avatar"></span>
         <span class="sk-lines">
@@ -22,7 +22,7 @@
         class="chat-filters"
         :class="{ 'fade-start': filterEdges.start, 'fade-end': filterEdges.end }"
         role="tablist"
-        aria-label="Фильтр чатов"
+        :aria-label="t('Фильтр чатов')"
         @scroll.passive="refreshFilterEdges"
         @wheel.passive="onFiltersWheel"
         @pointerdown="onFiltersPointerDown"
@@ -63,8 +63,8 @@
         <button
           type="button"
           class="chat-filter chat-filter-add"
-          title="Новая папка"
-          aria-label="Новая папка чатов"
+          :title="t('Новая папка')"
+          :aria-label="t('Новая папка чатов')"
           @click="emit('create-folder')"
         >
           <q-icon :name="icon('add')" size="16px" />
@@ -73,15 +73,15 @@
 
       <div v-if="!props.chats.length" class="empty-hint">
         <template v-if="isFolderKey(props.filter)">
-          В папке пока нет чатов — добавьте их через «В папку» в меню чата.
+          {{ t('В папке пока нет чатов — добавьте их через «В папку» в меню чата.') }}
         </template>
         <!-- Каналы ищут поиском в шапке (вкладка «Каналы»): отдельной кнопки
              не нужно — подсказка говорит, ГДЕ искать. -->
         <template v-else-if="props.filter === 'channels'">
-          Вы пока не подписаны на каналы — найдите их поиском по названию или адресу
+          {{ t('Вы пока не подписаны на каналы — найдите их поиском по названию или адресу') }}
         </template>
         <template v-else>
-          Найдите пользователя по логину или телефону и начните переписку
+          {{ t('Найдите пользователя по логину или телефону и начните переписку') }}
         </template>
       </div>
       <div
@@ -188,7 +188,7 @@
                   }"
                 >
                   <template v-if="activityOf(chat) === 'text'">
-                    <span class="sr-only">печатает</span>
+                    <span class="sr-only">{{ t('печатает') }}</span>
                     <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>
                   </template>
                   <!-- Запись голосового, отправка файла и т.п. — словами: только
@@ -197,7 +197,7 @@
                     {{ peerActivityLabel(activityOf(chat) as PeerActivityKind) }}
                   </template>
                   <template v-else-if="draftOf(chat, props.drafts)">
-                    Черновик: {{ draftOf(chat, props.drafts) }}
+                    {{ t('Черновик: {text}', { text: draftOf(chat, props.drafts) ?? '' }) }}
                   </template>
                   <template v-else>
                     <!-- Звонок в превью: иконка вместо галочки — по ней видно, что
@@ -243,6 +243,7 @@
  * `utils/chatPreview.ts` и покрыты тестами.
  */
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 import { chatSwipeAction } from '@/utils/chatSwipe'
 import type { Chat } from '@/types'
 import { computed, onBeforeUnmount, nextTick, ref, watch } from 'vue'
@@ -340,7 +341,7 @@ const isArchivedOf = (chatId: number): boolean => props.archivedChatIds?.include
 /** Подпись и значок подложки: зависят от направления и текущего состояния чата. */
 const swipeActionOf = (chatId: number): { icon: string; title: string } => {
   if (swipeDx.value > 0) {
-    return { icon: 'push_pin', title: isPinnedOf(chatId) ? 'Открепить' : 'Закрепить' }
+    return { icon: 'push_pin', title: isPinnedOf(chatId) ? t('Открепить') : t('Закрепить') }
   }
   // Левый свайп настраивается (см. utils/chatSwipe.ts): подпись должна обещать
   // ровно то действие, которое выполнится.
@@ -348,10 +349,10 @@ const swipeActionOf = (chatId: number): { icon: string; title: string } => {
     const muted = isMutedOf(chatId)
     return {
       icon: muted ? 'notifications' : 'notifications_off',
-      title: muted ? 'Включить уведомления' : 'Выключить уведомления'
+      title: muted ? t('Включить уведомления') : t('Выключить уведомления')
     }
   }
-  return { icon: 'archive', title: isArchivedOf(chatId) ? 'Из архива' : 'В архив' }
+  return { icon: 'archive', title: isArchivedOf(chatId) ? t('Из архива') : t('В архив') }
 }
 
 const rowSwipeStyle = (chatId: number): Record<string, string> | undefined =>
@@ -417,7 +418,7 @@ const onRowTouchEnd = () => {
 const FOLDER_HOLD_MS = 500
 const isFolderKey = (key: string): boolean => key.startsWith(FOLDER_FILTER_PREFIX)
 const folderHint = (key: string): string =>
-  isFolderKey(key) ? 'Папка чатов: долгий тап — изменить' : ''
+  isFolderKey(key) ? t('Папка чатов: долгий тап — изменить') : ''
 
 let folderHoldTimer: number | undefined
 const cancelFilterHold = () => {

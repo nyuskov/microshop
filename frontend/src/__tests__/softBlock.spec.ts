@@ -19,13 +19,13 @@ describe('меню чата', () => {
 
   it('предлагает «не принимать звонки» и меняет подпись на обратную', () => {
     expect(header).toContain("runChatAction('calls')")
-    expect(header).toContain("callsBlocked ? 'Принимать звонки' : 'Не принимать звонки'")
+    expect(header).toContain("callsBlocked ? t('Принимать звонки') : t('Не принимать звонки')")
     expect(header).toContain("(e: 'toggle-calls-block'): void")
   })
 
   it('при полной блокировке пункт про звонки скрыт, а блокировка становится разблокировкой', () => {
     expect(header).toContain('v-if="!blocked"')
-    expect(header).toContain("blocked ? 'Разблокировать' : 'Заблокировать'")
+    expect(header).toContain("blocked ? t('Разблокировать') : t('Заблокировать')")
   })
 
   it('иконки пункта есть в наборе (иначе нарисуется текстом)', () => {

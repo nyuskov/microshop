@@ -39,9 +39,9 @@ describe('сервис анти-флуда', () => {
 
 describe('карточка группы', () => {
   it('в меню участника есть «Замутить» и «Забанить», в мутe — «Снять мут»', () => {
-    expect(info).toContain("title: 'Замутить'")
-    expect(info).toContain("title: 'Снять мут'")
-    expect(info).toContain("title: 'Забанить'")
+    expect(info).toContain("title: t('Замутить')")
+    expect(info).toContain("title: t('Снять мут')")
+    expect(info).toContain("title: t('Забанить')")
     // Действия — там же, где исключение: обычно это одно решение.
     const actions = info.slice(info.indexOf('const memberActions'))
     expect(actions).toContain("key: 'ban'")

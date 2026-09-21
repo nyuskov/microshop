@@ -205,6 +205,7 @@ import { icon } from '@/utils/icons'
 import { computed, ref } from 'vue'
 import SelectField from '@/components/common/SelectField.vue'
 import { confirmDialog } from '@/utils/appDialogs'
+import { getErrorMessage } from '@/services/errors'
 import { useThemeStore, fileToCompressedDataUrl } from '@/stores/theme'
 import {
   ACCENT_PRESETS,
@@ -258,7 +259,9 @@ const onWallpaperFile = async (event: Event) => {
     const dataUrl = await fileToCompressedDataUrl(file)
     themeStore.setCustomWallpaper(dataUrl)
   } catch (error) {
-    wallpaperError.value = error instanceof Error ? error.message : 'Не удалось загрузить фото'
+    // Файл читает сам браузер (FileReader в `utils/media.ts`), поэтому ошибка
+    // приходит от него — через общий разбор, а не сырым `error.message`.
+    wallpaperError.value = getErrorMessage(error, 'Не удалось загрузить фото')
   }
 }
 

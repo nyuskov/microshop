@@ -106,7 +106,7 @@ describe('точки входа архива', () => {
   it('в меню чата есть пункт архива и подпись меняется на «Из архива»', () => {
     const header = source('components/messenger/ChatHeader.vue')
     expect(header).toContain("runChatAction('archive')")
-    expect(header).toContain("archived ? 'Из архива' : 'В архив'")
+    expect(header).toContain("archived ? t('Из архива') : t('В архив')")
     expect(header).toContain("(e: 'toggle-archive'): void")
   })
 

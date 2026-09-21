@@ -21,12 +21,51 @@ export function isNetworkError(error: unknown): boolean {
 }
 
 /**
+ * Тексты для ответов, в которых объяснения от бэкенда нет.
+ *
+ * Так бывает, когда ответ формирует не приложение, а то, что стоит перед ним:
+ * nginx на слишком большое тело отвечает СВОЕЙ HTML-страницей `413` (в теле нет
+ * `detail`, до FastAPI запрос не доходит), шлюз отдаёт `502/504` со своей
+ * разметкой. Без этой таблицы человек видел бы дословный ответ axios —
+ * «Request failed with status code 413»: код без объяснения и на чужом языке.
+ */
+const STATUS_MESSAGES: Record<number, string> = {
+  400: 'Сервер не принял запрос. Проверьте данные и попробуйте ещё раз.',
+  401: 'Сессия истекла — войдите заново.',
+  403: 'Недостаточно прав для этого действия.',
+  404: 'Не найдено: возможно, данные уже удалили.',
+  405: 'Это действие здесь не поддерживается.',
+  409: 'Не получилось: данные уже изменились (например, с другого устройства). Обновите и повторите.',
+  // Лимит размера тела запроса: у бэкенда свой лимит на файл (`MAX_UPLOAD_SIZE`),
+  // а у nginx — `client_max_body_size`. Файл сверх второго до приложения не
+  // доходит, поэтому объясняем «крупный файл», а не «ошибка 413».
+  413: 'Файл слишком большой — сервер не принял загрузку. Выберите файл меньше.',
+  415: 'Такой формат файла не поддерживается.',
+  422: 'Данные не прошли проверку на сервере.',
+  429: 'Слишком много запросов. Подождите немного и повторите.',
+  500: 'Ошибка на сервере. Попробуйте позже.',
+  502: 'Сервер перезапускается. Попробуйте ещё раз через минуту.',
+  503: 'Сервис временно недоступен. Попробуйте позже.',
+  504: 'Сервер не ответил вовремя. Проверьте связь и повторите.'
+}
+
+/** Ответа нет вовсе: запрос не дошёл (нет сети, обрыв). */
+const OFFLINE_MESSAGE = 'Нет подключения к серверу. Проверьте интернет и повторите.'
+/** Запрос ушёл, но ответа не дождались (таймаут клиента). */
+const TIMEOUT_MESSAGE = 'Сервер не ответил вовремя. Проверьте связь и повторите.'
+
+/**
  * Возвращает человекочитаемое сообщение об ошибке.
- * Учитывает ответы бэкенда ({ detail } / { message }) и ошибки сети.
+ *
+ * Порядок разбора: объяснение бэкенда (`detail`/`message`) → наш текст по коду
+ * ответа → текст про связь. Сырые сообщения axios (`Network Error`,
+ * «Request failed with status code 413», «timeout of 15000ms exceeded»)
+ * наружу НЕ отдаём: они английские и ничего не объясняют человеку.
+ * Свои ошибки (обычный `Error`) проходят как есть — их тексты пишем мы сами.
  */
 export function getErrorMessage(error: unknown, fallback = 'Произошла ошибка.'): string {
   if (axios.isAxiosError(error)) {
-    const data = error.response?.data as { detail?: unknown; message?: string } | undefined
+    const data = error.response?.data as { detail?: unknown; message?: unknown } | undefined
     // detail может быть строкой или объектом { code, message } (2FA-челлендж,
     // заморозка аккаунта): в интерфейсе нужен человеческий текст, а не «[object]».
     if (typeof data?.detail === 'string' && data.detail) return data.detail
@@ -34,7 +73,18 @@ export function getErrorMessage(error: unknown, fallback = 'Произошла �
       const message = (data.detail as { message?: unknown }).message
       if (typeof message === 'string' && message) return message
     }
-    return data?.message || error.message || fallback
+    if (typeof data?.message === 'string' && data.message) return data.message
+    const status = error.response?.status
+    if (status) {
+      // Код без таблицы (нестандартный ответ прокси): показываем и его — по
+      // нему хотя бы понятно, куда смотреть в логах.
+      return STATUS_MESSAGES[status] ?? `Сервер ответил ошибкой ${status}. ${fallback}`
+    }
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') return TIMEOUT_MESSAGE
+    // Отменённый запрос (навигация, смена чата) — не поломка: молчим и отдаём
+    // запасной текст, если вызывающий всё же решил его показать.
+    if (isNetworkError(error) && error.code !== 'ERR_CANCELED') return OFFLINE_MESSAGE
+    return fallback
   }
   if (error instanceof Error) {
     return error.message

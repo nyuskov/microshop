@@ -1,13 +1,13 @@
 <template>
   <q-card class="ch-join-card">
     <q-card-section class="row no-wrap items-center ch-join-head">
-      <div class="text-subtitle1 text-weight-medium ellipsis">Канал</div>
+      <div class="text-subtitle1 text-weight-medium ellipsis">{{ t('Канал') }}</div>
       <q-space />
-      <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
+      <q-btn flat round dense icon="close" v-close-popup :aria-label="t('Закрыть')" />
     </q-card-section>
     <q-separator />
     <q-card-section class="ch-join-body">
-      <p v-if="loading" class="ch-hint">Загружаем канал…</p>
+      <p v-if="loading" class="ch-hint">{{ t('Загружаем канал…') }}</p>
       <p v-else-if="error" class="ch-error">{{ error }}</p>
       <template v-else-if="channel">
         <span class="avatar avatar-lg" :style="avatarStyle(channel.title)">
@@ -25,24 +25,31 @@
         <p class="ch-join-sub">
           <template v-if="channel.username">@{{ channel.username }} · </template>
           {{ channel.subscribers }}
-          {{ channel.subscribers === 1 ? 'подписчик' : 'подписчиков' }} · {{ channel.posts }}
-          {{ channel.posts === 1 ? 'пост' : 'постов' }}
+          {{
+            plural(
+              channel.subscribers,
+              ['подписчик', 'подписчика', 'подписчиков'],
+              ['subscriber', 'subscribers']
+            )
+          }}
+          · {{ channel.posts }}
+          {{ plural(channel.posts, ['пост', 'поста', 'постов'], ['post', 'posts']) }}
         </p>
         <p v-if="channel.description" class="ch-join-desc">{{ channel.description }}</p>
         <q-btn
           v-if="!channel.role"
           unelevated
           color="primary"
-          label="Подписаться"
+          :label="t('Подписаться')"
           :loading="joining"
           @click="subscribe"
         />
-        <q-btn v-else flat color="primary" label="Открыть канал" @click="open" />
+        <q-btn v-else flat color="primary" :label="t('Открыть канал')" @click="open" />
         <q-btn
           v-if="channel.role && channel.role !== 'creator'"
           flat
           color="negative"
-          label="Отписаться"
+          :label="t('Отписаться')"
           @click="unsubscribe"
         />
       </template>
@@ -55,6 +62,7 @@ import { ref, watch } from 'vue'
 
 import { fetchChannelByUsername, joinChannel, leaveChannel } from '@/services/channelService'
 import { getErrorMessage } from '@/services/errors'
+import { plural, t } from '@/i18n'
 import { avatarStyle, initials } from '@/utils/user'
 import type { ChannelCard } from '@/types'
 

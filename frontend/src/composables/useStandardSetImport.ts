@@ -16,6 +16,7 @@
 import { computed, ref, type Ref } from 'vue'
 
 import { useStickersStore } from '@/stores/stickers'
+import { getErrorMessage } from '@/services/errors'
 import type { StandardStickerPack } from '@/utils/standardStickers'
 
 export interface StandardSetImportApi {
@@ -77,7 +78,7 @@ export function useStandardSetImport(): StandardSetImportApi {
       }
       return ''
     } catch (cause) {
-      return cause instanceof Error ? cause.message : 'Не удалось добавить набор'
+      return getErrorMessage(cause, 'Не удалось добавить набор')
     } finally {
       importingKey.value = null
       waitingSeconds.value = 0

@@ -1,7 +1,7 @@
 <template>
   <q-card class="grp-info-card" :class="{ 'is-panel': panel }">
     <q-card-section class="row no-wrap items-center grp-info-head">
-      <div class="text-subtitle1 text-weight-medium ellipsis">Информация о группе</div>
+      <div class="text-subtitle1 text-weight-medium ellipsis">{{ t('Информация о группе') }}</div>
       <q-space />
       <!-- В панели (широкий экран) закрывать q-popup нечего — только событие. -->
       <q-btn
@@ -10,19 +10,19 @@
         round
         dense
         icon="close"
-        aria-label="Закрыть"
+        :aria-label="t('Закрыть')"
         @click="emit('close')"
       />
-      <q-btn v-else flat round dense icon="close" v-close-popup aria-label="Закрыть" />
+      <q-btn v-else flat round dense icon="close" v-close-popup :aria-label="t('Закрыть')" />
     </q-card-section>
     <q-separator />
     <q-card-section class="grp-info-body">
-      <div v-if="loading" class="grp-info-status">Загрузка…</div>
+      <div v-if="loading" class="grp-info-status">{{ t('Загрузка…') }}</div>
       <template v-else-if="detail">
         <!-- Шапка: аватар + название/описание (редактируемые) -->
         <div class="gi-hero">
           <div class="gi-avatar-row">
-            <label class="gi-avatar" :style="avatarStyle(titleText)" title="Аватар группы">
+            <label class="gi-avatar" :style="avatarStyle(titleText)" :title="t('Аватар группы')">
               <img
                 v-if="groupAvatar"
                 :src="groupAvatar"
@@ -45,8 +45,8 @@
             <button
               v-if="canManage && groupAvatar"
               class="gi-icon-btn danger"
-              title="Удалить аватар"
-              aria-label="Удалить аватар"
+              :title="t('Удалить аватар')"
+              :aria-label="t('Удалить аватар')"
               :disabled="busy"
               @click="onAvatarRemove"
             >
@@ -60,19 +60,19 @@
               class="gi-input"
               type="text"
               maxlength="100"
-              placeholder="Название группы"
-              aria-label="Название группы"
+              :placeholder="t('Название группы')"
+              :aria-label="t('Название группы')"
             />
             <textarea
               v-model="descInput"
               class="gi-input gi-textarea"
               rows="2"
               maxlength="1024"
-              placeholder="Описание группы"
-              aria-label="Описание группы"
+              :placeholder="t('Описание группы')"
+              :aria-label="t('Описание группы')"
             ></textarea>
             <button class="gi-btn primary" :disabled="busy || !nameInput.trim()" @click="saveInfo">
-              Сохранить
+              {{ t('Сохранить') }}
             </button>
           </div>
           <template v-else>
@@ -82,7 +82,9 @@
 
           <div class="gi-meta">
             {{ memberCountText }}
-            <template v-if="onlineCount > 0"> · {{ onlineCount }} в сети</template>
+            <template v-if="onlineCount > 0">
+              · {{ t('{count} в сети', { count: onlineCount }) }}</template
+            >
           </div>
         </div>
 
@@ -92,11 +94,13 @@
         <div class="gi-section gi-e2ee">
           <div class="gi-e2ee-row">
             <div class="gi-e2ee-info">
-              <div class="gi-e2ee-title">Сквозное шифрование</div>
+              <div class="gi-e2ee-title">{{ t('Сквозное шифрование') }}</div>
               <div class="gi-e2ee-desc">
-                Обычная группа — текст и файлы читает сервер (видны в превью и уведомлениях).
-                Зашифрованная — переписку читают только участники; ключ группы хранится на
-                устройствах и меняется, когда состав группы меняется.
+                {{
+                  t(
+                    'Обычная группа — текст и файлы читает сервер (видны в превью и уведомлениях). Зашифрованная — переписку читают только участники; ключ группы хранится на устройствах и меняется, когда состав группы меняется.'
+                  )
+                }}
               </div>
             </div>
             <q-toggle
@@ -104,34 +108,39 @@
               color="primary"
               keep-color
               :disable="e2eeBusy || busy || !canManage"
-              aria-label="Сквозное шифрование группы"
+              :aria-label="t('Сквозное шифрование группы')"
               @update:model-value="onToggleE2ee"
             />
           </div>
           <p v-if="!canManage" class="gi-e2ee-hint">
-            Включить или выключить шифрование может создатель группы или админ.
+            {{ t('Включить или выключить шифрование может создатель группы или админ.') }}
           </p>
         </div>
 
         <!-- Ссылка-приглашение: создатель или админ зовёт по ссылке -->
         <div v-if="canManage" class="gi-section">
           <div class="gi-section-head">
-            <h4 class="gi-title">Пригласить по ссылке</h4>
+            <h4 class="gi-title">{{ t('Пригласить по ссылке') }}</h4>
             <button
               class="gi-add-btn"
               :disabled="inviteBusy || !!activeInvite"
               @click="createInviteLink"
             >
               <q-icon :name="icon('share')" size="16px" />
-              <span>{{ activeInvite ? 'Ссылка готова' : 'Создать' }}</span>
+              <span>{{ activeInvite ? t('Ссылка готова') : t('Создать') }}</span>
             </button>
           </div>
           <p class="gi-invite-hint">
-            Ссылку можно отправить любому человеку: он увидит карточку группы и вступит сам.
-            <template v-if="!e2eeEnabled">Срок действия — пока не отзовёте.</template>
+            {{
+              t('Ссылку можно отправить любому человеку: он увидит карточку группы и вступит сам.')
+            }}
+            <template v-if="!e2eeEnabled">{{ t('Срок действия — пока не отзовёте.') }}</template>
             <template v-else>
-              В зашифрованной группе вход по ссылке закрыт: ключ выдаёт участник группы, поэтому
-              добавляйте людей вручную.
+              {{
+                t(
+                  'В зашифрованной группе вход по ссылке закрыт: ключ выдаёт участник группы, поэтому добавляйте людей вручную.'
+                )
+              }}
             </template>
           </p>
 
@@ -140,13 +149,13 @@
               class="gi-input gi-invite-url"
               type="text"
               readonly
-              aria-label="Ссылка-приглашение"
+              :aria-label="t('Ссылка-приглашение')"
               :value="inviteLinkOf(activeInvite)"
               @focus="($event.target as HTMLInputElement).select()"
             />
             <div class="gi-invite-actions">
               <button class="gi-btn" :disabled="inviteBusy" @click="copyInviteLink">
-                {{ inviteCopied ? 'Скопировано' : 'Копировать' }}
+                {{ inviteCopied ? t('Скопировано') : t('Копировать') }}
               </button>
               <button
                 v-if="canShareInvite"
@@ -154,10 +163,10 @@
                 :disabled="inviteBusy"
                 @click="shareInviteLink"
               >
-                Поделиться
+                {{ t('Поделиться') }}
               </button>
               <button class="gi-btn danger" :disabled="inviteBusy" @click="revokeInviteLink">
-                Отозвать
+                {{ t('Отозвать') }}
               </button>
             </div>
             <!-- QR-код: ссылку можно показать рядом сидящему человеку -->
@@ -165,7 +174,7 @@
               <QrCode
                 :value="inviteLinkOf(activeInvite)"
                 :size="168"
-                label="QR-код ссылки-приглашения в группу"
+                :label="t('QR-код ссылки-приглашения в группу')"
               />
             </div>
             <div v-if="inviteError" class="gi-error">{{ inviteError }}</div>
@@ -176,7 +185,9 @@
         <!-- Участники -->
         <div class="gi-section">
           <div class="gi-section-head">
-            <h4 class="gi-title">Участники — {{ detail.members.length }}</h4>
+            <h4 class="gi-title">
+              {{ t('Участники — {count}', { count: detail.members.length }) }}
+            </h4>
             <button
               v-if="canManage"
               class="gi-add-btn"
@@ -184,7 +195,7 @@
               @click="addPanelOpen = !addPanelOpen"
             >
               <q-icon :name="icon('person_add')" size="16px" />
-              <span>Добавить</span>
+              <span>{{ t('Добавить') }}</span>
             </button>
           </div>
 
@@ -194,8 +205,8 @@
               v-model="addQuery"
               class="gi-input"
               type="text"
-              placeholder="Поиск по имени или логину"
-              aria-label="Поиск участников"
+              :placeholder="t('Поиск по имени или логину')"
+              :aria-label="t('Поиск участников')"
             />
             <div class="gi-add-list">
               <button
@@ -223,24 +234,26 @@
                 </span>
               </button>
               <div v-if="!addCandidates.length" class="gi-empty-line">
-                Некого добавить — все ваши контакты уже в группе
+                {{ t('Некого добавить — все ваши контакты уже в группе') }}
               </div>
             </div>
             <div class="gi-add-actions">
-              <button class="gi-btn ghost" @click="closeAddPanel">Отмена</button>
+              <button class="gi-btn ghost" @click="closeAddPanel">{{ t('Отмена') }}</button>
               <button
                 class="gi-btn primary"
                 :disabled="busy || addSelected.size === 0"
                 @click="confirmAdd"
               >
-                Добавить ({{ addSelected.size }})
+                {{ t('Добавить ({count})', { count: addSelected.size }) }}
               </button>
             </div>
           </div>
 
           <!-- Мут: длительность выбирается пресетами (как в Telegram) -->
           <div v-if="muteTarget" class="gi-add-panel">
-            <div class="gi-panel-title">Замутить {{ displayName(muteTarget) }}</div>
+            <div class="gi-panel-title">
+              {{ t('Замутить {name}', { name: displayName(muteTarget) }) }}
+            </div>
             <div class="gi-presets">
               <button
                 v-for="option in MUTE_OPTIONS"
@@ -250,18 +263,18 @@
                 :disabled="busy"
                 @click="applyMute(option.minutes)"
               >
-                {{ option.label }}
+                {{ t(option.label) }}
               </button>
             </div>
             <div class="gi-add-actions">
-              <button class="gi-btn ghost" @click="muteTarget = null">Отмена</button>
+              <button class="gi-btn ghost" @click="muteTarget = null">{{ t('Отмена') }}</button>
               <button
                 v-if="isMuted(muteTarget)"
                 class="gi-btn danger"
                 :disabled="busy"
                 @click="applyMute(null)"
               >
-                Снять мут
+                {{ t('Снять мут') }}
               </button>
             </div>
           </div>
@@ -282,14 +295,14 @@
               <span class="gi-member-text">
                 <span class="gi-member-name">
                   {{ displayName(member) }}
-                  <span v-if="member.id === currentUserId">(вы)</span>
+                  <span v-if="member.id === currentUserId">{{ t('(вы)') }}</span>
                 </span>
                 <span class="gi-member-sub">@{{ member.username }}</span>
               </span>
               <span class="gi-role" :class="'role-' + member.role">{{
                 roleLabel(member.role)
               }}</span>
-              <span v-if="isMuted(member)" class="gi-muted">в муте</span>
+              <span v-if="isMuted(member)" class="gi-muted">{{ t('в муте') }}</span>
               <span v-if="memberActions(member).length" class="gi-member-actions">
                 <button
                   v-for="action in memberActions(member)"
@@ -309,16 +322,16 @@
 
         <!-- Анти-флуд: медленный режим и бан-лист (видят создатель и админы) -->
         <div v-if="canManage" class="gi-section">
-          <h4 class="gi-title">Анти-флуд</h4>
+          <h4 class="gi-title">{{ t('Анти-флуд') }}</h4>
           <div class="gi-row">
-            <span class="gi-row-label">Медленный режим</span>
+            <span class="gi-row-label">{{ t('Медленный режим') }}</span>
             <span class="gi-row-value">{{ slowModeLabel }}</span>
             <button class="gi-btn ghost" :disabled="busy" @click="slowPanelOpen = !slowPanelOpen">
-              Изменить
+              {{ t('Изменить') }}
             </button>
           </div>
           <p class="gi-hint">
-            Участники ждут паузу между сообщениями; админов режим не ограничивает.
+            {{ t('Участники ждут паузу между сообщениями; админов режим не ограничивает.') }}
           </p>
           <div v-if="slowPanelOpen" class="gi-presets">
             <button
@@ -330,18 +343,24 @@
               :disabled="busy"
               @click="applySlowMode(option.seconds)"
             >
-              {{ option.label }}
+              {{ t(option.label) }}
             </button>
           </div>
 
           <div v-if="bans.length" class="gi-bans">
-            <div class="gi-bans-title">Забаненные — {{ bans.length }}</div>
+            <div class="gi-bans-title">
+              {{ t('Забаненные — {count}', { count: bans.length }) }}
+            </div>
             <div v-for="ban in bans" :key="ban.id" class="gi-ban-row">
               <span class="gi-ban-name">{{ banName(ban) }}</span>
               <span v-if="ban.reason" class="gi-ban-reason">{{ ban.reason }}</span>
-              <button class="gi-btn ghost" :disabled="busy" @click="unban(ban)">Разбанить</button>
+              <button class="gi-btn ghost" :disabled="busy" @click="unban(ban)">
+                {{ t('Разбанить') }}
+              </button>
             </div>
-            <p class="gi-hint">Забаненный не вернётся по ссылке, пока вы не снёте бан.</p>
+            <p class="gi-hint">
+              {{ t('Забаненный не вернётся по ссылке, пока вы не снёте бан.') }}
+            </p>
           </div>
 
           <div v-if="error" class="gi-error">{{ error }}</div>
@@ -351,11 +370,11 @@
         <div class="gi-danger-zone">
           <button v-if="isCreator" class="gi-danger-btn" :disabled="busy" @click="deleteGroup">
             <q-icon :name="icon('delete_forever')" size="18px" />
-            <span>Удалить группу</span>
+            <span>{{ t('Удалить группу') }}</span>
           </button>
           <button v-else class="gi-danger-btn" :disabled="busy" @click="leaveGroup">
             <q-icon :name="icon('logout')" size="18px" />
-            <span>Покинуть группу</span>
+            <span>{{ t('Покинуть группу') }}</span>
           </button>
         </div>
       </template>
@@ -365,6 +384,7 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
+import { plural, t } from '@/i18n'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import {
@@ -471,15 +491,14 @@ const isMuted = (member: ChatMember): boolean => {
 }
 
 const slowMode = computed<number>(() => props.chat.slow_mode_seconds ?? 0)
-const slowModeLabel = computed<string>(
-  () =>
-    SLOW_MODE_OPTIONS.find((option) => option.seconds === slowMode.value)?.label ??
-    `${slowMode.value} сек`
-)
+const slowModeLabel = computed<string>(() => {
+  const preset = SLOW_MODE_OPTIONS.find((option) => option.seconds === slowMode.value)
+  return preset ? t(preset.label) : t('{count} сек', { count: slowMode.value })
+})
 
 /** Имя забаненного: сервер может не отдать данные удалённого аккаунта. */
 const banName = (ban: ChatBanEntry): string =>
-  ban.user ? displayName(ban.user) : `Пользователь #${ban.user_id}`
+  ban.user ? displayName(ban.user) : t('Пользователь #{id}', { id: ban.user_id })
 
 const loadBans = async () => {
   try {
@@ -500,7 +519,7 @@ const applyMute = async (minutes: number | null) => {
     detail.value = await muteGroupMember(props.chat.id, member.id, minutes)
     muteTarget.value = null
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось изменить мут')
+    error.value = getErrorMessage(err, t('Не удалось изменить мут'))
   } finally {
     busy.value = false
   }
@@ -510,9 +529,10 @@ const applyBan = async (member: ChatMember) => {
   const name = displayName(member)
   const agreed = await confirmDialog({
     title: `Забанить ${name}?`,
-    message:
-      'Человек будет исключён и не сможет вернуться по ссылке-приглашению, пока бан не снимут.',
-    okLabel: 'Забанить',
+    message: t(
+      'Человек будет исключён и не сможет вернуться по ссылке-приглашению, пока бан не снимут.'
+    ),
+    okLabel: t('Забанить'),
     danger: true
   })
   if (!agreed || busy.value) return
@@ -525,7 +545,7 @@ const applyBan = async (member: ChatMember) => {
     // Забаненный не должен читать новые сообщения — ключ группы выпускаем заново.
     emit('members-changed', true)
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось забанить участника')
+    error.value = getErrorMessage(err, t('Не удалось забанить участника'))
   } finally {
     busy.value = false
   }
@@ -539,7 +559,7 @@ const unban = async (ban: ChatBanEntry) => {
     await unbanGroupMember(props.chat.id, ban.user_id)
     await loadBans()
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось снять бан')
+    error.value = getErrorMessage(err, t('Не удалось снять бан'))
   } finally {
     busy.value = false
   }
@@ -555,7 +575,7 @@ const applySlowMode = async (seconds: number) => {
     // Родитель перечитает чаты: у чата появится новый `slow_mode_seconds`.
     emit('updated')
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось изменить медленный режим')
+    error.value = getErrorMessage(err, t('Не удалось изменить медленный режим'))
   } finally {
     busy.value = false
   }
@@ -588,7 +608,7 @@ const loadInvites = async () => {
     invites.value = await fetchGroupInvites(props.chat.id)
     inviteError.value = ''
   } catch (err) {
-    inviteError.value = getErrorMessage(err, 'Не удалось загрузить ссылки')
+    inviteError.value = getErrorMessage(err, t('Не удалось загрузить ссылки'))
   }
 }
 
@@ -600,7 +620,7 @@ const createInviteLink = async () => {
     const invite = await createGroupInvite(props.chat.id)
     invites.value = [invite, ...invites.value]
   } catch (err) {
-    inviteError.value = getErrorMessage(err, 'Не удалось создать ссылку')
+    inviteError.value = getErrorMessage(err, t('Не удалось создать ссылку'))
   } finally {
     inviteBusy.value = false
   }
@@ -618,7 +638,7 @@ const copyInviteLink = async () => {
       inviteCopied.value = false
     }, 2500)
   } catch (err) {
-    inviteError.value = getErrorMessage(err, 'Не удалось скопировать ссылку')
+    inviteError.value = getErrorMessage(err, t('Не удалось скопировать ссылку'))
   }
 }
 
@@ -644,7 +664,7 @@ const revokeInviteLink = async () => {
     invites.value = invites.value.filter((item) => item.id !== invite.id)
     inviteCopied.value = false
   } catch (err) {
-    inviteError.value = getErrorMessage(err, 'Не удалось отозвать ссылку')
+    inviteError.value = getErrorMessage(err, t('Не удалось отозвать ссылку'))
   } finally {
     inviteBusy.value = false
   }
@@ -669,16 +689,11 @@ const groupAvatar = computed<string | undefined>(() => {
   return url ? mediaUrl(url) : undefined
 })
 
-const titleText = computed<string>(() => detail.value?.name || props.chat.name || 'Группа')
+const titleText = computed<string>(() => detail.value?.name || props.chat.name || t('Группа'))
 
 const memberCountText = computed<string>(() => {
   const n = detail.value?.members.length ?? props.chat.users.length ?? 0
-  const last = n % 10
-  const lastTwo = n % 100
-  if (lastTwo >= 11 && lastTwo <= 14) return `${n} участников`
-  if (last === 1) return `${n} участник`
-  if (last >= 2 && last <= 4) return `${n} участника`
-  return `${n} участников`
+  return `${n} ${plural(n, ['участник', 'участника', 'участников'], ['member', 'members'])}`
 })
 
 const onlineCount = computed<number>(() => {
@@ -688,7 +703,7 @@ const onlineCount = computed<number>(() => {
 })
 
 const roleLabel = (role: string): string =>
-  role === 'creator' ? 'Создатель' : role === 'admin' ? 'Админ' : ''
+  role === 'creator' ? t('Создатель') : role === 'admin' ? t('Админ') : ''
 
 const load = async () => {
   loading.value = true
@@ -702,7 +717,7 @@ const load = async () => {
       void loadBans()
     }
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось загрузить информацию о группе')
+    error.value = getErrorMessage(err, t('Не удалось загрузить информацию о группе'))
   } finally {
     loading.value = false
   }
@@ -739,7 +754,7 @@ const saveInfo = async () => {
     detail.value = { ...detail.value!, name: updated.name, description: updated.description }
     emit('updated')
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось сохранить')
+    error.value = getErrorMessage(err, t('Не удалось сохранить'))
   } finally {
     busy.value = false
   }
@@ -762,7 +777,7 @@ const onAvatarPick = async (event: Event) => {
     }
     emit('updated')
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось загрузить аватар')
+    error.value = getErrorMessage(err, t('Не удалось загрузить аватар'))
   } finally {
     busy.value = false
   }
@@ -781,7 +796,7 @@ const onAvatarRemove = async () => {
     }
     emit('updated')
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось удалить аватар')
+    error.value = getErrorMessage(err, t('Не удалось удалить аватар'))
   } finally {
     busy.value = false
   }
@@ -829,7 +844,7 @@ const confirmAdd = async () => {
     // Новому участнику нужна своя обёртка ключа группы (ротация не нужна).
     emit('members-changed', false)
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось добавить участников')
+    error.value = getErrorMessage(err, t('Не удалось добавить участников'))
   } finally {
     busy.value = false
   }
@@ -853,20 +868,20 @@ const memberActions = (member: ChatMember): MemberAction[] => {
     const isAdmin = member.role === 'admin'
     actions.push({
       key: isAdmin ? 'demote' : 'promote',
-      title: isAdmin ? 'Снять с админов' : 'Сделать админом',
+      title: isAdmin ? t('Снять с админов') : t('Сделать админом'),
       icon: isAdmin ? 'shield_person' : 'admin_panel_settings'
     })
   }
   if (!self && !targetIsCreator && canManage.value) {
     if (isCreator.value || member.role === 'member') {
-      actions.push({ key: 'kick', title: 'Исключить', icon: 'person_remove', danger: true })
+      actions.push({ key: 'kick', title: t('Исключить'), icon: 'person_remove', danger: true })
       // Анти-флуд доступен там же, где исключение: обычно это одно решение.
       actions.push(
         isMuted(member)
-          ? { key: 'unmute', title: 'Снять мут', icon: 'notifications' }
-          : { key: 'mute', title: 'Замутить', icon: 'notifications_off' }
+          ? { key: 'unmute', title: t('Снять мут'), icon: 'notifications' }
+          : { key: 'mute', title: t('Замутить'), icon: 'notifications_off' }
       )
-      actions.push({ key: 'ban', title: 'Забанить', icon: 'block', danger: true })
+      actions.push({ key: 'ban', title: t('Забанить'), icon: 'block', danger: true })
     }
   }
   return actions
@@ -893,10 +908,11 @@ const runMemberAction = async (action: MemberAction, member: ChatMember) => {
   if (action.key === 'kick') {
     const name = displayName(member)
     const agreed = await confirmDialog({
-      title: `Исключить ${name} из группы?`,
-      message:
-        'Человек перестанет получать сообщения группы. Вернуть его можно повторным приглашением.',
-      okLabel: 'Исключить',
+      title: t('Исключить {name} из группы?', { name }),
+      message: t(
+        'Человек перестанет получать сообщения группы. Вернуть его можно повторным приглашением.'
+      ),
+      okLabel: t('Исключить'),
       danger: true
     })
     if (!agreed) return
@@ -908,7 +924,7 @@ const runMemberAction = async (action: MemberAction, member: ChatMember) => {
       // Исключённый не должен читать новые сообщения — ключ выпускаем заново.
       emit('members-changed', true)
     } catch (err) {
-      error.value = getErrorMessage(err, 'Не удалось исключить участника')
+      error.value = getErrorMessage(err, t('Не удалось исключить участника'))
     } finally {
       busy.value = false
     }
@@ -925,7 +941,7 @@ const runMemberAction = async (action: MemberAction, member: ChatMember) => {
       await load()
       emit('updated')
     } catch (err) {
-      error.value = getErrorMessage(err, 'Не удалось изменить роль')
+      error.value = getErrorMessage(err, t('Не удалось изменить роль'))
     } finally {
       busy.value = false
     }
@@ -935,9 +951,9 @@ const runMemberAction = async (action: MemberAction, member: ChatMember) => {
 // ---------- Выход / удаление группы ----------
 const leaveGroup = async () => {
   const agreed = await confirmDialog({
-    title: 'Покинуть группу?',
-    message: 'Вы перестанете получать её сообщения.',
-    okLabel: 'Покинуть',
+    title: t('Покинуть группу?'),
+    message: t('Вы перестанете получать её сообщения.'),
+    okLabel: t('Покинуть'),
     danger: true
   })
   if (!agreed) return
@@ -947,7 +963,7 @@ const leaveGroup = async () => {
     await deleteChat(props.chat.id, false)
     emit('left')
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось покинуть группу')
+    error.value = getErrorMessage(err, t('Не удалось покинуть группу'))
   } finally {
     busy.value = false
   }
@@ -955,9 +971,9 @@ const leaveGroup = async () => {
 
 const deleteGroup = async () => {
   const agreed = await confirmDialog({
-    title: 'Удалить группу для всех участников?',
-    message: 'Это действие нельзя отменить: история и участники удалятся у всех.',
-    okLabel: 'Удалить',
+    title: t('Удалить группу для всех участников?'),
+    message: t('Это действие нельзя отменить: история и участники удалятся у всех.'),
+    okLabel: t('Удалить'),
     danger: true
   })
   if (!agreed) return
@@ -967,7 +983,7 @@ const deleteGroup = async () => {
     await deleteChat(props.chat.id, true)
     emit('left')
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось удалить группу')
+    error.value = getErrorMessage(err, t('Не удалось удалить группу'))
   } finally {
     busy.value = false
   }

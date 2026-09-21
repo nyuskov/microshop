@@ -3,6 +3,7 @@ import { icon } from '@/utils/icons'
 import { useRouter } from 'vue-router'
 import { useAuthStore, deviceChallengeOf, type DeviceChallenge } from '../stores/auth'
 import { getErrorMessage } from '../services/errors'
+import { t } from '@/i18n'
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { formatPhoneForBackend, isValidPhoneNumber, prettyPhone } from '@/utils/phone'
 import { PASSWORD_MIN_LENGTH, passwordProblem, passwordStrength } from '@/utils/passwordPolicy'
@@ -123,7 +124,7 @@ const result = ref('')
 const isLoading = ref(false)
 
 /** Показывать ли сообщение-уведомление (скрываем «штатные» успешные тексты). */
-const showNotice = computed(() => !!result.value && result.value !== 'Вход успешен!')
+const showNotice = computed(() => !!result.value && result.value !== t('Вход успешен!'))
 
 async function continueWithPhone() {
   if (authStore.isAuthenticated) {
@@ -132,7 +133,7 @@ async function continueWithPhone() {
   }
 
   if (!isValidPhoneNumber(phoneOrUsername.value)) {
-    result.value = 'Введите корректный номер телефона в формате +7 (___) ___-__-__'
+    result.value = t('Введите корректный номер телефона в формате +7 (___) ___-__-__')
     severity.value = 'error'
     return
   }
@@ -150,7 +151,7 @@ async function continueWithPhone() {
     afterOtp.value = false
 
     if (!status.registered && !registrationEnabled.value) {
-      result.value = 'Регистрация новых пользователей временно отключена. Попробуйте позже.'
+      result.value = t('Регистрация новых пользователей временно отключена. Попробуйте позже.')
       severity.value = 'error'
       return
     }
@@ -176,7 +177,7 @@ async function continueWithPhone() {
     void nextTick(focusPassword)
   } catch (error: unknown) {
     console.error('Password status failed:', error)
-    result.value = getErrorMessage(error, 'Не удалось проверить номер.')
+    result.value = getErrorMessage(error, t('Не удалось проверить номер.'))
     severity.value = 'error'
   } finally {
     isLoading.value = false
@@ -205,7 +206,7 @@ async function onLoginSubmit() {
   }
 
   if (!password.value) {
-    result.value = 'Введите пароль.'
+    result.value = t('Введите пароль.')
     severity.value = 'error'
     return
   }
@@ -225,7 +226,7 @@ async function onLoginSubmit() {
   } catch (error: unknown) {
     if (startDeviceStep(error, 'password')) return
     console.error('Login failed:', error)
-    result.value = getErrorMessage(error, 'Неверный номер или пароль.')
+    result.value = getErrorMessage(error, t('Неверный номер или пароль.'))
     severity.value = 'error'
   } finally {
     isLoading.value = false
@@ -263,7 +264,7 @@ async function onDeviceSubmit() {
   }
   const code = deviceCode.value.replace(/\D/g, '')
   if (code.length < 4) {
-    result.value = 'Введите код из письма.'
+    result.value = t('Введите код из письма.')
     severity.value = 'error'
     return
   }
@@ -277,7 +278,7 @@ async function onDeviceSubmit() {
     finishLogin()
   } catch (error: unknown) {
     console.error('Device verify failed:', error)
-    result.value = getErrorMessage(error, 'Неверный или истёкший код. Попробуйте войти заново.')
+    result.value = getErrorMessage(error, t('Неверный или истёкший код. Попробуйте войти заново.'))
     severity.value = 'error'
   } finally {
     isLoading.value = false
@@ -300,12 +301,12 @@ async function sendOtp() {
   result.value = ''
   try {
     await authStore.requestOtp(formatPhoneForBackend(phoneOrUsername.value))
-    result.value = `Код отправлен на ${prettyPhone(phoneOrUsername.value)}`
+    result.value = t('Код отправлен на {phone}', { phone: prettyPhone(phoneOrUsername.value) })
     severity.value = 'info'
     void nextTick(() => otpFieldRef.value?.focus())
   } catch (error: unknown) {
     console.error('Request OTP failed:', error)
-    result.value = getErrorMessage(error, 'Не удалось отправить код.')
+    result.value = getErrorMessage(error, t('Не удалось отправить код.'))
     severity.value = 'error'
   } finally {
     isLoading.value = false
@@ -334,7 +335,7 @@ function requireConsent(): boolean {
     return true
   }
   consentError.value = true
-  result.value = 'Отметьте согласие с правилами сервиса — без него аккаунт создать нельзя.'
+  result.value = t('Отметьте согласие с правилами сервиса — без него аккаунт создать нельзя.')
   severity.value = 'error'
   return false
 }
@@ -348,7 +349,7 @@ async function onOtpSubmit() {
   if (isNewNumber.value && !requireConsent()) return
   const code = otpCode.value.replace(/\D/g, '')
   if (code.length < 4) {
-    result.value = 'Введите код из сообщения.'
+    result.value = t('Введите код из сообщения.')
     severity.value = 'error'
     return
   }
@@ -377,7 +378,7 @@ async function onOtpSubmit() {
   } catch (error: unknown) {
     if (startDeviceStep(error, 'otp')) return
     console.error('Verify OTP failed:', error)
-    result.value = getErrorMessage(error, 'Неверный или истёкший код.')
+    result.value = getErrorMessage(error, t('Неверный или истёкший код.'))
     severity.value = 'error'
   } finally {
     isLoading.value = false
@@ -405,7 +406,7 @@ async function onCreateSubmit() {
     return
   }
   if (password.value !== passwordConfirm.value) {
-    result.value = 'Пароли не совпадают.'
+    result.value = t('Пароли не совпадают.')
     severity.value = 'error'
     return
   }
@@ -428,7 +429,7 @@ async function onCreateSubmit() {
   } catch (error: unknown) {
     if (startDeviceStep(error, 'create')) return
     console.error('Create password failed:', error)
-    result.value = getErrorMessage(error, 'Не удалось создать пароль.')
+    result.value = getErrorMessage(error, t('Не удалось создать пароль.'))
     severity.value = 'error'
   } finally {
     isLoading.value = false
@@ -467,7 +468,7 @@ function openEmailStep(mode: 'login' | 'reset') {
 async function sendEmailCode() {
   if (isLoading.value) return
   if (!emailValue.value.trim()) {
-    result.value = 'Введите e-mail.'
+    result.value = t('Введите e-mail.')
     severity.value = 'error'
     return
   }
@@ -480,11 +481,11 @@ async function sendEmailCode() {
         ? await authStore.requestEmailLogin(emailValue.value.trim())
         : await authStore.requestPasswordReset(emailValue.value.trim())
     emailCodeSent.value = true
-    result.value = detail || 'Код отправлен на e-mail.'
+    result.value = detail || t('Код отправлен на e-mail.')
     severity.value = 'info'
   } catch (error: unknown) {
     console.error('Request email code failed:', error)
-    result.value = getErrorMessage(error, 'Не удалось отправить код на e-mail.')
+    result.value = getErrorMessage(error, t('Не удалось отправить код на e-mail.'))
     severity.value = 'error'
   } finally {
     isLoading.value = false
@@ -500,7 +501,7 @@ async function onEmailSubmit() {
     return
   }
   if (code.length < 4) {
-    result.value = 'Введите код из письма.'
+    result.value = t('Введите код из письма.')
     severity.value = 'error'
     return
   }
@@ -515,7 +516,7 @@ async function onEmailSubmit() {
       return
     }
     if (resetPassword.value !== resetPasswordConfirm.value) {
-      result.value = 'Пароли не совпадают.'
+      result.value = t('Пароли не совпадают.')
       severity.value = 'error'
       return
     }
@@ -540,7 +541,7 @@ async function onEmailSubmit() {
     }
   } catch (error: unknown) {
     console.error('Confirm email code failed:', error)
-    result.value = getErrorMessage(error, 'Неверный или истёкший код из письма.')
+    result.value = getErrorMessage(error, t('Неверный или истёкший код из письма.'))
     severity.value = 'error'
   } finally {
     isLoading.value = false
@@ -579,7 +580,7 @@ const requestUnfreeze = async () => {
     unfreezeSent.value = true
   } catch (error: unknown) {
     console.error('Request unfreeze failed:', error)
-    unfreezeError.value = getErrorMessage(error, 'Не удалось отправить код на этот адрес.')
+    unfreezeError.value = getErrorMessage(error, t('Не удалось отправить код на этот адрес.'))
   } finally {
     unfreezeBusy.value = false
   }
@@ -596,7 +597,7 @@ const confirmUnfreeze = async () => {
     emit('close-modal')
   } catch (error: unknown) {
     console.error('Confirm unfreeze failed:', error)
-    unfreezeError.value = getErrorMessage(error, 'Неверный или истёкший код из письма.')
+    unfreezeError.value = getErrorMessage(error, t('Неверный или истёкший код из письма.'))
   } finally {
     unfreezeBusy.value = false
   }
@@ -620,17 +621,20 @@ const leaveFrozen = () => {
         <div class="brand">
           <span class="brand-icon"><q-icon :name="icon('lock')" size="30px" /></span>
         </div>
-        <h2 class="step-title">Аккаунт заморожен</h2>
+        <h2 class="step-title">{{ t('Аккаунт заморожен') }}</h2>
         <p class="step-subtitle">
-          Все устройства вышли из аккаунта, вход закрыт — так работает защита от угона. Вернуть
-          доступ можно кодом на подтверждённый e-mail аккаунта.
+          {{
+            t(
+              'Все устройства вышли из аккаунта, вход закрыт — так работает защита от угона. Вернуть доступ можно кодом на подтверждённый e-mail аккаунта.'
+            )
+          }}
         </p>
 
         <form
           class="otp-form"
           @submit.prevent="unfreezeSent ? confirmUnfreeze() : requestUnfreeze()"
         >
-          <label class="field-label" for="unfreeze-email">E-mail аккаунта</label>
+          <label class="field-label" for="unfreeze-email">{{ t('E-mail аккаунта') }}</label>
           <q-input
             for="unfreeze-email"
             v-model="unfreezeEmail"
@@ -639,22 +643,22 @@ const leaveFrozen = () => {
             class="phone-input"
             placeholder="name@example.com"
             autocomplete="email"
-            aria-label="E-mail аккаунта"
+            :aria-label="t('E-mail аккаунта')"
             :disable="unfreezeSent"
             hide-bottom-space
           />
 
           <template v-if="unfreezeSent">
-            <label class="field-label gap-top" for="unfreeze-code">Код из письма</label>
+            <label class="field-label gap-top" for="unfreeze-code">{{ t('Код из письма') }}</label>
             <q-input
               for="unfreeze-code"
               v-model="unfreezeCode"
               outlined
               class="phone-input"
-              placeholder="6 цифр"
+              :placeholder="t('6 цифр')"
               inputmode="numeric"
               autocomplete="one-time-code"
-              aria-label="Код из письма"
+              :aria-label="t('Код из письма')"
               hide-bottom-space
             />
           </template>
@@ -668,7 +672,7 @@ const leaveFrozen = () => {
             :loading="unfreezeBusy"
             :disable="unfreezeBusy"
           >
-            {{ unfreezeSent ? 'Разморозить аккаунт' : 'Отправить код' }}
+            {{ unfreezeSent ? t('Разморозить аккаунт') : t('Отправить код') }}
           </q-btn>
         </form>
 
@@ -679,11 +683,12 @@ const leaveFrozen = () => {
         </transition>
 
         <p class="privacy-note">
-          Нет доступа к почте аккаунта? Напишите на
-          <a href="mailto:nyuskov@gmail.com">nyuskov@gmail.com</a> — вернём доступ вручную.
+          {{ t('Нет доступа к почте аккаунта? Напишите на') }}
+          <a href="mailto:nyuskov@gmail.com">nyuskov@gmail.com</a>
+          {{ t('— вернём доступ вручную.') }}
         </p>
         <button class="link-btn" type="button" :disabled="unfreezeBusy" @click="leaveFrozen">
-          Войти в другой аккаунт
+          {{ t('Войти в другой аккаунт') }}
         </button>
       </div>
 
@@ -692,26 +697,28 @@ const leaveFrozen = () => {
         <div class="brand">
           <span class="brand-icon"><q-icon :name="icon('call')" size="30px" /></span>
         </div>
-        <h2 class="step-title">Вход</h2>
-        <p class="step-subtitle">Введите номер телефона — войдёте по паролю.</p>
+        <h2 class="step-title">{{ t('Вход') }}</h2>
+        <p class="step-subtitle">{{ t('Введите номер телефона — войдёте по паролю.') }}</p>
 
-        <label class="field-label" for="phone-input">Номер телефона</label>
+        <label class="field-label" for="phone-input">{{ t('Номер телефона') }}</label>
         <PhoneInput
           id="phone-input"
           v-model="phoneOrUsername"
           placeholder="+7 (___) ___-__-__"
-          aria-label="Номер телефона"
+          :aria-label="t('Номер телефона')"
           @enter="continueWithPhone"
         />
 
         <button class="btn btn-primary" :disabled="isLoading" @click="continueWithPhone">
           <span v-if="isLoading" class="spinner"></span>
           <q-icon v-else :name="icon('arrow_forward')" size="17px" />
-          <span>{{ isLoading ? 'Проверка…' : 'Продолжить' }}</span>
+          <span>{{ isLoading ? t('Проверка…') : t('Продолжить') }}</span>
         </button>
 
         <p class="privacy-hint">
-          Если пароля ещё нет — подтвердим номер кодом в Telegram и предложим его создать.
+          {{
+            t('Если пароля ещё нет — подтвердим номер кодом в Telegram и предложим его создать.')
+          }}
         </p>
 
         <button
@@ -722,7 +729,7 @@ const leaveFrozen = () => {
           @click="openEmailStep('login')"
         >
           <q-icon :name="icon('mail')" size="17px" />
-          Войти по коду на e-mail
+          {{ t('Войти по коду на e-mail') }}
         </button>
       </div>
 
@@ -731,15 +738,15 @@ const leaveFrozen = () => {
         <div class="brand">
           <span class="brand-icon"><q-icon :name="icon('lock')" size="30px" /></span>
         </div>
-        <h2 class="step-title">Введите пароль</h2>
+        <h2 class="step-title">{{ t('Введите пароль') }}</h2>
         <p class="step-subtitle">
-          Для номера
+          {{ t('Для номера') }}
           <strong>{{ prettyPhone(phoneOrUsername) }}</strong>
-          уже задан пароль.
+          {{ t('уже задан пароль.') }}
         </p>
 
         <form class="otp-form" @submit.prevent="onLoginSubmit">
-          <label class="field-label" for="password-input">Пароль</label>
+          <label class="field-label" for="password-input">{{ t('Пароль') }}</label>
           <q-input
             for="password-input"
             ref="passwordFieldRef"
@@ -747,9 +754,9 @@ const leaveFrozen = () => {
             :type="showCurrent ? 'text' : 'password'"
             outlined
             class="phone-input"
-            placeholder="Введите пароль"
+            :placeholder="t('Введите пароль')"
             autocomplete="current-password"
-            aria-label="Пароль"
+            :aria-label="t('Пароль')"
             hide-bottom-space
           >
             <template #append>
@@ -758,7 +765,7 @@ const leaveFrozen = () => {
                 class="password-eye"
                 size="20px"
                 role="button"
-                :aria-label="showCurrent ? 'Скрыть пароль' : 'Показать пароль'"
+                :aria-label="showCurrent ? t('Скрыть пароль') : t('Показать пароль')"
                 @click="showCurrent = !showCurrent"
               />
             </template>
@@ -767,13 +774,13 @@ const leaveFrozen = () => {
           <button type="submit" class="btn btn-primary" :disabled="isLoading">
             <span v-if="isLoading" class="spinner"></span>
             <q-icon v-else :name="icon('check')" size="17px" />
-            <span>{{ isLoading ? 'Вход…' : 'Войти' }}</span>
+            <span>{{ isLoading ? t('Вход…') : t('Войти') }}</span>
           </button>
         </form>
 
         <button class="link-btn" type="button" :disabled="isLoading" @click="goBackToPhoneInput">
           <q-icon :name="icon('arrow_back')" size="17px" />
-          Изменить номер
+          {{ t('Изменить номер') }}
         </button>
 
         <button
@@ -784,7 +791,7 @@ const leaveFrozen = () => {
           @click="openEmailStep('reset')"
         >
           <q-icon :name="icon('help_outline')" size="17px" />
-          Забыли пароль?
+          {{ t('Забыли пароль?') }}
         </button>
       </div>
 
@@ -793,18 +800,18 @@ const leaveFrozen = () => {
         <div class="brand">
           <span class="brand-icon"><q-icon :name="icon('phonelink_lock')" size="30px" /></span>
         </div>
-        <h2 class="step-title">Новое устройство</h2>
+        <h2 class="step-title">{{ t('Новое устройство') }}</h2>
         <p class="step-subtitle">
-          Вход с этого устройства выполняется впервые. Введите код из письма
+          {{ t('Вход с этого устройства выполняется впервые. Введите код из письма') }}
           <template v-if="deviceChallenge?.code_sent_to">
-            (отправлен на <strong>{{ deviceChallenge.code_sent_to }}</strong
+            {{ t('(отправлен на') }} <strong>{{ deviceChallenge.code_sent_to }}</strong
             >)
           </template>
-          — так мы убедимся, что это вы.
+          {{ t('— так мы убедимся, что это вы.') }}
         </p>
 
         <form class="otp-form" @submit.prevent="onDeviceSubmit">
-          <label class="field-label" for="device-code-input">Код из письма</label>
+          <label class="field-label" for="device-code-input">{{ t('Код из письма') }}</label>
           <q-input
             for="device-code-input"
             ref="deviceFieldRef"
@@ -815,7 +822,7 @@ const leaveFrozen = () => {
             class="phone-input otp-input"
             placeholder="_ _ _ _ _ _"
             autocomplete="one-time-code"
-            aria-label="Код подтверждения из письма"
+            :aria-label="t('Код подтверждения из письма')"
             hide-bottom-space
           >
             <template #append>
@@ -824,7 +831,7 @@ const leaveFrozen = () => {
                 class="password-eye"
                 size="20px"
                 role="button"
-                :aria-label="showDeviceCode ? 'Скрыть код' : 'Показать код'"
+                :aria-label="showDeviceCode ? t('Скрыть код') : t('Показать код')"
                 @click="showDeviceCode = !showDeviceCode"
               />
             </template>
@@ -833,18 +840,21 @@ const leaveFrozen = () => {
           <button type="submit" class="btn btn-primary" :disabled="isLoading">
             <span v-if="isLoading" class="spinner"></span>
             <q-icon v-else :name="icon('check')" size="17px" />
-            <span>{{ isLoading ? 'Проверка…' : 'Подтвердить вход' }}</span>
+            <span>{{ isLoading ? t('Проверка…') : t('Подтвердить вход') }}</span>
           </button>
         </form>
 
         <p class="privacy-hint">
-          Код не пришёл? Проверьте папку «Спам». Отправить письмо ещё раз можно, войдя заново — если
-          прошла минута с прошлой отправки, придёт новый код, иначе действует предыдущий.
+          {{
+            t(
+              'Код не пришёл? Проверьте папку «Спам». Отправить письмо ещё раз можно, войдя заново — если прошла минута с прошлой отправки, придёт новый код, иначе действует предыдущий.'
+            )
+          }}
         </p>
 
         <button class="link-btn" type="button" :disabled="isLoading" @click="goBackFromDevice">
           <q-icon :name="icon('arrow_back')" size="17px" />
-          Вернуться
+          {{ t('Вернуться') }}
         </button>
       </div>
 
@@ -854,13 +864,13 @@ const leaveFrozen = () => {
           <span class="brand-icon"><q-icon :name="icon('mail')" size="30px" /></span>
         </div>
         <h2 class="step-title">
-          {{ emailMode === 'login' ? 'Вход по e-mail' : 'Восстановление пароля' }}
+          {{ emailMode === 'login' ? t('Вход по e-mail') : t('Восстановление пароля') }}
         </h2>
         <p class="step-subtitle">
           {{
             emailMode === 'login'
-              ? 'Пришлём код на подтверждённый адрес аккаунта.'
-              : 'Пришлём код на подтверждённый адрес, затем задайте новый пароль.'
+              ? t('Пришлём код на подтверждённый адрес аккаунта.')
+              : t('Пришлём код на подтверждённый адрес, затем задайте новый пароль.')
           }}
         </p>
 
@@ -880,7 +890,9 @@ const leaveFrozen = () => {
           />
 
           <template v-if="emailCodeSent">
-            <label class="field-label gap-top" for="email-code-input">Код из письма</label>
+            <label class="field-label gap-top" for="email-code-input">{{
+              t('Код из письма')
+            }}</label>
             <q-input
               for="email-code-input"
               v-model="emailCode"
@@ -888,9 +900,9 @@ const leaveFrozen = () => {
               inputmode="numeric"
               outlined
               class="phone-input"
-              placeholder="6 цифр"
+              :placeholder="t('6 цифр')"
               autocomplete="one-time-code"
-              aria-label="Код из письма"
+              :aria-label="t('Код из письма')"
               hide-bottom-space
             >
               <template #append>
@@ -899,23 +911,25 @@ const leaveFrozen = () => {
                   class="password-eye"
                   size="20px"
                   role="button"
-                  :aria-label="showEmailCode ? 'Скрыть код' : 'Показать код'"
+                  :aria-label="showEmailCode ? t('Скрыть код') : t('Показать код')"
                   @click="showEmailCode = !showEmailCode"
                 />
               </template>
             </q-input>
 
             <template v-if="emailMode === 'reset'">
-              <label class="field-label gap-top" for="reset-password-input">Новый пароль</label>
+              <label class="field-label gap-top" for="reset-password-input">
+                {{ t('Новый пароль') }}
+              </label>
               <q-input
                 for="reset-password-input"
                 v-model="resetPassword"
                 :type="showResetPassword ? 'text' : 'password'"
                 outlined
                 class="phone-input"
-                :placeholder="`Не короче ${PASSWORD_MIN_LENGTH} символов`"
+                :placeholder="t('Не короче {count} символов', { count: PASSWORD_MIN_LENGTH })"
                 autocomplete="new-password"
-                aria-label="Новый пароль"
+                :aria-label="t('Новый пароль')"
                 hide-bottom-space
               >
                 <template #append>
@@ -924,7 +938,7 @@ const leaveFrozen = () => {
                     class="password-eye"
                     size="20px"
                     role="button"
-                    :aria-label="showResetPassword ? 'Скрыть пароль' : 'Показать пароль'"
+                    :aria-label="showResetPassword ? t('Скрыть пароль') : t('Показать пароль')"
                     @click="showResetPassword = !showResetPassword"
                   />
                 </template>
@@ -938,7 +952,7 @@ const leaveFrozen = () => {
               </p>
 
               <label class="field-label gap-top" for="reset-password-confirm">
-                Повторите пароль
+                {{ t('Повторите пароль') }}
               </label>
               <q-input
                 for="reset-password-confirm"
@@ -946,9 +960,9 @@ const leaveFrozen = () => {
                 :type="showResetPassword ? 'text' : 'password'"
                 outlined
                 class="phone-input"
-                placeholder="Повторите пароль"
+                :placeholder="t('Повторите пароль')"
                 autocomplete="new-password"
-                aria-label="Повтор нового пароля"
+                :aria-label="t('Повтор нового пароля')"
                 hide-bottom-space
               />
             </template>
@@ -957,7 +971,7 @@ const leaveFrozen = () => {
           <button type="submit" class="btn btn-primary" :disabled="isLoading">
             <span v-if="isLoading" class="spinner"></span>
             <q-icon v-else :name="icon(emailCodeSent ? 'check' : 'send')" size="17px" />
-            <span>{{ emailCodeSent ? 'Подтвердить' : 'Отправить код' }}</span>
+            <span>{{ emailCodeSent ? t('Подтвердить') : t('Отправить код') }}</span>
           </button>
         </form>
 
@@ -969,12 +983,12 @@ const leaveFrozen = () => {
           @click="sendEmailCode"
         >
           <q-icon :name="icon('refresh')" size="17px" />
-          Отправить код ещё раз
+          {{ t('Отправить код ещё раз') }}
         </button>
 
         <button class="link-btn" type="button" :disabled="isLoading" @click="goBackToPhoneInput">
           <q-icon :name="icon('arrow_back')" size="17px" />
-          Вернуться к входу по номеру
+          {{ t('Вернуться к входу по номеру') }}
         </button>
       </div>
 
@@ -983,15 +997,14 @@ const leaveFrozen = () => {
         <div class="brand">
           <span class="brand-icon"><q-icon :name="icon('sms')" size="30px" /></span>
         </div>
-        <h2 class="step-title">Введите код</h2>
+        <h2 class="step-title">{{ t('Введите код') }}</h2>
         <p class="step-subtitle">
-          Код подтверждения отправлен в <strong>Telegram</strong> на номер
-          <strong>{{ prettyPhone(phoneOrUsername) }}</strong
-          >.
+          {{ t('Код подтверждения отправлен в Telegram на номер') }}
+          <strong>{{ prettyPhone(phoneOrUsername) }}</strong>
         </p>
 
         <form class="otp-form" @submit.prevent="onOtpSubmit">
-          <label class="field-label" for="otp-input">Код из сообщения</label>
+          <label class="field-label" for="otp-input">{{ t('Код из сообщения') }}</label>
           <q-input
             for="otp-input"
             ref="otpFieldRef"
@@ -1000,9 +1013,9 @@ const leaveFrozen = () => {
             maxlength="6"
             outlined
             class="phone-input"
-            placeholder="6 цифр"
+            :placeholder="t('6 цифр')"
             autocomplete="one-time-code"
-            aria-label="Код подтверждения"
+            :aria-label="t('Код подтверждения')"
             hide-bottom-space
           />
 
@@ -1013,22 +1026,24 @@ const leaveFrozen = () => {
           <button type="submit" class="btn btn-primary" :disabled="isLoading">
             <span v-if="isLoading" class="spinner"></span>
             <q-icon v-else :name="icon('check')" size="17px" />
-            <span>{{ isLoading ? 'Проверка…' : 'Подтвердить' }}</span>
+            <span>{{ isLoading ? t('Проверка…') : t('Подтвердить') }}</span>
           </button>
         </form>
 
         <button class="link-btn" type="button" :disabled="isLoading" @click="sendOtp">
           <q-icon :name="icon('refresh')" size="17px" />
-          Отправить код ещё раз
+          {{ t('Отправить код ещё раз') }}
         </button>
 
         <button class="link-btn" type="button" :disabled="isLoading" @click="goBackToPhoneInput">
           <q-icon :name="icon('arrow_back')" size="17px" />
-          Изменить номер
+          {{ t('Изменить номер') }}
         </button>
 
         <p class="privacy-hint">
-          Код приходит в Telegram на этот номер. Нет Telegram или код не пришёл — напишите на
+          {{
+            t('Код приходит в Telegram на этот номер. Нет Telegram или код не пришёл — напишите на')
+          }}
           nyuskov@gmail.com.
         </p>
       </div>
@@ -1040,21 +1055,31 @@ const leaveFrozen = () => {
         </div>
         <h2 class="step-title">
           {{
-            afterOtp ? 'Придумайте пароль' : isNewNumber ? 'Создание аккаунта' : 'Придумайте пароль'
+            afterOtp
+              ? t('Придумайте пароль')
+              : isNewNumber
+                ? t('Создание аккаунта')
+                : t('Придумайте пароль')
           }}
         </h2>
         <p class="step-subtitle">
           {{
             afterOtp
-              ? `Номер ${prettyPhone(phoneOrUsername)} подтверждён — задайте пароль, чтобы дальше входить без кода.`
+              ? t('Номер {phone} подтверждён — задайте пароль, чтобы дальше входить без кода.', {
+                  phone: prettyPhone(phoneOrUsername)
+                })
               : isNewNumber
-                ? `Номер ${prettyPhone(phoneOrUsername)} ещё не зарегистрирован — придумайте пароль.`
-                : `Для номера ${prettyPhone(phoneOrUsername)} ещё нет пароля — задайте его.`
+                ? t('Номер {phone} ещё не зарегистрирован — придумайте пароль.', {
+                    phone: prettyPhone(phoneOrUsername)
+                  })
+                : t('Для номера {phone} ещё нет пароля — задайте его.', {
+                    phone: prettyPhone(phoneOrUsername)
+                  })
           }}
         </p>
 
         <form class="otp-form" @submit.prevent="onCreateSubmit">
-          <label class="field-label" for="new-password-input">Пароль</label>
+          <label class="field-label" for="new-password-input">{{ t('Пароль') }}</label>
           <q-input
             for="new-password-input"
             ref="passwordFieldRef"
@@ -1062,9 +1087,9 @@ const leaveFrozen = () => {
             :type="showNew ? 'text' : 'password'"
             outlined
             class="phone-input"
-            :placeholder="`Не короче ${PASSWORD_MIN_LENGTH} символов`"
+            :placeholder="t('Не короче {count} символов', { count: PASSWORD_MIN_LENGTH })"
             autocomplete="new-password"
-            aria-label="Новый пароль"
+            :aria-label="t('Новый пароль')"
             hide-bottom-space
             @keyup.enter="onCreateSubmit"
           >
@@ -1074,7 +1099,7 @@ const leaveFrozen = () => {
                 class="password-eye"
                 size="20px"
                 role="button"
-                :aria-label="showNew ? 'Скрыть пароль' : 'Показать пароль'"
+                :aria-label="showNew ? t('Скрыть пароль') : t('Показать пароль')"
                 @click="showNew = !showNew"
               />
             </template>
@@ -1087,16 +1112,18 @@ const leaveFrozen = () => {
             {{ createPasswordScore.label }}
           </p>
 
-          <label class="field-label gap-top" for="confirm-password-input">Повторите пароль</label>
+          <label class="field-label gap-top" for="confirm-password-input">
+            {{ t('Повторите пароль') }}
+          </label>
           <q-input
             for="confirm-password-input"
             v-model="passwordConfirm"
             :type="showConfirm ? 'text' : 'password'"
             outlined
             class="phone-input"
-            placeholder="Повторите пароль"
+            :placeholder="t('Повторите пароль')"
             autocomplete="new-password"
-            aria-label="Повтор пароля"
+            :aria-label="t('Повтор пароля')"
             hide-bottom-space
             @keyup.enter="onCreateSubmit"
           >
@@ -1106,7 +1133,7 @@ const leaveFrozen = () => {
                 class="password-eye"
                 size="20px"
                 role="button"
-                :aria-label="showConfirm ? 'Скрыть пароль' : 'Показать пароль'"
+                :aria-label="showConfirm ? t('Скрыть пароль') : t('Показать пароль')"
                 @click="showConfirm = !showConfirm"
               />
             </template>
@@ -1120,17 +1147,17 @@ const leaveFrozen = () => {
             <q-icon v-else :name="icon('check')" size="17px" />
             <span>{{
               isLoading
-                ? 'Сохранение…'
+                ? t('Сохранение…')
                 : afterOtp
-                  ? 'Сохранить пароль и войти'
-                  : 'Создать пароль и войти'
+                  ? t('Сохранить пароль и войти')
+                  : t('Создать пароль и войти')
             }}</span>
           </button>
         </form>
 
         <button class="link-btn" type="button" :disabled="isLoading" @click="goBackToPhoneInput">
           <q-icon :name="icon('arrow_back')" size="17px" />
-          Изменить номер
+          {{ t('Изменить номер') }}
         </button>
       </div>
     </transition>
@@ -1157,11 +1184,17 @@ const leaveFrozen = () => {
          На шагах регистрации его заменяет обязательная галка согласия — повторять
          одно и то же дважды не нужно. -->
     <p v-if="!consentRequired" class="privacy-note">
-      Продолжая, вы соглашаетесь с
-      <a href="/privacy.html" target="_blank" rel="noopener">политикой конфиденциальности</a>,
-      <a href="/terms.html" target="_blank" rel="noopener">пользовательским соглашением</a>,
-      <a href="/community.html" target="_blank" rel="noopener">правилами сообщества</a>
-      и обработкой персональных данных.
+      {{ t('Продолжая, вы соглашаетесь с') }}
+      <a href="/privacy.html" target="_blank" rel="noopener">{{
+        t('политикой конфиденциальности')
+      }}</a
+      >,
+      <a href="/terms.html" target="_blank" rel="noopener">{{
+        t('пользовательским соглашением')
+      }}</a
+      >,
+      <a href="/community.html" target="_blank" rel="noopener">{{ t('правилами сообщества') }}</a>
+      {{ t('и обработкой персональных данных.') }}
     </p>
   </div>
 </template>

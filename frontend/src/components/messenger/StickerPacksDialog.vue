@@ -185,6 +185,7 @@ import { nextTick, ref } from 'vue'
 import { mediaUrl } from '@/config'
 import { useAuthStore } from '@/stores/auth'
 import { useStickersStore } from '@/stores/stickers'
+import { getErrorMessage } from '@/services/errors'
 import { MAX_STICKER_BYTES, STICKER_ACCEPT, type StickerPack } from '@/services/stickers'
 import { STANDARD_STICKER_PACKS, type StandardStickerPack } from '@/utils/standardStickers'
 import { useStandardSetImport } from '@/composables/useStandardSetImport'
@@ -202,7 +203,7 @@ const emit = defineEmits<{ (e: 'close'): void }>()
  */
 const togglePreset = (pack: StickerPack): void => {
   void store.setPackPreset(pack.id, !pack.is_preset).catch((cause: unknown) => {
-    error.value = cause instanceof Error ? cause.message : 'Не удалось изменить публикацию'
+    error.value = getErrorMessage(cause, 'Не удалось изменить публикацию')
   })
 }
 
@@ -243,7 +244,7 @@ const createPack = (): void => {
       await store.createPack(title || undefined)
       error.value = ''
     } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : 'Не удалось создать пак'
+      error.value = getErrorMessage(cause, 'Не удалось создать пак')
     }
   })()
 }
@@ -257,7 +258,7 @@ const rename = (packId: number, event: Event): void => {
     return
   }
   void store.renamePack(packId, title).catch((cause: unknown) => {
-    error.value = cause instanceof Error ? cause.message : 'Не удалось переименовать пак'
+    error.value = getErrorMessage(cause, 'Не удалось переименовать пак')
     input.value = current.title
   })
 }
@@ -274,13 +275,13 @@ const removePack = async (pack: StickerPack): Promise<void> => {
     await store.removePack(pack.id)
     error.value = ''
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : 'Не удалось удалить пак'
+    error.value = getErrorMessage(cause, 'Не удалось удалить пак')
   }
 }
 
 const removeSticker = (stickerId: number): void => {
   void store.removeSticker(stickerId).catch((cause: unknown) => {
-    error.value = cause instanceof Error ? cause.message : 'Не удалось удалить стикер'
+    error.value = getErrorMessage(cause, 'Не удалось удалить стикер')
   })
 }
 
@@ -319,7 +320,8 @@ const onFiles = (event: Event): void => {
       try {
         await store.addSticker(packId, file)
       } catch (cause) {
-        failed.push(cause instanceof Error ? cause.message : file.name)
+        // Запасной текст — имя файла: в пачке понятно, какой именно не прошёл.
+        failed.push(getErrorMessage(cause, file.name))
       }
     }
     if (failed.length) {

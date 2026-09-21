@@ -21,7 +21,7 @@
     >
       <!-- Скелетоны вместо текста «Загрузка сообщений…»: показываем структуру ленты -->
       <div v-if="loading" class="skeleton-list" aria-busy="true">
-        <span class="sr-only">Загрузка сообщений…</span>
+        <span class="sr-only">{{ t('Загрузка сообщений…') }}</span>
         <div
           v-for="n in SKELETON_ROWS"
           :key="n"
@@ -42,7 +42,7 @@
               class="unread-divider"
               data-unread-divider
             >
-              <span>Непрочитанные сообщения</span>
+              <span>{{ t('Непрочитанные сообщения') }}</span>
             </div>
             <MessageRow
               :message="item.row.message"
@@ -107,7 +107,7 @@
                 <template v-if="postMetaOf(item.row.message.id).comments">
                   {{ postMetaOf(item.row.message.id).comments }}
                 </template>
-                <template v-else>Комментировать</template>
+                <template v-else>{{ t('Комментировать') }}</template>
               </button>
             </div>
           </template>
@@ -142,19 +142,19 @@
               <!-- Текста не ушёл: ждём сеть и отправим сами -->
               <span v-else-if="p.status === 'queued'" class="pending-status">
                 <q-icon :name="icon('schedule')" size="14px" aria-hidden="true" />
-                Ждёт сети — отправим, как появится
+                {{ t('Ждёт сети — отправим, как появится') }}
               </span>
               <!-- Сервер отказал: без ручного повтора сообщение не уйдёт -->
               <span v-else class="pending-status error">
                 <q-icon :name="icon('error')" size="14px" aria-hidden="true" />
-                {{ p.error || 'Не отправлено' }}
+                {{ p.error || t('Не отправлено') }}
               </span>
             </span>
             <button
               v-if="p.status === 'failed'"
               type="button"
               class="pending-action"
-              title="Повторить отправку"
+              :title="t('Повторить отправку')"
               @click="emit('retry-pending', p.localId)"
             >
               <q-icon :name="icon('refresh')" size="17px" />
@@ -163,7 +163,7 @@
               v-if="p.status && p.status !== 'sending'"
               type="button"
               class="pending-action danger"
-              title="Убрать из очереди"
+              :title="t('Убрать из очереди')"
               @click="emit('drop-pending', p.localId)"
             >
               <q-icon :name="icon('close')" size="17px" />
@@ -173,8 +173,8 @@
         <div v-if="!rows.length && (pending ?? []).length === 0" class="chat-status">
           <EmptyState
             icon="forum"
-            title="Сообщений пока нет"
-            hint="Напишите первым — сообщение появится здесь"
+            :title="t('Сообщений пока нет')"
+            :hint="t('Напишите первым — сообщение появится здесь')"
           />
         </div>
       </template>
@@ -186,8 +186,8 @@
       type="button"
       class="jump-down"
       :class="{ 'has-new': hasNewBelow }"
-      :title="hasNewBelow ? 'Новые сообщения' : 'Вниз'"
-      :aria-label="hasNewBelow ? 'Перейти к новым сообщениям' : 'Прокрутить вниз'"
+      :title="hasNewBelow ? t('Новые сообщения') : t('Вниз')"
+      :aria-label="hasNewBelow ? t('Перейти к новым сообщениям') : t('Прокрутить вниз')"
       @click="onJumpDown"
     >
       <q-icon v-if="!newBelowCount" :name="icon('arrow_downward')" size="20px" aria-hidden="true" />
@@ -198,6 +198,7 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 import { uploadStatusText } from '@/utils/upload'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ChatUser, Message } from '@/types'

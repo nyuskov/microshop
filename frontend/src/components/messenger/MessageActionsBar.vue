@@ -9,13 +9,13 @@
   >
     <!-- Быстрые реакции — первой строкой панели, как в Телеграме: самый частый
          жест без открывания палитры. Полный набор — за кнопкой «Реакция». -->
-    <div class="quick-row" role="group" aria-label="Быстрые реакции">
+    <div class="quick-row" role="group" :aria-label="t('Быстрые реакции')">
       <button
         v-for="emoji in QUICK_REACTIONS"
         :key="emoji"
         class="quick-emoji"
         :class="{ active: hasMyReaction(message, emoji) }"
-        :title="`Реакция ${emoji}`"
+        :title="t('Реакция {emoji}', { emoji })"
         @click="onQuickReaction(emoji)"
       >
         {{ emoji }}
@@ -25,23 +25,28 @@
       <button
         class="round-btn"
         :class="{ active: emojiPickerOpen }"
-        title="Все реакции"
+        :title="t('Все реакции')"
         @click="onReaction"
       >
         <q-icon :name="icon('sentiment_satisfied_alt')" size="20px" />
       </button>
-      <button class="round-btn" title="Ответить" @click="onReply">
+      <button class="round-btn" :title="t('Ответить')" @click="onReply">
         <q-icon :name="icon('reply')" size="20px" />
       </button>
       <!-- Пересылку одноразового вложения не предлагаем: сервер её и так
            запрещает, а кнопка обещала бы недоступное. -->
-      <button v-if="!message.view_once" class="round-btn" title="Переслать" @click="onForward">
+      <button
+        v-if="!message.view_once"
+        class="round-btn"
+        :title="t('Переслать')"
+        @click="onForward"
+      >
         <q-icon :name="icon('forward')" size="20px" />
       </button>
       <button
         class="round-btn"
         :class="{ active: moreOpen }"
-        title="Ещё"
+        :title="t('Ещё')"
         aria-haspopup="true"
         :aria-expanded="moreOpen"
         @click="toggleMore"
@@ -54,11 +59,11 @@
     <div v-if="moreOpen" class="more-menu" :class="{ up: popoverUp }" @click.stop>
       <button class="more-item" @click="onPin">
         <q-icon :name="icon('push_pin')" size="16px" />
-        <span>{{ message.is_pinned ? 'Открепить' : 'Закрепить' }}</span>
+        <span>{{ message.is_pinned ? t('Открепить') : t('Закрепить') }}</span>
       </button>
       <button class="more-item" @click="onCopy">
         <q-icon :name="icon('content_copy')" size="16px" />
-        <span>Копировать</span>
+        <span>{{ t('Копировать') }}</span>
       </button>
       <button v-if="canOpenImage" class="more-item" @click="onOpenImage">
         <q-icon :name="icon('image')" size="16px" />
@@ -66,17 +71,17 @@
       </button>
       <button v-if="isOwn && message.text" class="more-item" @click="onEdit">
         <q-icon :name="icon('edit')" size="16px" />
-        <span>Редактировать</span>
+        <span>{{ t('Редактировать') }}</span>
       </button>
       <!-- Одноразовое вложение не сохраняем и не превращаем в стикер: это
            копия содержимого, а оно живёт до первого просмотра. -->
       <button v-if="canSave && !message.view_once" class="more-item" @click="onSave">
         <q-icon :name="icon('bookmark')" size="16px" />
-        <span>Сохранить в Сохранённые</span>
+        <span>{{ t('Сохранить в Сохранённые') }}</span>
       </button>
       <button class="more-item" @click="onRemind">
         <q-icon :name="icon('notifications')" size="16px" />
-        <span>{{ hasReminder ? 'Изменить напоминание' : 'Напомнить' }}</span>
+        <span>{{ hasReminder ? t('Изменить напоминание') : t('Напомнить') }}</span>
       </button>
       <!-- Перевод — только у текста (переводить вложение нечем) и только там,
            где он вообще возможен: без встроенного переводчика браузера пункта
@@ -84,11 +89,11 @@
            (переводим — можно отменить, готово — скрыть). -->
       <button v-if="message.text && canTranslate" class="more-item" @click="onTranslate">
         <q-icon :name="icon('translate')" size="16px" />
-        <span>{{ translationLabel || 'Перевести' }}</span>
+        <span>{{ translationLabel || t('Перевести') }}</span>
       </button>
       <button v-if="canMakeSticker && !message.view_once" class="more-item" @click="onMakeSticker">
         <q-icon :name="icon('add_reaction')" size="16px" />
-        <span>В стикеры</span>
+        <span>{{ t('В стикеры') }}</span>
       </button>
       <!-- «Добавить весь набор» — как «Добавить стикеры» в Телеграме: у стикера
            из предустановленного набора, которого у человека ещё нет. -->
@@ -99,12 +104,12 @@
       <!-- Жалоба на чужое сообщение — требование RuStore для UGC-приложений. -->
       <button v-if="!isOwn" class="more-item" @click="onReport">
         <q-icon :name="icon('flag')" size="16px" />
-        <span>Пожаловаться</span>
+        <span>{{ t('Пожаловаться') }}</span>
       </button>
       <!-- Удалить можно и чужое — тогда «у себя» (выбор области в диалоге). -->
       <button class="more-item danger" @click="onDelete">
         <q-icon :name="icon('delete')" size="16px" />
-        <span>{{ isOwn ? 'Удалить' : 'Удалить у себя' }}</span>
+        <span>{{ isOwn ? t('Удалить') : t('Удалить у себя') }}</span>
       </button>
     </div>
 
@@ -139,6 +144,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import type { Message } from '@/types'
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 import { haptic } from '@/utils/haptics'
 import { isStickerMessage } from '@/utils/media'
 import {
@@ -359,7 +365,7 @@ const onTranslate = () => {
  * нему открывает набор.
  */
 const openImageLabel = computed<string>(() =>
-  isStickerMessage(props.message) ? 'Открыть как картинку' : 'Открыть изображение'
+  isStickerMessage(props.message) ? t('Открыть как картинку') : t('Открыть изображение')
 )
 
 const onOpenImage = () => {

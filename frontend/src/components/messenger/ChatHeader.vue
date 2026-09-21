@@ -1,12 +1,17 @@
 <template>
   <div ref="rootEl" class="chat-header">
-    <button v-if="showBack" class="icon-btn back-btn" title="К списку чатов" @click="emit('back')">
+    <button
+      v-if="showBack"
+      class="icon-btn back-btn"
+      :title="t('К списку чатов')"
+      @click="emit('back')"
+    >
       <q-icon :name="icon('arrow_back')" size="21px" />
     </button>
     <span
       class="avatar-wrap"
       :class="{ online: peerOnline }"
-      title="Информация о чате"
+      :title="t('Информация о чате')"
       @click="emit('open-info')"
     >
       <span
@@ -19,13 +24,13 @@
         <template v-else>{{ initials(title) }}</template>
       </span>
     </span>
-    <div class="chat-header-info" title="Информация о чате" @click="emit('open-info')">
+    <div class="chat-header-info" :title="t('Информация о чате')" @click="emit('open-info')">
       <div class="chat-title-row">
         <div class="chat-title">{{ title }}</div>
         <span
           v-if="e2ee"
           class="chat-e2ee-pill"
-          title="Сквозное шифрование включено: сообщения читаете только вы и собеседник"
+          :title="t('Сквозное шифрование включено: сообщения читаете только вы и собеседник')"
         >
           <q-icon :name="icon('lock')" size="13px" aria-hidden="true" />
         </span>
@@ -33,7 +38,7 @@
       </div>
       <div class="chat-subtitle">
         <template v-if="peerTyping">
-          <span class="sr-only">печатает</span>
+          <span class="sr-only">{{ t('печатает') }}</span>
           <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>
         </template>
         <span v-else class="chat-subtitle-text">{{ subtitle }}</span>
@@ -44,7 +49,11 @@
         <button
           class="icon-btn call-btn"
           :class="{ holding: callHolding }"
-          :title="callLabel(callKind) + ' — нажмите для звонка, удерживайте 0,5 с для смены типа'"
+          :title="
+            t('{kind} — нажмите для звонка, удерживайте 0,5 с для смены типа', {
+              kind: callLabel(callKind)
+            })
+          "
           @click="onCallClick"
           @pointerdown="onCallDown"
           @pointerup="onCallUp"
@@ -61,8 +70,8 @@
         <button
           class="icon-btn"
           :class="{ open: chatMenuOpen }"
-          title="Ещё"
-          aria-label="Ещё"
+          :title="t('Ещё')"
+          :aria-label="t('Ещё')"
           @click="toggleChatMenu"
         >
           <q-icon :name="icon('more_vert')" size="20px" />
@@ -70,29 +79,29 @@
         <div v-if="chatMenuOpen" class="ms-dropdown">
           <button class="ms-dropdown-item" @click="runChatAction('search')">
             <q-icon :name="icon('search')" size="19px" />
-            <span>Поиск по сообщениям</span>
+            <span>{{ t('Поиск по сообщениям') }}</span>
           </button>
           <!-- Архив: чат уходит в отдельный чип «Архив» в списке, чтобы не мешать
                в «Все». Хранится локально (как пины) — это личная настройка вида. -->
           <button class="ms-dropdown-item" @click="runChatAction('archive')">
             <q-icon :name="icon('archive')" size="19px" />
-            <span>{{ archived ? 'Из архива' : 'В архив' }}</span>
+            <span>{{ archived ? t('Из архива') : t('В архив') }}</span>
           </button>
           <!-- Звук уведомлений этого чата: настройка УСТРОЙСТВА (localStorage) —
                на телефоне и на компьютере она может быть разной. -->
           <button class="ms-dropdown-item" @click="runChatAction('sound')">
             <q-icon :name="icon('volume_up')" size="19px" />
-            <span>Звук уведомлений</span>
+            <span>{{ t('Звук уведомлений') }}</span>
           </button>
           <!-- Папки: свои списки чатов с ручным порядком (настройка устройства). -->
           <button class="ms-dropdown-item" @click="runChatAction('folders')">
             <q-icon :name="icon('folder')" size="19px" />
-            <span>В папку…</span>
+            <span>{{ t('В папку…') }}</span>
           </button>
           <!-- Статистика: сколько писали, когда и кто активнее (считает сервер). -->
           <button class="ms-dropdown-item" @click="runChatAction('stats')">
             <q-icon :name="icon('bar_chart')" size="19px" />
-            <span>Статистика чата</span>
+            <span>{{ t('Статистика чата') }}</span>
           </button>
           <!-- Показ/скрытие шторки закреплённых: единственное место с этим
                действием — отдельной кнопки в шапке нет, чтобы не дублировать. -->
@@ -103,7 +112,7 @@
             @click="runChatAction('pinned')"
           >
             <q-icon :name="icon(pinnedHidden ? 'push_pin' : 'visibility')" size="19px" />
-            <span>{{ pinnedHidden ? 'Показать закреплённые' : 'Скрыть закреплённые' }}</span>
+            <span>{{ pinnedHidden ? t('Показать закреплённые') : t('Скрыть закреплённые') }}</span>
           </button>
           <!-- Жалоба и блокировка — требования RuStore для UGC-приложений.
                Доступны только в личных диалогах (в группе нет одного собеседника,
@@ -113,7 +122,7 @@
           <template v-if="canModeratePeer">
             <button class="ms-dropdown-item" @click="runChatAction('report')">
               <q-icon :name="icon('flag')" size="19px" />
-              <span>Пожаловаться</span>
+              <span>{{ t('Пожаловаться') }}</span>
             </button>
             <!-- При полной блокировке запрещено всё, поэтому отдельный пункт про
                  звонки не показываем — достаточно «Разблокировать». -->
@@ -124,11 +133,11 @@
               @click="runChatAction('calls')"
             >
               <q-icon :name="icon(callsBlocked ? 'call' : 'call_end')" size="19px" />
-              <span>{{ callsBlocked ? 'Принимать звонки' : 'Не принимать звонки' }}</span>
+              <span>{{ callsBlocked ? t('Принимать звонки') : t('Не принимать звонки') }}</span>
             </button>
             <button class="ms-dropdown-item danger" @click="runChatAction('block')">
               <q-icon :name="icon('block')" size="19px" />
-              <span>{{ blocked ? 'Разблокировать' : 'Заблокировать' }}</span>
+              <span>{{ blocked ? t('Разблокировать') : t('Заблокировать') }}</span>
             </button>
           </template>
         </div>
@@ -139,6 +148,7 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Chat } from '@/types'
 import {

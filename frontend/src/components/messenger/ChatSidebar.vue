@@ -66,15 +66,15 @@
             v-model="searchQuery"
             class="panel-search-input"
             type="text"
-            placeholder="Поиск: люди, сообщения, каналы"
-            aria-label="Глобальный поиск"
+            :placeholder="t('Поиск: люди, сообщения, каналы')"
+            :aria-label="t('Глобальный поиск')"
             @keydown.esc="closeSearch"
           />
           <button
             v-if="searchQuery.trim()"
             class="icon-btn search-clear"
-            title="Очистить"
-            aria-label="Очистить"
+            :title="t('Очистить')"
+            :aria-label="t('Очистить')"
             @click="searchQuery = ''"
           >
             <q-icon :name="icon('close')" size="18px" />
@@ -185,6 +185,7 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 import StoriesStrip from '@/components/stories/StoriesStrip.vue'
 import SidebarHeader from '@/components/messenger/SidebarHeader.vue'
 import ContactNameDialog from '@/components/messenger/ContactNameDialog.vue'
@@ -624,7 +625,10 @@ const archivedUnreadCount = computed(
  * идут в том порядке, в каком их создали — это его собственный порядок.
  */
 const visibleFilters = computed(() => [
-  ...CHAT_FILTERS.filter((filter) => filter.key !== 'archived' || archivedCount.value > 0),
+  // Подпись фильтра переводим здесь, а не в списке: язык меняется на лету.
+  ...CHAT_FILTERS.filter((filter) => filter.key !== 'archived' || archivedCount.value > 0).map(
+    (filter) => ({ ...filter, title: t(filter.title) })
+  ),
   ...(props.chatFolders ?? []).map((folder) => ({
     key: folderFilter(folder.id),
     title: folder.name
@@ -732,7 +736,7 @@ const openChatWithUser = async (user: SearchUserResult) => {
     closeSearch()
     emit('chat-opened', chat)
   } catch (error) {
-    setSearchError(getErrorMessage(error, 'Не удалось начать переписку'))
+    setSearchError(getErrorMessage(error, t('Не удалось начать переписку')))
   }
 }
 
@@ -750,7 +754,7 @@ const openChatWithContact = async (contact: SearchUserResult) => {
     emit('chat-opened', chat)
   } catch (error) {
     // Ошибку показывает разметка вкладки «Чаты» (как в исходном Messenger).
-    setSearchError(getErrorMessage(error, 'Не удалось начать переписку'))
+    setSearchError(getErrorMessage(error, t('Не удалось начать переписку')))
   }
 }
 

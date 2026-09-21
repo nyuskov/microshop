@@ -6,6 +6,7 @@ import { getErrorMessage } from '@/services/errors'
 import { useAccountSecurity } from '@/composables/useAccountSecurity'
 import { useMobileLayer } from '@/composables/useMobileOverlay'
 import { removeAvatar, uploadAvatar } from '@/services/api'
+import { LOCALES, plural, t } from '@/i18n'
 import { mediaUrl } from '@/services/chatService'
 import { optimizeAvatarFile } from '@/utils/media'
 import { formatPhoneForBackend, localPhoneDigits, maskPhoneLocal } from '@/utils/phone'
@@ -86,14 +87,6 @@ const E2eeBackupDialog = defineAsyncComponent(
   () => import('@/components/messenger/E2eeBackupDialog.vue')
 )
 
-const LANGUAGES = [
-  { code: 'ru', name: 'Русский' },
-  { code: 'en', name: 'English' },
-  { code: 'es', name: 'Español' },
-  { code: 'de', name: 'Deutsch' },
-  { code: 'fr', name: 'Français' }
-]
-
 const COUNTRIES = [
   { code: 'RU', name: 'Россия' },
   { code: 'BY', name: 'Беларусь' },
@@ -109,16 +102,19 @@ const COUNTRIES = [
  *
  * Пустое значение стоит вариантом в списке (а не плейсхолдером): человек должен
  * уметь снять выбор, как это было в родном списке («Не выбран»/«Не выбрана»).
+ *
+ * Языки берутся из `LOCALES` — то есть только те, на которых интерфейс реально
+ * умеет работать. Раньше список был шире (es/de/fr), но выбор ничего не менял.
  */
-const LANGUAGE_OPTIONS = [
-  { value: '', label: 'Не выбран' },
-  ...LANGUAGES.map((lang) => ({ value: lang.code, label: lang.name }))
-]
+const LANGUAGE_OPTIONS = computed(() => [
+  { value: '', label: t('Не выбран') },
+  ...LOCALES.map((lang) => ({ value: lang.code, label: lang.label }))
+])
 
-const COUNTRY_OPTIONS = [
-  { value: '', label: 'Не выбрана' },
-  ...COUNTRIES.map((country) => ({ value: country.code, label: country.name }))
-]
+const COUNTRY_OPTIONS = computed(() => [
+  { value: '', label: t('Не выбрана') },
+  ...COUNTRIES.map((country) => ({ value: country.code, label: t(country.name) }))
+])
 
 interface ProfileForm {
   username: string
@@ -308,7 +304,11 @@ const section = ref<SettingsSection>('root')
  * отдаст: `PUT /system/maintenance/` требует владельца).
  */
 const adminRows = computed<AdminRow[]>(() =>
-  ADMIN_ROWS.filter((row) => row.key !== 'maintenance' || authStore.isOwner)
+  ADMIN_ROWS.filter((row) => row.key !== 'maintenance' || authStore.isOwner).map((row) => ({
+    ...row,
+    title: t(row.title),
+    desc: t(row.desc)
+  }))
 )
 
 /** Вход в служебный экран — самый последний пункт списка настроек. */
@@ -322,9 +322,18 @@ const ADMIN_ENTRY: SettingsEntry = {
   desc: 'Приглашения, жалобы, техработы'
 }
 
-/** Пункты настроек: обычные разделы и, у админа, вход в служебный экран. */
+/**
+ * Пункты настроек: обычные разделы и, у админа, вход в служебный экран.
+ *
+ * Подписи переводим здесь: списки разделов — данные модуля (не реактивны), а
+ * язык интерфейса меняется на лету.
+ */
 const settingsEntries = computed<SettingsEntry[]>(() =>
-  authStore.isAdmin ? [...SETTINGS_ROWS, ADMIN_ENTRY] : SETTINGS_ROWS
+  (authStore.isAdmin ? [...SETTINGS_ROWS, ADMIN_ENTRY] : SETTINGS_ROWS).map((row) => ({
+    ...row,
+    title: t(row.title),
+    desc: t(row.desc)
+  }))
 )
 
 /** Информация о сборке (подставляется vite при сборке). */
@@ -341,9 +350,9 @@ const checkForUpdates = async () => {
     const found = await checkForAppUpdate()
     // Найденное обновление перезагружает страницу само, поэтому сообщение — про
     // обратный случай.
-    if (!found) aboutNotice.value = 'Обновлений нет — версия свежая.'
+    if (!found) aboutNotice.value = t('Обновлений нет — версия свежая.')
   } catch (error) {
-    aboutNotice.value = getErrorMessage(error, 'Не удалось проверить обновления')
+    aboutNotice.value = getErrorMessage(error, t('Не удалось проверить обновления'))
   } finally {
     updatingApp.value = false
   }
@@ -375,11 +384,11 @@ const onMessageSoundToggle = (val: boolean) => {
   messageSoundEnabled.value = val
 }
 const currentSectionTitle = computed(() => {
-  if (section.value === 'admin') return 'Администрирование'
+  if (section.value === 'admin') return t('Администрирование')
   const row =
     SETTINGS_ROWS.find((item) => item.key === section.value) ??
     ADMIN_ROWS.find((item) => item.key === section.value)
-  return row?.title ?? 'Настройки'
+  return row ? t(row.title) : t('Настройки')
 })
 
 const settingsQuery = ref('')
@@ -448,9 +457,9 @@ const copyProfileLink = async () => {
   linkNotice.value = ''
   try {
     await navigator.clipboard.writeText(link)
-    linkNotice.value = 'Ссылка скопирована'
+    linkNotice.value = t('Ссылка скопирована')
   } catch (error) {
-    linkNotice.value = getErrorMessage(error, 'Не удалось скопировать ссылку')
+    linkNotice.value = getErrorMessage(error, t('Не удалось скопировать ссылку'))
   }
 }
 
@@ -459,7 +468,7 @@ const fullName = computed(() =>
   [profileForm.first_name, profileForm.last_name].filter(Boolean).join(' ').trim()
 )
 
-const heroName = computed(() => fullName.value || profileForm.username || 'Пользователь')
+const heroName = computed(() => fullName.value || profileForm.username || t('Пользователь'))
 
 const heroInitials = computed(() => userInitials(heroName.value))
 
@@ -490,7 +499,7 @@ const onAvatarSelected = async (event: Event) => {
   if (!file) return
 
   if (!file.type.startsWith('image/')) {
-    avatarError.value = 'Пожалуйста, выберите изображение'
+    avatarError.value = t('Пожалуйста, выберите изображение')
     return
   }
 
@@ -508,7 +517,7 @@ const onAvatarSelected = async (event: Event) => {
     }
     await authStore.fetchUser()
   } catch (error) {
-    avatarError.value = getErrorMessage(error, 'Не удалось загрузить фото')
+    avatarError.value = getErrorMessage(error, t('Не удалось загрузить фото'))
   } finally {
     avatarUploading.value = false
   }
@@ -528,7 +537,7 @@ const removeAvatarClick = async () => {
     }
     await authStore.fetchUser()
   } catch (error) {
-    avatarError.value = getErrorMessage(error, 'Не удалось удалить фото')
+    avatarError.value = getErrorMessage(error, t('Не удалось удалить фото'))
   } finally {
     avatarUploading.value = false
   }
@@ -578,8 +587,8 @@ const onClearAppCache = async () => {
     const removed = await clearAppCache()
     await loadDeviceCache()
     cacheNotice.value = removed
-      ? `Готово: удалено файлов — ${removed}. Переписка не затронута.`
-      : 'Кэш уже пуст.'
+      ? t('Готово: удалено файлов — {count}. Переписка не затронута.', { count: removed })
+      : t('Кэш уже пуст.')
   } finally {
     cacheClearing.value = false
   }
@@ -602,7 +611,9 @@ const loadLocalSearchCount = async () => {
 const onToggleLocalSearch = async (value: boolean) => {
   setLocalSearchEnabled(value)
   localSearchNotice.value = value
-    ? 'Включено: текст прочитанных сообщений из шифрованных чатов будет запоминаться на этом устройстве'
+    ? t(
+        'Включено: текст прочитанных сообщений из шифрованных чатов будет запоминаться на этом устройстве'
+      )
     : ''
   if (!value) await onClearLocalSearch()
 }
@@ -610,7 +621,7 @@ const onToggleLocalSearch = async (value: boolean) => {
 const onClearLocalSearch = async () => {
   await clearLocalSearch()
   await loadLocalSearchCount()
-  localSearchNotice.value = 'Индекс очищен'
+  localSearchNotice.value = t('Индекс очищен')
 }
 
 // ---------- Журнал безопасности: что происходило с аккаунтом ----------
@@ -764,7 +775,7 @@ const updateProfile = async () => {
     await authStore.fetchUser()
     success.value = true
   } catch (error) {
-    errorMessage.value = getErrorMessage(error, 'Не удалось сохранить профиль')
+    errorMessage.value = getErrorMessage(error, t('Не удалось сохранить профиль'))
   } finally {
     saving.value = false
   }
@@ -806,7 +817,7 @@ const saveQuietHours = async () => {
     })
     profileForm.quiet_hours_offset = localUtcOffsetMinutes()
   } catch (error) {
-    quietError.value = getErrorMessage(error, 'Не удалось сохранить тихие часы')
+    quietError.value = getErrorMessage(error, t('Не удалось сохранить тихие часы'))
   } finally {
     quietSaving.value = false
   }
@@ -828,10 +839,12 @@ const onNotificationsToggle = async (val: boolean) => {
       profileForm.notifications_enabled = false
       errorMessage.value =
         res === 'denied'
-          ? 'Уведомления заблокированы браузером. Разрешите их в настройках сайта и попробуйте снова.'
+          ? t(
+              'Уведомления заблокированы браузером. Разрешите их в настройках сайта и попробуйте снова.'
+            )
           : res === 'unsupported'
-            ? 'Push-уведомления недоступны: нужен HTTPS или localhost.'
-            : 'Не удалось включить push-уведомления.'
+            ? t('Push-уведомления недоступны: нужен HTTPS или localhost.')
+            : t('Не удалось включить push-уведомления.')
     } else {
       errorMessage.value = ''
     }
@@ -850,7 +863,7 @@ const onNotificationsToggle = async (val: boolean) => {
   <div class="profile-sheet">
     <div v-if="!authStore.current_user" class="loading-block">
       <span class="spinner"></span>
-      <p>Загрузка профиля…</p>
+      <p>{{ t('Загрузка профиля…') }}</p>
     </div>
 
     <template v-else>
@@ -859,7 +872,12 @@ const onNotificationsToggle = async (val: boolean) => {
            читалось как подпись к списку, а не как заголовок экрана
            (жалоба владельца). -->
       <div v-if="section !== 'root'" class="settings-head">
-        <button type="button" class="settings-back" title="К разделам" @click="backToSections">
+        <button
+          type="button"
+          class="settings-back"
+          :title="t('К разделам')"
+          @click="backToSections"
+        >
           <q-icon :name="icon('arrow_back')" size="22px" />
         </button>
         <h2 class="settings-head-title">{{ currentSectionTitle }}</h2>
@@ -872,7 +890,7 @@ const onNotificationsToggle = async (val: boolean) => {
             type="button"
             class="hero-avatar"
             :style="avatarStyle"
-            :title="hasAvatar ? 'Изменить фото' : 'Загрузить фото'"
+            :title="hasAvatar ? t('Изменить фото') : t('Загрузить фото')"
             :disabled="avatarUploading"
             @click="avatarInput?.click()"
           >
@@ -880,7 +898,7 @@ const onNotificationsToggle = async (val: boolean) => {
               v-if="avatarSrc"
               :src="avatarSrc"
               class="avatar-photo"
-              alt="Аватар"
+              :alt="t('Аватар')"
               decoding="async"
             />
             <template v-else>{{ heroInitials }}</template>
@@ -890,7 +908,7 @@ const onNotificationsToggle = async (val: boolean) => {
             v-if="hasAvatar"
             type="button"
             class="avatar-remove"
-            title="Удалить фото"
+            :title="t('Удалить фото')"
             :disabled="avatarUploading"
             @click.stop="removeAvatarClick"
           >
@@ -914,14 +932,14 @@ const onNotificationsToggle = async (val: boolean) => {
             <q-icon :name="icon('call')" size="14px" /> {{ profileForm.phone_number }}
           </p>
           <p v-if="avatarUploading" class="avatar-status">
-            <span class="mini-spinner"></span> Загрузка фото…
+            <span class="mini-spinner"></span> {{ t('Загрузка фото…') }}
           </p>
           <p v-else-if="avatarError" class="avatar-status error">{{ avatarError }}</p>
         </div>
       </div>
 
       <!-- Главный экран настроек: сверху сразу разделы (поиск и список) -->
-      <nav v-if="section === 'root'" class="settings-list" aria-label="Разделы настроек">
+      <nav v-if="section === 'root'" class="settings-list" :aria-label="t('Разделы настроек')">
         <!-- Поиск по настройкам: разделов много, нужный искать долго -->
         <div class="settings-search">
           <q-icon :name="icon('search')" size="17px" class="settings-search-icon" />
@@ -929,21 +947,21 @@ const onNotificationsToggle = async (val: boolean) => {
             v-model="settingsQuery"
             class="settings-search-input"
             type="text"
-            placeholder="Найти настройку"
-            aria-label="Поиск по настройкам"
+            :placeholder="t('Найти настройку')"
+            :aria-label="t('Поиск по настройкам')"
           />
           <button
             v-if="settingsQuery"
             type="button"
             class="settings-search-clear"
-            title="Очистить"
+            :title="t('Очистить')"
             @click="settingsQuery = ''"
           >
             <q-icon :name="icon('close')" size="16px" />
           </button>
         </div>
         <p v-if="!visibleSettingsEntries.length" class="settings-empty">
-          Ничего не нашлось — попробуйте другое слово.
+          {{ t('Ничего не нашлось — попробуйте другое слово.') }}
         </p>
         <template v-for="row in visibleSettingsEntries" :key="row.key">
           <!-- Полоса отделяет служебный вход — так же, как перед «Выйти из
@@ -968,7 +986,11 @@ const onNotificationsToggle = async (val: boolean) => {
 
       <!-- Служебный экран: приглашения, жалобы, техработы. Вход — пункт
            «Администрирование» в списке настроек. -->
-      <nav v-if="section === 'admin'" class="settings-list" aria-label="Разделы администрирования">
+      <nav
+        v-if="section === 'admin'"
+        class="settings-list"
+        :aria-label="t('Разделы администрирования')"
+      >
         <button
           v-for="row in adminRows"
           :key="row.key"
@@ -992,7 +1014,7 @@ const onNotificationsToggle = async (val: boolean) => {
       <div v-if="section === 'root'" class="delete-account-row">
         <button type="button" class="logout-btn" :disabled="saving" @click="doLogout">
           <q-icon :name="icon('logout')" size="17px" />
-          Выйти из аккаунта
+          {{ t('Выйти из аккаунта') }}
         </button>
         <button
           type="button"
@@ -1001,9 +1023,11 @@ const onNotificationsToggle = async (val: boolean) => {
           @click="showDeleteAccount = true"
         >
           <q-icon :name="icon('delete_forever')" size="17px" />
-          Удалить аккаунт
+          {{ t('Удалить аккаунт') }}
         </button>
-        <p class="delete-account-hint">Аккаунт, переписка и вложения будут удалены безвозвратно.</p>
+        <p class="delete-account-hint">
+          {{ t('Аккаунт, переписка и вложения будут удалены безвозвратно.') }}
+        </p>
       </div>
 
       <!-- Внешний вид: тема, акцент, пузыри, размер текста и обои -->
@@ -1038,7 +1062,7 @@ const onNotificationsToggle = async (val: boolean) => {
 
       <transition name="fade">
         <div v-if="success" class="notice success">
-          <q-icon :name="icon('check_circle')" size="18px" /> Профиль сохранён
+          <q-icon :name="icon('check_circle')" size="18px" /> {{ t('Профиль сохранён') }}
         </div>
       </transition>
       <transition name="fade">
@@ -1050,58 +1074,63 @@ const onNotificationsToggle = async (val: boolean) => {
       <form class="profile-form" @submit.prevent="updateProfile">
         <!-- Статус -->
         <section v-if="section === 'account'" class="card-section">
-          <h3 class="section-title">Статус</h3>
+          <h3 class="section-title">{{ t('Статус') }}</h3>
           <div class="field">
-            <label for="pf-status">Ваш статус</label>
+            <label for="pf-status">{{ t('Ваш статус') }}</label>
             <input
               id="pf-status"
               v-model="profileForm.status"
               type="text"
               maxlength="140"
-              placeholder="Например: в работе 🚀"
+              :placeholder="t('Например: в работе 🚀')"
             />
-            <p class="field-hint">Показывается собеседнику в шапке личного чата.</p>
+            <p class="field-hint">{{ t('Показывается собеседнику в шапке личного чата.') }}</p>
           </div>
         </section>
 
         <!-- Основное -->
         <section v-if="section === 'account'" class="card-section">
-          <h3 class="section-title">О себе</h3>
+          <h3 class="section-title">{{ t('О себе') }}</h3>
           <div class="field">
-            <label for="pf-bio">Биография</label>
+            <label for="pf-bio">{{ t('Биография') }}</label>
             <textarea
               id="pf-bio"
               v-model="profileForm.bio"
               rows="3"
-              placeholder="Расскажите немного о себе…"
+              :placeholder="t('Расскажите немного о себе…')"
             ></textarea>
           </div>
         </section>
 
         <!-- Имя -->
         <section v-if="section === 'account'" class="card-section">
-          <h3 class="section-title">Имя и фамилия</h3>
+          <h3 class="section-title">{{ t('Имя и фамилия') }}</h3>
           <div class="grid-2">
             <div class="field">
-              <label for="pf-first">Имя</label>
-              <input id="pf-first" v-model="profileForm.first_name" type="text" placeholder="Имя" />
+              <label for="pf-first">{{ t('Имя') }}</label>
+              <input
+                id="pf-first"
+                v-model="profileForm.first_name"
+                type="text"
+                :placeholder="t('Имя')"
+              />
             </div>
             <div class="field">
-              <label for="pf-last">Фамилия</label>
+              <label for="pf-last">{{ t('Фамилия') }}</label>
               <input
                 id="pf-last"
                 v-model="profileForm.last_name"
                 type="text"
-                placeholder="Фамилия"
+                :placeholder="t('Фамилия')"
               />
             </div>
             <div class="field">
-              <label for="pf-username">Логин</label>
+              <label for="pf-username">{{ t('Логин') }}</label>
               <input
                 id="pf-username"
                 v-model="profileForm.username"
                 type="text"
-                placeholder="Логин"
+                :placeholder="t('Логин')"
               />
             </div>
             <div class="field">
@@ -1109,14 +1138,19 @@ const onNotificationsToggle = async (val: boolean) => {
               <input id="pf-email" v-model="profileForm.email" type="email" placeholder="Email" />
               <p class="field-hint">
                 <template v-if="authStore.current_user?.email_verified">
-                  <q-icon :name="icon('verified')" size="14px" /> Подтверждён — можно входить по
-                  коду на e-mail.
+                  <q-icon :name="icon('verified')" size="14px" />
+                  {{ t('Подтверждён — можно входить по коду на e-mail.') }}
                 </template>
                 <template v-else-if="emailChannelAvailable">
-                  Не подтверждён: подтвердите адрес, иначе войти по нему и восстановить пароль не
-                  получится.
+                  {{
+                    t(
+                      'Не подтверждён: подтвердите адрес, иначе войти по нему и восстановить пароль не получится.'
+                    )
+                  }}
                 </template>
-                <template v-else> Не подтверждён (отправка писем на сервере выключена). </template>
+                <template v-else>
+                  {{ t('Не подтверждён (отправка писем на сервере выключена).') }}
+                </template>
               </p>
             </div>
           </div>
@@ -1124,10 +1158,10 @@ const onNotificationsToggle = async (val: boolean) => {
 
         <!-- Контакты и локализация -->
         <section v-if="section === 'account'" class="card-section">
-          <h3 class="section-title">Контакты и локализация</h3>
+          <h3 class="section-title">{{ t('Контакты и локализация') }}</h3>
           <div class="grid-2">
             <div class="field">
-              <label for="pf-phone">Телефон</label>
+              <label for="pf-phone">{{ t('Телефон') }}</label>
               <input
                 id="pf-phone"
                 type="tel"
@@ -1139,12 +1173,12 @@ const onNotificationsToggle = async (val: boolean) => {
                 class="readonly-field"
               />
               <p class="field-hint">
-                Это логин аккаунта, изменить номер нельзя. Нужен другой — напишите на
+                {{ t('Это логин аккаунта, изменить номер нельзя. Нужен другой — напишите на') }}
                 nyuskov@gmail.com.
               </p>
             </div>
             <div class="field">
-              <label for="pf-birth">Дата рождения</label>
+              <label for="pf-birth">{{ t('Дата рождения') }}</label>
               <!-- Маска ДД.ММ.ГГГГ вместо `<input type="date">`: календарь рисует
                    браузер, и в WebView он открывается системным окном далеко от
                    поля (жалоба 15.09.2026). -->
@@ -1166,22 +1200,22 @@ const onNotificationsToggle = async (val: boolean) => {
               </p>
             </div>
             <div class="field">
-              <label for="pf-lang">Язык</label>
+              <label for="pf-lang">{{ t('Язык') }}</label>
               <SelectField
                 id="pf-lang"
                 v-model="profileForm.language"
                 :options="LANGUAGE_OPTIONS"
-                aria-label="Язык"
+                :aria-label="t('Язык')"
               />
             </div>
             <div class="field">
-              <label for="pf-country">Страна</label>
+              <label for="pf-country">{{ t('Страна') }}</label>
               <SelectField
                 id="pf-country"
                 v-model="profileForm.country"
                 :options="COUNTRY_OPTIONS"
                 searchable
-                aria-label="Страна"
+                :aria-label="t('Страна')"
               />
             </div>
           </div>
@@ -1189,13 +1223,13 @@ const onNotificationsToggle = async (val: boolean) => {
 
         <!-- Уведомления -->
         <section v-if="section === 'notifications'" class="card-section">
-          <h3 class="section-title">Уведомления</h3>
+          <h3 class="section-title">{{ t('Уведомления') }}</h3>
           <div class="toggle-row">
             <div class="toggle-text">
-              <span class="toggle-name">Уведомления о сообщениях</span>
-              <span class="toggle-desc"
-                >Системные push-уведомления, когда приложение свёрнуто или закрыто</span
-              >
+              <span class="toggle-name">{{ t('Уведомления о сообщениях') }}</span>
+              <span class="toggle-desc">{{
+                t('Системные push-уведомления, когда приложение свёрнуто или закрыто')
+              }}</span>
             </div>
             <q-toggle
               v-model="profileForm.notifications_enabled"
@@ -1209,9 +1243,9 @@ const onNotificationsToggle = async (val: boolean) => {
                переписку читали с экрана блокировки. -->
           <div class="toggle-row">
             <div class="toggle-text">
-              <span class="toggle-name">Показывать текст сообщения</span>
+              <span class="toggle-name">{{ t('Показывать текст сообщения') }}</span>
               <span class="toggle-desc">
-                Если выключить — в уведомлении будет только имя отправителя
+                {{ t('Если выключить — в уведомлении будет только имя отправителя') }}
               </span>
             </div>
             <q-toggle
@@ -1227,8 +1261,10 @@ const onNotificationsToggle = async (val: boolean) => {
                живёт в localStorage, а не в профиле на сервере. -->
           <div class="toggle-row">
             <div class="toggle-text">
-              <span class="toggle-name">Звук сообщений</span>
-              <span class="toggle-desc"> Короткий звук в приложении; на этом устройстве </span>
+              <span class="toggle-name">{{ t('Звук сообщений') }}</span>
+              <span class="toggle-desc">
+                {{ t('Короткий звук в приложении; на этом устройстве') }}
+              </span>
             </div>
             <q-toggle
               v-model="messageSoundEnabled"
@@ -1242,9 +1278,9 @@ const onNotificationsToggle = async (val: boolean) => {
                разрешены — ночью человека будит звонок, а не сообщение. -->
           <div class="toggle-row">
             <div class="toggle-text">
-              <span class="toggle-name">Тихие часы</span>
+              <span class="toggle-name">{{ t('Тихие часы') }}</span>
               <span class="toggle-desc">
-                Не присылать уведомления о сообщениях в выбранное время
+                {{ t('Не присылать уведомления о сообщениях в выбранное время') }}
               </span>
             </div>
             <q-toggle
@@ -1259,22 +1295,22 @@ const onNotificationsToggle = async (val: boolean) => {
           <div v-if="profileForm.quiet_hours_enabled" class="quiet-block">
             <div class="quiet-times">
               <div class="field">
-                <label for="pf-quiet-from">С</label>
+                <label for="pf-quiet-from">{{ t('С') }}</label>
                 <SelectField
                   id="pf-quiet-from"
                   v-model="profileForm.quiet_hours_start"
                   :options="TIME_OPTIONS"
-                  aria-label="Начало тихих часов"
+                  :aria-label="t('Начало тихих часов')"
                   @update:model-value="saveQuietHours"
                 />
               </div>
               <div class="field">
-                <label for="pf-quiet-to">До</label>
+                <label for="pf-quiet-to">{{ t('До') }}</label>
                 <SelectField
                   id="pf-quiet-to"
                   v-model="profileForm.quiet_hours_end"
                   :options="TIME_OPTIONS"
-                  aria-label="Конец тихих часов"
+                  :aria-label="t('Конец тихих часов')"
                   @update:model-value="saveQuietHours"
                 />
               </div>
@@ -1282,8 +1318,10 @@ const onNotificationsToggle = async (val: boolean) => {
 
             <div class="toggle-row quiet-calls">
               <div class="toggle-text">
-                <span class="toggle-name">Разрешить звонки</span>
-                <span class="toggle-desc">Входящий звонок разбудит даже в тихие часы</span>
+                <span class="toggle-name">{{ t('Разрешить звонки') }}</span>
+                <span class="toggle-desc">{{
+                  t('Входящий звонок разбудит даже в тихие часы')
+                }}</span>
               </div>
               <q-toggle
                 v-model="profileForm.quiet_hours_allow_calls"
@@ -1295,9 +1333,13 @@ const onNotificationsToggle = async (val: boolean) => {
 
             <p class="field-hint">{{ quietSummary }}</p>
             <p class="field-hint">
-              Время местное, {{ formatOffset(profileForm.quiet_hours_offset) }} —
-              <span v-if="quietSaving">сохраняем…</span>
-              <span v-else>сохраняется сразу</span>
+              {{
+                t('Время местное, {offset} —', {
+                  offset: formatOffset(profileForm.quiet_hours_offset)
+                })
+              }}
+              <span v-if="quietSaving">{{ t('сохраняем…') }}</span>
+              <span v-else>{{ t('сохраняется сразу') }}</span>
             </p>
             <p v-if="quietError" class="field-problem">{{ quietError }}</p>
           </div>
@@ -1305,11 +1347,11 @@ const onNotificationsToggle = async (val: boolean) => {
 
         <!-- Приватность -->
         <section v-if="section === 'privacy'" class="card-section">
-          <h3 class="section-title">Приватность</h3>
+          <h3 class="section-title">{{ t('Приватность') }}</h3>
           <div class="toggle-row">
             <div class="toggle-text">
-              <span class="toggle-name">Приватный режим</span>
-              <span class="toggle-desc">Скрывать профиль от посторонних в поиске</span>
+              <span class="toggle-name">{{ t('Приватный режим') }}</span>
+              <span class="toggle-desc">{{ t('Скрывать профиль от посторонних в поиске') }}</span>
             </div>
             <q-toggle
               v-model="profileForm.privacy_mode"
@@ -1318,19 +1360,19 @@ const onNotificationsToggle = async (val: boolean) => {
               @update:model-value="onPrivacyToggle"
             />
           </div>
-          <p class="field-hint">Изменение сохраняется сразу.</p>
+          <p class="field-hint">{{ t('Изменение сохраняется сразу.') }}</p>
         </section>
 
         <!-- Хранилище: сколько медиа занимает аккаунт -->
         <section v-if="section === 'storage'" class="card-section">
-          <h3 class="section-title">Хранилище</h3>
+          <h3 class="section-title">{{ t('Хранилище') }}</h3>
           <div v-if="storageInfo" class="storage-block">
             <div class="storage-line">
               <span class="storage-used">
-                {{ formatBytes(storageInfo.used_bytes) }} из
+                {{ formatBytes(storageInfo.used_bytes) }} {{ t('из') }}
                 {{ formatBytes(storageInfo.quota_bytes) }}
               </span>
-              <span class="storage-files">{{ storageInfo.files }} файл(ов)</span>
+              <span class="storage-files">{{ storageInfo.files }} {{ t('файл(ов)') }}</span>
             </div>
             <div class="storage-bar" role="progressbar" :aria-valuenow="storageInfo.percent">
               <span
@@ -1342,12 +1384,18 @@ const onNotificationsToggle = async (val: boolean) => {
             <p class="storage-hint" :class="{ warn: storageWarn }">
               <template v-if="storageWarn">
                 <q-icon :name="icon('warning')" size="16px" />
-                Место почти закончилось: новые файлы не загрузятся — удалите старые сообщения с
-                вложениями.
+                {{
+                  t(
+                    'Место почти закончилось: новые файлы не загрузятся — удалите старые сообщения с вложениями.'
+                  )
+                }}
               </template>
               <template v-else>
-                Пересланные файлы не тратят место второй раз. Освобождается сразу после удаления
-                сообщения.
+                {{
+                  t(
+                    'Пересланные файлы не тратят место второй раз. Освобождается сразу после удаления сообщения.'
+                  )
+                }}
               </template>
             </p>
             <button
@@ -1356,23 +1404,27 @@ const onNotificationsToggle = async (val: boolean) => {
               :disabled="storageLoading"
               @click="loadStorage"
             >
-              <q-icon :name="icon('refresh')" size="15px" /> Обновить
+              <q-icon :name="icon('refresh')" size="15px" /> {{ t('Обновить') }}
             </button>
           </div>
           <p v-else class="storage-hint">
-            {{ storageLoading ? 'Загружаем…' : 'Не удалось получить данные хранилища.' }}
+            {{ storageLoading ? t('Загружаем…') : t('Не удалось получить данные хранилища.') }}
           </p>
 
           <!-- Кэш на устройстве: оболочка приложения (сам бандл, шрифты, иконки).
                Вложения кэширует браузер, поэтому их здесь нет. -->
           <div v-if="deviceCache?.supported" class="device-cache">
             <div class="storage-line">
-              <span class="storage-used">Кэш приложения на устройстве</span>
+              <span class="storage-used">{{ t('Кэш приложения на устройстве') }}</span>
               <span class="storage-files">{{ formatBytes(deviceCache.usage) }}</span>
             </div>
             <p class="storage-hint">
-              {{ deviceCache.entries }} файл(ов) оболочки (страницы, шрифты, иконки). Переписка,
-              черновики и настройки лежат отдельно и очисткой не затрагиваются.
+              {{
+                t(
+                  '{count} файл(ов) оболочки (страницы, шрифты, иконки). Переписка, черновики и настройки лежат отдельно и очисткой не затрагиваются.',
+                  { count: deviceCache.entries }
+                )
+              }}
             </p>
             <button
               type="button"
@@ -1381,7 +1433,7 @@ const onNotificationsToggle = async (val: boolean) => {
               @click="onClearAppCache"
             >
               <q-icon :name="icon('delete_outline')" size="15px" />
-              {{ cacheClearing ? 'Очищаем…' : 'Очистить кэш приложения' }}
+              {{ cacheClearing ? t('Очищаем…') : t('Очистить кэш приложения') }}
             </button>
             <p v-if="cacheNotice" class="storage-hint">{{ cacheNotice }}</p>
           </div>
@@ -1391,11 +1443,13 @@ const onNotificationsToggle = async (val: boolean) => {
           <div class="device-cache">
             <div class="toggle-row">
               <div class="toggle-text">
-                <span class="toggle-name">Поиск по зашифрованным чатам</span>
+                <span class="toggle-name">{{ t('Поиск по зашифрованным чатам') }}</span>
                 <span class="toggle-desc">
-                  В шифрованном чате сервер текста не видит, поэтому поиск идёт по индексу на этом
-                  устройстве. Запоминается только текст сообщений, которые вы уже прочитали здесь;
-                  ключи шифрования в индексе не хранятся.
+                  {{
+                    t(
+                      'В шифрованном чате сервер текста не видит, поэтому поиск идёт по индексу на этом устройстве. Запоминается только текст сообщений, которые вы уже прочитали здесь; ключи шифрования в индексе не хранятся.'
+                    )
+                  }}
                 </span>
               </div>
               <q-toggle
@@ -1406,8 +1460,17 @@ const onNotificationsToggle = async (val: boolean) => {
               />
             </div>
             <div class="storage-line">
-              <span class="storage-used">Индекс на устройстве</span>
-              <span class="storage-files">{{ localSearchSize }} сообщений</span>
+              <span class="storage-used">{{ t('Индекс на устройстве') }}</span>
+              <span class="storage-files"
+                >{{ localSearchSize }}
+                {{
+                  plural(
+                    localSearchSize,
+                    ['сообщение', 'сообщения', 'сообщений'],
+                    ['message', 'messages']
+                  )
+                }}</span
+              >
             </div>
             <button
               type="button"
@@ -1415,7 +1478,7 @@ const onNotificationsToggle = async (val: boolean) => {
               :disabled="localSearchSize === 0"
               @click="onClearLocalSearch"
             >
-              <q-icon :name="icon('delete_outline')" size="15px" /> Очистить индекс
+              <q-icon :name="icon('delete_outline')" size="15px" /> {{ t('Очистить индекс') }}
             </button>
             <p v-if="localSearchNotice" class="storage-hint">{{ localSearchNotice }}</p>
           </div>
@@ -1423,21 +1486,28 @@ const onNotificationsToggle = async (val: boolean) => {
 
         <!-- Моя ссылка: по ней человек открывает чат с вами -->
         <section v-if="section === 'link'" class="card-section">
-          <h3 class="section-title">Моя ссылка</h3>
+          <h3 class="section-title">{{ t('Моя ссылка') }}</h3>
           <template v-if="myProfileLink">
             <!-- QR-код — первым, как в Telegram: по нему дают ссылку без
                  пересылки (наводят камеру другого телефона). -->
             <div class="profile-link-qr">
-              <QrCode :value="myProfileLink" :size="180" label="QR-код ссылки на ваш профиль" />
+              <QrCode
+                :value="myProfileLink"
+                :size="180"
+                :label="t('QR-код ссылки на ваш профиль')"
+              />
               <p class="profile-link-qr-hint">
-                Наводят камеру другого телефона — чат со мной откроется сразу.
+                {{ t('Наводят камеру другого телефона — чат со мной откроется сразу.') }}
               </p>
             </div>
             <!-- Пояснение — под кодом, а не над ним: первым человек должен видеть
                  сам код, а не текст о нём. -->
             <p class="profile-link-hint">
-              Дайте эту ссылку — по ней в Pismo откроется чат с вами. Номер телефона в ссылке не
-              виден: логин уникален и служит только адресом профиля.
+              {{
+                t(
+                  'Дайте эту ссылку — по ней в Pismo откроется чат с вами. Номер телефона в ссылке не виден: логин уникален и служит только адресом профиля.'
+                )
+              }}
             </p>
             <div class="profile-link-row">
               <input
@@ -1445,7 +1515,7 @@ const onNotificationsToggle = async (val: boolean) => {
                 type="text"
                 readonly
                 :value="myProfileLink"
-                aria-label="Ссылка на профиль"
+                :aria-label="t('Ссылка на профиль')"
               />
               <button type="button" class="btn ghost" @click="copyProfileLink">
                 <q-icon :name="icon('content_copy')" size="17px" /> Копировать
@@ -1453,17 +1523,19 @@ const onNotificationsToggle = async (val: boolean) => {
             </div>
             <p v-if="linkNotice" class="notice success">{{ linkNotice }}</p>
           </template>
-          <p v-else class="profile-link-hint">Логин не задан — ссылку пока не создать.</p>
+          <p v-else class="profile-link-hint">
+            {{ t('Логин не задан — ссылку пока не создать.') }}
+          </p>
         </section>
 
         <!-- Безопасность: пароль и сессии -->
         <section v-if="section === 'security'" class="section security-section">
-          <h3 class="section-title">Безопасность</h3>
+          <h3 class="section-title">{{ t('Безопасность') }}</h3>
 
           <div v-if="securityIssues.length" class="security-alert">
             <q-icon :name="icon('shield')" size="18px" />
             <div>
-              <strong>Аккаунт стоит защитить</strong>
+              <strong>{{ t('Аккаунт стоит защитить') }}</strong>
               <ul>
                 <li v-for="issue in securityIssues" :key="issue">{{ issue }}</li>
               </ul>
@@ -1471,8 +1543,12 @@ const onNotificationsToggle = async (val: boolean) => {
           </div>
 
           <p class="security-hint">
-            Вход — по номеру телефона. Пароль нужен, чтобы входить без кода в Telegram; минимум
-            {{ PASSWORD_MIN_LENGTH }} символов, лучше — длинная фраза.
+            {{
+              t(
+                'Вход — по номеру телефона. Пароль нужен, чтобы входить без кода в Telegram; минимум {count} символов, лучше — длинная фраза.',
+                { count: PASSWORD_MIN_LENGTH }
+              )
+            }}
           </p>
 
           <!-- Подтверждение e-mail: код из письма (канал входа и сброса пароля) -->
@@ -1481,15 +1557,15 @@ const onNotificationsToggle = async (val: boolean) => {
               <strong>
                 {{
                   authStore.current_user?.email_verified
-                    ? 'E-mail подтверждён'
-                    : 'Подтверждение e-mail'
+                    ? t('E-mail подтверждён')
+                    : t('Подтверждение e-mail')
                 }}
               </strong>
               <span>
                 {{
                   authStore.current_user?.email_verified
-                    ? 'По нему можно войти без пароля и восстановить доступ.'
-                    : 'Без подтверждения адрес не годится для входа и восстановления пароля.'
+                    ? t('По нему можно войти без пароля и восстановить доступ.')
+                    : t('Без подтверждения адрес не годится для входа и восстановления пароля.')
                 }}
               </span>
             </div>
@@ -1503,7 +1579,7 @@ const onNotificationsToggle = async (val: boolean) => {
                   @click="sendEmailCode"
                 >
                   <q-icon :name="icon('forward_to_inbox')" size="17px" />
-                  {{ emailCodeSent ? 'Отправить код ещё раз' : 'Отправить код на e-mail' }}
+                  {{ emailCodeSent ? t('Отправить код ещё раз') : t('Отправить код на e-mail') }}
                 </button>
 
                 <div v-if="emailCodeSent" class="email-code-row">
@@ -1511,8 +1587,8 @@ const onNotificationsToggle = async (val: boolean) => {
                     v-model="emailCodeInput"
                     inputmode="numeric"
                     maxlength="6"
-                    placeholder="Код из письма"
-                    aria-label="Код из письма"
+                    :placeholder="t('Код из письма')"
+                    :aria-label="t('Код из письма')"
                     @keyup.enter="confirmEmailCode"
                   />
                   <button
@@ -1521,7 +1597,7 @@ const onNotificationsToggle = async (val: boolean) => {
                     :disabled="emailBusy"
                     @click="confirmEmailCode"
                   >
-                    Подтвердить
+                    {{ t('Подтвердить') }}
                   </button>
                 </div>
               </div>
@@ -1537,7 +1613,7 @@ const onNotificationsToggle = async (val: boolean) => {
 
           <form class="security-form" @submit.prevent="changePassword">
             <label v-if="authStore.current_user?.password_set" class="field-label" for="pf-current">
-              Текущий пароль
+              {{ t('Текущий пароль') }}
             </label>
             <div v-if="authStore.current_user?.password_set" class="password-wrap">
               <input
@@ -1545,12 +1621,12 @@ const onNotificationsToggle = async (val: boolean) => {
                 v-model="passwordForm.current"
                 :type="passwordVisible.current ? 'text' : 'password'"
                 autocomplete="current-password"
-                placeholder="Текущий пароль"
+                :placeholder="t('Текущий пароль')"
               />
               <button
                 type="button"
                 class="password-eye"
-                :aria-label="passwordVisible.current ? 'Скрыть пароль' : 'Показать пароль'"
+                :aria-label="passwordVisible.current ? t('Скрыть пароль') : t('Показать пароль')"
                 @click="passwordVisible.current = !passwordVisible.current"
               >
                 <q-icon
@@ -1560,19 +1636,19 @@ const onNotificationsToggle = async (val: boolean) => {
               </button>
             </div>
 
-            <label class="field-label" for="pf-new">Новый пароль</label>
+            <label class="field-label" for="pf-new">{{ t('Новый пароль') }}</label>
             <div class="password-wrap">
               <input
                 id="pf-new"
                 v-model="passwordForm.next"
                 :type="passwordVisible.next ? 'text' : 'password'"
                 autocomplete="new-password"
-                placeholder="Новый пароль"
+                :placeholder="t('Новый пароль')"
               />
               <button
                 type="button"
                 class="password-eye"
-                :aria-label="passwordVisible.next ? 'Скрыть пароль' : 'Показать пароль'"
+                :aria-label="passwordVisible.next ? t('Скрыть пароль') : t('Показать пароль')"
                 @click="passwordVisible.next = !passwordVisible.next"
               >
                 <q-icon
@@ -1589,19 +1665,19 @@ const onNotificationsToggle = async (val: boolean) => {
               }}<template v-if="passwordHint"> — {{ passwordHint }}</template>
             </p>
 
-            <label class="field-label" for="pf-confirm">Повторите пароль</label>
+            <label class="field-label" for="pf-confirm">{{ t('Повторите пароль') }}</label>
             <div class="password-wrap">
               <input
                 id="pf-confirm"
                 v-model="passwordForm.confirm"
                 :type="passwordVisible.confirm ? 'text' : 'password'"
                 autocomplete="new-password"
-                placeholder="Повторите пароль"
+                :placeholder="t('Повторите пароль')"
               />
               <button
                 type="button"
                 class="password-eye"
-                :aria-label="passwordVisible.confirm ? 'Скрыть пароль' : 'Показать пароль'"
+                :aria-label="passwordVisible.confirm ? t('Скрыть пароль') : t('Показать пароль')"
                 @click="passwordVisible.confirm = !passwordVisible.confirm"
               >
                 <q-icon
@@ -1618,15 +1694,15 @@ const onNotificationsToggle = async (val: boolean) => {
               />
               {{
                 passwordSaving
-                  ? 'Сохранение…'
+                  ? t('Сохранение…')
                   : authStore.current_user?.password_set
-                    ? 'Сменить пароль'
-                    : 'Задать пароль'
+                    ? t('Сменить пароль')
+                    : t('Задать пароль')
               }}
             </button>
 
             <p class="security-note">
-              После смены пароля все другие устройства выйдут из аккаунта.
+              {{ t('После смены пароля все другие устройства выйдут из аккаунта.') }}
             </p>
           </form>
 
@@ -1648,13 +1724,13 @@ const onNotificationsToggle = async (val: boolean) => {
             @click="doRevokeAllSessions"
           >
             <q-icon :name="icon('phonelink_erase')" size="17px" />
-            Выйти на всех устройствах
+            {{ t('Выйти на всех устройствах') }}
           </button>
 
           <!-- Активные входы: видно, где ещё открыт аккаунт -->
           <div class="sessions-block">
             <div class="sessions-head">
-              <span class="sessions-title">Активные входы</span>
+              <span class="sessions-title">{{ t('Активные входы') }}</span>
               <button
                 type="button"
                 class="sessions-refresh"
@@ -1662,15 +1738,15 @@ const onNotificationsToggle = async (val: boolean) => {
                 @click="loadSessions"
               >
                 <q-icon :name="icon('refresh')" size="16px" />
-                Обновить
+                {{ t('Обновить') }}
               </button>
             </div>
 
             <p v-if="sessionsLoading && !sessions.length" class="sessions-hint">
-              Загружаем устройства…
+              {{ t('Загружаем устройства…') }}
             </p>
             <p v-else-if="!sessions.length && !sessionsError" class="sessions-hint">
-              Активных входов не найдено.
+              {{ t('Активных входов не найдено.') }}
             </p>
 
             <ul class="sessions-list">
@@ -1681,7 +1757,9 @@ const onNotificationsToggle = async (val: boolean) => {
                 <span class="session-info">
                   <span class="session-device">
                     {{ deviceLabel(row.device) }}
-                    <span v-if="row.current" class="session-current">это устройство</span>
+                    <span v-if="row.current" class="session-current">{{
+                      t('это устройство')
+                    }}</span>
                   </span>
                   <span class="session-meta">
                     <template v-if="platformLabel(row.device)">
@@ -1695,10 +1773,10 @@ const onNotificationsToggle = async (val: boolean) => {
                   type="button"
                   class="session-revoke"
                   :disabled="sessionsLoading"
-                  :title="row.current ? 'Выйти на этом устройстве' : 'Завершить этот вход'"
+                  :title="row.current ? t('Выйти на этом устройстве') : t('Завершить этот вход')"
                   @click="revokeSessionRow(row)"
                 >
-                  {{ row.current ? 'Выйти' : 'Завершить' }}
+                  {{ row.current ? t('Выйти') : t('Завершить') }}
                 </button>
               </li>
             </ul>
@@ -1715,21 +1793,27 @@ const onNotificationsToggle = async (val: boolean) => {
             </transition>
 
             <p class="security-note">
-              Вход с нового устройства требует код из письма, а о каждом таком входе мы сообщаем на
-              подтверждённый e-mail.
+              {{
+                t(
+                  'Вход с нового устройства требует код из письма, а о каждом таком входе мы сообщаем на подтверждённый e-mail.'
+                )
+              }}
             </p>
 
             <!-- Стоп-кран на случай угона: закрываем вход всем до подтверждения почты -->
             <div class="freeze-block">
               <div class="freeze-info">
-                <span class="freeze-title">Заморозить аккаунт</span>
+                <span class="freeze-title">{{ t('Заморозить аккаунт') }}</span>
                 <span class="freeze-desc">
-                  Если в аккаунт вошли чужие: все устройства выйдут, вход будет закрыт. Разморозить
-                  можно кодом на подтверждённый e-mail.
+                  {{
+                    t(
+                      'Если в аккаунт вошли чужие: все устройства выйдут, вход будет закрыт. Разморозить можно кодом на подтверждённый e-mail.'
+                    )
+                  }}
                 </span>
               </div>
               <button type="button" class="freeze-btn" :disabled="freezeBusy" @click="startFreeze">
-                {{ freezeBusy ? 'Заморозка…' : 'Заморозить' }}
+                {{ freezeBusy ? t('Заморозка…') : t('Заморозить') }}
               </button>
             </div>
             <transition name="fade">
@@ -1742,7 +1826,7 @@ const onNotificationsToggle = async (val: boolean) => {
           <!-- История событий аккаунта: ответ на «что происходило с аккаунтом» -->
           <div class="security-log">
             <div class="sessions-head">
-              <span class="sessions-title">Последние действия</span>
+              <span class="sessions-title">{{ t('Последние действия') }}</span>
               <button
                 type="button"
                 class="sessions-refresh"
@@ -1750,15 +1834,15 @@ const onNotificationsToggle = async (val: boolean) => {
                 @click="loadSecurityLog"
               >
                 <q-icon :name="icon('refresh')" size="16px" />
-                Обновить
+                {{ t('Обновить') }}
               </button>
             </div>
 
             <p v-if="securityLogLoading && !securityLog.length" class="sessions-hint">
-              Загружаем историю…
+              {{ t('Загружаем историю…') }}
             </p>
             <p v-else-if="!securityLog.length && !securityLogError" class="sessions-hint">
-              Событий пока нет.
+              {{ t('Событий пока нет.') }}
             </p>
 
             <ul class="sessions-list">

@@ -1,9 +1,9 @@
 <template>
   <q-card class="ch-info-card">
     <q-card-section class="row no-wrap items-center ch-info-head">
-      <div class="text-subtitle1 text-weight-medium ellipsis">Канал</div>
+      <div class="text-subtitle1 text-weight-medium ellipsis">{{ t('Канал') }}</div>
       <q-space />
-      <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
+      <q-btn flat round dense icon="close" v-close-popup :aria-label="t('Закрыть')" />
     </q-card-section>
     <q-separator />
     <!-- Вкладки — кнопками: в приложении уже так сделаны фильтры списка,
@@ -15,7 +15,7 @@
       class="ch-info-tabs"
       :class="{ 'fade-start': tabsEdges.start, 'fade-end': tabsEdges.end }"
       role="tablist"
-      aria-label="Разделы канала"
+      :aria-label="t('Разделы канала')"
       @scroll.passive="refreshTabsEdges"
       @wheel.passive="onTabsWheel"
       @pointerdown="onTabsPointerDown"
@@ -42,10 +42,10 @@
     <q-card-section class="ch-info-body">
       <!-- Настройки (владелец и админы) -->
       <template v-if="tab === 'settings' && canManage">
-        <label class="ch-label" for="ch-info-title">Название</label>
+        <label class="ch-label" for="ch-info-title">{{ t('Название') }}</label>
         <input id="ch-info-title" v-model="title" class="ch-input" maxlength="128" />
 
-        <label class="ch-label" for="ch-info-desc">Описание</label>
+        <label class="ch-label" for="ch-info-desc">{{ t('Описание') }}</label>
         <textarea
           id="ch-info-desc"
           v-model="description"
@@ -57,16 +57,16 @@
         <label class="ch-switch">
           <input v-model="isPublic" type="checkbox" />
           <span>
-            <span class="ch-switch-title">Публичный канал</span>
+            <span class="ch-switch-title">{{ t('Публичный канал') }}</span>
             <span class="ch-switch-sub">
-              Ссылка <b>pismo.space/c/{{ username || 'адрес' }}</b
-              >, канал виден в поиске.
+              {{ t('Ссылка') }} <b>pismo.space/c/{{ username || t('адрес') }}</b
+              >{{ t(', канал виден в поиске.') }}
             </span>
           </span>
         </label>
 
         <template v-if="isPublic">
-          <label class="ch-label" for="ch-info-username">Адрес канала</label>
+          <label class="ch-label" for="ch-info-username">{{ t('Адрес канала') }}</label>
           <input
             id="ch-info-username"
             v-model="username"
@@ -107,7 +107,7 @@
 
       <!-- Подписчики и админы -->
       <template v-else-if="tab === 'people'">
-        <p v-if="!people.length" class="ch-hint">Загружаем…</p>
+        <p v-if="!people.length" class="ch-hint">{{ t('Загружаем…') }}</p>
         <div v-else class="ch-people">
           <div v-for="person in people" :key="person.id" class="ch-person">
             <span class="ch-person-name">
@@ -119,18 +119,18 @@
                 flat
                 dense
                 size="sm"
-                :label="person.role === 'admin' ? 'Снять админа' : 'Сделать админом'"
+                :label="person.role === 'admin' ? t('Снять админа') : t('Сделать админом')"
                 @click="toggleAdmin(person)"
               />
             </template>
           </div>
         </div>
-        <p class="ch-hint">Назначать админов может только владелец канала.</p>
+        <p class="ch-hint">{{ t('Назначать админов может только владелец канала.') }}</p>
       </template>
 
       <!-- Предложенные посты -->
       <template v-else>
-        <p v-if="!pending.length" class="ch-hint">Новых предложек нет.</p>
+        <p v-if="!pending.length" class="ch-hint">{{ t('Новых предложек нет.') }}</p>
         <div v-else class="ch-suggestions">
           <div v-for="item in pending" :key="item.id" class="ch-suggestion">
             <div class="ch-suggestion-head">{{ item.author_name }}</div>
@@ -176,6 +176,7 @@ import {
   updateChannel
 } from '@/services/channelService'
 import { getErrorMessage } from '@/services/errors'
+import { t } from '@/i18n'
 import { useHScroll } from '@/composables/useHScroll'
 import type { ChannelCard, ChannelSuggestion } from '@/types'
 
@@ -226,7 +227,7 @@ const canManage = computed(() => props.role === 'creator' || props.role === 'adm
  *  Вкладки подписчиков и предложек видны только тем, кто ими управляет. */
 const TABS = computed<ReadonlyArray<{ key: ChannelTabKey; title: () => string }>>(() => {
   const tabs: { key: ChannelTabKey; title: () => string }[] = [
-    { key: 'settings', title: () => (canManage.value ? 'Настройки' : 'О канале') }
+    { key: 'settings', title: () => (canManage.value ? t('Настройки') : t('О канале')) }
   ]
   if (canManage.value) {
     tabs.push(
@@ -260,7 +261,7 @@ const dirty = computed(() => {
 })
 
 const roleLabel = (role: string): string =>
-  role === 'creator' ? 'владелец' : role === 'admin' ? 'админ' : ''
+  role === 'creator' ? t('владелец') : role === 'admin' ? t('админ') : ''
 
 const load = async () => {
   try {

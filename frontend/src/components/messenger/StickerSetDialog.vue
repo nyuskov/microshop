@@ -73,6 +73,7 @@ import { computed, ref } from 'vue'
 import { icon } from '@/utils/icons'
 import { stickerSendRef, type StickerSetRef, type StickerSendRef } from '@/utils/stickerSet'
 import { useStickersStore } from '@/stores/stickers'
+import { getErrorMessage } from '@/services/errors'
 import { useStandardSetImport } from '@/composables/useStandardSetImport'
 import { presetSetOfKey } from '@/utils/presetStickers'
 
@@ -123,7 +124,7 @@ const add = (): void => {
     void store
       .addPreset(packId)
       .catch((cause: unknown) => {
-        emit('error', cause instanceof Error ? cause.message : 'Не удалось добавить набор')
+        emit('error', getErrorMessage(cause, 'Не удалось добавить набор'))
       })
       .finally(() => {
         copying.value = false

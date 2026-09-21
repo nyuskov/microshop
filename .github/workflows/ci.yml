@@ -140,6 +140,11 @@ jobs:
       - name: Styles (нет новой сырой геометрии)
         run: node frontend/scripts/check-geometry.mjs
 
+      # Ключ перевода — сам русский текст, поэтому забытая строка каталога молча
+      # показывалась бы в английском интерфейсе по-русски (см. docs/frontend.md).
+      - name: Переводы (ключи есть в каталоге)
+        run: node frontend/scripts/check-i18n.mjs
+
       - name: Unit tests (vitest)
         run: pnpm --prefix frontend exec vitest run
 

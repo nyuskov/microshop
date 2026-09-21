@@ -517,8 +517,7 @@ describe('перевод в ленте: текст на сервер не ухо
   const block = readFileSync('src/components/common/MessageTranslation.vue', 'utf8')
 
   it('пункт «Перевести» есть в меню сообщения', () => {
-    expect(bar).toContain("translationLabel || 'Перевести'")
-    expect(bar).toContain("translationLabel || 'Перевести'")
+    expect(bar).toContain("translationLabel || t('Перевести')")
     expect(row).toContain('@translate="onTranslate"')
   })
 

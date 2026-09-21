@@ -1,46 +1,46 @@
 <template>
   <q-card class="ch-create-card">
     <q-card-section class="row no-wrap items-center ch-head">
-      <div class="text-subtitle1 text-weight-medium ellipsis">Новый канал</div>
+      <div class="text-subtitle1 text-weight-medium ellipsis">{{ t('Новый канал') }}</div>
       <q-space />
-      <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
+      <q-btn flat round dense icon="close" v-close-popup :aria-label="t('Закрыть')" />
     </q-card-section>
     <q-separator />
     <q-card-section class="ch-body">
-      <label class="ch-label" for="ch-title">Название канала</label>
+      <label class="ch-label" for="ch-title">{{ t('Название канала') }}</label>
       <input
         id="ch-title"
         v-model="title"
         class="ch-input"
         type="text"
         maxlength="128"
-        placeholder="Например, «Новости проекта»"
+        :placeholder="t('Например, «Новости проекта»')"
         @keyup.enter="tryCreate"
       />
 
-      <label class="ch-label" for="ch-desc">Описание (необязательно)</label>
+      <label class="ch-label" for="ch-desc">{{ t('Описание (необязательно)') }}</label>
       <textarea
         id="ch-desc"
         v-model="description"
         class="ch-input ch-textarea"
         rows="2"
         maxlength="512"
-        placeholder="О чём канал?"
+        :placeholder="t('О чём канал?')"
       ></textarea>
 
       <label class="ch-switch">
         <input v-model="isPublic" type="checkbox" />
         <span>
-          <span class="ch-switch-title">Публичный канал</span>
+          <span class="ch-switch-title">{{ t('Публичный канал') }}</span>
           <span class="ch-switch-sub">
-            Виден в поиске и открывается по ссылке <b>pismo.space/c/адрес</b>. Выключено — вход
-            только по ссылке-приглашению.
+            {{ t('Виден в поиске и открывается по ссылке') }} <b>pismo.space/c/адрес</b
+            >{{ t('. Выключено — вход только по ссылке-приглашению.') }}
           </span>
         </span>
       </label>
 
       <template v-if="isPublic">
-        <label class="ch-label" for="ch-username">Адрес канала</label>
+        <label class="ch-label" for="ch-username">{{ t('Адрес канала') }}</label>
         <div class="ch-alias">
           <span class="ch-alias-prefix">pismo.space/c/</span>
           <input
@@ -53,11 +53,13 @@
             @input="normalizeAlias"
           />
         </div>
-        <p class="ch-hint">Латиница, цифры и подчёркивание, 4–32 символа, начинается с буквы.</p>
+        <p class="ch-hint">
+          {{ t('Латиница, цифры и подчёркивание, 4–32 символа, начинается с буквы.') }}
+        </p>
       </template>
 
       <p v-if="error" class="ch-error">{{ error }}</p>
-      <p class="ch-hint">Каналов на аккаунт: до 10. Публикуют владелец и админы.</p>
+      <p class="ch-hint">{{ t('Каналов на аккаунт: до 10. Публикуют владелец и админы.') }}</p>
     </q-card-section>
     <q-separator />
     <q-card-actions align="right" class="ch-actions">
@@ -79,6 +81,7 @@ import { ref } from 'vue'
 
 import { createChannel } from '@/services/channelService'
 import { getErrorMessage } from '@/services/errors'
+import { t } from '@/i18n'
 import type { ChannelCard } from '@/types'
 
 const emit = defineEmits<{
@@ -104,11 +107,11 @@ const normalizeAlias = () => {
 const tryCreate = async () => {
   if (creating.value) return
   if (!title.value.trim()) {
-    error.value = 'Нужно название канала'
+    error.value = t('Нужно название канала')
     return
   }
   if (isPublic.value && username.value.length < 4) {
-    error.value = 'Для публичного канала нужен адрес (минимум 4 символа)'
+    error.value = t('Для публичного канала нужен адрес (минимум 4 символа)')
     return
   }
   creating.value = true

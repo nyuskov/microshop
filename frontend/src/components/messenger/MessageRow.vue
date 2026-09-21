@@ -68,7 +68,7 @@
       <div v-if="message.hidden" class="moderation-note" role="status">
         <q-icon :name="icon('gavel')" size="15px" />
         <span>
-          Скрыто до проверки модератором
+          {{ t('Скрыто до проверки модератором') }}
           <template v-if="message.hidden_reason"> · {{ message.hidden_reason }} </template>
         </span>
       </div>
@@ -79,7 +79,7 @@
         v-if="forwardLabel"
         class="forward-banner"
         :class="{ clickable: forwarderClickable }"
-        :title="forwarderClickable ? 'Открыть чат с автором' : undefined"
+        :title="forwarderClickable ? t('Открыть чат с автором') : undefined"
         @click.stop="onForwarderClick"
       >
         <span class="forward-sender-avatar" :style="forwarderAvatarStyle" aria-hidden="true">
@@ -123,7 +123,7 @@
             aria-hidden="true"
           />
         </span>
-        <span class="story-reply-text">Ответ на историю</span>
+        <span class="story-reply-text">{{ t('Ответ на историю') }}</span>
       </div>
 
       <!-- Вложение — в MessageAttachment.vue (там же расшифровка E2EE). -->
@@ -169,7 +169,7 @@
             v-else-if="part.type === 'spoiler'"
             class="msg-spoiler"
             :class="{ on: revealedSpoilers.has(index) }"
-            :title="revealedSpoilers.has(index) ? undefined : 'Нажмите, чтобы показать'"
+            :title="revealedSpoilers.has(index) ? undefined : t('Нажмите, чтобы показать')"
             @click.stop="revealSpoiler(index)"
             >{{ part.value }}</span
           >
@@ -177,7 +177,7 @@
         </template>
       </span>
       <button v-if="canCollapse" type="button" class="msg-more" @click.stop="expanded = !expanded">
-        {{ expanded ? 'Свернуть' : 'Показать полностью' }}
+        {{ expanded ? t('Свернуть') : t('Показать полностью') }}
       </button>
 
       <!-- Перевод текста: встроенный переводчик браузера, текст никуда не уходит.
@@ -208,8 +208,15 @@
             :key="reaction.emoji"
             class="reaction-chip"
             :class="{ mine: reaction.reacted_by_me, fresh: isFresh(reaction.emoji) }"
-            :title="`${reaction.emoji} ${reaction.count} · нажмите, чтобы поставить, удержите — кто поставил`"
-            :aria-label="`${reaction.emoji} ${reaction.count}. Кто поставил`"
+            :title="
+              t('{emoji} {count} · нажмите, чтобы поставить, удержите — кто поставил', {
+                emoji: reaction.emoji,
+                count: reaction.count
+              })
+            "
+            :aria-label="
+              t('{emoji} {count}. Кто поставил', { emoji: reaction.emoji, count: reaction.count })
+            "
             @click="onReactionClick(reaction.emoji)"
             @pointerdown="startReactionHold(reaction.emoji, $event)"
             @pointermove="onReactionHoldMove"
@@ -230,14 +237,16 @@
         </TransitionGroup>
 
         <span class="msg-meta">
-          <span v-if="message.edited_at" class="msg-edited" title="изменено">изменено</span>
+          <span v-if="message.edited_at" class="msg-edited" :title="t('изменено')">
+            {{ t('изменено') }}
+          </span>
           <!-- Напоминание человека о своём сообщении: видно, что «будильник» уже
                стоит (точное время — в подсказке и в диалоге напоминания). -->
           <span
             v-if="reminderAt"
             class="msg-reminder"
-            :title="`Напоминание ${reminderLabel}`"
-            :aria-label="`Напоминание ${reminderLabel}`"
+            :title="t('Напоминание {label}', { label: reminderLabel })"
+            :aria-label="t('Напоминание {label}', { label: reminderLabel })"
           >
             <q-icon :name="icon('notifications')" size="12px" aria-hidden="true" />
           </span>
@@ -290,6 +299,7 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { ChatUser, Message } from '@/types'
 import { mediaUrl } from '@/config'
@@ -483,10 +493,10 @@ const forwardLabel = computed<string | null>(() => {
   const forwarded = props.message.forwarded_from
   if (!forwarded) return null
   if (props.viewerId !== null && forwarded.sender_id === props.viewerId) {
-    return 'Переслано от вас'
+    return t('Переслано от вас')
   }
   const name = forwarded.sender_name?.trim()
-  return name ? `Переслано от ${name}` : 'Переслано'
+  return name ? t('Переслано от {name}', { name }) : t('Переслано')
 })
 
 /** Плашка «Ответ на историю» (null, если это обычное сообщение). */
@@ -509,9 +519,9 @@ const translationVisible = computed<boolean>(() => Boolean(translationOf(props.m
 /** Подпись пункта «Перевести» по состоянию перевода. */
 const translationLabel = computed<string>(() => {
   const action = translationActionFor(translationOf(props.message.id))
-  if (action === 'cancel') return 'Перевод…'
-  if (action === 'hide') return 'Скрыть перевод'
-  return 'Перевести'
+  if (action === 'cancel') return t('Перевод…')
+  if (action === 'hide') return t('Скрыть перевод')
+  return t('Перевести')
 })
 
 /**
@@ -623,7 +633,7 @@ const file = computed(() => effectiveFile(props.message))
 
 /** Расшифрованное вложение (blob-ссылка) — только для зашифрованных файлов. */
 /** Текст и иконка системной отметки о звонке. */
-const callText = computed<string>(() => callMessageText(props.message) ?? 'Звонок')
+const callText = computed<string>(() => callMessageText(props.message) ?? t('Звонок'))
 const callIcon = computed<string>(() => callMessageIcon(props.message))
 
 /** «Сохранить» доступно для обычных сообщений (не для отметок о звонках). */

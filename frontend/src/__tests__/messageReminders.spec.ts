@@ -133,8 +133,7 @@ describe('подключение напоминаний', () => {
     expect(bar).toContain("emit('remind')")
     expect(bar).toContain('@click="onRemind"')
     // У сообщения с напоминанием подпись меняется: человек видит, что «будильник» стоит.
-    expect(bar).toContain("hasReminder ? 'Изменить напоминание' : 'Напомнить'")
-    expect(bar).toContain("hasReminder ? 'Изменить напоминание' : 'Напомнить'")
+    expect(bar).toContain("hasReminder ? t('Изменить напоминание') : t('Напомнить')")
   })
 
   it('время сообщения помечается значком, если напоминание стоит', () => {

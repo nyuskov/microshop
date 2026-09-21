@@ -68,14 +68,14 @@ describe('подписи рядом с кружком убраны, кружок
       messenger.indexOf('class="call-launch-wait"'),
       messenger.indexOf("callLaunchScreen === 'missed'")
     )
-    expect(block).toContain('<BrandSpinner :size="104" label="Входящий звонок" />')
+    expect(block).toContain(':label="t(\'Входящий звонок\')"')
     // «Входящий звонок…»/«Отвечаем…» больше нет: ожидание показывает сам кружок,
     // а принятое нажатие — кружок внутри кнопки «Ответить».
     expect(block).not.toContain('Входящий звонок…')
     expect(block).not.toContain('Отвечаем…')
     expect(block).not.toContain('clw-text')
     expect(block).toContain(
-      '<BrandSpinner v-if="callLaunchAnswering" :size="26" label="Отвечаем" />'
+      '<BrandSpinner v-if="callLaunchAnswering" :size="26" :label="t(\'Отвечаем\')" />'
     )
     // Палитра звонка: на тёмном фоне акцентная подложка не видна.
     expect(messenger).toContain('--brand-spinner-track: var(--ms-call-ring)')

@@ -5,6 +5,7 @@ import axios from 'axios'
 import { getErrorMessage } from '@/services/errors'
 import { API_ORIGIN } from '@/config'
 import { api, registerAuth } from '@/services/api'
+import { setLocale } from '@/i18n'
 
 // Origin бэкенда (централизован в config.ts). Экспортируется для совместимости.
 export const backendServer = API_ORIGIN
@@ -143,7 +144,13 @@ function loadState(): AuthState {
 }
 
 export const useAuthStore = defineStore('auth', {
-  state: (): AuthState => loadState(),
+  state: (): AuthState => {
+    const state = loadState()
+    // Язык интерфейса берём из профиля (`profile.language`) — и сразу из
+    // сохранённого состояния, иначе при запуске успел бы мелькнуть русский.
+    setLocale(state.user?.profile?.language)
+    return state
+  },
 
   getters: {
     // Проверка, является ли пользователь администратором
@@ -576,6 +583,8 @@ export const useAuthStore = defineStore('auth', {
         this.user = response.data
         this.current_user = response.data
         this.isAuthenticated = true
+        // Профиль — источник языка интерфейса (поле «Язык» в настройках).
+        setLocale(response.data.profile?.language)
       } catch (error) {
         // Если interceptor не смог обновить токен (401) — выходим.
         if (axios.isAxiosError(error) && error.response?.status === 401) {
@@ -603,6 +612,8 @@ export const useAuthStore = defineStore('auth', {
 
         this.current_user = { ...this.current_user, ...response.data }
         this.user = { ...this.user, ...response.data }
+        // Смена языка в настройках применяется сразу: ответ содержит профиль.
+        setLocale(this.current_user?.profile?.language)
         this.saveState()
         return response.data
       } catch (error) {

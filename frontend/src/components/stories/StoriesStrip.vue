@@ -21,8 +21,8 @@
         <button
           class="story-avatar-btn"
           type="button"
-          :title="mini ? 'Показать истории' : 'Моя история'"
-          :aria-label="mini ? 'Показать истории' : 'Моя история'"
+          :title="mini ? t('Показать истории') : t('Моя история')"
+          :aria-label="mini ? t('Показать истории') : t('Моя история')"
           @click="onMineClick"
         >
           <span
@@ -43,13 +43,13 @@
           v-if="!mini && !publishing"
           class="story-add"
           type="button"
-          title="Добавить историю"
+          :title="t('Добавить историю')"
           @click="pickFile"
         >
           <q-icon :name="icon('add')" size="14px" />
         </button>
         <span v-else-if="!mini" class="story-add busy"><span class="mini-spinner"></span></span>
-        <span class="story-name">Моя история</span>
+        <span class="story-name">{{ t('Моя история') }}</span>
       </div>
 
       <!-- Истории других: точка-кольцо, если есть непросмотренные.
@@ -99,7 +99,7 @@
       <q-dialog v-model="captionOpen">
         <q-card class="story-caption-card">
           <q-card-section>
-            <div class="story-caption-title">Новая история</div>
+            <div class="story-caption-title">{{ t('Новая история') }}</div>
             <p class="story-caption-hint">
               {{ pendingFile?.name }} — можно добавить подпись. История исчезнет через 24 часа.
             </p>
@@ -108,7 +108,7 @@
               class="story-caption-input"
               type="text"
               maxlength="140"
-              placeholder="Подпись (необязательно)"
+              :placeholder="t('Подпись (необязательно)')"
               @keyup.enter="publish"
             />
             <!-- Проверка видео на месте: браузер бывает не в силах его проиграть,
@@ -137,6 +137,7 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import { Notify } from 'quasar'
 
@@ -223,7 +224,7 @@ const myAvatar = computed(() => {
 const myInitials = computed(() => {
   const user = authStore.current_user
   const name = user ? displayName(user) : ''
-  return name ? initials(name) : 'Я'
+  return name ? initials(name) : t('Я')
 })
 
 /** Имя для фона аватара-заглушки (чтобы акцентное кольцо было видно). */
@@ -267,7 +268,7 @@ const onFileSelected = (event: Event) => {
   input.value = ''
   if (!file) return
   if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
-    Notify.create({ message: 'История может быть фото или видео', timeout: 3000 })
+    Notify.create({ message: t('История может быть фото или видео'), timeout: 3000 })
     return
   }
   pendingFile.value = file
@@ -309,7 +310,10 @@ const publish = async () => {
     transcode: result === 'unsupported'
   })
   if (!ok) {
-    Notify.create({ message: stories.error || 'Не удалось опубликовать историю', timeout: 4000 })
+    Notify.create({
+      message: stories.error || t('Не удалось опубликовать историю'),
+      timeout: 4000
+    })
     return
   }
   cancelPublish()

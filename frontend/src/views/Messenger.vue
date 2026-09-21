@@ -244,7 +244,7 @@
           <!-- Примечание E2EE (как в Telegram) над строкой ввода -->
           <div v-if="selectedChatE2ee" class="chat-e2ee-note">
             <q-icon :name="icon('lock')" size="13px" aria-hidden="true" />
-            <span>Сообщения защищены сквозным шифрованием</span>
+            <span>{{ t('Сообщения защищены сквозным шифрованием') }}</span>
           </div>
 
           <!-- Канал: подписчику писать нельзя — вместо композера предложка. -->
@@ -403,7 +403,7 @@
     <q-card class="ms-modal ms-modal-profile" :class="{ 'ms-modal-full': !isDesktop }">
       <q-card-section class="row no-wrap items-center ms-modal-head">
         <!-- Заголовок окна — название экрана: настройки профиля. -->
-        <div class="text-subtitle1 text-weight-medium ellipsis">{{ PROFILE_TITLE }}</div>
+        <div class="text-subtitle1 text-weight-medium ellipsis">{{ profileTitle }}</div>
         <q-space />
         <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
       </q-card-section>
@@ -414,7 +414,7 @@
             <UserProfile ref="profileRef" @close-modal="showProfileModal = false" />
           </template>
           <template #fallback>
-            <div class="q-pa-md">Загрузка профиля...</div>
+            <div class="q-pa-md">{{ t('Загрузка профиля…') }}</div>
           </template>
         </Suspense>
       </q-card-section>
@@ -570,25 +570,25 @@
   <Teleport to="body">
     <div v-if="callLaunchScreen === 'ring' && callStore.status === 'idle'" class="call-launch-wait">
       <div class="clw-card">
-        <BrandSpinner :size="104" label="Входящий звонок" />
+        <BrandSpinner :size="104" :label="t('Входящий звонок')" />
         <p v-if="callLaunchPeerName" class="clw-peer">{{ callLaunchPeerName }}</p>
         <div class="clw-actions">
           <button
             type="button"
             class="clw-answer"
-            :aria-label="callLaunchAnswering ? 'Принимаем звонок' : 'Ответить на звонок'"
+            :aria-label="callLaunchAnswering ? t('Принимаем звонок') : t('Ответить на звонок')"
             :disabled="callLaunchAnswering"
             @click="answerCallLaunch"
           >
             <!-- Ждём offer: вместо значка трубки крутится тот же кружок — видно,
                  что нажатие принято, и никакой подписи рядом не нужно. -->
-            <BrandSpinner v-if="callLaunchAnswering" :size="26" label="Отвечаем" />
+            <BrandSpinner v-if="callLaunchAnswering" :size="26" :label="t('Отвечаем')" />
             <q-icon v-else :name="icon('call')" size="26px" />
           </button>
           <button
             type="button"
             class="clw-decline"
-            aria-label="Отклонить звонок"
+            :aria-label="t('Отклонить звонок')"
             @click="dismissCallLaunch"
           >
             <q-icon :name="icon('call_end')" size="26px" />
@@ -598,7 +598,7 @@
     </div>
     <div v-else-if="callLaunchScreen === 'missed'" class="call-launch-wait call-launch-missed">
       <div class="clw-card">
-        <p class="clw-text">Вызов завершён</p>
+        <p class="clw-text">{{ t('Вызов завершён') }}</p>
       </div>
     </div>
   </Teleport>
@@ -643,6 +643,7 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
+import { plural, t } from '@/i18n'
 import {
   ref,
   reactive,
@@ -1326,9 +1327,9 @@ const folderPickerTarget = computed<string>(() => {
   if (ids.length === 1) {
     const id = ids[0] as number
     const chat = chats.value.find((item) => item.id === id)
-    return chat ? chatTitle(chat, currentUserId.value) : 'Чат'
+    return chat ? chatTitle(chat, currentUserId.value) : t('Чат')
   }
-  return `${ids.length} ${ids.length === 1 ? 'чат' : ids.length < 5 ? 'чата' : 'чатов'}`
+  return `${ids.length} ${plural(ids.length, ['чат', 'чата', 'чатов'], ['chat', 'chats'])}`
 })
 
 /** Чаты, которых больше нет, из папок убираем (список чатов уже загружен). */
@@ -1608,10 +1609,10 @@ const openViewOnce = async (message: Message) => {
     viewOnceView.value = {
       url,
       kind: viewOnceKindOf(message),
-      name: message.file?.name ?? 'Медиа'
+      name: message.file?.name ?? t('Медиа')
     }
   } catch (error) {
-    sendError.value = getErrorMessage(error, 'Не удалось открыть одноразовое медиа')
+    sendError.value = getErrorMessage(error, t('Не удалось открыть одноразовое медиа'))
   }
 }
 
@@ -2135,9 +2136,9 @@ const presenceText = (chat: Chat): string => {
     return parts.join(' · ')
   }
   const known = peerPresence[other.id]
-  if (known?.online) return 'в сети'
-  if (known) return known.last_seen ? lastSeenLabel(known.last_seen, false) : 'был(а) давно'
-  return lastSeenLabel(other.last_seen, false) || 'был(а) давно'
+  if (known?.online) return t('в сети')
+  if (known) return known.last_seen ? lastSeenLabel(known.last_seen, false) : t('был(а) давно')
+  return lastSeenLabel(other.last_seen, false) || t('был(а) давно')
 }
 
 /**
@@ -2176,21 +2177,16 @@ const canPostInChannel = computed<boolean>(() => {
   return role === 'creator' || role === 'admin'
 })
 
-/** Склонение слова «подписчик» по числу. */
-const subscribersNoun = (count: number): string => {
-  const last = count % 10
-  const lastTwo = count % 100
-  if (lastTwo >= 11 && lastTwo <= 14) return 'подписчиков'
-  if (last === 1) return 'подписчик'
-  if (last >= 2 && last <= 4) return 'подписчика'
-  return 'подписчиков'
-}
-
 /** Подпись шапки канала: «канал · N подписчиков». */
 const channelSubtitle = (chat: Chat): string => {
   const card = channelCard.value
-  if (!card || card.id !== chat.id) return 'канал'
-  return `канал · ${card.subscribers} ${subscribersNoun(card.subscribers)}`
+  if (!card || card.id !== chat.id) return t('канал')
+  const noun = plural(
+    card.subscribers,
+    ['подписчик', 'подписчика', 'подписчиков'],
+    ['subscriber', 'subscribers']
+  )
+  return t('канал · {count} {noun}', { count: card.subscribers, noun })
 }
 
 // ---------- Ссылка на канал: https://pismo.space/c/<адрес> ----------
@@ -2342,14 +2338,10 @@ watch(
 const groupSubtitle = (chat: Chat): string => {
   const count = chat.users.length
   const online = chat.users.filter((u) => onlineUserIds.value.includes(u.id)).length
-  const last = count % 10
-  const lastTwo = count % 100
-  let noun: string
-  if (lastTwo >= 11 && lastTwo <= 14) noun = 'участников'
-  else if (last === 1) noun = 'участник'
-  else if (last >= 2 && last <= 4) noun = 'участника'
-  else noun = 'участников'
-  return online > 0 ? `${count} ${noun} · ${online} в сети` : `${count} ${noun}`
+  const noun = plural(count, ['участник', 'участника', 'участников'], ['member', 'members'])
+  return online > 0
+    ? t('{noun} · {online} в сети', { noun: `${count} ${noun}`, online })
+    : `${count} ${noun}`
 }
 
 // ---------- Цитаты (ответы) ----------
@@ -2361,16 +2353,16 @@ const replyMessage = (message: Message): Message | undefined =>
 /** Имя автора сообщения (для групп — участник по user_id). */
 const authorNameOfMessage = (message: Message): string => {
   const chat = chats.value.find((item) => item.id === message.chat_id)
-  if (!chat) return 'Собеседник'
+  if (!chat) return t('Собеседник')
   const author = chat.users.find((user) => user.id === message.user_id)
-  return author ? displayName(author) : 'Собеседник'
+  return author ? displayName(author) : t('Собеседник')
 }
 
 /** Имя в шапке цитаты при ответе в композере (семантика исходного Messenger). */
 const quoteName = (message: Message): string => {
   const target = replyMessage(message)
-  if (!target) return 'Сообщение'
-  return isOwnMessage(target) ? 'Вы' : authorNameOfMessage(target)
+  if (!target) return t('Сообщение')
+  return isOwnMessage(target) ? t('Вы') : authorNameOfMessage(target)
 }
 
 const replyBarName = computed<string>(() => (replyTarget.value ? quoteName(replyTarget.value) : ''))
@@ -2382,7 +2374,7 @@ const quoteFor = (message: Message): { name: string; mine: boolean; text: string
   if (!target) return null
   const mine = isOwnMessage(target)
   return {
-    name: mine ? 'Вы' : authorNameOfMessage(target),
+    name: mine ? t('Вы') : authorNameOfMessage(target),
     mine,
     text: messageSnippet(target)
   }
@@ -2411,7 +2403,7 @@ const quoteClick = (message: Message) => {
 const senderNameOfMessage = (message: Message): string => authorNameOfMessage(message)
 
 const pinnedSnippet = (message: Message): string =>
-  `${message.user_id === currentUserId.value ? 'Вы: ' : senderNameOfMessage(message) + ': '}${messageSnippet(message)}`
+  `${message.user_id === currentUserId.value ? t('Вы: ') : senderNameOfMessage(message) + ': '}${messageSnippet(message)}`
 
 // ---------- Реакции ----------
 const hasMyReaction = (message: Message, emoji: string): boolean =>
@@ -2744,7 +2736,7 @@ const sendText = async () => {
       clearReply()
       void nextTick(scrollToBottom)
     } else {
-      failSend(getErrorMessage(error, 'Не удалось отправить сообщение'), () => void sendText())
+      failSend(getErrorMessage(error, t('Не удалось отправить сообщение')), () => void sendText())
     }
   } finally {
     sending.value = false
@@ -2835,7 +2827,7 @@ const sendSticker = async (sticker: string) => {
       void nextTick(scrollToBottom)
     } else {
       failSend(
-        getErrorMessage(error, 'Не удалось отправить стикер'),
+        getErrorMessage(error, t('Не удалось отправить стикер')),
         () => void sendSticker(sticker)
       )
     }
@@ -2976,7 +2968,7 @@ const sendStickerImage = async (image: {
     scrollToBottom()
   } catch (error) {
     failSend(
-      getErrorMessage(error, 'Не удалось отправить стикер'),
+      getErrorMessage(error, t('Не удалось отправить стикер')),
       () => void sendStickerImage(image)
     )
   } finally {
@@ -3046,7 +3038,7 @@ const sendFileMessage = async (
   // что отправка идёт; затем заменяем его настоящим сообщением.
   const isImage = file.type.startsWith('image/')
   const previewUrl = isImage ? URL.createObjectURL(file) : null
-  const localId = addPendingUpload(file.name || 'Вложение', previewUrl)
+  const localId = addPendingUpload(file.name || t('Вложение'), previewUrl)
   void nextTick(scrollToBottom)
 
   sendingFile.value = true
@@ -3182,7 +3174,7 @@ const onFilesSelected = (files: File[], viewOnce = false) => {
  */
 const handleDroppedFiles = (files: File[]) => {
   if (selectedChat.value === null) {
-    Notify.create({ message: 'Откройте чат, чтобы отправить файл', timeout: 3000 })
+    Notify.create({ message: t('Откройте чат, чтобы отправить файл'), timeout: 3000 })
     return
   }
   openSendDialog(files)
@@ -3654,7 +3646,7 @@ const deleteForAllLabel = computed<string>(() => {
   if (!chat || chat.is_self) return ''
   return isPrivateChat(chat)
     ? `Удалить для ${chatTitle(chat, currentUserId.value)}`
-    : 'Удалить для всех'
+    : t('Удалить для всех')
 })
 
 /** Пояснение под отмеченной галкой: без него «вернуть нельзя» остаётся догадкой. */
@@ -3662,11 +3654,12 @@ const deleteForAllHint = computed<string>(() => {
   const chat = selectedChat.value
   if (!chat || chat.is_self) return ''
   const many = deleteMessageCount.value > 1
+  const what = many ? t('Исчезнут') : t('Исчезнет')
   if (isPrivateChat(chat)) {
     const name = chatTitle(chat, currentUserId.value)
-    return `${many ? 'Исчезнут' : 'Исчезнет'} и у ${name} — вернуть нельзя.`
+    return t('{what} и у {name} — вернуть нельзя.', { what, name })
   }
-  return `${many ? 'Исчезнут' : 'Исчезнет'} у всех участников — вернуть нельзя.`
+  return t('{what} у всех участников — вернуть нельзя.', { what })
 })
 
 /** Ответ диалога: `null` — отмена или закрытие окна. */
@@ -3976,7 +3969,7 @@ const announceIncomingMessage = (chatId: number) => {
   if (chatId === selectedChatId.value && !document.hidden) return
   const chat = chats.value.find((item) => item.id === chatId)
   const who = chat ? chatTitle(chat, currentUserId.value) : ''
-  announceLiveMessage(who ? `Новое сообщение: ${who}` : 'Новое сообщение')
+  announceLiveMessage(who ? t('Новое сообщение: {who}', { who }) : t('Новое сообщение'))
 }
 
 /**
@@ -4050,7 +4043,7 @@ const replyToStory = async (payload: { storyId: number; authorId: number; text: 
     haptic()
   } catch (error) {
     Notify.create({
-      message: getErrorMessage(error, 'Не удалось отправить ответ'),
+      message: getErrorMessage(error, t('Не удалось отправить ответ')),
       color: 'negative',
       timeout: 3000
     })
@@ -4195,7 +4188,7 @@ const goToChats = () => switchSection('chats')
  * шапка с названием рисуется внутри самого профиля, поэтому окно всегда
  * называется «Настройки».
  */
-const PROFILE_TITLE = 'Настройки'
+const profileTitle = computed<string>(() => t('Настройки'))
 
 const goToProfile = () => {
   // Профиль всегда открывается списком разделов — если в прошлый раз был
@@ -4283,7 +4276,7 @@ const resolveProfileLink = async () => {
         await openChatThread(self.id)
       } else {
         Notify.create({
-          message: 'Это ваша ссылка',
+          message: t('Это ваша ссылка'),
           caption: `@${target.username}`,
           timeout: 3000
         })
@@ -4297,7 +4290,7 @@ const resolveProfileLink = async () => {
   } catch (error) {
     Notify.create({
       type: 'negative',
-      message: 'Ссылка не открылась',
+      message: t('Ссылка не открылась'),
       caption: `Логин «${username}» не найден`,
       timeout: 4000
     })
@@ -4515,8 +4508,8 @@ const resolveInviteLink = async () => {
   } catch (error) {
     Notify.create({
       type: 'negative',
-      message: 'Приглашение не открылось',
-      caption: getErrorMessage(error, 'Ссылка не действует — попросите новую'),
+      message: t('Приглашение не открылось'),
+      caption: getErrorMessage(error, t('Ссылка не действует — попросите новую')),
       timeout: 4000
     })
   } finally {
@@ -4547,7 +4540,7 @@ const confirmJoinInvite = async () => {
     view.value = 'chats'
     await openChatThread(result.chat_id)
   } catch (error) {
-    inviteJoinError.value = getErrorMessage(error, 'Не удалось войти в группу')
+    inviteJoinError.value = getErrorMessage(error, t('Не удалось войти в группу'))
   } finally {
     inviteJoining.value = false
   }
@@ -4575,7 +4568,7 @@ const openReportForMessage = (message: Message) => {
   const author = chat.users.find((item) => item.id === message.user_id)
   moderationOverlaysRef.value?.openReport({
     userId: message.user_id,
-    userName: author ? displayName(author) : 'Пользователь',
+    userName: author ? displayName(author) : t('Пользователь'),
     chatId: chat.id,
     messageId: message.id,
     messagePreview: (message.text ?? '').trim().slice(0, 80)

@@ -15,6 +15,7 @@ import { screenShareNotice, screenShareSupport } from '@/stores/call/screenShare
 import { canOfferTranslation } from '@/utils/translation'
 import { localSpeechModelInfo } from '@/utils/localSpeech'
 import { speechEngineKind } from '@/utils/voiceRecognition'
+import { t } from '@/i18n'
 
 /** Итог одной проверки. `partial` — работает, но с оговоркой (см. `text`). */
 export type DeviceSupportState = 'ok' | 'partial' | 'no'
@@ -44,11 +45,11 @@ export const isEmbeddedBrowser = (agent?: string): boolean => {
 
 /** Короткая строка про среду — идёт шапкой отчёта. */
 export const browserLabel = (): string => {
-  if (typeof navigator === 'undefined') return 'Неизвестное окружение'
-  if (isEmbeddedBrowser()) return 'Встроенный браузер (не Chrome)'
-  if (/Android/i.test(navigator.userAgent)) return 'Браузер на Android'
-  if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) return 'Браузер на iPhone или iPad'
-  return 'Обычный браузер'
+  if (typeof navigator === 'undefined') return t('Неизвестное окружение')
+  if (isEmbeddedBrowser()) return t('Встроенный браузер (не Chrome)')
+  if (/Android/i.test(navigator.userAgent)) return t('Браузер на Android')
+  if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) return t('Браузер на iPhone или iPad')
+  return t('Обычный браузер')
 }
 
 /** Есть ли защищённое соединение: без него нет ни звонков, ни push, ни микрофона. */
@@ -75,26 +76,28 @@ const calls = (): DeviceSupportItem => {
   if (!secureContext()) {
     return {
       key: 'calls',
-      title: 'Звонки',
+      title: t('Звонки'),
       state: 'no',
-      text: 'Нужно защищённое соединение (HTTPS)',
-      hint: 'Откройте приложение по адресу https://… — по http браузер не даёт ни микрофон, ни камеру'
+      text: t('Нужно защищённое соединение (HTTPS)'),
+      hint: t(
+        'Откройте приложение по адресу https://… — по http браузер не даёт ни микрофон, ни камеру'
+      )
     }
   }
   if (!hasPc || !hasMic) {
     return {
       key: 'calls',
-      title: 'Звонки',
+      title: t('Звонки'),
       state: 'no',
-      text: 'Браузер не умеет WebRTC',
-      hint: 'Позвонить можно из Chrome, Safari или Firefox на компьютере и телефоне'
+      text: t('Браузер не умеет WebRTC'),
+      hint: t('Позвонить можно из Chrome, Safari или Firefox на компьютере и телефоне')
     }
   }
   return {
     key: 'calls',
-    title: 'Звонки',
+    title: t('Звонки'),
     state: 'ok',
-    text: 'Звуковые и видеозвонки работают',
+    text: t('Звуковые и видеозвонки работают'),
     hint: ''
   }
 }
@@ -104,23 +107,23 @@ const screen = (): DeviceSupportItem => {
   if (support === 'ok') {
     return {
       key: 'screen',
-      title: 'Показ экрана',
+      title: t('Показ экрана'),
       state: 'ok',
-      text: 'Можно показать экран в звонке',
+      text: t('Можно показать экран в звонке'),
       hint: ''
     }
   }
   const hints: Record<string, string> = {
-    mobile: 'Включите показ экрана с компьютера — собеседник увидит его в том же звонке',
-    insecure: 'Откройте приложение по адресу https://… — по http браузер не даёт захват',
-    embedded: 'Это ограничение окружения, а не приложения: в обычном Chrome кнопка покажется'
+    mobile: t('Включите показ экрана с компьютера — собеседник увидит его в том же звонке'),
+    insecure: t('Откройте приложение по адресу https://… — по http браузер не даёт захват'),
+    embedded: t('Это ограничение окружения, а не приложения: в обычном Chrome кнопка покажется')
   }
   return {
     key: 'screen',
-    title: 'Показ экрана',
+    title: t('Показ экрана'),
     state: 'no',
     text: screenShareNotice(support),
-    hint: hints[support] ?? 'Показывать экран умеют Chrome, Edge и Safari на компьютере'
+    hint: hints[support] ?? t('Показывать экран умеют Chrome, Edge и Safari на компьютере')
   }
 }
 
@@ -131,47 +134,53 @@ const push = (): DeviceSupportItem => {
   if (!hasSw || !hasPush || !hasNotify) {
     return {
       key: 'push',
-      title: 'Уведомления о сообщениях',
+      title: t('Уведомления о сообщениях'),
       state: 'no',
-      text: 'Браузер не умеет push-уведомления',
+      text: t('Браузер не умеет push-уведомления'),
       hint: isEmbeddedBrowser()
-        ? 'Во встроенном браузере push не приходят: откройте приложение в обычном Chrome и добавьте на главный экран'
-        : 'Установите приложение на главный экран (Chrome: «Установить приложение») — тогда push будут приходить'
+        ? t(
+            'Во встроенном браузере push не приходят: откройте приложение в обычном Chrome и добавьте на главный экран'
+          )
+        : t(
+            'Установите приложение на главный экран (Chrome: «Установить приложение») — тогда push будут приходить'
+          )
     }
   }
   if (!secureContext()) {
     return {
       key: 'push',
-      title: 'Уведомления о сообщениях',
+      title: t('Уведомления о сообщениях'),
       state: 'no',
-      text: 'Нужно защищённое соединение (HTTPS)',
-      hint: 'По http браузер не выдаёт разрешение на уведомления'
+      text: t('Нужно защищённое соединение (HTTPS)'),
+      hint: t('По http браузер не выдаёт разрешение на уведомления')
     }
   }
   const permission = typeof Notification === 'undefined' ? 'default' : Notification.permission
   if (permission === 'denied') {
     return {
       key: 'push',
-      title: 'Уведомления о сообщениях',
+      title: t('Уведомления о сообщениях'),
       state: 'no',
-      text: 'Уведомления запрещены в настройках браузера',
-      hint: 'Разрешите уведомления для этого сайта (значок замка в адресной строке) и обновите страницу'
+      text: t('Уведомления запрещены в настройках браузера'),
+      hint: t(
+        'Разрешите уведомления для этого сайта (значок замка в адресной строке) и обновите страницу'
+      )
     }
   }
   if (permission === 'default') {
     return {
       key: 'push',
-      title: 'Уведомления о сообщениях',
+      title: t('Уведомления о сообщениях'),
       state: 'partial',
-      text: 'Разрешение ещё не выдано',
-      hint: 'Включите уведомления в разделе «Уведомления» — браузер спросит разрешение'
+      text: t('Разрешение ещё не выдано'),
+      hint: t('Включите уведомления в разделе «Уведомления» — браузер спросит разрешение')
     }
   }
   return {
     key: 'push',
-    title: 'Уведомления о сообщениях',
+    title: t('Уведомления о сообщениях'),
     state: 'ok',
-    text: 'Уведомления разрешены',
+    text: t('Уведомления разрешены'),
     hint: ''
   }
 }
@@ -181,18 +190,18 @@ const speech = (): DeviceSupportItem => {
   if (kind === 'system') {
     return {
       key: 'speech',
-      title: 'Расшифровка голосовых в текст',
+      title: t('Расшифровка голосовых в текст'),
       state: 'ok',
-      text: 'Распознаёт распознаватель устройства',
+      text: t('Распознаёт распознаватель устройства'),
       hint: ''
     }
   }
   if (kind === 'browser') {
     return {
       key: 'speech',
-      title: 'Расшифровка голосовых в текст',
+      title: t('Расшифровка голосовых в текст'),
       state: 'ok',
-      text: 'Распознаёт Chrome: звук записи уходит в сервис браузера',
+      text: t('Распознаёт Chrome: звук записи уходит в сервис браузера'),
       hint: ''
     }
   }
@@ -201,20 +210,25 @@ const speech = (): DeviceSupportItem => {
     const model = localSpeechModelInfo()
     return {
       key: 'speech',
-      title: 'Расшифровка голосовых в текст',
+      title: t('Расшифровка голосовых в текст'),
       state: 'partial',
-      text: 'Распознаём на устройстве моделью — она скачается один раз',
-      hint: `Модель «${model.title}» (~${model.sizeMb} МБ) скачается в браузер при первом нажатии значка расшифровки у записи; звук и текст при этом остаются на устройстве`
+      text: t('Распознаём на устройстве моделью — она скачается один раз'),
+      hint: t(
+        'Модель «{title}» (~{size} МБ) скачается в браузер при первом нажатии значка расшифровки у записи; звук и текст при этом остаются на устройстве',
+        { title: model.title, size: model.sizeMb }
+      )
     }
   }
   return {
     key: 'speech',
-    title: 'Расшифровка голосовых в текст',
+    title: t('Расшифровка голосовых в текст'),
     state: 'no',
-    text: 'У этого браузера нет распознавания речи',
+    text: t('У этого браузера нет распознавания речи'),
     hint: isEmbeddedBrowser()
-      ? 'Откройте Pismo в обычном браузере или в приложении: во встроенном браузере редактора модель распознавания не запускается'
-      : 'Нужен браузер с WebAssembly (Chrome, Firefox, Safari) либо приложение Pismo на Android'
+      ? t(
+          'Откройте Pismo в обычном браузере или в приложении: во встроенном браузере редактора модель распознавания не запускается'
+        )
+      : t('Нужен браузер с WebAssembly (Chrome, Firefox, Safari) либо приложение Pismo на Android')
   }
 }
 
@@ -225,20 +239,24 @@ const translate = (): DeviceSupportItem => {
   if (canOfferTranslation()) {
     return {
       key: 'translate',
-      title: 'Перевод сообщений',
+      title: t('Перевод сообщений'),
       state: 'partial',
-      text: 'Переводит браузер устройства, модель скачается при первом переводе',
-      hint: 'Первые десятки мегабайт скачает браузер — текст при этом никуда не уходит'
+      text: t('Переводит браузер устройства, модель скачается при первом переводе'),
+      hint: t('Первые десятки мегабайт скачает браузер — текст при этом никуда не уходит')
     }
   }
   return {
     key: 'translate',
-    title: 'Перевод сообщений',
+    title: t('Перевод сообщений'),
     state: 'no',
-    text: 'У этого браузера нет встроенного переводчика',
+    text: t('У этого браузера нет встроенного переводчика'),
     hint: isEmbeddedBrowser()
-      ? 'Перевод есть только в обычном Chrome 138+ на компьютере: в приложении на Android и во встроенном браузере редактора сервиса моделей нет'
-      : 'Нужен Chrome 138+ на компьютере: перевод идёт на устройстве, текст никуда не отправляется. В мобильных браузерах кнопки нет'
+      ? t(
+          'Перевод есть только в обычном Chrome 138+ на компьютере: в приложении на Android и во встроенном браузере редактора сервиса моделей нет'
+        )
+      : t(
+          'Нужен Chrome 138+ на компьютере: перевод идёт на устройстве, текст никуда не отправляется. В мобильных браузерах кнопки нет'
+        )
   }
 }
 
@@ -246,21 +264,23 @@ const playback = (): DeviceSupportItem => {
   if (voicePlaybackSupport()) {
     return {
       key: 'playback',
-      title: 'Голосовые сообщения',
+      title: t('Голосовые сообщения'),
       state: 'ok',
       // «Формат знаком», а не «записи играются»: `canPlayType` — только обещание
       // браузера, а живой файл может не прочитаться (проверено: Chromium
       // объявляет webm/Opus, а `decodeAudioData` на записи отвечает отказом).
-      text: 'Формат записей (webm/Opus) устройству знаком',
+      text: t('Формат записей (webm/Opus) устройству знаком'),
       hint: ''
     }
   }
   return {
     key: 'playback',
-    title: 'Голосовые сообщения',
+    title: t('Голосовые сообщения'),
     state: 'no',
-    text: 'Устройство не умеет проигрывать формат записей (webm/Opus)',
-    hint: 'Записи не послушать, но их можно расшифровать в текст значком ↳A у записи — если расшифровка доступна'
+    text: t('Устройство не умеет проигрывать формат записей (webm/Opus)'),
+    hint: t(
+      'Записи не послушать, но их можно расшифровать в текст значком ↳A у записи — если расшифровка доступна'
+    )
   }
 }
 
