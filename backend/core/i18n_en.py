@@ -460,4 +460,47 @@ EN: dict[str, str] = {
         "Previous address: {old}\nNew address: {new}"
     ),
     "адрес удалён": "the address was removed",
+    # --- Письма с кодами (язык владельца аккаунта) ---
+    "Pismo: код подтверждения": "Pismo: confirmation code",
+    "Pismo: код входа {code}. Никому не сообщайте код.": (
+        "Pismo: sign-in code {code}. Do not share the code with anyone."
+    ),
+    "Если адрес привязан к аккаунту, письмо с кодом отправлено.": (
+        "If the address is linked to an account, a letter with the code has been sent."
+    ),
+    "Вход с нового устройства. Мы отправили код на вашу почту — введите его, чтобы подтвердить этот вход.": (
+        "Sign-in from a new device. We have sent a code to your e-mail — enter "
+        "it to confirm this sign-in."
+    ),
+    "Подтверждение входа в Pismo с нового устройства.\nУстройство: {device}": (
+        "Confirmation of a sign-in to Pismo from a new device.\nDevice: {device}"
+    ),
+    "Подтверждение адреса e-mail в Pismo.": "Confirming the e-mail address in Pismo.",
+    "Вход в Pismo по коду из письма.": "Signing in to Pismo with a code from the letter.",
+    "Сброс пароля Pismo.": "Resetting the Pismo password.",
+    "Разморозка аккаунта Pismo.": "Unfreezing the Pismo account.",
+    "Код: {code}": "Code: {code}",
+    "Код действует {minutes} мин.\nЕсли вы не запрашивали код, просто игнорируйте это письмо.": (
+        "The code is valid for {minutes} min.\nIf you did not request the code, "
+        "just ignore this letter."
+    ),
+    "Аккаунт заморожен. Восстановите доступ по коду из письма — или напишите в поддержку: nyuskov@gmail.com.": (
+        "The account is frozen. Restore access with the code from the letter — "
+        "or write to support: nyuskov@gmail.com."
+    ),
+    "Сессия завершена: выполнен выход на всех устройствах или изменён пароль. Войдите заново.": (
+        "The session has ended: all devices were signed out or the password was "
+        "changed. Sign in again."
+    ),
+    "Пароль изменён, остальные устройства вышли из аккаунта.\nIP-адрес: {ip}": (
+        "The password was changed and the other devices were signed out.\n"
+        "IP address: {ip}"
+    ),
+    "Пароль восстановлен по коду из письма, прежние сессии отозваны.\nIP-адрес: {ip}": (
+        "The password was restored with the code from the letter and the previous "
+        "sessions were revoked.\nIP address: {ip}"
+    ),
+    "Слишком много неверных попыток входа. Повторите через {seconds} сек.": (
+        "Too many wrong sign-in attempts. Try again in {seconds} s."
+    ),
 }

@@ -154,7 +154,10 @@ def frozen_account_error() -> HTTPException:
     """403 с машиночитаемым кодом: фронт показывает экран разморозки."""
     return HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail={"code": ACCOUNT_FROZEN_CODE, "message": ACCOUNT_FROZEN_MESSAGE},
+        detail={
+            "code": ACCOUNT_FROZEN_CODE,
+            "message": t(ACCOUNT_FROZEN_MESSAGE),
+        },
     )
 
 
@@ -162,7 +165,10 @@ def session_revoked_error() -> HTTPException:
     """401 на отозванный access-токен (не путать с истёкшим)."""
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail={"code": SESSION_REVOKED_CODE, "message": SESSION_REVOKED_MESSAGE},
+        detail={
+            "code": SESSION_REVOKED_CODE,
+            "message": t(SESSION_REVOKED_MESSAGE),
+        },
         headers={"WWW-Authenticate": "Bearer"},
     )
 

@@ -451,7 +451,7 @@ async def _send_message_push_async(
             payload = json.dumps(
                 {
                     "title": push_titles.get(sub.user_id, title),
-                    "body": push_bodies.get(sub.user_id, body),
+                    "body": push_bodies.get(sub.user_id, t("Новое сообщение")),
                     # Крупная иконка — аватар отправителя (как в мессенджерах).
                     "icon": _push_icon(sender),
                     "badge": PUSH_BADGE,

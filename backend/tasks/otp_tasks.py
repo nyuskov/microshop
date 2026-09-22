@@ -22,6 +22,7 @@ from sqlalchemy import select
 from core import mailer, smsaero, telegram
 from core.celery_app import celery_app
 from core.config import settings
+from core.i18n import DEFAULT_LOCALE, locale_of_user, t
 from core.models import User
 from tasks.base import make_engine, make_session, run_async
 
@@ -82,6 +83,27 @@ async def _bound_telegram_chat_async(phone_number: str) -> int | None:
         await engine.dispose()
 
 
+async def _locale_of_phone_async(phone_number: str) -> str:
+    """Язык владельца номера — на нём и придёт код.
+
+    На входе человек ещё не авторизован (языка в заголовке нет), но номер уже
+    привязан к аккаунту, а язык лежит в его профиле — так SMS приходит на том же
+    языке, что и приложение.
+    """
+    engine = make_engine()
+    session = make_session(engine)
+    try:
+        user = (
+            await session.execute(select(User).where(User.phone_number == phone_number))
+        ).scalar_one_or_none()
+        if user is None:
+            return DEFAULT_LOCALE
+        return await locale_of_user(session, user.id)
+    finally:
+        await session.close()
+        await engine.dispose()
+
+
 @celery_app.task(
     name="tasks.otp_tasks.send_sms_otp",
     bind=True,
@@ -93,7 +115,11 @@ async def _bound_telegram_chat_async(phone_number: str) -> int | None:
 def send_sms_otp(self, phone_number: str, otp_code: str) -> None:
     """Доставляет OTP-код (код в Telegram → SMS Aero → Gateway → бот → лог)."""
     ttl_seconds = settings.auth_otp_expire_seconds
-    sms_text = f"Pismo: код входа {otp_code}. Никому не сообщайте код."
+    sms_text = t(
+        "Pismo: код входа {code}. Никому не сообщайте код.",
+        lang=run_async(_locale_of_phone_async(phone_number)),
+        code=otp_code,
+    )
 
     # 1) «Код в Telegram» через SMS Aero — самый дешёвый канал (≈2,5 ₽ против
     # ≈9 ₽ за SMS) с автоматическим откатом на SMS, если Telegram не доставить.

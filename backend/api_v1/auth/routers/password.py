@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import passwords
 from core.config import settings
-from core.i18n import t
+from core.i18n import DEFAULT_LOCALE, locale_of_user, t
 from core.models import User, db_helper
 from core.rate_limit import client_ip
 from core.security import get_password_hash, verify_password
@@ -22,13 +22,13 @@ from ...users.crud import (
 )
 from .. import audit, email_codes, security_notifications, views
 from ..common import (
-    _EMAIL_REQUEST_DETAIL,
     _consume_email_code,
     _enforce_ip_limit,
     _ensure_active,
     _issue_email_code,
     _require_device_verification,
     _validate_new_password,
+    email_request_detail,
     otp_delivery_available,
     validate_phone_number_format,
 )
@@ -217,6 +217,14 @@ async def password_login(
 
     locked_for = await lockout_seconds(session, identifier=phone_number)
     if locked_for > 0:
+        # Язык берём у владельца номера: он ещё не авторизован, но аккаунт уже
+        # привязан к номеру, и сообщение увидит именно он.
+        locked_user = await get_user_by_phone_number(session, phone_number)
+        lang = (
+            await locale_of_user(session, locked_user.id)
+            if locked_user is not None
+            else DEFAULT_LOCALE
+        )
         await audit.log_security_event(
             session,
             event="login_locked",
@@ -226,9 +234,10 @@ async def password_login(
         )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=(
-                "Слишком много неверных попыток входа. "
-                f"Повторите через {locked_for} сек."
+            detail=t(
+                "Слишком много неверных попыток входа. Повторите через {seconds} сек.",
+                lang=lang,
+                seconds=locked_for,
             ),
             headers={"Retry-After": str(locked_for)},
         )
@@ -319,9 +328,11 @@ async def set_password(
         user,
         event="password_changed",
         request=request,
-        details=(
+        details=t(
             "Пароль изменён, остальные устройства вышли из аккаунта.\n"
-            f"IP-адрес: {client_ip(request) or 'неизвестен'}"
+            "IP-адрес: {ip}",
+            lang=await locale_of_user(session, user.id),
+            ip=client_ip(request) or t("неизвестен"),
         ),
     )
     logger.info("Пользователь %s изменил пароль", user.id)
@@ -381,7 +392,7 @@ async def request_password_reset(
             user_id=user.id,
         )
 
-    return OTPResponse(detail=_EMAIL_REQUEST_DETAIL)
+    return OTPResponse(detail=await email_request_detail(session, user))
 
 
 @router.post("/password/reset/confirm/", response_model=TokenResponse)
@@ -420,9 +431,11 @@ async def confirm_password_reset(
         user,
         event="password_reset",
         request=request,
-        details=(
+        details=t(
             "Пароль восстановлен по коду из письма, прежние сессии отозваны.\n"
-            f"IP-адрес: {client_ip(request) or 'неизвестен'}"
+            "IP-адрес: {ip}",
+            lang=await locale_of_user(session, user.id),
+            ip=client_ip(request) or t("неизвестен"),
         ),
     )
     logger.info("Пользователь %s восстановил пароль по e-mail", user.id)

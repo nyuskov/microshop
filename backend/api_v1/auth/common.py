@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core import mailer, passwords
 from core.celery_app import get_task
 from core.config import settings
-from core.i18n import t
+from core.i18n import DEFAULT_LOCALE, locale_of_user, t
 from core.models import User
 from core.rate_limit import client_ip, enforce_limit, rate_limit_key, rate_limiter
 
@@ -40,6 +40,18 @@ _DEVICE_CHALLENGE_DETAIL = (
 
 _EMAIL_CODE_SUBJECT = "Pismo: код подтверждения"
 _EMAIL_REQUEST_DETAIL = "Если адрес привязан к аккаунту, письмо с кодом отправлено."
+
+
+async def email_request_detail(session: AsyncSession, user: User | None) -> str:
+    """Ответ «письмо с кодом отправлено» на языке владельца аккаунта.
+
+    Формулировка нарочно не говорит, есть ли такой аккаунт: по ней нельзя
+    проверить, привязан ли адрес. Язык берём у владельца (если он известен).
+    """
+    lang = (
+        await locale_of_user(session, user.id) if user is not None else DEFAULT_LOCALE
+    )
+    return t(_EMAIL_REQUEST_DETAIL, lang=lang)
 
 
 async def _enforce_ip_limit(request: Request, *, scope: str, limit: int) -> None:
@@ -143,14 +155,20 @@ def enqueue_email_code(email: str, code: str, subject: str, body: str) -> None:
         )
 
 
-def _email_code_body(code: str, purpose: str) -> str:
+def _email_code_body(code: str, purpose: str, lang: str | None = None) -> str:
     """Текст письма с кодом: одна формулировка для всех сценариев."""
     minutes = max(1, settings.auth_otp_expire_seconds // 60)
-    return (
-        f"{purpose}\n\n"
-        f"Код: {code}\n\n"
-        f"Код действует {minutes} мин.\n"
-        "Если вы не запрашивали код, просто игнорируйте это письмо."
+    return "\n\n".join(
+        [
+            purpose,
+            t("Код: {code}", lang=lang, code=code),
+            t(
+                "Код действует {minutes} мин.\n"
+                "Если вы не запрашивали код, просто игнорируйте это письмо.",
+                lang=lang,
+                minutes=minutes,
+            ),
+        ]
     )
 
 
@@ -219,6 +237,8 @@ async def _require_device_verification(
 
     info = device_info(request)
     address = str(user.email)
+    # Язык письма и ответа — язык владельца аккаунта.
+    lang = await locale_of_user(session, user.id)
     # Кулдаун защищает от спама письмами, но здесь он мешал бы: каждый новый вход
     # = новый код. Если код отправляли только что, он ещё действует — показываем
     # шаг ввода; иначе отправляем новый (лимиты канала пробрасываем как есть,
@@ -231,9 +251,11 @@ async def _require_device_verification(
             session,
             request,
             email=address,
-            purpose=(
+            purpose=t(
                 "Подтверждение входа в Pismo с нового устройства.\n"
-                f"Устройство: {info.label}"
+                "Устройство: {device}",
+                lang=lang,
+                device=info.label,
             ),
             user_id=user.id,
         )
@@ -249,13 +271,14 @@ async def _require_device_verification(
         request=request,
         detail=t(
             "новое устройство, код отправлен на {email}",
+            lang=lang,
             email=mailer.mask_email(address),
         ),
     )
     raise HTTPException(
         status_code=status.HTTP_428_PRECONDITION_REQUIRED,
         detail={
-            "detail": _DEVICE_CHALLENGE_DETAIL,
+            "detail": t(_DEVICE_CHALLENGE_DETAIL, lang=lang),
             "code_sent_to": mailer.mask_email(address),
             "challenge_token": build_challenge(user_id=user.id, device=info),
             "expires_in": settings.auth_device_challenge_expire_seconds,
@@ -281,12 +304,22 @@ async def _issue_email_code(
     """
     address = email_codes.normalize_email(email)
     cooldown = settings.auth_email_resend_cooldown_seconds
+    # Язык письма и журнала — язык ВЛАДЕЛЬЦА аккаунта (он его и читает).
+    lang = (
+        await locale_of_user(session, user_id)
+        if user_id is not None
+        else DEFAULT_LOCALE
+    )
     if not await email_codes.can_request_email_code(
         session, email=address, cooldown_seconds=cooldown
     ):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=("Код уже отправлен. " f"Повторите запрос через {cooldown} секунд."),
+            detail=t(
+                "Код уже отправлен. Повторите запрос через {seconds} секунд.",
+                lang=lang,
+                seconds=cooldown,
+            ),
             headers={"Retry-After": str(cooldown)},
         )
 
@@ -323,6 +356,7 @@ async def _issue_email_code(
         request=request,
         detail=t(
             "код на {email}: {code}",
+            lang=lang,
             email=mailer.mask_email(address),
             code=purpose.splitlines()[0][:120],
         ),
@@ -332,8 +366,8 @@ async def _issue_email_code(
     views.enqueue_email_code(
         address,
         code,
-        _EMAIL_CODE_SUBJECT,
-        _email_code_body(code, purpose),
+        t(_EMAIL_CODE_SUBJECT, lang=lang),
+        _email_code_body(code, t(purpose, lang=lang), lang=lang),
     )
 
 

@@ -13,11 +13,11 @@ from core.models import User, db_helper
 from ...users.crud import get_user_by_email
 from .. import audit, email_codes, security_notifications, views
 from ..common import (
-    _EMAIL_REQUEST_DETAIL,
     _consume_email_code,
     _enforce_ip_limit,
     _ensure_active,
     _issue_email_code,
+    email_request_detail,
 )
 from ..device import device_info
 from ..jwt import get_jwt_strategy
@@ -145,7 +145,7 @@ async def request_email_login(
     else:
         logger.info("Запрошен вход по e-mail, но адрес не подтверждён: %s", address)
 
-    return OTPResponse(detail=_EMAIL_REQUEST_DETAIL)
+    return OTPResponse(detail=await email_request_detail(session, user))
 
 
 @router.post("/email/login/confirm/", response_model=TokenResponse)

@@ -17,11 +17,11 @@ from ...users.crud import (
 )
 from .. import audit, email_codes, security_notifications, views
 from ..common import (
-    _EMAIL_REQUEST_DETAIL,
     _consume_email_code,
     _enforce_ip_limit,
     _issue_email_code,
     _require_device_verification,
+    email_request_detail,
     generate_otp_code,
     otp_delivery_available,
     validate_phone_number_format,
@@ -283,7 +283,7 @@ async def request_account_unfreeze(
             purpose="Разморозка аккаунта Pismo.",
             user_id=user.id,
         )
-    return OTPResponse(detail=_EMAIL_REQUEST_DETAIL)
+    return OTPResponse(detail=await email_request_detail(session, user))
 
 
 @router.post("/account/unfreeze/", response_model=TokenResponse)

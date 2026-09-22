@@ -24,6 +24,7 @@ import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
+from core.i18n import t
 from core.models import User
 
 from . import audit
