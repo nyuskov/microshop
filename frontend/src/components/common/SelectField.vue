@@ -24,13 +24,21 @@
       <q-icon :name="icon('expand_more')" size="18px" aria-hidden="true" />
     </button>
 
-    <!-- Слой списка. По умолчанию — в body: внутри прокручиваемой карточки
-         (профиль, панель звонка) его обрезал бы её `overflow`, а так координаты
-         считаем сами. НО если поле лежит внутри диалога Quasar, слой остаётся
-         внутри этого диалога: у `q-dialog` включён фокус-трап, и при фокусе
-         снаружи он возвращает его себе — поле поиска из-за этого выглядело
-         «только для чтения» (жалоба владельца 22.09.2026). -->
-    <Teleport :to="teleportTarget">
+    <!-- Слой списка.
+
+         Обычно он рисуется РЯДОМ с полем (перенос выключен): во-первых, так он
+         остаётся внутри диалога и focus-trap `q-dialog` не выдёргивает фокус из
+         поля поиска (жалоба владельца 22.09.2026), во-вторых — переносить слой
+         ВНУТРЬ контейнера диалога нельзя: это чужие для Vue узлы в элементе,
+         детьми которого управляет Quasar, и порядок узлов ломается — приложение
+         падало при закрытии настроек («Cannot read properties of null (reading
+         'emitsOptions')», 22.09.2026). Обрезки прокруткой не боимся: слой —
+         `position: fixed` (см. `.sf-layer`), прокрутка карточки его не режет.
+
+         Исключение — панель звонка (`variant="call"`): её контейнер
+         `.call-settings` сам с `transform`, поэтому `position: fixed` внутри него
+         отсчитывался бы от него, а не от окна. Там слой переносим в `body`. -->
+    <Teleport to="body" :disabled="variant !== 'call'">
       <div
         v-if="open"
         ref="layerRef"
@@ -133,9 +141,6 @@ const triggerRef = ref<HTMLButtonElement | null>(null)
 const layerRef = ref<HTMLElement | null>(null)
 const searchRef = ref<HTMLInputElement | null>(null)
 
-/** Куда телепортировать слой: `body` или контейнер диалога (см. шаблон). */
-const teleportTarget = ref<string | HTMLElement>('body')
-
 const open = ref(false)
 const query = ref('')
 const highlight = ref(-1)
@@ -178,10 +183,6 @@ const closeMenu = (focusTrigger = false) => {
 
 const openMenu = async () => {
   if (props.disabled || open.value) return
-  // Куда рисовать слой — решаем ДО его появления: внутри диалога Quasar иначе
-  // фокус-трап диалога забирает фокус у поля поиска (см. шаблон).
-  const dialog = triggerRef.value?.closest<HTMLElement>('[aria-modal="true"], .q-dialog')
-  teleportTarget.value = dialog ?? 'body'
   query.value = ''
   highlight.value = Math.max(0, indexOfValue(props.options, props.modelValue))
   place()
@@ -353,14 +354,16 @@ onBeforeUnmount(() => {
   color: var(--ms-muted-2);
 }
 
-/* Слой списка: позицию и ширину задаёт utils/select.ts::placeLayer. */
+/* Слой списка: позицию и ширину задаёт utils/select.ts::placeLayer. Координаты
+   считаются от окна, поэтому `fixed` работает и когда слой лежит рядом с полем
+   внутри прокручиваемой карточки. */
 .sf-layer {
   position: fixed;
   z-index: 6100; /* выше диалогов Quasar (6000) */
   /*
-   * Если слой лежит внутри q-dialog (нужно, чтобы focus-trap диалога не
-   * выдёргивал фокус из поиска), он наследует pointer-events: none от
-   * .q-dialog.no-pointer-events — и тогда по списку нельзя кликнуть.
+   * Слой лежит внутри q-dialog, чтобы focus-trap диалога не выдёргивал фокус из
+   * поиска, и наследует pointer-events: none от .q-dialog.no-pointer-events —
+   * без этого по списку нельзя кликнуть.
    */
   pointer-events: auto;
   display: flex;

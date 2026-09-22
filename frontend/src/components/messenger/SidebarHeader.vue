@@ -77,6 +77,14 @@
       @open-story="emit('open-story', $event)"
     />
 
+    <!-- Связь с сервером — в пустом месте шапки, между историями и кнопками
+         (раньше про обрыв сообщала отдельная полоса во всю ширину сверху, она
+         перекрывала содержимое). Значки не прячем и не сдвигаем: пилюля
+         занимает только свободную середину и усечётся, если места мало. -->
+    <div class="panel-header-status">
+      <ConnectionStatus />
+    </div>
+
     <div class="panel-header-right">
       <button
         v-if="view === 'chats'"
@@ -165,6 +173,7 @@ import { icon } from '@/utils/icons'
 import { t } from '@/i18n'
 import { avatarStyle, initials } from '@/utils/user'
 import StoriesStrip from '@/components/stories/StoriesStrip.vue'
+import ConnectionStatus from '@/components/common/ConnectionStatus.vue'
 
 export interface SettingsAction {
   key: 'calls' | 'group' | 'channel' | 'blocked'
@@ -285,6 +294,26 @@ onBeforeUnmount(() => {
   gap: 2px;
   /* Правая группа иконок прижата к краю: слева — значок приложения и истории. */
   margin-left: auto;
+}
+
+/* Место под состояние связи: только ПУСТАЯ часть шапки — между историями и
+   кнопками. Надпись стоит ровно по центру этого промежутка
+   (`justify-content: center`), а соседние значки не сжимаются и не сдвигаются
+   (см. `flex-shrink` ниже): если места не хватает, текст усечётся, а не налезет
+   на значки. */
+.panel-header-status {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Значки слева и справа — фиксированного размера: середину отдаёт связи только
+   свободное место, иначе пилюля выдавила бы кнопки за край шапки. */
+.panel-header :deep(.stories-wrap),
+.panel-header-right {
+  flex-shrink: 0;
 }
 
 .icon-btn.open,

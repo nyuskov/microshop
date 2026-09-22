@@ -25,6 +25,22 @@ export interface OnlineStatus {
   justRestored: Ref<boolean>
   /** Идёт догрузка данных после возврата связи (плашка пишет «Соединение…»). */
   syncing: Ref<boolean>
+  /**
+   * Первая проверка связи ещё не дала ответа.
+   *
+   * Нужна шапке: пока результат неизвестен, честнее показать «Соединение…»,
+   * чем молчать (состояние связи до первого ответа считается живым —
+   * оптимистично, чтобы приложение не мигало «нет сети» на каждом запуске).
+   */
+  checking: Ref<boolean>
+  /**
+   * Состояние для показа в шапке (`''` — всё в порядке, показывать нечего).
+   *
+   * Приоритет: обрыв важнее догрузки — пока связи нет, «Соединение…» врало бы.
+   * Первая проверка считается «соединением»: пока ответа нет, про связь ничего
+   * не известно.
+   */
+  state: ComputedRef<ConnectionState>
   /** Плашка сейчас на экране (другие баннеры уступают ей место). */
   bannerVisible: ComputedRef<boolean>
   /** Проверить связь немедленно. */
@@ -49,9 +65,20 @@ export const SYNCING_TIMEOUT_MS = 10000
 /** Событие «связь вернулась»: подписчики добирают пропущенные данные. */
 export const ONLINE_RESTORED_EVENT = 'pismo:connection-restored'
 
+/**
+ * Состояние связи в том виде, в каком его показывают шапки.
+ *
+ * Одно на все места сразу (пилюля в шапке списка чатов и подпись в открытом
+ * чате): иначе два разных «когда что показывать» разъедутся, и в одном месте
+ * будет «Нет сети», а в другом — ничего.
+ */
+export type ConnectionState = '' | 'offline' | 'connecting' | 'restored'
+
 const online = ref(true)
 const justRestored = ref(false)
 const syncing = ref(false)
+/** Ответа на первую проверку ещё не было (см. `checking` в OnlineStatus). */
+const checking = ref(true)
 
 let pollTimer: number | null = null
 let restoredTimer: number | null = null
@@ -149,6 +176,8 @@ export function probeConnection(): Promise<void> {
     })
     .finally(() => {
       probeInFlight = null
+      // Результат первой проверки получен — «Соединение…» в шапке больше не врёт.
+      checking.value = false
     })
   return probeInFlight
 }
@@ -219,6 +248,13 @@ export function setConnectionSyncing(value: boolean): void {
 
 const bannerVisible = computed(() => !online.value || justRestored.value || syncing.value)
 
+const state = computed<ConnectionState>(() => {
+  if (!online.value) return 'offline'
+  if (checking.value || syncing.value) return 'connecting'
+  if (justRestored.value) return 'restored'
+  return ''
+})
+
 export function useOnlineStatus(): OnlineStatus {
   onMounted(() => {
     watchers += 1
@@ -232,7 +268,7 @@ export function useOnlineStatus(): OnlineStatus {
     watchers = Math.max(0, watchers - 1)
     if (watchers === 0) unbindListeners()
   })
-  return { online, justRestored, syncing, bannerVisible, recheck: probeConnection }
+  return { online, justRestored, syncing, checking, state, bannerVisible, recheck: probeConnection }
 }
 
 /** Сбрасывает состояние и снимает подписки — только для тестов. */
@@ -241,5 +277,6 @@ export function resetOnlineStatus(): void {
   unbindListeners()
   online.value = true
   justRestored.value = false
+  checking.value = true
   stopSyncing()
 }

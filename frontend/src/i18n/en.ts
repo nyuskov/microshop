@@ -1730,6 +1730,13 @@ export const EN: Record<string, string> = {
   'Нет подключения к интернету': 'No internet connection',
   'Соединение…': 'Connecting…',
   'Связь восстановлена': 'Connection restored',
+  // Состояние связи в шапке (components/common/ConnectionStatus.vue) — короткий
+  // текст для тесной пилюли: полная фраза в неё не влезает.
+  'Нет сети': 'No network',
+  'Связь есть': 'Back online',
+  'Нет подключения к интернету. Нажмите, чтобы проверить связь':
+    'No internet connection. Tap to check the connection',
+  'Тихие часы: уведомления не приходят': 'Quiet hours: notifications are muted',
   'Не выбрано': 'Not selected',
   'Не удалось воспроизвести аудио': 'Could not play the audio',
   'Загрузка записи прервана': 'The upload of the recording was interrupted',

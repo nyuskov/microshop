@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { applyServiceWorkerUpdate, registerServiceWorker } from '@/services/pwa'
 import { useVisualViewport } from '@/composables/useVisualViewport'
 import { useMaintenanceWatch } from '@/composables/useMaintenanceWatch'
@@ -30,6 +31,15 @@ useMaintenanceWatch()
 // сдвигается вниз, иначе они перекрыли бы друг друга.
 const { bannerVisible: connectionBannerVisible } = useOnlineStatus()
 
+// В мессенджере полоса сверху не нужна: состояние связи показывают шапки (список
+// чатов — пилюлей, открытый чат — подписью). Так её видно ровно там, где смотрят,
+// и она ничего не перекрывает. Вне мессенджера (экран входа, приглашение) шапок
+// нет — там полоса остаётся единственным способом сообщить про обрыв.
+const MESSENGER_ROUTES = ['Messenger', 'ProfileLink', 'ChannelLink', 'GroupInvite']
+const route = useRoute()
+const showConnectionBanner = computed(() => !MESSENGER_ROUTES.includes(String(route.name ?? '')))
+const bannerOnScreen = computed(() => connectionBannerVisible.value && showConnectionBanner.value)
+
 const updateAvailable = ref(false)
 let reloading = false
 
@@ -59,7 +69,7 @@ onBeforeUnmount(() => {
   <div
     v-if="updateAvailable"
     class="pwa-update-bar"
-    :class="{ shifted: connectionBannerVisible }"
+    :class="{ shifted: bannerOnScreen }"
     role="status"
   >
     <span class="pwa-update-text">{{ t('Доступна новая версия приложения') }}</span>
@@ -67,8 +77,9 @@ onBeforeUnmount(() => {
       {{ t('Обновить') }}
     </button>
   </div>
-  <!-- Нет сети / связь восстановлена (работает и на экране входа) -->
-  <OfflineBanner />
+  <!-- Нет сети / связь восстановлена. В мессенджере то же самое показывают шапки
+       (см. ConnectionStatus и ChatHeader), поэтому полоса там скрыта. -->
+  <OfflineBanner v-if="showConnectionBanner" />
   <!-- Подтверждение перехода на внешний сайт (окно одно на всё приложение) -->
   <ExternalLinkDialog />
   <!-- Плановые технические работы: сервис отвечает 503, приложение закрыто -->

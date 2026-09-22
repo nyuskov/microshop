@@ -37,7 +37,15 @@
         <span v-if="statusPill" class="chat-status-pill">{{ statusPill }}</span>
       </div>
       <div class="chat-subtitle">
-        <template v-if="peerTyping">
+        <span
+          v-if="connectionText"
+          class="chat-subtitle-text connection-state"
+          :class="connectionState"
+          role="status"
+        >
+          {{ connectionText }}
+        </span>
+        <template v-else-if="peerTyping">
           <span class="sr-only">{{ t('печатает') }}</span>
           <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>
         </template>
@@ -162,6 +170,7 @@ import {
   isGroupChat
 } from '@/utils/user'
 import { useCallButton } from '@/composables/useCallButton'
+import { useOnlineStatus } from '@/composables/useOnlineStatus'
 
 const props = defineProps<{
   chat: Chat
@@ -234,6 +243,23 @@ const savedAvatarStyle: Record<string, string> = {
 const avatarUrl = computed<string | undefined>(() =>
   isGroupChat(props.chat) ? groupAvatarUrl(props.chat) : avatarUrlOf(peer.value)
 )
+
+/**
+ * Моя связь — вместо присутствия собеседника.
+ *
+ * Присутствие приходит по сети, поэтому при обрыве про собеседника всё равно
+ * ничего не узнать. Состояние берём общее (`state` из `useOnlineStatus`) — то же,
+ * что показывает пилюля в шапке списка чатов: про обрыв в открытом чате иначе не
+ * сообщалось бы вовсе, а на телефоне шапка списка в этот момент скрыта.
+ */
+const { state: connectionState } = useOnlineStatus()
+
+const connectionText = computed(() => {
+  if (connectionState.value === 'offline') return t('Нет сети')
+  if (connectionState.value === 'connecting') return t('Соединение…')
+  if (connectionState.value === 'restored') return t('Связь восстановлена')
+  return ''
+})
 
 // Меню «⋯» в шапке: закрывается тапом/кликом мимо самого меню.
 //
@@ -424,6 +450,12 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   min-width: 0;
   font-size: 13px;
   color: var(--ms-muted);
+}
+
+/* Моя связь вместо присутствия собеседника: про собеседника при обрыве всё
+   равно ничего не узнать. Красная подпись — нет связи, обычная — «Соединение…». */
+.connection-state.offline {
+  color: var(--ms-danger);
 }
 
 .chat-subtitle-text {
