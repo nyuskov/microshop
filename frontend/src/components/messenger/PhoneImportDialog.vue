@@ -27,7 +27,7 @@
             @click="emit('pick-device')"
           >
             <q-icon :name="icon('phone_android')" size="20px" />
-            <span>{{ busy ? 'Открываем…' : 'Выбрать из телефонной книги' }}</span>
+            <span>{{ busy ? t('Открываем…') : t('Выбрать из телефонной книги') }}</span>
           </button>
           <p v-else class="phone-hint">
             {{
@@ -54,14 +54,16 @@
               {{ t('Отмена') }}
             </button>
             <button class="phone-btn primary" :disabled="busy" @click="emit('find')">
-              {{ busy ? 'Поиск…' : 'Найти в мессенджере' }}
+              {{ busy ? t('Поиск…') : t('Найти в мессенджере') }}
             </button>
           </div>
 
           <p v-if="error" class="phone-error">{{ error }}</p>
 
           <template v-if="matched !== null">
-            <p class="phone-result-title">Найдено в мессенджере: {{ matched.length }}</p>
+            <p class="phone-result-title">
+              {{ t('Найдено в мессенджере: {count}', { count: matched.length }) }}
+            </p>
             <div v-if="!matched.length" class="phone-empty">
               {{ t('Никого из вашей книги нет в мессенджере') }}
             </div>

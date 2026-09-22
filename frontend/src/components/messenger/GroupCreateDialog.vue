@@ -29,8 +29,10 @@
       ></textarea>
 
       <div class="grp-label grp-count">
-        Участники
-        <span v-if="selected.size" class="grp-selected-count">выбрано: {{ selected.size }}</span>
+        {{ t('Участники') }}
+        <span v-if="selected.size" class="grp-selected-count">
+          {{ t('выбрано: {count}', { count: selected.size }) }}
+        </span>
       </div>
       <div class="grp-search">
         <q-icon :name="icon('search')" class="grp-search-icon" size="17px" aria-hidden="true" />
@@ -45,8 +47,8 @@
       <div v-if="!filtered.length" class="grp-empty">
         {{
           contacts.length
-            ? 'Никого не найдено'
-            : 'Контактов пока нет — добавьте пользователей из телефонной книги.'
+            ? t('Никого не найдено')
+            : t('Контактов пока нет — добавьте пользователей из телефонной книги.')
         }}
       </div>
       <div v-else class="grp-list">

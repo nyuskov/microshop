@@ -5,7 +5,7 @@
   >
     <q-card class="cn-card">
       <q-card-section class="cn-head">
-        <div class="cn-title">{{ isContact ? 'Имя контакта' : 'Добавить в контакты' }}</div>
+        <div class="cn-title">{{ isContact ? t('Имя контакта') : t('Добавить в контакты') }}</div>
         <q-space />
         <q-btn flat round dense :icon="icon('close')" v-close-popup :aria-label="t('Закрыть')" />
       </q-card-section>
@@ -58,7 +58,7 @@
           unelevated
           no-caps
           color="primary"
-          :label="isContact ? 'Сохранить' : 'Добавить'"
+          :label="isContact ? t('Сохранить') : t('Добавить')"
           :loading="busy"
           :disable="busy"
           @click="submit"

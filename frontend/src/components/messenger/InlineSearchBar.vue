@@ -14,7 +14,7 @@
     <span v-if="count > 0" class="inline-search-count" role="status">
       {{
         (current ?? 0) > 0
-          ? `${current} из ${count}`
+          ? t('{current} из {count}', { current: current ?? 0, count })
           : t('{count} {noun}', {
               count,
               noun: plural(count, ['совпадение', 'совпадения', 'совпадений'], ['match', 'matches'])

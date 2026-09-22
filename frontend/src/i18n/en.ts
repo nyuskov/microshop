@@ -1959,5 +1959,16 @@ export const EN: Record<string, string> = {
   'Не удалось определить номера. Проверьте ввод.':
     'Could not detect the numbers. Check what you entered.',
   'Не удалось найти в мессенджере': 'Could not find anyone in the messenger',
-  'Не удалось открыть контакты': 'Could not open the contacts'
+  'Не удалось открыть контакты': 'Could not open the contacts',
+
+  // --- Импорт телефонов и создание группы ---
+  'Открываем…': 'Opening…',
+  Участники: 'Participants',
+  'Выбрать из телефонной книги': 'Choose from the phone book',
+  'Найти в мессенджере': 'Find in the messenger',
+  'Найдено в мессенджере: {count}': 'Found in the messenger: {count}',
+  'выбрано: {count}': 'selected: {count}',
+  'Контактов пока нет — добавьте пользователей из телефонной книги.':
+    'No contacts yet — add people from the phone book.',
+  '{current} из {count}': '{current} of {count}'
 }

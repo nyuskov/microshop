@@ -16,7 +16,7 @@ const row = readFileSync('src/components/messenger/MessageRow.vue', 'utf8')
 describe('строка поиска по сообщениям', () => {
   it('показывает, на каком совпадении мы стоим', () => {
     expect(bar).toMatch(/\(current \?\? 0\) > 0/)
-    expect(bar).toMatch(/из \$\{count\}/)
+    expect(bar).toMatch(/t\('\{current\} из \{count\}', \{ current: current \?\? 0, count \}\)/)
     expect(bar).toMatch(/role="status"/)
   })
 
