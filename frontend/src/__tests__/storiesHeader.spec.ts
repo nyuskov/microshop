@@ -59,7 +59,7 @@ describe('лимит кружков в шапке', () => {
   it('лимит считается вместе с кружком «Моя история»', () => {
     const others = [group(1, [story(10)]), group(2, [story(20)]), group(3, [story(30)])]
 
-    // 3 всего = «моя» + 2 чужие.
+    // 3 всего = «моя» + 2 чужие: столько влезает вместе с надписью о связи.
     expect(headerStoryGroups(others, 3).map((item) => item.user.id)).toEqual([1, 2])
     // 6 всего = «моя» + 5 чужих (у нас их меньше — берём сколько есть).
     expect(headerStoryGroups(others, 6)).toHaveLength(3)
@@ -103,8 +103,8 @@ describe('связка с разметкой', () => {
     expect(strip).toContain('v-for="(group, index) in visibleOthers"')
   })
 
-  it('кружки в шапке стоят плотнее (наложение 20 px)', () => {
-    expect(strip).toContain('margin-left: -20px')
+  it('кружки в шапке стоят плотнее (наложение 24 px)', () => {
+    expect(strip).toContain('margin-left: -24px')
   })
 
   it('историю открывают по общему правилу — и кружок, и протяжка', () => {
