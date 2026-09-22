@@ -13,6 +13,8 @@
  * «через год».
  */
 
+import { dateLocale, t } from '@/i18n'
+
 /** Готовый вариант «отправить позже»: подпись в меню и момент отправки. */
 export interface SchedulePreset {
   label: string
@@ -42,16 +44,22 @@ const isSameDay = (a: Date, b: Date): boolean => a.toDateString() === b.toDateSt
  */
 export const schedulePresets = (now: Date = new Date()): SchedulePreset[] => {
   const presets: SchedulePreset[] = [
-    { label: 'Через час', at: new Date(now.getTime() + 60 * 60 * 1000) }
+    { label: t('Через час'), at: new Date(now.getTime() + 60 * 60 * 1000) }
   ]
 
   const todayAtMorning = atTime(now, MORNING_HOUR)
   if (todayAtMorning.getTime() > now.getTime()) {
-    presets.push({ label: `Сегодня в ${timeLabel(todayAtMorning)}`, at: todayAtMorning })
+    presets.push({
+      label: t('Сегодня в {time}', { time: timeLabel(todayAtMorning) }),
+      at: todayAtMorning
+    })
   }
 
   const tomorrowAtMorning = atTime(new Date(now.getTime() + 24 * 60 * 60 * 1000), MORNING_HOUR)
-  presets.push({ label: `Завтра в ${timeLabel(tomorrowAtMorning)}`, at: tomorrowAtMorning })
+  presets.push({
+    label: t('Завтра в {time}', { time: timeLabel(tomorrowAtMorning) }),
+    at: tomorrowAtMorning
+  })
 
   return presets
 }
@@ -68,16 +76,21 @@ export const formatScheduledAt = (value: string | Date, now: Date = new Date()):
   if (Number.isNaN(at.getTime())) return ''
   const minutes = Math.round((at.getTime() - now.getTime()) / 60000)
 
-  if (minutes <= 0) return 'сейчас'
-  if (minutes < 60) return `через ${minutes} мин`
+  if (minutes <= 0) return t('сейчас')
+  if (minutes < 60) return t('через {count} мин', { count: minutes })
 
   const hours = Math.round(minutes / 60)
   if (isSameDay(at, now)) {
     // Меньше трёх часов — понятнее в часах; ближе к вечеру точное время важнее.
-    return hours <= 3 ? `через ${hours} ч` : `сегодня в ${timeLabel(at)}`
+    return hours <= 3
+      ? t('через {count} ч', { count: hours })
+      : t('сегодня в {time}', { time: timeLabel(at) })
   }
 
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000)
-  if (isSameDay(at, tomorrow)) return `завтра в ${timeLabel(at)}`
-  return `${at.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} в ${timeLabel(at)}`
+  if (isSameDay(at, tomorrow)) return t('завтра в {time}', { time: timeLabel(at) })
+  return t('{date} в {time}', {
+    date: at.toLocaleDateString(dateLocale(), { day: 'numeric', month: 'short' }),
+    time: timeLabel(at)
+  })
 }

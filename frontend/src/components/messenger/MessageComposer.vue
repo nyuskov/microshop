@@ -275,7 +275,7 @@
               class="panel-strip-item"
               :class="{ active: activeSection === section.key }"
               role="tab"
-              :title="section.title"
+              :title="t(section.title)"
               :aria-label="t(section.title)"
               :aria-selected="activeSection === section.key"
               @click="jumpToSection(section.key)"

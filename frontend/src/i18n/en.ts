@@ -1870,5 +1870,16 @@ export const EN: Record<string, string> = {
   'Границы совпали — тишины не будет, уведомления приходят круглосуточно':
     'The times are the same — there will be no quiet hours, notifications come around the clock',
   'звонки разрешены': 'calls are allowed',
-  'звонки тоже не приходят': 'calls do not come through either'
+  'звонки тоже не приходят': 'calls do not come through either',
+
+  // --- Отложенная отправка (utils/scheduledSend.ts) ---
+  'Через час': 'In an hour',
+  'Сегодня в {time}': 'Today at {time}',
+  'Завтра в {time}': 'Tomorrow at {time}',
+  сейчас: 'now',
+  'через {count} мин': 'in {count} min',
+  'через {count} ч': 'in {count} h',
+  'сегодня в {time}': 'today at {time}',
+  'завтра в {time}': 'tomorrow at {time}',
+  '{date} в {time}': '{date} at {time}'
 }
