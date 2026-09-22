@@ -170,6 +170,18 @@ describe('панели списка чатов', () => {
     expect(sidebar).toContain('pullUsed = true')
   })
 
+  it('третья ступень протяжки открывает воспроизведение историй', () => {
+    // Порог третий ступени больше второго: шаги должны читаться по силе, иначе
+    // плеер открывался бы тем же движением, что и сама полоса.
+    const stories = Number(sidebar.match(/PULL_STORIES_PX = (\d+)/)?.[1] ?? '0')
+    const play = Number(sidebar.match(/PULL_PLAY_PX = (\d+)/)?.[1] ?? '0')
+
+    expect(play).toBeGreaterThan(stories)
+    // И этот шаг именно открывает историю (а не просто оставляет полосу раскрытой).
+    expect(sidebar).toContain('openStoriesPlayback()')
+    expect(sidebar).toContain('firstStoryToOpen(storiesStore.others, storiesStore.mine)')
+  })
+
   it('переходы через max-height не вернулись', () => {
     expect(sidebar).not.toContain('search-expand')
     expect(sidebar).not.toContain('stories-drop')

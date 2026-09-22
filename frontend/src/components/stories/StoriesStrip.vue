@@ -56,7 +56,7 @@
            В шапке кружки находят друг на друга: следующий уходит ПОД предыдущий,
            поэтому z-index убывает слева направо (как в Telegram). -->
       <button
-        v-for="(group, index) in stories.others"
+        v-for="(group, index) in visibleOthers"
         :key="group.user.id"
         class="story-cell"
         type="button"
@@ -150,7 +150,12 @@ import { useStoriesStore } from '@/stores/stories'
 import { useHScroll } from '@/composables/useHScroll'
 import { useMobileLayer } from '@/composables/useMobileOverlay'
 import type { StoryGroup } from '@/services/stories'
-import { probeVideoPlayback, type VideoProbe } from '@/utils/stories'
+import {
+  firstUnseenStoryId,
+  headerStoryGroups,
+  probeVideoPlayback,
+  type VideoProbe
+} from '@/utils/stories'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 
 const emit = defineEmits<{
@@ -165,8 +170,15 @@ const props = withDefaults(
     mini?: boolean
     /** Полоса историй раскрыта — кружок в шапке подсвечен (для mini). */
     expanded?: boolean
+    /**
+     * Сколько кружков показать в СЖАТОМ ряду шапки (считая «Мою историю»).
+     *
+     * Место в шапке делят кружки и надпись о связи, поэтому лимит приходит
+     * снаружи (`utils/stories.headerStoriesLimit`), а 0 — без ограничения.
+     */
+    limit?: number
   }>(),
-  { mini: false, expanded: false }
+  { mini: false, expanded: false, limit: 0 }
 )
 
 /**
@@ -178,11 +190,21 @@ const onGroupClick = (group: StoryGroup) => {
     emit('toggle-expand')
     return
   }
-  emit('open-story', firstUnseenId(group))
+  emit('open-story', firstUnseenStoryId(group))
 }
 
 const stories = useStoriesStore()
 const authStore = useAuthStore()
+
+/**
+ * Истории других, которые рисует сжатый ряд в шапке.
+ *
+ * С лимитом ряд кончается на третьем или шестом кружке (см.
+ * `headerStoryGroups`): остальные видны в раскрытой полосе, где лимита нет.
+ */
+const visibleOthers = computed(() =>
+  props.mini ? headerStoryGroups(stories.others, props.limit) : stories.others
+)
 
 /**
  * Прокрутка полосы историй.
@@ -244,12 +266,6 @@ const authorAvatar = (group: StoryGroup) => {
 }
 
 const authorInitials = (group: StoryGroup) => initials(authorName(group))
-
-/** Первая непросмотренная история автора (или первая, если всё просмотрено). */
-const firstUnseenId = (group: StoryGroup): number => {
-  const unseen = group.items.find((item) => !item.viewed)
-  return (unseen ?? group.items[0]).id
-}
 
 const pickFile = () => fileInput.value?.click()
 
@@ -396,13 +412,15 @@ const publish = async () => {
 }
 
 /* Наложение кружков друг на друга, как в Telegram: каждый следующий сдвинут
-   влево на треть кружка и уходит под предыдущий (z-index задан в разметке). */
+   влево на 20 px и уходит под предыдущий (z-index задан в разметке) — владелец
+   просил плотнее прежних 13 px, так в шапку влезает шесть кружков и ряд
+   выглядит одним блоком. */
 .mini .story-cell {
   position: relative;
 }
 
 .mini .story-cell + .story-cell {
-  margin-left: -13px;
+  margin-left: -20px;
 }
 
 /* Ячейка — 40 px (как аватар профиля в шапке и круглые кнопки до 600px):

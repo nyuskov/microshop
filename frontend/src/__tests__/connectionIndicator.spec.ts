@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest'
 const source = (path: string) => readFileSync(path, 'utf8')
 
 const status = source('src/components/common/ConnectionStatus.vue')
+const notice = source('src/composables/useConnectionNotice.ts')
 const sidebarHeader = source('src/components/messenger/SidebarHeader.vue')
 const chatHeader = source('src/components/messenger/ChatHeader.vue')
 const app = source('src/App.vue')
@@ -53,15 +54,20 @@ describe('пилюля связи в шапке списка чатов', () => 
   })
 
   it('показывает три состояния связи и тихие часы', () => {
-    expect(status).toContain("t('Нет сети')")
-    expect(status).toContain("t('Соединение…')")
+    // Тексты и «когда что показывать» живут в общем композабле (см.
+    // `useConnectionNotice.ts`): по тому же правилу шапка решает, сколько
+    // кружков историй показать рядом (`storiesHeader.spec.ts`).
+    expect(notice).toContain("t('Нет сети')")
+    expect(notice).toContain("t('Соединение…')")
     // В пилюле текст короткий (место — только промежуток между значками),
     // полная фраза осталась в подсказке.
-    expect(status).toContain("t('Связь есть')")
-    expect(status).toContain("t('Связь восстановлена')")
+    expect(notice).toContain("t('Связь есть')")
+    expect(notice).toContain("t('Связь восстановлена')")
     expect(status).toContain("t('Тихие часы')")
     // Состояние общее с догрузкой пропущенного, а не своя копия таймеров.
-    expect(status).toContain('useOnlineStatus()')
+    expect(notice).toContain('useOnlineStatus()')
+    // Пилюля берёт это правило, а не считает своё.
+    expect(status).toContain('useConnectionNotice()')
     // Без связи пилюля нажимается: проверить связь не ожидая маяка.
     expect(status).toContain('recheck')
   })
@@ -72,7 +78,7 @@ describe('пилюля связи в шапке списка чатов', () => 
     // не успевало появиться ни разу.
     expect(onlineStatus).toContain('checking')
     expect(onlineStatus).toContain("if (checking.value || syncing.value) return 'connecting'")
-    expect(status).toContain("state.value === 'connecting'")
+    expect(notice).toContain("state.value === 'connecting'")
   })
 
   it('у новых строк есть английский перевод', () => {

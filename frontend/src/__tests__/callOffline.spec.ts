@@ -29,7 +29,7 @@ vi.mock('@/services/api', async (importOriginal) => {
 
 import { api } from '@/services/api'
 import { useCallStore } from '@/stores/call'
-import { enablePushNotifications, showIncomingCallRing } from '@/services/pwa'
+import { enablePushNotifications, showIncomingCallRing, CALL_RING_VIBRATION } from '@/services/pwa'
 
 describe('абонент не в сети: вызов ждёт его в приложении', () => {
   beforeEach(() => setActivePinia(createPinia()))
@@ -143,6 +143,27 @@ describe('уведомление о звонке из приложения (пр
     // его закрывает service worker, когда звонок перестал звонить.
     expect(shown[0].options.tag).toBe('call-call-1')
     expect(shown[0].options.requireInteraction).toBe(true)
+  })
+
+  it('ритм вибрации совпадает с тем, что стоит в sw.js', async () => {
+    const shown = stubNotifications()
+
+    await showIncomingCallRing({
+      title: 'Аня',
+      body: 'Входящий звонок',
+      callId: 'call-1',
+      peerId: 5
+    })
+
+    // Ритм живёт в ДВУХ файлах: service worker не модуль и импортировать
+    // константу не может. Раскладка уведомления о звонке уже один раз
+    // разъехалась между этими местами (и «Ответить» превращалось в отказ),
+    // поэтому сверяем именно значения, а не наличие поля.
+    const sw = readFileSync('public/sw.js', 'utf8')
+    const inWorker = sw.match(/CALL_RING_VIBRATION = (\[[^\]]*\])/)?.[1] ?? ''
+
+    expect(inWorker.replace(/\s+/g, '')).toBe(JSON.stringify(CALL_RING_VIBRATION))
+    expect(shown[0].options.vibrate).toEqual(CALL_RING_VIBRATION)
   })
 })
 

@@ -17,7 +17,7 @@
         :key="group.user.id"
         class="feed-row"
         type="button"
-        @click="emit('open-story', firstStoryId(group))"
+        @click="emit('open-story', firstUnseenStoryId(group))"
       >
         <span
           class="feed-avatar"
@@ -73,7 +73,7 @@ import { mediaUrl } from '@/config'
 import type { StoryGroup } from '@/services/stories'
 import { useStoriesStore } from '@/stores/stories'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
-import { formatStoryAge } from '@/utils/stories'
+import { firstUnseenStoryId, formatStoryAge } from '@/utils/stories'
 import { plural, t } from '@/i18n'
 
 const emit = defineEmits<{
@@ -90,13 +90,6 @@ const authorAvatar = (group: StoryGroup) => {
 }
 
 const authorInitials = (group: StoryGroup) => initials(authorName(group))
-
-/** Своя история — с первой; чужая — с первой непросмотренной. */
-const firstStoryId = (group: StoryGroup): number => {
-  if (group.is_mine) return group.items[0].id
-  const unseen = group.items.find((item) => !item.viewed)
-  return (unseen ?? group.items[0]).id
-}
 
 const totalViews = (group: StoryGroup): number =>
   group.items.reduce((sum, item) => sum + item.views, 0)

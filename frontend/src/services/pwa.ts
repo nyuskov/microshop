@@ -245,6 +245,17 @@ export async function isPushSubscribed(): Promise<boolean> {
 // ---------- Входящие звонки: системное «будильник»-уведомление ----------
 
 /**
+ * Ритм вибрации уведомления о звонке (~1,9 с: три толчка с короткими паузами).
+ *
+ * Ровно тот же ритм стоит в `public/sw.js` (`CALL_RING_VIBRATION`): service
+ * worker не модуль и импортировать отсюда не может. Раскладка уведомления о
+ * звонке уже один раз разъезжалась между этими двумя местами — и «Ответить»
+ * превращалось в отказ, поэтому расхождение проверяет страж
+ * `__tests__/callOffline.spec.ts`.
+ */
+export const CALL_RING_VIBRATION = [400, 300, 400, 300, 400]
+
+/**
  * Показывает системное уведомление о входящем звонке (когда приложение
  * свёрнуто/в фоне): тап или кнопка «Открыть» открывают приложение к экрану
  * звонка, где есть «Ответить» и «Отклонить».
@@ -273,7 +284,7 @@ export async function showIncomingCallRing(opts: {
       requireInteraction: true,
       renotify: true,
       silent: false,
-      vibrate: [250, 120, 250, 120, 250, 120, 250],
+      vibrate: CALL_RING_VIBRATION,
       // actions/renotify/vibrate нет в старых типах NotificationOptions — приводим.
       actions: [{ action: 'open', title: t('Открыть') }],
       data: { type: 'call', call_id: opts.callId, peer_id: opts.peerId }

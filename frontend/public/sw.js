@@ -18,8 +18,16 @@
  */
 
 const CACHE_PREFIX = 'pismo-v'
-const CACHE_VERSION = 30
+const CACHE_VERSION = 31
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
+/**
+ * Ритм вибрации уведомления о звонке (~1,9 с: три толчка с короткими паузами).
+ *
+ * Держим в паре с `CALL_RING_VIBRATION` в `src/services/pwa.ts`: раскладка
+ * уведомления о звонке обязана совпадать в обоих местах (расхождение уже
+ * ломало ответ на звонок), страж — `src/__tests__/callOffline.spec.ts`.
+ */
+const CALL_RING_VIBRATION = [400, 300, 400, 300, 400]
 // Кэш медиа живёт отдельно: обновление версии приложения не сбрасывает картинки.
 const MEDIA_CACHE_PREFIX = 'pismo-media-v'
 const MEDIA_CACHE_NAME = MEDIA_CACHE_PREFIX + 1
@@ -311,9 +319,11 @@ async function handlePush(event) {
     options.requireInteraction = true
     options.renotify = true
     options.silent = false
-    // Вибрация — два спокойных толчка с длинной паузой. Частый «дребезг»
-    // (7 коротких импульсов подряд) сильно бил по нервам при каждом звонке.
-    options.vibrate = [220, 700, 220]
+    // Вибрация — ритм «звонит», а не один толчок: три импульса с короткими
+    // паузами, столько же живёт и звук системного уведомления. Частый «дребезг»
+    // (7 импульсов подряд) бил по нервам, а два толчка с паузой 0,7 с в кармане
+    // проглатывались. Ритм ОДИН на оба места (см. CALL_RING_VIBRATION выше).
+    options.vibrate = CALL_RING_VIBRATION
     // Кнопка только одна — «Открыть»: она открывает приложение к экрану звонка.
     //
     // Двух кнопок («Ответить»/«Отклонить») здесь быть не должно: на Android

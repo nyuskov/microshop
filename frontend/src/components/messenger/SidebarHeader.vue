@@ -72,6 +72,7 @@
     <StoriesStrip
       v-if="view === 'chats'"
       mini
+      :limit="storiesLimit"
       :expanded="expanded"
       @toggle-expand="emit('toggle-stories-expand')"
       @open-story="emit('open-story', $event)"
@@ -174,6 +175,8 @@ import { t } from '@/i18n'
 import { avatarStyle, initials } from '@/utils/user'
 import StoriesStrip from '@/components/stories/StoriesStrip.vue'
 import ConnectionStatus from '@/components/common/ConnectionStatus.vue'
+import { useConnectionNotice } from '@/composables/useConnectionNotice'
+import { headerStoriesLimit } from '@/utils/stories'
 
 export interface SettingsAction {
   key: 'calls' | 'group' | 'channel' | 'blocked'
@@ -216,6 +219,17 @@ const emit = defineEmits<{
   (e: 'create-channel'): void
   (e: 'open-blocked'): void
 }>()
+
+/**
+ * Сколько кружков историй показывать в шапке.
+ *
+ * Надпись в середине (состояние связи, тихие часы) занимает свободное место
+ * между историями и кнопками — тогда ряд кружков короче: 3 вместо 6. Так надпись
+ * не наезжает на кружки, а кружки не выдавливают кнопки за край. Само правило —
+ * в `utils/stories.headerStoriesLimit`, чтобы оно не разъезжалось с разметкой.
+ */
+const { visible: noticeVisible } = useConnectionNotice()
+const storiesLimit = computed(() => headerStoriesLimit(noticeVisible.value))
 
 /** Обёртка меню «⋯» (кнопка + выпадающий список) — по ней считаем «клик мимо». */
 const menuWrapEl = ref<HTMLElement | null>(null)
@@ -309,9 +323,16 @@ onBeforeUnmount(() => {
   justify-content: center;
 }
 
-/* Значки слева и справа — фиксированного размера: середину отдаёт связи только
-   свободное место, иначе пилюля выдавила бы кнопки за край шапки. */
-.panel-header :deep(.stories-wrap),
+/* Кнопки справа — фиксированного размера: середину отдаёт связи только свободное
+   место, иначе пилюля выдавила бы кнопки за край шапки. Полоса историй, наоборот,
+   может ужаться: на узком экране (320 px) шесть кружков не влезают рядом с
+   кнопками, и вместо того, чтобы выдавливать их из шапки, ряд прокручивается
+   внутри себя (у него уже есть `overflow-x` и затухание у края). */
+.panel-header :deep(.stories-wrap) {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
 .panel-header-right {
   flex-shrink: 0;
 }

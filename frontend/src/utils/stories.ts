@@ -87,6 +87,54 @@ export function groupProgress(group: StoryGroup): { total: number; seen: number 
   return { total, seen }
 }
 
+/**
+ * Первая непросмотренная история автора (или первая, если всё просмотрено).
+ *
+ * Одно правило на все места, где историю открывают «с ходу»: кружок в шапке,
+ * список авторов в разделе «Истории» и третья ступень протяжки списка чатов.
+ */
+export function firstUnseenStoryId(group: StoryGroup): number {
+  const unseen = group.items.find((item) => !item.viewed)
+  return (unseen ?? group.items[0]).id
+}
+
+/**
+ * Что открывать при входе в истории без выбора автора: первая непросмотренная у
+ * первого автора, а если чужих историй нет — своя. ``null`` — играть нечего.
+ */
+export function firstStoryToOpen(others: StoryGroup[], mine: StoryGroup | null): number | null {
+  const group = others[0]
+  if (group && group.items.length) return firstUnseenStoryId(group)
+  return mine?.items[0]?.id ?? null
+}
+
+/** Сколько кружков историй влезает в шапку, когда середина свободна. */
+export const HEADER_STORIES_LIMIT = 6
+/** И сколько — когда середину занимает надпись (состояние связи, тихие часы). */
+export const HEADER_STORIES_LIMIT_WITH_NOTICE = 3
+
+/**
+ * Лимит кружков в шапке по надписи в её середине.
+ *
+ * Надпись о связи занимает пустое место между историями и кнопками: в этот
+ * момент кнопки и кружки делят ту же ширину, поэтому ряд историей короче.
+ */
+export function headerStoriesLimit(noticeVisible: boolean): number {
+  return noticeVisible ? HEADER_STORIES_LIMIT_WITH_NOTICE : HEADER_STORIES_LIMIT
+}
+
+/**
+ * Истории других людей, которые рисует СЖАТЫЙ ряд в шапке.
+ *
+ * ``limit`` считается вместе с кружком «Моя история» (он в ряду всегда первый),
+ * ``limit <= 0`` — без ограничения. Остальные истории не теряются: их
+ * показывает раскрытая полоса — там лимита нет.
+ */
+export function headerStoryGroups(others: StoryGroup[], limit: number): StoryGroup[] {
+  if (limit <= 0) return others
+  return others.slice(0, Math.max(0, limit - 1))
+}
+
 /** «5 мин», «3 ч», «2 дн» — сколько живёт история (для подписи под аватаркой). */
 export function formatStoryAge(createdAt: string, now: Date = new Date()): string {
   const created = parseServerTime(createdAt)

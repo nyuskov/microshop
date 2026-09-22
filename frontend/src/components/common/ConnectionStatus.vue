@@ -57,56 +57,17 @@
  * то же самое показывает подпись в открытом чате, поэтому два места не могут
  * разойтись.
  */
-import { computed } from 'vue'
-
-import { useOnlineStatus } from '@/composables/useOnlineStatus'
-import { useAuthStore } from '@/stores/auth'
-import { isQuietHoursNow } from '@/utils/quietHours'
+import { useConnectionNotice } from '@/composables/useConnectionNotice'
 import { icon } from '@/utils/icons'
 import { t } from '@/i18n'
 
-const { state, recheck } = useOnlineStatus()
-const authStore = useAuthStore()
-
-/** Текст состояния ('' — показывать нечего, связь в порядке).
- *
- * Коротко: место в шапке телефона — это пустой промежуток между значками (~125 px),
- * и длинная фраза «Связь восстановлена» в нём усекалась бы. Полный текст — в
- * подсказке (`title`). */
-const connectionText = computed(() => {
-  if (state.value === 'offline') return t('Нет сети')
-  if (state.value === 'connecting') return t('Соединение…')
-  if (state.value === 'restored') return t('Связь есть')
-  return ''
-})
-
-/** Вид значка: обрыв — перечёркнутая сеть, соединение — вращающаяся стрелка. */
-const iconName = computed(() => {
-  if (state.value === 'offline') return 'wifi_off'
-  if (state.value === 'connecting') return 'refresh'
-  return 'wifi'
-})
-
-const tone = computed(() => state.value)
-
-/** Без связи пилюлю можно нажать: проверить прямо сейчас, не ожидая маяка. */
-const interactive = computed(() => state.value === 'offline')
-
-const title = computed(() => {
-  if (state.value === 'offline') {
-    return t('Нет подключения к интернету. Нажмите, чтобы проверить связь')
-  }
-  if (state.value === 'connecting') return t('Соединение…')
-  return t('Связь восстановлена')
-})
-
 /**
- * Тихие часы — когда связь в порядке и сказать больше нечего.
- *
- * Считается от настроек профиля на момент отрисовки: окно тишины длинное (часы),
- * а значок — подсказка, а не будильник, поэтому отдельного таймера ему не нужно.
+ * «О чём говорить в середине шапки» живёт в общем композабле
+ * (`useConnectionNotice`): по тому же правилу шапка решает, сколько кружков
+ * историй показать рядом (см. `SidebarHeader.vue`), поэтому двух копий правила
+ * быть не должно — надпись и число кружков иначе разъедутся.
  */
-const quiet = computed(() => isQuietHoursNow(authStore.current_user?.profile))
+const { connectionText, iconName, tone, interactive, title, quiet, recheck } = useConnectionNotice()
 
 const onClick = () => {
   if (interactive.value) void recheck()

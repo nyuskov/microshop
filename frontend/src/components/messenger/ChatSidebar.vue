@@ -215,6 +215,8 @@ import { usePhoneImport } from '@/composables/usePhoneImport'
 import { useSlideDown } from '@/composables/useSlideDown'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import { useMobileLayer } from '@/composables/useMobileOverlay'
+import { useStoriesStore } from '@/stores/stories'
+import { firstStoryToOpen } from '@/utils/stories'
 
 /**
  * Панель результатов поиска и раздел «Контакты» нужны не при старте (вкладка
@@ -230,6 +232,12 @@ const ContactsPanel = defineAsyncComponent(() => import('@/components/messenger/
  */
 const slideDown = useSlideDown()
 const slideDownStories = useSlideDown()
+
+/**
+ * Истории нужны не только полосе, но и жесту: третья ступень протяжки открывает
+ * воспроизведение (см. `openStoriesPlayback`).
+ */
+const storiesStore = useStoriesStore()
 
 const props = defineProps<{
   view: 'chats' | 'contacts'
@@ -323,6 +331,21 @@ const setStoriesExpanded = (value: boolean) => {
 const toggleStoriesExpand = () => setStoriesExpanded(!storiesExpanded.value)
 
 /**
+ * Открывает воспроизведение историй — третья ступень протяжки вниз.
+ *
+ * Какую историю играть первой, решает `utils/stories.firstStoryToOpen`: то же
+ * правило выбирает историю при тапе по кружку в шапке, поэтому «первая» не может
+ * означать разное в двух местах.
+ */
+const openStoriesPlayback = () => {
+  const storyId = firstStoryToOpen(storiesStore.others, storiesStore.mine)
+  // Играть нечего (у друзей нет историй) — полоса остаётся раскрытой: человек
+  // видит, что открывать нечего, и жест не выглядит сломанным.
+  if (storyId === null) return
+  emit('open-story', storyId)
+}
+
+/**
  * Сжимает верхние панели на один шаг — в порядке, обратном раскрытию: сначала
  * истории (они раскрываются вторым шагом), потом поле поиска.
  *
@@ -378,7 +401,8 @@ const onChatsScroll = (el: HTMLElement) => {
 /**
  * Жесты по панели: протяжка вниз у самого верха списка раскрывает панели под
  * шапкой — как в Telegram, по шагам (первое движение открывает поле поиска,
- * следующее, уже сильнее, — полосу историй над ним); обратное движение
+ * следующее, уже сильнее, — полосу историй над ним, а третье, самое сильное,
+ * сразу открывает воспроизведение историй); обратное движение
  * (смахнуть вверх) так же по шагам их сжимает.
  *
  * Слушаем ВСЮ панель (`@touchstart`/`@touchmove` на `.side-panel`), а не только
@@ -390,6 +414,12 @@ const onChatsScroll = (el: HTMLElement) => {
 const PULL_EXPAND_PX = 48
 /** Порог для историй выше: они раскрываются вторым, более сильным движением. */
 const PULL_STORIES_PX = 96
+/**
+ * Третий шаг — воспроизведение историй: полоса уже раскрыта, человек тянет
+ * дальше. Порог выше порога раскрытия: шаги должны читаться по силе, иначе
+ * плеер открывался бы тем же движением, что и сама полоса.
+ */
+const PULL_PLAY_PX = 150
 /**
  * Порог обратного движения — «смахнуть вверх, чтобы убрать панели». Он ниже,
  * чем у протяжки вниз: это жест «убрать с дороги», он должен срабатывать легко.
@@ -447,7 +477,15 @@ const onPanelTouchMove = (event: TouchEvent) => {
     revealSearch()
     return
   }
-  if (storiesExpanded.value || distance < PULL_STORIES_PX) return
+  if (storiesExpanded.value) {
+    // Полоса уже раскрыта — третьим, самым сильным движением открываем
+    // воспроизведение: с этого места истории смотрят, а не разглядывают кружки.
+    if (distance < PULL_PLAY_PX) return
+    pullUsed = true
+    openStoriesPlayback()
+    return
+  }
+  if (distance < PULL_STORIES_PX) return
   pullUsed = true
   setStoriesExpanded(true)
 }
