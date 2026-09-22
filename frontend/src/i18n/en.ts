@@ -396,13 +396,8 @@ export const EN: Record<string, string> = {
 
   // --- Профиль: поля и разделы (views/UserProfile.vue) ---
   'Не выбрана': 'Not set',
-  Россия: 'Russia',
-  Беларусь: 'Belarus',
-  Казахстан: 'Kazakhstan',
-  США: 'USA',
-  Германия: 'Germany',
-  Испания: 'Spain',
-  Франция: 'France',
+  // Названия стран — не в каталоге: их собирает `utils/countries.ts`
+  // (`Intl.DisplayNames`), там же сокращения для США и Кореи.
   Аватар: 'Avatar',
   'Загрузка фото…': 'Uploading the photo…',
   'Ничего не нашлось — попробуйте другое слово.': 'Nothing found — try another word.',
@@ -1277,6 +1272,9 @@ export const EN: Record<string, string> = {
 
   // --- Удаление аккаунта и копия ключей ---
   'Удаление аккаунта': 'Deleting the account',
+  // Код-подтверждение удаления (`services/moderation.ts`): человек вводит его
+  // руками, а показывается он в подсказке и в плейсхолдере поля.
+  УДАЛИТЬ: 'DELETE',
   безвозвратно: 'permanently',
   'Пароль аккаунта': 'Account password',
   'Ключ шифрования': 'Encryption key',
@@ -1799,9 +1797,6 @@ export const EN: Record<string, string> = {
   реакций: 'reactions',
   'Поставить реакцию': 'Add a reaction',
   'Не удалось загрузить аудиторию': 'Could not load the audience',
-  чат: 'chat',
-  чата: 'chats',
-  чатов: 'chats',
   'Не удалось изменить mute чата:': 'Could not change the chat mute:',
   'Не удалось изменить тип чата:': 'Could not change the chat type:',
   'Ключ группы не удалось отдать участникам (нет ключа устройства):':

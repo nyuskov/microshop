@@ -42,7 +42,7 @@
         </div>
 
         <label class="mod-label gap-top" for="delete-account-confirm">
-          {{ t('Введите {code} для подтверждения', { code: DELETE_ACCOUNT_CONFIRM }) }}
+          {{ t('Введите {code} для подтверждения', { code: t(DELETE_ACCOUNT_CONFIRM) }) }}
         </label>
         <input
           id="delete-account-confirm"
@@ -50,7 +50,7 @@
           class="mod-input"
           type="text"
           autocomplete="off"
-          :placeholder="DELETE_ACCOUNT_CONFIRM"
+          :placeholder="t(DELETE_ACCOUNT_CONFIRM)"
         />
 
         <p v-if="error" class="mod-error" role="alert">{{ error }}</p>
@@ -95,7 +95,11 @@ const error = ref('')
 const showPassword = ref(false)
 
 const canDelete = computed(
-  () => password.value.length > 0 && confirm.value.trim() === DELETE_ACCOUNT_CONFIRM
+  () =>
+    password.value.length > 0 &&
+    // Код сверяется с переводом: в английском интерфейсе человек вводит
+    // 「DELETE」, в русском —「УДАЛИТЬ」 (роль регистра не играет).
+    confirm.value.trim().toUpperCase() === t(DELETE_ACCOUNT_CONFIRM).toUpperCase()
 )
 
 const submit = async () => {

@@ -4,11 +4,11 @@
       class="ms-overlay-card ms-overlay-card--sm"
       role="dialog"
       aria-modal="true"
-      :aria-label="t('Набор «{title}»', { title: set.title })"
+      :aria-label="t('Набор «{title}»', { title: t(set.title) })"
     >
       <div class="ms-overlay-head">
         <h2 class="ms-overlay-title">
-          <span class="sticker-set-name">{{ set.title }}</span>
+          <span class="sticker-set-name">{{ t(set.title) }}</span>
           <span class="sticker-set-count">{{
             t('{count} шт.', { count: set.images.length })
           }}</span>

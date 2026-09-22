@@ -50,7 +50,7 @@
 import { computed } from 'vue'
 
 import { icon } from '@/utils/icons'
-import { t } from '@/i18n'
+import { locale, t } from '@/i18n'
 import {
   browserLabel,
   deviceReport,
@@ -58,8 +58,18 @@ import {
   type DeviceSupportState
 } from '@/utils/browserSupport'
 
-const items = computed(() => deviceReport())
-const label = computed(() => browserLabel())
+// Тексты отчёта собирает `utils/browserSupport.ts` через `t()` — от языка они
+// не зависят реактивно. Читаем `locale` прямо здесь, чтобы computed пересобрался
+// при смене языка (иначе раздел «Устройство» оставался на старом языке до
+// перезагрузки).
+const items = computed(() => {
+  void locale.value
+  return deviceReport()
+})
+const label = computed(() => {
+  void locale.value
+  return browserLabel()
+})
 const summary = computed(() => supportSummary(items.value))
 
 const markOf = (state: DeviceSupportState): string => {

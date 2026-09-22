@@ -32,7 +32,7 @@
               "
               size="18px"
             />
-            <span>{{ option.label }}</span>
+            <span>{{ t(option.label) }}</span>
           </button>
         </div>
 
