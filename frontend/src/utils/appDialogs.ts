@@ -18,6 +18,7 @@
 import { Dialog } from 'quasar'
 
 import { pushMobileLayer } from '@/composables/useMobileOverlay'
+import { t } from '@/i18n'
 
 /** Общие поля любого окна: заголовок и текст вопроса. */
 interface BaseOptions {
@@ -59,13 +60,13 @@ export const confirmDialog = (options: ConfirmOptions): Promise<boolean> =>
       message: options.message,
       persistent: true,
       ok: {
-        label: options.okLabel ?? 'ОК',
+        label: options.okLabel ?? t('ОК'),
         color: options.danger ? 'negative' : 'primary',
         unelevated: true,
         noCaps: true
       },
       cancel: {
-        label: options.cancelLabel ?? 'Отмена',
+        label: options.cancelLabel ?? t('Отмена'),
         flat: true,
         noCaps: true
       }
@@ -105,7 +106,7 @@ export const alertDialog = (options: BaseOptions & { okLabel?: string }): Promis
       message: options.message,
       persistent: true,
       ok: {
-        label: options.okLabel ?? 'Понятно',
+        label: options.okLabel ?? t('Понятно'),
         color: 'primary',
         unelevated: true,
         noCaps: true
@@ -140,13 +141,13 @@ export const askTextDialog = (options: AskTextOptions): Promise<string | null> =
         isValid: (value: string) => (options.isValid ? options.isValid(value) : true)
       },
       ok: {
-        label: options.okLabel ?? 'ОК',
+        label: options.okLabel ?? t('ОК'),
         color: 'primary',
         unelevated: true,
         noCaps: true
       },
       cancel: {
-        label: options.cancelLabel ?? 'Отмена',
+        label: options.cancelLabel ?? t('Отмена'),
         flat: true,
         noCaps: true
       }

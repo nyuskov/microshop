@@ -1839,5 +1839,36 @@ export const EN: Record<string, string> = {
   спасибо: 'thanks',
   праздник: 'party',
   круто: 'cool',
-  П: 'P'
+  П: 'P',
+
+  // --- Кнопки окон по умолчанию (utils/appDialogs.ts) ---
+  ОК: 'OK',
+  Понятно: 'Got it',
+
+  // --- Поля даты (utils/dateInput.ts) ---
+  'Введите дату целиком: ДД.ММ.ГГГГ': 'Enter the full date: DD.MM.YYYY',
+  'Месяц — от 01 до 12': 'The month must be from 01 to 12',
+  'День — от 01 до 31': 'The day must be from 01 to 31',
+  'Такой даты не существует': 'That date does not exist',
+  'Дата рождения не может быть в будущем': 'The date of birth cannot be in the future',
+
+  // --- Распознавание на устройстве: ошибки (utils/localSpeech.ts) ---
+  '[stt] свой движок не поднялся, беру с CDN':
+    '[stt] the local engine did not start, falling back to the CDN',
+  'В браузере не хватило места для модели — освободите место и попробуйте снова':
+    'There was not enough space in the browser for the model — free up space and try again',
+  'Модель не поместилась в память устройства — попробуйте модель «быстрая»':
+    'The model did not fit in the device memory — try the “fast” model',
+  'Не удалось загрузить движок распознавания — проверьте подключение к интернету':
+    'Could not load the recognition engine — check your internet connection',
+  'Не удалось скачать модель — проверьте подключение к интернету и попробуйте снова':
+    'Could not download the model — check your internet connection and try again',
+  'Не удалось распознать запись на устройстве': 'Could not recognise the recording on the device',
+
+  // --- Тихие часы (utils/quietHours.ts) ---
+  'Выключено: уведомления приходят круглосуточно': 'Off: notifications come around the clock',
+  'Границы совпали — тишины не будет, уведомления приходят круглосуточно':
+    'The times are the same — there will be no quiet hours, notifications come around the clock',
+  'звонки разрешены': 'calls are allowed',
+  'звонки тоже не приходят': 'calls do not come through either'
 }

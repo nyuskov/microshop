@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Дата рождения в профиле: ввод и показ в виде ДД.ММ.ГГГГ.
  *
@@ -55,13 +56,13 @@ const MIN_YEAR = 1900
 export const validateBirthDate = (value: string, today: Date = new Date()): string | null => {
   const digits = dateDigits(value)
   if (!digits) return null
-  if (digits.length < 8) return 'Введите дату целиком: ДД.ММ.ГГГГ'
+  if (digits.length < 8) return t('Введите дату целиком: ДД.ММ.ГГГГ')
 
   const day = Number(digits.slice(0, 2))
   const month = Number(digits.slice(2, 4))
   const year = Number(digits.slice(4, 8))
-  if (month < 1 || month > 12) return 'Месяц — от 01 до 12'
-  if (day < 1 || day > 31) return 'День — от 01 до 31'
+  if (month < 1 || month > 12) return t('Месяц — от 01 до 12')
+  if (day < 1 || day > 31) return t('День — от 01 до 31')
   if (year < MIN_YEAR) return `Год не раньше ${MIN_YEAR}`
 
   // «Реальность» даты проверяем по календарю: 31.02 превратился бы в 2–3 марта,
@@ -69,7 +70,7 @@ export const validateBirthDate = (value: string, today: Date = new Date()): stri
   const date = new Date(year, month - 1, day)
   const real =
     date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
-  if (!real) return 'Такой даты не существует'
-  if (date.getTime() > today.getTime()) return 'Дата рождения не может быть в будущем'
+  if (!real) return t('Такой даты не существует')
+  if (date.getTime() > today.getTime()) return t('Дата рождения не может быть в будущем')
   return null
 }

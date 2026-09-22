@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Распознавание речи НА УСТРОЙСТВЕ моделью в браузере (Whisper в WebAssembly).
  *
@@ -215,7 +216,7 @@ const loadEngine = async (): Promise<LocalSpeechEngine> => {
         // Свои файлы могли не дойти — тогда всё берём с публичного CDN (и модели в
         // том числе), а не оставляем человека с отказом на ровном месте. Причину
         // пишем в консоль: по ней потом видно, что именно не отдал сервер.
-        console.warn('[stt] свой движок не поднялся, беру с CDN', error)
+        console.warn(t('[stt] свой движок не поднялся, беру с CDN'), error)
         ownAssets = null
       }
     }
@@ -451,16 +452,16 @@ export async function transcribeWithLocalSpeech(
 export const describeLocalSpeechError = (thrown: unknown): string => {
   const text = thrown instanceof Error ? thrown.message : String(thrown ?? '')
   if (/quota|storage/i.test(text)) {
-    return 'В браузере не хватило места для модели — освободите место и попробуйте снова'
+    return t('В браузере не хватило места для модели — освободите место и попробуйте снова')
   }
   if (/memory|allocation|array buffer|out of/i.test(text)) {
-    return 'Модель не поместилась в память устройства — попробуйте модель «быстрая»'
+    return t('Модель не поместилась в память устройства — попробуйте модель «быстрая»')
   }
   if (/dynamically imported module|import|module/i.test(text)) {
-    return 'Не удалось загрузить движок распознавания — проверьте подключение к интернету'
+    return t('Не удалось загрузить движок распознавания — проверьте подключение к интернету')
   }
   if (/fetch|network|load|connect|abort/i.test(text)) {
-    return 'Не удалось скачать модель — проверьте подключение к интернету и попробуйте снова'
+    return t('Не удалось скачать модель — проверьте подключение к интернету и попробуйте снова')
   }
-  return text || 'Не удалось распознать запись на устройстве'
+  return text || t('Не удалось распознать запись на устройстве')
 }

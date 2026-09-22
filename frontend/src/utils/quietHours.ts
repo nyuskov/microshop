@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Тихие часы в профиле: варианты времени, подпись и сдвиг часового пояса.
  *
@@ -57,13 +58,13 @@ export const quietHoursSummary = (options: {
   end: number
   allowCalls: boolean
 }): string => {
-  if (!options.enabled) return 'Выключено: уведомления приходят круглосуточно'
+  if (!options.enabled) return t('Выключено: уведомления приходят круглосуточно')
   if (isEmptyWindow(options.start, options.end)) {
-    return 'Границы совпали — тишины не будет, уведомления приходят круглосуточно'
+    return t('Границы совпали — тишины не будет, уведомления приходят круглосуточно')
   }
   const window = `с ${formatMinutes(options.start)} до ${formatMinutes(options.end)}`
-  const night = crossesMidnight(options.start, options.end) ? ' (через ночь)' : ''
-  const calls = options.allowCalls ? 'звонки разрешены' : 'звонки тоже не приходят'
+  const night = crossesMidnight(options.start, options.end) ? t(' (через ночь)') : ''
+  const calls = options.allowCalls ? t('звонки разрешены') : t('звонки тоже не приходят')
   return `Не беспокоить ${window}${night}; ${calls}`
 }
 
