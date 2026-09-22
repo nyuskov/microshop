@@ -20,6 +20,7 @@ from api_v1.chats.crud import (
 )
 from api_v1.events.service import notify_chat, notify_chat_read_elsewhere, notify_user
 from api_v1.moderation import crud as moderation_crud
+from core.i18n import t
 from core.message_visibility import message_visibility_filter
 from core.models import (
     Chat,
@@ -309,14 +310,14 @@ async def _reload_and_serialize(
     if message is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Не удалось загрузить сообщение",
+            detail=t("Не удалось загрузить сообщение"),
         )
     session.expire(message)
     message = await _load_message(session, message_id)
     if message is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Не удалось загрузить сообщение",
+            detail=t("Не удалось загрузить сообщение"),
         )
     return message_to_dict(message, user_id)
 
@@ -329,7 +330,7 @@ async def _ensure_chat_member_or_404(
     if chat is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Чат не найден",
+            detail=t("Чат не найден"),
         )
     if not await is_user_chat_member(session, chat_id=chat_id, user_id=user_id):
         raise HTTPException(
@@ -382,7 +383,7 @@ async def _get_member_message(
     if message is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Сообщение не найдено",
+            detail=t("Сообщение не найдено"),
         )
     await _ensure_chat_member_or_404(session, chat_id=message.chat_id, user_id=user_id)
     return message
@@ -523,7 +524,9 @@ async def send_attachment_message(
     if encrypted and not chat_e2ee:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Зашифрованное вложение можно отправить только в зашифрованный чат",
+            detail=t(
+                "Зашифрованное вложение можно отправить только в зашифрованный чат"
+            ),
         )
     if not chat_e2ee:
         encrypted = False
@@ -571,7 +574,7 @@ async def _validate_reply(
     if target is None or target.chat_id != chat_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Нельзя ответить на это сообщение",
+            detail=t("Нельзя ответить на это сообщение"),
         )
 
 
@@ -591,22 +594,22 @@ async def _validate_story_reply(
     if story is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="История не найдена",
+            detail=t("История не найдена"),
         )
     if story.expires_at <= datetime.now(timezone.utc):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="История больше не доступна",
+            detail=t("История больше не доступна"),
         )
     if story.user_id == user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Это ваша история",
+            detail=t("Это ваша история"),
         )
     if not await is_user_chat_member(session, chat_id=chat_id, user_id=story.user_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ответ на историю отправляется автору в личный чат",
+            detail=t("Ответ на историю отправляется автору в личный чат"),
         )
     return story
 
@@ -822,7 +825,7 @@ async def delete_message(
     if message.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Удалить для всех можно только своё сообщение",
+            detail=t("Удалить для всех можно только своё сообщение"),
         )
 
     file_path = _resolve_media_file(message.file_url)
@@ -952,12 +955,12 @@ async def edit_message_text(
     if message.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Редактировать можно только своё сообщение",
+            detail=t("Редактировать можно только своё сообщение"),
         )
     if message.encrypted:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Зашифрованные сообщения нельзя редактировать",
+            detail=t("Зашифрованные сообщения нельзя редактировать"),
         )
 
     message.text = text
@@ -993,7 +996,7 @@ async def forward_message(
     if source is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Сообщение не найдено",
+            detail=t("Сообщение не найдено"),
         )
     # Отправитель должен состоять и в исходном, и в целевом чате.
     await _ensure_chat_member_or_404(session, chat_id=source.chat_id, user_id=user_id)
@@ -1008,19 +1011,19 @@ async def forward_message(
     if source.hidden_at is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Сообщение скрыто до проверки модератором — пересылка недоступна",
+            detail=t("Сообщение скрыто до проверки модератором — пересылка недоступна"),
         )
     # «Сгорающие» вложения не пересылаем: иначе одноразовость обходится одной
     # пересылкой — копия уехала бы в другой чат и осталась там навсегда.
     if source.view_once:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Одноразовое вложение переслать нельзя",
+            detail=t("Одноразовое вложение переслать нельзя"),
         )
     if source.encrypted:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Зашифрованные сообщения нельзя пересылать",
+            detail=t("Зашифрованные сообщения нельзя пересылать"),
         )
 
     # Снимок автора оригинала для плашки «Переслано от …».
@@ -1213,12 +1216,12 @@ async def create_scheduled_message(
     if send_at_naive < now + MIN_SCHEDULE_AHEAD:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Время отправки должно быть в будущем",
+            detail=t("Время отправки должно быть в будущем"),
         )
     if send_at_naive > now + MAX_SCHEDULE_AHEAD:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Отложить можно не дальше чем на 30 дней",
+            detail=t("Отложить можно не дальше чем на 30 дней"),
         )
 
     message = ScheduledMessage(
@@ -1257,7 +1260,7 @@ async def cancel_scheduled_message(
     if message is None or message.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Отложенное сообщение не найдено",
+            detail=t("Отложенное сообщение не найдено"),
         )
     await session.delete(message)
     await session.commit()
@@ -1335,7 +1338,7 @@ async def create_message_reminder(
     if message is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Сообщение не найдено",
+            detail=t("Сообщение не найдено"),
         )
     await _ensure_chat_member_or_404(session, chat_id=message.chat_id, user_id=user_id)
 
@@ -1345,12 +1348,12 @@ async def create_message_reminder(
     if remind_at_naive < now + MIN_REMIND_AHEAD:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Время напоминания должно быть в будущем",
+            detail=t("Время напоминания должно быть в будущем"),
         )
     if remind_at_naive > now + MAX_REMIND_AHEAD:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Напомнить можно не дальше чем через год",
+            detail=t("Напомнить можно не дальше чем через год"),
         )
 
     existing = await session.scalar(
@@ -1400,7 +1403,7 @@ async def cancel_message_reminder(
     if reminder is None or reminder.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Напоминание не найдено",
+            detail=t("Напоминание не найдено"),
         )
     await session.delete(reminder)
     await session.commit()

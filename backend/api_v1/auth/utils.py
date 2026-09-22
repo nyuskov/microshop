@@ -8,10 +8,12 @@ from typing import Annotated
 import jwt
 from fastapi import Depends, HTTPException, Request, WebSocket, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
-from core.models import db_helper
+from core.i18n import locale_is_explicit, set_locale, t
+from core.models import Profile, db_helper
 from core.models.user import User
 from core.security import verify_password
 
@@ -172,7 +174,7 @@ async def get_current_user(
     """Возвращает текущего пользователя из токена."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Не удалось проверить учётные данные",
+        detail=t("Не удалось проверить учётные данные"),
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
@@ -205,6 +207,14 @@ async def get_current_user(
     if problem is not None:
         raise session_revoked_error()
 
+    # Язык серверных текстов (ошибки, журнал, push) — из профиля. Если клиент
+    # уже прислал язык заголовком (`X-Locale`), в БД не ходим: обычно так и есть.
+    if not locale_is_explicit():
+        language = await session.scalar(
+            select(Profile.language).where(Profile.user_id == user.id)
+        )
+        set_locale(language)
+
     # ВАЖНО: здесь НЕ обновляем last_seen и не делаем commit — иначе любой
     # read-only запрос писал бы в БД. Присутствие обновляется точечно там, где
     # это дёшево (см. touch_last_seen в GET /chats/).
@@ -223,7 +233,7 @@ async def get_current_superuser(
     if not user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Недостаточно прав",
+            detail=t("Недостаточно прав"),
         )
     return user
 
@@ -240,7 +250,7 @@ async def get_current_admin(
     if not (user.is_admin or user.is_superuser):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Недостаточно прав",
+            detail=t("Недостаточно прав"),
         )
     return user
 

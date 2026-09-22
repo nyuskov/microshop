@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api_v1.auth.utils import get_current_superuser, get_current_user
 from api_v1.chats.crud import is_user_chat_member
 from core.config import settings
+from core.i18n import t
 from core.media_crypto import read_file
 from core.media_quota import enforce_media_quota
 from core.media_store import MEDIA_DIR, store_media
@@ -67,7 +68,7 @@ async def _owned_pack(
     )
     if pack is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Набор не найден"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Набор не найден")
         )
     return pack
 
@@ -106,7 +107,10 @@ async def _store_sticker(
     if await crud.count_stickers(session, pack_id=pack.id) >= MAX_STICKERS_PER_PACK:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"В наборе уже {MAX_STICKERS_PER_PACK} стикеров — создайте новый",
+            detail=t(
+                "В наборе уже {max} стикеров — создайте новый",
+                max=MAX_STICKERS_PER_PACK,
+            ),
         )
     fitted = fit_sticker(content)
     if fitted is None:
@@ -175,12 +179,15 @@ async def copy_preset(
     source = await crud.get_pack_any(session, pack_id=pack_id)
     if source is None or not source.is_preset:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Набор не найден"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Набор не найден")
         )
     if await crud.count_packs(session, owner_id=user.id) >= MAX_STICKER_PACKS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Больше {MAX_STICKER_PACKS} наборов не помещается — удалите лишний",
+            detail=t(
+                "Больше {max} наборов не помещается — удалите лишний",
+                max=MAX_STICKER_PACKS,
+            ),
         )
     # Повторное добавление — не ошибка, но и дубль не нужен: говорим прямо, что
     # набор уже есть (панель после этого покажет его у человека).
@@ -188,7 +195,7 @@ async def copy_preset(
         if pack.title == source.title:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Такой набор уже добавлен",
+                detail=t("Такой набор уже добавлен"),
             )
     pack = await crud.copy_pack(
         session, source=source, owner_id=user.id, title=source.title
@@ -208,7 +215,10 @@ async def create_pack(
     if await crud.count_packs(session, owner_id=user.id) >= MAX_STICKER_PACKS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Больше {MAX_STICKER_PACKS} наборов не помещается — удалите лишний",
+            detail=t(
+                "Больше {max} наборов не помещается — удалите лишний",
+                max=MAX_STICKER_PACKS,
+            ),
         )
     title = normalize_pack_title(payload.title)[:MAX_PACK_TITLE]
     pack = await crud.create_pack(
@@ -232,7 +242,7 @@ async def update_pack_preset(
     pack = await crud.get_pack_any(session, pack_id=pack_id)
     if pack is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Набор не найден"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Набор не найден")
         )
     pack = await crud.set_preset(session, pack=pack, is_preset=payload.is_preset)
     return StickerPackOut.model_validate(pack)
@@ -289,23 +299,26 @@ async def upload_sticker(
         value=str(user.id),
         limit=UPLOAD_LIMIT_PER_MINUTE,
         window_seconds=60,
-        detail="Слишком много загрузок. Попробуйте позже.",
+        detail=t("Слишком много загрузок. Попробуйте позже."),
     )
     content = await request.body()
     if not content:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Пустой файл"
+            status_code=status.HTTP_400_BAD_REQUEST, detail=t("Пустой файл")
         )
     if len(content) > MAX_STICKER_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Стикер слишком большой (максимум {MAX_STICKER_BYTES // 1024} КБ)",
+            detail=t(
+                "Стикер слишком большой (максимум {kb} КБ)",
+                kb=MAX_STICKER_BYTES // 1024,
+            ),
         )
     ext = normalize_ext(filename)
     if ext not in STICKER_MIME:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Стикер — это PNG, WebP или GIF",
+            detail=t("Стикер — это PNG, WebP или GIF"),
         )
     validate_image_upload(f"sticker.{ext}", content)
     return await _store_sticker(
@@ -324,7 +337,7 @@ async def update_sticker(
     sticker = await crud.get_sticker(session, owner_id=user.id, sticker_id=sticker_id)
     if sticker is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Стикер не найден"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Стикер не найден")
         )
     if payload.pack_id is not None:
         await _owned_pack(session, owner_id=user.id, pack_id=payload.pack_id)
@@ -342,7 +355,7 @@ async def delete_sticker(
     sticker = await crud.get_sticker(session, owner_id=user.id, sticker_id=sticker_id)
     if sticker is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Стикер не найден"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Стикер не найден")
         )
     await crud.delete_sticker(session, sticker=sticker)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -365,16 +378,16 @@ async def sticker_from_message(
     message = await session.get(Message, payload.message_id)
     if message is None or message.hidden_at is not None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Сообщение не найдено"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Сообщение не найдено")
         )
     if not await is_user_chat_member(session, chat_id=message.chat_id, user_id=user.id):
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Сообщение не найдено"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Сообщение не найдено")
         )
     if not message.file_url or not (message.mime_type or "").startswith("image/"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="В этом сообщении нет картинки",
+            detail=t("В этом сообщении нет картинки"),
         )
     if message.encrypted:
         raise HTTPException(
@@ -387,7 +400,7 @@ async def sticker_from_message(
     path = MEDIA_DIR / Path(message.file_url).name
     if not path.is_file():
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Файл не найден"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Файл не найден")
         )
     pack = (
         await _owned_pack(

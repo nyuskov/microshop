@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api_v1.auth.utils import get_current_user
 from api_v1.chats import crud, schemas
 from api_v1.events.service import notify_chat, notify_user
+from core.i18n import t
 from core.models import Chat, ChatInvite, User, db_helper, user_chat_association_table
 from core.models.associations import ROLE_CREATOR
 
@@ -79,13 +80,13 @@ async def _ensure_group_can_invite(
     if chat is None or not chat.is_group:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Группа не найдена",
+            detail=t("Группа не найдена"),
         )
     role = await crud.get_member_role(session=session, chat_id=chat_id, user_id=user_id)
     if role not in ("creator", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Приглашать по ссылке могут создатель и админы",
+            detail=t("Приглашать по ссылке могут создатель и админы"),
         )
     return chat
 
@@ -112,7 +113,7 @@ async def _find_invite(session: AsyncSession, token: str) -> ChatInvite:
     if invite is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Ссылка не найдена — возможно, её отозвали",
+            detail=t("Ссылка не найдена — возможно, её отозвали"),
         )
     return invite
 
@@ -122,7 +123,7 @@ def _ensure_invite_active(invite: ChatInvite) -> None:
     if not _is_active(invite, _now()):
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
-            detail="Ссылка больше не действует — попросите новую",
+            detail=t("Ссылка больше не действует — попросите новую"),
         )
 
 
@@ -211,7 +212,7 @@ async def revoke_group_invite(
     if invite is None or invite.chat_id != chat_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Ссылка не найдена",
+            detail=t("Ссылка не найдена"),
         )
     invite.revoked = True
     await session.commit()
@@ -229,7 +230,7 @@ async def preview_group_invite(
     if chat is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Группа больше не существует",
+            detail=t("Группа больше не существует"),
         )
     is_member = await crud.is_user_chat_member(session, chat.id, user.id)
     # Уже в группе — показываем карточку независимо от состояния ссылки: человеку
@@ -260,7 +261,7 @@ async def join_group_by_invite(
     if chat is None or not chat.is_group:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Группа больше не существует",
+            detail=t("Группа больше не существует"),
         )
     if chat.e2ee_enabled:
         # Ключ группы выдаёт клиент существующего участника (обёртка в
@@ -282,7 +283,7 @@ async def join_group_by_invite(
     if await crud.is_chat_banned(session, chat_id=chat.id, user_id=user.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Вы забанены в этой группе",
+            detail=t("Вы забанены в этой группе"),
         )
 
     # Для нового участника ссылка обязана быть действующей.
@@ -302,7 +303,7 @@ async def join_group_by_invite(
         await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
-            detail="Ссылка больше не действует — попросите новую",
+            detail=t("Ссылка больше не действует — попросите новую"),
         )
 
     added = await crud.add_group_members(

@@ -16,6 +16,7 @@ from api_v1.health.views import router as health_router
 from api_v1.media.views import router as media_router
 from core import maintenance
 from core.config import settings
+from core.i18n import set_locale_from_client
 
 logger = logging.getLogger("pismo")
 
@@ -57,6 +58,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def request_locale(request: Request, call_next):
+    """Запоминает язык запроса — из заголовка клиента.
+
+    Приложение берёт язык ТОЛЬКО из профиля и присылает его заголовком
+    `X-Locale`; тогда серверным текстам (ошибки, журнал, push) не нужен лишний
+    запрос в БД. `Accept-Language` читаем как запасной вариант — так язык
+    работает и для запросов без нашего заголовка (curl, сторонний клиент).
+
+    Если заголовков нет вовсе, язык остаётся русским до `get_current_user`,
+    который для авторизованного запроса возьмёт его из профиля.
+    """
+    header = request.headers.get("X-Locale")
+    if not set_locale_from_client(header):
+        set_locale_from_client(
+            (request.headers.get("Accept-Language") or "").split(",")[0]
+        )
+    return await call_next(request)
 
 
 @app.middleware("http")

@@ -26,6 +26,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.i18n import t
 from core.models import (
     Chat,
     ChatDeviceKey,
@@ -112,7 +113,7 @@ async def put_my_key(
             session,
             event="e2ee_key_changed",
             user_id=user.id,
-            detail="публичный ключ шифрования устройства заменён",
+            detail=t("публичный ключ шифрования устройства заменён"),
         )
         await security_notifications.notify_security_event(
             session,
@@ -214,7 +215,7 @@ async def _ensure_member(session: AsyncSession, *, chat_id: int, user_id: int) -
     if member_id is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Чат не найден",
+            detail=t("Чат не найден"),
         )
 
 
@@ -224,12 +225,12 @@ async def _ensure_group_e2ee_chat(session: AsyncSession, chat_id: int) -> None:
     if chat is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Чат не найден",
+            detail=t("Чат не найден"),
         )
     if not chat.is_group or not chat.e2ee_enabled:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ключ группы доступен только для зашифрованных групп",
+            detail=t("Ключ группы доступен только для зашифрованных групп"),
         )
 
 
@@ -283,7 +284,7 @@ async def put_group_keys(
     if not target_ids <= member_ids:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Можно раздать ключ только участникам чата",
+            detail=t("Можно раздать ключ только участникам чата"),
         )
 
     if payload.replace:
@@ -409,7 +410,7 @@ async def put_chat_device_keys(
     if not member_ids or not target_ids <= member_ids:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Можно раздать ключ только участникам чата",
+            detail=t("Можно раздать ключ только участникам чата"),
         )
 
     # Устройства получателей: (user_id, device_id) — по ним и пишем обёртки.
@@ -460,7 +461,7 @@ async def put_chat_device_keys(
     if stored == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ни одно из устройств получателей не зарегистрировано",
+            detail=t("Ни одно из устройств получателей не зарегистрировано"),
         )
 
     await session.commit()

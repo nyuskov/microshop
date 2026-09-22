@@ -31,6 +31,7 @@ from api_v1.auth.utils import (
 from api_v1.users.crud import get_user_by_id
 from api_v1.users.schemas import UserUpdateWithProfileSchema, UserWithDetailsSchema
 from core.config import settings
+from core.i18n import locale_of_user, t
 from core.models import Profile, User, db_helper
 
 from . import audit
@@ -186,7 +187,7 @@ async def update_me(
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не найден",
+            detail=t("Пользователь не найден"),
         )
 
     user_data = user_update.model_dump(exclude_unset=True, exclude={"profile"})
@@ -217,7 +218,7 @@ async def update_me(
             event="email_changed",
             user_id=user.id,
             request=request,
-            detail=f"адрес изменён на {new_email or 'удалён'}",
+            detail=t("адрес изменён на {value}", value=new_email or t("удалён")),
         )
 
     if email_changed and old_email and old_email_verified:
@@ -232,7 +233,9 @@ async def update_me(
             request=request,
             recipient=old_email,
             details=email_changed_message(
-                old_email, str(user.email) if user.email else None
+                old_email,
+                str(user.email) if user.email else None,
+                await locale_of_user(session, user.id),
             ),
         )
 
@@ -258,7 +261,7 @@ async def refresh_access_token(
     """
     unauthorized = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Недействительный refresh-токен",
+        detail=t("Недействительный refresh-токен"),
         headers={"WWW-Authenticate": "Bearer"},
     )
     auth_header = request.headers.get("Authorization", "")

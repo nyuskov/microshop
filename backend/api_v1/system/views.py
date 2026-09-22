@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_superuser, request_from_admin
 from core import maintenance
+from core.i18n import t
 from core.models import User, db_helper
 from core.rate_limit import client_ip, enforce_limit
 
@@ -116,7 +117,7 @@ async def maintenance_status(
         value=client_ip(request),
         limit=STATUS_LIMIT_PER_MINUTE,
         window_seconds=60,
-        detail="Слишком много запросов. Попробуйте позже.",
+        detail=t("Слишком много запросов. Попробуйте позже."),
     )
     state = await maintenance.read_state(session)
     response = _to_response(state)

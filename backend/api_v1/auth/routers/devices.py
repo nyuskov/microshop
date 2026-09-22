@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
+from core.i18n import t
 from core.models import TelegramBindLink, User, db_helper
 
 from ...users.crud import get_user_by_id
@@ -42,7 +43,7 @@ async def verify_device_login(
     except DeviceChallengeError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Подтверждение входа недействительно. Войдите заново.",
+            detail=t("Подтверждение входа недействительно. Войдите заново."),
         ) from exc
 
     info = device_info(request)
@@ -50,21 +51,21 @@ async def verify_device_login(
         logger.warning("Challenge устройства использован не с того устройства")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Подтверждение входа недействительно. Войдите заново.",
+            detail=t("Подтверждение входа недействительно. Войдите заново."),
         )
 
     user = await get_user_by_id(session, user_id)
     if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Подтверждение входа недействительно. Войдите заново.",
+            detail=t("Подтверждение входа недействительно. Войдите заново."),
         )
 
     address = str(user.email or "")
     if not address:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Подтверждение входа недействительно. Войдите заново.",
+            detail=t("Подтверждение входа недействительно. Войдите заново."),
         )
 
     await _consume_email_code(session, request, email=address, code=request_data.code)
@@ -76,7 +77,7 @@ async def verify_device_login(
         event="device_verified",
         user_id=user.id,
         request=request,
-        detail="вход с нового устройства подтверждён кодом из письма",
+        detail=t("вход с нового устройства подтверждён кодом из письма"),
     )
     logger.info("Пользователь %s подтвердил вход с нового устройства", user.id)
 

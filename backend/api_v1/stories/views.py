@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user
 from core.config import settings
+from core.i18n import t
 from core.media_quota import enforce_media_quota
 from core.media_store import store_media
 from core.models import User, db_helper
@@ -78,18 +79,18 @@ async def create_story(
         value=str(user.id),
         limit=settings.story_publish_limit_per_minute,
         window_seconds=60,
-        detail="Слишком много новых историй за минуту. Попробуйте позже.",
+        detail=t("Слишком много новых историй за минуту. Попробуйте позже."),
     )
     content = await request.body()
     if not content:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Пустой файл",
+            detail=t("Пустой файл"),
         )
     if len(content) > MAX_UPLOAD_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Файл слишком большой (максимум {MAX_UPLOAD_MB} МБ)",
+            detail=t("Файл слишком большой (максимум {mb} МБ)", mb=MAX_UPLOAD_MB),
         )
     validate_attachment_upload(filename, content)
     # История — это фото или видео. Документ/аудио в ленте выглядели бы как
@@ -98,7 +99,7 @@ async def create_story(
     if ext not in (SAFE_IMAGE_EXTS | SAFE_MEDIA_EXTS):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="История может быть фото или видео",
+            detail=t("История может быть фото или видео"),
         )
     suffix = _suffix_of(filename)
     if ext in SAFE_MEDIA_EXTS:
@@ -160,7 +161,7 @@ async def react_to_story(
     if not is_allowed_reaction(payload.emoji):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Такой реакции нет в наборе",
+            detail=t("Такой реакции нет в наборе"),
         )
 
     # Каждый тап — запись в БД: без лимита реакции можно молотить скриптом.
@@ -169,18 +170,18 @@ async def react_to_story(
         value=str(user.id),
         limit=settings.story_react_limit_per_minute,
         window_seconds=60,
-        detail="Слишком много реакций за минуту. Попробуйте позже.",
+        detail=t("Слишком много реакций за минуту. Попробуйте позже."),
     )
 
     story = await crud.get_active_story(session, story_id)
     if story is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="История не найдена"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("История не найдена")
         )
     if story.user_id == user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="На свою историю реагировать нельзя",
+            detail=t("На свою историю реагировать нельзя"),
         )
 
     added = await crud.toggle_reaction(
@@ -208,12 +209,12 @@ async def view_story(
         value=str(user.id),
         limit=settings.story_view_limit_per_minute,
         window_seconds=60,
-        detail="Слишком много просмотров за минуту. Попробуйте позже.",
+        detail=t("Слишком много просмотров за минуту. Попробуйте позже."),
     )
     story = await crud.get_story(session, story_id)
     if story is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="История не найдена"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("История не найдена")
         )
     if story.user_id != user.id:
         await crud.mark_viewed(session, story_id=story_id, viewer_id=user.id)
@@ -236,12 +237,12 @@ async def story_audience(
     story = await crud.get_story(session, story_id)
     if story is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="История не найдена"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("История не найдена")
         )
     if story.user_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Аудитория видна только автору истории",
+            detail=t("Аудитория видна только автору истории"),
         )
     return await crud.audience(session, story=story)
 
@@ -257,7 +258,7 @@ async def delete_story(
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="История не найдена или не ваша",
+            detail=t("История не найдена или не ваша"),
         )
     await session.commit()
 

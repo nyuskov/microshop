@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import mailer
+from core.i18n import t
 from core.models import User, db_helper
 from core.rate_limit import client_ip
 from core.security import verify_password
@@ -84,16 +85,16 @@ async def revoke_one_session(
     if not revoked:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Вход не найден (возможно, уже завершён).",
+            detail=t("Вход не найден (возможно, уже завершён)."),
         )
     logger.info("Пользователь %s отозвал сессию %s", user.id, session_id)
     await audit.log_security_event(
         session,
         event="session_revoked",
         user_id=user.id,
-        detail=f"завершён вход с устройства (сессия #{session_id})",
+        detail=t("завершён вход с устройства (сессия #{id})", id=session_id),
     )
-    return SessionRevokeResponse(detail="Устройство вышло из аккаунта.")
+    return SessionRevokeResponse(detail=t("Устройство вышло из аккаунта."))
 
 
 @router.get("/security-log/", response_model=SecurityLogResponse)
@@ -149,18 +150,18 @@ async def revoke_sessions(
         event="sessions_revoked",
         user_id=user.id,
         request=request,
-        detail="выход на всех устройствах",
+        detail=t("выход на всех устройствах"),
     )
 
     if own_jti is not None:
         renewed = await rotate_refresh_token(session, jti=own_jti, user_id=user.id)
         if renewed is not None:
             return PasswordSetResponse(
-                detail="Остальные устройства вышли из аккаунта.",
+                detail=t("Остальные устройства вышли из аккаунта."),
                 access_token=await get_jwt_strategy().write_token(user),
                 refresh_token=renewed,
             )
-    return PasswordSetResponse(detail="Вы вышли на всех устройствах.")
+    return PasswordSetResponse(detail=t("Вы вышли на всех устройствах."))
 
 
 @router.post("/logout/", status_code=204)
@@ -181,7 +182,7 @@ async def logout(
                 event="session_revoked",
                 user_id=user_id,
                 request=request,
-                detail="выход из приложения на этом устройстве",
+                detail=t("выход из приложения на этом устройстве"),
             )
 
 
@@ -207,7 +208,7 @@ async def freeze_account(
         if not verify_password(password, user.hashed_password):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Неверный пароль.",
+                detail=t("Неверный пароль."),
             )
     await _enforce_ip_limit(request, scope="auth:freeze", limit=10)
 
@@ -248,11 +249,11 @@ async def security_panic(
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Ссылка тревоги недействительна.",
+            detail=t("Ссылка тревоги недействительна."),
         )
     if token_epoch != int(user.token_epoch or 0):
         return PanicResponse(
-            detail="Сессии уже завершены.",
+            detail=t("Сессии уже завершены."),
             revoked=True,
             frozen=not user.is_active,
         )

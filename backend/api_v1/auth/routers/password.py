@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import passwords
 from core.config import settings
+from core.i18n import t
 from core.models import User, db_helper
 from core.rate_limit import client_ip
 from core.security import get_password_hash, verify_password
@@ -77,11 +78,14 @@ async def login_for_access_token(
             event="login_failed",
             user_id=None,
             request=request,
-            detail=f"неверные учётные данные (логин/номер: {form_data.username[:40]})",
+            detail=t(
+                "неверные учётные данные (логин/номер: {login})",
+                login=form_data.username[:40],
+            ),
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверное имя пользователя или пароль",
+            detail=t("Неверное имя пользователя или пароль"),
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -111,7 +115,7 @@ async def password_status(
     if not validate_phone_number_format(phone_number):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Неверный формат номера телефона.",
+            detail=t("Неверный формат номера телефона."),
         )
     user = await get_user_by_phone_number(session, phone_number)
     email_channel = views.email_otp_available()
@@ -144,7 +148,7 @@ async def register_with_password(
     if not validate_phone_number_format(phone_number):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Неверный формат номера телефона.",
+            detail=t("Неверный формат номера телефона."),
         )
     password = _validate_new_password(request_data.password, phone_number=phone_number)
 
@@ -152,13 +156,13 @@ async def register_with_password(
     if user is not None and user.password_set:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="У этого номера уже есть пароль. Войдите с ним.",
+            detail=t("У этого номера уже есть пароль. Войдите с ним."),
         )
 
     if user is None and not settings.registration_enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Регистрация новых пользователей временно отключена.",
+            detail=t("Регистрация новых пользователей временно отключена."),
         )
 
     hashed = get_password_hash(password)
@@ -208,7 +212,7 @@ async def password_login(
     if not validate_phone_number_format(phone_number):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Неверный формат номера телефона.",
+            detail=t("Неверный формат номера телефона."),
         )
 
     locked_for = await lockout_seconds(session, identifier=phone_number)
@@ -218,7 +222,7 @@ async def password_login(
             event="login_locked",
             user_id=None,
             request=request,
-            detail=f"блокировка перебора активна ещё {locked_for} с",
+            detail=t("блокировка перебора активна ещё {seconds} с", seconds=locked_for),
         )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -238,11 +242,11 @@ async def password_login(
             event="login_failed",
             user_id=failed_owner.id if failed_owner is not None else None,
             request=request,
-            detail="вход по паролю: неверный номер или пароль",
+            detail=t("вход по паролю: неверный номер или пароль"),
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверный номер или пароль.",
+            detail=t("Неверный номер или пароль."),
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -268,7 +272,7 @@ async def password_login(
         event="login_success",
         user_id=user.id,
         request=request,
-        detail="вход по паролю",
+        detail=t("вход по паролю"),
     )
     access_token = await get_jwt_strategy().write_token(user)
     return TokenResponse(
@@ -301,7 +305,7 @@ async def set_password(
         if not verify_password(current, user.hashed_password):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Текущий пароль указан неверно.",
+                detail=t("Текущий пароль указан неверно."),
             )
 
     user.hashed_password = get_password_hash(password)
@@ -326,7 +330,7 @@ async def set_password(
         event="password_changed",
         user_id=user.id,
         request=request,
-        detail="пароль изменён, старые сессии отозваны",
+        detail=t("пароль изменён, старые сессии отозваны"),
     )
 
     access_token = await get_jwt_strategy().write_token(user)
@@ -334,7 +338,7 @@ async def set_password(
         session, user_id=user.id, device=device_info(request)
     )
     return PasswordSetResponse(
-        detail="Пароль успешно сохранён.",
+        detail=t("Пароль успешно сохранён."),
         access_token=access_token,
         refresh_token=new_refresh,
     )
@@ -351,7 +355,7 @@ async def request_password_reset(
     if not views.email_otp_available():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Восстановление по e-mail не настроено на сервере.",
+            detail=t("Восстановление по e-mail не настроено на сервере."),
         )
 
     address = email_codes.normalize_email(str(request_data.email))
@@ -361,7 +365,9 @@ async def request_password_reset(
     ):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Код уже отправлен. Повторите через {cooldown} секунд.",
+            detail=t(
+                "Код уже отправлен. Повторите через {seconds} секунд.", seconds=cooldown
+            ),
             headers={"Retry-After": str(cooldown)},
         )
 
@@ -390,7 +396,7 @@ async def confirm_password_reset(
     if user is None or not user.email_verified:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверный или истёкший код из письма.",
+            detail=t("Неверный или истёкший код из письма."),
         )
     _ensure_active(user)
 
@@ -425,7 +431,7 @@ async def confirm_password_reset(
         event="password_reset",
         user_id=user.id,
         request=request,
-        detail="пароль восстановлен по коду из письма, старые сессии отозваны",
+        detail=t("пароль восстановлен по коду из письма, старые сессии отозваны"),
     )
 
     await security_notifications.remember_login_device(

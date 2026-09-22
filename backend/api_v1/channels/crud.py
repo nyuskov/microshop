@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.chats.crud import get_member_role
 from api_v1.events.service import dispatch_realtime, notify_chat
+from core.i18n import t
 from core.models import (
     ChannelComment,
     ChannelPostView,
@@ -82,7 +83,7 @@ async def get_channel_or_404(session: AsyncSession, chat_id: int) -> Chat:
     )
     if chat is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Канал не найден"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Канал не найден")
         )
     return chat
 
@@ -98,7 +99,7 @@ async def ensure_admin(session: AsyncSession, chat_id: int, user_id: int) -> str
     if role not in (ROLE_CREATOR, ROLE_ADMIN):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Нужны права администратора канала",
+            detail=t("Нужны права администратора канала"),
         )
     return role
 
@@ -118,7 +119,7 @@ async def ensure_can_post(session: AsyncSession, chat_id: int, user_id: int) -> 
         return
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail="В канале публикуют владелец и админы. Можно предложить пост.",
+        detail=t("В канале публикуют владелец и админы. Можно предложить пост."),
     )
 
 
@@ -145,19 +146,22 @@ async def create_channel(
     if await count_created_channels(session, owner_id) >= CHANNEL_LIMIT_PER_USER:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Лимит: не больше {CHANNEL_LIMIT_PER_USER} каналов на аккаунт",
+            detail=t(
+                "Лимит: не больше {limit} каналов на аккаунт",
+                limit=CHANNEL_LIMIT_PER_USER,
+            ),
         )
 
     alias = normalize_channel_username(username) if is_public else None
     if is_public and alias is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Для публичного канала нужен адрес (ссылка /c/…)",
+            detail=t("Для публичного канала нужен адрес (ссылка /c/…)"),
         )
     if alias is not None and await _username_taken(session, alias):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Такой адрес канала уже занят",
+            detail=t("Такой адрес канала уже занят"),
         )
 
     chat = Chat(
@@ -217,12 +221,12 @@ async def update_channel(
         if public and alias is None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Для публичного канала нужен адрес (ссылка /c/…)",
+                detail=t("Для публичного канала нужен адрес (ссылка /c/…)"),
             )
         if alias is not None and await _username_taken(session, alias, chat_id=chat.id):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Такой адрес канала уже занят",
+                detail=t("Такой адрес канала уже занят"),
             )
         chat.is_public = public
         chat.channel_username = alias
@@ -364,7 +368,7 @@ async def join_channel(session: AsyncSession, *, chat: Chat, user_id: int) -> No
     if banned is not None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Вы забанены в этом канале",
+            detail=t("Вы забанены в этом канале"),
         )
     await session.execute(
         user_chat_association_table.insert(),
@@ -381,7 +385,7 @@ async def leave_channel(session: AsyncSession, *, chat: Chat, user_id: int) -> N
     if role == ROLE_CREATOR:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Владелец не может отписаться: удалите канал или передайте права",
+            detail=t("Владелец не может отписаться: удалите канал или передайте права"),
         )
     await session.execute(
         delete(user_chat_association_table).where(
@@ -440,17 +444,17 @@ async def set_admin(
     if chat.creator_id != owner_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Назначать админов может только владелец канала",
+            detail=t("Назначать админов может только владелец канала"),
         )
     role = await get_role(session, chat.id, target_id)
     if role is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Он не подписан на канал"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Он не подписан на канал")
         )
     if role == ROLE_CREATOR:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Владельца нельзя назначить или снять админом",
+            detail=t("Владельца нельзя назначить или снять админом"),
         )
     new_role = ROLE_ADMIN if admin else ROLE_MEMBER
     if role == new_role:
@@ -546,7 +550,7 @@ async def add_comment(
     )
     if post is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Пост не найден"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Пост не найден")
         )
     comment = ChannelComment(
         chat_id=chat.id, message_id=message_id, user_id=user_id, text=text.strip()
@@ -590,7 +594,7 @@ async def delete_comment(
     )
     if comment is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Комментарий не найден"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Комментарий не найден")
         )
     if comment.user_id != user_id:
         await ensure_admin(session, chat_id, user_id)
@@ -628,7 +632,7 @@ async def create_suggestion(
     """Подписчик предлагает пост: публикует его владелец/админ после проверки."""
     if await get_role(session, chat.id, user_id) is None:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Вы не подписаны на канал"
+            status_code=status.HTTP_403_FORBIDDEN, detail=t("Вы не подписаны на канал")
         )
     suggestion = ChannelSuggestion(
         chat_id=chat.id, author_id=user_id, text=text.strip(), status=SUGGESTION_PENDING
@@ -720,11 +724,12 @@ async def review_suggestion(
     )
     if suggestion is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Предложение не найдено"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Предложение не найдено")
         )
     if suggestion.status != SUGGESTION_PENDING:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Предложение уже рассмотрено"
+            status_code=status.HTTP_409_CONFLICT,
+            detail=t("Предложение уже рассмотрено"),
         )
 
     if approve:

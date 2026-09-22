@@ -26,6 +26,7 @@ from core import avatar_store, mailer, rustore_push
 from core.amqp import publish_realtime_event
 from core.celery_app import celery_app
 from core.config import settings
+from core.i18n import normalize_locale, t
 from core.mentions import mentioned_logins
 from core.models import Chat, Message, Profile, PushSubscription, RuStorePushToken, User
 from core.quiet_hours import skips_push, utc_now
@@ -77,6 +78,11 @@ def _web_push_configured() -> bool:
 PUSH_HIDDEN_BODY = "Новое сообщение"
 
 
+def _lang_of(profile: Profile | None) -> str:
+    """Язык уведомления — язык ПОЛУЧАТЕЛЯ (а не того, кто написал)."""
+    return normalize_locale(getattr(profile, "language", None))
+
+
 def _body_for_user(body: str, profile: Profile | None) -> str:
     """Тело уведомления для получателя: без текста, если он его скрыл.
 
@@ -84,7 +90,7 @@ def _body_for_user(body: str, profile: Profile | None) -> str:
     иначе, чем до появления настройки, нельзя.
     """
     if profile is not None and not profile.notification_preview:
-        return PUSH_HIDDEN_BODY
+        return t(PUSH_HIDDEN_BODY, lang=_lang_of(profile))
     return body
 
 
@@ -124,9 +130,9 @@ async def _awake_ids(
     ]
 
 
-def _mention_title(base: str, mentioned: bool) -> str:
+def _mention_title(base: str, mentioned: bool, lang: str | None = None) -> str:
     """Заголовок уведомления: получателя упомянули — говорим прямо."""
-    return f"{base}: вас упомянули" if mentioned else base
+    return t("{title}: вас упомянули", lang=lang, title=base) if mentioned else base
 
 
 async def _mentioned_recipient_ids(
@@ -335,30 +341,53 @@ async def _send_message_push_async(
             if sender is not None
             else {}
         )
-        title = _display_name(sender) if sender else "Новое сообщение"
-        body = "Новое сообщение"
-        if message is not None:
-            if message.encrypted:
-                # E2EE: на сервере лежит шифротекст — в уведомление текст не шлём.
-                # Для вложений уточняем, что защищено именно вложение.
-                body = (
-                    "🔒 Вложение защищено сквозным шифрованием"
-                    if message.file_url
-                    else "🔒 Сообщение защищено сквозным шифрованием"
-                )
+        title = _display_name(sender) if sender else t("Новое сообщение")
+        # Тексты уведомления — на языке КАЖДОГО получателя: один читает по-русски,
+        # другой по-английски, и push каждому уходит свой (группы ниже).
+        bodies: dict[int, str] = {}
+        if message is None:
+            bodies = {
+                user_id: t("Новое сообщение", lang=_lang_of(profiles.get(user_id)))
+                for user_id in recipient_ids
+            }
+        elif message.encrypted:
+            # E2EE: на сервере лежит шифротекст — в уведомление текст не шлём.
+            # Для вложений уточняем, что защищено именно вложение.
+            key = (
+                "🔒 Вложение защищено сквозным шифрованием"
+                if message.file_url
+                else "🔒 Сообщение защищено сквозным шифрованием"
+            )
+            bodies = {
+                user_id: t(key, lang=_lang_of(profiles.get(user_id)))
+                for user_id in recipient_ids
+            }
+        else:
+            text = (message.text or "").strip()
+            if text:
+                # Текст человека не переводим: это его слова, а не интерфейс.
+                short = text if len(text) <= 120 else text[:117] + "…"
+                bodies = {user_id: short for user_id in recipient_ids}
+            elif message.file_name:
+                bodies = {
+                    user_id: t(
+                        "Вложение: {name}",
+                        lang=_lang_of(profiles.get(user_id)),
+                        name=message.file_name,
+                    )
+                    for user_id in recipient_ids
+                }
             else:
-                text = (message.text or "").strip()
-                if text:
-                    body = text if len(text) <= 120 else text[:117] + "…"
-                elif message.file_name:
-                    body = f"Вложение: {message.file_name}"
+                bodies = {user_id: "" for user_id in recipient_ids}
 
         # Кого упомянули в тексте: обращение к человеку помечаем в уведомлении
         # отдельно, чтобы его не потеряли среди остальных сообщений чата.
         mentioned_ids = await _mentioned_recipient_ids(session, recipient_ids, message)
         push_titles = {
             user_id: _mention_title(
-                titles.get(user_id, title), user_id in mentioned_ids
+                titles.get(user_id, title),
+                user_id in mentioned_ids,
+                lang=_lang_of(profiles.get(user_id)),
             )
             for user_id in recipient_ids
         }
@@ -367,14 +396,18 @@ async def _send_message_push_async(
         # содержимое переписки читается с экрана блокировки и оседает в галерее
         # уведомлений. Имя отправителя остаётся — понятно, открывать ли чат.
         push_bodies = {
-            user_id: _body_for_user(body, profiles.get(user_id))
+            user_id: _body_for_user(bodies.get(user_id, ""), profiles.get(user_id))
             for user_id in recipient_ids
         }
 
         # Заголовок и тело у каждого получателя могут быть свои (личное имя
-        # контакта, настройка превью), поэтому шлём группами.
+        # контакта, настройка превью, язык), поэтому шлём группами.
         for (group_title, group_body), group_ids in _group_by_push(
-            recipient_ids, push_titles, push_bodies, title, body
+            recipient_ids,
+            push_titles,
+            push_bodies,
+            title,
+            t("Новое сообщение"),
         ).items():
             await _send_rustore_push(
                 session,
@@ -620,6 +653,7 @@ def reminder_chat_label(
     chat: Chat | None,
     user_id: int,
     contact_name: str | None = None,
+    lang: str | None = None,
 ) -> str:
     """Название чата для уведомления о напоминании.
 
@@ -629,18 +663,24 @@ def reminder_chat_label(
     важнее), у групп и каналов — название, а «Сохранённые» называем словами.
     """
     if chat is None:
-        return "Чат"
+        return t("Чат", lang=lang)
     if chat.is_self:
-        return "Сохранённые сообщения"
+        return t("Сохранённые сообщения", lang=lang)
     if chat.is_group or chat.is_channel:
-        return (chat.name or "").strip() or "Чат"
+        return (chat.name or "").strip() or t("Чат", lang=lang)
     peer = next((item for item in chat.users if item.id != user_id), None)
     if peer is None:
-        return "Чат"
+        return t("Чат", lang=lang)
     return contact_name or _display_name(peer)
 
 
-def reminder_body(*, label: str, message: Message | None, preview: bool = True) -> str:
+def reminder_body(
+    *,
+    label: str,
+    message: Message | None,
+    preview: bool = True,
+    lang: str | None = None,
+) -> str:
     """Тело push о напоминании: в каком чате и о чём речь.
 
     Три случая, которые легко перепутать (и потому вынесены в чистую функцию):
@@ -649,16 +689,17 @@ def reminder_body(*, label: str, message: Message | None, preview: bool = True) 
     (напоминание всё равно должно привести человека в чат).
     """
     if not preview:
-        return f"Сообщение в чате «{label}»"
+        return t("Сообщение в чате «{label}»", lang=lang, label=label)
     if message is None:
-        return f"Чат «{label}»"
+        return t("Чат «{label}»", lang=lang, label=label)
     if message.encrypted:
         # E2EE: содержимое серверу неизвестно, поэтому говорим только о защите.
-        what = (
+        key = (
             "🔒 Вложение защищено сквозным шифрованием"
             if message.file_url
             else "🔒 Сообщение защищено сквозным шифрованием"
         )
+        what = t(key, lang=lang)
     else:
         text = (message.text or "").strip()
         if text:
@@ -668,10 +709,12 @@ def reminder_body(*, label: str, message: Message | None, preview: bool = True) 
                 else text[: PUSH_REMINDER_TEXT_LIMIT - 3] + "…"
             )
         elif message.file_name:
-            what = f"Вложение: {message.file_name}"
+            what = t("Вложение: {name}", lang=lang, name=message.file_name)
         else:
             what = ""
-    return f"Чат «{label}»: {what}" if what else f"Чат «{label}»"
+    if not what:
+        return t("Чат «{label}»", lang=lang, label=label)
+    return t("Чат «{label}»: {what}", lang=lang, label=label, what=what)
 
 
 @celery_app.task(
@@ -727,10 +770,12 @@ async def _send_reminder_push_async(
             if peer is not None
             else {}
         )
+        lang = _lang_of(profile)
         label = reminder_chat_label(
             chat=chat,
             user_id=user_id,
             contact_name=contact_names.get(user_id),
+            lang=lang,
         )
 
         # Текст берём из самого сообщения в момент срабатывания: его могли
@@ -740,6 +785,7 @@ async def _send_reminder_push_async(
             label=label,
             message=message,
             preview=profile is None or profile.notification_preview,
+            lang=lang,
         )
 
         data: dict[str, object] = {
@@ -753,7 +799,7 @@ async def _send_reminder_push_async(
             session,
             [user_id],
             _rustore_message(
-                title=PUSH_REMINDER_TITLE,
+                title=t(PUSH_REMINDER_TITLE, lang=lang),
                 body=body,
                 channel_id=PUSH_CHANNEL_MESSAGES,
                 data=data,
@@ -768,7 +814,7 @@ async def _send_reminder_push_async(
             return
         payload = json.dumps(
             {
-                "title": PUSH_REMINDER_TITLE,
+                "title": t(PUSH_REMINDER_TITLE, lang=lang),
                 "body": body,
                 "icon": PUSH_ICON_DEFAULT,
                 "badge": PUSH_BADGE,

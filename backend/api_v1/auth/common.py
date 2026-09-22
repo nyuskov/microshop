@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core import mailer, passwords
 from core.celery_app import get_task
 from core.config import settings
+from core.i18n import t
 from core.models import User
 from core.rate_limit import client_ip, enforce_limit, rate_limit_key, rate_limiter
 
@@ -48,7 +49,7 @@ async def _enforce_ip_limit(request: Request, *, scope: str, limit: int) -> None
         value=client_ip(request),
         limit=limit,
         window_seconds=_AUTH_LIMIT_WINDOW_SECONDS,
-        detail="Слишком много запросов. Попробуйте позже.",
+        detail=t("Слишком много запросов. Попробуйте позже."),
     )
 
 
@@ -211,7 +212,7 @@ async def _require_device_verification(
             event="device_unverified",
             user_id=user.id,
             request=request,
-            detail="новое устройство без 2FA: подтверждённого e-mail нет",
+            detail=t("новое устройство без 2FA: подтверждённого e-mail нет"),
         )
         await security_notifications.remember_login_device(session, user, request)
         return
@@ -246,7 +247,10 @@ async def _require_device_verification(
         event="device_challenge",
         user_id=user.id,
         request=request,
-        detail=f"новое устройство, код отправлен на {mailer.mask_email(address)}",
+        detail=t(
+            "новое устройство, код отправлен на {email}",
+            email=mailer.mask_email(address),
+        ),
     )
     raise HTTPException(
         status_code=status.HTTP_428_PRECONDITION_REQUIRED,
@@ -291,7 +295,7 @@ async def _issue_email_code(
         value=address,
         limit=settings.auth_email_per_address_per_hour,
         window_seconds=3600,
-        detail="Слишком много писем на этот адрес за час. Попробуйте позже.",
+        detail=t("Слишком много писем на этот адрес за час. Попробуйте позже."),
     )
     if not await rate_limiter.allow(
         rate_limit_key("auth:email-code-daily", "total"),
@@ -301,7 +305,7 @@ async def _issue_email_code(
         logger.warning("Дневной лимит писем с кодами исчерпан")
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="На сегодня письма с кодами не отправляются. Попробуйте завтра.",
+            detail=t("На сегодня письма с кодами не отправляются. Попробуйте завтра."),
             headers={"Retry-After": "3600"},
         )
 
@@ -317,7 +321,11 @@ async def _issue_email_code(
         event="email_code_requested",
         user_id=user_id,
         request=request,
-        detail=f"код на {mailer.mask_email(address)}: {purpose.splitlines()[0][:120]}",
+        detail=t(
+            "код на {email}: {code}",
+            email=mailer.mask_email(address),
+            code=purpose.splitlines()[0][:120],
+        ),
     )
     from . import views
 
@@ -345,9 +353,9 @@ async def _consume_email_code(
     if result is email_codes.EmailVerifyResult.TOO_MANY:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Слишком много неверных кодов. Запросите новый.",
+            detail=t("Слишком много неверных кодов. Запросите новый."),
         )
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Неверный или истёкший код из письма.",
+        detail=t("Неверный или истёкший код из письма."),
     )

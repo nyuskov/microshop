@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user
 from core.config import settings
+from core.i18n import t
 from core.link_preview import fetch_preview, fetch_preview_image, normalize_url
 from core.media_store import store_media
 from core.models import LinkPreview, User, db_helper
@@ -67,13 +68,13 @@ async def create_link_preview(
         value=str(user.id),
         limit=settings.link_preview_limit_per_minute,
         window_seconds=60,
-        detail="Слишком много ссылок за минуту. Попробуйте позже.",
+        detail=t("Слишком много ссылок за минуту. Попробуйте позже."),
     )
     url = normalize_url(payload.url)
     if url is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ссылку не удалось разобрать",
+            detail=t("Ссылку не удалось разобрать"),
         )
 
     cached = await crud.get_cached(session, url)

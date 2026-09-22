@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
+from core.i18n import t
 from core.models import Contact, User, db_helper
 from core.rate_limit import enforce_limit
 
@@ -56,7 +57,7 @@ async def _enforce_write_limit(user: User) -> None:
         value=str(user.id),
         limit=settings.contact_write_limit_per_minute,
         window_seconds=60,
-        detail="Слишком много запросов. Попробуйте позже.",
+        detail=t("Слишком много запросов. Попробуйте позже."),
     )
 
 
@@ -91,13 +92,13 @@ async def upsert_my_contact(
     if user_id == user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Себя в контакты добавить нельзя",
+            detail=t("Себя в контакты добавить нельзя"),
         )
     target = await session.get(User, user_id)
     if target is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не найден",
+            detail=t("Пользователь не найден"),
         )
     await _enforce_write_limit(user)
     row = await crud.upsert_contact(

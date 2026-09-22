@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from api_v1.events.service import notify_chat, notify_user
 from api_v1.moderation import crud as moderation_crud
 from api_v1.users.crud import display_name
+from core.i18n import t
 from core.message_visibility import hidden_for_user_filter
 from core.models import (
     Chat,
@@ -60,25 +61,25 @@ async def set_chat_e2ee(
     if not await is_user_chat_member(session, chat_id, user_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Чат не найден",
+            detail=t("Чат не найден"),
         )
     chat = await session.get(Chat, chat_id)
     if chat is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Чат не найден",
+            detail=t("Чат не найден"),
         )
     if chat.is_self:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Сквозное шифрование недоступно в «Сохранённых сообщениях»",
+            detail=t("Сквозное шифрование недоступно в «Сохранённых сообщениях»"),
         )
     if chat.is_group:
         role = await get_member_role(session, chat_id=chat_id, user_id=user_id)
         if role not in (ROLE_CREATOR, ROLE_ADMIN):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Шифрование группы включает создатель или админ",
+                detail=t("Шифрование группы включает создатель или админ"),
             )
     chat.e2ee_enabled = enabled
     if chat.is_group and not enabled:
@@ -142,14 +143,14 @@ async def get_or_create_private_chat(
     if first_user_id == second_user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Нельзя начать переписку с самим собой",
+            detail=t("Нельзя начать переписку с самим собой"),
         )
 
     second_user = await session.get(User, second_user_id)
     if second_user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не найден",
+            detail=t("Пользователь не найден"),
         )
 
     chat_id = await get_private_chat_id_between(session, first_user_id, second_user_id)
@@ -162,7 +163,7 @@ async def get_or_create_private_chat(
     if first_user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Пользователь не найден",
+            detail=t("Пользователь не найден"),
         )
     return await create_private_chat(session, first_user, second_user)
 
@@ -444,7 +445,7 @@ async def set_chat_muted(
     if not await is_user_chat_member(session, chat_id=chat_id, user_id=user_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Чат не найден",
+            detail=t("Чат не найден"),
         )
     if muted:
         exists = await session.scalar(
@@ -485,14 +486,14 @@ async def leave_chat(
     if not await is_user_chat_member(session, chat_id=chat_id, user_id=user_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Чат не найден",
+            detail=t("Чат не найден"),
         )
 
     chat = await session.get(Chat, chat_id)
     if chat is not None and chat.is_self:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="«Сохранённые сообщения» нельзя удалить",
+            detail=t("«Сохранённые сообщения» нельзя удалить"),
         )
 
     is_group = chat is not None and chat.is_group
@@ -504,7 +505,7 @@ async def leave_chat(
             if role != "creator":
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Удалить группу может только её создатель",
+                    detail=t("Удалить группу может только её создатель"),
                 )
             # Запоминаем участников до удаления, чтобы уведомить их.
             member_rows = await session.execute(
@@ -667,7 +668,7 @@ async def create_group_chat(
     if user_id not in found or len(found) != len(all_ids):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Один из пользователей не найден",
+            detail=t("Один из пользователей не найден"),
         )
 
     chat = Chat(
@@ -694,7 +695,7 @@ async def create_group_chat(
     if reloaded is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Не удалось создать группу",
+            detail=t("Не удалось создать группу"),
         )
     return reloaded
 
@@ -742,7 +743,7 @@ async def add_group_members(
     if not to_add:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Пользователь забанен в этой группе — сначала снимите бан",
+            detail=t("Пользователь забанен в этой группе — сначала снимите бан"),
         )
 
     max_message_id = await session.scalar(
@@ -773,32 +774,32 @@ async def kick_group_member(
     if user_id == actor_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Чтобы выйти из группы, нажмите «Покинуть группу»",
+            detail=t("Чтобы выйти из группы, нажмите «Покинуть группу»"),
         )
 
     actor_role = await get_member_role(session, chat_id=chat_id, user_id=actor_id)
     if actor_role not in (ROLE_CREATOR, ROLE_ADMIN):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Недостаточно прав для исключения участника",
+            detail=t("Недостаточно прав для исключения участника"),
         )
 
     target_role = await get_member_role(session, chat_id=chat_id, user_id=user_id)
     if target_role is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не состоит в группе",
+            detail=t("Пользователь не состоит в группе"),
         )
     # Админ может исключать только обычных участников; создателя — никто.
     if target_role == ROLE_CREATOR:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Нельзя исключить создателя группы",
+            detail=t("Нельзя исключить создателя группы"),
         )
     if actor_role == ROLE_ADMIN and target_role == ROLE_ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Админ не может исключать другого админа",
+            detail=t("Админ не может исключать другого админа"),
         )
 
     await session.execute(
@@ -845,26 +846,26 @@ async def set_group_member_role(
     if user_id == actor_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Нельзя изменить собственную роль",
+            detail=t("Нельзя изменить собственную роль"),
         )
 
     actor_role = await get_member_role(session, chat_id=chat_id, user_id=actor_id)
     if actor_role != ROLE_CREATOR:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Назначать админов может только создатель группы",
+            detail=t("Назначать админов может только создатель группы"),
         )
 
     target_role = await get_member_role(session, chat_id=chat_id, user_id=user_id)
     if target_role is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не состоит в группе",
+            detail=t("Пользователь не состоит в группе"),
         )
     if role not in (ROLE_ADMIN, ROLE_MEMBER):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Недопустимая роль",
+            detail=t("Недопустимая роль"),
         )
 
     await session.execute(
@@ -903,21 +904,21 @@ async def update_group_info(
     if actor_role not in (ROLE_CREATOR, ROLE_ADMIN):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Изменять группу могут только создатель и админы",
+            detail=t("Изменять группу могут только создатель и админы"),
         )
 
     chat = await session.get(Chat, chat_id)
     if chat is None or not chat.is_group:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Группа не найдена",
+            detail=t("Группа не найдена"),
         )
     if name is not None:
         stripped = name.strip()
         if not stripped:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Название группы не может быть пустым",
+                detail=t("Название группы не может быть пустым"),
             )
         chat.name = stripped
     if description is not None:
@@ -938,7 +939,7 @@ async def update_group_info(
     if reloaded is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Не удалось обновить группу",
+            detail=t("Не удалось обновить группу"),
         )
     return reloaded
 
@@ -1014,31 +1015,31 @@ async def _ensure_can_punish(
     if user_id == actor_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Это действие не применяется к себе",
+            detail=t("Это действие не применяется к себе"),
         )
 
     actor_role = await get_member_role(session, chat_id=chat_id, user_id=actor_id)
     if actor_role not in (ROLE_CREATOR, ROLE_ADMIN):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Недостаточно прав для ограничения участников",
+            detail=t("Недостаточно прав для ограничения участников"),
         )
 
     target_role = await get_member_role(session, chat_id=chat_id, user_id=user_id)
     if target_role is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не состоит в группе",
+            detail=t("Пользователь не состоит в группе"),
         )
     if target_role == ROLE_CREATOR:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Создателя группы ограничить нельзя",
+            detail=t("Создателя группы ограничить нельзя"),
         )
     if actor_role == ROLE_ADMIN and target_role == ROLE_ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Админ не может ограничивать другого админа",
+            detail=t("Админ не может ограничивать другого админа"),
         )
 
 
@@ -1062,7 +1063,7 @@ async def set_member_mute(
     if minutes is not None and minutes > MAX_MUTE_MINUTES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Максимальный мут — неделя",
+            detail=t("Максимальный мут — неделя"),
         )
 
     until = (
@@ -1164,7 +1165,7 @@ async def unban_group_member(
     if actor_role not in (ROLE_CREATOR, ROLE_ADMIN):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Недостаточно прав для снятия бана",
+            detail=t("Недостаточно прав для снятия бана"),
         )
     await session.execute(
         delete(ChatBan).where(ChatBan.chat_id == chat_id, ChatBan.user_id == user_id)
@@ -1180,12 +1181,12 @@ async def set_slow_mode(
     if actor_role not in (ROLE_CREATOR, ROLE_ADMIN):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Недостаточно прав для настройки медленного режима",
+            detail=t("Недостаточно прав для настройки медленного режима"),
         )
     if seconds < 0 or seconds > MAX_SLOW_MODE_SECONDS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Медленный режим — от 0 до 3600 секунд",
+            detail=t("Медленный режим — от 0 до 3600 секунд"),
         )
     await session.execute(
         update(Chat).where(Chat.id == chat_id).values(slow_mode_seconds=seconds)
@@ -1227,7 +1228,7 @@ async def ensure_can_write(
     if await is_chat_banned(session, chat_id=chat_id, user_id=user_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Вы забанены в этой группе",
+            detail=t("Вы забанены в этой группе"),
         )
 
     muted_until = await get_member_muted_until(
@@ -1238,7 +1239,7 @@ async def ensure_can_write(
         left = int((muted_until - now).total_seconds() // 60) + 1
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Вы в муте ещё примерно {left} мин",
+            detail=t("Вы в муте ещё примерно {minutes} мин", minutes=left),
         )
 
     slow_mode = int(chat.slow_mode_seconds or 0)
@@ -1261,6 +1262,9 @@ async def ensure_can_write(
         # «попробуйте позже».
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Медленный режим: подождите {int(slow_mode - waited) + 1} с",
+            detail=t(
+                "Медленный режим: подождите {seconds} с",
+                seconds=int(slow_mode - waited) + 1,
+            ),
             headers={"Retry-After": str(int(slow_mode - waited) + 1)},
         )

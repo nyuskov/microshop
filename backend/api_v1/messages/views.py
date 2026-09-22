@@ -22,6 +22,7 @@ from api_v1.messages.schemas import (
 )
 from core.celery_app import get_task
 from core.config import settings
+from core.i18n import t
 from core.media_quota import enforce_media_quota, media_usage
 from core.media_store import VIEW_ONCE_PREFIX, store_media
 from core.models import MessageReminder, ScheduledMessage, User, db_helper
@@ -50,7 +51,7 @@ async def _enforce_user_rate_limit(user: User, *, scope: str, limit: int) -> Non
         value=str(user.id),
         limit=limit,
         window_seconds=60,
-        detail="Слишком много запросов. Попробуйте позже.",
+        detail=t("Слишком много запросов. Попробуйте позже."),
     )
 
 
@@ -190,19 +191,19 @@ async def create_attachment_message(
         if album_parts >= MAX_ALBUM_SIZE:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"В альбоме не больше {MAX_ALBUM_SIZE} вложений",
+                detail=t("В альбоме не больше {max} вложений", max=MAX_ALBUM_SIZE),
             )
         if sticker or view_once:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="В альбом собираются только обычные картинки",
+                detail=t("В альбом собираются только обычные картинки"),
             )
         # В E2EE тип и имя файла на сервере неизвестны (там шифротекст) —
         # проверять нечего, как и у одиночного зашифрованного вложения.
         if not encrypted and not (mime or "").startswith("image/"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="В альбом можно собрать только изображения",
+                detail=t("В альбом можно собрать только изображения"),
             )
     album_first = album_parts == 0
     if album_first:
@@ -218,12 +219,12 @@ async def create_attachment_message(
     if not content:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Пустой файл",
+            detail=t("Пустой файл"),
         )
     if len(content) > MAX_UPLOAD_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Файл слишком большой (максимум {MAX_UPLOAD_MB} МБ)",
+            detail=t("Файл слишком большой (максимум {mb} МБ)", mb=MAX_UPLOAD_MB),
         )
 
     if not encrypted:
@@ -233,14 +234,14 @@ async def create_attachment_message(
         # открытый обязан быть картинкой — иначе «стикером» уедет что угодно.
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Стикер — это картинка",
+            detail=t("Стикер — это картинка"),
         )
     if sticker and view_once:
         # Стикер живёт в наборе и показывается в панели — «сгорающий» набор не
         # имеет смысла, и после просмотра в панели осталась бы дырка.
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Стикер не может быть одноразовым",
+            detail=t("Стикер не может быть одноразовым"),
         )
     # Квота проверяется до записи на диск (см. core/media_quota.py).
     await enforce_media_quota(session, user_id=user.id, incoming_bytes=len(content))
@@ -328,7 +329,7 @@ async def send_gif_message(
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Недопустимый адрес GIF",
+            detail=t("Недопустимый адрес GIF"),
         )
 
     # Размер GIF узнаем только после скачивания (в воркере), поэтому здесь
@@ -349,7 +350,7 @@ async def send_gif_message(
     except Exception:  # noqa: BLE001 - очередь (RabbitMQ) может быть недоступна
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Сервис обработки GIF временно недоступен. Попробуйте позже.",
+            detail=t("Сервис обработки GIF временно недоступен. Попробуйте позже."),
         )
     return GifQueueAccepted()
 

@@ -2,6 +2,7 @@ import axios from 'axios'
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios'
 
 import { API_BASE_URL } from '@/config'
+import { locale } from '@/i18n'
 import { isNetworkError } from '@/services/errors'
 import { reportConnectionAlive, reportConnectionLost } from '@/composables/useOnlineStatus'
 import { maintenanceMessageOf, showMaintenance } from '@/utils/maintenance'
@@ -80,6 +81,9 @@ api.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`
       }
     }
+    // Язык интерфейса — серверу: он берёт его ТОЛЬКО из профиля (см. core/i18n.py),
+    // а клиент знает актуальное значение и избавляет сервер от запроса в БД.
+    config.headers['X-Locale'] = locale.value
     return config
   },
   (error) => Promise.reject(error)

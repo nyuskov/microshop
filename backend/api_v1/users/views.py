@@ -8,6 +8,7 @@ from api_v1.auth.utils import get_current_user
 from api_v1.users import crud, deletion, schemas
 from core.avatar_store import remove_avatar_files, store_avatar
 from core.config import settings
+from core.i18n import t
 from core.media_quota import media_usage
 from core.models import User, db_helper
 from core.rate_limit import enforce_limit
@@ -63,7 +64,7 @@ async def search_users(
         value=str(user.id),
         limit=settings.user_search_limit_per_minute,
         window_seconds=60,
-        detail="Слишком много запросов. Попробуйте позже.",
+        detail=t("Слишком много запросов. Попробуйте позже."),
     )
     return await crud.search_users_by_query(session, query, exclude_user_id=user.id)
 
@@ -88,13 +89,13 @@ async def get_user_by_link(
         value=str(user.id),
         limit=settings.user_search_limit_per_minute,
         window_seconds=60,
-        detail="Слишком много запросов. Попробуйте позже.",
+        detail=t("Слишком много запросов. Попробуйте позже."),
     )
     found = await crud.find_user_by_username(session, username)
     if found is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не найден",
+            detail=t("Пользователь не найден"),
         )
     return found
 
@@ -133,25 +134,25 @@ async def upload_my_avatar(
         value=str(user.id),
         limit=settings.avatar_upload_limit_per_minute,
         window_seconds=60,
-        detail="Слишком много запросов. Попробуйте позже.",
+        detail=t("Слишком много запросов. Попробуйте позже."),
     )
     ext = ext.lower().lstrip(".")
     if ext not in ALLOWED_AVATAR_EXTS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Недопустимый формат файла",
+            detail=t("Недопустимый формат файла"),
         )
 
     content = await request.body()
     if not content:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Пустой файл",
+            detail=t("Пустой файл"),
         )
     if len(content) > MAX_AVATAR_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Файл слишком большой (максимум {MAX_AVATAR_MB} МБ)",
+            detail=t("Файл слишком большой (максимум {mb} МБ)", mb=MAX_AVATAR_MB),
         )
 
     validate_image_upload(f"avatar.{ext}", content)
@@ -160,7 +161,7 @@ async def upload_my_avatar(
     if db_user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не найден",
+            detail=t("Пользователь не найден"),
         )
 
     _remove_my_avatar_files(db_user)
@@ -188,7 +189,7 @@ async def delete_my_avatar(
     if db_user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не найден",
+            detail=t("Пользователь не найден"),
         )
     _remove_my_avatar_files(db_user)
     db_user.avatar_url = None
@@ -230,12 +231,14 @@ async def delete_me(
     if db_user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не найден",
+            detail=t("Пользователь не найден"),
         )
     if payload.confirm != schemas.DELETE_ACCOUNT_CONFIRM:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Для подтверждения введите {schemas.DELETE_ACCOUNT_CONFIRM}",
+            detail=t(
+                "Для подтверждения введите {code}", code=schemas.DELETE_ACCOUNT_CONFIRM
+            ),
         )
     if db_user.password_set:
         if not payload.password or not verify_password(
@@ -243,7 +246,7 @@ async def delete_me(
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Неверный пароль",
+                detail=t("Неверный пароль"),
             )
     # Пишем событие до удаления: строка журнала переживёт аккаунт
     # (FK ON DELETE SET NULL), и в истории останется сам факт удаления.
@@ -252,7 +255,7 @@ async def delete_me(
         event="account_deleted",
         user_id=db_user.id,
         request=request,
-        detail="аккаунт удалён пользователем",
+        detail=t("аккаунт удалён пользователем"),
     )
     await deletion.delete_user_account(session, db_user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

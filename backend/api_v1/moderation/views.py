@@ -16,6 +16,7 @@ from api_v1.auth.refresh_sessions import revoke_all_sessions
 from api_v1.auth.utils import get_current_admin, get_current_user
 from api_v1.chats.crud import is_user_chat_member
 from core.config import settings
+from core.i18n import t
 from core.models import Message, User, UserReport, db_helper
 from core.models.moderation_action import (
     ACTION_ACCOUNT_FROZEN,
@@ -47,14 +48,14 @@ async def create_report(
     if payload.user_id == user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Нельзя отправить жалобу на себя",
+            detail=t("Нельзя отправить жалобу на себя"),
         )
 
     target = await session.get(User, payload.user_id)
     if target is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не найден",
+            detail=t("Пользователь не найден"),
         )
 
     await enforce_limit(
@@ -62,7 +63,7 @@ async def create_report(
         value=str(user.id),
         limit=settings.user_report_limit_per_hour,
         window_seconds=3600,
-        detail="Слишком много жалоб. Попробуйте позже.",
+        detail=t("Слишком много жалоб. Попробуйте позже."),
     )
 
     chat_id: int | None = None
@@ -71,14 +72,14 @@ async def create_report(
         if message is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Сообщение не найдено",
+                detail=t("Сообщение не найдено"),
             )
         if not await is_user_chat_member(
             session, chat_id=message.chat_id, user_id=user.id
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Нет доступа к этому сообщению",
+                detail=t("Нет доступа к этому сообщению"),
             )
         chat_id = message.chat_id
     elif payload.chat_id is not None:
@@ -89,7 +90,7 @@ async def create_report(
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Нет доступа к этому чату",
+                detail=t("Нет доступа к этому чату"),
             )
         chat_id = payload.chat_id
 
@@ -218,7 +219,7 @@ async def update_report(
     report = await crud.get_report(session, report_id=report_id)
     if report is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Жалоба не найдена"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Жалоба не найдена")
         )
     updated = await crud.update_report_status(
         session, report, status=payload.status, note=payload.note
@@ -336,13 +337,13 @@ async def block_user(
     if user_id == user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Нельзя заблокировать себя",
+            detail=t("Нельзя заблокировать себя"),
         )
     target = await session.get(User, user_id)
     if target is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не найден",
+            detail=t("Пользователь не найден"),
         )
     messages_allowed = bool(payload.messages_allowed) if payload else False
     await crud.block_user(
@@ -405,14 +406,14 @@ async def admin_revoke_sessions(
     if target is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не найден",
+            detail=t("Пользователь не найден"),
         )
     await revoke_all_sessions(session, user_id=user_id)
     await audit.log_security_event(
         session,
         event="admin_sessions_revoked",
         user_id=user_id,
-        detail=f"все входы завершены поддержкой (модератор {admin.id})",
+        detail=t("все входы завершены поддержкой (модератор {id})", id=admin.id),
     )
     await service.log_action(
         session,
@@ -436,7 +437,7 @@ async def admin_freeze_user(
     if target is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не найден",
+            detail=t("Пользователь не найден"),
         )
     if target.is_active:
         target.is_active = False
@@ -446,7 +447,7 @@ async def admin_freeze_user(
         session,
         event="admin_frozen",
         user_id=user_id,
-        detail=f"аккаунт заморожен поддержкой (модератор {admin.id})",
+        detail=t("аккаунт заморожен поддержкой (модератор {id})", id=admin.id),
     )
     await service.log_action(
         session,
@@ -473,7 +474,7 @@ async def admin_unfreeze_user(
     if target is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не найден",
+            detail=t("Пользователь не найден"),
         )
     if not target.is_active:
         target.is_active = True
@@ -482,7 +483,7 @@ async def admin_unfreeze_user(
         session,
         event="admin_unfrozen",
         user_id=user_id,
-        detail=f"аккаунт разморожен поддержкой (модератор {admin.id})",
+        detail=t("аккаунт разморожен поддержкой (модератор {id})", id=admin.id),
     )
     await service.log_action(
         session,

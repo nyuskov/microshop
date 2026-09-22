@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import mailer
 from core.celery_app import get_task
+from core.i18n import locale_of_user, t
 from core.models import LoginDevice, User
 from core.rate_limit import rate_limit_key, rate_limiter
 
@@ -46,6 +47,7 @@ from .device import device_info
 logger = logging.getLogger(__name__)
 
 # Заголовки писем по событиям (тема письма — это то, что видно в списке писем).
+# Значения — ключи перевода: тема собирается на языке ПОЛУЧАТЕЛЯ (см. core/i18n.py).
 EVENT_SUBJECTS: dict[str, str] = {
     "password_changed": "Pismo: пароль изменён",
     "password_reset": "Pismo: доступ восстановлен по e-mail",
@@ -68,6 +70,9 @@ _ADVICE = (
     "Безопасность), нажмите «Выйти на всех устройствах» и напишите на "
     "nyuskov@gmail.com."
 )
+
+#: Хвост автоматического письма: подпись сервиса.
+_EMAIL_SIGNATURE = "— Pismo, автоматическое уведомление о безопасности"
 
 _MAX_NOTIFICATIONS_PER_DAY = 20
 
@@ -163,17 +168,24 @@ async def notify_account_frozen(
     всего случается ПОСЛЕ чужого входа: важно, чтобы письмо с «это были не вы?»
     ушло сразу и на два канала.
     """
-    where = "из приложения" if source == "self" else "поддержкой"
+    lang = await locale_of_user(session, user.id)
+    where = (
+        t("из приложения", lang=lang)
+        if source == "self"
+        else t("поддержкой", lang=lang)
+    )
     await notify_security_event(
         session,
         user,
         event="account_frozen",
         request=request,
-        details=(
-            f"Аккаунт заморожен {where}: все устройства вышли, вход закрыт.\n"
-            "Разморозить можно кодом из письма (Профиль → Безопасность или "
-            "экран входа)."
+        details=t(
+            "Аккаунт заморожен {where}: все устройства вышли, вход закрыт.\n"
+            "Разморозить можно кодом из письма (Профиль → Безопасность или экран входа).",
+            lang=lang,
+            where=where,
         ),
+        lang=lang,
     )
 
 
@@ -185,12 +197,17 @@ async def notify_account_unfrozen(
     Это защита от незаметной разморозки: если владелец видит такое письмо, а сам
     ничего не делал — значит доступ восстановил кто-то другой.
     """
+    lang = await locale_of_user(session, user.id)
     await notify_security_event(
         session,
         user,
         event="account_unfrozen",
         request=request,
-        details="Аккаунт снова активен. Если это были не вы — смените пароль.",
+        details=t(
+            "Аккаунт снова активен. Если это были не вы — смените пароль.",
+            lang=lang,
+        ),
+        lang=lang,
     )
 
 
@@ -203,6 +220,7 @@ async def notify_security_event(
     details: str = "",
     recipient: str | None = None,
     push: bool = True,
+    lang: str | None = None,
 ) -> bool:
     """Сообщает о критичном действии в аккаунте. ``True`` — письмо поставлено в очередь.
 
@@ -224,6 +242,11 @@ async def notify_security_event(
         logger.warning("Неизвестное событие безопасности: %s", event)
         return False
 
+    # Язык уведомления — язык ПОЛУЧАТЕЛЯ: письмо и push читает он, а действие
+    # мог совершить другой человек (или поддержка).
+    if lang is None:
+        lang = await locale_of_user(session, user.id)
+
     if not await _allowed_by_daily_cap(user.id):
         logger.warning(
             "Суточный лимит уведомлений исчерпан (пользователь %s): "
@@ -242,18 +265,24 @@ async def notify_security_event(
             user.id,
         )
     else:
+        subject = t(EVENT_SUBJECTS[event], lang=lang)
         lines = [
-            EVENT_SUBJECTS[event],
+            subject,
             "",
-            f"Время: {_now()}",
+            t("Время: {time}", lang=lang, time=_now()),
         ]
         if details:
             lines.append(details)
         lines.extend(
-            ["", _ADVICE, "", "— Pismo, автоматическое уведомление о безопасности"]
+            [
+                "",
+                t(_ADVICE, lang=lang),
+                "",
+                t(_EMAIL_SIGNATURE, lang=lang),
+            ]
         )
 
-        enqueue_security_email(to, EVENT_SUBJECTS[event], "\n".join(lines))
+        enqueue_security_email(to, subject, "\n".join(lines))
         logger.info(
             "Уведомление «%s» поставлено в очередь для пользователя %s (%s)",
             event,
@@ -264,8 +293,8 @@ async def notify_security_event(
     if push:
         enqueue_security_push(
             user.id,
-            title=EVENT_SUBJECTS[event],
-            body=_push_body(details, EVENT_SUBJECTS[event]),
+            title=t(EVENT_SUBJECTS[event], lang=lang),
+            body=_push_body(details, t(EVENT_SUBJECTS[event], lang=lang)),
         )
     return bool(to)
 
@@ -321,18 +350,21 @@ async def remember_login_device(
         return True
 
     if notify:
+        lang = await locale_of_user(session, user.id)
         await notify_security_event(
             session,
             user,
             event="new_device",
             request=request,
-            details=(
-                f"Устройство: {info.label}\n"
-                f"IP-адрес: {info.ip or 'неизвестен'}\n"
-                "Вход выполнен успешно."
+            details=t(
+                "Устройство: {device}\nIP-адрес: {ip}\nВход выполнен успешно.",
+                lang=lang,
+                device=info.label,
+                ip=info.ip or t("неизвестен", lang=lang),
             ),
             # Push здесь свой (с кнопкой «Это не я»), общий не нужен.
             push=False,
+            lang=lang,
         )
         # Push с кнопкой «Это не я»: владелец может выкинуть вора одним тапом,
         # не заходя в приложение (и даже если e-mail у аккаунта не подтверждён).
@@ -340,20 +372,28 @@ async def remember_login_device(
 
         enqueue_security_push(
             user.id,
-            title="Новый вход в аккаунт",
-            body=(
-                f"{info.label} · {info.ip or 'IP неизвестен'}. "
-                "Если это не вы — нажмите «Это не я»."
+            title=t("Новый вход в аккаунт", lang=lang),
+            body=t(
+                "{device} · {ip}. Если это не вы — нажмите «Это не я».",
+                lang=lang,
+                device=info.label,
+                ip=info.ip or t("IP неизвестен", lang=lang),
             ),
             panic_token=build_panic_token(user),
         )
     return True
 
 
-def email_changed_message(old_email: str, new_email: str | None) -> str:
+def email_changed_message(
+    old_email: str, new_email: str | None, lang: str | None = None
+) -> str:
     """Текст уведомления о смене адреса (отдельно — чтобы не дублировать логику)."""
-    target = new_email or "адрес удалён"
-    return f"Прежний адрес: {old_email}\nНовый адрес: {target}"
+    return t(
+        "Прежний адрес: {old}\nНовый адрес: {new}",
+        lang=lang,
+        old=old_email,
+        new=new_email or t("адрес удалён", lang=lang),
+    )
 
 
 __all__ = [

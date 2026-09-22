@@ -107,7 +107,7 @@ async def apply_panic(
         event="panic",
         user_id=user.id,
         request=request,
-        detail=f"тревога ({source}): сессии отозваны"
+        detail=t("тревога ({source}): сессии отозваны", source=source)
         + (", аккаунт заморожен" if frozen else ""),
     )
     logger.warning(

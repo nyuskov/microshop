@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
+from core.i18n import t
 from core.models import db_helper
 from core.rate_limit import client_ip, enforce_limit, rate_limit_key, rate_limiter
 
@@ -81,7 +82,7 @@ async def request_otp(
     if not validate_phone_number_format(phone_number):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Неверный формат номера телефона. Ожидается +7 (___) ___-__-__.",
+            detail=t("Неверный формат номера телефона. Ожидается +7 (___) ___-__-__."),
         )
 
     cooldown = settings.auth_otp_resend_cooldown_seconds
@@ -90,7 +91,10 @@ async def request_otp(
     ):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Код уже отправлен. Повторите запрос через {cooldown} секунд.",
+            detail=t(
+                "Код уже отправлен. Повторите запрос через {seconds} секунд.",
+                seconds=cooldown,
+            ),
             headers={"Retry-After": str(cooldown)},
         )
 
@@ -153,10 +157,10 @@ async def request_otp(
         event="otp_requested",
         user_id=otp_owner.id if otp_owner is not None else None,
         request=request,
-        detail="код подтверждения запрошен на номер аккаунта",
+        detail=t("код подтверждения запрошен на номер аккаунта"),
     )
 
-    return OTPResponse(detail="Код OTP отправлен.")
+    return OTPResponse(detail=t("Код OTP отправлен."))
 
 
 @router.post("/verify-otp/", response_model=TokenResponse)
@@ -197,18 +201,18 @@ async def verify_otp_endpoint(
             )
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Слишком много неверных попыток. Запросите новый код.",
+                detail=t("Слишком много неверных попыток. Запросите новый код."),
             )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверный или истёкший код OTP.",
+            detail=t("Неверный или истёкший код OTP."),
         )
 
     existing_user = await get_user_by_phone_number(session, phone_number)
     if existing_user is None and not settings.registration_enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Регистрация новых пользователей временно отключена.",
+            detail=t("Регистрация новых пользователей временно отключена."),
         )
 
     user = existing_user or await get_or_create_user_by_phone_number(
@@ -232,7 +236,7 @@ async def verify_otp_endpoint(
         event="login_success",
         user_id=user.id,
         request=request,
-        detail="вход по коду на телефон",
+        detail=t("вход по коду на телефон"),
     )
     access_token = await get_jwt_strategy().write_token(user)
     return TokenResponse(
@@ -255,7 +259,7 @@ async def request_account_unfreeze(
     if not views.email_otp_available():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Восстановление по e-mail не настроено на сервере.",
+            detail=t("Восстановление по e-mail не настроено на сервере."),
         )
     address = email_codes.normalize_email(str(request_data.email))
     cooldown = settings.auth_email_resend_cooldown_seconds
@@ -264,7 +268,9 @@ async def request_account_unfreeze(
     ):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Код уже отправлен. Повторите через {cooldown} секунд.",
+            detail=t(
+                "Код уже отправлен. Повторите через {seconds} секунд.", seconds=cooldown
+            ),
             headers={"Retry-After": str(cooldown)},
         )
 
@@ -292,7 +298,7 @@ async def confirm_account_unfreeze(
     if user is None or not user.email_verified:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверный или истёкший код из письма.",
+            detail=t("Неверный или истёкший код из письма."),
         )
     await _consume_email_code(session, request, email=address, code=request_data.code)
 
@@ -307,7 +313,7 @@ async def confirm_account_unfreeze(
         event="account_unfrozen",
         user_id=user.id,
         request=request,
-        detail="аккаунт разморожен по коду из письма",
+        detail=t("аккаунт разморожен по коду из письма"),
     )
     await security_notifications.remember_login_device(
         session, user, request, notify=False

@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.i18n import t
 from core.models import RegistrationInvite, User, db_helper
 from core.security import get_password_hash
 
@@ -175,12 +176,12 @@ async def create_invite(
     if phone_number is not None and not validate_phone_number_format(phone_number):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Неверный формат номера телефона.",
+            detail=t("Неверный формат номера телефона."),
         )
     if request_data.expires_days is not None and request_data.expires_days <= 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Срок действия должен быть больше нуля дней.",
+            detail=t("Срок действия должен быть больше нуля дней."),
         )
 
     expires_at = None
@@ -232,17 +233,17 @@ async def revoke_invite(
     if invite is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Приглашение не найдено.",
+            detail=t("Приглашение не найдено."),
         )
     if invite.used_at is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="По этой ссылке уже зарегистрировались — отзывать нечего.",
+            detail=t("По этой ссылке уже зарегистрировались — отзывать нечего."),
         )
     if invite.revoked_at is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ссылка уже отозвана.",
+            detail=t("Ссылка уже отозвана."),
         )
 
     invite.revoked_at = datetime.now(timezone.utc)
@@ -284,7 +285,7 @@ async def invite_register(
     if not _invite_is_usable(invite):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Ссылка-приглашение недействительна или уже использована.",
+            detail=t("Ссылка-приглашение недействительна или уже использована."),
         )
     assert invite is not None  # для типизации: проверено в _invite_is_usable
 
@@ -292,19 +293,19 @@ async def invite_register(
     if not validate_phone_number_format(phone_number):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Неверный формат номера телефона.",
+            detail=t("Неверный формат номера телефона."),
         )
     if invite.phone_number and invite.phone_number != phone_number:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Это приглашение выдано для другого номера телефона.",
+            detail=t("Это приглашение выдано для другого номера телефона."),
         )
 
     existing = await get_user_by_phone_number(session, phone_number)
     if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Для этого номера уже есть аккаунт. Войдите обычным способом.",
+            detail=t("Для этого номера уже есть аккаунт. Войдите обычным способом."),
         )
 
     password = _validate_new_password(request_data.password, phone_number=phone_number)

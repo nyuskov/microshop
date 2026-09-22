@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTask
 
 from core import media_crypto
+from core.i18n import t
 from core.media_store import VIEW_ONCE_PREFIX, remove_media
 from core.models import Message, db_helper
 
@@ -61,11 +62,11 @@ def _resolve(name: str) -> Path:
         # Попытка выйти за пределы каталога (``..``, абсолютный путь, симлинк).
         logger.warning("Запрос media вне каталога: %r", name)
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Файл не найден"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Файл не найден")
         )
     if not candidate.is_file():
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Файл не найден"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Файл не найден")
         )
     return candidate
 
@@ -128,7 +129,7 @@ def _parse_range(value: str, total: int) -> tuple[int, int] | None:
     if start >= total or start > end:
         raise HTTPException(
             status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
-            detail="Диапазон за пределами файла",
+            detail=t("Диапазон за пределами файла"),
             headers={"Content-Range": f"bytes */{total}"},
         )
     return start, min(end, total - 1)
@@ -156,7 +157,7 @@ async def serve_media(
     if view_once is not None and view_once["opened"]:
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
-            detail="Одноразовое вложение уже просмотрено",
+            detail=t("Одноразовое вложение уже просмотрено"),
         )
     path = _resolve(name)
     try:
@@ -164,7 +165,7 @@ async def serve_media(
     except OSError:
         # Файл исчез между проверкой и чтением (например, чистка «сирот»).
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Файл не найден"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Файл не найден")
         ) from None
     if media_crypto.is_encrypted_file(path) and not media_crypto.is_enabled():
         # Файлы зашифрованы, а ключа в окружении нет: чинить может только
@@ -173,20 +174,20 @@ async def serve_media(
         logger.error("Зашифрованное медиа запрошено без AT_REST_KEY: %s", name)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Медиа временно недоступно",
+            detail=t("Медиа временно недоступно"),
         )
     try:
         total = media_crypto.plaintext_size(path)
     except media_crypto.MediaKeyMissing:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Медиа временно недоступно",
+            detail=t("Медиа временно недоступно"),
         ) from None
     except ValueError:
         logger.exception("Повреждённый файл media: %s", name)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Файл повреждён",
+            detail=t("Файл повреждён"),
         ) from None
 
     etag = _etag(total, stat.st_mtime)

@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
+from core.i18n import t
 from core.models import User, db_helper
 
 from ..auth.utils import get_current_user
@@ -64,7 +65,7 @@ async def subscribe(
         logger.warning("Не удалось сохранить push-подписку: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Не удалось сохранить подписку.",
+            detail=t("Не удалось сохранить подписку."),
         ) from exc
     return {"ok": True}
 

@@ -14,6 +14,8 @@ from pathlib import Path
 
 from fastapi import HTTPException, status
 
+from core.i18n import t
+
 # Расширения, которые безопасно хранить и отдавать браузеру.
 SAFE_IMAGE_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
 SAFE_MEDIA_EXTS = {
@@ -70,7 +72,7 @@ def detect_image_magic(content: bytes) -> str | None:
 def _raise_ext() -> None:
     raise HTTPException(
         status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-        detail="Недопустимый тип файла",
+        detail=t("Недопустимый тип файла"),
     )
 
 
@@ -82,7 +84,7 @@ def validate_image_upload(filename: str, content: bytes) -> None:
     if detect_image_magic(content) is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Содержимое файла не похоже на изображение",
+            detail=t("Содержимое файла не похоже на изображение"),
         )
 
 
@@ -94,5 +96,5 @@ def validate_attachment_upload(filename: str, content: bytes) -> None:
     if ext in SAFE_IMAGE_EXTS and detect_image_magic(content) is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Содержимое файла не похоже на изображение",
+            detail=t("Содержимое файла не похоже на изображение"),
         )

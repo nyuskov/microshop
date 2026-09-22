@@ -42,6 +42,8 @@ from pathlib import Path
 
 from fastapi import HTTPException, status
 
+from core.i18n import t
+
 logger = logging.getLogger(__name__)
 
 #: Кодеки, которые декодируют браузеры (Chromium/Safari/WebView).
@@ -248,7 +250,7 @@ async def prepare_video(
             # историей быть не может: в просмотрщике это тот же чёрный экран.
             raise HTTPException(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail="История может быть фото или видео",
+                detail=t("История может быть фото или видео"),
             )
         if info.playable() and not force:
             return PreparedVideo(data=data, suffix=suffix, mime=mime, transcoded=False)

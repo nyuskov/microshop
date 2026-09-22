@@ -26,6 +26,7 @@ from api_v1.events.service import notify_chat, notify_user
 from api_v1.messages.crud import message_basic_to_dict
 from core.avatar_store import remove_avatar_files, store_avatar
 from core.config import settings
+from core.i18n import t
 from core.models import Chat, Message, User, db_helper
 from core.rate_limit import enforce_limit
 from core.upload_guard import validate_image_upload
@@ -105,7 +106,7 @@ async def _ensure_group(chat: Chat | None) -> Chat:
     if chat is None or not chat.is_group:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Группа не найдена",
+            detail=t("Группа не найдена"),
         )
     return chat
 
@@ -254,7 +255,7 @@ async def create_group_chat(
         value=str(user.id),
         limit=settings.group_create_limit_per_hour,
         window_seconds=3600,
-        detail="Слишком много групп. Попробуйте позже.",
+        detail=t("Слишком много групп. Попробуйте позже."),
     )
     chat = await crud.create_group_chat(
         session=session,
@@ -286,7 +287,7 @@ async def get_chat_detail(
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Чат не найден",
+            detail=t("Чат не найден"),
         )
     my_role = await crud.get_member_role(
         session=session, chat_id=chat_id, user_id=user.id
@@ -358,7 +359,7 @@ async def get_chat_stats(
     if not await crud.is_user_chat_member(session, chat_id=chat_id, user_id=user.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Статистика видна только участникам чата",
+            detail=t("Статистика видна только участникам чата"),
         )
     stats = await crud.chat_stats(
         session, chat_id=chat_id, offset_minutes=offset_minutes
@@ -382,7 +383,7 @@ async def add_group_members(
     if actor_role not in ("creator", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Недостаточно прав для добавления участников",
+            detail=t("Недостаточно прав для добавления участников"),
         )
 
     added = await crud.add_group_members(
@@ -392,7 +393,7 @@ async def add_group_members(
     if chat is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Не удалось загрузить группу",
+            detail=t("Не удалось загрузить группу"),
         )
     for uid in added:
         await notify_user(
@@ -478,7 +479,7 @@ async def mute_group_member(
     if chat is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Не удалось загрузить группу",
+            detail=t("Не удалось загрузить группу"),
         )
     return await _serialize_group_detail(session, chat, user.id)
 
@@ -504,7 +505,7 @@ async def ban_group_member(
     if chat is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Не удалось загрузить группу",
+            detail=t("Не удалось загрузить группу"),
         )
     return await _serialize_group_detail(session, chat, user.id)
 
@@ -541,7 +542,7 @@ async def get_chat_ban_list(
     if actor_role not in ("creator", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Бан-лист виден админам группы",
+            detail=t("Бан-лист виден админам группы"),
         )
     bans = await crud.get_chat_bans(session, chat_id)
     return [
@@ -576,7 +577,7 @@ async def set_chat_slow_mode(
     if chat is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Не удалось загрузить группу",
+            detail=t("Не удалось загрузить группу"),
         )
     return await _serialize_chat_full(session, chat, user.id)
 
@@ -598,7 +599,7 @@ async def upload_group_avatar(
     if actor_role not in ("creator", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Менять аватар могут только создатель и админы",
+            detail=t("Менять аватар могут только создатель и админы"),
         )
 
     await enforce_limit(
@@ -606,25 +607,25 @@ async def upload_group_avatar(
         value=str(user.id),
         limit=settings.avatar_upload_limit_per_minute,
         window_seconds=60,
-        detail="Слишком много запросов. Попробуйте позже.",
+        detail=t("Слишком много запросов. Попробуйте позже."),
     )
     ext = ext.lower().lstrip(".")
     if ext not in ALLOWED_AVATAR_EXTS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Недопустимый формат файла",
+            detail=t("Недопустимый формат файла"),
         )
 
     content = await request.body()
     if not content:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Пустой файл",
+            detail=t("Пустой файл"),
         )
     if len(content) > MAX_AVATAR_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Файл слишком большой (максимум {MAX_AVATAR_MB} МБ)",
+            detail=t("Файл слишком большой (максимум {mb} МБ)", mb=MAX_AVATAR_MB),
         )
     validate_image_upload(f"avatar.{ext}", content)
 
@@ -664,7 +665,7 @@ async def delete_group_avatar(
     if actor_role not in ("creator", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Менять аватар могут только создатель и админы",
+            detail=t("Менять аватар могут только создатель и админы"),
         )
 
     _remove_chat_avatar_files(chat)

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import mailer
 from core.config import settings
+from core.i18n import t
 from core.models import User, db_helper
 
 from ...users.crud import get_user_by_email
@@ -49,7 +50,7 @@ async def request_email_verification(
     if not views.email_otp_available():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Отправка писем не настроена на сервере.",
+            detail=t("Отправка писем не настроена на сервере."),
         )
 
     address = email_codes.normalize_email(str(request_data.email))
@@ -57,7 +58,7 @@ async def request_email_verification(
     if owner is not None and owner.id != user.id and owner.email_verified:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Этот e-mail уже привязан к другому аккаунту.",
+            detail=t("Этот e-mail уже привязан к другому аккаунту."),
         )
 
     await _issue_email_code(
@@ -67,7 +68,9 @@ async def request_email_verification(
         purpose="Подтверждение адреса e-mail в Pismo.",
         user_id=user.id,
     )
-    return OTPResponse(detail=f"Код отправлен на {mailer.mask_email(address)}.")
+    return OTPResponse(
+        detail=t("Код отправлен на {email}.", email=mailer.mask_email(address))
+    )
 
 
 @router.post("/email/confirm-verification/", response_model=OTPResponse)
@@ -84,7 +87,7 @@ async def confirm_email_verification(
     if owner is not None and owner.id != user.id and owner.email_verified:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Этот e-mail уже привязан к другому аккаунту.",
+            detail=t("Этот e-mail уже привязан к другому аккаунту."),
         )
 
     await _consume_email_code(session, request, email=address, code=request_data.code)
@@ -98,9 +101,9 @@ async def confirm_email_verification(
         event="email_verified",
         user_id=user.id,
         request=request,
-        detail="адрес e-mail подтверждён кодом из письма",
+        detail=t("адрес e-mail подтверждён кодом из письма"),
     )
-    return OTPResponse(detail="Адрес подтверждён.")
+    return OTPResponse(detail=t("Адрес подтверждён."))
 
 
 @router.post("/email/login/request/", response_model=OTPResponse)
@@ -114,7 +117,7 @@ async def request_email_login(
     if not views.email_otp_available():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Вход по e-mail не настроен на сервере.",
+            detail=t("Вход по e-mail не настроен на сервере."),
         )
 
     address = email_codes.normalize_email(str(request_data.email))
@@ -124,7 +127,9 @@ async def request_email_login(
     ):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Код уже отправлен. Повторите через {cooldown} секунд.",
+            detail=t(
+                "Код уже отправлен. Повторите через {seconds} секунд.", seconds=cooldown
+            ),
             headers={"Retry-After": str(cooldown)},
         )
 
@@ -155,7 +160,7 @@ async def confirm_email_login(
     if user is None or not user.email_verified:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверный или истёкший код из письма.",
+            detail=t("Неверный или истёкший код из письма."),
         )
     _ensure_active(user)
 
@@ -167,7 +172,7 @@ async def confirm_email_login(
         event="login_success",
         user_id=user.id,
         request=request,
-        detail="вход по коду из письма",
+        detail=t("вход по коду из письма"),
     )
 
     await security_notifications.remember_login_device(

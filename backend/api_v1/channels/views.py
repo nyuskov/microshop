@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_user
 from core.config import settings
+from core.i18n import t
 from core.models import Chat, User, db_helper
 from core.rate_limit import enforce_limit
 
@@ -76,7 +77,7 @@ async def search_channels(
         value=str(user.id),
         limit=settings.channel_search_limit_per_minute,
         window_seconds=60,
-        detail="Слишком много запросов. Попробуйте позже.",
+        detail=t("Слишком много запросов. Попробуйте позже."),
     )
     return await crud.search_public_channels(session, query=q, user_id=user.id)
 
@@ -95,7 +96,7 @@ async def channel_by_username(
     chat = await crud.find_public_channel_by_username(session, username)
     if chat is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Канал не найден"
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Канал не найден")
         )
     return await crud.channel_card(session, chat, user.id)
 
@@ -141,7 +142,7 @@ async def join_channel(
     if not chat.is_public:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Приватный канал: вход только по ссылке-приглашению",
+            detail=t("Приватный канал: вход только по ссылке-приглашению"),
         )
     await crud.join_channel(session, chat=chat, user_id=user.id)
     return await crud.channel_card(session, chat, user.id)
@@ -266,7 +267,7 @@ async def add_comment(
     chat = await _channel(session, chat_id)
     if await crud.get_role(session, chat_id, user.id) is None:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Вы не подписаны на канал"
+            status_code=status.HTTP_403_FORBIDDEN, detail=t("Вы не подписаны на канал")
         )
     return await crud.add_comment(
         session, chat=chat, message_id=message_id, user_id=user.id, text=payload.text

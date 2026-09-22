@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
+from core.i18n import t
 from core.models import User, db_helper
 from core.rate_limit import enforce_limit
 
@@ -53,7 +54,7 @@ async def _ensure_member(session: AsyncSession, user: User, chat_id: int) -> Non
     if not await is_user_chat_member(session, chat_id=chat_id, user_id=user.id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Чат не найден",
+            detail=t("Чат не найден"),
         )
 
 
@@ -85,7 +86,7 @@ async def upsert_my_draft(
         value=str(user.id),
         limit=settings.draft_write_limit_per_minute,
         window_seconds=60,
-        detail="Слишком много запросов. Попробуйте позже.",
+        detail=t("Слишком много запросов. Попробуйте позже."),
     )
     if not payload.text.strip():
         await crud.delete_draft(session, user_id=user.id, chat_id=chat_id)
