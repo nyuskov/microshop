@@ -94,19 +94,19 @@ const onClick = () => {
   overflow: hidden;
 }
 
+/* Фона у надписи НЕТ ни в одном состоянии (владелец 22.09.2026: «прозрачный фон
+   у сообщения по центру»): состояние читается цветом текста и значка, а шапка не
+   получает цветную плашку посреди своих иконок. */
 .conn-status.offline {
-  background: var(--ms-danger-bg);
   color: var(--ms-danger);
   cursor: pointer;
 }
 
 .conn-status.connecting {
-  background: var(--ms-surface-2);
   color: var(--ms-muted);
 }
 
 .conn-status.restored {
-  background: var(--ms-ok-bg);
   color: var(--ms-text);
 }
 
