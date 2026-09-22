@@ -15,6 +15,7 @@ import { encryptFileForChat } from '@/services/e2eeFiles'
 import { getErrorMessage } from '@/services/errors'
 import type { PeerActivityKind } from '@/utils/peerActivity'
 import type { Chat, EncryptedFileMeta, Message } from '@/types'
+import { t } from '@/i18n'
 
 export interface UseMediaRecordingOptions {
   /** Какой чат открыт сейчас. */
@@ -109,7 +110,7 @@ export function useMediaRecording(options: UseMediaRecordingOptions): UseMediaRe
     const finishUploadActivity = options.beginActivity(chatId, kind === 'voice' ? 'file' : 'video')
     // Голосовое/видео тоже показываем временным пузырём с прогрессом:
     // длинная запись грузится не мгновенно.
-    const label = kind === 'voice' ? 'Голосовое сообщение' : 'Видеосообщение'
+    const label = kind === 'voice' ? t('Голосовое сообщение') : t('Видеосообщение')
     const localId = options.addPendingUpload(label)
     options.nextTick(options.scrollToBottom)
     try {
@@ -139,7 +140,7 @@ export function useMediaRecording(options: UseMediaRecordingOptions): UseMediaRe
       options.scrollToBottom()
     } catch (error) {
       options.removePendingUpload(localId)
-      options.setSendError(getErrorMessage(error, 'Не удалось отправить медиасообщение'))
+      options.setSendError(getErrorMessage(error, t('Не удалось отправить медиасообщение')))
     } finally {
       finishUploadActivity()
       options.setSendingFile(false)

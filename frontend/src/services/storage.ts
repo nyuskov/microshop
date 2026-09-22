@@ -7,6 +7,7 @@
  * падать с 413 «хранилище заполнено».
  */
 import { api } from './api'
+import { t } from '@/i18n'
 
 export interface StorageInfo {
   used_bytes: number
@@ -27,7 +28,8 @@ export async function fetchStorageInfo(): Promise<StorageInfo> {
 
 /** Человекочитаемый размер: 1536 → «1.5 МБ» (совпадает с сервером). */
 export function formatBytes(numBytes: number): string {
-  const units = ['Б', 'КБ', 'МБ', 'ГБ']
+  // Единицы переводим на месте: язык переключается на лету.
+  const units = [t('Б'), t('КБ'), t('МБ'), t('ГБ')]
   let value = Math.max(0, numBytes)
   let index = 0
   while (value >= 1024 && index < units.length - 1) {

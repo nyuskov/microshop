@@ -3,6 +3,7 @@ import { isEncryptedPayload } from '@/services/e2ee'
 import { isLockedFile, lockedFileLabel, mediaTypeLabel } from '@/utils/media'
 import { plainMessageText } from '@/utils/mentions'
 import { avatarUrlOf, chatPeer, chatTitle, groupAvatarUrl, isGroupChat } from '@/utils/user'
+import { t } from '@/i18n'
 
 /**
  * Подписи для результатов поиска по сообщениям.
@@ -42,14 +43,14 @@ export function messageChatAvatar(
 
 /** Префикс «Вы: » для своих сообщений в результате поиска. */
 export function messageSenderPrefix(message: Message, currentUserId: number | null): string {
-  return currentUserId !== null && message.user_id === currentUserId ? 'Вы: ' : ''
+  return currentUserId !== null && message.user_id === currentUserId ? t('Вы: ') : ''
 }
 
 /** Текст сниппета сообщения (текст или тип вложения). */
 export function messageSnippetText(message: Message): string {
-  if (message.hidden) return 'Скрыто до проверки модератором'
+  if (message.hidden) return t('Скрыто до проверки модератором')
   if (isLockedFile(message)) return lockedFileLabel(message)
-  if (message.encrypted && isEncryptedPayload(message.text)) return '🔒 Сообщение'
+  if (message.encrypted && isEncryptedPayload(message.text)) return t('🔒 Сообщение')
   if (message.text) return plainMessageText(message.text)
   return message.file ? mediaTypeLabel(message.file) : ''
 }

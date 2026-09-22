@@ -1881,5 +1881,67 @@ export const EN: Record<string, string> = {
   'через {count} ч': 'in {count} h',
   'сегодня в {time}': 'today at {time}',
   'завтра в {time}': 'tomorrow at {time}',
-  '{date} в {time}': '{date} at {time}'
+  '{date} в {time}': '{date} at {time}',
+
+  // --- Подписи-данные (передаются в t() переменной) ---
+  // Длительность мута и медленного режима (GroupChatInfo.vue)
+  Выкл: 'Off',
+  '10 сек': '10 s',
+  '30 сек': '30 s',
+  '1 мин': '1 min',
+  '5 мин': '5 min',
+  '15 мин': '15 min',
+  '1 час': '1 hour',
+  '5 минут': '5 minutes',
+  '8 часов': '8 hours',
+  '24 часа': '24 hours',
+  // Звуки уведомлений (utils/sounds.ts)
+  'Без звука': 'Silent',
+  Классика: 'Classic',
+  Капля: 'Drop',
+  Мягкий: 'Soft',
+  Яркий: 'Bright',
+  // Категории эмодзи (utils/emojiCatalog.ts)
+  Смайлы: 'Smileys',
+  Люди: 'People',
+  Природа: 'Nature',
+  Места: 'Places',
+  Занятия: 'Activities',
+  Предметы: 'Objects',
+  Символы: 'Symbols',
+  Флаги: 'Flags',
+  // Модели распознавания (utils/localSpeech.ts)
+  быстрая: 'fast',
+  точнее: 'more accurate',
+  // Прочее
+  'печатает…': 'is typing…',
+  Пропущенные: 'Missed',
+  Голосовые: 'Voice',
+  Фото: 'Photos',
+  'Через 20 минут': 'In 20 minutes',
+  Открыть: 'Open',
+  'QR-код ссылки': 'Link QR code',
+
+  // --- Копия ключа: кнопки диалога (E2eeBackupDialog.vue) ---
+  'Сохранить копию': 'Save the backup',
+  Восстановить: 'Restore',
+  'Выбрать файл': 'Choose a file',
+  'Готовим файл…': 'Preparing the file…',
+  'Сохранить файл копии': 'Save the backup file',
+  'Восстанавливаем…': 'Restoring…',
+  'Восстановить ключ': 'Restore the key',
+
+  // --- Медиа: запись и размеры ---
+  'Не удалось отправить медиасообщение': 'Could not send the media message',
+  'Запись не удалось прочитать — файл повреждён или формат не поддерживается устройством':
+    'The recording could not be read — the file is damaged or the format is not supported by the device',
+  Б: 'B',
+  КБ: 'KB',
+  МБ: 'MB',
+  ГБ: 'GB',
+  'записывает голосовое…': 'is recording a voice message…',
+  'записывает видеосообщение…': 'is recording a video message…',
+  'отправляет фото…': 'is sending a photo…',
+  'отправляет видео…': 'is sending a video…',
+  'отправляет файл…': 'is sending a file…'
 }

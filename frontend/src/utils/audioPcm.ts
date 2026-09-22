@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Звук для распознавания речи: загрузка записи и приведение её к виду, который
  * ждёт распознаватель.
@@ -273,7 +274,9 @@ export function describeAudioError(thrown: unknown): string {
   const name = thrown instanceof Error ? thrown.name : ''
   const text = thrown instanceof Error ? thrown.message : String(thrown ?? '')
   if (name === 'EncodingError' || /decode/i.test(text)) {
-    return 'Запись не удалось прочитать — файл повреждён или формат не поддерживается устройством'
+    return t(
+      'Запись не удалось прочитать — файл повреждён или формат не поддерживается устройством'
+    )
   }
-  return text || 'Не удалось распознать голосовое'
+  return text || t('Не удалось распознать голосовое')
 }

@@ -72,7 +72,7 @@
               <div v-for="tile in mediaTiles" :key="tile.kind" class="media-tile">
                 <q-icon :name="icon(tile.icon)" size="18px" aria-hidden="true" />
                 <span class="media-count">{{ tile.count }}</span>
-                <span class="media-label">{{ tile.label }}</span>
+                <span class="media-label">{{ t(tile.label) }}</span>
               </div>
             </div>
           </section>

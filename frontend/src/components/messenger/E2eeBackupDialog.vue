@@ -40,7 +40,7 @@
             :aria-selected="mode === 'export'"
             @click="setMode('export')"
           >
-            Сохранить копию
+            {{ t('Сохранить копию') }}
           </button>
           <button
             type="button"
@@ -50,7 +50,7 @@
             :aria-selected="mode === 'import'"
             @click="setMode('import')"
           >
-            Восстановить
+            {{ t('Восстановить') }}
           </button>
         </div>
 
@@ -62,7 +62,7 @@
             class="bk-input"
             type="password"
             autocomplete="new-password"
-            :placeholder="`Не короче ${MIN_PASSPHRASE_LENGTH} символов`"
+            :placeholder="t('Не короче {count} символов', { count: MIN_PASSPHRASE_LENGTH })"
           />
           <label class="bk-label" for="bk-pass-repeat">{{ t('Повторите фразу') }}</label>
           <input
@@ -77,7 +77,7 @@
           </p>
           <button type="button" class="bk-btn" :disabled="!canExport || busy" @click="saveBackup">
             <q-icon :name="icon('download')" size="17px" />
-            {{ busy ? 'Готовим файл…' : 'Сохранить файл копии' }}
+            {{ busy ? t('Готовим файл…') : t('Сохранить файл копии') }}
           </button>
         </template>
 
@@ -93,7 +93,7 @@
           />
           <button type="button" class="bk-btn ghost" @click="fileInput?.click()">
             <q-icon :name="icon('attach_file')" size="17px" />
-            {{ file ? file.name : 'Выбрать файл' }}
+            {{ file ? file.name : t('Выбрать файл') }}
           </button>
           <label class="bk-label" for="bk-pass-restore">{{ t('Парольная фраза') }}</label>
           <input
@@ -112,7 +112,7 @@
           </p>
           <button type="button" class="bk-btn" :disabled="!canRestore || busy" @click="restore">
             <q-icon :name="icon('cloud_upload')" size="17px" />
-            {{ busy ? 'Восстанавливаем…' : 'Восстановить ключ' }}
+            {{ busy ? t('Восстанавливаем…') : t('Восстановить ключ') }}
           </button>
         </template>
 

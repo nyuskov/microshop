@@ -727,7 +727,7 @@ async function recognizeVoiceLocally(
       title: t('Расшифровка на устройстве'),
       message:
         t('Скачается модель распознавания ({title}, ~{size} МБ) — один раз. ', {
-          title: info.title,
+          title: t(info.title),
           size: info.sizeMb
         }) + t('Дальше расшифровка работает без интернета, звук и текст остаются на устройстве.'),
       okLabel: t('Скачать'),

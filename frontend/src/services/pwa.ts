@@ -8,6 +8,7 @@
  */
 
 import { api } from './api'
+import { t } from '@/i18n'
 
 let registration: ServiceWorkerRegistration | null = null
 let periodicUpdateTimer: number | null = null
@@ -274,7 +275,7 @@ export async function showIncomingCallRing(opts: {
       silent: false,
       vibrate: [250, 120, 250, 120, 250, 120, 250],
       // actions/renotify/vibrate нет в старых типах NotificationOptions — приводим.
-      actions: [{ action: 'open', title: 'Открыть' }],
+      actions: [{ action: 'open', title: t('Открыть') }],
       data: { type: 'call', call_id: opts.callId, peer_id: opts.peerId }
     }
     await reg.showNotification(opts.title, options as unknown as NotificationOptions)

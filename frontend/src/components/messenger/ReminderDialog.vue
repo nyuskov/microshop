@@ -33,7 +33,7 @@
               @click="emit('save', reminderSendAt(preset.at))"
             >
               <q-icon :name="icon('schedule')" size="18px" aria-hidden="true" />
-              <span class="reminder-name">{{ preset.label }}</span>
+              <span class="reminder-name">{{ t(preset.label) }}</span>
             </button>
           </li>
         </ul>
