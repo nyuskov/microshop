@@ -43,8 +43,8 @@
           <div v-if="phase !== 'preview' && !error" class="vrm-mirror-note">
             {{
               phase === 'recording'
-                ? 'В записи будет как есть, без зеркала'
-                : 'Предпросмотр зеркальный — в записи будет как есть'
+                ? t('В записи будет как есть, без зеркала')
+                : t('Предпросмотр зеркальный — в записи будет как есть')
             }}
           </div>
           <div v-else-if="phase === 'preview' && !error" class="vrm-mirror-note">

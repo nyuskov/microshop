@@ -79,7 +79,7 @@
         <!-- Низ: количество + кнопки -->
         <footer class="fwd-foot">
           <span class="fwd-count">{{
-            selectedIds.length ? `Выбрано: ${selectedIds.length}` : 'Выберите чат для пересылки'
+            selectedIds.length ? `Выбрано: ${selectedIds.length}` : t('Выберите чат для пересылки')
           }}</span>
           <div class="fwd-actions">
             <button class="fwd-btn ghost" :disabled="sending" @click="emit('close')">
@@ -91,7 +91,7 @@
               @click="confirmForward"
             >
               <q-icon :name="icon('forward')" size="17px" />
-              <span>{{ sending ? 'Пересылаю…' : 'Переслать' }}</span>
+              <span>{{ sending ? t('Пересылаю…') : t('Переслать') }}</span>
             </button>
           </div>
         </footer>

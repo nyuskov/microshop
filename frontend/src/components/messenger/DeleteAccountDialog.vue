@@ -31,7 +31,7 @@
           <button
             type="button"
             class="mod-password-eye"
-            :aria-label="showPassword ? 'Скрыть пароль' : 'Показать пароль'"
+            :aria-label="showPassword ? t('Скрыть пароль') : t('Показать пароль')"
             @click="showPassword = !showPassword"
           >
             <q-icon :name="icon(showPassword ? 'visibility_off' : 'visibility')" size="18px" />

@@ -47,7 +47,7 @@
     <q-card class="delchat-card">
       <q-card-section class="row no-wrap items-center delchat-head">
         <div class="text-subtitle1 text-weight-medium ellipsis">
-          {{ deleteChatBulkIds.length ? 'Удалить чаты' : 'Удалить чат' }}
+          {{ deleteChatBulkIds.length ? t('Удалить чаты') : t('Удалить чат') }}
         </div>
         <q-space />
         <q-btn flat round dense icon="close" v-close-popup :aria-label="t('Закрыть')" />

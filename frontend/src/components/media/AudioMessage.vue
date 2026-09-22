@@ -26,7 +26,7 @@
           <button
             class="am-play"
             :class="{ playing: isPlaying }"
-            :title="isPlaying ? 'Пауза' : 'Слушать'"
+            :title="isPlaying ? t('Пауза') : t('Слушать')"
             @click="toggle"
           >
             <q-icon :name="icon(isPlaying ? 'pause' : 'play_arrow')" size="24px" />
@@ -34,7 +34,7 @@
           <div
             class="am-track"
             role="slider"
-            :aria-label="'Перемотка'"
+            :aria-label="t('Перемотка')"
             :aria-valuemin="0"
             :aria-valuemax="Math.round(duration)"
             :aria-valuenow="Math.round(current)"

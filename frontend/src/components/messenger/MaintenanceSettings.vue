@@ -14,8 +14,8 @@
         <span class="maintenance-toggle-desc">
           {{
             enabled
-              ? 'Включён — приложение закрыто для всех, кроме вас'
-              : 'Выключен — работает как обычно'
+              ? t('Включён — приложение закрыто для всех, кроме вас')
+              : t('Выключен — работает как обычно')
           }}
         </span>
       </div>
@@ -41,7 +41,7 @@
 
     <button class="maintenance-btn primary" type="button" :disabled="busy" @click="save">
       <q-icon :name="icon('check')" size="17px" />
-      <span>{{ busy ? 'Сохраняем…' : 'Сохранить' }}</span>
+      <span>{{ busy ? t('Сохраняем…') : t('Сохранить') }}</span>
     </button>
 
     <p v-if="notice" class="maintenance-notice" role="status">{{ notice }}</p>

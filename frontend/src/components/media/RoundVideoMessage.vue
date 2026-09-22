@@ -8,7 +8,7 @@
         :class="{ playing: isPlaying, broken }"
         :role="broken ? undefined : 'button'"
         :tabindex="broken ? undefined : 0"
-        :title="broken ? 'Видео недоступно' : 'Воспроизвести видеосообщение'"
+        :title="broken ? t('Видео недоступно') : t('Воспроизвести видеосообщение')"
         @click="togglePlay"
         @keydown.enter.prevent="togglePlay"
         @keydown.space.prevent="togglePlay"
@@ -54,7 +54,7 @@
         <button
           v-if="isPlaying"
           class="rvm-chip rvm-sound"
-          :title="muted ? 'Включить звук' : 'Выключить звук'"
+          :title="muted ? t('Включить звук') : t('Выключить звук')"
           @click.stop="toggleMute"
         >
           <q-icon :name="icon(muted ? 'volume_off' : 'volume_up')" size="18px" />
@@ -64,7 +64,7 @@
         <button
           v-if="!broken"
           class="rvm-chip rvm-expand"
-          :title="'Смотреть «' + name + '» на весь экран'"
+          :title="t('Смотреть «{name}» на весь экран', { name })"
           @click.stop="openPreview"
         >
           <q-icon :name="icon('fullscreen')" size="18px" />

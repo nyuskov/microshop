@@ -1970,5 +1970,39 @@ export const EN: Record<string, string> = {
   'выбрано: {count}': 'selected: {count}',
   'Контактов пока нет — добавьте пользователей из телефонной книги.':
     'No contacts yet — add people from the phone book.',
-  '{current} из {count}': '{current} of {count}'
+  '{current} из {count}': '{current} of {count}',
+
+  // --- Медиа, папки, блокировки, служебные диалоги ---
+  Загрузка: 'Loading',
+  Пауза: 'Pause',
+  Слушать: 'Listen',
+  'Воспроизвести видеосообщение': 'Play the video message',
+  'Включить звук': 'Unmute',
+  'Выключить звук': 'Mute',
+  'Смотреть «{name}» на весь экран': 'Watch “{name}” full screen',
+  'В записи будет как есть, без зеркала': 'The recording will be as is, without mirroring',
+  'Предпросмотр зеркальный — в записи будет как есть':
+    'The preview is mirrored — the recording will be as is',
+  'Запретить писать': 'Block writing',
+  'Только звонки': 'Calls only',
+  'Скрыть список': 'Hide the list',
+  'Добавить чаты': 'Add chats',
+  'Никого не нашли — проверьте логин или телефон':
+    'No one was found — check the username or the phone number',
+  'Контактов пока нет. Найдите человека по логину или телефону и добавьте его.':
+    'No contacts yet. Find someone by username or phone number and add them.',
+  'Отпустите файл, чтобы прикрепить': 'Release the file to attach it',
+  'Откройте чат, чтобы прикрепить файл': 'Open a chat to attach the file',
+  'Выберите чат для пересылки': 'Choose a chat to forward to',
+  'Пересылаю…': 'Forwarding…',
+  'Включён — приложение закрыто для всех, кроме вас':
+    'On — the app is closed for everyone except you',
+  'Выключен — работает как обычно': 'Off — everything works as usual',
+  'Сохраняем…': 'Saving…',
+  'Выберите чат': 'Choose a chat',
+  'Отправляю…': 'Sending…',
+  'Свернуть реакции': 'Collapse the reactions',
+  'Ещё реакции': 'More reactions',
+  'Удалить чаты': 'Delete the chats',
+  'Удалить чат': 'Delete the chat'
 }

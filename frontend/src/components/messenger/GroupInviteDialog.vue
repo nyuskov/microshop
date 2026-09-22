@@ -3,7 +3,7 @@
     <q-card class="invite-card">
       <div class="invite-avatar" :style="avatarStyle(preview?.name || 'Группа')">
         <img v-if="avatarUrl" :src="avatarUrl" class="invite-avatar-img" alt="" decoding="async" />
-        <template v-else>{{ initials(preview?.name || 'Группа') }}</template>
+        <template v-else>{{ initials(preview?.name || t('Группа')) }}</template>
       </div>
       <p class="invite-title">{{ t('Приглашение в группу') }}</p>
       <p class="invite-name">{{ preview?.name }}</p>

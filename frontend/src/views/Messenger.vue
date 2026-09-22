@@ -1335,7 +1335,7 @@ const folderPickerTarget = computed<string>(() => {
     const chat = chats.value.find((item) => item.id === id)
     return chat ? chatTitle(chat, currentUserId.value) : t('Чат')
   }
-  return `${ids.length} ${plural(ids.length, [t('чат'), t('чата'), t('чатов')], ['chat', 'chats'])}`
+  return `${ids.length} ${plural(ids.length, ['чат', 'чата', 'чатов'], ['chat', 'chats'])}`
 })
 
 /** Чаты, которых больше нет, из папок убираем (список чатов уже загружен). */
@@ -2189,7 +2189,7 @@ const channelSubtitle = (chat: Chat): string => {
   if (!card || card.id !== chat.id) return t('канал')
   const noun = plural(
     card.subscribers,
-    [t('подписчик'), t('подписчика'), t('подписчиков')],
+    ['подписчик', 'подписчика', 'подписчиков'],
     ['subscriber', 'subscribers']
   )
   return t('канал · {count} {noun}', { count: card.subscribers, noun })
@@ -2344,11 +2344,7 @@ watch(
 const groupSubtitle = (chat: Chat): string => {
   const count = chat.users.length
   const online = chat.users.filter((u) => onlineUserIds.value.includes(u.id)).length
-  const noun = plural(
-    count,
-    [t('участник'), t('участника'), t('участников')],
-    ['member', 'members']
-  )
+  const noun = plural(count, ['участник', 'участника', 'участников'], ['member', 'members'])
   return online > 0
     ? t('{noun} · {online} в сети', { noun: `${count} ${noun}`, online })
     : `${count} ${noun}`

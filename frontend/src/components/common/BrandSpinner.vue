@@ -3,7 +3,7 @@
     class="brand-spinner"
     :style="spinnerStyle"
     role="status"
-    :aria-label="label ?? 'Загрузка'"
+    :aria-label="label ?? t('Загрузка')"
   ></span>
 </template>
 
@@ -21,6 +21,7 @@
  * `aria-label` и на экране не видна.
  */
 import { computed } from 'vue'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   /** Диаметр в пикселях: состояния берут свой размер (крупный — у звонка). */

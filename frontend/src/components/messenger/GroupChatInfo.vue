@@ -693,7 +693,7 @@ const titleText = computed<string>(() => detail.value?.name || props.chat.name |
 
 const memberCountText = computed<string>(() => {
   const n = detail.value?.members.length ?? props.chat.users.length ?? 0
-  return `${n} ${plural(n, [t('участник'), t('участника'), t('участников')], ['member', 'members'])}`
+  return `${n} ${plural(n, ['участник', 'участника', 'участников'], ['member', 'members'])}`
 })
 
 const onlineCount = computed<number>(() => {

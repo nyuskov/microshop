@@ -31,7 +31,7 @@
           <div class="shr-preview-body">
             <span class="shr-preview-label">{{ t('Содержимое из другого приложения') }}</span>
             <span class="shr-preview-text">{{
-              text.trim() || (fileName ? `Файл: ${fileName}` : 'Файл')
+              text.trim() || (fileName ? `Файл: ${fileName}` : t('Файл'))
             }}</span>
           </div>
         </div>
@@ -87,7 +87,7 @@
         <!-- Низ: выбранный чат + кнопки -->
         <footer class="shr-foot">
           <span class="shr-count">{{
-            selectedChat ? `Отправить в «${titleOf(selectedChat)}»` : 'Выберите чат'
+            selectedChat ? `Отправить в «${titleOf(selectedChat)}»` : t('Выберите чат')
           }}</span>
           <div class="shr-actions">
             <button class="shr-btn ghost" :disabled="busy" @click="emit('close')">
@@ -99,7 +99,7 @@
               @click="confirmShare"
             >
               <q-icon :name="icon('send')" size="17px" />
-              <span>{{ busy ? 'Отправляю…' : 'Отправить' }}</span>
+              <span>{{ busy ? t('Отправляю…') : t('Отправить') }}</span>
             </button>
           </div>
         </footer>

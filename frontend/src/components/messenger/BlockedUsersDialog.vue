@@ -47,7 +47,7 @@
               no-caps
               dense
               :color="user.messages_allowed ? 'grey' : 'primary'"
-              :label="user.messages_allowed ? 'Запретить писать' : 'Только звонки'"
+              :label="user.messages_allowed ? t('Запретить писать') : t('Только звонки')"
               :loading="busyId === user.id"
               @click="toggleKind(user)"
             />

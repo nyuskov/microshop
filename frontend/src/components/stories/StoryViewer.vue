@@ -20,7 +20,7 @@
         <template v-else>{{ authorInitials }}</template>
       </span>
       <span class="viewer-text">
-        <span class="viewer-name">{{ current.isMine ? 'Моя история' : authorName }}</span>
+        <span class="viewer-name">{{ current.isMine ? t('Моя история') : authorName }}</span>
         <span class="viewer-age">{{ age }}</span>
       </span>
       <button
@@ -168,7 +168,7 @@
           v-if="stories.reactionKinds.length > visibleKinds.length || expanded"
           class="reaction-btn more"
           type="button"
-          :title="expanded ? 'Свернуть реакции' : 'Ещё реакции'"
+          :title="expanded ? t('Свернуть реакции') : t('Ещё реакции')"
           :aria-expanded="expanded"
           @click.stop="expanded = !expanded"
         >

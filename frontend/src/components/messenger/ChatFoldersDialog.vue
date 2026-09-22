@@ -84,7 +84,7 @@
 
               <button class="folder-add" type="button" @click="togglePicker(folder.id)">
                 <q-icon :name="icon(pickerFor === folder.id ? 'expand_less' : 'add')" size="18px" />
-                <span>{{ pickerFor === folder.id ? 'Скрыть список' : 'Добавить чаты' }}</span>
+                <span>{{ pickerFor === folder.id ? t('Скрыть список') : t('Добавить чаты') }}</span>
               </button>
 
               <div v-if="pickerFor === folder.id" class="folder-picker">

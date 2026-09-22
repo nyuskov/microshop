@@ -53,7 +53,7 @@
             <h3 class="block-title">{{ t('Кто пишет') }}</h3>
             <ul class="senders">
               <li v-for="sender in stats.top_senders" :key="sender.user_id" class="sender">
-                <span class="sender-name">{{ sender.name || 'Участник' }}</span>
+                <span class="sender-name">{{ sender.name || t('Участник') }}</span>
                 <span class="sender-bar">
                   <span
                     class="sender-fill"
