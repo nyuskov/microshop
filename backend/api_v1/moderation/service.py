@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth import security_notifications
 from core.config import settings
+from core.i18n import locale_of_user, t
 from core.models import Message, ModerationAction, User, UserReport
 from core.models.moderation_action import (
     ACTION_MESSAGE_AUTO_HIDDEN,
@@ -58,47 +59,64 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _moderation_message(report: UserReport, extra: str = "") -> str:
+def _moderation_message(
+    report: UserReport, extra: str = "", lang: str | None = None
+) -> str:
     """Текст письма заявителю (что произошло с его жалобой)."""
     reason = REASON_TITLES.get(report.reason, report.reason)
     lines = [
-        "Ваша жалоба в Pismo рассмотрена.",
+        t("Ваша жалоба в Pismo рассмотрена.", lang=lang),
         "",
-        f"Причина обращения: {reason}",
-        f"Решение: {STATUS_TITLES.get(report.status, report.status)}",
+        t(
+            "Причина обращения: {reason}",
+            lang=lang,
+            reason=t(reason, lang=lang),
+        ),
+        t(
+            "Решение: {status}",
+            lang=lang,
+            status=t(STATUS_TITLES.get(report.status, report.status), lang=lang),
+        ),
     ]
     if report.note:
-        lines.append(f"Комментарий модератора: {report.note}")
+        lines.append(t("Комментарий модератора: {note}", lang=lang, note=report.note))
     if extra:
         lines.extend(["", extra])
     lines.extend(
         [
             "",
-            "Спасибо, что помогаете делать Pismo безопаснее.",
-            "— Pismo, уведомление модерации",
+            t("Спасибо, что помогаете делать Pismo безопаснее.", lang=lang),
+            t("— Pismo, уведомление модерации", lang=lang),
         ]
     )
     return "\n".join(lines)
 
 
-def _author_message(message: Message, reports: int) -> str:
+def _author_message(message: Message, reports: int, lang: str | None = None) -> str:
     """Текст письма автору скрытого сообщения."""
     preview = (message.text or "").strip()
     if not preview:
-        preview = message.file_name or "вложение"
+        preview = message.file_name or t("вложение", lang=lang)
     if len(preview) > 120:
         preview = preview[:120] + "…"
     return "\n".join(
         [
-            "Ваше сообщение скрыто до проверки модератором.",
+            t("Ваше сообщение скрыто до проверки модератором.", lang=lang),
             "",
-            f"Сообщение: «{preview}»",
-            f"Жалоб от разных пользователей: {reports}",
+            t("Сообщение: «{preview}»", lang=lang, preview=preview),
+            t(
+                "Жалоб от разных пользователей: {reports}",
+                lang=lang,
+                reports=reports,
+            ),
             "",
-            "Скрытое сообщение видите только вы. Если это ошибка — напишите на",
-            "nyuskov@gmail.com или отредактируйте сообщение.",
+            t(
+                "Скрытое сообщение видите только вы. Если это ошибка — напишите на",
+                lang=lang,
+            ),
+            t("nyuskov@gmail.com или отредактируйте сообщение.", lang=lang),
             "",
-            "— Pismo, уведомление модерации",
+            t("— Pismo, уведомление модерации", lang=lang),
         ]
     )
 
@@ -181,7 +199,9 @@ async def maybe_auto_hide(
         security_notifications.enqueue_security_email(
             str(author.email),
             "Pismo: сообщение скрыто до проверки",
-            _author_message(message, len(reporters)),
+            _author_message(
+                message, len(reporters), lang=await locale_of_user(session, author.id)
+            ),
         )
         logger.info("Автору %s отправлено письмо о скрытии сообщения", author.id)
 
@@ -254,10 +274,11 @@ async def apply_report_status(
 
     reporter = await session.get(User, report.reporter_id)
     if reporter is not None and reporter.email:
+        lang = await locale_of_user(session, reporter.id)
         security_notifications.enqueue_security_email(
             str(reporter.email),
-            "Pismo: жалоба рассмотрена",
-            _moderation_message(report),
+            t("Pismo: жалоба рассмотрена", lang=lang),
+            _moderation_message(report, lang=lang),
         )
     return changed
 

@@ -503,4 +503,44 @@ EN: dict[str, str] = {
     "Слишком много неверных попыток входа. Повторите через {seconds} сек.": (
         "Too many wrong sign-in attempts. Try again in {seconds} s."
     ),
+    # --- Письма модерации ---
+    "спам или реклама": "spam or advertising",
+    "оскорбления или угрозы": "insults or threats",
+    "мошенничество": "fraud",
+    "насилие или шок-контент": "violence or shock content",
+    "другое нарушение": "another violation",
+    "новая": "new",
+    "в работе": "in review",
+    "нарушение подтверждено": "the violation was confirmed",
+    "нарушение не подтверждено": "the violation was not confirmed",
+    "Pismo: жалоба рассмотрена": "Pismo: your report has been reviewed",
+    "Pismo: сообщение скрыто до проверки": (
+        "Pismo: the message is hidden until a review"
+    ),
+    "Ваша жалоба в Pismo рассмотрена.": "Your report in Pismo has been reviewed.",
+    "Причина обращения: {reason}": "Reason for the report: {reason}",
+    "Решение: {status}": "Decision: {status}",
+    "Комментарий модератора: {note}": "Moderator's comment: {note}",
+    "Спасибо, что помогаете делать Pismo безопаснее.": (
+        "Thank you for helping make Pismo safer."
+    ),
+    "— Pismo, уведомление модерации": "— Pismo, a moderation notice",
+    "Ваше сообщение скрыто до проверки модератором.": (
+        "Your message is hidden until a moderator reviews it."
+    ),
+    "Сообщение: «{preview}»": "Message: “{preview}”",
+    "Жалоб от разных пользователей: {reports}": (
+        "Reports from different users: {reports}"
+    ),
+    "Скрытое сообщение видите только вы. Если это ошибка — напишите на": (
+        "Only you can see the hidden message. If this is a mistake, write to"
+    ),
+    "nyuskov@gmail.com или отредактируйте сообщение.": (
+        "nyuskov@gmail.com or edit the message."
+    ),
+    "вложение": "attachment",
+    "Этот формат видео не проигрывается в браузере, и перекодировать его не удалось. Выберите другой файл.": (
+        "This video format does not play in the browser and could not be "
+        "transcoded. Choose another file."
+    ),
 }

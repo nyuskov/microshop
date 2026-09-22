@@ -243,7 +243,7 @@ async def prepare_video(
         if info is None:
             raise HTTPException(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail=UNSUPPORTED_VIDEO_DETAIL,
+                detail=t(UNSUPPORTED_VIDEO_DETAIL),
             )
         if info.video_codec is None:
             # Аудио (mp3/m4a) расширением проходит белый список медиа, но
@@ -259,7 +259,7 @@ async def prepare_video(
         if not await _transcode(source, target):
             raise HTTPException(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail=UNSUPPORTED_VIDEO_DETAIL,
+                detail=t(UNSUPPORTED_VIDEO_DETAIL),
             )
         transcoded = target.read_bytes()
 
