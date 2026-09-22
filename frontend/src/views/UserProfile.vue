@@ -6,7 +6,8 @@ import { getErrorMessage } from '@/services/errors'
 import { useAccountSecurity } from '@/composables/useAccountSecurity'
 import { useMobileLayer } from '@/composables/useMobileOverlay'
 import { removeAvatar, uploadAvatar } from '@/services/api'
-import { LOCALES, plural, t } from '@/i18n'
+import { LOCALES, dateLocale, plural, t } from '@/i18n'
+import { countryOptions } from '@/utils/countries'
 import { legalUrl } from '@/utils/legalDocs'
 import { mediaUrl } from '@/services/chatService'
 import { optimizeAvatarFile } from '@/utils/media'
@@ -88,16 +89,6 @@ const E2eeBackupDialog = defineAsyncComponent(
   () => import('@/components/messenger/E2eeBackupDialog.vue')
 )
 
-const COUNTRIES = [
-  { code: 'RU', name: 'Россия' },
-  { code: 'BY', name: 'Беларусь' },
-  { code: 'KZ', name: 'Казахстан' },
-  { code: 'US', name: 'США' },
-  { code: 'DE', name: 'Германия' },
-  { code: 'ES', name: 'Испания' },
-  { code: 'FR', name: 'Франция' }
-]
-
 /**
  * Варианты для выпадающих списков «Язык» и «Страна».
  *
@@ -106,6 +97,9 @@ const COUNTRIES = [
  *
  * Языки берутся из `LOCALES` — то есть только те, на которых интерфейс реально
  * умеет работать. Раньше список был шире (es/de/fr), но выбор ничего не менял.
+ *
+ * Страны — все (ISO 3166-1 alpha-2), названия даёт браузер на языке интерфейса:
+ * раньше список был из семи стран, и свою страну человек просто не находил.
  */
 const LANGUAGE_OPTIONS = computed(() => [
   { value: '', label: t('Не выбран') },
@@ -114,7 +108,7 @@ const LANGUAGE_OPTIONS = computed(() => [
 
 const COUNTRY_OPTIONS = computed(() => [
   { value: '', label: t('Не выбрана') },
-  ...COUNTRIES.map((country) => ({ value: country.code, label: t(country.name) }))
+  ...countryOptions(dateLocale())
 ])
 
 interface ProfileForm {

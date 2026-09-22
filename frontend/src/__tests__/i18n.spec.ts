@@ -76,4 +76,17 @@ describe('i18n', () => {
     // («12:12 PM»), а в приложении оно везде 24-часовое.
     expect(dateLocale()).toBe('en-GB')
   })
+
+  it('язык документа следует за языком интерфейса', () => {
+    // Quasar при старте ставит <html lang> из своей локали, а в main.ts
+    // подключена только русская — без синхронизации документ оставался
+    // русским при английском интерфейсе.
+    expect(document.documentElement.lang).toBe('ru')
+
+    setLocale('en')
+    expect(document.documentElement.lang).toBe('en')
+
+    setLocale('ru')
+    expect(document.documentElement.lang).toBe('ru')
+  })
 })

@@ -13,6 +13,14 @@ export type SelectValue = string | number
 export interface SelectOption {
   value: SelectValue
   label: string
+  /**
+   * Чем ещё искать этот вариант (кроме `label`).
+   *
+   * Нужно для стран: подпись локализована («Казахстан»), а человек набирает код
+   * или английское название («kz», «kazakhstan») — без этого список из 249
+   * стран казался бы неработающим: вроде есть поиск, а нужного нет.
+   */
+  keywords?: readonly string[]
 }
 
 /** Индекс варианта с этим значением (-1 — нет такого). */
@@ -35,7 +43,10 @@ export const moveHighlight = (current: number, count: number, delta: number): nu
 export const filterOptions = (options: SelectOption[], query: string): SelectOption[] => {
   const q = query.trim().toLowerCase()
   if (!q) return options
-  return options.filter((option) => option.label.toLowerCase().includes(q))
+  return options.filter((option) => {
+    if (option.label.toLowerCase().includes(q)) return true
+    return (option.keywords ?? []).some((word) => word.toLowerCase().includes(q))
+  })
 }
 
 export interface AnchorRect {

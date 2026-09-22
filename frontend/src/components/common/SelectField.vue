@@ -24,9 +24,13 @@
       <q-icon :name="icon('expand_more')" size="18px" aria-hidden="true" />
     </button>
 
-    <!-- Слой в body: внутри прокручиваемой карточки (профиль, панель звонка) он
-         обрезался бы её `overflow`, а так координаты считаем сами. -->
-    <Teleport to="body">
+    <!-- Слой списка. По умолчанию — в body: внутри прокручиваемой карточки
+         (профиль, панель звонка) его обрезал бы её `overflow`, а так координаты
+         считаем сами. НО если поле лежит внутри диалога Quasar, слой остаётся
+         внутри этого диалога: у `q-dialog` включён фокус-трап, и при фокусе
+         снаружи он возвращает его себе — поле поиска из-за этого выглядело
+         «только для чтения» (жалоба владельца 22.09.2026). -->
+    <Teleport :to="teleportTarget">
       <div
         v-if="open"
         ref="layerRef"
@@ -129,6 +133,9 @@ const triggerRef = ref<HTMLButtonElement | null>(null)
 const layerRef = ref<HTMLElement | null>(null)
 const searchRef = ref<HTMLInputElement | null>(null)
 
+/** Куда телепортировать слой: `body` или контейнер диалога (см. шаблон). */
+const teleportTarget = ref<string | HTMLElement>('body')
+
 const open = ref(false)
 const query = ref('')
 const highlight = ref(-1)
@@ -171,6 +178,10 @@ const closeMenu = (focusTrigger = false) => {
 
 const openMenu = async () => {
   if (props.disabled || open.value) return
+  // Куда рисовать слой — решаем ДО его появления: внутри диалога Quasar иначе
+  // фокус-трап диалога забирает фокус у поля поиска (см. шаблон).
+  const dialog = triggerRef.value?.closest<HTMLElement>('[aria-modal="true"], .q-dialog')
+  teleportTarget.value = dialog ?? 'body'
   query.value = ''
   highlight.value = Math.max(0, indexOfValue(props.options, props.modelValue))
   place()
@@ -250,7 +261,17 @@ watch(query, () => {
  * Пока список открыт, следим за страницей: клик мимо закрывает его, а прокрутка
  * или изменение размера окна — тоже (иначе слой «отклеивался» бы от поля).
  * Прокрутка самого списка не считается: событие приходит с элемента внутри слоя.
+ *
+ * Отдельный случай — фокус в поле поиска: клик по нему браузер сопровождает
+ * прокруткой контейнера к полю (и, на телефоне, показом экранной клавиатуры с
+ * `resize`). Раньше список в этот момент закрывался, и поиск выглядел «некликабельным»
+ * (жалоба владельца 22.09.2026). Если фокус уже внутри слоя — не закрываем.
  */
+const focusIsInsideLayer = (): boolean => {
+  const active = document.activeElement
+  return Boolean(active && layerRef.value?.contains(active))
+}
+
 const onPointerDownOutside = (event: PointerEvent) => {
   const target = event.target as Node | null
   if (!target) return
@@ -261,6 +282,12 @@ const onPointerDownOutside = (event: PointerEvent) => {
 const onViewportChange = (event?: Event) => {
   if (!open.value) return
   if (event?.target instanceof Node && layerRef.value?.contains(event.target)) return
+  if (focusIsInsideLayer()) {
+    // Клавиатура/фокус сдвинули экран — список не закрываем, но слой должен
+    // остаться под полем, поэтому координаты пересчитываем.
+    place()
+    return
+  }
   closeMenu()
 }
 
@@ -330,6 +357,12 @@ onBeforeUnmount(() => {
 .sf-layer {
   position: fixed;
   z-index: 6100; /* выше диалогов Quasar (6000) */
+  /*
+   * Если слой лежит внутри q-dialog (нужно, чтобы focus-trap диалога не
+   * выдёргивал фокус из поиска), он наследует pointer-events: none от
+   * .q-dialog.no-pointer-events — и тогда по списку нельзя кликнуть.
+   */
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   padding: 6px;
