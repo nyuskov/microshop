@@ -10,7 +10,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api_v1 import router_v1
-from api_v1.auth.utils import request_from_admin
+from api_v1.auth.utils import (
+    VIEWER_ADMIN,
+    VIEWER_INVALID,
+    admin_viewer_of,
+    token_invalid_error,
+)
 from api_v1.events.bridge import start_bridge, stop_bridge
 from api_v1.health.views import router as health_router
 from api_v1.media.views import router as media_router
@@ -127,6 +132,12 @@ async def maintenance_guard(request: Request, call_next):
     `frontend/src/components/common/MaintenanceScreen.vue`). WebSocket сюда не
     попадает (это не HTTP-запрос) — уже открытые соединения доживают до
     переподключения, вреда в этом нет.
+
+    Запрос с НЕГОДНЫМ access-токеном (истёк, подделан, это refresh-токен) получает
+    обычный `401`, а не заглушку: клиент обновляет сессию только по 401
+    (`services/api.ts`), и без этого приложение с протухшим токеном жило
+    «полуживым» до перезагрузки страницы — именно это произошло на проде
+    22.09.2026 (пустые чаты и логины вместо личных имён во время техработ).
     """
     path = request.url.path
     if (
@@ -139,8 +150,19 @@ async def maintenance_guard(request: Request, call_next):
     state = await maintenance.current_state()
     if not state.enabled:
         return await call_next(request)
-    if await request_from_admin(request):
+
+    viewer = await admin_viewer_of(request)
+    if viewer == VIEWER_ADMIN:
         return await call_next(request)
+    if viewer == VIEWER_INVALID:
+        # Токен есть, но он никуда не годится: пусть клиент получит 401 и обновит
+        # сессию (или уйдёт на экран входа), а не будет гадать, что за 503.
+        error = token_invalid_error()
+        return JSONResponse(
+            status_code=error.status_code,
+            content={"detail": error.detail},
+            headers=error.headers,
+        )
 
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

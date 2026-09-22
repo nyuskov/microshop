@@ -7,6 +7,7 @@
 """
 
 import hashlib
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -20,10 +21,80 @@ from core.models import RefreshSession, User
 from .device import DeviceInfo
 from .utils import REFRESH_TOKEN_TYPE, build_refresh_token, decode_jwt
 
+logger = logging.getLogger(__name__)
+
+#: Окно «прощения» для повторного использования уже ротированного токена.
+#:
+#: Клиент переиспользует старый refresh-токен не только при краже: две вкладки
+#: одного браузера, потерянный ответ на ротацию (клиент повторил запрос тем же
+#: токеном) или вкладка, уснувшая с прошлым токеном. Раньше за это гасилась вся
+#: семья сессий — человека выбрасывало из приложения во всех окнах (прод
+#: 22.09.2026: сессия 261 → 264, 264 отозвана без `replaced_by`, дальше refresh
+#: отвечал 401). В пределах окна, и если ПОТОМОК ротации ещё жив, считаем это
+#: гонкой и выдаём ещё одну сессию тому же устройству. Если потомок уже отозван
+#: (семью гасили осознанно: «выйти на всех», смена пароля), окно НЕ действует.
+REUSE_GRACE_SECONDS = 60
+
 
 def _hash_jti(jti: str) -> str:
     """SHA-256 от jti — в БД хранится только хеш."""
     return hashlib.sha256(jti.encode("utf-8")).hexdigest()
+
+
+def _device_of(row: RefreshSession) -> DeviceInfo:
+    """Сведения об устройстве сессии — при ротации и выдаче «сестры»."""
+    return DeviceInfo(
+        signature=row.device_signature,
+        user_agent=row.device_user_agent,
+        ip=row.device_ip,
+    )
+
+
+async def _session_by_jti_hash(
+    session: AsyncSession, jti_hash: str | None
+) -> RefreshSession | None:
+    """Сессия по хешу jti (в БД лежат только хеши, сам токен не восстановить)."""
+    if not jti_hash:
+        return None
+    stmt = select(RefreshSession).where(RefreshSession.jti_hash == jti_hash)
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def _reuse_is_benign(
+    session: AsyncSession,
+    *,
+    row: RefreshSession,
+    user_id: int,
+    now: datetime,
+) -> bool:
+    """Похоже ли повторное использование токена на гонку, а не на кражу.
+
+    Условия: ротация была недавно (в пределах `REUSE_GRACE_SECONDS`) и её потомок
+    (`replaced_by`) ещё жив. Отозванный потомок означает, что семью гасили
+    намеренно, — тогда окно не спасает, иначе «выйти на всех устройствах»
+    обходился бы повторным использованием старого токена.
+    """
+    if row.replaced_by is None or row.revoked_at is None:
+        return False
+    if (now - row.revoked_at).total_seconds() > REUSE_GRACE_SECONDS:
+        return False
+    successor = await _session_by_jti_hash(session, row.replaced_by)
+    return (
+        successor is not None
+        and successor.user_id == user_id
+        and successor.revoked_at is None
+        and successor.expires_at > now
+    )
+
+
+async def _issue_sibling_session(
+    session: AsyncSession, *, row: RefreshSession, user_id: int
+) -> str:
+    """Выдаёт ещё одну сессию с тем же устройством (см. `REUSE_GRACE_SECONDS`)."""
+    new_jti = uuid.uuid4().hex
+    session.add(_new_session(user_id=user_id, jti=new_jti, device=_device_of(row)))
+    await session.commit()
+    return build_refresh_token(user_id, new_jti)
 
 
 def _expires_at() -> datetime:
@@ -67,7 +138,9 @@ async def rotate_refresh_token(
 
     ``None`` означает: токен не выдавался, истёк или уже отозван. При повторном
     использовании отозванного токена отзываются ВСЕ сессии пользователя
-    (семейный отзыв — признак кражи токена).
+    (семейный отзыв — признак кражи токена). Исключение — гонка в пределах
+    `REUSE_GRACE_SECONDS` при живом потомке (см. `_reuse_is_benign`): там просто
+    выдаём ещё одну сессию, чтобы человека не выбрасывало из всех вкладок.
     """
     now = datetime.now(timezone.utc)
     stmt = select(RefreshSession).where(RefreshSession.jti_hash == _hash_jti(jti))
@@ -77,6 +150,14 @@ async def rotate_refresh_token(
     if row.expires_at <= now:
         return None
     if row.revoked_at is not None:
+        if await _reuse_is_benign(session, row=row, user_id=user_id, now=now):
+            logger.info(
+                "Повторное использование ротированного refresh-токена в пределах "
+                "%s с — выдаю новую сессию вместо семейного отзыва (пользователь %s)",
+                REUSE_GRACE_SECONDS,
+                user_id,
+            )
+            return await _issue_sibling_session(session, row=row, user_id=user_id)
         # «Сгоревший» токен используется повторно — вероятная кража.
         await revoke_all_sessions(session, user_id=user_id)
         return None
@@ -85,17 +166,7 @@ async def rotate_refresh_token(
     row.revoked_at = now
     new_jti = uuid.uuid4().hex
     row.replaced_by = _hash_jti(new_jti)
-    session.add(
-        _new_session(
-            user_id=user_id,
-            jti=new_jti,
-            device=DeviceInfo(
-                signature=row.device_signature,
-                user_agent=row.device_user_agent,
-                ip=row.device_ip,
-            ),
-        )
-    )
+    session.add(_new_session(user_id=user_id, jti=new_jti, device=_device_of(row)))
     await session.commit()
     return build_refresh_token(user_id, new_jti)
 

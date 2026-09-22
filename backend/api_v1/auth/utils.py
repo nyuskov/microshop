@@ -261,36 +261,77 @@ async def get_current_admin(
     return user
 
 
-async def request_from_admin(request: Request) -> bool:
-    """Запрос пришёл от администратора (или владельца)?
+#: Итоги «мягкой» проверки запроса по access-токену (см. `admin_viewer_of`).
+#: Различаем «токена нет вовсе» и «токен передан, но негоден»: во втором случае
+#: заглушка техработ отдаёт не себя, а 401 — иначе авто-refresh во фронте (он
+#: реагирует только на 401) не сработает и клиент застрянет до перезагрузки.
+VIEWER_ADMIN = "admin"
+VIEWER_USER = "user"
+VIEWER_ANONYMOUS = "anonymous"
+VIEWER_INVALID = "invalid"
 
-    Проверка намеренно «мягкая» — при любой осечке считаем, что это не
-    администратор. Нужна там, где решение принимается ДО маршрутизации и сессии
-    из `Depends` ещё нет: обход экрана техработ (`maintenance_guard` в
-    ``main.py``) и публичный статус режима (``api_v1/system/views.py``) — второму
-    она нужна, чтобы администратор не видел заглушку даже в старом клиенте,
-    который о своей роли ничего не знает.
+#: Код 401 на негодный access-токен (истёк, подделан или это refresh-токен).
+#: Намеренно не `session_revoked`: тот код клиент понимает как «сессии больше нет»
+#: и выходит из аккаунта, а здесь нужно ОБНОВИТЬ сессию.
+TOKEN_INVALID_CODE = "token_invalid"
+TOKEN_INVALID_MESSAGE = "Сессия истекла — обновите страницу."
+
+
+def token_invalid_error() -> HTTPException:
+    """401 на негодный access-токен (истёк, подделан или это refresh-токен)."""
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={
+            "code": TOKEN_INVALID_CODE,
+            "message": t(TOKEN_INVALID_MESSAGE),
+        },
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def admin_viewer_of(request: Request) -> str:
+    """Кто прислал запрос — по одному взгляду на access-токен.
+
+    Ответ — одно из ``VIEWER_*``. Нужна там, где решение принимается ДО
+    маршрутизации и сессии из `Depends` ещё нет: обход экрана техработ
+    (`maintenance_guard` в ``main.py``) и публичный статус режима
+    (``api_v1/system/views.py``) — второму она нужна, чтобы администратор не видел
+    заглушку даже в старом клиенте, который о своей роли ничего не знает.
+
+    Проверка намеренно «мягкая»: при любой осечке (в том числе при ошибке БД)
+    считаем, что администратора здесь нет.
     """
     scheme, _, token = request.headers.get("authorization", "").partition(" ")
     if scheme.lower() != "bearer" or not token:
-        return False
+        return VIEWER_ANONYMOUS
     try:
         payload = decode_jwt(token)
     except jwt.InvalidTokenError:
-        return False
+        return VIEWER_INVALID
     # Refresh-токен не должен открывать доступ как access (как в get_current_user).
     if payload.get("type") == REFRESH_TOKEN_TYPE:
-        return False
+        return VIEWER_INVALID
     subject = str(payload.get("sub", ""))
     if not subject.isdigit():
-        return False
+        return VIEWER_INVALID
     try:
         async with db_helper.session_factory() as session:
             user = await get_user_by_id(session, int(subject))
     except Exception as exc:  # noqa: BLE001 - проверка не должна ронять запрос
         logger.warning("Не удалось проверить администратора по токену: %s", exc)
-        return False
-    return user is not None and user.is_active and (user.is_admin or user.is_superuser)
+        return VIEWER_USER
+    if user is None or not user.is_active:
+        return VIEWER_USER
+    return VIEWER_ADMIN if (user.is_admin or user.is_superuser) else VIEWER_USER
+
+
+async def request_from_admin(request: Request) -> bool:
+    """Запрос пришёл от администратора (или владельца)?
+
+    Тонкая обёртка над `admin_viewer_of` — там, где важен только ответ «да/нет»
+    (публичный статус режима в ``api_v1/system/views.py``).
+    """
+    return await admin_viewer_of(request) == VIEWER_ADMIN
 
 
 async def resolve_user_from_websocket(websocket: WebSocket) -> User | None:

@@ -1158,6 +1158,7 @@ export const EN: Record<string, string> = {
   'Продолжить работу': 'Continue',
   'Ошибка повторяется? Напишите на': 'Does the error keep happening? Write to',
   'Идут технические работы': 'Maintenance is in progress',
+  'Идут технические работы: {text}': 'Maintenance is in progress: {text}',
   'Проверить снова': 'Check again',
   'Работы обычно занимают несколько минут — страница обновится сама.':
     'Maintenance usually takes a few minutes — the page will refresh itself.',

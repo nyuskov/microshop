@@ -38,7 +38,7 @@
 import { ref } from 'vue'
 
 import ErrorScreen from '@/components/common/ErrorScreen.vue'
-import { fetchMaintenanceStatus } from '@/services/maintenance'
+import { fetchMaintenanceStatus, realMaintenanceEnabled } from '@/services/maintenance'
 import { hideMaintenance, maintenanceActive, maintenanceText } from '@/utils/maintenance'
 import { t } from '@/i18n'
 
@@ -47,12 +47,16 @@ const checking = ref(false)
 /**
  * Ручная проверка: если работы уже закончились — снимаем экран и перезагружаем
  * страницу (приложение за экраном стояло без данных, см. useMaintenanceWatch).
+ *
+ * Состояние берём через `realMaintenanceEnabled`: администратору сервер отдаёт
+ * `enabled=false` (чтобы заглушка не закрывала его в старом клиенте), и по этому
+ * полю кнопка всегда «видела бы» окончание работ.
  */
 const retry = async () => {
   checking.value = true
   try {
     const status = await fetchMaintenanceStatus()
-    if (!status.enabled) {
+    if (!realMaintenanceEnabled(status)) {
       hideMaintenance()
       window.location.reload()
     }

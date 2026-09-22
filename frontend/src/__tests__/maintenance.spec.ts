@@ -2,7 +2,8 @@
  * Режим технических работ в приложении.
  *
  * Смысл проверки — чтобы «заглушка» не разъехалась с сервером и не пропала из
- * интерфейса: экран показывается поверх всего приложения, включая вход; о режиме
+ * интерфейса: экран показывается поверх приложения вошедшему не-администратору
+ * (экран входа заглушкой не закрываем — иначе режим нечем выключить); о режиме
  * узнаём из ответа 503 с кодом `maintenance` и из публичного статуса; рубильник
  * живёт в админской панели и только там.
  *
@@ -24,6 +25,7 @@ const service = source('src/services/maintenance.ts')
 const watch = source('src/composables/useMaintenanceWatch.ts')
 const settings = source('src/components/messenger/MaintenanceSettings.vue')
 const profile = source('src/views/UserProfile.vue')
+const login = source('src/components/Login.vue')
 
 // Договор с бэкендом: путь статуса, код ошибки и обход заглушки для самого
 // рубильника. Разъедется — экран молча перестанет показываться.
@@ -69,12 +71,26 @@ describe('экран технических работ', () => {
   it('администратору и владельцу экран не показывается — иначе не выключить', () => {
     // Сервер пускает обе роли (см. main.py), значит и приложение не должно
     // закрываться перед ними: панель нужно уметь открыть.
-    expect(utils).toMatch(/if \(viewerIsAdmin\) return/)
+    expect(utils).toMatch(/!viewerIsAdmin\.value/)
     expect(utils).toMatch(/export function setMaintenanceExempt/)
     expect(app).toContain('setMaintenanceExempt')
     expect(app).toMatch(/watch\(\(\) => authStore\.isAdmin, setMaintenanceExempt/)
     expect(backendAuth).toMatch(/user\.is_admin or user\.is_superuser/)
-    expect(backendMain).toMatch(/if await request_from_admin\(request\)/)
+    expect(backendMain).toMatch(/if viewer == VIEWER_ADMIN/)
+  })
+
+  it('экран входа заглушкой не закрывается — иначе режим нечем выключить', () => {
+    // Сервер `/auth/` и `/jwt/` открывает специально («войди и выключи режим»),
+    // и UI обязан этим пользоваться: 22.09.2026 владелец видел заглушку вместо
+    // входа и снимал режим скриптом по ssh.
+    expect(utils).toMatch(/viewerIsAuthenticated/)
+    expect(utils).toMatch(/export function setMaintenanceViewerAuthenticated/)
+    expect(app).toMatch(
+      /watch\(\s*\(\) => authStore\.isAuthenticated,\s*setMaintenanceViewerAuthenticated/
+    )
+    // Пока человек не вошёл, о работах говорит строка на экране входа.
+    expect(login).toContain('maintenanceRunning')
+    expect(login).toContain('Идут технические работы')
   })
 })
 
@@ -104,6 +120,33 @@ describe('как приложение узнаёт о режиме', () => {
     // Сам рубильник обязан работать во время техработ, иначе режим не выключить.
     expect(backendMain).toMatch(/MAINTENANCE_EXEMPT_PREFIXES/)
     expect(backendMain).toMatch(/system\/maintenance/)
+  })
+
+  it('запрос с негодным токеном получает 401, а не заглушку', () => {
+    // Авто-refresh во фронте (`services/api.ts`) срабатывает только на 401, и
+    // заглушка обязана отдавать именно его: иначе клиент с протухшим
+    // access-токеном сидит за экраном техработ до перезагрузки страницы
+    // (прод 22.09.2026 — пустые чаты и логины вместо личных имён у владельца).
+    expect(backendAuth).toMatch(/VIEWER_INVALID/)
+    expect(backendAuth).toMatch(/TOKEN_INVALID_CODE = "token_invalid"/)
+    expect(backendMain).toMatch(/if viewer == VIEWER_INVALID/)
+    expect(backendMain).toMatch(/token_invalid_error/)
+    // А без токена вовсе — по-прежнему заглушка.
+    expect(backendMain).toMatch(/return JSONResponse\(/)
+  })
+
+  it('повтор ротированного refresh-токена не выкидывает все вкладки', () => {
+    // Две вкладки одного браузера переиспользуют старый токен не по злому
+    // умыслу; окно прощения спасает от семейного отзыва (прод 22.09.2026:
+    // сессия 261 → 264, 264 отозвана без replaced_by, дальше refresh 401).
+    const rotation = readFileSync(
+      resolve(process.cwd(), '../backend/api_v1/auth/refresh_sessions.py'),
+      'utf8'
+    )
+    expect(rotation).toMatch(/REUSE_GRACE_SECONDS = 60/)
+    expect(rotation).toMatch(/_reuse_is_benign/)
+    // Осознанный отзыв ("выйти на всех", смена пароля) окном не обходится.
+    expect(rotation).toMatch(/successor\.revoked_at is None/)
   })
 })
 

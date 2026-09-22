@@ -15,14 +15,18 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from datetime import datetime, timedelta, timezone
 
+import jwt
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from api_v1.auth.utils import TOKEN_INVALID_CODE
 from core import maintenance
+from core.config import settings
 from core.models import AppSetting, User, db_helper
 
 pytestmark = pytest.mark.skipif(
@@ -301,14 +305,43 @@ async def test_admin_and_owner_pass_through(api: _ApiCtx) -> None:
     assert blocked.status_code == 503, blocked.text
 
 
-async def test_broken_token_does_not_open_access(api: _ApiCtx) -> None:
-    """Поддельный или refresh-токен доступа не открывает."""
+async def test_unusable_token_gets_401_not_the_screen(api: _ApiCtx) -> None:
+    """Токен передан, но негоден — 401, а не заглушка.
+
+    Авто-refresh во фронте (`services/api.ts`) срабатывает только на 401, поэтому
+    заглушка обязана отдать именно его: иначе клиент с протухшим access-токеном
+    сидел бы за экраном техработ до перезагрузки страницы и не грузил ни чаты, ни
+    имена контактов (прод 22.09.2026 — у самого владельца).
+    """
+    user = await api.make_user()
     await api.switch(enabled=True)
 
     fake = await api.client.get(
         "/api/v1/chats/", headers={"Authorization": "Bearer not-a-token"}
     )
-    assert fake.status_code == 503, fake.text
+    assert fake.status_code == 401, fake.text
+    assert fake.json()["detail"]["code"] == TOKEN_INVALID_CODE
+
+    # Подпись настоящая, а срок вышел — ровно случай «приложение открыто больше
+    # 30 минут»: тот же 401, чтобы клиент обновил сессию и вернулся в работу.
+    past = datetime.now(timezone.utc) - timedelta(minutes=5)
+    expired = jwt.encode(
+        {
+            "sub": str(user.id),
+            "aud": "fastapi-users:auth",
+            "iat": past - timedelta(minutes=30),
+            "exp": past,
+        },
+        settings.auth_jwt.accepted_secrets()[0],
+        algorithm=settings.auth_jwt.algorithm,
+    )
+    stale = await api.client.get("/api/v1/chats/", headers=api.auth(expired))
+    assert stale.status_code == 401, stale.text
+
+    # А без токена вовсе — по-прежнему заглушка: негодный токен не открывает
+    # доступ, он только даёт клиенту понять, что пора обновить сессию.
+    anonymous = await api.client.get("/api/v1/chats/")
+    assert anonymous.status_code == 503, anonymous.text
 
 
 async def test_admin_does_not_see_the_screen(api: _ApiCtx) -> None:

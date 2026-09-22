@@ -9,17 +9,21 @@ import { useOnlineStatus } from '@/composables/useOnlineStatus'
 import ExternalLinkDialog from '@/components/common/ExternalLinkDialog.vue'
 import FatalErrorScreen from '@/components/common/FatalErrorScreen.vue'
 import MaintenanceScreen from '@/components/common/MaintenanceScreen.vue'
-import { setMaintenanceExempt } from '@/utils/maintenance'
+import { setMaintenanceExempt, setMaintenanceViewerAuthenticated } from '@/utils/maintenance'
 import { t } from '@/i18n'
 
 // Высота с учётом экранной клавиатуры — нужна всему приложению (и логину тоже).
 useVisualViewport()
 
 // Режим технических работ: пока он включён, вместо приложения — экран-заглушка
-// (включает его администратор из админской панели). Администратору экран не
-// показываем: иначе он не смог бы вернуться в панель и выключить режим.
+// (включает его администратор из админской панели). Два исключения, и оба важны:
+// администратору экран не показываем (иначе он не вернётся в панель и не выключит
+// режим), а экран ВХОДА заглушкой не закрываем — сервер `/auth/` и `/jwt/` для
+// этого режима специально открыт, и владелец должен суметь войти и выключить
+// работы из приложения, а не искать ssh (инцидент 22.09.2026).
 const authStore = useAuthStore()
 watch(() => authStore.isAdmin, setMaintenanceExempt, { immediate: true })
+watch(() => authStore.isAuthenticated, setMaintenanceViewerAuthenticated, { immediate: true })
 useMaintenanceWatch()
 
 // Связь: пока сверху висит плашка «нет сети»/«Соединение…», баннер обновления

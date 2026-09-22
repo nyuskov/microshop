@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore, deviceChallengeOf, type DeviceChallenge } from '../stores/auth'
 import { getErrorMessage } from '../services/errors'
 import { t } from '@/i18n'
+import { maintenanceRunning, maintenanceText } from '@/utils/maintenance'
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { formatPhoneForBackend, isValidPhoneNumber, prettyPhone } from '@/utils/phone'
 import { PASSWORD_MIN_LENGTH, passwordProblem, passwordStrength } from '@/utils/passwordPolicy'
@@ -1166,6 +1167,16 @@ const leaveFrozen = () => {
     <transition name="fade">
       <div v-if="showNotice" class="login-message" :class="'msg-' + severity" role="alert">
         {{ result }}
+      </div>
+    </transition>
+
+    <!-- Плановые технические работы: сервер закрыт для всех, кроме владельца.
+         Заглушку здесь НЕ показываем — она закрыла бы вход, а вход сервер для
+         того и открыл, чтобы владелец мог войти и выключить режим. Но человек
+         должен знать, почему после входа ничего не загрузится. -->
+    <transition name="fade">
+      <div v-if="maintenanceRunning" class="login-message msg-info" role="status">
+        {{ t('Идут технические работы: {text}', { text: maintenanceText }) }}
       </div>
     </transition>
 

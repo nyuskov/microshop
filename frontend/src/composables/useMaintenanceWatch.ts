@@ -17,7 +17,12 @@
 import { onBeforeUnmount, onMounted } from 'vue'
 
 import { fetchMaintenanceStatus } from '@/services/maintenance'
-import { hideMaintenance, maintenanceActive, showMaintenance } from '@/utils/maintenance'
+import {
+  hideMaintenance,
+  maintenanceActive,
+  maintenanceRunning,
+  showMaintenance
+} from '@/utils/maintenance'
 
 /** Как часто проверяем режим, пока приложение открыто. */
 const POLL_MS = 30000
@@ -32,14 +37,15 @@ export function useMaintenanceWatch(): void {
         showMaintenance(status.message)
         return
       }
-      if (maintenanceActive.value) {
-        // Режим выключили, а приложение всё это время стояло за экраном: его
-        // запросы падали с 503, сокеты переподключались, списки остались
-        // недогруженными. Перезагрузка возвращает человека в рабочее
-        // приложение — иначе он увидел бы «пустой» мессенджер.
-        hideMaintenance()
-        window.location.reload()
-      }
+      if (!maintenanceRunning.value) return
+      // Режим выключили, а приложение это заметило: его запросы падали с 503,
+      // сокеты переподключались, списки остались недогруженными. Если человек
+      // стоял за заглушкой — перезагружаем (иначе он увидел бы «пустой»
+      // мессенджер); если он только видел пометку на экране входа — просто
+      // убираем пометку.
+      const wasCovered = maintenanceActive.value
+      hideMaintenance()
+      if (wasCovered) window.location.reload()
     } catch {
       // Сервер не ответил — это не повод показывать техработы.
     }

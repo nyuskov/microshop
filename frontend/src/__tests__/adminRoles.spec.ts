@@ -58,8 +58,12 @@ describe('что доступно администратору, а что тол
   it('заглушка техработ пропускает обе роли, обычных — нет', () => {
     // Проверка «запрос от администратора» живёт в общем модуле (`auth/utils.py`):
     // её используют и заглушка в `main.py`, и публичный статус техработ.
+    // Роль считается по токену (`admin_viewer_of`), а заглушка пропускает только
+    // `VIEWER_ADMIN`: негодный токен уходит на 401 (чтобы клиент обновил сессию),
+    // всё остальное — 503.
     expect(backendUtils).toContain('user.is_admin or user.is_superuser')
-    expect(backendMain).toContain('if await request_from_admin(request)')
+    expect(backendMain).toContain('if viewer == VIEWER_ADMIN')
+    expect(backendMain).toContain('if viewer == VIEWER_INVALID')
   })
 })
 

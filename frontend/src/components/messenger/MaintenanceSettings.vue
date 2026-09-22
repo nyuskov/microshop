@@ -19,7 +19,13 @@
           }}
         </span>
       </div>
-      <q-toggle v-model="enabled" color="primary" keep-color :disable="busy" />
+      <q-toggle
+        v-model="enabled"
+        color="primary"
+        keep-color
+        :disable="busy || loading"
+        @update:model-value="onToggleChange"
+      />
     </div>
 
     <label class="maintenance-label" for="maintenance-message">{{ t('Текст на экране') }}</label>
@@ -30,7 +36,7 @@
       rows="2"
       :maxlength="MESSAGE_MAX_LENGTH"
       :placeholder="t('Например: обновляем сервис, вернёмся к 15:00')"
-      :disabled="busy"
+      :disabled="busy || loading"
     />
     <p class="maintenance-counter">{{ message.length }} / {{ MESSAGE_MAX_LENGTH }}</p>
 
@@ -43,7 +49,7 @@
       </template>
     </p>
 
-    <button class="maintenance-btn primary" type="button" :disabled="busy" @click="save">
+    <button class="maintenance-btn primary" type="button" :disabled="busy || loading" @click="save">
       <q-icon :name="icon('check')" size="17px" />
       <span>{{ busy ? t('Сохраняем…') : t('Сохранить') }}</span>
     </button>
@@ -83,6 +89,11 @@ const enabled = ref(false)
 const message = ref('')
 const state = ref<MaintenanceStatus | null>(null)
 const busy = ref(false)
+/** Идёт первая загрузка состояния: пока она идёт, тумблер показывает ещё не
+ * настоящее состояние, поэтому его нельзя ни читать, ни нажимать. */
+const loading = ref(true)
+/** Человек успел сам переключить тумблер — ответ загрузки его больше не трогает. */
+const touched = ref(false)
 const error = ref('')
 const notice = ref('')
 
@@ -101,20 +112,33 @@ const momentOf = (iso: string | null): string => {
 
 async function load() {
   error.value = ''
+  loading.value = true
+  // Ответ может прийти уже после того, как человек переключил тумблер: тогда
+  // перетирать его нельзя, иначе тумблер «прыгает» обратно и клик приходится
+  // повторять (прод 22.09.2026: два PUT «выключить» подряд и третий «включить»).
+  const wasTouched = touched.value
   try {
     const status = await fetchMaintenanceStatus()
     state.value = status
     // Панель показывает НАСТОЯЩЕЕ состояние: администратору сервер отдаёт
     // `enabled=false`, чтобы приложение перед ним не закрывалось заглушкой.
+    if (wasTouched) return
     const real = realMaintenanceEnabled(status)
     enabled.value = real
     message.value = real ? status.message : ''
   } catch (err) {
     error.value = getErrorMessage(err, t('Не удалось узнать состояние режима'))
+  } finally {
+    loading.value = false
   }
 }
 
 onMounted(load)
+
+/** Человек тронул тумблер: запомним, чтобы ответ загрузки не перетёр его выбор. */
+function onToggleChange(): void {
+  touched.value = true
+}
 
 async function save() {
   busy.value = true
@@ -127,6 +151,9 @@ async function save() {
     const real = realMaintenanceEnabled(status)
     enabled.value = real
     message.value = real ? status.message : ''
+    // Состояние на сервере теперь равно тому, что в панели: загрузка может
+    // применяться к тумблеру снова.
+    touched.value = false
     notice.value = real
       ? t('Режим включён: пользователи видят экран технических работ.')
       : t('Режим выключен: приложение снова работает как обычно.')

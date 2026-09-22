@@ -9,12 +9,16 @@
  *  - из ответа 503 с кодом `maintenance` (так отвечает любой запрос к API);
  *  - из публичного статуса, который опрашивает `useMaintenanceWatch`.
  *
+ * Заглушка при этом НЕ закрывает экран входа: сервер `/auth/` и `/jwt/` пускает —
+ * «войди и выключи режим», и мешать этому глупо. Пока человек не вошёл, о работах
+ * говорит строка на экране входа (`Login.vue`).
+ *
  * Модуль намеренно без внешних зависимостей (только `vue`): его импортирует
  * `services/api.ts`, а тот не должен тянуть за собой сервисы запросов — иначе
  * получается цикл импортов.
  */
 
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import { t } from '@/i18n'
 
@@ -24,8 +28,13 @@ export const MAINTENANCE_CODE = 'maintenance'
 /** Текст по умолчанию: его показываем, если сервер своего не прислал. */
 export const defaultMaintenanceText = (): string => t('Скоро вернёмся.')
 
-/** Показывает ли приложение экран технических работ прямо сейчас. */
-export const maintenanceActive = ref(false)
+/**
+ * Сервер сообщил, что идут техработы (личность смотрящего здесь ни при чём).
+ *
+ * Это «правда сервера». Показывать ли из-за неё полноэкранную заглушку — решает
+ * `maintenanceActive` ниже.
+ */
+export const maintenanceRunning = ref(false)
 
 /** Текст на экране техработ (задаёт администратор, иначе текст по умолчанию). */
 export const maintenanceText = ref(defaultMaintenanceText())
@@ -40,12 +49,37 @@ export const maintenanceText = ref(defaultMaintenanceText())
  * чтобы не получить цикл: `services/api.ts` → `utils/maintenance.ts` → стор → тот
  * же `services/api.ts`).
  */
-let viewerIsAdmin = false
+const viewerIsAdmin = ref(false)
+
+/**
+ * Человек вошёл в аккаунт — и только тогда заглушка уместна.
+ *
+ * Пока входа нет, перед человеком экран ВХОДА, и закрывать его заглушкой нельзя:
+ * сервер `/auth/` и `/jwt/` пускает специально — «войди и выключи режим». На
+ * живом проде 22.09.2026 было наоборот: владелец видел заглушку вместо входа и
+ * снимал режим скриптом по ssh.
+ */
+const viewerIsAuthenticated = ref(false)
+
+/**
+ * Показывать ли полноэкранный экран технических работ прямо сейчас.
+ *
+ * Три условия сразу: сервер сказал, что режим включён; человек вошёл; он не
+ * администратор. Без второго условия (или при третьем) вместо заглушки виден
+ * обычный экран (вход или приложение) с пометкой о работах — см. `Login.vue`.
+ */
+export const maintenanceActive = computed(
+  () => maintenanceRunning.value && viewerIsAuthenticated.value && !viewerIsAdmin.value
+)
 
 /** Отметить, что за экраном работает администратор (или он вышел из аккаунта). */
 export function setMaintenanceExempt(value: boolean): void {
-  viewerIsAdmin = value
-  if (value && maintenanceActive.value) hideMaintenance()
+  viewerIsAdmin.value = value
+}
+
+/** Отметить, вошёл ли человек (снял вход — показываем экран входа, не заглушку). */
+export function setMaintenanceViewerAuthenticated(value: boolean): void {
+  viewerIsAuthenticated.value = value
 }
 
 /**
@@ -68,15 +102,14 @@ export function maintenanceMessageOf(error: unknown): string | null {
   return typeof message === 'string' && message.trim() ? message : defaultMaintenanceText()
 }
 
-/** Включает экран технических работ (администратору — не показываем). */
+/** Включает экран технических работ (решение «показывать или нет» — в `maintenanceActive`). */
 export function showMaintenance(message?: string | null): void {
-  if (viewerIsAdmin) return
   maintenanceText.value = message?.trim() ? message : defaultMaintenanceText()
-  maintenanceActive.value = true
+  maintenanceRunning.value = true
 }
 
 /** Убирает экран технических работ (режим выключили). */
 export function hideMaintenance(): void {
-  maintenanceActive.value = false
+  maintenanceRunning.value = false
   maintenanceText.value = defaultMaintenanceText()
 }
