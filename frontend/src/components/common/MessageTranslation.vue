@@ -7,7 +7,9 @@
        (пункт меню у текста), и медиа-сообщение (кнопка под расшифровкой). -->
   <div v-if="state" ref="root" class="msg-translation">
     <div class="mt-head">
-      <span class="mt-caption">Перевод {{ state.source && state.target ? caption : '' }}</span>
+      <span class="mt-caption"
+        >{{ t('Перевод') }} {{ state.source && state.target ? caption : '' }}</span
+      >
       <!-- Язык выбирается тут же: направление зависит от того, на каком языке
            человек читает, а не от настроек аккаунта. -->
       <div class="mt-targets">
@@ -26,7 +28,7 @@
 
     <p v-if="state.status === 'ready'" class="mt-text">{{ state.text }}</p>
     <template v-else-if="state.status === 'running'">
-      <p class="mt-note">{{ state.note ?? 'Переводим…' }}</p>
+      <p class="mt-note">{{ state.note ?? t('Переводим…') }}</p>
       <!-- Проценты скачивания: без движения непонятно, ждать или уже зависло.
            Крестик стоит В КОНЦЕ полоски и появляется ВМЕСТЕ с ней: он отменяет
            именно скачивание, а не прячет перевод (владелец: «а то непонятно для
@@ -38,7 +40,7 @@
           :aria-valuenow="percent"
           aria-valuemin="0"
           aria-valuemax="100"
-          :aria-label="`Скачано ${percent}%`"
+          :aria-label="t('Скачано {percent}%', { percent })"
         >
           <div class="mt-progress-fill" :style="{ width: `${percent}%` }"></div>
         </div>
@@ -75,7 +77,7 @@
         class="mt-btn"
         @click="retry"
       >
-        Ещё раз
+        {{ t('Ещё раз') }}
       </button>
     </div>
 

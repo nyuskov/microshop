@@ -1943,5 +1943,21 @@ export const EN: Record<string, string> = {
   'записывает видеосообщение…': 'is recording a video message…',
   'отправляет фото…': 'is sending a photo…',
   'отправляет видео…': 'is sending a video…',
-  'отправляет файл…': 'is sending a file…'
+  'отправляет файл…': 'is sending a file…',
+
+  // --- Контакты, поиск, перевод сообщения ---
+  Перевод: 'Translation',
+  'Скачано {percent}%': '{percent}% downloaded',
+  'В ваших контактах: {name}': 'In your contacts: {name}',
+  'Добавьте в контакты и назовите по-своему — имя видите только вы.':
+    'Add the person to contacts and name them your own way — only you see this name.',
+  Переименовать: 'Rename',
+  'В контакты': 'Add to contacts',
+  Сообщения: 'Messages',
+  'В зашифрованных чатах — на этом устройстве': 'In encrypted chats — on this device only',
+  'просмотров: {count}': 'views: {count}',
+  'Не удалось определить номера. Проверьте ввод.':
+    'Could not detect the numbers. Check what you entered.',
+  'Не удалось найти в мессенджере': 'Could not find anyone in the messenger',
+  'Не удалось открыть контакты': 'Could not open the contacts'
 }

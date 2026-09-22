@@ -8,7 +8,7 @@
         :aria-selected="props.mode === 'people'"
         @click="emit('set-mode', 'people')"
       >
-        Люди
+        {{ t('Люди') }}
       </button>
       <button
         class="search-mode-tab"
@@ -17,7 +17,7 @@
         :aria-selected="props.mode === 'messages'"
         @click="emit('set-mode', 'messages')"
       >
-        Сообщения
+        {{ t('Сообщения') }}
       </button>
       <button
         class="search-mode-tab"
@@ -26,7 +26,7 @@
         :aria-selected="props.mode === 'channels'"
         @click="emit('set-mode', 'channels')"
       >
-        Каналы
+        {{ t('Каналы') }}
       </button>
     </div>
 
@@ -117,7 +117,7 @@
       <template v-if="localList.length">
         <div class="section-label search-local-label">
           <q-icon :name="icon('lock')" size="14px" />
-          В зашифрованных чатах — на этом устройстве
+          {{ t('В зашифрованных чатах — на этом устройстве') }}
         </div>
         <button
           v-for="msg in localList"
@@ -187,7 +187,7 @@
           <span class="row-sub">
             <template v-if="channel.username">@{{ channel.username }} · </template>
             {{ channel.subscribers }}
-            {{ channel.subscribers === 1 ? 'подписчик' : 'подписчиков' }}
+            {{ channel.subscribers === 1 ? t('подписчик') : t('подписчиков') }}
             <template v-if="channel.description"> · {{ channel.description }}</template>
           </span>
         </span>

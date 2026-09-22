@@ -50,8 +50,8 @@
             <div class="ci-e2ee-desc">
               {{
                 contactName
-                  ? `В ваших контактах: ${contactName}`
-                  : 'Добавьте в контакты и назовите по-своему — имя видите только вы.'
+                  ? t('В ваших контактах: {name}', { name: contactName })
+                  : t('Добавьте в контакты и назовите по-своему — имя видите только вы.')
               }}
             </div>
           </div>
@@ -60,7 +60,7 @@
             no-caps
             dense
             color="primary"
-            :label="contactName ? 'Переименовать' : 'В контакты'"
+            :label="contactName ? t('Переименовать') : t('В контакты')"
             @click="contactDialogOpen = true"
           />
         </div>

@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { matchUsersByPhone, type SearchUserResult } from '@/services/chatService'
+import { t } from '@/i18n'
 import { getErrorMessage } from '@/services/errors'
 
 interface NativePhoneContact {
@@ -57,7 +58,7 @@ export function usePhoneImport(deps: PhoneImportDeps) {
     phoneError.value = ''
     const clean = phones.map(normalizePhone).filter((p) => p.length >= 7)
     if (clean.length === 0) {
-      phoneError.value = 'Не удалось определить номера. Проверьте ввод.'
+      phoneError.value = t('Не удалось определить номера. Проверьте ввод.')
       phoneMatched.value = []
       return
     }
@@ -65,7 +66,7 @@ export function usePhoneImport(deps: PhoneImportDeps) {
     try {
       phoneMatched.value = await matchUsersByPhone(clean)
     } catch (error) {
-      phoneError.value = getErrorMessage(error, 'Не удалось найти в мессенджере')
+      phoneError.value = getErrorMessage(error, t('Не удалось найти в мессенджере'))
     } finally {
       phoneBusy.value = false
     }
@@ -85,7 +86,7 @@ export function usePhoneImport(deps: PhoneImportDeps) {
       const err = error as { name?: string }
       // Отмена выбора — не ошибка.
       if (err?.name && err.name !== 'NotAllowedError') {
-        phoneError.value = getErrorMessage(error, 'Не удалось открыть контакты')
+        phoneError.value = getErrorMessage(error, t('Не удалось открыть контакты'))
       }
     } finally {
       phoneBusy.value = false

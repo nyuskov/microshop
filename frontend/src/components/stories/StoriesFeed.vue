@@ -36,13 +36,17 @@
         </span>
         <span class="feed-text">
           <span class="feed-name">
-            {{ group.is_mine ? 'Моя история' : authorName(group) }}
+            {{ group.is_mine ? t('Моя история') : authorName(group) }}
           </span>
           <span class="feed-meta">
             {{ formatStoryAge(group.items[0].created_at) }} ·
             {{ group.items.length }}
-            {{ group.items.length === 1 ? 'история' : 'истории' }}
-            <template v-if="group.is_mine"> · просмотров: {{ totalViews(group) }}</template>
+            {{
+              plural(group.items.length, ['история', 'истории', 'историй'], ['story', 'stories'])
+            }}
+            <template v-if="group.is_mine">
+              · {{ t('просмотров: {count}', { count: totalViews(group) }) }}
+            </template>
           </span>
         </span>
         <q-icon :name="icon('chevron_right')" size="20px" class="feed-chevron" />
@@ -70,7 +74,7 @@ import type { StoryGroup } from '@/services/stories'
 import { useStoriesStore } from '@/stores/stories'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import { formatStoryAge } from '@/utils/stories'
-import { t } from '@/i18n'
+import { plural, t } from '@/i18n'
 
 const emit = defineEmits<{
   (e: 'open-story', storyId: number): void
