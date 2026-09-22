@@ -543,4 +543,14 @@ EN: dict[str, str] = {
         "This video format does not play in the browser and could not be "
         "transcoded. Choose another file."
     ),
+    # --- Кнопки уведомлений и звонки ---
+    "Входящий звонок": "Incoming call",
+    "Всё ещё звонит": "Still ringing",
+    "Видеозвонок": "Video call",
+    "Аудиозвонок": "Voice call",
+    "Пользователь": "User",
+    "Открыть": "Open",
+    "Ответить": "Reply",
+    "Пометить как прочитанное": "Mark as read",
+    "Это не я": "This was not me",
 }

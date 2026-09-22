@@ -322,7 +322,7 @@ async function handlePush(event) {
     // звонок обрывался у обоих). С одной кнопкой путать нечего. Отказать можно
     // смахиванием уведомления (см. `notificationclose`) или кнопкой в приложении,
     // а ответить — на экране звонка.
-    options.actions = [{ action: 'open', title: 'Открыть' }]
+    options.actions = serverActions(data) || [{ action: 'open', title: 'Открыть' }]
     // Прошлые звонки уже не звонят: их уведомления с экрана убираем, иначе они
     // копятся, а кнопки в них ничего не делают.
     await closeOtherCallNotifications(options.tag)
@@ -330,7 +330,7 @@ async function handlePush(event) {
     // Кнопка «Ответить» открывает чат и ставит курсор в поле ввода: в вебе
     // набрать текст прямо в уведомлении нельзя (такого API нет), поэтому
     // «ответ» — это чат, готовый к вводу, без лишних тапов.
-    options.actions = [
+    options.actions = serverActions(data) || [
       { action: 'reply', title: 'Ответить' },
       { action: 'mark-read', title: 'Пометить как прочитанное' }
     ]
@@ -347,10 +347,27 @@ async function handlePush(event) {
     options.renotify = true
     options.vibrate = [200, 100, 200]
     if (data.panic_token) {
-      options.actions = [{ action: 'panic', title: 'Это не я' }]
+      options.actions = serverActions(data) || [{ action: 'panic', title: 'Это не я' }]
     }
   }
   await self.registration.showNotification(title, options)
+}
+
+/**
+ * Подписи кнопок уведомления, присланные сервером.
+ *
+ * Язык уведомления знает только сервер (он берёт его из профиля получателя), а
+ * service worker работает вне приложения и профиля не видит — поэтому текст
+ * кнопок приходит в `data.actions`. Если поля нет (старый сервер, кэш), ниже
+ * остаётся русская подпись: уведомление всё равно будет работать.
+ */
+function serverActions(data) {
+  const actions = data && data.actions
+  if (!Array.isArray(actions) || !actions.length) return null
+  const valid = actions.filter(
+    (item) => item && typeof item.action === 'string' && typeof item.title === 'string'
+  )
+  return valid.length ? valid : null
 }
 
 /**

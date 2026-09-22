@@ -26,7 +26,7 @@ from core import avatar_store, mailer, rustore_push
 from core.amqp import publish_realtime_event
 from core.celery_app import celery_app
 from core.config import settings
-from core.i18n import normalize_locale, t
+from core.i18n import locale_of_user, normalize_locale, t
 from core.mentions import mentioned_logins
 from core.models import Chat, Message, Profile, PushSubscription, RuStorePushToken, User
 from core.quiet_hours import skips_push, utc_now
@@ -81,6 +81,21 @@ PUSH_HIDDEN_BODY = "Новое сообщение"
 def _lang_of(profile: Profile | None) -> str:
     """Язык уведомления — язык ПОЛУЧАТЕЛЯ (а не того, кто написал)."""
     return normalize_locale(getattr(profile, "language", None))
+
+
+def _message_push_actions(lang: str) -> list[dict[str, str]]:
+    """Кнопки уведомления о сообщении — на языке получателя.
+
+    Подписи нужны в payload, потому что service worker не знает профиль: он
+    работает вне приложения и до его загрузки.
+    """
+    return [
+        {"action": "reply", "title": t("Ответить", lang=lang)},
+        {
+            "action": "mark-read",
+            "title": t("Пометить как прочитанное", lang=lang),
+        },
+    ]
 
 
 def _body_for_user(body: str, profile: Profile | None) -> str:
@@ -184,7 +199,14 @@ def _rustore_message(
     """Собирает сообщение для Push API RuStore (формат, совместимый с FCM)."""
     return {
         "notification": {"title": title, "body": body},
-        "data": {key: str(value) for key, value in data.items() if value is not None},
+        # `actions` — только для Web Push: у RuStore в data допустимы лишь плоские
+        # строки (см. формат, совместимый с FCM), поэтому подписи кнопок туда не
+        # кладём — там их рисует само приложение.
+        "data": {
+            key: str(value)
+            for key, value in data.items()
+            if value is not None and key != "actions"
+        },
         "android": {
             "ttl": settings.rustore_push_ttl,
             "notification": {
@@ -461,6 +483,11 @@ async def _send_message_push_async(
                         "message_id": message_id,
                         "peer_id": sender_id,
                         "mention": sub.user_id in mentioned_ids,
+                        # Подписи кнопок рисует service worker, а язык знает
+                        # сервер — см. sw.js и core/i18n.py.
+                        "actions": _message_push_actions(
+                            _lang_of(profiles.get(sub.user_id))
+                        ),
                     },
                 },
                 ensure_ascii=False,
@@ -559,9 +586,12 @@ async def _send_security_push_async(
     engine = make_engine()
     session = make_session(engine)
     try:
+        lang = await locale_of_user(session, user_id)
         data: dict[str, object] = {"type": "security"}
         if panic_token:
             data["panic_token"] = panic_token
+            # Подпись кнопки рисует service worker: отдаём её переведённой.
+            data["actions"] = [{"action": "panic", "title": t("Это не я", lang=lang)}]
         await _send_rustore_push(
             session,
             [user_id],
@@ -979,9 +1009,13 @@ async def _send_call_cancelled_async(
 PUSH_CALL_REPEAT_TITLE = "Всё ещё звонит"
 
 
-def call_push_title(attempt: int) -> str:
+def call_push_title(attempt: int, lang: str | None = None) -> str:
     """Заголовок уведомления о звонке: первый раз или повтор."""
-    return "Входящий звонок" if attempt <= 1 else PUSH_CALL_REPEAT_TITLE
+    return (
+        t("Входящий звонок", lang=lang)
+        if attempt <= 1
+        else t(PUSH_CALL_REPEAT_TITLE, lang=lang)
+    )
 
 
 def call_push_headers(attempt: int) -> dict[str, str]:
@@ -1055,6 +1089,7 @@ async def _send_call_push_async(
     engine = make_engine()
     session = make_session(engine)
     try:
+        lang = await locale_of_user(session, user_id)
         caller = await session.get(User, caller_id)
         # Тихие часы: звонок пропускаем, только если человек сам запретил звонки
         # в это время (по умолчанию — разрешены, звонить можно и ночью).
@@ -1064,7 +1099,7 @@ async def _send_call_push_async(
                 call_id,
             )
             return
-        name = _display_name(caller) if caller else "Пользователь"
+        name = _display_name(caller) if caller else t("Пользователь", lang=lang)
         # Личное имя звонящего у получателя («Мама») — как в списке чатов.
         if caller is not None:
             custom = (
@@ -1072,9 +1107,13 @@ async def _send_call_push_async(
             ).get(user_id)
             if custom:
                 name = custom
-        kind_label = "Видеозвонок" if kind == "video" else "Аудиозвонок"
+        kind_label = (
+            t("Видеозвонок", lang=lang)
+            if kind == "video"
+            else t("Аудиозвонок", lang=lang)
+        )
         # Повтор называем словами: человек видит, что ТОТ ЖЕ вызов звонит снова.
-        title = call_push_title(attempt)
+        title = call_push_title(attempt, lang=lang)
         body = f"{name} · {kind_label}"
 
         await _send_rustore_push(
@@ -1125,6 +1164,9 @@ async def _send_call_push_async(
                     "expires_at": expires_at,
                     "attempt": attempt,
                     "total": total,
+                    # Подписи кнопок уведомления: их рисует service worker, но
+                    # язык знает сервер — см. push_actions().
+                    "actions": [{"action": "open", "title": t("Открыть", lang=lang)}],
                 },
             },
             ensure_ascii=False,

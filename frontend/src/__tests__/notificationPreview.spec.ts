@@ -52,7 +52,8 @@ describe('правило на сервере', () => {
     // Иначе одному и тому же уведомлению с текстом ушли бы и те, кто превью
     // выключил: настройка бы не работала.
     expect(task).toContain('def _group_by_push(')
-    expect(task).toContain('push_bodies.get(sub.user_id, body)')
+    // Запасной текст берётся переведённым: язык получателя знает сервер.
+    expect(task).toContain('push_bodies.get(sub.user_id, t("Новое сообщение"))')
     expect(task).not.toContain('_group_by_title')
   })
 
