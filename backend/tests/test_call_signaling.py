@@ -164,8 +164,12 @@ async def test_call_push_repeats_while_ringing(
     )
 
     assert len(sent) == calls_views.CALL_PUSH_ATTEMPTS
-    # Первая попытка — первый push, дальше повторы с их номером.
-    assert [item[5] for item in sent] == [1, 2, 3, 4]
+    # Первая попытка — первый push, дальше повторы с их номером. Число берём из
+    # константы: расписание дозвона настраивается (было 4 попытки, стало 8), и
+    # зашитая четвёрка молча ломала тест при любой правке.
+    assert [item[5] for item in sent] == list(
+        range(1, calls_views.CALL_PUSH_ATTEMPTS + 1)
+    )
     assert {item[6] for item in sent} == {calls_views.CALL_PUSH_ATTEMPTS}
     # Срок годности у всех попыток один и тот же (не продлевается повторами).
     assert len({item[4] for item in sent}) == 1
