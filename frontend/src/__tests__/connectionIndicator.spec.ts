@@ -29,11 +29,13 @@ const en = source('src/i18n/en.ts')
 
 describe('пилюля связи в шапке списка чатов', () => {
   it('стоит в свободном месте шапки — между историями и кнопками', () => {
-    expect(sidebarHeader).toContain('<ConnectionStatus />')
+    // У пилюли есть проп (`:hide-quiet`), поэтому сверяем начало тега, а не
+    // точное `<ConnectionStatus />`.
+    expect(sidebarHeader).toContain('<ConnectionStatus')
     expect(sidebarHeader).toContain('.panel-header-status')
     // Пилюля — между историями и правой группой иконок, иначе место не то.
     const stories = sidebarHeader.indexOf('<StoriesStrip')
-    const chip = sidebarHeader.indexOf('<ConnectionStatus />')
+    const chip = sidebarHeader.indexOf('<ConnectionStatus')
     const actions = sidebarHeader.indexOf('class="panel-header-right"')
     expect(stories).toBeGreaterThan(-1)
     expect(chip).toBeGreaterThan(stories)

@@ -217,6 +217,7 @@ import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import { useMobileLayer } from '@/composables/useMobileOverlay'
 import { useStoriesStore } from '@/stores/stories'
 import { firstStoryToOpen } from '@/utils/stories'
+import { orderChats } from '@/utils/chatOrder'
 
 /**
  * Панель результатов поиска и раздел «Контакты» нужны не при старте (вкладка
@@ -701,13 +702,10 @@ const orderedChats = computed<Chat[]>(() => {
   if (folder !== null) {
     return folderChats(folder, filteredChats.value)
   }
-  const pinned = new Set(props.pinnedChatIds ?? [])
-  const self = filteredChats.value.filter((chat) => chat.is_self)
-  const others = filteredChats.value.filter((chat) => !chat.is_self)
-  if (pinned.size === 0) return [...self, ...others]
-  const top = others.filter((chat) => pinned.has(chat.id))
-  const rest = others.filter((chat) => !pinned.has(chat.id))
-  return [...self, ...top, ...rest]
+  // Порядок и пины — общее правило в `utils/chatOrder` (там же и почему): своё
+  // правило здесь уже разъезжалось с сервером, и чаты с новыми сообщениями
+  // «стояли на месте» до следующего опроса списка.
+  return orderChats(filteredChats.value, props.pinnedChatIds ?? [])
 })
 
 const searchOpen = ref(false)

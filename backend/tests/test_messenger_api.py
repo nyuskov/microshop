@@ -1122,6 +1122,37 @@ async def test_chats_last_message_and_unread_count(api: _ApiCtx) -> None:
     assert item2b["last_message"]["is_read"] is True
 
 
+async def test_chats_newest_first_and_empty_last(api: _ApiCtx) -> None:
+    """Список чатов: свежее сообщение — наверх, чаты без сообщений — в конец.
+
+    Жалоба владельца: «чаты с новыми стоят на месте». Причина — перепутанный
+    признак в `_chat_sort_key`: список сортируется с `reverse=True`, а чаты без
+    сообщений получали признак 1 и занимали верх, поэтому свежий чат поднимался
+    только внутри нижней части списка.
+    """
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    u3 = await api.make_user()
+    u4 = await api.make_user()
+    t1 = await api.token_for(u1)
+
+    older = await api.private_chat(t1, u2.id)
+    newer = await api.private_chat(t1, u3.id)
+    empty = await api.private_chat(t1, u4.id)
+    await api.send(t1, older["id"], "раньше")
+    await api.send(t1, newer["id"], "позже")
+
+    order = [
+        item["id"]
+        for item in (
+            await api.client.get("/api/v1/chats/", headers=api.auth(t1))
+        ).json()
+    ]
+
+    assert order.index(newer["id"]) < order.index(older["id"])
+    assert order.index(older["id"]) < order.index(empty["id"])
+
+
 async def test_reading_chat_notifies_own_other_devices(
     api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
 ) -> None:
