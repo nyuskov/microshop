@@ -7,6 +7,7 @@ import { useAccountSecurity } from '@/composables/useAccountSecurity'
 import { useMobileLayer } from '@/composables/useMobileOverlay'
 import { removeAvatar, uploadAvatar } from '@/services/api'
 import { LOCALES, plural, t } from '@/i18n'
+import { legalUrl } from '@/utils/legalDocs'
 import { mediaUrl } from '@/services/chatService'
 import { optimizeAvatarFile } from '@/utils/media'
 import { formatPhoneForBackend, localPhoneDigits, maskPhoneLocal } from '@/utils/phone'
@@ -1908,15 +1909,15 @@ const onNotificationsToggle = async (val: boolean) => {
 
           <!-- Документы: правила сообщества и политика (требования магазинов к UGC) -->
           <div class="legal-row">
-            <a class="legal-link" href="/community.html" target="_blank" rel="noopener">
+            <a class="legal-link" :href="legalUrl('community')" target="_blank" rel="noopener">
               <q-icon :name="icon('gavel')" size="16px" />
               {{ t('Правила сообщества') }}
             </a>
-            <a class="legal-link" href="/privacy.html" target="_blank" rel="noopener">
+            <a class="legal-link" :href="legalUrl('privacy')" target="_blank" rel="noopener">
               <q-icon :name="icon('privacy_tip')" size="16px" />
               {{ t('Политика конфиденциальности') }}
             </a>
-            <a class="legal-link" href="/terms.html" target="_blank" rel="noopener">
+            <a class="legal-link" :href="legalUrl('terms')" target="_blank" rel="noopener">
               <q-icon :name="icon('description')" size="16px" />
               {{ t('Пользовательское соглашение') }}
             </a>

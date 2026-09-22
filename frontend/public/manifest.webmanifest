@@ -1,14 +1,14 @@
 {
-  "name": "Pismo — мессенджер",
+  "name": "Pismo — messenger",
   "short_name": "Pismo",
-  "description": "Мессенджер Pismo: чаты, звонки, обмен файлами и медиа",
+  "description": "Pismo messenger: chats, calls, media and file sharing",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#10151c",
   "theme_color": "#5a50e0",
-  "lang": "ru",
+  "lang": "en",
   "share_target": {
     "action": "/",
     "method": "GET",

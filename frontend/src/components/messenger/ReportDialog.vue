@@ -50,7 +50,9 @@
 
         <p class="mod-rules">
           {{ t('Что считается нарушением —') }}
-          <a href="/community.html" target="_blank" rel="noopener">{{ t('правила сообщества') }}</a
+          <a :href="legalUrl('community')" target="_blank" rel="noopener">{{
+            t('правила сообщества')
+          }}</a
           >.
         </p>
       </q-card-section>
@@ -78,6 +80,7 @@ import { ref } from 'vue'
 import { REPORT_REASONS, reportUser, type ReportReason } from '@/services/moderation'
 import { getErrorMessage } from '@/services/errors'
 import { t } from '@/i18n'
+import { legalUrl } from '@/utils/legalDocs'
 
 const props = defineProps<{
   /** ID пользователя, на которого жалуемся. */

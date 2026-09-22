@@ -4,6 +4,13 @@
 
 > Этот документ должен быть доступен по адресу
 > `https://pismo.space/privacy.html` (файл `frontend/public/privacy.html`).
+>
+> Английская версия для английского интерфейса — `https://pismo.space/privacy-en.html`
+> (файл `frontend/public/privacy-en.html`, собирается
+> `frontend/scripts/build-legal-en.mjs` из русской страницы). Это **перевод для
+> удобства**: при расхождении действует русская редакция, о чём сказано в самой
+> странице. Ссылки в приложении выбираются по языку интерфейса
+> (`src/utils/legalDocs.ts`).
 
 ## 1. Оператор персональных данных
 

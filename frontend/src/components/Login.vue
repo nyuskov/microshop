@@ -7,6 +7,7 @@ import { t } from '@/i18n'
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { formatPhoneForBackend, isValidPhoneNumber, prettyPhone } from '@/utils/phone'
 import { PASSWORD_MIN_LENGTH, passwordProblem, passwordStrength } from '@/utils/passwordPolicy'
+import { legalUrl } from '@/utils/legalDocs'
 import PhoneInput from '@/components/common/PhoneInput.vue'
 import ConsentCheckbox from '@/components/common/ConsentCheckbox.vue'
 
@@ -1185,15 +1186,17 @@ const leaveFrozen = () => {
          одно и то же дважды не нужно. -->
     <p v-if="!consentRequired" class="privacy-note">
       {{ t('Продолжая, вы соглашаетесь с') }}
-      <a href="/privacy.html" target="_blank" rel="noopener">{{
+      <a :href="legalUrl('privacy')" target="_blank" rel="noopener">{{
         t('политикой конфиденциальности')
       }}</a
       >,
-      <a href="/terms.html" target="_blank" rel="noopener">{{
+      <a :href="legalUrl('terms')" target="_blank" rel="noopener">{{
         t('пользовательским соглашением')
       }}</a
       >,
-      <a href="/community.html" target="_blank" rel="noopener">{{ t('правилами сообщества') }}</a>
+      <a :href="legalUrl('community')" target="_blank" rel="noopener">{{
+        t('правилами сообщества')
+      }}</a>
       {{ t('и обработкой персональных данных.') }}
     </p>
   </div>
