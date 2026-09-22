@@ -4,7 +4,14 @@
       <q-card-section class="row no-wrap items-center q-py-sm">
         <div class="sn-title">{{ t('Проверка шифрования') }}</div>
         <q-space />
-        <q-btn flat round dense :icon="icon('close')" :aria-label="t('Закрыть')" @click="emit('close')" />
+        <q-btn
+          flat
+          round
+          dense
+          :icon="icon('close')"
+          :aria-label="t('Закрыть')"
+          @click="emit('close')"
+        />
       </q-card-section>
       <q-separator />
 
@@ -17,9 +24,13 @@
           ключи не подменены, и сервер в середине отсутствует.
         </p>
 
-        <div v-if="loading" class="sn-state"><span class="sn-spinner"></span> {{ t('Считаем код…') }}</div>
+        <div v-if="loading" class="sn-state">
+          <span class="sn-spinner"></span> {{ t('Считаем код…') }}
+        </div>
         <div v-else-if="!code" class="sn-state">
-          Ключ собеседника пока неизвестен: проверять нечего, пока он не зайдёт в приложение.
+          {{
+            t('Ключ собеседника пока неизвестен: проверять нечего, пока он не зайдёт в приложение.')
+          }}
         </div>
         <template v-else>
           <div class="sn-code" role="group" :aria-label="t('Код проверки')">
@@ -44,8 +55,11 @@
           <p v-if="copied" class="sn-copied">{{ t('Код скопирован') }}</p>
 
           <p class="sn-hint">
-            Код меняется, если кто-то из вас зайдёт с нового устройства (ключ привязан к
-            устройству). Тогда сверьте код заново — это нормально.
+            {{
+              t(
+                'Код меняется, если кто-то из вас зайдёт с нового устройства (ключ привязан к устройству). Тогда сверьте код заново — это нормально.'
+              )
+            }}
           </p>
         </template>
       </q-card-section>

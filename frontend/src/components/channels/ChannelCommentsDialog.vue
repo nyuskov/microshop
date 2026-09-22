@@ -18,7 +18,7 @@
 
       <p v-if="loading" class="ch-comments-empty">{{ t('Загружаем…') }}</p>
       <p v-else-if="!comments.length" class="ch-comments-empty">
-        Пока никто не комментировал. Будьте первым.
+        {{ t('Пока никто не комментировал. Будьте первым.') }}
       </p>
       <div v-else class="ch-comments-list">
         <div v-for="comment in comments" :key="comment.id" class="ch-comment">

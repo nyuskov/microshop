@@ -86,8 +86,11 @@
       <div v-if="videoFailed" class="viewer-failed" role="status">
         <q-icon :name="icon('warning')" size="30px" aria-hidden="true" />
         <p class="viewer-failed-text">
-          Это видео не проигрывается в этом браузере — файл записан в формате, который он не умеет
-          читать. Дальше показ продолжится.
+          {{
+            t(
+              'Это видео не проигрывается в этом браузере — файл записан в формате, который он не умеет читать. Дальше показ продолжится.'
+            )
+          }}
         </p>
         <a
           class="viewer-failed-link"
@@ -225,7 +228,12 @@
       >
         <header class="audience-head">
           <span class="audience-title">{{ t('Аудитория истории') }}</span>
-          <button class="viewer-icon" type="button" :title="t('Закрыть')" @click.stop="closeAudience">
+          <button
+            class="viewer-icon"
+            type="button"
+            :title="t('Закрыть')"
+            @click.stop="closeAudience"
+          >
             <q-icon :name="icon('close')" size="22px" />
           </button>
         </header>
@@ -234,7 +242,9 @@
         <p v-else-if="audienceError" class="audience-status error">{{ audienceError }}</p>
         <template v-else-if="audience">
           <p class="audience-hint">{{ viewsHint }}</p>
-          <p v-if="!audienceSections.length" class="audience-status">{{ t('Пока никто не смотрел') }}</p>
+          <p v-if="!audienceSections.length" class="audience-status">
+            {{ t('Пока никто не смотрел') }}
+          </p>
           <div v-for="section in audienceSections" :key="section.key" class="audience-group">
             <span class="audience-badge">
               <template v-if="section.emoji">{{ section.emoji }}</template>

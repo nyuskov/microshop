@@ -73,7 +73,7 @@
         </div>
 
         <div v-else class="fwd-empty tall">
-          Нет других чатов для пересылки. Найдите собеседника и начните диалог.
+          {{ t('Нет других чатов для пересылки. Найдите собеседника и начните диалог.') }}
         </div>
 
         <!-- Низ: количество + кнопки -->
@@ -82,7 +82,9 @@
             selectedIds.length ? `Выбрано: ${selectedIds.length}` : 'Выберите чат для пересылки'
           }}</span>
           <div class="fwd-actions">
-            <button class="fwd-btn ghost" :disabled="sending" @click="emit('close')">{{ t('Отмена') }}</button>
+            <button class="fwd-btn ghost" :disabled="sending" @click="emit('close')">
+              {{ t('Отмена') }}
+            </button>
             <button
               class="fwd-btn send"
               :disabled="sending || selectedIds.length === 0"

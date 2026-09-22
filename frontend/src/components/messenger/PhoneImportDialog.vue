@@ -30,10 +30,14 @@
             <span>{{ busy ? 'Открываем…' : 'Выбрать из телефонной книги' }}</span>
           </button>
           <p v-else class="phone-hint">
-            Браузер не открывает книгу напрямую — вставьте номера ниже (по одному в строке).
+            {{
+              t('Браузер не открывает книгу напрямую — вставьте номера ниже (по одному в строке).')
+            }}
           </p>
 
-          <div class="phone-or"><span>{{ t('или') }}</span></div>
+          <div class="phone-or">
+            <span>{{ t('или') }}</span>
+          </div>
 
           <label class="phone-label" for="phone-textarea">{{ t('Номера телефонов') }}</label>
           <textarea
@@ -46,7 +50,9 @@
           ></textarea>
 
           <div class="phone-actions">
-            <button class="phone-btn ghost" :disabled="busy" @click="emit('close')">{{ t('Отмена') }}</button>
+            <button class="phone-btn ghost" :disabled="busy" @click="emit('close')">
+              {{ t('Отмена') }}
+            </button>
             <button class="phone-btn primary" :disabled="busy" @click="emit('find')">
               {{ busy ? 'Поиск…' : 'Найти в мессенджере' }}
             </button>
@@ -57,7 +63,7 @@
           <template v-if="matched !== null">
             <p class="phone-result-title">Найдено в мессенджере: {{ matched.length }}</p>
             <div v-if="!matched.length" class="phone-empty">
-              Никого из вашей книги нет в мессенджере
+              {{ t('Никого из вашей книги нет в мессенджере') }}
             </div>
             <div v-else class="phone-results">
               <button

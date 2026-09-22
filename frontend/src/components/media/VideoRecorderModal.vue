@@ -34,7 +34,7 @@
             Запись {{ formatClock(durationMs / 1000) }}
           </div>
           <div v-else-if="phase === 'live' && !error" class="vrm-hint">
-            Нажмите «Запись», чтобы начать
+            {{ t('Нажмите «Запись», чтобы начать') }}
           </div>
           <!-- Зеркальный предпросмотр — так удобнее снимать себя, но в записи
                будет НЕ зеркально (иначе надписи в кадре читались бы наоборот).
@@ -48,14 +48,14 @@
             }}
           </div>
           <div v-else-if="phase === 'preview' && !error" class="vrm-mirror-note">
-            Так увидит собеседник
+            {{ t('Так увидит собеседник') }}
           </div>
         </div>
 
         <div class="vrm-actions">
           <template v-if="phase === 'live' || phase === 'recording'">
             <button class="vrm-btn danger-text" @click="close">
-              <q-icon :name="icon('close')" size="18px" /> Отмена
+              <q-icon :name="icon('close')" size="18px" /> {{ t('Отмена') }}
             </button>
             <button
               v-if="phase === 'live' && !error"
@@ -63,22 +63,22 @@
               :disabled="!streamReady"
               @click="start"
             >
-              <q-icon :name="icon('fiber_manual_record')" size="18px" /> Запись
+              <q-icon :name="icon('fiber_manual_record')" size="18px" /> {{ t('Запись') }}
             </button>
             <button v-else-if="phase === 'live'" class="vrm-btn" @click="retryCamera">
-              <q-icon :name="icon('refresh')" size="18px" /> Повторить доступ
+              <q-icon :name="icon('refresh')" size="18px" /> {{ t('Повторить доступ') }}
             </button>
             <button v-else class="vrm-btn record stop" @click="stop">
-              <q-icon :name="icon('stop')" size="18px" /> Стоп
+              <q-icon :name="icon('stop')" size="18px" /> {{ t('Стоп') }}
             </button>
           </template>
 
           <template v-else>
             <button class="vrm-btn" @click="retake">
-              <q-icon :name="icon('replay')" size="18px" /> Перезаписать
+              <q-icon :name="icon('replay')" size="18px" /> {{ t('Перезаписать') }}
             </button>
             <button class="vrm-btn accent" :disabled="sending" @click="send">
-              <q-icon :name="icon('send')" size="17px" /> Отправить
+              <q-icon :name="icon('send')" size="17px" /> {{ t('Отправить') }}
             </button>
           </template>
         </div>

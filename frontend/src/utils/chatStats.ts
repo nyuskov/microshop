@@ -6,8 +6,9 @@
  * сдвигать столбики, а «0» и «мало» должны отличаться визуально.
  */
 
+import { plural } from '@/i18n'
 import type { ChatStatsDay, ChatStatsSender } from '@/services/chatService'
-import { parseServerTime, pluralRu } from '@/utils/format'
+import { parseServerTime } from '@/utils/format'
 
 /** Сколько дней показывает график (столько же считает сервер). */
 export const STATS_DAYS = 30
@@ -36,7 +37,7 @@ const localIsoDate = (date: Date): string => {
 const dayTitle = (date: Date, count: number): string => {
   const label = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
   if (count === 0) return `${label}: сообщений не было`
-  return `${label}: ${count} ${pluralRu(count, 'сообщение', 'сообщения', 'сообщений')}`
+  return `${label}: ${count} ${plural(count, ['сообщение', 'сообщения', 'сообщений'], ['message', 'messages'])}`
 }
 
 /**

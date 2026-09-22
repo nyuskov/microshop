@@ -16,7 +16,14 @@
         <span class="ru-emoji" aria-hidden="true">{{ selected }}</span>
         <span class="ru-title">{{ t('Кто поставил') }}</span>
         <q-space />
-        <q-btn flat round dense :icon="icon('close')" :aria-label="t('Закрыть')" @click="emit('close')" />
+        <q-btn
+          flat
+          round
+          dense
+          :icon="icon('close')"
+          :aria-label="t('Закрыть')"
+          @click="emit('close')"
+        />
       </div>
       <q-separator />
 
@@ -41,7 +48,7 @@
         </div>
 
         <p v-if="!userIds.length" class="ru-empty">
-          Никого: реакции сняли (или приложение собеседника их не передаёт).
+          {{ t('Никого: реакции сняли (или приложение собеседника их не передаёт).') }}
         </p>
         <ul v-else class="ru-list">
           <li v-for="id in userIds" :key="id" class="ru-row">

@@ -16,21 +16,30 @@
 
         <p class="pk-danger">
           <q-icon :name="icon('warning')" size="16px" aria-hidden="true" />
-          <span>
-            Если это не он, новые сообщения сможет читать тот, кто получил доступ к его аккаунту.
-          </span>
+          <span>{{
+            t(
+              'Если это не он, новые сообщения сможет читать тот, кто получил доступ к его аккаунту.'
+            )
+          }}</span>
         </p>
 
         <p class="pk-foot">
           <q-icon :name="icon('lock')" size="15px" aria-hidden="true" />
-          <span>
-            Сверьте код проверки в карточке чата или спросите его лично. Пока не сверили — не
-            отправляйте сюда пароли и коды.
-          </span>
+          <span>{{
+            t(
+              'Сверьте код проверки в карточке чата или спросите его лично. Пока не сверили — не отправляйте сюда пароли и коды.'
+            )
+          }}</span>
         </p>
 
         <div class="pk-actions">
-          <q-btn unelevated no-caps color="primary" :label="t('Это его устройство')" @click="accept" />
+          <q-btn
+            unelevated
+            no-caps
+            color="primary"
+            :label="t('Это его устройство')"
+            @click="accept"
+          />
           <q-btn flat no-caps :label="t('Проверю позже')" v-close-popup />
         </div>
       </q-card-section>

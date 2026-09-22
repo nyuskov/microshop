@@ -70,7 +70,9 @@
         <q-icon :name="icon('chevron_right')" class="row-arrow" size="20px" />
       </button>
     </template>
-    <div v-else-if="props.mode === 'people'" class="search-status">{{ t('Никого не найдено') }}</div>
+    <div v-else-if="props.mode === 'people'" class="search-status">
+      {{ t('Никого не найдено') }}
+    </div>
 
     <!-- Сообщения (по всем диалогам) -->
     <div v-else-if="props.mode === 'messages' && hasAnyMessage">
@@ -151,7 +153,9 @@
         </button>
       </template>
     </div>
-    <div v-else-if="props.mode === 'messages'" class="search-status">{{ t('Ничего не найдено') }}</div>
+    <div v-else-if="props.mode === 'messages'" class="search-status">
+      {{ t('Ничего не найдено') }}
+    </div>
 
     <!-- Каналы (каталог): публичные каналы по названию и адресу -->
     <template v-else-if="props.channels.length">

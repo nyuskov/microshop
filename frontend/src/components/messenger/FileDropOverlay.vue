@@ -6,7 +6,9 @@
         <span class="drop-title">
           {{ canSend ? 'Отпустите файл, чтобы прикрепить' : 'Откройте чат, чтобы прикрепить файл' }}
         </span>
-        <span v-if="canSend" class="drop-note">{{ t('Можно перетащить несколько файлов сразу') }}</span>
+        <span v-if="canSend" class="drop-note">{{
+          t('Можно перетащить несколько файлов сразу')
+        }}</span>
       </div>
     </div>
   </Transition>

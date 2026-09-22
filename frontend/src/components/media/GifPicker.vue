@@ -28,7 +28,7 @@
         @pointercancel="onChipsPointerUp"
       >
         <button class="gif-chip" :class="{ active: !query.trim() }" @click="loadTrending()">
-          Тренды
+          {{ t('Тренды') }}
         </button>
         <button
           v-for="chip in QUICK_QUERIES"
@@ -42,10 +42,12 @@
       </div>
 
       <div v-if="!keyAvailable" class="gif-status">
-        Не задан ключ Giphy. Добавьте <b>VITE_GIPHY_API_KEY</b> {{ t('в файл') }} <b>frontend/.env</b> (см.
-        .env.example) и перезапустите frontend.
+        Не задан ключ Giphy. Добавьте <b>VITE_GIPHY_API_KEY</b> {{ t('в файл') }}
+        <b>frontend/.env</b> (см. .env.example) и перезапустите frontend.
       </div>
-      <div v-else-if="loading" class="gif-status"><span class="gif-spinner"></span> {{ t('Загрузка…') }}</div>
+      <div v-else-if="loading" class="gif-status">
+        <span class="gif-spinner"></span> {{ t('Загрузка…') }}
+      </div>
       <div v-else-if="error" class="gif-status error">{{ error }}</div>
       <div v-else-if="!results.length" class="gif-status">{{ t('Ничего не найдено') }}</div>
       <div v-else class="gif-grid">

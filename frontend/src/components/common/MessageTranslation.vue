@@ -53,16 +53,21 @@
       </div>
     </template>
     <p v-else-if="state.status === 'download'" class="mt-note">
-      Нужно один раз скачать модель перевода (десятки мегабайт) — это делает браузер, текст никуда
-      не уходит.
+      {{
+        t(
+          'Нужно один раз скачать модель перевода (десятки мегабайт) — это делает браузер, текст никуда не уходит.'
+        )
+      }}
     </p>
     <p v-else class="mt-error">{{ state.error }}</p>
 
     <div class="mt-actions">
       <button v-if="state.status === 'download'" class="mt-btn" @click="downloadAndTranslate">
-        Скачать и перевести
+        {{ t('Скачать и перевести') }}
       </button>
-      <button v-if="state.status === 'ready'" class="mt-btn" @click="copy">{{ t('Скопировать') }}</button>
+      <button v-if="state.status === 'ready'" class="mt-btn" @click="copy">
+        {{ t('Скопировать') }}
+      </button>
       <!-- «Ещё раз» только когда работа закончилась: во время скачивания повтора
            нет — его либо ждут, либо отменяют крестиком. -->
       <button
@@ -74,7 +79,9 @@
       </button>
     </div>
 
-    <p class="mt-hint">{{ t('Переводит браузер устройства; текст в E2EE-чате на сервер не уходит.') }}</p>
+    <p class="mt-hint">
+      {{ t('Переводит браузер устройства; текст в E2EE-чате на сервер не уходит.') }}
+    </p>
   </div>
 </template>
 

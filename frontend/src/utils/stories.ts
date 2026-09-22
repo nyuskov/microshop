@@ -13,7 +13,8 @@ import type {
   StoryItem,
   StoryReactionSummary
 } from '@/services/stories'
-import { parseServerTime, pluralRu } from '@/utils/format'
+import { parseServerTime } from '@/utils/format'
+import { plural, t } from '@/i18n'
 
 /** История вместе с её автором (для сквозного показа «все подряд»). */
 export interface FlatStory {
@@ -91,7 +92,7 @@ export function formatStoryAge(createdAt: string, now: Date = new Date()): strin
   const created = parseServerTime(createdAt)
   if (Number.isNaN(created.getTime())) return ''
   const seconds = Math.max(0, Math.round((now.getTime() - created.getTime()) / 1000))
-  if (seconds < 60) return 'только что'
+  if (seconds < 60) return t('только что')
   const minutes = Math.round(seconds / 60)
   if (minutes < 60) return `${minutes} мин`
   const hours = Math.round(minutes / 60)
@@ -281,7 +282,7 @@ export function audienceSections(audience: StoryAudience): StoryAudienceSection[
  * пишем, что список неполный — иначе автор решит, что смотрели только эти люди.
  */
 export function audienceViewsHint(shown: number, total: number): string {
-  const label = `${total} ${pluralRu(total, 'просмотр', 'просмотра', 'просмотров')}`
-  if (total <= shown) return `Всего: ${label}`
-  return `Всего: ${label} · показаны последние ${shown}`
+  const label = `${total} ${plural(total, ['просмотр', 'просмотра', 'просмотров'], ['view', 'views'])}`
+  if (total <= shown) return t('Всего: {label}', { label })
+  return t('Всего: {label} · показаны последние {shown}', { label, shown })
 }

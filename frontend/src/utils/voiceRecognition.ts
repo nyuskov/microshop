@@ -45,6 +45,7 @@
 
 import { computed, reactive, ref } from 'vue'
 
+import { t } from '@/i18n'
 import {
   cancelNativeRecognition,
   nativeSpeechSupported,
@@ -189,8 +190,8 @@ export const speechRecognitionSupported = (): boolean => {
  * обязана называть причину и выход, а не «не поддерживается».
  */
 const unsupportedReason = (): string => {
-  if (isNativeApp()) return 'Распознавание недоступно на этом устройстве'
-  return 'Этот браузер не умеет распознавать готовые записи'
+  if (isNativeApp()) return t('Распознавание недоступно на этом устройстве')
+  return t('Этот браузер не умеет распознавать готовые записи')
 }
 
 /**
@@ -201,8 +202,10 @@ const unsupportedReason = (): string => {
  */
 const microphoneOnlyReason = (): string =>
   browserKind().mobile
-    ? 'В мобильном браузере распознаётся только микрофон, а не запись — расшифровка есть в приложении Pismo'
-    : 'Этот браузер распознаёт только микрофон, а не запись — нужен Chrome на компьютере'
+    ? t(
+        'В мобильном браузере распознаётся только микрофон, а не запись — расшифровка есть в приложении Pismo'
+      )
+    : t('Этот браузер распознаёт только микрофон, а не запись — нужен Chrome на компьютере')
 
 /**
  * Язык распознавания по умолчанию.
@@ -339,7 +342,7 @@ const CHUNK_LIMIT_MS = (CHUNK_SECONDS + 12) * 1000
  */
 const nativeErrorText = (error?: string): string => {
   const value = (error ?? '').trim()
-  if (!value || value === 'other') return 'Не удалось распознать голосовое'
+  if (!value || value === 'other') return t('Не удалось распознать голосовое')
   if (value === 'aborted') return errorMessage('aborted', false)
   if (value === 'network' || value === 'not-allowed' || value === 'service-not-allowed') {
     return errorMessage(value, false)
@@ -353,20 +356,20 @@ const nativeErrorText = (error?: string): string => {
 
 /** Ошибка распознавания → понятный текст (коды у браузеров общие). */
 const errorMessage = (code: string, heard: boolean): string => {
-  if (code === 'network') return 'Браузер не смог обратиться к своему сервису распознавания'
+  if (code === 'network') return t('Браузер не смог обратиться к своему сервису распознавания')
   if (code === 'not-allowed' || code === 'service-not-allowed') {
-    return 'Браузер запретил распознавание речи'
+    return t('Браузер запретил распознавание речи')
   }
-  if (code === 'aborted') return 'Распознавание отменено'
+  if (code === 'aborted') return t('Распознавание отменено')
   // «Слышал, но не разобрал» и «вообще не получил звук» — разные проблемы, и
   // человеку важно знать, какую из них чинить (браузер/поток или сама запись).
   if (code === 'no-speech' && !heard) {
-    return 'Распознавание не получило звук — попробуйте ещё раз'
+    return t('Распознавание не получило звук — попробуйте ещё раз')
   }
-  if (code === 'no-speech') return 'Речь не разобрана — возможно, в записи тихо или шумно'
+  if (code === 'no-speech') return t('Речь не разобрана — возможно, в записи тихо или шумно')
   // Не «не получило звук» и не «не разобрало»: запись есть, но в ней тишина.
-  if (code === 'silent') return 'В записи не слышно речи — проверьте микрофон и попробуйте снова'
-  return 'Не удалось распознать голосовое'
+  if (code === 'silent') return t('В записи не слышно речи — проверьте микрофон и попробуйте снова')
+  return t('Не удалось распознать голосовое')
 }
 
 /** Состояние одного прогона распознавания (отмена по кнопке и при уходе из чата). */
@@ -450,7 +453,7 @@ async function recognizeChunk(
   source.connect(silent)
   silent.connect(ctx.destination)
   const track = destination.stream.getAudioTracks()[0]
-  if (!track) return { text: '', heard: false, error: 'Не удалось подготовить звук' }
+  if (!track) return { text: '', heard: false, error: t('Не удалось подготовить звук') }
 
   const recognition = new Ctor()
   recognition.lang = effectiveLanguage()
@@ -548,7 +551,7 @@ async function recognizeChunk(
     try {
       recognition.start(track)
     } catch (thrown) {
-      error = thrown instanceof Error ? thrown.message : 'Не удалось запустить распознавание'
+      error = thrown instanceof Error ? thrown.message : t('Не удалось запустить распознавание')
       window.clearTimeout(limit)
       finish()
     }
@@ -721,18 +724,20 @@ async function recognizeVoiceLocally(
     // Скачивание модели — это расход трафика на устройстве человека, поэтому
     // только с его согласия и с честным размером в подписи.
     const agreed = await confirmDialog({
-      title: 'Расшифровка на устройстве',
+      title: t('Расшифровка на устройстве'),
       message:
-        `Скачается модель распознавания (${info.title}, ~${info.sizeMb} МБ) — один раз. ` +
-        'Дальше расшифровка работает без интернета, звук и текст остаются на устройстве.',
-      okLabel: 'Скачать',
-      cancelLabel: 'Отменить'
+        t('Скачается модель распознавания ({title}, ~{size} МБ) — один раз. ', {
+          title: info.title,
+          size: info.sizeMb
+        }) + t('Дальше расшифровка работает без интернета, звук и текст остаются на устройстве.'),
+      okLabel: t('Скачать'),
+      cancelLabel: t('Отменить')
     })
     if (!agreed) {
       finish({
         status: 'failed',
         text: '',
-        error: 'Расшифровка отменена — модель не скачана'
+        error: t('Расшифровка отменена — модель не скачана')
       })
       return
     }

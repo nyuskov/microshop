@@ -11,7 +11,7 @@
       class="am-transcript-actions"
     >
       <button v-if="transcript.status === 'ready'" class="am-transcript-btn" @click="copy">
-        Скопировать
+        {{ t('Скопировать') }}
       </button>
       <!-- Перевод прямо здесь, а не в меню сообщения: иностранное голосовое
            понимают в два шага — сначала текст, потом перевод, и искать пункт меню
@@ -63,7 +63,7 @@
         </button>
       </div>
       <p v-if="transcript.status === 'failed'" class="am-lang-hint">
-        Если слова не те — попробуйте другой язык и нажмите «Ещё раз».
+        {{ t('Если слова не те — попробуйте другой язык и нажмите «Ещё раз».') }}
       </p>
     </div>
     <p class="am-transcript-note">

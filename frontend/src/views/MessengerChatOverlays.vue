@@ -64,7 +64,9 @@
           </template>
         </p>
         <q-radio v-model="deleteChatScope" val="me" :label="t('Только у меня')" />
-        <div class="delchat-hint">{{ t('Чат исчезнет из вашего списка; у собеседника останется.') }}</div>
+        <div class="delchat-hint">
+          {{ t('Чат исчезнет из вашего списка; у собеседника останется.') }}
+        </div>
         <q-radio v-model="deleteChatScope" val="all" :label="t('Для всех')" />
         <div class="delchat-hint">{{ t('Чат и переписка будут удалены у всех участников.') }}</div>
       </q-card-section>

@@ -26,7 +26,7 @@
       </div>
       <p v-if="props.phoneError" class="phone-error">{{ props.phoneError }}</p>
       <div v-if="!props.phoneBusy && !props.phoneMatched.length" class="empty-hint">
-        Никого из вашей книги нет в мессенджере
+        {{ t('Никого из вашей книги нет в мессенджере') }}
       </div>
       <div v-else class="phone-inline-list">
         <button

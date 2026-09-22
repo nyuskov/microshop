@@ -14,16 +14,22 @@
         </span>
         <h2 id="el-title" class="el-title">{{ t('Переход на внешний сайт') }}</h2>
         <p class="el-text">
-          Ссылка ведёт за пределы Pismo. Мы не проверяем чужие сайты и не отвечаем за их содержимое.
+          {{
+            t(
+              'Ссылка ведёт за пределы Pismo. Мы не проверяем чужие сайты и не отвечаем за их содержимое.'
+            )
+          }}
         </p>
         <div class="el-target">
           <span class="el-host">{{ pending.host }}</span>
           <span class="el-url">{{ prettyUrl }}</span>
         </div>
         <div class="el-actions">
-          <button type="button" class="el-btn ghost" @click="answer(false)">{{ t('Отмена') }}</button>
+          <button type="button" class="el-btn ghost" @click="answer(false)">
+            {{ t('Отмена') }}
+          </button>
           <button type="button" class="el-btn go" @click="go">
-            <q-icon :name="icon('share')" size="16px" /> Перейти
+            <q-icon :name="icon('share')" size="16px" /> {{ t('Перейти') }}
           </button>
         </div>
       </div>

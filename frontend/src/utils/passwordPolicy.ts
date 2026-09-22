@@ -7,6 +7,8 @@
  * последовательных строк.
  */
 
+import { t } from '@/i18n'
+
 export const PASSWORD_MIN_LENGTH = 10
 export const PASSWORD_MAX_LENGTH = 128
 
@@ -88,18 +90,18 @@ function personalDataInPassword(password: string, context: PasswordContext): str
   if (phone.length >= 10) {
     const passwordDigits = digitsOnly(password)
     if (passwordDigits.includes(phone) || passwordDigits.includes(phone.slice(-10))) {
-      return 'номер телефона'
+      return t('номер телефона')
     }
   }
 
   const emailLocal = context.email ? (context.email.split('@')[0]?.toLowerCase() ?? '') : ''
   if (emailLocal.length >= 3 && candidate.includes(emailLocal)) {
-    return 'адрес почты'
+    return t('адрес почты')
   }
 
   const username = context.username?.toLowerCase() ?? ''
   if (username.length >= 3 && candidate.includes(username)) {
-    return 'логин'
+    return t('логин')
   }
 
   return null
@@ -108,27 +110,29 @@ function personalDataInPassword(password: string, context: PasswordContext): str
 /** Причина отказа или `null`, если пароль допустим (тексты совпадают с сервером). */
 export function passwordProblem(password: string, context: PasswordContext = {}): string | null {
   if (password.length < PASSWORD_MIN_LENGTH) {
-    return `Пароль должен быть не короче ${PASSWORD_MIN_LENGTH} символов.`
+    return t('Пароль должен быть не короче {count} символов.', { count: PASSWORD_MIN_LENGTH })
   }
   if (password.length > PASSWORD_MAX_LENGTH) {
-    return `Пароль не может быть длиннее ${PASSWORD_MAX_LENGTH} символов.`
+    return t('Пароль не может быть длиннее {count} символов.', { count: PASSWORD_MAX_LENGTH })
   }
   if (COMMON_PASSWORDS.has(password.trim().toLowerCase())) {
-    return 'Такой пароль слишком часто встречается — выберите другой.'
+    return t('Такой пароль слишком часто встречается — выберите другой.')
   }
   if (/^\d+$/.test(password)) {
-    return 'Пароль не должен состоять только из цифр.'
+    return t('Пароль не должен состоять только из цифр.')
   }
   if (hasSameCharRun(password, REPEAT_RUN)) {
-    return `Пароль не должен содержать ${REPEAT_RUN} одинаковых символа подряд.`
+    return t('Пароль не должен содержать {count} одинаковых символа подряд.', {
+      count: REPEAT_RUN
+    })
   }
   if (hasSequenceRun(password, SEQUENCE_RUN)) {
-    return 'Пароль не должен быть простой последовательностью символов.'
+    return t('Пароль не должен быть простой последовательностью символов.')
   }
 
   const personal = personalDataInPassword(password, context)
   if (personal) {
-    return `Пароль не должен содержать ${personal}.`
+    return t('Пароль не должен содержать {what}.', { what: personal })
   }
 
   return null
@@ -149,7 +153,7 @@ export function passwordStrength(password: string): {
   const long = password.length >= 14
   const medium = password.length >= PASSWORD_MIN_LENGTH
 
-  if (!medium || classes <= 1) return { score: 1, label: 'Слабый' }
-  if (long && classes >= 3) return { score: 3, label: 'Хороший' }
-  return { score: 2, label: 'Нормальный' }
+  if (!medium || classes <= 1) return { score: 1, label: t('Слабый') }
+  if (long && classes >= 3) return { score: 3, label: t('Хороший') }
+  return { score: 2, label: t('Нормальный') }
 }

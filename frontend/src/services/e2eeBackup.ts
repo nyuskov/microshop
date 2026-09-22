@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Резервная копия ключа шифрования (E2EE).
  *
@@ -106,11 +107,11 @@ export const backupFileName = (userId: number, date = new Date()): string =>
  * Возвращает готовый текст файла (его сохраняет интерфейс).
  */
 export async function createBackup(userId: number, passphrase: string): Promise<string> {
-  if (!isE2eeAvailable()) throw new Error('Шифрование в этом браузере недоступно')
+  if (!isE2eeAvailable()) throw new Error(t('Шифрование в этом браузере недоступно'))
   assertPassphrase(passphrase)
   const material = await myKeyMaterial(userId)
   if (!material) {
-    throw new Error('Ключ устройства не найден — в этом браузере шифрование ещё не включалось')
+    throw new Error(t('Ключ устройства не найден — в этом браузере шифрование ещё не включалось'))
   }
   const salt = randomBytes(SALT_BYTES)
   const iv = randomBytes(IV_BYTES)
@@ -150,23 +151,23 @@ export async function restoreBackup(
   text: string,
   passphrase: string
 ): Promise<{ deviceId: string }> {
-  if (!isE2eeAvailable()) throw new Error('Шифрование в этом браузере недоступно')
+  if (!isE2eeAvailable()) throw new Error(t('Шифрование в этом браузере недоступно'))
   assertPassphrase(passphrase)
 
   let parsed: unknown
   try {
     parsed = JSON.parse(text)
   } catch {
-    throw new Error('Это не файл резервной копии (не читается как JSON)')
+    throw new Error(t('Это не файл резервной копии (не читается как JSON)'))
   }
   if (!isBackupFile(parsed)) {
-    throw new Error('Это не файл резервной копии Pismo или он повреждён')
+    throw new Error(t('Это не файл резервной копии Pismo или он повреждён'))
   }
   if (parsed.version > BACKUP_VERSION) {
-    throw new Error('Копия сделана более новой версией приложения — обновите приложение')
+    throw new Error(t('Копия сделана более новой версией приложения — обновите приложение'))
   }
   if (parsed.user_id !== userId) {
-    throw new Error('Копия сделана для другого аккаунта — войдите в него и повторите')
+    throw new Error(t('Копия сделана для другого аккаунта — войдите в него и повторите'))
   }
   const iterations = Math.min(
     MAX_ITERATIONS,
@@ -183,17 +184,17 @@ export async function restoreBackup(
     )
   } catch {
     // GCM не сошёлся — либо фраза не та, либо файл правили.
-    throw new Error('Не подошла парольная фраза (или файл повреждён)')
+    throw new Error(t('Не подошла парольная фраза (или файл повреждён)'))
   }
 
   let material: DeviceKeyMaterial
   try {
     material = JSON.parse(new TextDecoder().decode(plain)) as DeviceKeyMaterial
   } catch {
-    throw new Error('Внутри копии не ключ устройства — файл повреждён')
+    throw new Error(t('Внутри копии не ключ устройства — файл повреждён'))
   }
   if (!material?.priv?.d || !material?.pub?.x) {
-    throw new Error('Внутри копии неполный ключ устройства — файл повреждён')
+    throw new Error(t('Внутри копии неполный ключ устройства — файл повреждён'))
   }
   await installKeyMaterial(userId, material)
   return { deviceId: material.device_id }

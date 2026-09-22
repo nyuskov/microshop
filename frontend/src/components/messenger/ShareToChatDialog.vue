@@ -81,7 +81,7 @@
         </div>
 
         <div v-else class="shr-empty tall">
-          Чатов пока нет. Найдите собеседника в «Контактах» — и вернитесь к отправке.
+          {{ t('Чатов пока нет. Найдите собеседника в «Контактах» — и вернитесь к отправке.') }}
         </div>
 
         <!-- Низ: выбранный чат + кнопки -->
@@ -90,7 +90,9 @@
             selectedChat ? `Отправить в «${titleOf(selectedChat)}»` : 'Выберите чат'
           }}</span>
           <div class="shr-actions">
-            <button class="shr-btn ghost" :disabled="busy" @click="emit('close')">{{ t('Отмена') }}</button>
+            <button class="shr-btn ghost" :disabled="busy" @click="emit('close')">
+              {{ t('Отмена') }}
+            </button>
             <button
               class="shr-btn send"
               :disabled="busy || selectedId === null"

@@ -11,7 +11,13 @@
       <p v-if="preview?.description" class="invite-desc">{{ preview.description }}</p>
       <div class="invite-actions">
         <q-btn flat no-caps :label="t('Отмена')" @click="emit('close')" />
-        <q-btn color="primary" no-caps :loading="joining" :label="t('Войти')" @click="emit('join')" />
+        <q-btn
+          color="primary"
+          no-caps
+          :loading="joining"
+          :label="t('Войти')"
+          @click="emit('join')"
+        />
       </div>
       <p v-if="error" class="invite-error">{{ error }}</p>
     </q-card>

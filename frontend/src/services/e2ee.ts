@@ -23,6 +23,7 @@
 
 import { api } from './api'
 import { canonicalKey, orderKeys, safetyCodeFromBytes, type SafetyCode } from '@/utils/safetyNumber'
+import { t } from '@/i18n'
 
 import {
   ownDeviceId,
@@ -37,7 +38,7 @@ const HKDF_INFO_PREFIX = 'chat:'
 const PAIR_INFO_PREFIX = 'pair:'
 
 /** Показываем в интерфейсе, когда расшифровать не удалось (нет ключа и т.п.). */
-export const ENCRYPTED_FALLBACK = '🔒 Сообщение'
+export const ENCRYPTED_FALLBACK = t('🔒 Сообщение')
 
 const te = new TextEncoder()
 const td = new TextDecoder()
@@ -390,7 +391,7 @@ export async function ensureDeviceKey(userId: number): Promise<void> {
 export async function myPublicJwkJson(userId: number): Promise<string> {
   await ensureDeviceKey(userId)
   const pub = pubJwkCache.get(userId)
-  if (!pub) throw new Error('Нет ключа устройства')
+  if (!pub) throw new Error(t('Нет ключа устройства'))
   return JSON.stringify(pub)
 }
 
@@ -478,11 +479,11 @@ export async function installKeyMaterial(
   userId: number,
   material: DeviceKeyMaterial
 ): Promise<void> {
-  if (!isE2eeAvailable()) throw new Error('Шифрование в этом браузере недоступно')
+  if (!isE2eeAvailable()) throw new Error(t('Шифрование в этом браузере недоступно'))
   const priv = await importPrivateJwk(material.priv)
   const exported = (await crypto.subtle.exportKey('jwk', priv)) as JsonWebKey
   if (!material.pub || exported.x !== material.pub.x || exported.y !== material.pub.y) {
-    throw new Error('Ключ в резервной копии повреждён: части не совпадают')
+    throw new Error(t('Ключ в резервной копии повреждён: части не совпадают'))
   }
   safeSet(storageKeyFor(userId), JSON.stringify({ priv: material.priv, pub: material.pub }))
   if (isValidDeviceId(material.device_id)) {

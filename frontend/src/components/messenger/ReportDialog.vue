@@ -48,7 +48,8 @@
 
         <p class="mod-rules">
           Что считается нарушением —
-          <a href="/community.html" target="_blank" rel="noopener">{{ t('правила сообщества') }}</a>.
+          <a href="/community.html" target="_blank" rel="noopener">{{ t('правила сообщества') }}</a
+          >.
         </p>
       </q-card-section>
 

@@ -1500,5 +1500,222 @@ export const EN: Record<string, string> = {
   'Сервер не ответил вовремя. Проверьте связь и повторите.':
     'The server did not answer in time. Check your connection and try again.',
   'Нет подключения к серверу. Проверьте интернет и повторите.':
-    'No connection to the server. Check your internet and try again.'
+    'No connection to the server. Check your internet and try again.',
+
+  // --- Подсказки и пояснения в разметке (второй проход кодмода) ---
+  'Пока никто не комментировал. Будьте первым.': 'No comments yet. Be the first.',
+  'Ссылка ведёт за пределы Pismo. Мы не проверяем чужие сайты и не отвечаем за их содержимое.':
+    'The link leads outside Pismo. We do not check other sites and are not responsible for their content.',
+  Перейти: 'Go',
+  'Нужно один раз скачать модель перевода (десятки мегабайт) — это делает браузер, текст никуда не уходит.':
+    'The translation model has to be downloaded once (tens of megabytes) — the browser does it, and your text never leaves the device.',
+  'Скачать и перевести': 'Download and translate',
+  Тренды: 'Trends',
+  'Если слова не те — попробуйте другой язык и нажмите «Ещё раз».':
+    'If the words are wrong, try another language and tap “Try again”.',
+  'Нажмите «Запись», чтобы начать': 'Tap “Record” to start',
+  'Так увидит собеседник': 'This is how the other person sees it',
+  Запись: 'Recording',
+  'Повторить доступ': 'Retry access',
+  Стоп: 'Stop',
+  Перезаписать: 'Overwrite',
+  'Одноразовое медиа: после закрытия оно исчезнет у всех участников. Скриншот или запись экрана запретить нельзя — об этом честно предупреждаем.':
+    'One-time media: after closing it disappears for all participants. Screenshots or screen recording cannot be prevented — we are honest about that.',
+  'Заблокированные не могут писать вам, а их диалоги скрыты из списка. Для тех, кому запрещены только звонки, переписка остаётся. Здесь блокировку можно снять.':
+    'Blocked people cannot write to you, and their dialogs are hidden from the list. For those with only calls blocked, the chat stays. You can unblock them here.',
+  'Заблокированных пользователей нет.': 'There are no blocked users.',
+  'Папка — свой список чатов с ручным порядком. Хранится на этом устройстве: на телефоне и на компьютере папки могут быть разными.':
+    'A folder is your own list of chats with a manual order. It is stored on this device: folders on a phone and on a computer may differ.',
+  'Обычный чат — текст виден в превью и уведомлениях. Зашифрованный — сообщения читают только участники, но текст скрыт в превью/уведомлениях.':
+    'An ordinary chat shows the text in previews and notifications. In an encrypted one only the participants read the messages, while the text is hidden in previews and notifications.',
+  'Чат зашифрован — показаны загруженные вложения.':
+    'The chat is encrypted — loaded attachments are shown.',
+  'В этом чате пока нет общих вложений': 'This chat has no shared attachments yet',
+  'Имя видите только вы — в списке чатов, шапке и уведомлениях. Собеседник его не видит.':
+    'Only you see this name — in the chat list, the header and notifications. The other person does not see it.',
+  'Никого из вашей книги нет в мессенджере': 'None of your contacts is in the messenger',
+  'У собеседников сохранится история переписки, но ваши сообщения исчезнут.':
+    'The other people keep their chat history, but your messages will be gone.',
+  'Здесь видно, что умеет ЭТО устройство и этот браузер. Самые частые «не работает» — про окружение, а не про приложение: во встроенном браузере редактора нет сервиса моделей Chrome, в WebView на телефоне нет распознавания речи, а показ экрана умеют только настольные браузеры.':
+    'Here you can see what THIS device and this browser can do. The most common “does not work” issues are about the environment, not the app: the editor’s embedded browser has no Chrome model service, a phone WebView has no speech recognition, and only desktop browsers can share the screen.',
+  'Проверяется только наличие возможностей — ничего не скачивается и никуда не отправляется. Модель перевода браузер скачает при первом переводе, и только после нажатия.':
+    'Only the availability of features is checked — nothing is downloaded and nothing is sent anywhere. The browser downloads the translation model on the first translation, and only after you tap.',
+  'Ключ сквозного шифрования живёт только в этом браузере: переустановка приложения, очистка данных или потеря телефона делают переписку в зашифрованных чатах нечитаемой — сервер расшифровать её не может. Копия ключа, зашифрованная вашей парольной фразой, возвращает доступ на новом устройстве.':
+    'The end-to-end encryption key lives only in this browser: reinstalling the app, clearing the data or losing the phone makes the encrypted chats unreadable — the server cannot decrypt them. A key backup encrypted with your passphrase restores access on a new device.',
+  'Файл копии и парольная фраза вместе — это доступ ко всей переписке. Храните их отдельно друг от друга (фразу удобно держать в менеджере паролей) и никому не пересылайте: поддержка такую копию никогда не попросит.':
+    'The backup file and the passphrase together give access to all your chats. Keep them apart (a password manager is a good place for the passphrase) and never forward them to anyone: support will never ask for such a backup.',
+  'Ключ этого браузера будет заменён ключом из копии, а приложение — перезапущено, чтобы перечитать переписку.':
+    'The key of this browser will be replaced with the key from the backup, and the app will restart to re-read the chats.',
+  'Нет других чатов для пересылки. Найдите собеседника и начните диалог.':
+    'There are no other chats to forward to. Find someone and start a dialog.',
+  'Включите, когда сервис обновляется или что-то чинится: вместо мессенджера все увидят понятный экран «идут технические работы» — без ошибок и пустых списков. Вход в аккаунт, уведомления о доступности и ваш собственный доступ продолжают работать, так что выключить режим можно оттуда же.':
+    'Turn this on when the service is being updated or fixed: instead of the messenger everyone sees a clear “maintenance in progress” screen — with no errors and no empty lists. Logging in, availability notifications and your own access keep working, so you can turn the mode off from there as well.',
+  'Сообщение уйдёт в назначенное время, даже если приложение закрыто. Текст останется только текстом: вложения отложить нельзя.':
+    'The message will be sent at the set time even if the app is closed. It stays text only: attachments cannot be scheduled.',
+  'Если это не он, новые сообщения сможет читать тот, кто получил доступ к его аккаунту.':
+    'If this is not them, whoever gained access to the account will be able to read new messages.',
+  'Сверьте код проверки в карточке чата или спросите его лично. Пока не сверили — не отправляйте сюда пароли и коды.':
+    'Compare the verification code in the chat card or ask the person directly. Until you have compared it, do not send passwords or codes here.',
+  'Браузер не открывает книгу напрямую — вставьте номера ниже (по одному в строке).':
+    'The browser cannot open the phone book directly — paste the numbers below (one per line).',
+  'Никого: реакции сняли (или приложение собеседника их не передаёт).':
+    'No one: the reactions were removed (or the other person’s app does not relay them).',
+  'Ключ собеседника пока неизвестен: проверять нечего, пока он не зайдёт в приложение.':
+    'The other person’s key is not known yet: there is nothing to check until they open the app.',
+  'Код меняется, если кто-то из вас зайдёт с нового устройства (ключ привязан к устройству). Тогда сверьте код заново — это нормально.':
+    'The code changes if either of you logs in from a new device (the key is tied to the device). Then compare the code again — that is normal.',
+  'Заморозка закрывает вход полностью — разморозить можно кодом на подтверждённый e-mail аккаунта.':
+    'A freeze closes login completely — you can unfreeze it with a code sent to the confirmed e-mail of the account.',
+  'Чатов пока нет. Найдите собеседника в «Контактах» — и вернитесь к отправке.':
+    'No chats yet. Find someone in “Contacts” and come back to send it.',
+  'История — это фото или видео на 24 часа. Друзья увидят её в этом разделе и в списке чатов.':
+    'A story is a photo or a video for 24 hours. Friends see it in this section and in the chat list.',
+  'Здесь появятся истории друзей — они живут 24 часа.':
+    'Your friends’ stories will appear here — they live for 24 hours.',
+  'Это видео не проигрывается в браузере — его перекодирует сервер. Это может занять до минуты.':
+    'This video does not play in the browser — the server is transcoding it. It can take up to a minute.',
+  'Это видео не проигрывается в этом браузере — файл записан в формате, который он не умеет читать. Дальше показ продолжится.':
+    'This video does not play in this browser — the file is recorded in a format it cannot read. The show will go on.',
+  'Публикуют владелец и админы: они увидят предложку в настройках канала.':
+    'The owner and admins can post: they will see your suggestion in the channel settings.',
+
+  // --- Политика паролей (utils/passwordPolicy.ts) ---
+  'номер телефона': 'the phone number',
+  'адрес почты': 'the e-mail address',
+  логин: 'the username',
+  'Пароль должен быть не короче {count} символов.':
+    'The password must be at least {count} characters.',
+  'Пароль не может быть длиннее {count} символов.':
+    'The password cannot be longer than {count} characters.',
+  'Такой пароль слишком часто встречается — выберите другой.':
+    'This password is too common — choose another one.',
+  'Пароль не должен состоять только из цифр.': 'The password cannot consist of digits only.',
+  'Пароль не должен содержать {count} одинаковых символа подряд.':
+    'The password cannot contain {count} identical characters in a row.',
+  'Пароль не должен быть простой последовательностью символов.':
+    'The password cannot be a simple sequence of characters.',
+  'Пароль не должен содержать {what}.': 'The password cannot contain {what}.',
+  Слабый: 'Weak',
+  Хороший: 'Strong',
+  Нормальный: 'Medium',
+
+  // --- Перевод сообщений (utils/translation.ts) ---
+  'Встроенный перевод Chrome не работает во встроенном браузере VS Code — откройте приложение в обычном Chrome':
+    'Chrome built-in translation does not work in the embedded VS Code browser — open the app in regular Chrome',
+  'Браузер не смог связаться со своим сервисом перевода — модель не скачивается':
+    'The browser could not reach its translation service — the model is not downloading',
+  'Перевод отменён': 'Translation cancelled',
+  'В этом сообщении нет текста для перевода': 'This message has no text to translate',
+  'Этот браузер не умеет переводить на устройстве': 'This browser cannot translate on the device',
+  'Готовим перевод…': 'Preparing the translation…',
+  'Сообщение уже на этом языке': 'The message is already in this language',
+  'Браузер считает, что этой пары языков у него нет — попробуем загрузить модель':
+    'The browser thinks it does not have this language pair — let us try to load the model',
+  'Скачиваем модель перевода…': 'Downloading the translation model…',
+  'Переводим…': 'Translating…',
+  'Скачиваем модель перевода: {percent}%': 'Downloading the translation model: {percent}%',
+  'Не удалось подготовить перевод — возможно, модель не скачалась':
+    'Could not prepare the translation — the model may not have downloaded',
+  'Для этой пары языков встроенный переводчик браузера недоступен — нужен Chrome 138+':
+    'The built-in browser translator is not available for this language pair — Chrome 138+ is required',
+  'Текст слишком длинный для перевода': 'The text is too long to translate',
+  'Не удалось перевести сообщение': 'Could not translate the message',
+
+  // --- Распознавание речи на устройстве (utils/voiceRecognition.ts) ---
+  'Распознавание недоступно на этом устройстве': 'Recognition is not available on this device',
+  'Этот браузер не умеет распознавать готовые записи':
+    'This browser cannot recognise ready recordings',
+  'В мобильном браузере распознаётся только микрофон, а не запись — расшифровка есть в приложении Pismo':
+    'A mobile browser recognises only the microphone, not a recording — transcription is available in the Pismo app',
+  'Этот браузер распознаёт только микрофон, а не запись — нужен Chrome на компьютере':
+    'This browser recognises only the microphone, not a recording — use Chrome on a computer',
+  'Не удалось распознать голосовое': 'Could not recognise the voice message',
+  'Браузер не смог обратиться к своему сервису распознавания':
+    'The browser could not reach its recognition service',
+  'Браузер запретил распознавание речи': 'The browser blocked speech recognition',
+  'Распознавание отменено': 'Recognition was cancelled',
+  'Распознавание не получило звук — попробуйте ещё раз':
+    'Recognition received no audio — try again',
+  'Речь не разобрана — возможно, в записи тихо или шумно':
+    'The speech was not recognised — the recording may be too quiet or noisy',
+  'В записи не слышно речи — проверьте микрофон и попробуйте снова':
+    'No speech can be heard in the recording — check the microphone and try again',
+  'Не удалось подготовить звук': 'Could not prepare the audio',
+  'Не удалось запустить распознавание': 'Could not start recognition',
+  'Расшифровка на устройстве': 'On-device transcription',
+  'Скачается модель распознавания ({title}, ~{size} МБ) — один раз. ':
+    'The recognition model will be downloaded ({title}, ~{size} MB) — one time only. ',
+  'Дальше расшифровка работает без интернета, звук и текст остаются на устройстве.':
+    'After that, transcription works without the internet, and the audio and text stay on the device.',
+  'Расшифровка отменена — модель не скачана':
+    'Transcription cancelled — the model was not downloaded',
+
+  // --- Безопасность аккаунта (composables/useAccountSecurity.ts) ---
+  'Не удалось загрузить историю действий.': 'Could not load the activity history.',
+  'Задайте пароль — сейчас вход возможен только по коду в Telegram.':
+    'Set a password — right now you can only log in with a code in Telegram.',
+  'Пароль слабый — замените его на длинную фразу.':
+    'The password is weak — replace it with a long phrase.',
+  'Добавьте e-mail — он понадобится для восстановления доступа.':
+    'Add an e-mail — you will need it to restore access.',
+  'Подтвердите e-mail — только подтверждённый адрес годится для входа и сброса пароля.':
+    'Confirm the e-mail — only a confirmed address works for logging in and resetting the password.',
+  'Сначала укажите e-mail и сохраните профиль.': 'First enter the e-mail and save the profile.',
+  'Не удалось отправить код': 'Could not send the code',
+  'E-mail подтверждён — теперь по нему можно входить и восстанавливать пароль.':
+    'The e-mail is confirmed — you can now log in with it and reset the password.',
+  'Неверный код из письма': 'Wrong code from the e-mail',
+  'Пароль обновлён. Остальные устройства вышли из аккаунта.':
+    'The password has been updated. Other devices have been logged out.',
+  'Не удалось изменить пароль': 'Could not change the password',
+  'Не удалось выйти на всех устройствах': 'Could not log out on all devices',
+  'Не удалось загрузить устройства': 'Could not load the devices',
+  'Устройство вышло из аккаунта.': 'The device has been logged out.',
+  'Не удалось отозвать устройство': 'Could not revoke the device',
+  'Неизвестное устройство': 'Unknown device',
+  'Заморозка аккаунта': 'Account freeze',
+  'Подтвердите паролем — так «заморозить» аккаунт не сможет тот, кто получил доступ к вашей сессии.':
+    'Confirm with your password — this way whoever got into your session cannot “freeze” the account.',
+  'Заморозить аккаунт?': 'Freeze the account?',
+  'Все устройства выйдут, вход будет закрыт до разморозки кодом из письма.':
+    'All devices will be logged out and login will stay closed until you unfreeze it with a code from the e-mail.',
+  'Не удалось заморозить аккаунт': 'Could not freeze the account',
+
+  // --- Копия ключа шифрования (services/e2eeBackup.ts) ---
+  'Нет ключа устройства': 'There is no device key',
+  'Шифрование в этом браузере недоступно': 'Encryption is not available in this browser',
+  'Ключ в резервной копии повреждён: части не совпадают':
+    'The key in the backup is damaged: its parts do not match',
+  'Ключ устройства не найден — в этом браузере шифрование ещё не включалось':
+    'The device key was not found — encryption has not been enabled in this browser yet',
+  'Это не файл резервной копии (не читается как JSON)':
+    'This is not a backup file (it does not read as JSON)',
+  'Это не файл резервной копии Pismo или он повреждён':
+    'This is not a Pismo backup file, or it is damaged',
+  'Копия сделана более новой версией приложения — обновите приложение':
+    'The backup was made by a newer version of the app — please update the app',
+  'Копия сделана для другого аккаунта — войдите в него и повторите':
+    'The backup was made for another account — log in to it and try again',
+  'Не подошла парольная фраза (или файл повреждён)':
+    'The passphrase did not match (or the file is damaged)',
+  'Внутри копии не ключ устройства — файл повреждён':
+    'The backup does not contain a device key — the file is damaged',
+  'Внутри копии неполный ключ устройства — файл повреждён':
+    'The backup contains an incomplete device key — the file is damaged',
+
+  // --- Запись медиа (services/recorder.ts) ---
+  'Нет доступа к микрофону/камере. Разрешите доступ: откройте сайт в Chrome, нажмите значок 🔒 рядом с адресом и включите «Микрофон» и «Камера», затем повторите. В установленном приложении доступ настраивается там же.':
+    'No access to the microphone/camera. Allow it: open the site in Chrome, tap the 🔒 icon next to the address and enable “Microphone” and “Camera”, then try again. In the installed app the access is configured in the same place.',
+  'Не найдено устройство записи (микрофон/камера).':
+    'No recording device found (microphone/camera).',
+  'Микрофон/камера заняты другим приложением. Закройте его и повторите.':
+    'The microphone/camera is busy in another application. Close it and try again.',
+  'Запись доступна только по HTTPS.': 'Recording is available over HTTPS only.',
+  'Не удалось получить доступ к микрофону/камере.':
+    'Could not get access to the microphone/camera.',
+
+  // --- Истории и статистика (utils/stories.ts, utils/chatStats.ts) ---
+  'только что': 'just now',
+  'Всего: {label}': 'Total: {label}',
+  'Всего: {label} · показаны последние {shown}': 'Total: {label} · showing the last {shown}'
 }

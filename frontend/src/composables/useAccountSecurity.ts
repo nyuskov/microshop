@@ -16,6 +16,7 @@ import { deviceLabelOf, fetchSecurityLog, type SecurityLogEntry } from '@/servic
 import { askTextDialog, confirmDialog } from '@/utils/appDialogs'
 import { parseServerTime } from '@/utils/format'
 import { passwordProblem, passwordStrength } from '@/utils/passwordPolicy'
+import { t } from '@/i18n'
 
 /** Сколько событий журнала показываем (сервер хранит 180 дней). */
 const SECURITY_LOG_LIMIT = 20
@@ -45,7 +46,7 @@ export function useAccountSecurity(deps: AccountSecurityDeps) {
       securityLog.value = await fetchSecurityLog(SECURITY_LOG_LIMIT)
     } catch (error) {
       console.error('Security log failed:', error)
-      securityLogError.value = 'Не удалось загрузить историю действий.'
+      securityLogError.value = t('Не удалось загрузить историю действий.')
     } finally {
       securityLogLoading.value = false
     }
@@ -72,15 +73,15 @@ export function useAccountSecurity(deps: AccountSecurityDeps) {
     if (!user) return []
     const issues: string[] = []
     if (!user.password_set) {
-      issues.push('Задайте пароль — сейчас вход возможен только по коду в Telegram.')
+      issues.push(t('Задайте пароль — сейчас вход возможен только по коду в Telegram.'))
     } else if (user.password_weak) {
-      issues.push('Пароль слабый — замените его на длинную фразу.')
+      issues.push(t('Пароль слабый — замените его на длинную фразу.'))
     }
     if (!user.email) {
-      issues.push('Добавьте e-mail — он понадобится для восстановления доступа.')
+      issues.push(t('Добавьте e-mail — он понадобится для восстановления доступа.'))
     } else if (!user.email_verified && emailChannelAvailable.value) {
       issues.push(
-        'Подтвердите e-mail — только подтверждённый адрес годится для входа и сброса пароля.'
+        t('Подтвердите e-mail — только подтверждённый адрес годится для входа и сброса пароля.')
       )
     }
     return issues
@@ -99,7 +100,7 @@ export function useAccountSecurity(deps: AccountSecurityDeps) {
   const sendEmailCode = async () => {
     const address = emailAddress()
     if (!address) {
-      emailError.value = 'Сначала укажите e-mail и сохраните профиль.'
+      emailError.value = t('Сначала укажите e-mail и сохраните профиль.')
       return
     }
 
@@ -109,9 +110,9 @@ export function useAccountSecurity(deps: AccountSecurityDeps) {
     try {
       const detail = await authStore.requestEmailVerification(address)
       emailCodeSent.value = true
-      emailNotice.value = detail || 'Код отправлен на e-mail.'
+      emailNotice.value = detail || t('Код отправлен на e-mail.')
     } catch (error) {
-      emailError.value = getErrorMessage(error, 'Не удалось отправить код')
+      emailError.value = getErrorMessage(error, t('Не удалось отправить код'))
     } finally {
       emailBusy.value = false
     }
@@ -120,7 +121,7 @@ export function useAccountSecurity(deps: AccountSecurityDeps) {
   const confirmEmailCode = async () => {
     const address = emailAddress()
     if (!emailCodeInput.value.trim()) {
-      emailError.value = 'Введите код из письма.'
+      emailError.value = t('Введите код из письма.')
       return
     }
 
@@ -131,10 +132,11 @@ export function useAccountSecurity(deps: AccountSecurityDeps) {
       await authStore.confirmEmailVerification(address, emailCodeInput.value.trim())
       emailCodeSent.value = false
       emailCodeInput.value = ''
-      emailNotice.value =
+      emailNotice.value = t(
         'E-mail подтверждён — теперь по нему можно входить и восстанавливать пароль.'
+      )
     } catch (error) {
-      emailError.value = getErrorMessage(error, 'Неверный код из письма')
+      emailError.value = getErrorMessage(error, t('Неверный код из письма'))
     } finally {
       emailBusy.value = false
     }
@@ -186,7 +188,7 @@ export function useAccountSecurity(deps: AccountSecurityDeps) {
       return
     }
     if (passwordForm.next !== passwordForm.confirm) {
-      passwordError.value = 'Пароли не совпадают.'
+      passwordError.value = t('Пароли не совпадают.')
       passwordNotice.value = ''
       return
     }
@@ -202,9 +204,9 @@ export function useAccountSecurity(deps: AccountSecurityDeps) {
       )
       await authStore.fetchUser()
       resetPasswordForm()
-      passwordNotice.value = 'Пароль обновлён. Остальные устройства вышли из аккаунта.'
+      passwordNotice.value = t('Пароль обновлён. Остальные устройства вышли из аккаунта.')
     } catch (error) {
-      passwordError.value = getErrorMessage(error, 'Не удалось изменить пароль')
+      passwordError.value = getErrorMessage(error, t('Не удалось изменить пароль'))
     } finally {
       passwordSaving.value = false
     }
@@ -221,7 +223,7 @@ export function useAccountSecurity(deps: AccountSecurityDeps) {
       await authStore.logout()
       deps.closeModal()
     } catch (error) {
-      passwordError.value = getErrorMessage(error, 'Не удалось выйти на всех устройствах')
+      passwordError.value = getErrorMessage(error, t('Не удалось выйти на всех устройствах'))
     } finally {
       passwordSaving.value = false
     }
@@ -241,7 +243,7 @@ export function useAccountSecurity(deps: AccountSecurityDeps) {
     try {
       sessions.value = await authStore.fetchSessions()
     } catch (error) {
-      sessionsError.value = getErrorMessage(error, 'Не удалось загрузить устройства')
+      sessionsError.value = getErrorMessage(error, t('Не удалось загрузить устройства'))
     } finally {
       sessionsLoading.value = false
     }
@@ -263,16 +265,16 @@ export function useAccountSecurity(deps: AccountSecurityDeps) {
         return
       }
       sessions.value = sessions.value.filter((item) => item.id !== row.id)
-      sessionsNotice.value = 'Устройство вышло из аккаунта.'
+      sessionsNotice.value = t('Устройство вышло из аккаунта.')
     } catch (error) {
-      sessionsError.value = getErrorMessage(error, 'Не удалось отозвать устройство')
+      sessionsError.value = getErrorMessage(error, t('Не удалось отозвать устройство'))
     } finally {
       sessionsLoading.value = false
     }
   }
 
   /** Короткая подпись устройства: браузер/ОС вместо полной строки User-Agent. */
-  const deviceLabel = (agent: string): string => deviceLabelOf(agent) || 'Неизвестное устройство'
+  const deviceLabel = (agent: string): string => deviceLabelOf(agent) || t('Неизвестное устройство')
 
   /** Операционная система по строке User-Agent (для подписи под устройством). */
   const platformLabel = (agent: string): string => {
@@ -320,21 +322,22 @@ export function useAccountSecurity(deps: AccountSecurityDeps) {
     let password: string | undefined
     if (authStore.user?.password_set) {
       const entered = await askTextDialog({
-        title: 'Заморозка аккаунта',
-        message:
-          'Подтвердите паролем — так «заморозить» аккаунт не сможет тот, кто получил доступ к вашей сессии.',
-        label: 'Пароль',
+        title: t('Заморозка аккаунта'),
+        message: t(
+          'Подтвердите паролем — так «заморозить» аккаунт не сможет тот, кто получил доступ к вашей сессии.'
+        ),
+        label: t('Пароль'),
         type: 'password',
-        okLabel: 'Продолжить',
+        okLabel: t('Продолжить'),
         isValid: (value) => value.length > 0
       })
       if (entered === null) return
       password = entered
     }
     const confirmed = await confirmDialog({
-      title: 'Заморозить аккаунт?',
-      message: 'Все устройства выйдут, вход будет закрыт до разморозки кодом из письма.',
-      okLabel: 'Заморозить',
+      title: t('Заморозить аккаунт?'),
+      message: t('Все устройства выйдут, вход будет закрыт до разморозки кодом из письма.'),
+      okLabel: t('Заморозить'),
       danger: true
     })
     if (!confirmed) return
@@ -344,7 +347,7 @@ export function useAccountSecurity(deps: AccountSecurityDeps) {
       await authStore.freezeAccount(password)
       deps.closeModal()
     } catch (error) {
-      freezeError.value = getErrorMessage(error, 'Не удалось заморозить аккаунт')
+      freezeError.value = getErrorMessage(error, t('Не удалось заморозить аккаунт'))
     } finally {
       freezeBusy.value = false
     }

@@ -27,6 +27,7 @@
 
 import { reactive, ref } from 'vue'
 
+import { t } from '@/i18n'
 import { isDesktopChromium } from '@/utils/browserKind'
 
 /** Состояние перевода одного сообщения. */
@@ -96,9 +97,11 @@ const TARGET_KEY = 'pismo_translate_to'
 const modelsUnavailableReason = (): string => {
   const agent = typeof navigator === 'undefined' ? '' : navigator.userAgent
   if (/Electron|Code\//.test(agent)) {
-    return 'Встроенный перевод Chrome не работает во встроенном браузере VS Code — откройте приложение в обычном Chrome'
+    return t(
+      'Встроенный перевод Chrome не работает во встроенном браузере VS Code — откройте приложение в обычном Chrome'
+    )
   }
-  return 'Браузер не смог связаться со своим сервисом перевода — модель не скачивается'
+  return t('Браузер не смог связаться со своим сервисом перевода — модель не скачивается')
 }
 
 /** Переводы по id сообщения (в памяти вкладки, на сервер не уходит). */
@@ -239,7 +242,7 @@ export const stopTranslationWork = (messageId: number): void => {
     : {
         status: 'failed',
         text: '',
-        error: 'Перевод отменён',
+        error: t('Перевод отменён'),
         source: current.source,
         target: current.target
       }
@@ -448,7 +451,7 @@ export const translateMessage = async (
     translations[messageId] = {
       status: 'failed',
       text: '',
-      error: 'В этом сообщении нет текста для перевода',
+      error: t('В этом сообщении нет текста для перевода'),
       source: '',
       target: ''
     }
@@ -459,7 +462,7 @@ export const translateMessage = async (
     translations[messageId] = {
       status: 'failed',
       text: '',
-      error: 'Этот браузер не умеет переводить на устройстве',
+      error: t('Этот браузер не умеет переводить на устройстве'),
       source: '',
       target: ''
     }
@@ -477,7 +480,7 @@ export const translateMessage = async (
     text: '',
     source,
     target,
-    note: 'Готовим перевод…'
+    note: t('Готовим перевод…')
   }
 
   /**
@@ -502,7 +505,7 @@ export const translateMessage = async (
       translations[messageId] = {
         status: 'failed',
         text: '',
-        error: 'Сообщение уже на этом языке',
+        error: t('Сообщение уже на этом языке'),
         source,
         target
       }
@@ -533,7 +536,7 @@ export const translateMessage = async (
             availability === ''
               ? modelsUnavailableReason()
               : availability === 'unavailable'
-                ? 'Браузер считает, что этой пары языков у него нет — попробуем загрузить модель'
+                ? t('Браузер считает, что этой пары языков у него нет — попробуем загрузить модель')
                 : ''
         }
         return
@@ -548,7 +551,7 @@ export const translateMessage = async (
       text: '',
       source,
       target,
-      note: downloading ? 'Скачиваем модель перевода…' : 'Переводим…',
+      note: downloading ? t('Скачиваем модель перевода…') : t('Переводим…'),
       progress: downloading ? 0 : undefined
     }
 
@@ -560,7 +563,7 @@ export const translateMessage = async (
         text: '',
         source,
         target,
-        note: `Скачиваем модель перевода: ${Math.round(loaded * 100)}%`,
+        note: t('Скачиваем модель перевода: {percent}%', { percent: Math.round(loaded * 100) }),
         progress: loaded
       }
     })
@@ -614,11 +617,11 @@ const describeTranslationError = (thrown: unknown): string => {
   const name = thrown instanceof Error ? thrown.name : ''
   const text = thrown instanceof Error ? thrown.message : String(thrown ?? '')
   if (name === 'NotAllowedError' || /not allowed|download/i.test(text)) {
-    return 'Не удалось подготовить перевод — возможно, модель не скачалась'
+    return t('Не удалось подготовить перевод — возможно, модель не скачалась')
   }
   if (name === 'NotSupportedError' || /language pair|not supported/i.test(text)) {
-    return 'Для этой пары языков встроенный переводчик браузера недоступен — нужен Chrome 138+'
+    return t('Для этой пары языков встроенный переводчик браузера недоступен — нужен Chrome 138+')
   }
-  if (name === 'QuotaExceededError') return 'Текст слишком длинный для перевода'
-  return 'Не удалось перевести сообщение'
+  if (name === 'QuotaExceededError') return t('Текст слишком длинный для перевода')
+  return t('Не удалось перевести сообщение')
 }
