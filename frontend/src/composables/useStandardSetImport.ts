@@ -15,6 +15,7 @@
 
 import { computed, ref, type Ref } from 'vue'
 
+import { t } from '@/i18n'
 import { useStickersStore } from '@/stores/stickers'
 import { getErrorMessage } from '@/services/errors'
 import type { StandardStickerPack } from '@/utils/standardStickers'
@@ -48,10 +49,16 @@ export function useStandardSetImport(): StandardSetImportApi {
   const isImporting = computed(() => importingKey.value !== null)
 
   const label = (set: StandardStickerPack): string => {
-    if (importingKey.value !== set.key) return 'Добавить набор'
-    const done = `Добавляем ${progress.value.done} из ${progress.value.total}`
+    if (importingKey.value !== set.key) return t('Добавить набор')
+    const done = t('Добавляем {done} из {total}', {
+      done: progress.value.done,
+      total: progress.value.total
+    })
     if (waitingSeconds.value > 0) {
-      return `Ждём лимит загрузок (${waitingSeconds.value} с) · ${done}`
+      return t('Ждём лимит загрузок ({seconds} с) · {done}', {
+        seconds: waitingSeconds.value,
+        done
+      })
     }
     return `${done}…`
   }
@@ -74,11 +81,14 @@ export function useStandardSetImport(): StandardSetImportApi {
       if (result.failed > 0) {
         // Пак остался в библиотеке, но отметки «Добавлен» нет: набор можно
         // добавить ещё раз, а часть стикеров уже на месте.
-        return `Добавлено ${result.added} из ${set.stickers.length}: часть стикеров не загрузилась. Набор можно добавить ещё раз.`
+        return t(
+          'Добавлено {added} из {total}: часть стикеров не загрузилась. Набор можно добавить ещё раз.',
+          { added: result.added, total: set.stickers.length }
+        )
       }
       return ''
     } catch (cause) {
-      return getErrorMessage(cause, 'Не удалось добавить набор')
+      return getErrorMessage(cause, t('Не удалось добавить набор'))
     } finally {
       importingKey.value = null
       waitingSeconds.value = 0

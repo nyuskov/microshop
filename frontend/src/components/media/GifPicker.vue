@@ -7,10 +7,10 @@
           v-model="query"
           class="gif-search-input"
           type="text"
-          placeholder="Поиск GIF…"
+          :placeholder="t('Поиск GIF…')"
           @keydown.enter.prevent="doSearch()"
         />
-        <button class="gif-search-btn" :disabled="loading" title="Найти" @click="doSearch()">
+        <button class="gif-search-btn" :disabled="loading" :title="t('Найти')" @click="doSearch()">
           <q-icon :name="icon('arrow_forward')" size="18px" />
         </button>
       </div>
@@ -42,19 +42,19 @@
       </div>
 
       <div v-if="!keyAvailable" class="gif-status">
-        Не задан ключ Giphy. Добавьте <b>VITE_GIPHY_API_KEY</b> в файл <b>frontend/.env</b> (см.
+        Не задан ключ Giphy. Добавьте <b>VITE_GIPHY_API_KEY</b> {{ t('в файл') }} <b>frontend/.env</b> (см.
         .env.example) и перезапустите frontend.
       </div>
-      <div v-else-if="loading" class="gif-status"><span class="gif-spinner"></span> Загрузка…</div>
+      <div v-else-if="loading" class="gif-status"><span class="gif-spinner"></span> {{ t('Загрузка…') }}</div>
       <div v-else-if="error" class="gif-status error">{{ error }}</div>
-      <div v-else-if="!results.length" class="gif-status">Ничего не найдено</div>
+      <div v-else-if="!results.length" class="gif-status">{{ t('Ничего не найдено') }}</div>
       <div v-else class="gif-grid">
         <button
           v-for="gif in results"
           :key="gif.id"
           class="gif-tile"
           :disabled="sendingId !== null"
-          title="Отправить GIF"
+          :title="t('Отправить GIF')"
           @click="sendGif(gif)"
         >
           <img :src="gif.preview" :alt="gif.title || 'GIF'" loading="lazy" decoding="async" />
@@ -73,6 +73,7 @@ import { onMounted, ref } from 'vue'
 import { sendGifMessage } from '@/services/chatService'
 import { useHScroll } from '@/composables/useHScroll'
 import { fetchTrendingGifs, hasGiphyKey, searchGifs, type GiphyGif } from '@/services/giphy'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   chatId: number

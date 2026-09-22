@@ -52,7 +52,7 @@
               />
             </span>
             <span class="set-info">
-              <span class="set-name">{{ set.title }}</span>
+              <span class="set-name">{{ t(set.title) }}</span>
               <span class="set-count">{{ t('{count} шт.', { count: set.stickers.length }) }}</span>
             </span>
             <span v-if="store.isStandardSetImported(set.key)" class="set-done">

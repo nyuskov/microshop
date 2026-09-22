@@ -4,7 +4,7 @@
       class="ms-overlay fwd-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="Переслать сообщение"
+      :aria-label="t('Переслать сообщение')"
       @mousedown.self="emit('close')"
     >
       <div ref="trapContainer" class="ms-overlay-card ms-overlay-card--lg fwd-card" tabindex="-1">
@@ -12,9 +12,9 @@
         <header class="fwd-head">
           <div class="fwd-title">
             <q-icon :name="icon('forward')" size="19px" />
-            <span>Переслать</span>
+            <span>{{ t('Переслать') }}</span>
           </div>
-          <button class="fwd-icon-btn" title="Закрыть" @click="emit('close')">
+          <button class="fwd-icon-btn" :title="t('Закрыть')" @click="emit('close')">
             <q-icon :name="icon('close')" size="20px" />
           </button>
         </header>
@@ -35,8 +35,8 @@
             v-model="query"
             class="fwd-search-input"
             type="text"
-            placeholder="Поиск чата…"
-            aria-label="Поиск чата"
+            :placeholder="t('Поиск чата…')"
+            :aria-label="t('Поиск чата')"
           />
         </div>
 
@@ -69,7 +69,7 @@
             </span>
           </button>
 
-          <div v-if="!filteredChats.length" class="fwd-empty">Ничего не найдено</div>
+          <div v-if="!filteredChats.length" class="fwd-empty">{{ t('Ничего не найдено') }}</div>
         </div>
 
         <div v-else class="fwd-empty tall">
@@ -82,7 +82,7 @@
             selectedIds.length ? `Выбрано: ${selectedIds.length}` : 'Выберите чат для пересылки'
           }}</span>
           <div class="fwd-actions">
-            <button class="fwd-btn ghost" :disabled="sending" @click="emit('close')">Отмена</button>
+            <button class="fwd-btn ghost" :disabled="sending" @click="emit('close')">{{ t('Отмена') }}</button>
             <button
               class="fwd-btn send"
               :disabled="sending || selectedIds.length === 0"
@@ -105,6 +105,7 @@ import { useFocusTrap } from '@/composables/useFocusTrap'
 import type { Chat, Message } from '@/types'
 import { avatarStyle, avatarUrlOf, chatPeer, chatPeerTitle, initials } from '@/utils/user'
 import { fileIcon, mediaTypeLabel, messageSnippet } from '@/utils/media'
+import { t } from '@/i18n'
 
 // Оверлей самодельный (не q-dialog) — фокус держим сами, иначе Tab уводит в чат.
 const { container: trapContainer } = useFocusTrap()

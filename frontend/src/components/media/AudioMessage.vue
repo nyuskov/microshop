@@ -38,7 +38,7 @@
             :aria-valuemin="0"
             :aria-valuemax="Math.round(duration)"
             :aria-valuenow="Math.round(current)"
-            title="Перемотка"
+            :title="t('Перемотка')"
             @pointerdown="onSeekStart"
             @pointermove="onSeekMove"
             @pointerup="onSeekEnd"
@@ -74,6 +74,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { formatClock } from '@/services/recorder'
 import { cyclePlaybackSpeed, playbackSpeed, speedLabel } from '@/utils/playbackSpeed'
 import MediaMessageShell from '@/components/media/MediaMessageShell.vue'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   /** Id сообщения: по нему помним расшифровку при перерисовке ленты. */

@@ -5,7 +5,7 @@
     <div class="scheduled-head">
       <q-icon :name="icon('schedule')" class="scheduled-icon" size="17px" aria-hidden="true" />
       <button class="scheduled-toggle" type="button" :aria-expanded="open" @click="open = !open">
-        <span class="scheduled-title">Отложенные</span>
+        <span class="scheduled-title">{{ t('Отложенные') }}</span>
         <span class="scheduled-count">{{ rows.length }}</span>
         <span class="scheduled-next">ближайшее {{ formatScheduledAt(rows[0]!.send_at) }}</span>
         <q-icon
@@ -29,8 +29,8 @@
         <button
           class="icon-btn scheduled-cancel"
           type="button"
-          title="Отменить отправку"
-          aria-label="Отменить отложенную отправку"
+          :title="t('Отменить отправку')"
+          :aria-label="t('Отменить отложенную отправку')"
           @click="emit('cancel', item.id)"
         >
           <q-icon :name="icon('close')" size="18px" />
@@ -46,6 +46,7 @@ import { ref, watch } from 'vue'
 import type { ScheduledMessage } from '@/types'
 import { icon } from '@/utils/icons'
 import { formatScheduledAt } from '@/utils/scheduledSend'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   /** Отложенные сообщения открытого чата (уже отсортированы по времени). */

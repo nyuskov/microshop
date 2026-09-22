@@ -3,7 +3,7 @@
     v-if="maintenanceActive"
     overlay
     code="503"
-    title="Идут технические работы"
+    :title="t('Идут технические работы')"
     :text="maintenanceText"
   >
     <template #actions>
@@ -12,12 +12,12 @@
         no-caps
         color="primary"
         :loading="checking"
-        label="Проверить снова"
+        :label="t('Проверить снова')"
         @click="retry"
       />
     </template>
     <template #foot>
-      <span>Работы обычно занимают несколько минут — страница обновится сама.</span>
+      <span>{{ t('Работы обычно занимают несколько минут — страница обновится сама.') }}</span>
     </template>
   </ErrorScreen>
 </template>
@@ -40,6 +40,7 @@ import { ref } from 'vue'
 import ErrorScreen from '@/components/common/ErrorScreen.vue'
 import { fetchMaintenanceStatus } from '@/services/maintenance'
 import { hideMaintenance, maintenanceActive, maintenanceText } from '@/utils/maintenance'
+import { t } from '@/i18n'
 
 const checking = ref(false)
 

@@ -8,7 +8,7 @@
       :style="overlayStyle"
       role="dialog"
       aria-modal="true"
-      aria-label="Просмотр изображения"
+      :aria-label="t('Просмотр изображения')"
       tabindex="-1"
       @click.self="emit('close')"
       @pointerdown="onPointerDown"
@@ -26,12 +26,12 @@
           :download="current.name"
           target="_blank"
           rel="noopener"
-          title="Скачать"
-          aria-label="Скачать изображение"
+          :title="t('Скачать')"
+          :aria-label="t('Скачать изображение')"
         >
           <q-icon :name="icon('download')" size="22px" />
         </a>
-        <button class="lb-icon-btn lb-close" title="Закрыть (Esc)" @click="emit('close')">
+        <button class="lb-icon-btn lb-close" :title="t('Закрыть (Esc)')" @click="emit('close')">
           <q-icon :name="icon('close')" size="24px" />
         </button>
       </div>
@@ -39,8 +39,8 @@
       <button
         v-if="images.length > 1"
         class="lb-icon-btn lb-nav lb-prev"
-        title="Назад (←)"
-        aria-label="Предыдущее изображение"
+        :title="t('Назад (←)')"
+        :aria-label="t('Предыдущее изображение')"
         @click.stop="emit('prev')"
       >
         <q-icon :name="icon('chevron_left')" size="32px" />
@@ -61,14 +61,14 @@
            пока ссылки нет, показываем ожидание, а не «битую» картинку.
            Подписи рядом с кружком нет — крутится и так понятно. -->
       <div v-else class="lb-loading" role="status">
-        <BrandSpinner :size="48" label="Открываем изображение" />
+        <BrandSpinner :size="48" :label="t('Открываем изображение')" />
       </div>
 
       <button
         v-if="images.length > 1"
         class="lb-icon-btn lb-nav lb-next"
-        title="Вперёд (→)"
-        aria-label="Следующее изображение"
+        :title="t('Вперёд (→)')"
+        :aria-label="t('Следующее изображение')"
         @click.stop="emit('next')"
       >
         <q-icon :name="icon('chevron_right')" size="32px" />
@@ -82,6 +82,7 @@ import { icon } from '@/utils/icons'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useFocusTrap } from '@/composables/useFocusTrap'
 import BrandSpinner from '@/components/common/BrandSpinner.vue'
+import { t } from '@/i18n'
 
 export interface LightboxImage {
   id: number

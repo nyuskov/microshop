@@ -2,9 +2,9 @@
   <q-dialog :model-value="true" @update:model-value="emit('close')">
     <q-card class="picker-card">
       <q-card-section class="row no-wrap items-center q-py-sm">
-        <div class="picker-title">В папку</div>
+        <div class="picker-title">{{ t('В папку') }}</div>
         <q-space />
-        <q-btn flat round dense icon="close" aria-label="Закрыть" @click="emit('close')" />
+        <q-btn flat round dense icon="close" :aria-label="t('Закрыть')" @click="emit('close')" />
       </q-card-section>
       <q-separator />
 
@@ -14,7 +14,7 @@
           расставляется в «Папки чатов».
         </p>
 
-        <ul v-if="props.folders.length" class="picker-list" role="group" aria-label="Папки">
+        <ul v-if="props.folders.length" class="picker-list" role="group" :aria-label="t('Папки')">
           <li v-for="folder in props.folders" :key="folder.id">
             <label class="picker-row">
               <input
@@ -28,23 +28,23 @@
             </label>
           </li>
         </ul>
-        <p v-else class="picker-empty">Папок пока нет — создайте первую прямо здесь.</p>
+        <p v-else class="picker-empty">{{ t('Папок пока нет — создайте первую прямо здесь.') }}</p>
 
         <form class="picker-new" @submit.prevent="create">
           <input
             v-model="name"
             type="text"
             :maxlength="FOLDER_NAME_MAX"
-            placeholder="Новая папка"
-            aria-label="Название новой папки"
+            :placeholder="t('Новая папка')"
+            :aria-label="t('Название новой папки')"
           />
           <button type="submit" :disabled="!name.trim() || atLimit">
             <q-icon :name="icon('add')" size="18px" />
-            <span>Создать</span>
+            <span>{{ t('Создать') }}</span>
           </button>
         </form>
 
-        <button class="picker-done" type="button" @click="emit('close')">Готово</button>
+        <button class="picker-done" type="button" @click="emit('close')">{{ t('Готово') }}</button>
       </q-card-section>
     </q-card>
   </q-dialog>
@@ -55,6 +55,7 @@ import { computed, ref } from 'vue'
 
 import { icon } from '@/utils/icons'
 import { FOLDER_NAME_MAX, MAX_CHAT_FOLDERS, type ChatFolder } from '@/utils/chatFolders'
+import { t } from '@/i18n'
 
 /**
  * Отметить папки для одного или нескольких чатов.

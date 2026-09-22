@@ -2,9 +2,9 @@
   <q-dialog :model-value="true" @update:model-value="emit('close')">
     <q-card class="folders-card">
       <q-card-section class="row no-wrap items-center q-py-sm">
-        <div class="folders-title">Папки чатов</div>
+        <div class="folders-title">{{ t('Папки чатов') }}</div>
         <q-space />
-        <q-btn flat round dense icon="close" aria-label="Закрыть" @click="emit('close')" />
+        <q-btn flat round dense icon="close" :aria-label="t('Закрыть')" @click="emit('close')" />
       </q-card-section>
       <q-separator />
 
@@ -35,12 +35,12 @@
 
             <div v-if="folder.id === editingId" class="folder-editor">
               <label class="folder-field">
-                <span class="sr-only">Название папки</span>
+                <span class="sr-only">{{ t('Название папки') }}</span>
                 <input
                   v-model="nameDraft"
                   type="text"
                   :maxlength="FOLDER_NAME_MAX"
-                  placeholder="Название папки"
+                  :placeholder="t('Название папки')"
                   @keydown.enter.prevent="saveName(folder.id)"
                   @blur="saveName(folder.id)"
                 />
@@ -52,7 +52,7 @@
                   <button
                     class="folder-icon-btn"
                     type="button"
-                    title="Выше"
+                    :title="t('Выше')"
                     :disabled="index === 0"
                     @click="emit('move-chat', folder.id, chat.id, -1)"
                   >
@@ -61,7 +61,7 @@
                   <button
                     class="folder-icon-btn"
                     type="button"
-                    title="Ниже"
+                    :title="t('Ниже')"
                     :disabled="index === folderChats.length - 1"
                     @click="emit('move-chat', folder.id, chat.id, 1)"
                   >
@@ -77,7 +77,7 @@
                   </button>
                 </div>
               </div>
-              <p v-else class="folder-empty">В папке пока нет чатов.</p>
+              <p v-else class="folder-empty">{{ t('В папке пока нет чатов.') }}</p>
 
               <button class="folder-add" type="button" @click="togglePicker(folder.id)">
                 <q-icon :name="icon(pickerFor === folder.id ? 'expand_less' : 'add')" size="18px" />
@@ -89,8 +89,8 @@
                   v-model="query"
                   class="folder-search"
                   type="search"
-                  placeholder="Поиск чата"
-                  aria-label="Поиск чата для папки"
+                  :placeholder="t('Поиск чата')"
+                  :aria-label="t('Поиск чата для папки')"
                 />
                 <ul class="folder-candidates">
                   <li v-for="chat in candidates" :key="chat.id">
@@ -104,17 +104,17 @@
                     </label>
                   </li>
                 </ul>
-                <p v-if="!candidates.length" class="folder-empty">Ничего не найдено.</p>
+                <p v-if="!candidates.length" class="folder-empty">{{ t('Ничего не найдено.') }}</p>
               </div>
 
               <button class="folder-delete" type="button" @click="removeFolder(folder.id)">
                 <q-icon :name="icon('delete_outline')" size="18px" />
-                <span>Удалить папку</span>
+                <span>{{ t('Удалить папку') }}</span>
               </button>
             </div>
           </li>
         </ul>
-        <p v-else class="folder-empty">Папок пока нет. Создайте первую — например, «Работа».</p>
+        <p v-else class="folder-empty">{{ t('Папок пока нет. Создайте первую — например, «Работа».') }}</p>
 
         <!-- Новая папка: сразу с чатами, если диалог открыли из меню чата. -->
         <form class="folder-new" @submit.prevent="addFolder">
@@ -122,12 +122,12 @@
             v-model="newName"
             type="text"
             :maxlength="FOLDER_NAME_MAX"
-            placeholder="Название новой папки"
-            aria-label="Название новой папки"
+            :placeholder="t('Название новой папки')"
+            :aria-label="t('Название новой папки')"
           />
           <button type="submit" :disabled="!newName.trim() || atLimit">
             <q-icon :name="icon('add')" size="18px" />
-            <span>Создать</span>
+            <span>{{ t('Создать') }}</span>
           </button>
         </form>
         <p v-if="atLimit" class="folder-empty">
@@ -145,6 +145,7 @@ import { icon } from '@/utils/icons'
 import type { Chat } from '@/types'
 import { chatTitle } from '@/utils/user'
 import { confirmDialog } from '@/utils/appDialogs'
+import { t } from '@/i18n'
 import {
   FOLDER_NAME_MAX,
   MAX_CHAT_FOLDERS,

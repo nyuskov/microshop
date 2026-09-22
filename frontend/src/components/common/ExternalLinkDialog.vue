@@ -12,7 +12,7 @@
         <span class="el-icon">
           <q-icon :name="icon('warning')" size="22px" />
         </span>
-        <h2 id="el-title" class="el-title">Переход на внешний сайт</h2>
+        <h2 id="el-title" class="el-title">{{ t('Переход на внешний сайт') }}</h2>
         <p class="el-text">
           Ссылка ведёт за пределы Pismo. Мы не проверяем чужие сайты и не отвечаем за их содержимое.
         </p>
@@ -21,7 +21,7 @@
           <span class="el-url">{{ prettyUrl }}</span>
         </div>
         <div class="el-actions">
-          <button type="button" class="el-btn ghost" @click="answer(false)">Отмена</button>
+          <button type="button" class="el-btn ghost" @click="answer(false)">{{ t('Отмена') }}</button>
           <button type="button" class="el-btn go" @click="go">
             <q-icon :name="icon('share')" size="16px" /> Перейти
           </button>
@@ -36,6 +36,7 @@ import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { icon } from '@/utils/icons'
 import { useFocusTrap } from '@/composables/useFocusTrap'
 import { useExternalLinkDialog } from '@/composables/useExternalLinkGuard'
+import { t } from '@/i18n'
 
 const { pending, answer } = useExternalLinkDialog()
 

@@ -9,6 +9,7 @@
  * строки «23:30», а окно может идти через полночь. Здесь только чистые функции —
  * таймер и перерисовка живут в `stores/theme.ts`.
  */
+import { t } from '@/i18n'
 import { formatMinutes, timeOptions } from '@/utils/quietHours'
 
 /** Шаг выбора: час. Тему не нужно настраивать точнее, а список короче. */
@@ -76,10 +77,13 @@ export const msUntilScheduleChange = (now: Date, start: number, end: number): nu
  */
 export const scheduleSummary = (start: number, end: number, now = new Date()): string => {
   if (start === end) {
-    return 'Границы совпали — тема меняться не будет'
+    return t('Границы совпали — тема меняться не будет')
   }
-  const window = `с ${formatScheduleTime(start)} до ${formatScheduleTime(end)}`
-  const night = crossesMidnight(start, end) ? ' (через ночь)' : ''
-  const current = isDarkBySchedule(now, start, end) ? 'сейчас тёмная' : 'сейчас светлая'
-  return `Тёмная ${window}${night}; ${current}`
+  const window = t('с {from} до {to}', {
+    from: formatScheduleTime(start),
+    to: formatScheduleTime(end)
+  })
+  const night = crossesMidnight(start, end) ? t(' (через ночь)') : ''
+  const current = isDarkBySchedule(now, start, end) ? t('сейчас тёмная') : t('сейчас светлая')
+  return t('Тёмная {window}{night}; {current}', { window, night, current })
 }

@@ -20,7 +20,7 @@
           Одноразовое медиа: после закрытия оно исчезнет у всех участников. Скриншот или запись
           экрана запретить нельзя — об этом честно предупреждаем.
         </span>
-        <button class="vo-close" type="button" @click="emit('close')">Закрыть</button>
+        <button class="vo-close" type="button" @click="emit('close')">{{ t('Закрыть') }}</button>
       </div>
     </div>
   </q-dialog>
@@ -35,6 +35,7 @@
  * одноразовая blob-ссылка, её освобождает вызывающий при закрытии.
  */
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 
 defineProps<{
   /** Ссылка на содержимое (blob: — своя копия в памяти вкладки). */

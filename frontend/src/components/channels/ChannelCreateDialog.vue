@@ -33,7 +33,7 @@
         <span>
           <span class="ch-switch-title">{{ t('Публичный канал') }}</span>
           <span class="ch-switch-sub">
-            {{ t('Виден в поиске и открывается по ссылке') }} <b>pismo.space/c/адрес</b
+            {{ t('Виден в поиске и открывается по ссылке') }} <b>{{ t('pismo.space/c/адрес') }}</b
             >{{ t('. Выключено — вход только по ссылке-приглашению.') }}
           </span>
         </span>
@@ -63,11 +63,11 @@
     </q-card-section>
     <q-separator />
     <q-card-actions align="right" class="ch-actions">
-      <q-btn flat label="Отмена" v-close-popup />
+      <q-btn flat :label="t('Отмена')" v-close-popup />
       <q-btn
         unelevated
         color="primary"
-        label="Создать"
+        :label="t('Создать')"
         :loading="creating"
         :disable="!title.trim() || (isPublic && username.length < 4)"
         @click="tryCreate"

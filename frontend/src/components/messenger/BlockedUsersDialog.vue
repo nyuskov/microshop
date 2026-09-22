@@ -2,9 +2,9 @@
   <q-dialog :model-value="true" @update:model-value="emit('close')">
     <q-card class="mod-card">
       <q-card-section class="row no-wrap items-center q-py-sm">
-        <div class="text-subtitle1 text-weight-medium">Заблокированные</div>
+        <div class="text-subtitle1 text-weight-medium">{{ t('Заблокированные') }}</div>
         <q-space />
-        <q-btn flat round dense icon="close" aria-label="Закрыть" @click="emit('close')" />
+        <q-btn flat round dense icon="close" :aria-label="t('Закрыть')" @click="emit('close')" />
       </q-card-section>
       <q-separator />
 
@@ -14,7 +14,7 @@
           запрещены только звонки, переписка остаётся. Здесь блокировку можно снять.
         </p>
 
-        <div v-if="loading" class="mod-empty">Загрузка…</div>
+        <div v-if="loading" class="mod-empty">{{ t('Загрузка…') }}</div>
         <div v-else-if="users.length === 0" class="mod-empty">
           Заблокированных пользователей нет.
         </div>
@@ -34,7 +34,7 @@
               <span class="mod-name-main">{{ displayName(user) }}</span>
               <span class="mod-name-sub">
                 {{ user.phone_number || `@${user.username}` }}
-                <template v-if="user.messages_allowed"> · только звонки</template>
+                <template v-if="user.messages_allowed"> {{ t('· только звонки') }}</template>
               </span>
             </span>
             <!-- Вид блокировки меняется на месте: «только звонки» и полная —
@@ -53,7 +53,7 @@
               no-caps
               dense
               color="primary"
-              label="Разблокировать"
+              :label="t('Разблокировать')"
               :loading="busyId === user.id"
               @click="unblock(user.id)"
             />
@@ -73,6 +73,7 @@ import { fetchBlockedUsers, blockUser, unblockUser } from '@/services/moderation
 import type { BlockedUser } from '@/services/moderation'
 import { getErrorMessage } from '@/services/errors'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
+import { t } from '@/i18n'
 
 const emit = defineEmits<{
   (e: 'close'): void

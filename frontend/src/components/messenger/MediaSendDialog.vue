@@ -5,12 +5,12 @@
       class="ms-overlay-card media-send-card"
       role="dialog"
       aria-modal="true"
-      aria-label="Отправка вложения"
+      :aria-label="t('Отправка вложения')"
       tabindex="-1"
     >
       <div class="ms-overlay-head">
         <h2 class="ms-overlay-title">{{ title }}</h2>
-        <button class="icon-btn" type="button" title="Закрыть" @click="emit('close')">
+        <button class="icon-btn" type="button" :title="t('Закрыть')" @click="emit('close')">
           <q-icon :name="icon('close')" size="20px" />
         </button>
       </div>
@@ -56,8 +56,8 @@
           class="send-caption"
           rows="2"
           maxlength="4000"
-          placeholder="Добавьте подпись…"
-          aria-label="Подпись к вложению"
+          :placeholder="t('Добавьте подпись…')"
+          :aria-label="t('Подпись к вложению')"
           @keydown.esc.prevent="emit('close')"
           @keydown.ctrl.enter.prevent="submit"
           @keydown.meta.enter.prevent="submit"
@@ -67,9 +67,9 @@
       <div class="ms-overlay-foot media-send-foot">
         <button class="send-primary" type="button" @click="submit">
           <q-icon :name="icon('send')" size="18px" aria-hidden="true" />
-          <span>Отправить</span>
+          <span>{{ t('Отправить') }}</span>
         </button>
-        <button class="send-ghost" type="button" @click="emit('close')">Отмена</button>
+        <button class="send-ghost" type="button" @click="emit('close')">{{ t('Отмена') }}</button>
       </div>
     </div>
   </div>
@@ -94,6 +94,7 @@ import { icon } from '@/utils/icons'
 import { formatBytes, pluralRu } from '@/utils/format'
 import { fileIcon } from '@/utils/media'
 import { useFocusTrap } from '@/composables/useFocusTrap'
+import { t } from '@/i18n'
 
 // Оверлей самодельный (не q-dialog) — фокус держим сами, иначе Tab уходит в чат.
 const { container: trapContainer } = useFocusTrap()

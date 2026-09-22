@@ -5,8 +5,8 @@
       v-model="query"
       class="inline-search-input"
       type="text"
-      placeholder="Поиск по сообщениям"
-      aria-label="Поиск по сообщениям"
+      :placeholder="t('Поиск по сообщениям')"
+      :aria-label="t('Поиск по сообщениям')"
       @keydown.enter.exact.prevent="emit('next')"
       @keydown.enter.shift.prevent="emit('prev')"
     />
@@ -23,8 +23,8 @@
       <button
         class="icon-btn"
         type="button"
-        title="Предыдущее (Shift+Enter)"
-        aria-label="Предыдущее совпадение"
+        :title="t('Предыдущее (Shift+Enter)')"
+        :aria-label="t('Предыдущее совпадение')"
         @click="emit('prev')"
       >
         <q-icon :name="icon('expand_less')" size="20px" />
@@ -32,8 +32,8 @@
       <button
         class="icon-btn"
         type="button"
-        title="Следующее (Enter)"
-        aria-label="Следующее совпадение"
+        :title="t('Следующее (Enter)')"
+        :aria-label="t('Следующее совпадение')"
         @click="emit('next')"
       >
         <q-icon :name="icon('expand_more')" size="20px" />
@@ -42,8 +42,8 @@
     <button
       class="icon-btn"
       type="button"
-      title="Закрыть поиск"
-      aria-label="Закрыть поиск"
+      :title="t('Закрыть поиск')"
+      :aria-label="t('Закрыть поиск')"
       @click="emit('close')"
     >
       <q-icon :name="icon('close')" size="20px" />
@@ -54,6 +54,7 @@
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
 import { pluralRu } from '@/utils/format'
+import { t } from '@/i18n'
 
 /**
  * Поиск по сообщениям внутри чата.

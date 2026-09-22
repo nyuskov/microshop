@@ -7,7 +7,7 @@
     <div class="pinned-head-row">
       <q-icon :name="icon('push_pin')" class="pinned-icon" size="17px" aria-hidden="true" />
       <button class="pinned-toggle" type="button" @click.stop="open = !open">
-        <span class="pinned-title">Закреплённые сообщения</span>
+        <span class="pinned-title">{{ t('Закреплённые сообщения') }}</span>
         <span class="pinned-count">{{ rows.length }}</span>
         <q-icon
           :name="icon('expand_more')"
@@ -20,8 +20,8 @@
       <button
         class="icon-btn pinned-close"
         type="button"
-        title="Скрыть"
-        aria-label="Скрыть закреплённые сообщения"
+        :title="t('Скрыть')"
+        :aria-label="t('Скрыть закреплённые сообщения')"
         @click.stop="emit('close')"
       >
         <q-icon :name="icon('close')" size="18px" />
@@ -36,7 +36,7 @@
         class="pinned-item"
         role="button"
         tabindex="0"
-        title="Перейти к сообщению"
+        :title="t('Перейти к сообщению')"
         @click.stop="emit('scroll-to', item.id)"
         @keydown.enter.prevent="emit('scroll-to', item.id)"
         @keydown.space.prevent="emit('scroll-to', item.id)"
@@ -50,6 +50,7 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 interface PinnedRow {
   id: number
   sender: string

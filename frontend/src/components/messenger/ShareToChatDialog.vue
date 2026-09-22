@@ -4,7 +4,7 @@
       class="ms-overlay shr-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="Отправить в Pismo"
+      :aria-label="t('Отправить в Pismo')"
       @mousedown.self="emit('close')"
     >
       <div ref="trapContainer" class="ms-overlay-card shr-card" tabindex="-1">
@@ -12,9 +12,9 @@
         <header class="shr-head">
           <div class="shr-title">
             <q-icon :name="icon('send')" size="19px" />
-            <span>Отправить в Pismo</span>
+            <span>{{ t('Отправить в Pismo') }}</span>
           </div>
-          <button class="shr-icon-btn" title="Закрыть" @click="emit('close')">
+          <button class="shr-icon-btn" :title="t('Закрыть')" @click="emit('close')">
             <q-icon :name="icon('close')" size="20px" />
           </button>
         </header>
@@ -29,7 +29,7 @@
             decoding="async"
           />
           <div class="shr-preview-body">
-            <span class="shr-preview-label">Содержимое из другого приложения</span>
+            <span class="shr-preview-label">{{ t('Содержимое из другого приложения') }}</span>
             <span class="shr-preview-text">{{
               text.trim() || (fileName ? `Файл: ${fileName}` : 'Файл')
             }}</span>
@@ -43,8 +43,8 @@
             v-model="query"
             class="shr-search-input"
             type="text"
-            placeholder="Поиск чата…"
-            aria-label="Поиск чата"
+            :placeholder="t('Поиск чата…')"
+            :aria-label="t('Поиск чата')"
           />
         </div>
 
@@ -77,7 +77,7 @@
             </span>
           </button>
 
-          <div v-if="!filteredChats.length" class="shr-empty">Ничего не найдено</div>
+          <div v-if="!filteredChats.length" class="shr-empty">{{ t('Ничего не найдено') }}</div>
         </div>
 
         <div v-else class="shr-empty tall">
@@ -90,7 +90,7 @@
             selectedChat ? `Отправить в «${titleOf(selectedChat)}»` : 'Выберите чат'
           }}</span>
           <div class="shr-actions">
-            <button class="shr-btn ghost" :disabled="busy" @click="emit('close')">Отмена</button>
+            <button class="shr-btn ghost" :disabled="busy" @click="emit('close')">{{ t('Отмена') }}</button>
             <button
               class="shr-btn send"
               :disabled="busy || selectedId === null"
@@ -120,6 +120,7 @@ import {
   initials
 } from '@/utils/user'
 import { mediaTypeLabel } from '@/utils/media'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   /** Текст (или ссылка) из другого приложения. */

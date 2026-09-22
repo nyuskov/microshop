@@ -7,7 +7,7 @@
       <q-card-section class="cn-head">
         <div class="cn-title">{{ isContact ? 'Имя контакта' : 'Добавить в контакты' }}</div>
         <q-space />
-        <q-btn flat round dense :icon="icon('close')" v-close-popup aria-label="Закрыть" />
+        <q-btn flat round dense :icon="icon('close')" v-close-popup :aria-label="t('Закрыть')" />
       </q-card-section>
       <q-separator />
       <q-card-section class="cn-body">
@@ -28,8 +28,8 @@
           dense
           autofocus
           maxlength="120"
-          label="Имя контакта"
-          placeholder="Например: Мама"
+          :label="t('Имя контакта')"
+          :placeholder="t('Например: Мама')"
           :disable="busy"
           @keyup.enter="submit"
         />
@@ -44,12 +44,12 @@
           flat
           no-caps
           color="negative"
-          label="Удалить из контактов"
+          :label="t('Удалить из контактов')"
           :disable="busy"
           @click="remove"
         />
         <q-space />
-        <q-btn flat no-caps label="Отмена" v-close-popup />
+        <q-btn flat no-caps :label="t('Отмена')" v-close-popup />
         <q-btn
           unelevated
           no-caps
@@ -73,6 +73,7 @@ import { useContactsStore } from '@/stores/contacts'
 import type { ChatUser } from '@/types'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   modelValue: boolean

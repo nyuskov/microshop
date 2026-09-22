@@ -150,7 +150,7 @@
               @click="pickSchedule(preset)"
             >
               <q-icon :name="icon('schedule')" size="18px" />
-              <span>{{ preset.label }}</span>
+              <span>{{ t(preset.label) }}</span>
             </button>
             <p class="attach-hint">
               Сообщение уйдёт в назначенное время, даже если приложение закрыто. Текст останется
@@ -273,7 +273,7 @@
               :class="{ active: activeSection === section.key }"
               role="tab"
               :title="section.title"
-              :aria-label="section.title"
+              :aria-label="t(section.title)"
               :aria-selected="activeSection === section.key"
               @click="jumpToSection(section.key)"
             >
@@ -563,7 +563,7 @@ const mediaImage = (sticker: StickerItem): PanelImage => ({
 const standardImages = (key: string): PanelImage[] =>
   (STANDARD_STICKER_PACKS.find((pack) => pack.key === key)?.stickers ?? []).map((sticker) => ({
     url: sticker.url,
-    alt: sticker.label,
+    alt: t(sticker.label),
     preset: { setKey: key, name: sticker.name }
   }))
 

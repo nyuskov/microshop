@@ -41,8 +41,8 @@
           v-model="query"
           class="sf-search"
           type="text"
-          placeholder="Поиск"
-          aria-label="Поиск по списку"
+          :placeholder="t('Поиск')"
+          :aria-label="t('Поиск по списку')"
           @keydown="onKeydown"
         />
         <ul :id="listId" class="sf-list" role="listbox" :aria-label="ariaLabel">
@@ -70,7 +70,7 @@
             </button>
           </li>
         </ul>
-        <p v-if="!visibleOptions.length" class="sf-empty">Ничего не найдено</p>
+        <p v-if="!visibleOptions.length" class="sf-empty">{{ t('Ничего не найдено') }}</p>
       </div>
     </Teleport>
   </div>
@@ -79,6 +79,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 import {
   filterOptions,
   indexOfValue,

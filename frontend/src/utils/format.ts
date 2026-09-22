@@ -1,5 +1,7 @@
 /** Утилиты форматирования дат, присутствия и размеров. */
 
+import { dateLocale, plural, t } from '@/i18n'
+
 /**
  * Разбирает время, пришедшее с сервера, с учётом его часового пояса.
  *
@@ -34,19 +36,19 @@ const isYesterday = (date: Date): boolean => {
 export const formatChatTime = (timestamp: string): string => {
   const date = toDate(timestamp)
   if (isToday(date)) {
-    return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+    return date.toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' })
   }
-  if (isYesterday(date)) return 'Вчера'
-  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+  if (isYesterday(date)) return t('Вчера')
+  return date.toLocaleDateString(dateLocale(), { day: 'numeric', month: 'short' })
 }
 
 export const formatMsgTime = (timestamp: string): string =>
-  toDate(timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  toDate(timestamp).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' })
 
 export const dayLabel = (date: Date): string => {
-  if (isToday(date)) return 'Сегодня'
-  if (isYesterday(date)) return 'Вчера'
-  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+  if (isToday(date)) return t('Сегодня')
+  if (isYesterday(date)) return t('Вчера')
+  return date.toLocaleDateString(dateLocale(), { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
 /** Считаем пользователя «в сети», если last_seen не старше этого времени. */
@@ -71,32 +73,47 @@ export const lastSeenLabel = (value?: string | null, allowOnline = false): strin
   const date = parseServerTime(value)
   if (Number.isNaN(date.getTime())) return ''
   const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000))
-  if (seconds <= ONLINE_WINDOW_SECONDS) return allowOnline ? 'в сети' : 'был(а) только что'
-  if (seconds < 60) return 'был(а) только что'
+  if (seconds <= ONLINE_WINDOW_SECONDS) return allowOnline ? t('в сети') : t('был(а) только что')
+  if (seconds < 60) return t('был(а) только что')
   if (seconds < 3600) {
     const minutes = Math.floor(seconds / 60)
-    return `был(а) ${minutes} ${pluralRu(minutes, 'минуту', 'минуты', 'минут')} назад`
+    return t('был(а) {count} {noun} назад', {
+      count: minutes,
+      noun: plural(minutes, ['минуту', 'минуты', 'минут'], ['minute', 'minutes'])
+    })
   }
   if (seconds < 86400) {
     const hours = Math.floor(seconds / 3600)
-    return `был(а) ${hours} ${pluralRu(hours, 'час', 'часа', 'часов')} назад`
+    return t('был(а) {count} {noun} назад', {
+      count: hours,
+      noun: plural(hours, ['час', 'часа', 'часов'], ['hour', 'hours'])
+    })
   }
   const days = Math.floor(seconds / 86400)
-  if (days === 1) return 'был(а) вчера'
+  if (days === 1) return t('был(а) вчера')
   if (days < 30) {
-    return `был(а) ${days} ${pluralRu(days, 'день', 'дня', 'дней')} назад`
+    return t('был(а) {count} {noun} назад', {
+      count: days,
+      noun: plural(days, ['день', 'дня', 'дней'], ['day', 'days'])
+    })
   }
   const months = Math.floor(days / 30)
   if (months < 12) {
-    return `был(а) ${months} ${pluralRu(months, 'месяц', 'месяца', 'месяцев')} назад`
+    return t('был(а) {count} {noun} назад', {
+      count: months,
+      noun: plural(months, ['месяц', 'месяца', 'месяцев'], ['month', 'months'])
+    })
   }
   const years = Math.floor(days / 365)
-  return `был(а) ${years} ${pluralRu(years, 'год', 'года', 'лет')} назад`
+  return t('был(а) {count} {noun} назад', {
+    count: years,
+    noun: plural(years, ['год', 'года', 'лет'], ['year', 'years'])
+  })
 }
 
 export const formatBytes = (size: number | null): string => {
   if (!size) return ''
-  if (size < 1024) return `${size} Б`
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} КБ`
-  return `${(size / (1024 * 1024)).toFixed(1)} МБ`
+  if (size < 1024) return t('{size} Б', { size })
+  if (size < 1024 * 1024) return t('{size} КБ', { size: Math.round(size / 1024) })
+  return t('{size} МБ', { size: (size / (1024 * 1024)).toFixed(1) })
 }

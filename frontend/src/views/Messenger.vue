@@ -411,7 +411,7 @@
         <!-- Заголовок окна — название экрана: настройки профиля. -->
         <div class="text-subtitle1 text-weight-medium ellipsis">{{ profileTitle }}</div>
         <q-space />
-        <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
+        <q-btn flat round dense icon="close" v-close-popup :aria-label="t('Закрыть')" />
       </q-card-section>
       <q-separator />
       <q-card-section class="ms-modal-body">

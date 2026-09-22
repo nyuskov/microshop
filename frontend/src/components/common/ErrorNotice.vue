@@ -12,8 +12,8 @@
       v-if="canRetry"
       type="button"
       class="error-notice-retry"
-      title="Повторить"
-      aria-label="Повторить отправку"
+      :title="t('Повторить')"
+      :aria-label="t('Повторить отправку')"
       @click="emit('retry')"
     >
       <q-icon :name="icon('replay')" size="18px" />
@@ -21,8 +21,8 @@
     <button
       type="button"
       class="error-notice-close"
-      title="Закрыть"
-      aria-label="Закрыть сообщение об ошибке"
+      :title="t('Закрыть')"
+      :aria-label="t('Закрыть сообщение об ошибке')"
       @click="emit('dismiss')"
     >
       <q-icon :name="icon('close')" size="18px" />
@@ -44,6 +44,7 @@
  */
 import { onBeforeUnmount, watch } from 'vue'
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 
 const props = withDefaults(
   defineProps<{

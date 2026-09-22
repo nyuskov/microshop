@@ -1,31 +1,31 @@
 <template>
   <q-card class="grp-create-card">
     <q-card-section class="row no-wrap items-center grp-head">
-      <div class="text-subtitle1 text-weight-medium ellipsis">Новая группа</div>
+      <div class="text-subtitle1 text-weight-medium ellipsis">{{ t('Новая группа') }}</div>
       <q-space />
-      <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
+      <q-btn flat round dense icon="close" v-close-popup :aria-label="t('Закрыть')" />
     </q-card-section>
     <q-separator />
     <q-card-section class="grp-body">
-      <label class="grp-label" for="grp-name">Название группы</label>
+      <label class="grp-label" for="grp-name">{{ t('Название группы') }}</label>
       <input
         id="grp-name"
         v-model="name"
         class="grp-input"
         type="text"
         maxlength="100"
-        placeholder="Например, «Семья» или «Коллеги»"
+        :placeholder="t('Например, «Семья» или «Коллеги»')"
         @keyup.enter="tryCreate"
       />
 
-      <label class="grp-label" for="grp-desc">Описание (необязательно)</label>
+      <label class="grp-label" for="grp-desc">{{ t('Описание (необязательно)') }}</label>
       <textarea
         id="grp-desc"
         v-model="description"
         class="grp-input grp-textarea"
         rows="2"
         maxlength="1024"
-        placeholder="О чём эта группа?"
+        :placeholder="t('О чём эта группа?')"
       ></textarea>
 
       <div class="grp-label grp-count">
@@ -38,7 +38,7 @@
           v-model="query"
           class="grp-search-input"
           type="text"
-          placeholder="Поиск по имени или логину"
+          :placeholder="t('Поиск по имени или логину')"
         />
       </div>
 
@@ -86,11 +86,11 @@
     </q-card-section>
     <q-separator />
     <q-card-actions align="right" class="grp-actions">
-      <q-btn flat label="Отмена" v-close-popup />
+      <q-btn flat :label="t('Отмена')" v-close-popup />
       <q-btn
         unelevated
         color="primary"
-        label="Создать группу"
+        :label="t('Создать группу')"
         :disable="busy || !canCreate"
         @click="tryCreate"
       />
@@ -105,6 +105,7 @@ import { getErrorMessage } from '@/services/errors'
 import { createGroupChat, type SearchUserResult } from '@/services/chatService'
 import type { Chat } from '@/types'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   /** Все пользователи, которых можно пригласить (кроме текущего). */

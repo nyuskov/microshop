@@ -27,7 +27,7 @@
       </button>
       <!-- «Ещё раз» есть и при готовом тексте: после улучшений распознавания
            старый текст хочется переиграть, а не только скрыть. -->
-      <button class="am-transcript-btn" @click="retry">Ещё раз</button>
+      <button class="am-transcript-btn" @click="retry">{{ t('Ещё раз') }}</button>
     </div>
 
     <!-- Сам перевод (та же всплывающая карточка, что под текстом сообщения):
@@ -41,7 +41,7 @@
     <!-- Язык выбирается тут же, а не в настройках: неправильный язык — главная
          причина чужого текста («Привет» → «private»). -->
     <div class="am-lang">
-      <span class="am-lang-title">Язык речи</span>
+      <span class="am-lang-title">{{ t('Язык речи') }}</span>
       <div class="am-lang-list">
         <button
           class="am-lang-btn"
@@ -91,6 +91,7 @@
 import { computed } from 'vue'
 
 import MessageTranslation from '@/components/common/MessageTranslation.vue'
+import { t } from '@/i18n'
 import {
   clearTranscript,
   recognizeVoice,

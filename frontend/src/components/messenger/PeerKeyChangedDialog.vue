@@ -6,9 +6,9 @@
     <q-card class="pk-card">
       <q-card-section class="pk-head">
         <q-icon class="pk-shield" :name="icon('shield')" size="20px" aria-hidden="true" />
-        <div class="pk-title">Собеседник сменил ключ шифрования</div>
+        <div class="pk-title">{{ t('Собеседник сменил ключ шифрования') }}</div>
         <q-space />
-        <q-btn flat round dense :icon="icon('close')" v-close-popup aria-label="Закрыть" />
+        <q-btn flat round dense :icon="icon('close')" v-close-popup :aria-label="t('Закрыть')" />
       </q-card-section>
       <q-separator />
       <q-card-section class="pk-body">
@@ -30,8 +30,8 @@
         </p>
 
         <div class="pk-actions">
-          <q-btn unelevated no-caps color="primary" label="Это его устройство" @click="accept" />
-          <q-btn flat no-caps label="Проверю позже" v-close-popup />
+          <q-btn unelevated no-caps color="primary" :label="t('Это его устройство')" @click="accept" />
+          <q-btn flat no-caps :label="t('Проверю позже')" v-close-popup />
         </div>
       </q-card-section>
     </q-card>
@@ -55,6 +55,7 @@
 import { computed } from 'vue'
 
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   modelValue: boolean

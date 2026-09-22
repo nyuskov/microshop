@@ -1,15 +1,15 @@
 <template>
   <ErrorScreen
     code="404"
-    title="Страница не найдена"
+    :title="t('Страница не найдена')"
     text="Возможно, ссылка устарела, чат удалён или в адресе опечатка. Проверьте адрес или вернитесь в приложение."
   >
     <template #actions>
-      <q-btn unelevated no-caps color="primary" label="К чатам" @click="goHome" />
-      <q-btn flat no-caps label="Назад" @click="goBack" />
+      <q-btn unelevated no-caps color="primary" :label="t('К чатам')" @click="goHome" />
+      <q-btn flat no-caps :label="t('Назад')" @click="goBack" />
     </template>
     <template #foot>
-      <span>Кажется, это ошибка приложения?</span>
+      <span>{{ t('Кажется, это ошибка приложения?') }}</span>
       <a href="mailto:nyuskov@gmail.com">nyuskov@gmail.com</a>
     </template>
   </ErrorScreen>
@@ -28,6 +28,7 @@
 import { useRouter } from 'vue-router'
 
 import ErrorScreen from '@/components/common/ErrorScreen.vue'
+import { t } from '@/i18n'
 
 const router = useRouter()
 

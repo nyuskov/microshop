@@ -1,5 +1,7 @@
 import axios from 'axios'
 
+import { t } from '@/i18n'
+
 /**
  * Похоже ли, что запрос не дошёл из-за связи (нет сети, обрыв, таймаут).
  *
@@ -63,7 +65,7 @@ const TIMEOUT_MESSAGE = 'Сервер не ответил вовремя. Про
  * наружу НЕ отдаём: они английские и ничего не объясняют человеку.
  * Свои ошибки (обычный `Error`) проходят как есть — их тексты пишем мы сами.
  */
-export function getErrorMessage(error: unknown, fallback = 'Произошла ошибка.'): string {
+export function getErrorMessage(error: unknown, fallback = t('Произошла ошибка.')): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data as { detail?: unknown; message?: unknown } | undefined
     // detail может быть строкой или объектом { code, message } (2FA-челлендж,
@@ -78,12 +80,12 @@ export function getErrorMessage(error: unknown, fallback = 'Произошла �
     if (status) {
       // Код без таблицы (нестандартный ответ прокси): показываем и его — по
       // нему хотя бы понятно, куда смотреть в логах.
-      return STATUS_MESSAGES[status] ?? `Сервер ответил ошибкой ${status}. ${fallback}`
+      return t(STATUS_MESSAGES[status] ?? `Сервер ответил ошибкой ${status}. ${fallback}`)
     }
-    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') return TIMEOUT_MESSAGE
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') return t(TIMEOUT_MESSAGE)
     // Отменённый запрос (навигация, смена чата) — не поломка: молчим и отдаём
     // запасной текст, если вызывающий всё же решил его показать.
-    if (isNetworkError(error) && error.code !== 'ERR_CANCELED') return OFFLINE_MESSAGE
+    if (isNetworkError(error) && error.code !== 'ERR_CANCELED') return t(OFFLINE_MESSAGE)
     return fallback
   }
   if (error instanceof Error) {

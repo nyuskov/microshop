@@ -5,16 +5,16 @@
       class="phone-overlay ms-rows"
       role="dialog"
       aria-modal="true"
-      aria-label="Добавить из контактов телефона"
+      :aria-label="t('Добавить из контактов телефона')"
       @mousedown.self="emit('close')"
     >
       <div class="phone-card">
         <header class="phone-head">
           <div class="phone-title">
             <q-icon :name="icon('contacts')" size="18px" />
-            <span>Из контактов телефона</span>
+            <span>{{ t('Из контактов телефона') }}</span>
           </div>
-          <button class="phone-xbtn" title="Закрыть" @click="emit('close')">
+          <button class="phone-xbtn" :title="t('Закрыть')" @click="emit('close')">
             <q-icon :name="icon('close')" size="20px" />
           </button>
         </header>
@@ -33,9 +33,9 @@
             Браузер не открывает книгу напрямую — вставьте номера ниже (по одному в строке).
           </p>
 
-          <div class="phone-or"><span>или</span></div>
+          <div class="phone-or"><span>{{ t('или') }}</span></div>
 
-          <label class="phone-label" for="phone-textarea">Номера телефонов</label>
+          <label class="phone-label" for="phone-textarea">{{ t('Номера телефонов') }}</label>
           <textarea
             id="phone-textarea"
             :value="manualPhones"
@@ -46,7 +46,7 @@
           ></textarea>
 
           <div class="phone-actions">
-            <button class="phone-btn ghost" :disabled="busy" @click="emit('close')">Отмена</button>
+            <button class="phone-btn ghost" :disabled="busy" @click="emit('close')">{{ t('Отмена') }}</button>
             <button class="phone-btn primary" :disabled="busy" @click="emit('find')">
               {{ busy ? 'Поиск…' : 'Найти в мессенджере' }}
             </button>
@@ -103,6 +103,7 @@
 import { icon } from '@/utils/icons'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import type { SearchUserResult } from '@/services/chatService'
+import { t } from '@/i18n'
 
 defineProps<{
   /** Окно открыто. */

@@ -9,7 +9,7 @@
     >
       <q-icon :name="icon(iconName)" size="17px" aria-hidden="true" />
       <span>{{ text }}</span>
-      <span v-if="!online" class="offline-hint">Сообщения отправятся, когда связь вернётся</span>
+      <span v-if="!online" class="offline-hint">{{ t('Сообщения отправятся, когда связь вернётся') }}</span>
     </div>
   </transition>
 </template>
@@ -19,6 +19,7 @@ import { computed } from 'vue'
 
 import { icon } from '@/utils/icons'
 import { useOnlineStatus } from '@/composables/useOnlineStatus'
+import { t } from '@/i18n'
 
 const { online, justRestored, syncing, bannerVisible } = useOnlineStatus()
 

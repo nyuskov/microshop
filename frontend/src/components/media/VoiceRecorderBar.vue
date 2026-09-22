@@ -2,45 +2,45 @@
   <div class="voice-recorder">
     <!-- Ошибка доступа к микрофону -->
     <template v-if="errorText">
-      <button class="vr-btn danger" title="Закрыть" @click="cancel">
+      <button class="vr-btn danger" :title="t('Закрыть')" @click="cancel">
         <q-icon :name="icon('close')" size="20px" />
       </button>
       <span class="vr-err-icon"><q-icon :name="icon('mic_off')" size="20px" /></span>
       <span class="vr-err-text">{{ errorText }}</span>
-      <button class="vr-btn accent" title="Повторить" @click="retry">
+      <button class="vr-btn accent" :title="t('Повторить')" @click="retry">
         <q-icon :name="icon('refresh')" size="20px" />
       </button>
     </template>
 
     <!-- Состояние записи -->
     <template v-else-if="state === 'recording'">
-      <button class="vr-btn danger" title="Отменить запись" @click="cancel">
+      <button class="vr-btn danger" :title="t('Отменить запись')" @click="cancel">
         <q-icon :name="icon('close')" size="20px" />
       </button>
       <span class="vr-dot"></span>
-      <span class="vr-label">Запись голосового сообщения</span>
+      <span class="vr-label">{{ t('Запись голосового сообщения') }}</span>
       <span class="vr-timer">{{ formatClock(durationMs / 1000) }}</span>
-      <button class="vr-btn accent" title="Остановить запись" @click="stopRecording">
+      <button class="vr-btn accent" :title="t('Остановить запись')" @click="stopRecording">
         <q-icon :name="icon('stop')" size="20px" />
       </button>
     </template>
 
     <!-- Предпросмотр перед отправкой -->
     <template v-else>
-      <button class="vr-btn danger" title="Удалить" @click="discard">
+      <button class="vr-btn danger" :title="t('Удалить')" @click="discard">
         <q-icon :name="icon('delete')" size="20px" />
       </button>
       <button
         class="vr-play"
         :class="{ playing: isPlaying }"
-        title="Прослушать"
+        :title="t('Прослушать')"
         @click="togglePlay"
       >
         <q-icon :name="icon(isPlaying ? 'pause' : 'play_arrow')" size="22px" />
       </button>
-      <span class="vr-label">Голосовое сообщение</span>
+      <span class="vr-label">{{ t('Голосовое сообщение') }}</span>
       <span class="vr-timer">{{ formatClock(durationMs / 1000) }}</span>
-      <button class="vr-btn accent" title="Отправить" :disabled="sending" @click="send">
+      <button class="vr-btn accent" :title="t('Отправить')" :disabled="sending" @click="send">
         <q-icon :name="icon('send')" size="18px" />
       </button>
     </template>
@@ -52,6 +52,7 @@
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { t } from '@/i18n'
 import {
   formatClock,
   pickMimeType,

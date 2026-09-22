@@ -29,7 +29,7 @@
         <!-- Запись недоступна -->
         <div v-if="broken" class="rvm-error">
           <q-icon :name="icon('warning')" size="18px" />
-          <span>Видео недоступно</span>
+          <span>{{ t('Видео недоступно') }}</span>
         </div>
 
         <!-- Центральная кнопка play (когда не играет) -->
@@ -75,7 +75,7 @@
         <button
           v-if="canPictureInPicture && !broken"
           class="rvm-chip rvm-pip"
-          title="Смотреть в плавающем окне"
+          :title="t('Смотреть в плавающем окне')"
           @click.stop="openPictureInPicture"
         >
           <q-icon :name="icon('picture_in_picture')" size="18px" />
@@ -93,7 +93,7 @@
             <q-icon :name="icon('video_message')" size="18px" />
             {{ name }}
           </span>
-          <button class="rvm-modal-close" title="Закрыть" @click="closePreview">
+          <button class="rvm-modal-close" :title="t('Закрыть')" @click="closePreview">
             <q-icon :name="icon('close')" size="20px" />
           </button>
         </div>
@@ -108,6 +108,7 @@ import { icon } from '@/utils/icons'
 import { computed, onMounted, ref, watch } from 'vue'
 import { cyclePlaybackSpeed, playbackSpeed, speedLabel } from '@/utils/playbackSpeed'
 import MediaMessageShell from '@/components/media/MediaMessageShell.vue'
+import { t } from '@/i18n'
 
 defineProps<{
   /** Id сообщения: нужен расшифровке, чтобы помнить текст при перерисовке ленты. */

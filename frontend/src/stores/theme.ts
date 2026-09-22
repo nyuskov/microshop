@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { t } from '@/i18n'
 
 import {
   isDarkBySchedule,
@@ -180,10 +181,10 @@ function loadAppearance(): Partial<AppearanceState> {
 export function fileToCompressedDataUrl(file: File, maxSize = 1600): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onerror = () => reject(new Error('Не удалось прочитать файл'))
+    reader.onerror = () => reject(new Error(t('Не удалось прочитать файл')))
     reader.onload = () => {
       const img = new Image()
-      img.onerror = () => reject(new Error('Файл не является изображением'))
+      img.onerror = () => reject(new Error(t('Файл не является изображением')))
       img.onload = () => {
         const scale = Math.min(1, maxSize / Math.max(img.width, img.height))
         const canvas = document.createElement('canvas')
@@ -191,7 +192,7 @@ export function fileToCompressedDataUrl(file: File, maxSize = 1600): Promise<str
         canvas.height = Math.max(1, Math.round(img.height * scale))
         const ctx = canvas.getContext('2d')
         if (!ctx) {
-          reject(new Error('Canvas недоступен'))
+          reject(new Error(t('Canvas недоступен')))
           return
         }
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height)

@@ -27,7 +27,7 @@
                 v-if="groupAvatar"
                 :src="groupAvatar"
                 class="gi-avatar-img"
-                alt="Аватар группы"
+                :alt="t('Аватар группы')"
                 decoding="async"
               />
               <template v-else>{{ initials(titleText) }}</template>

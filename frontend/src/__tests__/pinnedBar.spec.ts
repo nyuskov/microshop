@@ -134,7 +134,7 @@ describe('поведение шторки', () => {
 
   it('крестик скрывает шторку в этом чате', () => {
     expect(bar).toContain("emit('close')")
-    expect(bar).toContain('aria-label="Скрыть закреплённые сообщения"')
+    expect(bar).toContain(':aria-label="t(\'Скрыть закреплённые сообщения\')"')
     expect(messenger).toContain('pinnedHidden')
     expect(messenger).toContain('@close="pinnedHidden = true"')
     expect(messenger).toContain('v-if="pinnedRows.length && !pinnedHidden"')

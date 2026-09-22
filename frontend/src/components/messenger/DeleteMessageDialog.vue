@@ -7,7 +7,7 @@
       <q-card-section class="delmsg-head row no-wrap items-center">
         <div class="delmsg-title">{{ title }}</div>
         <q-space />
-        <q-btn flat round dense icon="close" aria-label="Закрыть" @click="emit('close')" />
+        <q-btn flat round dense icon="close" :aria-label="t('Закрыть')" @click="emit('close')" />
       </q-card-section>
       <q-separator />
 
@@ -29,11 +29,11 @@
       <q-separator />
 
       <q-card-actions align="right" class="delmsg-actions">
-        <q-btn flat label="Отмена" @click="emit('close')" />
+        <q-btn flat :label="t('Отмена')" @click="emit('close')" />
         <q-btn
           flat
           color="negative"
-          label="Удалить"
+          :label="t('Удалить')"
           @click="emit('confirm', forAll ? 'all' : 'me')"
         />
       </q-card-actions>
@@ -43,6 +43,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { t } from '@/i18n'
 
 /**
  * Удаление сообщения: «у себя» или «и у собеседника».

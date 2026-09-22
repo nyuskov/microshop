@@ -48,9 +48,9 @@
   <q-dialog v-model="channelSuggestOpen">
     <q-card class="ch-suggest-card">
       <q-card-section class="row no-wrap items-center ch-suggest-head">
-        <div class="text-subtitle1 text-weight-medium ellipsis">Предложить пост</div>
+        <div class="text-subtitle1 text-weight-medium ellipsis">{{ t('Предложить пост') }}</div>
         <q-space />
-        <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
+        <q-btn flat round dense icon="close" v-close-popup :aria-label="t('Закрыть')" />
       </q-card-section>
       <q-separator />
       <q-card-section>
@@ -59,7 +59,7 @@
           class="ch-suggest-input"
           rows="4"
           maxlength="2000"
-          placeholder="Текст поста — его увидит владелец канала"
+          :placeholder="t('Текст поста — его увидит владелец канала')"
         ></textarea>
         <p class="ch-suggest-hint">
           Публикуют владелец и админы: они увидят предложку в настройках канала.
@@ -67,11 +67,11 @@
       </q-card-section>
       <q-separator />
       <q-card-actions align="right">
-        <q-btn flat label="Отмена" v-close-popup />
+        <q-btn flat :label="t('Отмена')" v-close-popup />
         <q-btn
           unelevated
           color="primary"
-          label="Отправить"
+          :label="t('Отправить')"
           :loading="channelSuggestBusy"
           :disable="!channelSuggestText.trim()"
           @click="submitChannelSuggestion"
@@ -98,6 +98,7 @@ import { suggestPost } from '@/services/channelService'
 import { getErrorMessage } from '@/services/errors'
 import { displayName } from '@/utils/user'
 import type { ChannelCard, Chat, Message } from '@/types'
+import { t } from '@/i18n'
 
 // Диалоги грузим отдельными чанками: они нужны только работающим с каналами.
 const ChannelCreateDialog = defineAsyncComponent(

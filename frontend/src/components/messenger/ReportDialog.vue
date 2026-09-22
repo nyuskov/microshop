@@ -2,9 +2,9 @@
   <q-dialog :model-value="true" @update:model-value="emit('close')">
     <q-card class="mod-card">
       <q-card-section class="row no-wrap items-center q-py-sm">
-        <div class="text-subtitle1 text-weight-medium">Жалоба</div>
+        <div class="text-subtitle1 text-weight-medium">{{ t('Жалоба') }}</div>
         <q-space />
-        <q-btn flat round dense icon="close" aria-label="Закрыть" @click="emit('close')" />
+        <q-btn flat round dense icon="close" :aria-label="t('Закрыть')" @click="emit('close')" />
       </q-card-section>
       <q-separator />
 
@@ -34,32 +34,32 @@
           </button>
         </div>
 
-        <label class="mod-label" for="report-comment">Комментарий (необязательно)</label>
+        <label class="mod-label" for="report-comment">{{ t('Комментарий (необязательно)') }}</label>
         <textarea
           id="report-comment"
           v-model="comment"
           class="mod-textarea"
           rows="3"
           maxlength="1000"
-          placeholder="Что не так с этим пользователем или сообщением?"
+          :placeholder="t('Что не так с этим пользователем или сообщением?')"
         ></textarea>
 
         <p v-if="error" class="mod-error" role="alert">{{ error }}</p>
 
         <p class="mod-rules">
           Что считается нарушением —
-          <a href="/community.html" target="_blank" rel="noopener">правила сообщества</a>.
+          <a href="/community.html" target="_blank" rel="noopener">{{ t('правила сообщества') }}</a>.
         </p>
       </q-card-section>
 
       <q-separator />
       <q-card-actions class="row justify-end q-gutter-sm q-pa-md">
-        <q-btn flat no-caps label="Отмена" @click="emit('close')" />
+        <q-btn flat no-caps :label="t('Отмена')" @click="emit('close')" />
         <q-btn
           unelevated
           no-caps
           color="primary"
-          label="Отправить жалобу"
+          :label="t('Отправить жалобу')"
           :loading="sending"
           @click="submit"
         />
@@ -74,6 +74,7 @@ import { ref } from 'vue'
 
 import { REPORT_REASONS, reportUser, type ReportReason } from '@/services/moderation'
 import { getErrorMessage } from '@/services/errors'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   /** ID пользователя, на которого жалуемся. */

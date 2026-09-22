@@ -3,8 +3,8 @@
     <div class="video-rec-modal" @mousedown.self="close">
       <div class="vrm-card">
         <div class="vrm-head">
-          <span>Видеосообщение (кружок)</span>
-          <button class="vrm-close" title="Закрыть" @click="close">
+          <span>{{ t('Видеосообщение (кружок)') }}</span>
+          <button class="vrm-close" :title="t('Закрыть')" @click="close">
             <q-icon :name="icon('close')" size="20px" />
           </button>
         </div>
@@ -90,6 +90,7 @@
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
 import { nextTick, onBeforeUnmount, ref } from 'vue'
+import { t } from '@/i18n'
 import {
   formatClock,
   pickMimeType,

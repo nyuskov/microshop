@@ -87,7 +87,7 @@ describe('подписи рядом с кружком убраны, кружок
 
   it('ожидание расшифровки кадра: кружок вместо строки текста', () => {
     const lightbox = read('src/components/media/ImageLightbox.vue')
-    expect(lightbox).toContain('<BrandSpinner :size="48" label="Открываем изображение" />')
+    expect(lightbox).toContain('<BrandSpinner :size="48" :label="t(\'Открываем изображение\')" />')
     expect(lightbox).not.toContain('Открываем изображение…')
     expect(lightbox).not.toContain('lb-loading-text')
     expect(lightbox).toContain('--brand-spinner-track: var(--ms-scrim-soft)')

@@ -80,12 +80,12 @@
           <q-btn
             unelevated
             color="primary"
-            label="Сохранить"
+            :label="t('Сохранить')"
             :loading="saving"
             :disable="!dirty"
             @click="save"
           />
-          <q-btn flat color="negative" label="Отписаться" v-close-popup @click="leave" />
+          <q-btn flat color="negative" :label="t('Отписаться')" v-close-popup @click="leave" />
         </div>
         <p class="ch-hint">
           Постов: {{ channel?.posts ?? 0 }} · подписчиков: {{ channel?.subscribers ?? 0 }}
@@ -101,7 +101,7 @@
           {{ channel?.subscribers ?? 0 }} подписчиков · постов: {{ channel?.posts ?? 0 }}
         </p>
         <div class="ch-info-actions">
-          <q-btn flat color="negative" label="Отписаться" v-close-popup @click="leave" />
+          <q-btn flat color="negative" :label="t('Отписаться')" v-close-popup @click="leave" />
         </div>
       </template>
 
@@ -141,7 +141,7 @@
                 dense
                 size="sm"
                 color="primary"
-                label="Опубликовать"
+                :label="t('Опубликовать')"
                 @click="review(item, true)"
               />
               <q-btn
@@ -149,7 +149,7 @@
                 dense
                 size="sm"
                 color="negative"
-                label="Отклонить"
+                :label="t('Отклонить')"
                 @click="review(item, false)"
               />
             </div>

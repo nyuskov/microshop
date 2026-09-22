@@ -3,22 +3,22 @@
     <q-card class="mod-card">
       <q-card-section class="row no-wrap items-center q-py-sm">
         <q-icon :name="icon('warning')" size="20px" color="negative" class="q-mr-sm" />
-        <div class="text-subtitle1 text-weight-medium">Удаление аккаунта</div>
+        <div class="text-subtitle1 text-weight-medium">{{ t('Удаление аккаунта') }}</div>
         <q-space />
-        <q-btn flat round dense icon="close" aria-label="Закрыть" @click="emit('close')" />
+        <q-btn flat round dense icon="close" :aria-label="t('Закрыть')" @click="emit('close')" />
       </q-card-section>
       <q-separator />
 
       <q-card-section class="mod-body">
         <p class="mod-danger">
-          Аккаунт и все данные будут удалены <strong>безвозвратно</strong>: профиль, аватар,
+          Аккаунт и все данные будут удалены <strong>{{ t('безвозвратно') }}</strong>: профиль, аватар,
           переписка, вложения, push-подписки. Восстановить их не получится.
         </p>
         <p class="mod-hint">
           У собеседников сохранится история переписки, но ваши сообщения исчезнут.
         </p>
 
-        <label class="mod-label" for="delete-account-password">Пароль аккаунта</label>
+        <label class="mod-label" for="delete-account-password">{{ t('Пароль аккаунта') }}</label>
         <div class="mod-password-wrap">
           <input
             id="delete-account-password"
@@ -26,7 +26,7 @@
             class="mod-input"
             :type="showPassword ? 'text' : 'password'"
             autocomplete="current-password"
-            placeholder="Введите пароль"
+            :placeholder="t('Введите пароль')"
           />
           <button
             type="button"
@@ -55,12 +55,12 @@
 
       <q-separator />
       <q-card-actions class="row justify-end q-gutter-sm q-pa-md">
-        <q-btn flat no-caps label="Отмена" @click="emit('close')" />
+        <q-btn flat no-caps :label="t('Отмена')" @click="emit('close')" />
         <q-btn
           unelevated
           no-caps
           color="negative"
-          label="Удалить аккаунт"
+          :label="t('Удалить аккаунт')"
           :disable="!canDelete"
           :loading="deleting"
           @click="submit"
@@ -76,6 +76,7 @@ import { computed, ref } from 'vue'
 
 import { DELETE_ACCOUNT_CONFIRM, deleteAccount } from '@/services/moderation'
 import { getErrorMessage } from '@/services/errors'
+import { t } from '@/i18n'
 
 const emit = defineEmits<{
   (e: 'close'): void

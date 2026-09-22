@@ -120,11 +120,11 @@
             <p v-if="stories.error" class="story-caption-error">{{ stories.error }}</p>
           </q-card-section>
           <q-card-actions align="right">
-            <q-btn flat label="Отмена" @click="cancelPublish" />
+            <q-btn flat :label="t('Отмена')" @click="cancelPublish" />
             <q-btn
               color="primary"
               unelevated
-              label="Опубликовать"
+              :label="t('Опубликовать')"
               :loading="publishing"
               @click="publish"
             />

@@ -9,7 +9,7 @@
 
     <div class="maintenance-toggle">
       <div class="maintenance-toggle-text">
-        <span class="maintenance-toggle-name">Режим технических работ</span>
+        <span class="maintenance-toggle-name">{{ t('Режим технических работ') }}</span>
         <span class="maintenance-toggle-desc">
           {{
             enabled
@@ -21,14 +21,14 @@
       <q-toggle v-model="enabled" color="primary" keep-color :disable="busy" />
     </div>
 
-    <label class="maintenance-label" for="maintenance-message">Текст на экране</label>
+    <label class="maintenance-label" for="maintenance-message">{{ t('Текст на экране') }}</label>
     <textarea
       id="maintenance-message"
       v-model="message"
       class="maintenance-field"
       rows="2"
       :maxlength="MESSAGE_MAX_LENGTH"
-      placeholder="Например: обновляем сервис, вернёмся к 15:00"
+      :placeholder="t('Например: обновляем сервис, вернёмся к 15:00')"
       :disabled="busy"
     />
     <p class="maintenance-counter">{{ message.length }} / {{ MESSAGE_MAX_LENGTH }}</p>
@@ -69,6 +69,7 @@ import {
 } from '@/services/maintenance'
 import { parseServerTime } from '@/utils/format'
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 
 /** Предел длины совпадает с серверным (`api_v1/system/views.py`). */
 const MESSAGE_MAX_LENGTH = 300

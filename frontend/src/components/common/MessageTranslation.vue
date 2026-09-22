@@ -44,8 +44,8 @@
         </div>
         <button
           class="mt-cancel"
-          title="Остановить скачивание"
-          aria-label="Остановить скачивание"
+          :title="t('Остановить скачивание')"
+          :aria-label="t('Остановить скачивание')"
           @click="cancel"
         >
           <q-icon :name="icon('close')" size="14px" aria-hidden="true" />
@@ -62,7 +62,7 @@
       <button v-if="state.status === 'download'" class="mt-btn" @click="downloadAndTranslate">
         Скачать и перевести
       </button>
-      <button v-if="state.status === 'ready'" class="mt-btn" @click="copy">Скопировать</button>
+      <button v-if="state.status === 'ready'" class="mt-btn" @click="copy">{{ t('Скопировать') }}</button>
       <!-- «Ещё раз» только когда работа закончилась: во время скачивания повтора
            нет — его либо ждут, либо отменяют крестиком. -->
       <button
@@ -74,7 +74,7 @@
       </button>
     </div>
 
-    <p class="mt-hint">Переводит браузер устройства; текст в E2EE-чате на сервер не уходит.</p>
+    <p class="mt-hint">{{ t('Переводит браузер устройства; текст в E2EE-чате на сервер не уходит.') }}</p>
   </div>
 </template>
 
@@ -82,6 +82,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 import {
   cancelTranslation,
   clearTranslation,

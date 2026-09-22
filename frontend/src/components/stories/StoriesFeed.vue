@@ -1,7 +1,7 @@
 <template>
   <div class="stories-feed">
     <div v-if="stories.loading && !stories.groups.length" class="sk-list" aria-busy="true">
-      <span class="sr-only">Загружаем истории…</span>
+      <span class="sr-only">{{ t('Загружаем истории…') }}</span>
       <div v-for="n in 5" :key="n" class="sk-row">
         <span class="sk-avatar"></span>
         <span class="sk-lines">
@@ -51,7 +51,7 @@
 
     <div v-else class="stories-empty-block">
       <q-icon :name="icon('auto_stories')" size="34px" />
-      <p class="stories-empty-title">Историй пока нет</p>
+      <p class="stories-empty-title">{{ t('Историй пока нет') }}</p>
       <p class="stories-empty-hint">
         История — это фото или видео на 24 часа. Друзья увидят её в этом разделе и в списке чатов.
       </p>
@@ -66,6 +66,7 @@ import type { StoryGroup } from '@/services/stories'
 import { useStoriesStore } from '@/stores/stories'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import { formatStoryAge } from '@/utils/stories'
+import { t } from '@/i18n'
 
 const emit = defineEmits<{
   (e: 'open-story', storyId: number): void

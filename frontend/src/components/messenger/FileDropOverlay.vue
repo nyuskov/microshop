@@ -6,7 +6,7 @@
         <span class="drop-title">
           {{ canSend ? 'Отпустите файл, чтобы прикрепить' : 'Откройте чат, чтобы прикрепить файл' }}
         </span>
-        <span v-if="canSend" class="drop-note">Можно перетащить несколько файлов сразу</span>
+        <span v-if="canSend" class="drop-note">{{ t('Можно перетащить несколько файлов сразу') }}</span>
       </div>
     </div>
   </Transition>
@@ -14,6 +14,7 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 
 /**
  * Подсказка при перетаскивании файлов в окно: файл можно бросить в любом месте

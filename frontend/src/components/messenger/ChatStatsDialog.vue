@@ -2,14 +2,14 @@
   <q-dialog :model-value="true" @update:model-value="emit('close')">
     <q-card class="stats-card">
       <q-card-section class="row no-wrap items-center q-py-sm">
-        <div class="stats-title">Статистика чата</div>
+        <div class="stats-title">{{ t('Статистика чата') }}</div>
         <q-space />
-        <q-btn flat round dense icon="close" aria-label="Закрыть" @click="emit('close')" />
+        <q-btn flat round dense icon="close" :aria-label="t('Закрыть')" @click="emit('close')" />
       </q-card-section>
       <q-separator />
 
       <q-card-section class="stats-body">
-        <p v-if="loading" class="stats-status">Считаем сообщения…</p>
+        <p v-if="loading" class="stats-status">{{ t('Считаем сообщения…') }}</p>
         <p v-else-if="error" class="stats-status error">{{ error }}</p>
         <template v-else-if="stats">
           <div class="stats-totals">
@@ -25,7 +25,7 @@
           <!-- Активность по дням: 30 столбиков, включая дни без сообщений -->
           <section class="stats-block">
             <div class="block-head">
-              <h3 class="block-title">Активность за 30 дней</h3>
+              <h3 class="block-title">{{ t('Активность за 30 дней') }}</h3>
               <span v-if="average" class="block-hint">в среднем {{ average }} в активный день</span>
             </div>
             <div class="bars" role="img" :aria-label="barsLabel">
@@ -46,7 +46,7 @@
 
           <!-- Кто активнее: полоска — доля от самого пишущего участника -->
           <section v-if="stats.top_senders.length" class="stats-block">
-            <h3 class="block-title">Кто пишет</h3>
+            <h3 class="block-title">{{ t('Кто пишет') }}</h3>
             <ul class="senders">
               <li v-for="sender in stats.top_senders" :key="sender.user_id" class="sender">
                 <span class="sender-name">{{ sender.name || 'Участник' }}</span>
@@ -63,7 +63,7 @@
 
           <!-- Вложения: как во вкладках галереи чата -->
           <section class="stats-block">
-            <h3 class="block-title">Вложения</h3>
+            <h3 class="block-title">{{ t('Вложения') }}</h3>
             <div class="media-grid">
               <div v-for="tile in mediaTiles" :key="tile.kind" class="media-tile">
                 <q-icon :name="icon(tile.icon)" size="18px" aria-hidden="true" />
@@ -86,6 +86,7 @@ import { getErrorMessage } from '@/services/errors'
 import { icon } from '@/utils/icons'
 import { dailyAverage, senderShare, statsBars, statsPeriod } from '@/utils/chatStats'
 import { parseServerTime, pluralRu } from '@/utils/format'
+import { t } from '@/i18n'
 
 /**
  * «Статистика чата»: сколько писали, когда, кто активнее и что за вложения.

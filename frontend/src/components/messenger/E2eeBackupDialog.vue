@@ -2,9 +2,9 @@
   <q-dialog :model-value="true" @update:model-value="emit('close')">
     <q-card class="bk-card">
       <q-card-section class="row no-wrap items-center q-py-sm">
-        <div class="bk-title">Ключ шифрования</div>
+        <div class="bk-title">{{ t('Ключ шифрования') }}</div>
         <q-space />
-        <q-btn flat round dense :icon="icon('close')" aria-label="Закрыть" @click="emit('close')" />
+        <q-btn flat round dense :icon="icon('close')" :aria-label="t('Закрыть')" @click="emit('close')" />
       </q-card-section>
       <q-separator />
 
@@ -21,7 +21,7 @@
           поддержка такую копию никогда не попросит.
         </p>
 
-        <div class="bk-modes" role="tablist" aria-label="Действие с копией">
+        <div class="bk-modes" role="tablist" :aria-label="t('Действие с копией')">
           <button
             type="button"
             class="bk-mode"
@@ -45,7 +45,7 @@
         </div>
 
         <template v-if="mode === 'export'">
-          <label class="bk-label" for="bk-pass">Парольная фраза</label>
+          <label class="bk-label" for="bk-pass">{{ t('Парольная фраза') }}</label>
           <input
             id="bk-pass"
             v-model="passphrase"
@@ -54,7 +54,7 @@
             autocomplete="new-password"
             :placeholder="`Не короче ${MIN_PASSPHRASE_LENGTH} символов`"
           />
-          <label class="bk-label" for="bk-pass-repeat">Повторите фразу</label>
+          <label class="bk-label" for="bk-pass-repeat">{{ t('Повторите фразу') }}</label>
           <input
             id="bk-pass-repeat"
             v-model="repeat"
@@ -62,7 +62,7 @@
             type="password"
             autocomplete="new-password"
           />
-          <p class="bk-hint">Фразу не восстановить: если забудете — копия останется запертой.</p>
+          <p class="bk-hint">{{ t('Фразу не восстановить: если забудете — копия останется запертой.') }}</p>
           <button type="button" class="bk-btn" :disabled="!canExport || busy" @click="saveBackup">
             <q-icon :name="icon('download')" size="17px" />
             {{ busy ? 'Готовим файл…' : 'Сохранить файл копии' }}
@@ -70,7 +70,7 @@
         </template>
 
         <template v-else>
-          <label class="bk-label" for="bk-file">Файл копии</label>
+          <label class="bk-label" for="bk-file">{{ t('Файл копии') }}</label>
           <input
             id="bk-file"
             ref="fileInput"
@@ -83,7 +83,7 @@
             <q-icon :name="icon('attach_file')" size="17px" />
             {{ file ? file.name : 'Выбрать файл' }}
           </button>
-          <label class="bk-label" for="bk-pass-restore">Парольная фраза</label>
+          <label class="bk-label" for="bk-pass-restore">{{ t('Парольная фраза') }}</label>
           <input
             id="bk-pass-restore"
             v-model="passphrase"
@@ -131,6 +131,7 @@ import {
   restoreBackup
 } from '@/services/e2eeBackup'
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   /** Владелец ключа: копию нельзя восстановить в другой аккаунт. */

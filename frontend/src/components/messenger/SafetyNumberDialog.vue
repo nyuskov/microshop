@@ -2,9 +2,9 @@
   <q-dialog :model-value="true" @update:model-value="emit('close')">
     <q-card class="sn-card">
       <q-card-section class="row no-wrap items-center q-py-sm">
-        <div class="sn-title">Проверка шифрования</div>
+        <div class="sn-title">{{ t('Проверка шифрования') }}</div>
         <q-space />
-        <q-btn flat round dense :icon="icon('close')" aria-label="Закрыть" @click="emit('close')" />
+        <q-btn flat round dense :icon="icon('close')" :aria-label="t('Закрыть')" @click="emit('close')" />
       </q-card-section>
       <q-separator />
 
@@ -12,17 +12,17 @@
         <p class="sn-text">
           Сравните этот код с
           <template v-if="peerName">«{{ peerName }}»</template>
-          <template v-else>собеседником</template>
+          <template v-else>{{ t('собеседником') }}</template>
           — лично, по телефону или голосом. Если код совпадает, переписку читаете только вы двое:
           ключи не подменены, и сервер в середине отсутствует.
         </p>
 
-        <div v-if="loading" class="sn-state"><span class="sn-spinner"></span> Считаем код…</div>
+        <div v-if="loading" class="sn-state"><span class="sn-spinner"></span> {{ t('Считаем код…') }}</div>
         <div v-else-if="!code" class="sn-state">
           Ключ собеседника пока неизвестен: проверять нечего, пока он не зайдёт в приложение.
         </div>
         <template v-else>
-          <div class="sn-code" role="group" aria-label="Код проверки">
+          <div class="sn-code" role="group" :aria-label="t('Код проверки')">
             <span v-for="(group, index) in code.groups" :key="index" class="sn-group">
               {{ group }}
             </span>
@@ -37,11 +37,11 @@
               no-caps
               color="primary"
               :icon="icon('content_copy')"
-              label="Скопировать код"
+              :label="t('Скопировать код')"
               @click="copy"
             />
           </div>
-          <p v-if="copied" class="sn-copied">Код скопирован</p>
+          <p v-if="copied" class="sn-copied">{{ t('Код скопирован') }}</p>
 
           <p class="sn-hint">
             Код меняется, если кто-то из вас зайдёт с нового устройства (ключ привязан к
@@ -69,6 +69,7 @@ import { onMounted, ref } from 'vue'
 import { icon } from '@/utils/icons'
 import { safetyNumberWithPeer } from '@/services/e2ee'
 import type { SafetyCode } from '@/utils/safetyNumber'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   /** Мой id (владелец устройства). */

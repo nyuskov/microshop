@@ -6,8 +6,8 @@
         v-model="query"
         class="panel-search-input"
         type="text"
-        placeholder="Поиск по логину или телефону"
-        aria-label="Поиск контактов"
+        :placeholder="t('Поиск по логину или телефону')"
+        :aria-label="t('Поиск контактов')"
       />
     </div>
 
@@ -17,8 +17,8 @@
         <span class="phone-result-title">Из телефонной книги: {{ props.phoneMatched.length }}</span>
         <button
           class="phone-inline-clear"
-          title="Закрыть результаты"
-          aria-label="Закрыть результаты"
+          :title="t('Закрыть результаты')"
+          :aria-label="t('Закрыть результаты')"
           @click="emit('clear-phone')"
         >
           <q-icon :name="icon('close')" size="18px" />
@@ -61,7 +61,7 @@
     <!-- Список контактов: моя записная книжка (кого я добавил) -->
     <template v-if="props.phoneMatched === null || props.phoneImportOpen">
       <div v-if="props.loading" class="sk-list" aria-busy="true">
-        <span class="sr-only">Загрузка контактов…</span>
+        <span class="sr-only">{{ t('Загрузка контактов…') }}</span>
         <div v-for="n in 6" :key="n" class="sk-row">
           <span class="sk-avatar"></span>
           <span class="sk-lines">
@@ -73,9 +73,9 @@
 
       <template v-else>
         <!-- Найденные в мессенджере (по поиску) — кого можно добавить -->
-        <div v-if="busy" class="search-status" aria-busy="true">Ищем людей…</div>
+        <div v-if="busy" class="search-status" aria-busy="true">{{ t('Ищем людей…') }}</div>
         <template v-else-if="found.length">
-          <div class="section-label">Найдены в мессенджере</div>
+          <div class="section-label">{{ t('Найдены в мессенджере') }}</div>
           <div class="people-results">
             <div v-for="user in found" :key="user.id" class="contact-row">
               <button class="row-item" @click="emit('pick', user)">
@@ -97,8 +97,8 @@
               </button>
               <button
                 class="contact-action"
-                title="Добавить в контакты"
-                aria-label="Добавить в контакты"
+                :title="t('Добавить в контакты')"
+                :aria-label="t('Добавить в контакты')"
                 @click="emit('rename', user)"
               >
                 <q-icon :name="icon('person_add')" size="18px" />
@@ -143,8 +143,8 @@
             </button>
             <button
               class="contact-action"
-              title="Имя контакта"
-              aria-label="Имя контакта"
+              :title="t('Имя контакта')"
+              :aria-label="t('Имя контакта')"
               @click="emit('rename', contact)"
             >
               <q-icon :name="icon('edit')" size="17px" />
@@ -170,6 +170,7 @@ import type { ChatUser } from '@/types'
 import type { SearchUserResult } from '@/services/chatService'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import { useContactSearch } from '@/composables/useContactSearch'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   contacts: ChatUser[]

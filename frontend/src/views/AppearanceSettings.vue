@@ -2,7 +2,7 @@
   <div class="appearance-settings">
     <!-- Тема -->
     <section class="appearance-section">
-      <h3 class="appearance-title">Тема оформления</h3>
+      <h3 class="appearance-title">{{ t('Тема оформления') }}</h3>
       <div class="opt-row">
         <button
           v-for="opt in THEME_OPTIONS"
@@ -12,7 +12,7 @@
           @click="themeStore.setThemeMode(opt.mode)"
         >
           <q-icon :name="icon(opt.icon)" size="18px" />
-          <span>{{ opt.label }}</span>
+          <span>{{ t(opt.label) }}</span>
         </button>
       </div>
 
@@ -22,22 +22,22 @@
       <div v-if="themeStore.scheduleActive" class="schedule-block">
         <div class="schedule-times">
           <div class="schedule-field">
-            <label for="ap-dark-from">Тёмная с</label>
+            <label for="ap-dark-from">{{ t('Тёмная с') }}</label>
             <SelectField
               id="ap-dark-from"
               :model-value="themeStore.darkFrom"
               :options="SCHEDULE_TIME_OPTIONS"
-              aria-label="Начало тёмной темы"
+              :aria-label="t('Начало тёмной темы')"
               @update:model-value="onScheduleChange('from', $event)"
             />
           </div>
           <div class="schedule-field">
-            <label for="ap-dark-to">до</label>
+            <label for="ap-dark-to">{{ t('до') }}</label>
             <SelectField
               id="ap-dark-to"
               :model-value="themeStore.darkTo"
               :options="SCHEDULE_TIME_OPTIONS"
-              aria-label="Конец тёмной темы"
+              :aria-label="t('Конец тёмной темы')"
               @update:model-value="onScheduleChange('to', $event)"
             />
           </div>
@@ -50,12 +50,12 @@
            гасится в светлой теме — там чёрный фон смысла не имеет. -->
       <div class="toggle-row" :class="{ 'toggle-row-off': !themeStore.darkActive }">
         <div class="toggle-text">
-          <span class="toggle-name">Чёрный фон (AMOLED)</span>
+          <span class="toggle-name">{{ t('Чёрный фон (AMOLED)') }}</span>
           <span class="toggle-desc">
             {{
               themeStore.darkActive
-                ? 'Чистый чёрный вместо тёмно-серого — экономит заряд на OLED'
-                : 'Доступно в тёмной теме'
+                ? t('Чистый чёрный вместо тёмно-серого — экономит заряд на OLED')
+                : t('Доступно в тёмной теме')
             }}
           </span>
         </div>
@@ -71,7 +71,7 @@
 
     <!-- Акцентный цвет -->
     <section class="appearance-section">
-      <h3 class="appearance-title">Акцентный цвет</h3>
+      <h3 class="appearance-title">{{ t('Акцентный цвет') }}</h3>
       <div class="swatch-row">
         <button
           v-for="accent in ACCENT_PRESETS"
@@ -79,7 +79,7 @@
           class="accent-dot"
           :class="{ active: themeStore.accentKey === accent.key }"
           :style="{ background: accent.hex }"
-          :title="accent.label"
+          :title="t(accent.label)"
           @click="themeStore.setAccent(accent.key)"
         ></button>
       </div>
@@ -87,7 +87,7 @@
 
     <!-- Цвет моих сообщений -->
     <section class="appearance-section">
-      <h3 class="appearance-title">Цвет моих сообщений</h3>
+      <h3 class="appearance-title">{{ t('Цвет моих сообщений') }}</h3>
       <div class="swatch-row">
         <button
           v-for="bubble in BUBBLE_STYLE_PRESETS"
@@ -95,7 +95,7 @@
           class="bubble-dot"
           :class="{ active: themeStore.bubbleKey === bubble.key }"
           :style="{ background: bubble.swatch }"
-          :title="bubble.label"
+          :title="t(bubble.label)"
           @click="themeStore.setBubbleStyle(bubble.key)"
         >
           <q-icon :name="icon('check')" class="bubble-check" size="18px" />
@@ -105,7 +105,7 @@
 
     <!-- Размер текста -->
     <section class="appearance-section">
-      <h3 class="appearance-title">Размер текста</h3>
+      <h3 class="appearance-title">{{ t('Размер текста') }}</h3>
       <div class="opt-row">
         <button
           v-for="opt in TEXT_SIZE_PRESETS"
@@ -115,38 +115,38 @@
           :aria-pressed="themeStore.textSizeKey === opt.key"
           @click="themeStore.setTextSize(opt.key)"
         >
-          <span class="text-size-sample" :style="{ fontSize: opt.sample }">Аа</span>
-          <span>{{ opt.label }}</span>
+          <span class="text-size-sample" :style="{ fontSize: opt.sample }">{{ t('Аа') }}</span>
+          <span>{{ t(opt.label) }}</span>
         </button>
       </div>
-      <p class="hint">Действует на текст сообщений, поле ввода и список чатов.</p>
+      <p class="hint">{{ t('Действует на текст сообщений, поле ввода и список чатов.') }}</p>
     </section>
 
     <!-- Обои окна сообщений -->
     <section class="appearance-section">
-      <h3 class="appearance-title">Обои окна сообщений</h3>
+      <h3 class="appearance-title">{{ t('Обои окна сообщений') }}</h3>
       <div class="wallpaper-grid">
         <button
           v-for="wall in WALLPAPER_PRESETS"
           :key="wall.key"
           class="wallpaper-tile"
           :class="{ active: themeStore.wallpaperKey === wall.key }"
-          :title="wall.label"
+          :title="t(wall.label)"
           @click="themeStore.setWallpaper(wall.key)"
         >
           <span class="wallpaper-swatch" :style="{ background: wall.swatch }"></span>
-          <span class="wallpaper-label">{{ wall.label }}</span>
+          <span class="wallpaper-label">{{ t(wall.label) }}</span>
         </button>
 
         <button
           v-if="themeStore.wallpaperCustom"
           class="wallpaper-tile"
           :class="{ active: themeStore.wallpaperKey === 'custom' }"
-          title="Ваше фото"
+          :title="t('Ваше фото')"
           @click="themeStore.setWallpaper('custom')"
         >
           <span class="wallpaper-swatch" :style="customPreviewStyle()"></span>
-          <span class="wallpaper-label">Ваше фото</span>
+          <span class="wallpaper-label">{{ t('Ваше фото') }}</span>
         </button>
       </div>
 
@@ -159,14 +159,14 @@
           @change="onWallpaperFile"
         />
         <button class="action-btn" @click="wallpaperInput?.click()">
-          <q-icon :name="icon('image')" size="18px" /> Загрузить фото
+          <q-icon :name="icon('image')" size="18px" /> {{ t('Загрузить фото') }}
         </button>
         <button
           v-if="themeStore.wallpaperKey === 'custom' || themeStore.wallpaperCustom"
           class="action-btn danger"
           @click="themeStore.clearCustomWallpaper()"
         >
-          <q-icon :name="icon('delete')" size="18px" /> Убрать
+          <q-icon :name="icon('delete')" size="18px" /> {{ t('Убрать') }}
         </button>
       </div>
       <p v-if="wallpaperError" class="wallpaper-error">{{ wallpaperError }}</p>
@@ -174,7 +174,7 @@
 
     <!-- Список чатов: жесты пальцем -->
     <section class="appearance-section">
-      <h3 class="appearance-title">Список чатов</h3>
+      <h3 class="appearance-title">{{ t('Список чатов') }}</h3>
       <div class="opt-row">
         <button
           v-for="opt in CHAT_SWIPE_OPTIONS"
@@ -182,19 +182,21 @@
           class="opt-pill"
           :class="{ active: chatSwipeAction === opt.key }"
           :aria-pressed="chatSwipeAction === opt.key"
-          :title="opt.hint"
+          :title="t(opt.hint)"
           @click="writeChatSwipeAction(opt.key)"
         >
-          {{ opt.label }}
+          {{ t(opt.label) }}
         </button>
       </div>
-      <p class="hint">Что делает свайп влево по строке чата. Свайп вправо всегда закрепляет чат.</p>
+      <p class="hint">
+        {{ t('Что делает свайп влево по строке чата. Свайп вправо всегда закрепляет чат.') }}
+      </p>
     </section>
 
     <!-- Сброс -->
     <section class="appearance-section reset-row">
       <button class="action-btn reset" @click="onReset">
-        <q-icon :name="icon('refresh')" size="18px" /> Сбросить настройки
+        <q-icon :name="icon('refresh')" size="18px" /> {{ t('Сбросить настройки') }}
       </button>
     </section>
   </div>
@@ -216,6 +218,7 @@ import {
 } from '@/stores/theme'
 import { scheduleSummary, scheduleTimeOptions } from '@/utils/themeSchedule'
 import { CHAT_SWIPE_OPTIONS, chatSwipeAction, writeChatSwipeAction } from '@/utils/chatSwipe'
+import { t } from '@/i18n'
 
 const themeStore = useThemeStore()
 
@@ -261,15 +264,15 @@ const onWallpaperFile = async (event: Event) => {
   } catch (error) {
     // Файл читает сам браузер (FileReader в `utils/media.ts`), поэтому ошибка
     // приходит от него — через общий разбор, а не сырым `error.message`.
-    wallpaperError.value = getErrorMessage(error, 'Не удалось загрузить фото')
+    wallpaperError.value = getErrorMessage(error, t('Не удалось загрузить фото'))
   }
 }
 
 const onReset = async () => {
   const agreed = await confirmDialog({
-    title: 'Сбросить все настройки оформления?',
-    message: 'Тема, обои, размер текста и акцентный цвет вернутся к значениям по умолчанию.',
-    okLabel: 'Сбросить',
+    title: t('Сбросить все настройки оформления?'),
+    message: t('Тема, обои, размер текста и акцентный цвет вернутся к значениям по умолчанию.'),
+    okLabel: t('Сбросить'),
     danger: true
   })
   if (agreed) themeStore.resetAppearance()

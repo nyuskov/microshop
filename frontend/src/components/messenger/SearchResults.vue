@@ -1,6 +1,6 @@
 <template>
   <div class="people-results">
-    <div class="search-mode-tabs" role="tablist" aria-label="Область поиска">
+    <div class="search-mode-tabs" role="tablist" :aria-label="t('Область поиска')">
       <button
         class="search-mode-tab"
         :class="{ active: props.mode === 'people' }"
@@ -30,11 +30,11 @@
       </button>
     </div>
 
-    <div v-if="props.loading" class="search-status">Поиск…</div>
+    <div v-if="props.loading" class="search-status">{{ t('Поиск…') }}</div>
 
     <!-- Люди -->
     <template v-else-if="props.mode === 'people' && props.users.length">
-      <div class="section-label">Найти людей</div>
+      <div class="section-label">{{ t('Найти людей') }}</div>
       <button
         v-for="user in props.users"
         :key="user.id"
@@ -70,12 +70,12 @@
         <q-icon :name="icon('chevron_right')" class="row-arrow" size="20px" />
       </button>
     </template>
-    <div v-else-if="props.mode === 'people'" class="search-status">Никого не найдено</div>
+    <div v-else-if="props.mode === 'people'" class="search-status">{{ t('Никого не найдено') }}</div>
 
     <!-- Сообщения (по всем диалогам) -->
     <div v-else-if="props.mode === 'messages' && hasAnyMessage">
       <template v-if="props.messages.length">
-        <div class="section-label">Найдено в чатах</div>
+        <div class="section-label">{{ t('Найдено в чатах') }}</div>
         <button
           v-for="msg in props.messages"
           :key="msg.id"
@@ -151,11 +151,11 @@
         </button>
       </template>
     </div>
-    <div v-else-if="props.mode === 'messages'" class="search-status">Ничего не найдено</div>
+    <div v-else-if="props.mode === 'messages'" class="search-status">{{ t('Ничего не найдено') }}</div>
 
     <!-- Каналы (каталог): публичные каналы по названию и адресу -->
     <template v-else-if="props.channels.length">
-      <div class="section-label">Публичные каналы</div>
+      <div class="section-label">{{ t('Публичные каналы') }}</div>
       <button
         v-for="channel in props.channels"
         :key="channel.id"
@@ -193,12 +193,12 @@
           :name="icon('check')"
           class="row-arrow"
           size="20px"
-          title="Вы подписаны"
+          :title="t('Вы подписаны')"
         />
         <q-icon v-else :name="icon('chevron_right')" class="row-arrow" size="20px" />
       </button>
     </template>
-    <div v-else class="search-status">Ничего не найдено</div>
+    <div v-else class="search-status">{{ t('Ничего не найдено') }}</div>
   </div>
 </template>
 
@@ -224,6 +224,7 @@ import type { SearchMode } from '@/composables/useGlobalSearch'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import { formatMsgTime } from '@/utils/format'
 import { splitByQuery } from '@/utils/search'
+import { t } from '@/i18n'
 import {
   messageChatAvatar,
   messageChatTitle,

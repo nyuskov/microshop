@@ -4,18 +4,18 @@
     overlay
     tone="danger"
     code="500"
-    title="Что-то пошло не так"
+    :title="t('Что-то пошло не так')"
     text="Приложение столкнулось с ошибкой и не смогло продолжить. Перезагрузка обычно помогает — данные и переписка не потеряны."
   >
     <template #extra>
       <code class="fatal-detail">{{ fatalError }}</code>
     </template>
     <template #actions>
-      <q-btn unelevated no-caps color="primary" label="Перезагрузить" @click="reload" />
-      <q-btn flat no-caps label="Продолжить работу" @click="dismiss" />
+      <q-btn unelevated no-caps color="primary" :label="t('Перезагрузить')" @click="reload" />
+      <q-btn flat no-caps :label="t('Продолжить работу')" @click="dismiss" />
     </template>
     <template #foot>
-      <span>Ошибка повторяется? Напишите на</span>
+      <span>{{ t('Ошибка повторяется? Напишите на') }}</span>
       <a href="mailto:nyuskov@gmail.com">nyuskov@gmail.com</a>
     </template>
   </ErrorScreen>
@@ -36,6 +36,7 @@
 import { clearFatalError, fatalError } from '@/utils/fatalError'
 
 import ErrorScreen from '@/components/common/ErrorScreen.vue'
+import { t } from '@/i18n'
 
 const reload = () => {
   window.location.reload()

@@ -50,7 +50,7 @@
           {{ deleteChatBulkIds.length ? 'Удалить чаты' : 'Удалить чат' }}
         </div>
         <q-space />
-        <q-btn flat round dense icon="close" v-close-popup aria-label="Закрыть" />
+        <q-btn flat round dense icon="close" v-close-popup :aria-label="t('Закрыть')" />
       </q-card-section>
       <q-separator />
       <q-card-section class="delchat-body">
@@ -63,15 +63,15 @@
             >?
           </template>
         </p>
-        <q-radio v-model="deleteChatScope" val="me" label="Только у меня" />
-        <div class="delchat-hint">Чат исчезнет из вашего списка; у собеседника останется.</div>
-        <q-radio v-model="deleteChatScope" val="all" label="Для всех" />
-        <div class="delchat-hint">Чат и переписка будут удалены у всех участников.</div>
+        <q-radio v-model="deleteChatScope" val="me" :label="t('Только у меня')" />
+        <div class="delchat-hint">{{ t('Чат исчезнет из вашего списка; у собеседника останется.') }}</div>
+        <q-radio v-model="deleteChatScope" val="all" :label="t('Для всех')" />
+        <div class="delchat-hint">{{ t('Чат и переписка будут удалены у всех участников.') }}</div>
       </q-card-section>
       <q-separator />
       <q-card-actions align="right" class="delchat-actions">
-        <q-btn flat label="Отмена" v-close-popup />
-        <q-btn flat color="negative" label="Удалить" @click="confirmDelete" />
+        <q-btn flat :label="t('Отмена')" v-close-popup />
+        <q-btn flat color="negative" :label="t('Удалить')" @click="confirmDelete" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -90,6 +90,7 @@ import { computed, defineAsyncComponent, ref } from 'vue'
 import { useMobileLayer } from '@/composables/useMobileOverlay'
 import { chatPeer, displayName, isGroupChat } from '@/utils/user'
 import type { Chat, ChatUser, Message } from '@/types'
+import { t } from '@/i18n'
 
 const ChatInfo = defineAsyncComponent(() => import('@/components/messenger/ChatInfo.vue'))
 const GroupChatInfo = defineAsyncComponent(() => import('@/components/messenger/GroupChatInfo.vue'))

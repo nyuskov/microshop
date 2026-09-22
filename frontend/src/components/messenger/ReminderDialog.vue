@@ -2,9 +2,9 @@
   <q-dialog :model-value="true" @update:model-value="emit('close')">
     <q-card class="reminder-card">
       <q-card-section class="row no-wrap items-center q-py-sm">
-        <div class="reminder-title">Напомнить о сообщении</div>
+        <div class="reminder-title">{{ t('Напомнить о сообщении') }}</div>
         <q-space />
-        <q-btn flat round dense icon="close" aria-label="Закрыть" @click="emit('close')" />
+        <q-btn flat round dense icon="close" :aria-label="t('Закрыть')" @click="emit('close')" />
       </q-card-section>
       <q-separator />
 
@@ -22,7 +22,7 @@
           <span>Напоминание уже стоит: {{ existingLabel }}</span>
         </div>
 
-        <ul class="reminder-list" role="radiogroup" aria-label="Когда напомнить">
+        <ul class="reminder-list" role="radiogroup" :aria-label="t('Когда напомнить')">
           <li v-for="preset in presets" :key="preset.label">
             <button
               class="reminder-row"
@@ -48,7 +48,7 @@
           @click="emit('remove')"
         >
           <q-icon :name="icon('notifications_off')" size="18px" aria-hidden="true" />
-          <span class="reminder-name">Убрать напоминание</span>
+          <span class="reminder-name">{{ t('Убрать напоминание') }}</span>
         </button>
       </q-card-section>
     </q-card>
@@ -62,6 +62,7 @@ import type { MessageReminder } from '@/types'
 import { icon } from '@/utils/icons'
 import { formatScheduledAt } from '@/utils/scheduledSend'
 import { reminderPresets, reminderSendAt } from '@/utils/reminders'
+import { t } from '@/i18n'
 
 /**
  * Выбор времени напоминания о сообщении.

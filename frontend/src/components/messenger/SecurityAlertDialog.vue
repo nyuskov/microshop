@@ -5,9 +5,9 @@
   >
     <q-card class="sa-card">
       <q-card-section class="sa-head">
-        <div class="sa-title">Новый вход в аккаунт</div>
+        <div class="sa-title">{{ t('Новый вход в аккаунт') }}</div>
         <q-space />
-        <q-btn flat round dense :icon="icon('close')" v-close-popup aria-label="Закрыть" />
+        <q-btn flat round dense :icon="icon('close')" v-close-popup :aria-label="t('Закрыть')" />
       </q-card-section>
       <q-separator />
       <q-card-section class="sa-body">
@@ -23,7 +23,7 @@
             unelevated
             no-caps
             color="primary"
-            label="Это не я — завершить все сессии"
+            :label="t('Это не я — завершить все сессии')"
             :loading="busy === 'revoke'"
             :disable="busy !== null"
             @click="revokeAll"
@@ -32,11 +32,11 @@
             flat
             no-caps
             color="negative"
-            label="Заморозить аккаунт"
+            :label="t('Заморозить аккаунт')"
             :disable="busy !== null"
             @click="freeze"
           />
-          <q-btn flat no-caps label="Это был(а) я" v-close-popup :disable="busy !== null" />
+          <q-btn flat no-caps :label="t('Это был(а) я')" v-close-popup :disable="busy !== null" />
         </div>
         <p v-if="error" class="sa-error">{{ error }}</p>
         <p class="sa-hint">
@@ -61,6 +61,7 @@ import { computed, onMounted, ref } from 'vue'
 import { getErrorMessage } from '@/services/errors'
 import { useAuthStore, type AuthSession } from '@/stores/auth'
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 
 defineProps<{
   modelValue: boolean

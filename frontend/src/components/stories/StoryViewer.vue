@@ -27,7 +27,7 @@
         v-if="current.isMine"
         class="viewer-icon"
         type="button"
-        title="Кто смотрел"
+        :title="t('Кто смотрел')"
         @click.stop="openAudience()"
       >
         <q-icon :name="icon('visibility')" size="22px" />
@@ -36,12 +36,12 @@
         v-if="current.isMine"
         class="viewer-icon"
         type="button"
-        title="Удалить историю"
+        :title="t('Удалить историю')"
         @click.stop="removeCurrent"
       >
         <q-icon :name="icon('delete_outline')" size="22px" />
       </button>
-      <button class="viewer-icon" type="button" title="Закрыть" @click.stop="emit('close')">
+      <button class="viewer-icon" type="button" :title="t('Закрыть')" @click.stop="emit('close')">
         <q-icon :name="icon('close')" size="24px" />
       </button>
     </header>
@@ -113,7 +113,7 @@
       <button
         class="viewer-zone left"
         type="button"
-        title="Предыдущая"
+        :title="t('Предыдущая')"
         @click.stop="onZoneClick($event, 'left')"
       >
         <q-icon :name="icon('chevron_left')" size="30px" />
@@ -121,7 +121,7 @@
       <button
         class="viewer-zone right"
         type="button"
-        title="Следующая"
+        :title="t('Следующая')"
         @click.stop="onZoneClick($event, 'right')"
       >
         <q-icon :name="icon('chevron_right')" size="30px" />
@@ -138,14 +138,14 @@
             :key="item.emoji"
             class="reaction-chip"
             type="button"
-            title="Кто отреагировал"
+            :title="t('Кто отреагировал')"
             @click.stop="openAudience()"
           >
             <span class="reaction-emoji">{{ item.emoji }}</span>
             <span class="reaction-count">{{ item.count }}</span>
           </button>
         </template>
-        <span v-else class="viewer-reactions-hint">Реакций пока нет</span>
+        <span v-else class="viewer-reactions-hint">{{ t('Реакций пока нет') }}</span>
       </div>
       <div v-else class="viewer-reactions" :class="{ expanded }" @pointerdown.stop>
         <button
@@ -189,13 +189,13 @@
           type="text"
           maxlength="500"
           :placeholder="`Ответить ${authorName}…`"
-          aria-label="Ответить на историю"
+          :aria-label="t('Ответить на историю')"
           @keydown.stop
         />
         <button
           class="viewer-reply-btn"
           type="submit"
-          title="Отправить ответ"
+          :title="t('Отправить ответ')"
           :disabled="!replyText.trim()"
         >
           <q-icon :name="icon('send')" size="20px" />
@@ -204,7 +204,7 @@
       <p v-if="current.isMine" class="viewer-views">
         <button class="viewer-views-btn" type="button" @click.stop="openAudience()">
           <q-icon :name="icon('visibility')" size="14px" /> {{ current.story.views }}
-          <span class="viewer-views-label">кто смотрел</span>
+          <span class="viewer-views-label">{{ t('кто смотрел') }}</span>
         </button>
       </p>
     </footer>
@@ -221,20 +221,20 @@
         class="audience-sheet"
         role="dialog"
         aria-modal="true"
-        aria-label="Аудитория истории"
+        :aria-label="t('Аудитория истории')"
       >
         <header class="audience-head">
-          <span class="audience-title">Аудитория истории</span>
-          <button class="viewer-icon" type="button" title="Закрыть" @click.stop="closeAudience">
+          <span class="audience-title">{{ t('Аудитория истории') }}</span>
+          <button class="viewer-icon" type="button" :title="t('Закрыть')" @click.stop="closeAudience">
             <q-icon :name="icon('close')" size="22px" />
           </button>
         </header>
 
-        <p v-if="audienceLoading" class="audience-status">Загрузка…</p>
+        <p v-if="audienceLoading" class="audience-status">{{ t('Загрузка…') }}</p>
         <p v-else-if="audienceError" class="audience-status error">{{ audienceError }}</p>
         <template v-else-if="audience">
           <p class="audience-hint">{{ viewsHint }}</p>
-          <p v-if="!audienceSections.length" class="audience-status">Пока никто не смотрел</p>
+          <p v-if="!audienceSections.length" class="audience-status">{{ t('Пока никто не смотрел') }}</p>
           <div v-for="section in audienceSections" :key="section.key" class="audience-group">
             <span class="audience-badge">
               <template v-if="section.emoji">{{ section.emoji }}</template>
@@ -281,6 +281,7 @@ import {
 } from '@/services/stories'
 import { useStoriesStore } from '@/stores/stories'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
+import { t } from '@/i18n'
 import {
   audienceSections as buildAudienceSections,
   audienceViewsHint,

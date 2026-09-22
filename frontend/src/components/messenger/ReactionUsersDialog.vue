@@ -14,15 +14,15 @@
     <div class="ru-card">
       <div class="ru-head">
         <span class="ru-emoji" aria-hidden="true">{{ selected }}</span>
-        <span class="ru-title">Кто поставил</span>
+        <span class="ru-title">{{ t('Кто поставил') }}</span>
         <q-space />
-        <q-btn flat round dense :icon="icon('close')" aria-label="Закрыть" @click="emit('close')" />
+        <q-btn flat round dense :icon="icon('close')" :aria-label="t('Закрыть')" @click="emit('close')" />
       </div>
       <q-separator />
 
       <div class="ru-body">
         <!-- Эмодзи-вкладки: у сообщения может быть несколько реакций. -->
-        <div v-if="reactions.length > 1" class="ru-tabs" role="tablist" aria-label="Реакции">
+        <div v-if="reactions.length > 1" class="ru-tabs" role="tablist" :aria-label="t('Реакции')">
           <button
             v-for="reaction in reactions"
             :key="reaction.emoji"
@@ -50,7 +50,7 @@
               <template v-else>{{ initials(nameOf(id)) }}</template>
             </span>
             <span class="ru-name" :class="{ mine: id === myUserId }">{{ nameOf(id) }}</span>
-            <span v-if="id === myUserId" class="ru-me">вы</span>
+            <span v-if="id === myUserId" class="ru-me">{{ t('вы') }}</span>
           </li>
         </ul>
       </div>
@@ -74,6 +74,7 @@ import { computed, ref } from 'vue'
 import type { ChatUser, ReactionSummary } from '@/types'
 import { icon } from '@/utils/icons'
 import { avatarUrlOf, displayName, initials } from '@/utils/user'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   /** Реакции сообщения (агрегат с `user_ids`). */

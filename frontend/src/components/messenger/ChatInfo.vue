@@ -1,7 +1,7 @@
 <template>
   <q-card class="chatinfo-card" :class="{ 'is-panel': panel }">
     <q-card-section class="row no-wrap items-center chatinfo-head">
-      <div class="text-subtitle1 text-weight-medium ellipsis">Информация о чате</div>
+      <div class="text-subtitle1 text-weight-medium ellipsis">{{ t('Информация о чате') }}</div>
       <q-space />
       <!-- В панели (широкий экран) «закрыть» — просто событие: закрывать
            q-popup там нечего, диалога нет. -->
@@ -11,10 +11,10 @@
         round
         dense
         icon="close"
-        aria-label="Закрыть"
+        :aria-label="t('Закрыть')"
         @click="emit('close')"
       />
-      <q-btn v-else flat round dense icon="close" v-close-popup aria-label="Закрыть" />
+      <q-btn v-else flat round dense icon="close" v-close-popup :aria-label="t('Закрыть')" />
     </q-card-section>
     <q-separator />
     <q-card-section class="chatinfo-body">
@@ -46,7 +46,7 @@
       <div v-if="peer && !isSelfChat" class="ci-section ci-e2ee">
         <div class="ci-e2ee-row">
           <div class="ci-e2ee-info">
-            <div class="ci-e2ee-title">Контакт</div>
+            <div class="ci-e2ee-title">{{ t('Контакт') }}</div>
             <div class="ci-e2ee-desc">
               {{
                 contactName
@@ -73,7 +73,7 @@
       <div v-if="peer && !isSelfChat" class="ci-section ci-e2ee">
         <div class="ci-e2ee-row">
           <div class="ci-e2ee-info">
-            <div class="ci-e2ee-title">Сквозное шифрование</div>
+            <div class="ci-e2ee-title">{{ t('Сквозное шифрование') }}</div>
             <div class="ci-e2ee-desc">
               Обычный чат — текст виден в превью и уведомлениях. Зашифрованный — сообщения читают
               только участники, но текст скрыт в превью/уведомлениях.
@@ -84,7 +84,7 @@
             color="primary"
             keep-color
             :disable="e2eeBusy"
-            aria-label="Сквозное шифрование"
+            :aria-label="t('Сквозное шифрование')"
             @update:model-value="onToggleE2ee"
           />
         </div>
@@ -92,12 +92,12 @@
              проверяемое утверждение «сервер не читает» можно подтвердить лично. -->
         <button v-if="e2eeEnabled" class="ci-verify" type="button" @click="safetyOpen = true">
           <q-icon :name="icon('verified_user')" size="18px" />
-          <span>Проверить шифрование</span>
+          <span>{{ t('Проверить шифрование') }}</span>
         </button>
       </div>
 
       <div v-if="images.length || mediaHasMore" class="ci-section">
-        <h4 class="ci-title">Изображения</h4>
+        <h4 class="ci-title">{{ t('Изображения') }}</h4>
         <div v-if="images.length" class="ci-grid">
           <button
             v-for="image in images"
@@ -109,11 +109,11 @@
             <img :src="image.url" :alt="image.name" loading="lazy" decoding="async" />
           </button>
         </div>
-        <div v-else class="ci-empty">Изображений пока нет</div>
+        <div v-else class="ci-empty">{{ t('Изображений пока нет') }}</div>
       </div>
 
       <div v-if="files.length || mediaHasMore" class="ci-section">
-        <h4 class="ci-title">Файлы</h4>
+        <h4 class="ci-title">{{ t('Файлы') }}</h4>
         <a
           v-for="file in files"
           :key="file.id"
@@ -128,7 +128,7 @@
             <span class="ci-file-meta">{{ file.meta }}</span>
           </span>
         </a>
-        <div v-if="!files.length" class="ci-empty">Файлов пока нет</div>
+        <div v-if="!files.length" class="ci-empty">{{ t('Файлов пока нет') }}</div>
       </div>
 
       <!-- Галерея показывает вложения всей истории, а не только загруженные
@@ -140,7 +140,7 @@
           dense
           color="primary"
           :loading="mediaLoading"
-          label="Показать ещё"
+          :label="t('Показать ещё')"
           @click="loadMoreMedia"
         />
       </div>
@@ -182,6 +182,7 @@ import { useContactsStore } from '@/stores/contacts'
 import { avatarStyle, avatarUrlOf, chatPeer, chatPeerTitle, initials } from '@/utils/user'
 import { formatBytes, formatMsgTime } from '@/utils/format'
 import { fileIcon, mediaKindOf } from '@/utils/media'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   chat: Chat
