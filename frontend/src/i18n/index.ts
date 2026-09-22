@@ -22,7 +22,6 @@
  */
 
 import { computed, shallowRef, type Ref } from 'vue'
-import { Lang } from 'quasar'
 
 /** Языки, которые приложение РЕАЛЬНО умеет показывать. */
 export type Locale = 'ru' | 'en'
@@ -72,32 +71,20 @@ export function setLocale(value: string | null | undefined): void {
 }
 
 /**
- * Синхронизирует язык документа и внутренние тексты Quasar с языком интерфейса.
+ * Синхронизирует язык документа с языком интерфейса.
  *
  * Quasar при старте выставляет `<html lang>` из своей локали, а в `main.ts`
  * подключена только русская — из-за этого при английском интерфейсе документ
  * оставался `lang="ru"` (от этого зависят автоперевод браузера и скринридеры).
- * Языковые пакеты грузятся по требованию: русскому пользователю английские
- * строки Quasar не нужны.
+ *
+ * Локали самого Quasar при этом НЕ переключаем: приложение использует только
+ * компоненты без внутренних подписей (`q-icon`, `q-btn`, `q-card`, `q-dialog`…),
+ * а `$q.dialog`/`$q.notify` не вызываются вовсе — текстов от Quasar человек не
+ * видит. Языковые пакеты весят килобайты и `manualChunks` положил бы их в общий
+ * чанк `quasar`, то есть за них платили бы все (см. `scripts/check-bundle-size.mjs`).
  */
 function syncDocumentLocale(next: Locale): void {
   if (typeof document !== 'undefined') document.documentElement.lang = next
-  // Локаль Quasar `en-US` показывает время в 12-часовом формате, поэтому берём
-  // `en-GB` — ту же локаль, что и `dateLocale()`. `Lang.set` сам переписывает
-  // `<html lang>` своим значением (`en-GB`), поэтому атрибут выставляем после.
-  const apply = (lang: Parameters<typeof Lang.set>[0]): void => {
-    Lang.set(lang)
-    if (typeof document !== 'undefined') document.documentElement.lang = next
-  }
-  // Приведение типов вынужденное: тип языкового пакета (`QuasarLanguage`) не
-  // совпадает с параметром `Lang.set` — у последнего он выведен из встроенной
-  // локали, где у `date.prevRangeYears` аргумент обязательный.
-  const set = (lang: unknown): void => apply(lang as Parameters<typeof Lang.set>[0])
-  if (next === 'en') {
-    void import('quasar/lang/en-GB').then((module) => set(module.default))
-  } else {
-    void import('quasar/lang/ru').then((module) => set(module.default))
-  }
 }
 
 /** Язык загружен (для тестов и скрипта проверки переводов). */
