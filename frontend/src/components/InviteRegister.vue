@@ -8,6 +8,7 @@ import { formatPhoneForBackend, formatPhoneInput, isValidPhoneNumber } from '@/u
 import { PASSWORD_MIN_LENGTH, passwordProblem } from '@/utils/passwordPolicy'
 import PhoneInput from '@/components/common/PhoneInput.vue'
 import ConsentCheckbox from '@/components/common/ConsentCheckbox.vue'
+import { t } from '@/i18n'
 
 // Регистрация по персональной ссылке-приглашению (/invite/:token). Публичной
 // регистрации нет — попасть сюда можно только по ссылке, которую владелец
@@ -58,7 +59,7 @@ const submit = async () => {
 
   const formattedPhone = formatPhoneForBackend(phone.value)
   if (!isValidPhoneNumber(formattedPhone)) {
-    errorMessage.value = 'Введите корректный номер телефона.'
+    errorMessage.value = t('Введите корректный номер телефона.')
     return
   }
   const problem = passwordProblem(password.value, { phoneNumber: formattedPhone })
@@ -67,12 +68,14 @@ const submit = async () => {
     return
   }
   if (password.value !== passwordConfirm.value) {
-    errorMessage.value = 'Пароли не совпадают.'
+    errorMessage.value = t('Пароли не совпадают.')
     return
   }
   if (!acceptRules.value) {
     consentError.value = true
-    errorMessage.value = 'Отметьте согласие с правилами сервиса — без него аккаунт создать нельзя.'
+    errorMessage.value = t(
+      'Отметьте согласие с правилами сервиса — без него аккаунт создать нельзя.'
+    )
     return
   }
   consentError.value = false
@@ -87,7 +90,7 @@ const submit = async () => {
       acceptRules.value
     )
   } catch (error) {
-    errorMessage.value = getErrorMessage(error, 'Не удалось завершить регистрацию.')
+    errorMessage.value = getErrorMessage(error, t('Не удалось завершить регистрацию.'))
   } finally {
     busy.value = false
   }

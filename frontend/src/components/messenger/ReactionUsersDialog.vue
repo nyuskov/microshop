@@ -112,8 +112,8 @@ const userIds = computed<number[]>(() => {
 
 const nameOf = (userId: number): string => {
   const member = props.members.find((item) => item.id === userId)
-  if (!member) return 'Участник'
-  return userId === props.myUserId ? 'Вы' : displayName(member)
+  if (!member) return t('Участник')
+  return userId === props.myUserId ? t('Вы') : displayName(member)
 }
 
 /** Аватар участника (миниатюра), если она есть. */

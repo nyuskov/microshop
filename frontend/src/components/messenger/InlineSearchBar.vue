@@ -15,7 +15,10 @@
       {{
         (current ?? 0) > 0
           ? `${current} из ${count}`
-          : `${count} ${pluralRu(count, 'совпадение', 'совпадения', 'совпадений')}`
+          : t('{count} {noun}', {
+              count,
+              noun: plural(count, ['совпадение', 'совпадения', 'совпадений'], ['match', 'matches'])
+            })
       }}
     </span>
     <!-- Стрелки появляются только когда есть куда ходить -->
@@ -53,8 +56,7 @@
 
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
-import { pluralRu } from '@/utils/format'
-import { t } from '@/i18n'
+import { plural, t } from '@/i18n'
 
 /**
  * Поиск по сообщениям внутри чата.

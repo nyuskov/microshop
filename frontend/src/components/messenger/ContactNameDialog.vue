@@ -117,7 +117,7 @@ const submit = async () => {
     emit('saved')
     emit('update:modelValue', false)
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось сохранить контакт')
+    error.value = getErrorMessage(err, t('Не удалось сохранить контакт'))
   } finally {
     busy.value = false
   }
@@ -132,7 +132,7 @@ const remove = async () => {
     emit('removed')
     emit('update:modelValue', false)
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось убрать из контактов')
+    error.value = getErrorMessage(err, t('Не удалось убрать из контактов'))
   } finally {
     busy.value = false
   }

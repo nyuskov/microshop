@@ -28,6 +28,7 @@
 import { computed } from 'vue'
 
 import { icon } from '@/utils/icons'
+import { t } from '@/i18n'
 import {
   clearTranscript,
   recognizeVoice,
@@ -58,9 +59,9 @@ const action = computed(() => transcriptActionFor(transcript.value))
  * кто её не видит.
  */
 const hint = computed(() => {
-  if (action.value === 'cancel') return 'Распознаём — нажмите, чтобы отменить'
-  if (action.value === 'hide') return 'Скрыть текст расшифровки'
-  return 'Расшифровать запись в текст'
+  if (action.value === 'cancel') return t('Распознаём — нажмите, чтобы отменить')
+  if (action.value === 'hide') return t('Скрыть текст расшифровки')
+  return t('Расшифровать запись в текст')
 })
 
 const toggle = () => {

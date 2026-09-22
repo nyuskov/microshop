@@ -207,10 +207,10 @@ const linkOf = (invite: RegistrationInvite): string => inviteLinkFor(invite.toke
 const stateOf = (invite: RegistrationInvite): InviteState => inviteState(invite)
 
 const STATE_LABELS: Record<InviteState, string> = {
-  active: 'действует',
-  used: 'использована',
-  revoked: 'отозвана',
-  expired: 'истекла'
+  active: t('действует'),
+  used: t('использована'),
+  revoked: t('отозвана'),
+  expired: t('истекла')
 }
 // Подпись состояния переводим при показе: язык меняется на лету.
 const stateLabel = (invite: RegistrationInvite): string => t(STATE_LABELS[stateOf(invite)])

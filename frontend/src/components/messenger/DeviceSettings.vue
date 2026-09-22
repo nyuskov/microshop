@@ -71,9 +71,9 @@ const markOf = (state: DeviceSupportState): string => {
 }
 
 const stateLabel = (state: DeviceSupportState): string => {
-  if (state === 'ok') return 'работает'
-  if (state === 'partial') return 'с оговоркой'
-  return 'недоступно'
+  if (state === 'ok') return t('работает')
+  if (state === 'partial') return t('с оговоркой')
+  return t('недоступно')
 }
 </script>
 

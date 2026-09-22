@@ -1335,7 +1335,7 @@ const folderPickerTarget = computed<string>(() => {
     const chat = chats.value.find((item) => item.id === id)
     return chat ? chatTitle(chat, currentUserId.value) : t('Чат')
   }
-  return `${ids.length} ${plural(ids.length, ['чат', 'чата', 'чатов'], ['chat', 'chats'])}`
+  return `${ids.length} ${plural(ids.length, [t('чат'), t('чата'), t('чатов')], ['chat', 'chats'])}`
 })
 
 /** Чаты, которых больше нет, из папок убираем (список чатов уже загружен). */
@@ -1420,7 +1420,7 @@ const toggleChatMuted = async (chatId: number) => {
     await setChatMuted(chatId, next)
   } catch (error) {
     chat.muted = !next
-    console.error('Не удалось изменить mute чата:', getErrorMessage(error))
+    console.error(t('Не удалось изменить mute чата:'), getErrorMessage(error))
   }
 }
 
@@ -1436,7 +1436,7 @@ const bulkSetMuted = async (chatIds: number[], muted: boolean) => {
       await setChatMuted(chat.id, muted)
     } catch (error) {
       chat.muted = previous
-      console.error('Не удалось изменить mute чата:', getErrorMessage(error))
+      console.error(t('Не удалось изменить mute чата:'), getErrorMessage(error))
     }
   }
 }
@@ -1462,7 +1462,7 @@ const applyChatE2ee = async (chatId: number, enabled: boolean) => {
     void prepareChatE2ee(chatId)
   } catch (error) {
     chat.e2ee_enabled = previous
-    console.error('Не удалось изменить тип чата:', getErrorMessage(error))
+    console.error(t('Не удалось изменить тип чата:'), getErrorMessage(error))
   }
 }
 
@@ -1481,12 +1481,12 @@ const distributeGroupKeys = async (chatId: number, rotate = false): Promise<void
     const { missing } = await distributeGroupKey(uid, chatId, ids, { rotate })
     if (missing.length > 0) {
       console.warn(
-        'Ключ группы не удалось отдать участникам (нет ключа устройства):',
+        t('Ключ группы не удалось отдать участникам (нет ключа устройства):'),
         missing.join(', ')
       )
     }
   } catch (error) {
-    console.error('Не удалось раздать ключ группы:', getErrorMessage(error))
+    console.error(t('Не удалось раздать ключ группы:'), getErrorMessage(error))
   }
 }
 
@@ -1511,13 +1511,13 @@ const distributePersonalChatKey = async (chat: Chat, create = true): Promise<voi
     const { raw, missing } = await distributeChatKey(uid, chat.id, ids, { create })
     if (missing.length > 0) {
       console.warn(
-        'Ключ чата не удалось отдать всем устройствам (нет ключа устройства):',
+        t('Ключ чата не удалось отдать всем устройствам (нет ключа устройства):'),
         missing.join(', ')
       )
     }
-    if (!raw) console.warn('Ключ чата не выпущен: обёртки для устройств не сохранились')
+    if (!raw) console.warn(t('Ключ чата не выпущен: обёртки для устройств не сохранились'))
   } catch (error) {
-    console.error('Не удалось раздать ключ чата:', getErrorMessage(error))
+    console.error(t('Не удалось раздать ключ чата:'), getErrorMessage(error))
   }
 }
 
@@ -1536,7 +1536,7 @@ const saveMessageToSelf = async (message: Message) => {
   try {
     await forwardMessage(message.id, selfChat.id)
   } catch (error) {
-    console.error('Не удалось сохранить сообщение:', getErrorMessage(error))
+    console.error(t('Не удалось сохранить сообщение:'), getErrorMessage(error))
   }
 }
 
@@ -1595,7 +1595,7 @@ const fetchViewOnceUrl = async (message: Message): Promise<string | null> => {
       if (ready) return ready
       await new Promise((resolve) => globalThis.setTimeout(resolve, 100))
     }
-    throw new Error('Расшифровка не завершилась')
+    throw new Error(t('Расшифровка не завершилась'))
   }
   const response = await fetch(mediaUrl(file.url))
   if (!response.ok) throw new Error(`Сервер ответил ${response.status}`)
@@ -1724,7 +1724,7 @@ const ensureMessageLoaded = async (messageId: number): Promise<Message | undefin
     }
     return messages.value.find((m) => m.id === messageId)
   } catch (error) {
-    console.error('Не удалось загрузить сообщение с вложением:', getErrorMessage(error))
+    console.error(t('Не удалось загрузить сообщение с вложением:'), getErrorMessage(error))
     return undefined
   }
 }
@@ -2189,7 +2189,7 @@ const channelSubtitle = (chat: Chat): string => {
   if (!card || card.id !== chat.id) return t('канал')
   const noun = plural(
     card.subscribers,
-    ['подписчик', 'подписчика', 'подписчиков'],
+    [t('подписчик'), t('подписчика'), t('подписчиков')],
     ['subscriber', 'subscribers']
   )
   return t('канал · {count} {noun}', { count: card.subscribers, noun })
@@ -2234,7 +2234,7 @@ const loadChannelCard = async (chatId: number) => {
   try {
     channelCard.value = await fetchChannel(chatId)
   } catch (error) {
-    console.error('Не удалось загрузить канал:', getErrorMessage(error))
+    console.error(t('Не удалось загрузить канал:'), getErrorMessage(error))
   }
 }
 
@@ -2253,7 +2253,7 @@ const loadChannelMeta = async (chatId: number) => {
     }
     channelPostMeta.value = next
   } catch (error) {
-    console.error('Не удалось загрузить счётчики постов:', getErrorMessage(error))
+    console.error(t('Не удалось загрузить счётчики постов:'), getErrorMessage(error))
   }
 }
 
@@ -2270,7 +2270,7 @@ const onPostViewed = async (message: Message) => {
   try {
     await markPostViewed(chatId, message.id)
   } catch (error) {
-    console.error('Не удалось отметить просмотр поста:', getErrorMessage(error))
+    console.error(t('Не удалось отметить просмотр поста:'), getErrorMessage(error))
   }
 }
 
@@ -2344,7 +2344,11 @@ watch(
 const groupSubtitle = (chat: Chat): string => {
   const count = chat.users.length
   const online = chat.users.filter((u) => onlineUserIds.value.includes(u.id)).length
-  const noun = plural(count, ['участник', 'участника', 'участников'], ['member', 'members'])
+  const noun = plural(
+    count,
+    [t('участник'), t('участника'), t('участников')],
+    ['member', 'members']
+  )
   return online > 0
     ? t('{noun} · {online} в сети', { noun: `${count} ${noun}`, online })
     : `${count} ${noun}`
@@ -2476,7 +2480,7 @@ const toggleReaction = async (message: Message, emoji: string) => {
     emojiPickerFor.value = null
     replaceMessageInThread(updated)
   } catch (error) {
-    console.error('Не удалось изменить реакцию:', getErrorMessage(error))
+    console.error(t('Не удалось изменить реакцию:'), getErrorMessage(error))
   }
 }
 
@@ -2513,7 +2517,7 @@ const loadChats = async () => {
   try {
     applyChatsFromServer(await fetchMyChats())
   } catch (error) {
-    console.error('Не удалось загрузить чаты:', getErrorMessage(error))
+    console.error(t('Не удалось загрузить чаты:'), getErrorMessage(error))
   } finally {
     loadingChats.value = false
   }
@@ -2546,7 +2550,7 @@ const loadPinned = async (chatId: number) => {
   try {
     pinnedMessages.value = await fetchPinnedMessages(chatId)
   } catch (error) {
-    console.error('Не удалось загрузить закреплённые сообщения:', getErrorMessage(error))
+    console.error(t('Не удалось загрузить закреплённые сообщения:'), getErrorMessage(error))
   }
 }
 
@@ -2554,7 +2558,7 @@ const loadContacts = async () => {
   try {
     await contactsStore.load()
   } catch (error) {
-    console.error('Не удалось загрузить контакты:', getErrorMessage(error))
+    console.error(t('Не удалось загрузить контакты:'), getErrorMessage(error))
   }
 }
 
@@ -2866,7 +2870,7 @@ const makeStickerFromMessage = async (message: Message) => {
     await stickerStore.load(true)
   } catch (error) {
     failSend(
-      getErrorMessage(error, 'Не удалось добавить стикер'),
+      getErrorMessage(error, t('Не удалось добавить стикер')),
       () => void makeStickerFromMessage(message)
     )
   }
@@ -2944,7 +2948,7 @@ const sendStickerImage = async (image: {
   closeExtras()
   try {
     const response = await fetch(image.url)
-    if (!response.ok) throw new Error('Не удалось прочитать стикер')
+    if (!response.ok) throw new Error(t('Не удалось прочитать стикер'))
     const blob = await response.blob()
     // Имя файла несёт метку набора: по ней получатель поймёт, из какого набора
     // стикер, и сможет открыть его целиком — см. utils/presetStickers.ts.
@@ -3268,7 +3272,7 @@ const togglePinMessage = async (message: Message) => {
       await loadPinned(chatId)
     }
   } catch (error) {
-    console.error('Не удалось изменить закрепление:', getErrorMessage(error))
+    console.error(t('Не удалось изменить закрепление:'), getErrorMessage(error))
   }
 }
 
@@ -3276,7 +3280,7 @@ const copyMessage = async (message: Message) => {
   try {
     await navigator.clipboard.writeText(message.text || '')
   } catch (error) {
-    console.error('Не удалось скопировать:', getErrorMessage(error))
+    console.error(t('Не удалось скопировать:'), getErrorMessage(error))
   }
 }
 
@@ -3440,7 +3444,7 @@ const openForwarderChat = async (message: Message) => {
     view.value = 'chats'
     await openChatThread(chat.id)
   } catch (error) {
-    console.error('Не удалось открыть чат с автором:', getErrorMessage(error))
+    console.error(t('Не удалось открыть чат с автором:'), getErrorMessage(error))
   }
 }
 
@@ -3577,7 +3581,7 @@ const onDeleteChatConfirmed = async ({ ids, forAll }: { ids: number[]; forAll: b
       removeDeletedChat(chat)
     }
   } catch (error) {
-    console.error('Не удалось удалить чаты:', getErrorMessage(error))
+    console.error(t('Не удалось удалить чаты:'), getErrorMessage(error))
   }
 }
 
@@ -3690,7 +3694,7 @@ const deleteMessageOf = async (message: Message) => {
       await Promise.all([loadPinned(chatId), loadChats()])
     }
   } catch (error) {
-    console.error('Не удалось удалить сообщение:', getErrorMessage(error))
+    console.error(t('Не удалось удалить сообщение:'), getErrorMessage(error))
   }
 }
 
@@ -3820,7 +3824,7 @@ watch(inlineQuery, (value) => {
   inlineSearchTimer = window.setTimeout(() => {
     inlineSearchTimer = null
     void runInlineServerSearch().catch((error) => {
-      console.error('Не удалось выполнить поиск по сообщениям:', getErrorMessage(error))
+      console.error(t('Не удалось выполнить поиск по сообщениям:'), getErrorMessage(error))
     })
   }, 350)
 })
@@ -3889,7 +3893,7 @@ const refreshChatsQuiet = async () => {
   try {
     applyChatsFromServer(await fetchMyChats())
   } catch (error) {
-    console.error('Не удалось обновить чаты:', getErrorMessage(error))
+    console.error(t('Не удалось обновить чаты:'), getErrorMessage(error))
   }
 }
 
@@ -3914,7 +3918,7 @@ const refreshOpenThreadQuiet = async () => {
       dropChat(chatId)
       return
     }
-    console.error('Не удалось обновить сообщения:', getErrorMessage(error))
+    console.error(t('Не удалось обновить сообщения:'), getErrorMessage(error))
   }
 }
 
@@ -4300,7 +4304,7 @@ const resolveProfileLink = async () => {
       caption: `Логин «${username}» не найден`,
       timeout: 4000
     })
-    console.error('Не удалось открыть ссылку-профиль:', getErrorMessage(error))
+    console.error(t('Не удалось открыть ссылку-профиль:'), getErrorMessage(error))
   } finally {
     profileLinkResolving = false
   }

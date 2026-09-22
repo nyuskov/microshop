@@ -101,10 +101,10 @@ const revokeAll = async () => {
   error.value = ''
   try {
     await authStore.revokeAllSessions()
-    result.value = 'Остальные устройства вышли из аккаунта.'
+    result.value = t('Остальные устройства вышли из аккаунта.')
     state.value = 'done'
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось завершить сессии')
+    error.value = getErrorMessage(err, t('Не удалось завершить сессии'))
   } finally {
     busy.value = null
   }
@@ -118,7 +118,7 @@ const freeze = async () => {
     result.value = await authStore.freezeAccount()
     state.value = 'done'
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось заморозить аккаунт')
+    error.value = getErrorMessage(err, t('Не удалось заморозить аккаунт'))
   } finally {
     busy.value = null
   }

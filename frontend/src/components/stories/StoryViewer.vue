@@ -368,7 +368,7 @@ const authorAvatar = computed(() => {
   return author ? avatarOf(author) : ''
 })
 
-const authorInitials = computed(() => initials(authorName.value || 'П'))
+const authorInitials = computed(() => initials(authorName.value || t('П')))
 
 const age = computed(() => formatStoryAge(current.value?.story.created_at ?? ''))
 
@@ -647,9 +647,9 @@ const isMineReaction = (emoji: string): boolean =>
 const reactionTitle = (emoji: string): string => {
   const mine = isMineReaction(emoji)
   const count = countOf(emoji)
-  if (mine) return 'Убрать свою реакцию'
-  if (count > 0) return `${count} ${count === 1 ? 'реакция' : 'реакций'} — добавить свою`
-  return 'Поставить реакцию'
+  if (mine) return t('Убрать свою реакцию')
+  if (count > 0) return `${count} ${count === 1 ? t('реакция') : t('реакций')} — добавить свою`
+  return t('Поставить реакцию')
 }
 
 const onReact = (emoji: string): void => {
@@ -721,7 +721,7 @@ const loadAudience = async (storyId: number): Promise<void> => {
   } catch (error) {
     audience.value = null
     audienceStoryId = null
-    audienceError.value = getErrorMessage(error, 'Не удалось загрузить аудиторию')
+    audienceError.value = getErrorMessage(error, t('Не удалось загрузить аудиторию'))
   } finally {
     audienceLoading.value = false
   }

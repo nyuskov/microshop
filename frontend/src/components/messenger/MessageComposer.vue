@@ -663,7 +663,7 @@ const addSetFromPanel = (section: PanelSectionItem): void => {
     void stickersStore
       .addPreset(presetPackId)
       .catch((cause: unknown) => {
-        emit('sticker-error', getErrorMessage(cause, 'Не удалось добавить набор'))
+        emit('sticker-error', getErrorMessage(cause, t('Не удалось добавить набор')))
       })
       .finally(() => {
         presetBusyPackId.value = null
@@ -1169,7 +1169,7 @@ const onStickersSelected = (event: Event) => {
         return
       }
     } catch (cause) {
-      emit('sticker-error', getErrorMessage(cause, 'Не удалось добавить стикер'))
+      emit('sticker-error', getErrorMessage(cause, t('Не удалось добавить стикер')))
     }
   })()
 }

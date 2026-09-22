@@ -91,10 +91,10 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { icon } from '@/utils/icons'
-import { formatBytes, pluralRu } from '@/utils/format'
+import { formatBytes } from '@/utils/format'
 import { fileIcon } from '@/utils/media'
 import { useFocusTrap } from '@/composables/useFocusTrap'
-import { t } from '@/i18n'
+import { plural, t } from '@/i18n'
 
 // Оверлей самодельный (не q-dialog) — фокус держим сами, иначе Tab уходит в чат.
 const { container: trapContainer } = useFocusTrap()
@@ -151,7 +151,7 @@ const items = computed<PreviewItem[]>(() =>
     const isImage = file.type.startsWith('image/')
     return {
       key: `${index}-${file.name}`,
-      name: file.name || 'Файл',
+      name: file.name || t('Файл'),
       size: file.size,
       preview: isImage ? previewUrlOf(index, file) : '',
       iconName: fileIcon({ name: file.name, url: '', mime: file.type, size: file.size })
@@ -168,8 +168,11 @@ const columns = computed<number>(() => {
 
 const title = computed<string>(() =>
   props.files.length === 1
-    ? 'Отправить вложение'
-    : `Отправить ${props.files.length} ${pluralRu(props.files.length, 'файл', 'файла', 'файлов')}`
+    ? t('Отправить вложение')
+    : t('Отправить {count} {noun}', {
+        count: props.files.length,
+        noun: plural(props.files.length, ['файл', 'файла', 'файлов'], ['file', 'files'])
+      })
 )
 
 const submit = (): void => {

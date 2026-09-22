@@ -255,7 +255,7 @@ const contactName = computed<string>(() => (peer.value ? contactsStore.nameOf(pe
 const peerName = computed<string>(() => {
   const value =
     props.chat.users.length === 2 ? chatPeerTitle(props.chat, props.currentUserId) : props.chat.name
-  return value || 'Чат'
+  return value || t('Чат')
 })
 const peerAvatar = computed<string | undefined>(() => avatarUrlOf(peer.value))
 
@@ -307,7 +307,7 @@ const localMedia = computed<ChatMediaItem[]>(() =>
       id: message.id,
       timestamp: message.timestamp,
       url: message.file!.url,
-      name: message.file!.name || 'Файл',
+      name: message.file!.name || t('Файл'),
       mime: message.file!.mime,
       size: message.file!.size,
       kind: mediaKindOf({ mime: message.file!.mime, name: message.file!.name })
@@ -337,7 +337,7 @@ const loadMedia = async (reset: boolean) => {
     serverMedia.value = [...serverMedia.value, ...page.filter((item) => !known.has(item.id))]
     mediaHasMore.value = page.length === MEDIA_PAGE_SIZE
   } catch (error) {
-    mediaError.value = getErrorMessage(error, 'Не удалось загрузить вложения')
+    mediaError.value = getErrorMessage(error, t('Не удалось загрузить вложения'))
     mediaHasMore.value = false
   } finally {
     mediaLoading.value = false

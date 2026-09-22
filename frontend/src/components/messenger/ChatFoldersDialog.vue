@@ -256,8 +256,8 @@ const removeFolder = async (id: string) => {
   if (!folder) return
   const agreed = await confirmDialog({
     title: `Удалить папку «${folder.name}»?`,
-    message: 'Чаты останутся на месте — удалится только сам список.',
-    okLabel: 'Удалить',
+    message: t('Чаты останутся на месте — удалится только сам список.'),
+    okLabel: t('Удалить'),
     danger: true
   })
   if (!agreed) return

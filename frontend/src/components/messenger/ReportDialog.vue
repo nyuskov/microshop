@@ -115,7 +115,7 @@ const submit = async () => {
     emit('sent')
     emit('close')
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось отправить жалобу')
+    error.value = getErrorMessage(err, t('Не удалось отправить жалобу'))
   } finally {
     sending.value = false
   }

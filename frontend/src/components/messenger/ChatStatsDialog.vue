@@ -16,7 +16,11 @@
             <div class="total">
               <span class="total-value">{{ stats.messages_total }}</span>
               <span class="total-label">{{
-                pluralRu(stats.messages_total, 'сообщение', 'сообщения', 'сообщений')
+                plural(
+                  stats.messages_total,
+                  ['сообщение', 'сообщения', 'сообщений'],
+                  ['message', 'messages']
+                )
               }}</span>
             </div>
             <p v-if="period" class="stats-period">{{ period }}</p>
@@ -85,8 +89,8 @@ import { fetchChatStats, type ChatStats } from '@/services/chatService'
 import { getErrorMessage } from '@/services/errors'
 import { icon } from '@/utils/icons'
 import { dailyAverage, senderShare, statsBars, statsPeriod } from '@/utils/chatStats'
-import { parseServerTime, pluralRu } from '@/utils/format'
-import { t } from '@/i18n'
+import { parseServerTime } from '@/utils/format'
+import { plural, t } from '@/i18n'
 
 /**
  * «Статистика чата»: сколько писали, когда, кто активнее и что за вложения.
@@ -142,7 +146,7 @@ const load = async () => {
     stats.value = await fetchChatStats(props.chatId)
   } catch (err) {
     stats.value = null
-    error.value = getErrorMessage(err, 'Не удалось загрузить статистику')
+    error.value = getErrorMessage(err, t('Не удалось загрузить статистику'))
   } finally {
     loading.value = false
   }

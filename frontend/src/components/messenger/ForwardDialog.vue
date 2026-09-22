@@ -138,7 +138,7 @@ const sources = computed<Message[]>(() =>
 )
 
 const previewLabel = computed<string>(() =>
-  sources.value.length > 1 ? `Сообщения: ${sources.value.length}` : 'Сообщение'
+  sources.value.length > 1 ? `Сообщения: ${sources.value.length}` : t('Сообщение')
 )
 
 const previewIcon = computed<string | null>(() => {
@@ -172,7 +172,7 @@ const filteredChats = computed<Chat[]>(() => {
 
 const itemSubtitle = (chat: Chat): string => {
   const last = chat.last_message
-  if (!last) return 'Нет сообщений'
+  if (!last) return t('Нет сообщений')
   const body = last.file ? mediaTypeLabel(last.file) : last.text
   if (last.forwarded_from) return `${body} ↪`
   return last.user_id === props.currentUserId ? `Вы: ${body}` : body

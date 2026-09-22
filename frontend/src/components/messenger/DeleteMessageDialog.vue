@@ -85,13 +85,13 @@ const emit = defineEmits<{
 const forAll = ref(false)
 
 const title = computed<string>(() =>
-  props.count > 1 ? `Удалить сообщения (${props.count})?` : 'Удалить сообщение?'
+  props.count > 1 ? `Удалить сообщения (${props.count})?` : t('Удалить сообщение?')
 )
 
 const bodyText = computed<string>(() =>
   props.count > 1
-    ? 'Сообщения исчезнут из вашей переписки.'
-    : 'Сообщение исчезнет из вашей переписки.'
+    ? t('Сообщения исчезнут из вашей переписки.')
+    : t('Сообщение исчезнет из вашей переписки.')
 )
 </script>
 

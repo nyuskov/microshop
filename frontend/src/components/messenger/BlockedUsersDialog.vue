@@ -95,7 +95,7 @@ const load = async () => {
   try {
     users.value = await fetchBlockedUsers()
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось загрузить список')
+    error.value = getErrorMessage(err, t('Не удалось загрузить список'))
   } finally {
     loading.value = false
   }
@@ -110,7 +110,7 @@ const unblock = async (userId: number) => {
     users.value = users.value.filter((user) => user.id !== userId)
     emit('unblocked')
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось снять блокировку')
+    error.value = getErrorMessage(err, t('Не удалось снять блокировку'))
   } finally {
     busyId.value = null
   }
@@ -128,7 +128,7 @@ const toggleKind = async (user: BlockedUser) => {
     )
     emit('unblocked')
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось изменить блокировку')
+    error.value = getErrorMessage(err, t('Не удалось изменить блокировку'))
   } finally {
     busyId.value = null
   }

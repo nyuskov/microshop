@@ -104,7 +104,7 @@ const submit = async () => {
     emit('deleted')
     emit('close')
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось удалить аккаунт')
+    error.value = getErrorMessage(err, t('Не удалось удалить аккаунт'))
   } finally {
     deleting.value = false
   }

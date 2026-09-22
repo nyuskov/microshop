@@ -94,7 +94,7 @@ const emit = defineEmits<{
   (e: 'sent'): void
 }>()
 
-const QUICK_QUERIES = ['😀', 'кот', 'привет', 'спасибо', 'праздник', 'круто']
+const QUICK_QUERIES = ['😀', t('кот'), t('привет'), t('спасибо'), t('праздник'), t('круто')]
 
 /** Быстрые запросы — тоже лента: на телефоне она не влезает целиком, а в
  *  веб-версии без прокрутки до правого края было не добраться. */
@@ -122,7 +122,7 @@ const loadTrending = async () => {
   try {
     results.value = await fetchTrendingGifs()
   } catch {
-    error.value = 'Не удалось загрузить гифки'
+    error.value = t('Не удалось загрузить гифки')
   } finally {
     loading.value = false
   }
@@ -135,7 +135,7 @@ const doSearch = async (chip?: string) => {
   try {
     results.value = query.value.trim() ? await searchGifs(query.value) : await fetchTrendingGifs()
   } catch {
-    error.value = 'Не удалось найти гифки'
+    error.value = t('Не удалось найти гифки')
   } finally {
     loading.value = false
   }
@@ -149,7 +149,7 @@ const sendGif = async (gif: GiphyGif) => {
     await sendGifMessage(props.chatId, gif.gif, props.replyToId ?? null, props.caption ?? '')
     emit('sent')
   } catch {
-    error.value = 'Не удалось отправить GIF'
+    error.value = t('Не удалось отправить GIF')
   } finally {
     sendingId.value = null
   }

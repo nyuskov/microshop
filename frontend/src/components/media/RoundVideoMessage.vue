@@ -196,7 +196,7 @@ const openPictureInPicture = async () => {
     if (video.paused) await video.play().catch(() => undefined)
     await video.requestPictureInPicture()
   } catch (error) {
-    console.error('Не удалось открыть плавающее окно:', error)
+    console.error(t('Не удалось открыть плавающее окно:'), error)
   }
 }
 

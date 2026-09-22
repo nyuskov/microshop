@@ -120,7 +120,7 @@ const props = withDefaults(
     /** id кнопки — чтобы работал `<label for="…">`. */
     id?: string
   }>(),
-  { placeholder: 'Не выбрано', variant: 'field' }
+  { placeholder: t('Не выбрано'), variant: 'field' }
 )
 
 const emit = defineEmits<{ (e: 'update:modelValue', value: SelectValue): void }>()

@@ -208,11 +208,11 @@ const saveBackup = async (): Promise<void> => {
   try {
     const text = await createBackup(userId, passphrase.value)
     download(text, backupFileName(userId))
-    done.value = 'Файл копии сохранён. Держите его отдельно от парольной фразы.'
+    done.value = t('Файл копии сохранён. Держите его отдельно от парольной фразы.')
     passphrase.value = ''
     repeat.value = ''
   } catch (failure) {
-    error.value = failure instanceof Error ? failure.message : 'Не удалось сохранить копию'
+    error.value = failure instanceof Error ? failure.message : t('Не удалось сохранить копию')
   } finally {
     busy.value = false
   }
@@ -239,7 +239,7 @@ const restore = async (): Promise<void> => {
       }
     }, 1200)
   } catch (failure) {
-    error.value = failure instanceof Error ? failure.message : 'Не удалось восстановить ключ'
+    error.value = failure instanceof Error ? failure.message : t('Не удалось восстановить ключ')
   } finally {
     busy.value = false
   }

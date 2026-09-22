@@ -106,7 +106,7 @@ async function load() {
     enabled.value = real
     message.value = real ? status.message : ''
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось узнать состояние режима')
+    error.value = getErrorMessage(err, t('Не удалось узнать состояние режима'))
   }
 }
 
@@ -124,10 +124,10 @@ async function save() {
     enabled.value = real
     message.value = real ? status.message : ''
     notice.value = real
-      ? 'Режим включён: пользователи видят экран технических работ.'
-      : 'Режим выключен: приложение снова работает как обычно.'
+      ? t('Режим включён: пользователи видят экран технических работ.')
+      : t('Режим выключен: приложение снова работает как обычно.')
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось переключить режим')
+    error.value = getErrorMessage(err, t('Не удалось переключить режим'))
   } finally {
     busy.value = false
   }

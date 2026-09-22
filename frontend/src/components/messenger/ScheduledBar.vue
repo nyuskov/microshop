@@ -77,7 +77,7 @@ watch(
 const preview = (item: ScheduledMessage): string => {
   const text = props.decrypted?.[item.id] ?? (item.encrypted ? '' : item.text)
   const trimmed = text.trim()
-  if (!trimmed) return 'Зашифрованное сообщение'
+  if (!trimmed) return t('Зашифрованное сообщение')
   return trimmed.length > 80 ? `${trimmed.slice(0, 80)}…` : trimmed
 }
 </script>

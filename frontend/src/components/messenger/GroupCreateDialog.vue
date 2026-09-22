@@ -155,7 +155,7 @@ const tryCreate = async () => {
     )
     emit('created', chat)
   } catch (err) {
-    error.value = getErrorMessage(err, 'Не удалось создать группу')
+    error.value = getErrorMessage(err, t('Не удалось создать группу'))
   } finally {
     busy.value = false
   }

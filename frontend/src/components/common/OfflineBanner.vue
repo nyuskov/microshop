@@ -32,9 +32,9 @@ const { online, justRestored, syncing, bannerVisible } = useOnlineStatus()
  *  - данные добраны — «Связь восстановлена» (зелёная) на пару секунд.
  */
 const text = computed(() => {
-  if (!online.value) return 'Нет подключения к интернету'
-  if (syncing.value) return 'Соединение…'
-  if (justRestored.value) return 'Связь восстановлена'
+  if (!online.value) return t('Нет подключения к интернету')
+  if (syncing.value) return t('Соединение…')
+  if (justRestored.value) return t('Связь восстановлена')
   return ''
 })
 

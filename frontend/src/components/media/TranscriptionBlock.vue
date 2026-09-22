@@ -129,9 +129,9 @@ const canTranslate = canOfferTranslation()
 /** Подпись кнопки перевода по тому же состоянию, что и у пункта меню. */
 const translationLabel = computed<string>(() => {
   const action = translationActionFor(translationState.value)
-  if (action === 'cancel') return 'Перевод…'
-  if (action === 'hide') return 'Скрыть перевод'
-  return 'Перевести'
+  if (action === 'cancel') return t('Перевод…')
+  if (action === 'hide') return t('Скрыть перевод')
+  return t('Перевести')
 })
 
 /** Перевод расшифровки — тот же путь, что и у меню: `toggleTranslation`. */
@@ -155,15 +155,15 @@ const runningLabel = computed<string>(() => {
   const state = transcript.value
   if (!state || state.status !== 'running') return ''
   if (state.text) return state.text
-  if (state.stage === 'audio') return 'Готовим запись…'
+  if (state.stage === 'audio') return t('Готовим запись…')
   if (state.stage === 'download') {
     const percent = state.progress ? Math.round(state.progress * 100) : 0
     return percent > 0
       ? `Скачиваем модель распознавания… ${percent}%`
-      : 'Скачиваем модель распознавания…'
+      : t('Скачиваем модель распознавания…')
   }
-  if (state.stage === 'recognize') return 'Распознаём на устройстве…'
-  return 'Слушаем запись…'
+  if (state.stage === 'recognize') return t('Распознаём на устройстве…')
+  return t('Слушаем запись…')
 })
 
 /**
@@ -176,12 +176,14 @@ const runningLabel = computed<string>(() => {
 const engineNote = computed<string>(() => {
   const via = transcript.value?.via
   if (via === 'device') {
-    return 'Распознано на устройстве моделью в браузере — звук и текст никуда не отправлялись.'
+    return t('Распознано на устройстве моделью в браузере — звук и текст никуда не отправлялись.')
   }
   if (via === 'system') {
-    return 'Распознано распознавателем устройства — наш сервер звук не получает.'
+    return t('Распознано распознавателем устройства — наш сервер звук не получает.')
   }
-  return 'Распознаёт браузер устройства — в E2EE-чате текст на сервер не уходит, но распознавание может обращаться к сервису браузера.'
+  return t(
+    'Распознаёт браузер устройства — в E2EE-чате текст на сервер не уходит, но распознавание может обращаться к сервису браузера.'
+  )
 })
 
 const copy = async () => {
