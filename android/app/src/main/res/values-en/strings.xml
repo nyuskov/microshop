@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Английские строки Android-оболочки.
+
+     Почему отдельный файл, а не профиль: эти подписи показывает САМ Android —
+     каналы уведомлений в системных настройках, экран «нет соединения», диалог
+     выбора файла. Они рисуются до того, как веб-приложение загрузится и узнает
+     язык профиля, поэтому единственный доступный признак — язык системы.
+     `values/strings.xml` остаётся русским (базовый), этот файл берётся на
+     английской системе. -->
+<resources>
+    <string name="push_channel_messages_desc">Messages and new chats</string>
+    <string name="push_channel_calls_title">Calls</string>
+    <string name="push_channel_calls_desc">Incoming calls: high priority, vibration and sound</string>
+
+    <string name="choose_file">Choose file</string>
+    <string name="permission_denied">This feature is unavailable without this permission</string>
+    <string name="no_app_for_link">No app can open this link</string>
+
+    <string name="offline_title">No connection</string>
+    <string name="offline_hint">Check your internet connection and try again.</string>
+    <string name="retry">Retry</string>
+</resources>

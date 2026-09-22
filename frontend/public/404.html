@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Страница не найдена — Pismo</title>
+    <title>Страница не найдена — Pismo / Page not found</title>
     <!-- Панель браузера под текущую схему: экран занимает весь вьюпорт, полоска
          сверху не должна выбиваться из фона. -->
     <meta name="theme-color" content="#0f141b" media="(prefers-color-scheme: dark)" />
@@ -304,18 +304,23 @@
 
     <main class="hero">
       <p class="code">404</p>
-      <h1>Страница не найдена</h1>
+      <h1>Страница не найдена<br />Page not found</h1>
+      <!-- Страница статическая, а язык человек выбирает в профиле уже ВНУТРИ
+           приложения — поэтому подпись двуязычная: иначе одна из половин
+           читателей получила бы чужой язык. -->
       <p class="lead">
         Возможно, ссылка устарела, чат удалён или в адресе опечатка. Проверьте адрес или вернитесь в
-        приложение.
+        приложение.<br />
+        The link may be outdated, the chat deleted, or the address mistyped. Check the address or go
+        back to the app.
       </p>
       <div class="actions">
-        <a class="btn btn--primary" href="/">Открыть Pismo</a>
+        <a class="btn btn--primary" href="/">Открыть Pismo / Open Pismo</a>
       </div>
     </main>
 
     <footer class="foot">
-      <span>Кажется, это ошибка приложения?</span>
+      <span>Кажется, это ошибка приложения? / Looks like an app error?</span>
       <a href="mailto:nyuskov@gmail.com">nyuskov@gmail.com</a>
     </footer>
   </body>

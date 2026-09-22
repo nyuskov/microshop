@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Что-то пошло не так — Pismo</title>
+    <title>Что-то пошло не так — Pismo / Something went wrong</title>
     <!-- Панель браузера под текущую схему: экран занимает весь вьюпорт, полоска
          сверху не должна выбиваться из фона. -->
     <meta name="theme-color" content="#0f141b" media="(prefers-color-scheme: dark)" />
@@ -305,21 +305,25 @@
 
     <main class="hero">
       <p class="code">500</p>
-      <h1>Что-то пошло не так</h1>
+      <h1>Что-то пошло не так<br />Something went wrong</h1>
+      <!-- Подпись двуязычная: язык интерфейса живёт в профиле внутри
+           приложения, а эта страница рисуется без него. -->
       <p class="lead">
         На сервере произошла ошибка — мы уже разбираемся. Обычно помогает обновить страницу через
-        минуту.
+        минуту.<br />
+        An error occurred on the server — we are looking into it. Reloading the page in a minute
+        usually helps.
       </p>
       <div class="actions">
         <!-- Пустой href = адрес текущей страницы, то есть обычная перезагрузка.
              Так действие работает без JavaScript (его запрещает CSP). -->
-        <a class="btn btn--primary" href="">Обновить</a>
-        <a class="btn" href="/">Открыть Pismo</a>
+        <a class="btn btn--primary" href="">Обновить / Reload</a>
+        <a class="btn" href="/">Открыть Pismo / Open Pismo</a>
       </div>
     </main>
 
     <footer class="foot">
-      <span>Не помогло? Напишите на</span>
+      <span>Не помогло? Напишите на / Still broken? Write to</span>
       <a href="mailto:nyuskov@gmail.com">nyuskov@gmail.com</a>
     </footer>
   </body>

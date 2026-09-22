@@ -14,17 +14,21 @@ import { describe, expect, it } from 'vitest'
 // Корень проекта: в vitest `import.meta.url` виртуальный, поэтому идём от cwd.
 const read = (name: string): string => readFileSync(resolve(process.cwd(), 'public', name), 'utf8')
 
-const PAGES: Array<[string, string]> = [
-  ['404.html', 'Страница не найдена'],
-  ['500.html', 'Что-то пошло не так']
+const PAGES: Array<[string, string, string]> = [
+  ['404.html', 'Страница не найдена', 'Page not found'],
+  ['500.html', 'Что-то пошло не так', 'Something went wrong']
 ]
 
-describe.each(PAGES)('статическая страница %s', (file, title) => {
+describe.each(PAGES)('статическая страница %s', (file, title, titleEn) => {
   const html = read(file)
 
   it('содержит заголовок и кнопку возврата в приложение', () => {
     expect(html).toContain(title)
     expect(html).toContain('href="/"')
+  })
+
+  it('подписана на двух языках: язык известен только внутри приложения', () => {
+    expect(html).toContain(titleEn)
   })
 
   it('не тянет внешние ресурсы и не регистрирует service worker', () => {
