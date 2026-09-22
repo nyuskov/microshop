@@ -11,8 +11,11 @@
 
       <q-card-section class="mod-body">
         <p class="mod-danger">
-          Аккаунт и все данные будут удалены <strong>{{ t('безвозвратно') }}</strong
-          >: профиль, аватар, переписка, вложения, push-подписки. Восстановить их не получится.
+          {{ t('Аккаунт и все данные будут удалены') }} <strong>{{ t('безвозвратно') }}</strong
+          >:
+          {{
+            t('профиль, аватар, переписка, вложения, push-подписки. Восстановить их не получится.')
+          }}
         </p>
         <p class="mod-hint">
           {{ t('У собеседников сохранится история переписки, но ваши сообщения исчезнут.') }}
@@ -39,7 +42,7 @@
         </div>
 
         <label class="mod-label gap-top" for="delete-account-confirm">
-          Введите <code>{{ DELETE_ACCOUNT_CONFIRM }}</code> для подтверждения
+          {{ t('Введите {code} для подтверждения', { code: DELETE_ACCOUNT_CONFIRM }) }}
         </label>
         <input
           id="delete-account-confirm"

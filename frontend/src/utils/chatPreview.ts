@@ -162,6 +162,6 @@ export const previewText = (chat: Chat, currentUserId: number | null): string =>
  * как в цитатах и закреплённых (`utils/media.ts::messageSnippet`).
  */
 const lastBody = (message: Message): string => {
-  if (message.kind === 'call') return callMessageText(message) ?? 'Звонок'
+  if (message.kind === 'call') return callMessageText(message) ?? t('Звонок')
   return message.file ? mediaTypeLabel(message.file) : plainMessageText(message.text)
 }

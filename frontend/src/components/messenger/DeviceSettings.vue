@@ -8,9 +8,7 @@
       }}
     </p>
 
-    <p class="device-where">
-      Открыто: <strong>{{ label }}</strong> · {{ summary }}
-    </p>
+    <p class="device-where">{{ t('Открыто: {label}', { label }) }} · {{ summary }}</p>
 
     <ul class="device-list">
       <li v-for="item in items" :key="item.key" class="device-item">

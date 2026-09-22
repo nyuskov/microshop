@@ -210,7 +210,7 @@
             :class="{ active: extrasPanel === 'emoji' }"
             @click="emit('set-extras-tab', 'emoji')"
           >
-            Эмодзи
+            {{ t('Эмодзи') }}
           </button>
           <button
             type="button"
@@ -218,7 +218,7 @@
             :class="{ active: extrasPanel === 'stickers' }"
             @click="emit('set-extras-tab', 'stickers')"
           >
-            Стикеры
+            {{ t('Стикеры') }}
           </button>
           <button
             type="button"
@@ -289,7 +289,7 @@
               v-for="(section, index) in panelSections"
               :key="section.key"
               :section-key="section.key"
-              :title="section.title"
+              :title="t(section.title)"
               :count="section.images.length || section.emojis.length"
               :force="index <= forcedSectionsUpTo"
             >

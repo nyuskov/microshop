@@ -528,7 +528,7 @@ const applyMute = async (minutes: number | null) => {
 const applyBan = async (member: ChatMember) => {
   const name = displayName(member)
   const agreed = await confirmDialog({
-    title: `Забанить ${name}?`,
+    title: t('Забанить {name}?', { name }),
     message: t(
       'Человек будет исключён и не сможет вернуться по ссылке-приглашению, пока бан не снимут.'
     ),

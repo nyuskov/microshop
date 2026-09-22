@@ -58,7 +58,9 @@
       <template #extra>
         <button
           class="am-speed"
-          :title="`Скорость ${speedLabel(playbackSpeed)} — нажмите, чтобы изменить`"
+          :title="
+            t('Скорость {speed} — нажмите, чтобы изменить', { speed: speedLabel(playbackSpeed) })
+          "
           @click="onCycleSpeed"
         >
           {{ speedLabel(playbackSpeed) }}
@@ -221,9 +223,9 @@ const onSeekEnd = () => {
 
 const formatBytes = (size: number | null | undefined): string => {
   if (!size) return ''
-  if (size < 1024) return `${size} Б`
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} КБ`
-  return `${(size / (1024 * 1024)).toFixed(1)} МБ`
+  if (size < 1024) return `${size} ${t('Б')}`
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} ${t('КБ')}`
+  return `${(size / (1024 * 1024)).toFixed(1)} ${t('МБ')}`
 }
 
 /** Скорость задаётся на самом элементе `<audio>` — держим её в актуальном виде. */

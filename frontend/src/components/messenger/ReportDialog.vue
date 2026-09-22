@@ -10,9 +10,11 @@
 
       <q-card-section class="mod-body">
         <p class="mod-hint">
-          Жалоба на <strong>{{ userName }}</strong
-          ><template v-if="messagePreview"> — сообщение: «{{ messagePreview }}»</template>. Мы
-          проверим её и примем меры.
+          {{ t('Жалоба на') }} <strong>{{ userName }}</strong
+          ><template v-if="messagePreview">{{
+            t(' — сообщение: «{preview}»', { preview: messagePreview })
+          }}</template
+          >{{ t('. Мы проверим её и примем меры.') }}
         </p>
 
         <div class="mod-reasons">
@@ -47,7 +49,7 @@
         <p v-if="error" class="mod-error" role="alert">{{ error }}</p>
 
         <p class="mod-rules">
-          Что считается нарушением —
+          {{ t('Что считается нарушением —') }}
           <a href="/community.html" target="_blank" rel="noopener">{{ t('правила сообщества') }}</a
           >.
         </p>

@@ -98,7 +98,7 @@
           target="_blank"
           rel="noopener"
         >
-          Открыть файл
+          {{ t('Открыть файл') }}
         </a>
       </div>
 
@@ -191,7 +191,7 @@
           class="viewer-reply-input"
           type="text"
           maxlength="500"
-          :placeholder="`Ответить ${authorName}…`"
+          :placeholder="t('Ответить {name}…', { name: authorName })"
           :aria-label="t('Ответить на историю')"
           @keydown.stop
         />

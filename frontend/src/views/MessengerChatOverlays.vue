@@ -56,10 +56,10 @@
       <q-card-section class="delchat-body">
         <p class="delchat-text">
           <template v-if="deleteChatBulkIds.length">
-            Удалить выбранные чаты ({{ deleteChatBulkIds.length }})?
+            {{ t('Удалить выбранные чаты ({count})?', { count: deleteChatBulkIds.length }) }}
           </template>
           <template v-else>
-            Удалить чат с <b>{{ deleteChatTitle }}</b
+            {{ t('Удалить чат с') }} <b>{{ deleteChatTitle }}</b
             >?
           </template>
         </p>
@@ -90,7 +90,7 @@
  */
 import { computed, defineAsyncComponent, ref } from 'vue'
 import { useMobileLayer } from '@/composables/useMobileOverlay'
-import { chatPeer, displayName, isGroupChat } from '@/utils/user'
+import { chatPeer, displayName, isGroupChat, savedMessagesTitle } from '@/utils/user'
 import type { Chat, ChatUser, Message } from '@/types'
 import { t } from '@/i18n'
 
@@ -149,6 +149,7 @@ const deleteChatScope = ref<'me' | 'all'>('me')
 
 /** Название чата для вопроса «Удалить чат с …?». */
 const chatDeleteLabel = (chat: Chat): string => {
+  if (chat.is_self) return savedMessagesTitle(chat.name)
   const peer = chatPeer(chat, props.currentUserId)
   return chat.users.length === 2 && peer ? displayName(peer) : chat.name
 }

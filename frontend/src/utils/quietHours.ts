@@ -62,10 +62,14 @@ export const quietHoursSummary = (options: {
   if (isEmptyWindow(options.start, options.end)) {
     return t('Границы совпали — тишины не будет, уведомления приходят круглосуточно')
   }
-  const window = `с ${formatMinutes(options.start)} до ${formatMinutes(options.end)}`
   const night = crossesMidnight(options.start, options.end) ? t(' (через ночь)') : ''
   const calls = options.allowCalls ? t('звонки разрешены') : t('звонки тоже не приходят')
-  return `Не беспокоить ${window}${night}; ${calls}`
+  return t('Не беспокоить с {start} до {end}{night}; {calls}', {
+    start: formatMinutes(options.start),
+    end: formatMinutes(options.end),
+    night,
+    calls
+  })
 }
 
 /**

@@ -44,7 +44,9 @@
         <button
           v-else
           class="rvm-chip rvm-speed"
-          :title="`Скорость ${speedLabel(playbackSpeed)} — нажмите, чтобы изменить`"
+          :title="
+            t('Скорость {speed} — нажмите, чтобы изменить', { speed: speedLabel(playbackSpeed) })
+          "
           @click.stop="onCycleSpeed"
         >
           <span class="rvm-speed-label">{{ speedLabel(playbackSpeed) }}</span>

@@ -16,7 +16,7 @@ import { deviceLabelOf, fetchSecurityLog, type SecurityLogEntry } from '@/servic
 import { askTextDialog, confirmDialog } from '@/utils/appDialogs'
 import { parseServerTime } from '@/utils/format'
 import { passwordProblem, passwordStrength } from '@/utils/passwordPolicy'
-import { t } from '@/i18n'
+import { t, dateLocale } from '@/i18n'
 
 /** Сколько событий журнала показываем (сервер хранит 180 дней). */
 const SECURITY_LOG_LIMIT = 20
@@ -290,7 +290,7 @@ export function useAccountSecurity(deps: AccountSecurityDeps) {
   const sessionTime = (iso: string): string => {
     const date = parseServerTime(iso)
     if (Number.isNaN(date.getTime())) return ''
-    return date.toLocaleString('ru-RU', {
+    return date.toLocaleString(dateLocale(), {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',

@@ -15,6 +15,7 @@
 
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { Notify } from 'quasar'
+import { t } from '@/i18n'
 
 import { blockUser, fetchBlockState, unblockUser, type BlockState } from '@/services/moderation'
 import { getErrorMessage } from '@/services/errors'
@@ -109,7 +110,7 @@ export function usePeerBlocking(deps: PeerBlockingDeps): PeerBlockingApi {
       await deps.refreshChats()
     } catch (error) {
       Notify.create({
-        message: getErrorMessage(error, 'Не удалось заблокировать пользователя'),
+        message: getErrorMessage(error, t('Не удалось заблокировать пользователя')),
         color: 'negative',
         timeout: 4000
       })
@@ -153,7 +154,7 @@ export function usePeerBlocking(deps: PeerBlockingDeps): PeerBlockingApi {
       }
     } catch (error) {
       Notify.create({
-        message: getErrorMessage(error, 'Не удалось изменить запрет звонков'),
+        message: getErrorMessage(error, t('Не удалось изменить запрет звонков')),
         color: 'negative',
         timeout: 4000
       })
@@ -167,7 +168,7 @@ export function usePeerBlocking(deps: PeerBlockingDeps): PeerBlockingApi {
       await deps.refreshChats()
     } catch (error) {
       Notify.create({
-        message: getErrorMessage(error, 'Не удалось снять блокировку'),
+        message: getErrorMessage(error, t('Не удалось снять блокировку')),
         color: 'negative',
         timeout: 4000
       })

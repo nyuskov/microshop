@@ -182,7 +182,14 @@ import ContactNameDialog from '@/components/messenger/ContactNameDialog.vue'
 import SafetyNumberDialog from '@/components/messenger/SafetyNumberDialog.vue'
 import { useMobileLayer } from '@/composables/useMobileOverlay'
 import { useContactsStore } from '@/stores/contacts'
-import { avatarStyle, avatarUrlOf, chatPeer, chatPeerTitle, initials } from '@/utils/user'
+import {
+  avatarStyle,
+  avatarUrlOf,
+  chatPeer,
+  chatPeerTitle,
+  initials,
+  savedMessagesTitle
+} from '@/utils/user'
 import { formatBytes, formatMsgTime } from '@/utils/format'
 import { fileIcon, mediaKindOf } from '@/utils/media'
 import { t } from '@/i18n'
@@ -253,8 +260,12 @@ useMobileLayer(
 const contactName = computed<string>(() => (peer.value ? contactsStore.nameOf(peer.value.id) : ''))
 
 const peerName = computed<string>(() => {
-  const value =
-    props.chat.users.length === 2 ? chatPeerTitle(props.chat, props.currentUserId) : props.chat.name
+  // Чат с собой: серверное имя русское, показываем перевод.
+  const value = props.chat.is_self
+    ? savedMessagesTitle(props.chat.name)
+    : props.chat.users.length === 2
+      ? chatPeerTitle(props.chat, props.currentUserId)
+      : props.chat.name
   return value || t('Чат')
 })
 const peerAvatar = computed<string | undefined>(() => avatarUrlOf(peer.value))

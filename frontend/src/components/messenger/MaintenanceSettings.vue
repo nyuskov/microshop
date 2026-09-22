@@ -35,8 +35,12 @@
     <p class="maintenance-counter">{{ message.length }} / {{ MESSAGE_MAX_LENGTH }}</p>
 
     <p v-if="state" class="maintenance-state">
-      <template v-if="state.enabled">Включён с {{ momentOf(state.since) }}</template>
-      <template v-else>Последнее переключение: {{ momentOf(state.since) || '—' }}</template>
+      <template v-if="state.enabled">{{
+        t('Включён с {time}', { time: momentOf(state.since) })
+      }}</template>
+      <template v-else>
+        {{ t('Последнее переключение: {time}', { time: momentOf(state.since) || '—' }) }}
+      </template>
     </p>
 
     <button class="maintenance-btn primary" type="button" :disabled="busy" @click="save">
@@ -70,7 +74,7 @@ import {
 } from '@/services/maintenance'
 import { parseServerTime } from '@/utils/format'
 import { icon } from '@/utils/icons'
-import { t } from '@/i18n'
+import { dateLocale, t } from '@/i18n'
 
 /** Предел длины совпадает с серверным (`api_v1/system/views.py`). */
 const MESSAGE_MAX_LENGTH = 300
@@ -87,7 +91,7 @@ const momentOf = (iso: string | null): string => {
   if (!iso) return ''
   const date = parseServerTime(iso)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleString('ru-RU', {
+  return date.toLocaleString(dateLocale(), {
     day: '2-digit',
     month: '2-digit',
     hour: '2-digit',

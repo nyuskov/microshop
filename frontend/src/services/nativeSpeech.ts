@@ -17,6 +17,7 @@
  */
 
 import { isNativeApp, nativeBridge } from './nativePush'
+import { t } from '@/i18n'
 import { describeAudioError, loadAudioBuffer, pcmChunks, toPcm16Mono16k } from '@/utils/audioPcm'
 
 /** Сколько байт PCM отдаём нативному слою за один вызов (~6 с записи). */
@@ -71,7 +72,11 @@ export async function recognizeWithNative(
 ): Promise<NativeSpeechResult> {
   const bridge = nativeBridge()
   if (!bridge?.speechBegin || !bridge.speechChunk) {
-    return { status: 'failed', text: '', error: 'Распознавание недоступно на этом устройстве' }
+    return {
+      status: 'failed',
+      text: '',
+      error: t('Распознавание недоступно на этом устройстве')
+    }
   }
 
   const id = String(messageId)
@@ -118,7 +123,11 @@ export async function recognizeWithNative(
   // бы — особенно на коротком голосовом.
   window.addEventListener('pismo:speech', listener)
   timer = window.setTimeout(() => {
-    settle({ status: 'failed', text: '', error: 'Распознавание не ответило' })
+    settle({
+      status: 'failed',
+      text: '',
+      error: t('Распознавание не ответило')
+    })
   }, ANSWER_TIMEOUT_MS)
   cancels.set(messageId, () => {
     cancelled = true
@@ -139,11 +148,19 @@ export async function recognizeWithNative(
       return await finished
     }
     if (!bridge.speechBegin(id, language)) {
-      settle({ status: 'failed', text: '', error: 'Распознавание недоступно на этом устройстве' })
+      settle({
+        status: 'failed',
+        text: '',
+        error: t('Распознавание недоступно на этом устройстве')
+      })
     } else {
       const chunks = pcmChunks(pcm, NATIVE_CHUNK_BYTES)
       if (!chunks.length) {
-        settle({ status: 'failed', text: '', error: 'Распознавание не получило звук' })
+        settle({
+          status: 'failed',
+          text: '',
+          error: t('Распознавание не получило звук')
+        })
       }
       chunks.forEach((chunk, index) => {
         if (cancelled || done) return

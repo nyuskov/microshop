@@ -16,17 +16,19 @@
 
 import { ref } from 'vue'
 
+import { t } from '@/i18n'
+
 /** Код в `detail.code` ответа 503: по нему отличаем техработы от аварии. */
 export const MAINTENANCE_CODE = 'maintenance'
 
 /** Текст по умолчанию: его показываем, если сервер своего не прислал. */
-export const DEFAULT_MAINTENANCE_TEXT = 'Скоро вернёмся.'
+export const defaultMaintenanceText = (): string => t('Скоро вернёмся.')
 
 /** Показывает ли приложение экран технических работ прямо сейчас. */
 export const maintenanceActive = ref(false)
 
 /** Текст на экране техработ (задаёт администратор, иначе текст по умолчанию). */
-export const maintenanceText = ref(DEFAULT_MAINTENANCE_TEXT)
+export const maintenanceText = ref(defaultMaintenanceText())
 
 /**
  * Администратор сервиса: ему экран НЕ показываем.
@@ -63,18 +65,18 @@ export function maintenanceMessageOf(error: unknown): string | null {
   if ((detail as { code?: unknown }).code !== MAINTENANCE_CODE) return null
 
   const message = (detail as { message?: unknown }).message
-  return typeof message === 'string' && message.trim() ? message : DEFAULT_MAINTENANCE_TEXT
+  return typeof message === 'string' && message.trim() ? message : defaultMaintenanceText()
 }
 
 /** Включает экран технических работ (администратору — не показываем). */
 export function showMaintenance(message?: string | null): void {
   if (viewerIsAdmin) return
-  maintenanceText.value = message?.trim() ? message : DEFAULT_MAINTENANCE_TEXT
+  maintenanceText.value = message?.trim() ? message : defaultMaintenanceText()
   maintenanceActive.value = true
 }
 
 /** Убирает экран технических работ (режим выключили). */
 export function hideMaintenance(): void {
   maintenanceActive.value = false
-  maintenanceText.value = DEFAULT_MAINTENANCE_TEXT
+  maintenanceText.value = defaultMaintenanceText()
 }

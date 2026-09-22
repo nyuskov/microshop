@@ -14,7 +14,9 @@
     <!-- Результаты импорта из телефонной книги (показываются прямо в списке) -->
     <div v-if="props.phoneMatched !== null && !props.phoneImportOpen" class="phone-inline">
       <div class="phone-inline-head">
-        <span class="phone-result-title">Из телефонной книги: {{ props.phoneMatched.length }}</span>
+        <span class="phone-result-title">
+          {{ t('Из телефонной книги: {count}', { count: props.phoneMatched.length }) }}
+        </span>
         <button
           class="phone-inline-clear"
           :title="t('Закрыть результаты')"

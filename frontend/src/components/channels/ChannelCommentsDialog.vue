@@ -2,7 +2,8 @@
   <q-card class="ch-comments-card" :class="{ 'ch-comments-card--full': fullscreen }">
     <q-card-section class="row no-wrap items-center ch-comments-head">
       <div class="text-subtitle1 text-weight-medium ellipsis">
-        Комментарии<template v-if="comments.length"> · {{ comments.length }}</template>
+        {{ t('Комментарии') }}
+        <template v-if="comments.length"> · {{ comments.length }}</template>
       </div>
       <q-space />
       <q-btn flat round dense icon="close" v-close-popup :aria-label="t('Закрыть')" />

@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 
 import { createQrMatrix, qrSvgPath, qrSvgSize } from '@/utils/qr'
+import { t } from '@/i18n'
 
 /**
  * QR-код ссылки: рисуем сами (см. `utils/qr.ts`), без картинки с сервера и без
@@ -20,7 +21,7 @@ const props = withDefaults(
     /** Подпись для экранного диктора: в самом коде текста нет. */
     label?: string
   }>(),
-  { size: 172, label: 'QR-код ссылки' }
+  { size: 172 }
 )
 
 /**
@@ -48,7 +49,7 @@ const viewSize = computed(() => (matrix.value ? qrSvgSize(matrix.value) : 0))
     :height="size"
     :viewBox="`0 0 ${viewSize} ${viewSize}`"
     role="img"
-    :aria-label="label"
+    :aria-label="label ?? t('QR-код ссылки')"
     shape-rendering="crispEdges"
   >
     <rect class="qr-bg" :width="viewSize" :height="viewSize" />

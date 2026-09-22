@@ -14,6 +14,7 @@
  */
 
 import { computed, onScopeDispose, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { t } from '@/i18n'
 
 import { sendNewMessage } from '@/services/chatService'
 import { getErrorMessage, isNetworkError } from '@/services/errors'
@@ -136,7 +137,7 @@ export function useOutbox(deps: OutboxDeps): OutboxApi {
         }
         patchOutboxItem(uid, item.id, {
           state: 'error',
-          error: getErrorMessage(error, 'Не удалось отправить')
+          error: getErrorMessage(error, t('Не удалось отправить'))
         })
         reloadOutbox()
       } finally {

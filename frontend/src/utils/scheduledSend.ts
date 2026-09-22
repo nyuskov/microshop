@@ -31,7 +31,7 @@ const atTime = (day: Date, hour: number, minute = 0): Date => {
 }
 
 const timeLabel = (date: Date): string =>
-  date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  date.toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' })
 
 const isSameDay = (a: Date, b: Date): boolean => a.toDateString() === b.toDateString()
 

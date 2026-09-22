@@ -5,6 +5,8 @@
  * нам нужен процент для индикатора. Округление вниз до целого: «99%» на глаз
  * честнее, чем «100%», пока сервер ещё не ответил.
  */
+import { t } from '@/i18n'
+
 export const uploadPercent = (loaded: number, total: number): number | null => {
   if (!Number.isFinite(loaded) || !Number.isFinite(total) || total <= 0) return null
   const percent = Math.floor((loaded / total) * 100)
@@ -17,4 +19,4 @@ export const uploadPercent = (loaded: number, total: number): number | null => {
  * «Отправка… 42%», чтобы на медленной сети было видно, что процесс живой.
  */
 export const uploadStatusText = (percent: number | null | undefined): string =>
-  typeof percent === 'number' ? `Отправка… ${percent}%` : 'Отправка…'
+  typeof percent === 'number' ? t('Отправка… {percent}%', { percent }) : t('Отправка…')

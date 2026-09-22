@@ -326,8 +326,8 @@ export const supportSummary = (items: DeviceSupportItem[]): string => {
   const ok = items.filter((item) => item.state === 'ok').length
   const partial = items.filter((item) => item.state === 'partial').length
   const no = items.filter((item) => item.state === 'no').length
-  const parts = [`работает: ${ok}`]
-  if (partial) parts.push(`с оговоркой: ${partial}`)
-  if (no) parts.push(`недоступно: ${no}`)
+  const parts = [t('работает: {count}', { count: ok })]
+  if (partial) parts.push(t('с оговоркой: {count}', { count: partial }))
+  if (no) parts.push(t('недоступно: {count}', { count: no }))
   return parts.join(' · ')
 }

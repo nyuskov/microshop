@@ -73,7 +73,7 @@
                   <button
                     class="folder-icon-btn danger"
                     type="button"
-                    :title="`Убрать из папки`"
+                    :title="t('Убрать из папки')"
                     @click="emit('toggle-chat', folder.id, chat.id)"
                   >
                     <q-icon :name="icon('close')" size="18px" />
@@ -136,7 +136,9 @@
           </button>
         </form>
         <p v-if="atLimit" class="folder-empty">
-          Больше {{ MAX_CHAT_FOLDERS }} папок не поместится в строку фильтров.
+          {{
+            t('Больше {count} папок не поместится в строку фильтров.', { count: MAX_CHAT_FOLDERS })
+          }}
         </p>
       </q-card-section>
     </q-card>
@@ -255,7 +257,7 @@ const removeFolder = async (id: string) => {
   const folder = props.folders.find((item) => item.id === id)
   if (!folder) return
   const agreed = await confirmDialog({
-    title: `Удалить папку «${folder.name}»?`,
+    title: t('Удалить папку «{name}»?', { name: folder.name }),
     message: t('Чаты останутся на месте — удалится только сам список.'),
     okLabel: t('Удалить'),
     danger: true

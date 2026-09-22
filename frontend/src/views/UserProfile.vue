@@ -1187,7 +1187,7 @@ const onNotificationsToggle = async (val: boolean) => {
                 type="text"
                 inputmode="numeric"
                 autocomplete="bday"
-                placeholder="ДД.ММ.ГГГГ"
+                :placeholder="t('ДД.ММ.ГГГГ')"
                 maxlength="10"
                 :value="profileForm.birth_date"
                 :aria-invalid="birthError ? 'true' : undefined"
@@ -1518,7 +1518,7 @@ const onNotificationsToggle = async (val: boolean) => {
                 :aria-label="t('Ссылка на профиль')"
               />
               <button type="button" class="btn ghost" @click="copyProfileLink">
-                <q-icon :name="icon('content_copy')" size="17px" /> Копировать
+                <q-icon :name="icon('content_copy')" size="17px" /> {{ t('Копировать') }}
               </button>
             </div>
             <p v-if="linkNotice" class="notice success">{{ linkNotice }}</p>
@@ -1874,24 +1874,29 @@ const onNotificationsToggle = async (val: boolean) => {
             </p>
 
             <p class="security-note">
-              История хранится 180 дней и видна только вам. Если увидели незнакомый вход — смените
-              пароль и нажмите «Выйти на всех устройствах».
+              {{
+                t(
+                  'История хранится 180 дней и видна только вам. Если увидели незнакомый вход — смените пароль и нажмите «Выйти на всех устройствах».'
+                )
+              }}
             </p>
           </div>
 
           <!-- Резервная копия ключа шифрования: ключ живёт только в этом браузере -->
           <div class="sessions-block">
             <div class="sessions-head">
-              <span class="sessions-title">Ключ шифрования</span>
+              <span class="sessions-title">{{ t('Ключ шифрования') }}</span>
               <button type="button" class="sessions-refresh" @click="showE2eeBackup = true">
                 <q-icon :name="icon('lock_reset')" size="16px" />
-                Резервная копия
+                {{ t('Резервная копия') }}
               </button>
             </div>
             <p class="sessions-hint">
-              Ключ сквозного шифрования хранится только в этом браузере: переустановка приложения
-              или потеря телефона уносят с собой переписку зашифрованных чатов. Сохраните копию
-              ключа — она вернёт доступ на новом устройстве.
+              {{
+                t(
+                  'Ключ сквозного шифрования хранится только в этом браузере: переустановка приложения или потеря телефона уносят с собой переписку зашифрованных чатов. Сохраните копию ключа — она вернёт доступ на новом устройстве.'
+                )
+              }}
             </p>
           </div>
         </section>
@@ -1899,26 +1904,26 @@ const onNotificationsToggle = async (val: boolean) => {
         <!-- Сообщения -->
         <!-- О приложении: документы, версия сборки, проверка обновлений -->
         <section v-if="section === 'about'" class="card-section">
-          <h3 class="section-title">О приложении</h3>
+          <h3 class="section-title">{{ t('О приложении') }}</h3>
 
           <!-- Документы: правила сообщества и политика (требования магазинов к UGC) -->
           <div class="legal-row">
             <a class="legal-link" href="/community.html" target="_blank" rel="noopener">
               <q-icon :name="icon('gavel')" size="16px" />
-              Правила сообщества
+              {{ t('Правила сообщества') }}
             </a>
             <a class="legal-link" href="/privacy.html" target="_blank" rel="noopener">
               <q-icon :name="icon('privacy_tip')" size="16px" />
-              Политика конфиденциальности
+              {{ t('Политика конфиденциальности') }}
             </a>
             <a class="legal-link" href="/terms.html" target="_blank" rel="noopener">
               <q-icon :name="icon('description')" size="16px" />
-              Пользовательское соглашение
+              {{ t('Пользовательское соглашение') }}
             </a>
           </div>
 
           <p class="about-build">
-            Pismo · сборка {{ buildInfo.commit || 'локальная' }} от {{ buildInfo.date }}
+            Pismo · сборка {{ buildInfo.commit || t('локальная') }} от {{ buildInfo.date }}
           </p>
 
           <button
@@ -1928,7 +1933,7 @@ const onNotificationsToggle = async (val: boolean) => {
             @click="checkForUpdates"
           >
             <q-icon :name="icon('refresh')" size="17px" />
-            {{ updatingApp ? 'Проверяем…' : 'Проверить обновления' }}
+            {{ updatingApp ? t('Проверяем…') : t('Проверить обновления') }}
           </button>
           <transition name="fade">
             <p v-if="aboutNotice" class="field-hint about-notice">{{ aboutNotice }}</p>
@@ -1937,12 +1942,12 @@ const onNotificationsToggle = async (val: boolean) => {
 
         <div v-if="section === 'account'" class="form-actions">
           <button type="button" class="btn ghost" :disabled="saving" @click="closeModal">
-            Отмена
+            {{ t('Отмена') }}
           </button>
           <button type="submit" class="btn primary" :disabled="saving">
             <span v-if="saving" class="spinner light"></span>
             <q-icon v-else :name="icon('check')" size="17px" />
-            {{ saving ? 'Сохранение…' : 'Сохранить' }}
+            {{ saving ? t('Сохранение…') : t('Сохранить') }}
           </button>
         </div>
       </form>

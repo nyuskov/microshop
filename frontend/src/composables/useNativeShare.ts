@@ -24,6 +24,7 @@ import {
 import { getErrorMessage } from '@/services/errors'
 import { shareTargetFromSearch, withoutShareTargetParams } from '@/utils/shareTarget'
 import type { Chat } from '@/types'
+import { t } from '@/i18n'
 
 export interface UseNativeShareOptions {
   /** Человек уже вошёл: иначе «поделиться» придержим до входа. */
@@ -96,8 +97,8 @@ export function useNativeShare(options: UseNativeShareOptions): UseNativeShare {
     if (incoming.size > MAX_SHARE_FILE_BYTES) {
       Notify.create({
         type: 'warning',
-        message: 'Файл слишком большой',
-        caption: 'Отправим только текст',
+        message: t('Файл слишком большой'),
+        caption: t('Отправим только текст'),
         timeout: 4000
       })
       descriptor.value = { ...incoming, hasFile: false, size: 0 }
@@ -135,7 +136,7 @@ export function useNativeShare(options: UseNativeShareOptions): UseNativeShare {
     } catch (error) {
       Notify.create({
         type: 'negative',
-        message: 'Не удалось отправить',
+        message: t('Не удалось отправить'),
         caption: getErrorMessage(error),
         timeout: 4000
       })

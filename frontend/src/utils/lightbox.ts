@@ -9,6 +9,7 @@
  */
 
 import type { Message } from '@/types'
+import { t } from '@/i18n'
 import { effectiveFile, isImageFile } from '@/utils/media'
 
 export interface LightboxItem {
@@ -38,7 +39,7 @@ export function buildLightboxItems(
     items.push({
       id: message.id,
       url: resolveUrl(message),
-      name: attachment.name || 'Изображение',
+      name: attachment.name || t('Изображение'),
       message
     })
   }

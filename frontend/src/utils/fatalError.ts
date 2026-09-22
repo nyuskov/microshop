@@ -9,6 +9,8 @@
 
 import { ref } from 'vue'
 
+import { t } from '@/i18n'
+
 /** Текст последней фатальной ошибки (пусто — всё в порядке). */
 export const fatalError = ref('')
 
@@ -31,7 +33,7 @@ export const reportFatalError = (error: unknown): void => {
     return
   }
   shown += 1
-  fatalError.value = message || 'Неизвестная ошибка'
+  fatalError.value = message || t('Неизвестная ошибка')
 }
 
 /** Скрывает экран ошибки (пользователь решил продолжить работу). */

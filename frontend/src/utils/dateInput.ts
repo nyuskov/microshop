@@ -63,7 +63,7 @@ export const validateBirthDate = (value: string, today: Date = new Date()): stri
   const year = Number(digits.slice(4, 8))
   if (month < 1 || month > 12) return t('Месяц — от 01 до 12')
   if (day < 1 || day > 31) return t('День — от 01 до 31')
-  if (year < MIN_YEAR) return `Год не раньше ${MIN_YEAR}`
+  if (year < MIN_YEAR) return t('Год не раньше {year}', { year: MIN_YEAR })
 
   // «Реальность» даты проверяем по календарю: 31.02 превратился бы в 2–3 марта,
   // поэтому сверяем все три части.

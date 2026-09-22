@@ -13,6 +13,7 @@
  */
 
 import { computed, ref, type ComputedRef, type Ref } from 'vue'
+import { t } from '@/i18n'
 
 import {
   cancelMessageReminder,
@@ -73,9 +74,9 @@ export function useMessageReminders(deps: MessageRemindersDeps): MessageReminder
   const reminderPreview = computed(() => {
     const message = reminderTarget.value
     if (!message) return ''
-    if (message.file && !message.text) return 'Вложение'
+    if (message.file && !message.text) return t('Вложение')
     const text = (message.text ?? '').trim().replace(/\s+/g, ' ')
-    if (!text) return message.file ? 'Вложение' : ''
+    if (!text) return message.file ? t('Вложение') : ''
     return text.length > PREVIEW_MAX ? `${text.slice(0, PREVIEW_MAX)}…` : text
   })
 
@@ -116,7 +117,7 @@ export function useMessageReminders(deps: MessageRemindersDeps): MessageReminder
       reminderTarget.value = null
       await loadReminders(chatId)
     } catch (error) {
-      deps.onError(getErrorMessage(error, 'Не удалось поставить напоминание'))
+      deps.onError(getErrorMessage(error, t('Не удалось поставить напоминание')))
     } finally {
       reminderBusy.value = false
     }
@@ -137,7 +138,7 @@ export function useMessageReminders(deps: MessageRemindersDeps): MessageReminder
       reminderTarget.value = null
       if (chatId !== null) await loadReminders(chatId)
     } catch (error) {
-      deps.onError(getErrorMessage(error, 'Не удалось убрать напоминание'))
+      deps.onError(getErrorMessage(error, t('Не удалось убрать напоминание')))
     } finally {
       reminderBusy.value = false
     }

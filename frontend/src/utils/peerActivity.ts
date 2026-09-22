@@ -45,14 +45,14 @@ export const PEER_ACTIVITY_TTL_MS: Record<PeerActivityKind, number> = {
 export const PEER_ACTIVITY_DEFAULT: PeerActivityKind = 'text'
 
 /** Подписи без имени: в личном чате и так ясно, кто это. */
-const PHRASES: Record<PeerActivityKind, string> = {
-  text: 'печатает…',
+const phrases = (): Record<PeerActivityKind, string> => ({
+  text: t('печатает…'),
   voice: t('записывает голосовое…'),
   video_note: t('записывает видеосообщение…'),
   photo: t('отправляет фото…'),
   video: t('отправляет видео…'),
   file: t('отправляет файл…')
-}
+})
 
 /** Похоже ли значение на известный вид (сервер присылает строку из сети). */
 export const isPeerActivityKind = (value: unknown): value is PeerActivityKind =>
@@ -65,7 +65,7 @@ export const isPeerActivityKind = (value: unknown): value is PeerActivityKind =>
  * передаётся имя: «Аня печатает…». В личном чате имя лишнее.
  */
 export const peerActivityLabel = (kind: PeerActivityKind, name?: string | null): string => {
-  const phrase = PHRASES[kind] ?? PHRASES[PEER_ACTIVITY_DEFAULT]
+  const phrase = phrases()[kind] ?? phrases()[PEER_ACTIVITY_DEFAULT]
   const who = (name ?? '').trim()
   return who ? `${who} ${phrase}` : phrase
 }

@@ -12,6 +12,7 @@
  */
 
 import { ref, type Ref } from 'vue'
+import { t } from '@/i18n'
 
 import {
   cancelScheduledMessage,
@@ -106,7 +107,7 @@ export function useScheduledSend(deps: ScheduledSendDeps) {
       deps.onScheduled(chatId)
       await loadScheduled(chatId)
     } catch (error) {
-      deps.onError(getErrorMessage(error, 'Не удалось отложить сообщение'))
+      deps.onError(getErrorMessage(error, t('Не удалось отложить сообщение')))
     } finally {
       deps.sending.value = false
     }
@@ -117,7 +118,7 @@ export function useScheduledSend(deps: ScheduledSendDeps) {
     try {
       await cancelScheduledMessage(scheduledId)
     } catch (error) {
-      deps.onError(getErrorMessage(error, 'Не удалось отменить отправку'))
+      deps.onError(getErrorMessage(error, t('Не удалось отменить отправку')))
     } finally {
       if (chatId !== null) await loadScheduled(chatId)
     }

@@ -13,6 +13,7 @@
  */
 
 import { mediaUrl } from '@/config'
+import { t } from '@/i18n'
 import { STANDARD_STICKER_PACKS } from '@/utils/standardStickers'
 import { packIdOfFileName, presetSetOfFileName } from '@/utils/presetStickers'
 import type { StickerPack } from '@/services/stickers'
@@ -65,7 +66,7 @@ const serverSetRef = (pack: StickerPack, own: boolean): StickerSetRef => ({
   images: pack.stickers.map((sticker) => ({
     url: mediaUrl(sticker.file_url),
     mime: sticker.mime_type ?? 'image/webp',
-    alt: 'Стикер',
+    alt: t('Стикер'),
     // Позиция как имя: само по себе оно ничего не значит, но с ним едет id пака.
     name: String(sticker.position)
   }))

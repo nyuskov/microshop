@@ -72,6 +72,8 @@ describe('i18n', () => {
   it('локаль дат следует за языком', () => {
     expect(dateLocale()).toBe('ru-RU')
     setLocale('en')
-    expect(dateLocale()).toBe('en-US')
+    // en-GB, а не en-US: в американской локали время выводится 12-часовым
+    // («12:12 PM»), а в приложении оно везде 24-часовое.
+    expect(dateLocale()).toBe('en-GB')
   })
 })

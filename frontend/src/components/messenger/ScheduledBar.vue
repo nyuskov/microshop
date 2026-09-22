@@ -7,7 +7,9 @@
       <button class="scheduled-toggle" type="button" :aria-expanded="open" @click="open = !open">
         <span class="scheduled-title">{{ t('Отложенные') }}</span>
         <span class="scheduled-count">{{ rows.length }}</span>
-        <span class="scheduled-next">ближайшее {{ formatScheduledAt(rows[0]!.send_at) }}</span>
+        <span class="scheduled-next">
+          {{ t('ближайшее {time}', { time: formatScheduledAt(rows[0]!.send_at) }) }}
+        </span>
         <q-icon
           :name="icon('expand_more')"
           class="scheduled-chevron"

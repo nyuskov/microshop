@@ -5,7 +5,7 @@ import axios from 'axios'
 import { getErrorMessage } from '@/services/errors'
 import { API_ORIGIN } from '@/config'
 import { api, registerAuth } from '@/services/api'
-import { setLocale } from '@/i18n'
+import { setLocale, t } from '@/i18n'
 
 // Origin бэкенда (централизован в config.ts). Экспортируется для совместимости.
 export const backendServer = API_ORIGIN
@@ -438,7 +438,7 @@ export const useAuthStore = defineStore('auth', {
     markSessionEnded(message = ''): void {
       this.resetAuth()
       this.sessionNotice =
-        message || 'Сессия завершена. Войдите заново — другим устройствам доступ закрыт.'
+        message || t('Сессия завершена. Войдите заново — другим устройствам доступ закрыт.')
     },
 
     /** Выходит из аккаунта на этом устройстве: сессия гасится НА СЕРВЕРЕ. */

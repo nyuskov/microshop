@@ -9,7 +9,7 @@
     :disable="disable"
     inputmode="tel"
     autocomplete="tel"
-    :aria-label="ariaLabel"
+    :aria-label="ariaLabel ?? t('Номер телефона')"
     hide-bottom-space
     @update:model-value="onInput"
     @keyup.enter="emit('enter')"
@@ -20,6 +20,7 @@
 import { ref } from 'vue'
 
 import { formatPhoneInput } from '@/utils/phone'
+import { t } from '@/i18n'
 
 /**
  * Поле ввода телефона — единственное место, где номер превращается в маску.
@@ -46,7 +47,6 @@ const props = withDefaults(
   {
     id: undefined,
     placeholder: '+7 (___) ___-__-__',
-    ariaLabel: 'Номер телефона',
     disable: false
   }
 )

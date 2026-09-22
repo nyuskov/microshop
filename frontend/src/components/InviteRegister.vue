@@ -105,47 +105,54 @@ const submit = async () => {
       </div>
 
       <template v-if="inviteValid === null">
-        <p class="step-subtitle">Проверяем ссылку-приглашение…</p>
+        <p class="step-subtitle">{{ t('Проверяем ссылку-приглашение…') }}</p>
       </template>
 
       <template v-else-if="inviteValid === false">
-        <h2 class="step-title">Ссылка недействительна</h2>
+        <h2 class="step-title">{{ t('Ссылка недействительна') }}</h2>
         <p class="step-subtitle">
-          Эта ссылка-приглашение уже использована, истекла или не существует. Обратитесь к тому, кто
-          её отправил, за новой ссылкой.
+          {{
+            t(
+              'Эта ссылка-приглашение уже использована, истекла или не существует. Обратитесь к тому, кто её отправил, за новой ссылкой.'
+            )
+          }}
         </p>
         <button class="link-btn" type="button" @click="router.push({ name: 'Login' })">
-          На страницу входа
+          {{ t('На страницу входа') }}
         </button>
       </template>
 
       <template v-else>
-        <h2 class="step-title">Регистрация по приглашению</h2>
-        <p class="step-subtitle">Придумайте пароль, чтобы завершить создание аккаунта.</p>
+        <h2 class="step-title">{{ t('Регистрация по приглашению') }}</h2>
+        <p class="step-subtitle">
+          {{ t('Придумайте пароль, чтобы завершить создание аккаунта.') }}
+        </p>
 
         <form class="otp-form" @submit.prevent="submit">
-          <label class="field-label" for="invite-phone">Номер телефона</label>
+          <label class="field-label" for="invite-phone">{{ t('Номер телефона') }}</label>
           <PhoneInput
             id="invite-phone"
             v-model="phone"
             placeholder="+7 (900) 111-00-01"
-            aria-label="Номер телефона"
+            :aria-label="t('Номер телефона')"
             :disable="!!lockedPhone"
           />
 
-          <label class="field-label gap-top" for="invite-password">Пароль</label>
+          <label class="field-label gap-top" for="invite-password">{{ t('Пароль') }}</label>
           <q-input
             for="invite-password"
             v-model="password"
             type="password"
             outlined
             class="phone-input"
-            :placeholder="`Минимум ${PASSWORD_MIN_LENGTH} символов`"
+            :placeholder="t('Минимум {count} символов', { count: PASSWORD_MIN_LENGTH })"
             autocomplete="new-password"
             hide-bottom-space
           />
 
-          <label class="field-label gap-top" for="invite-password-confirm">Повторите пароль</label>
+          <label class="field-label gap-top" for="invite-password-confirm">
+            {{ t('Повторите пароль') }}
+          </label>
           <q-input
             for="invite-password-confirm"
             v-model="passwordConfirm"
@@ -168,7 +175,7 @@ const submit = async () => {
             :loading="busy"
             :disable="busy"
           >
-            Создать аккаунт
+            {{ t('Создать аккаунт') }}
           </q-btn>
         </form>
       </template>

@@ -407,7 +407,7 @@ function translatorFor(
   if (cached) return cached.promise
 
   const factory = translatorFactory()
-  if (!factory) return Promise.reject(new Error('Нет встроенного перевода'))
+  if (!factory) return Promise.reject(new Error(t('Нет встроенного перевода')))
 
   const created = factory.create({
     sourceLanguage: source,

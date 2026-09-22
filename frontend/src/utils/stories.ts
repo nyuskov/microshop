@@ -94,10 +94,10 @@ export function formatStoryAge(createdAt: string, now: Date = new Date()): strin
   const seconds = Math.max(0, Math.round((now.getTime() - created.getTime()) / 1000))
   if (seconds < 60) return t('только что')
   const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return `${minutes} мин`
+  if (minutes < 60) return t('{count} мин', { count: minutes })
   const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours} ч`
-  return `${Math.round(hours / 24)} дн`
+  if (hours < 24) return t('{count} ч', { count: hours })
+  return t('{count} дн', { count: Math.round(hours / 24) })
 }
 
 /** Идёт ли ещё видео/картинка (для прогресс-полоски истории). */

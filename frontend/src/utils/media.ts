@@ -169,7 +169,7 @@ const loadHtmlImage = (src: string): Promise<HTMLImageElement> =>
   new Promise((resolve, reject) => {
     const img = new Image()
     img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('Не удалось прочитать изображение'))
+    img.onerror = () => reject(new Error(t('Не удалось прочитать изображение')))
     img.src = src
   })
 

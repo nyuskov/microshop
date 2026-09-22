@@ -102,7 +102,8 @@ const bufferLevel = (buffer: AudioBuffer): AudioLevel => {
  */
 export async function loadAudioBuffer(ctx: AudioContext, src: string): Promise<AudioBuffer> {
   const response = await fetch(src)
-  if (!response.ok) throw new Error(`Не удалось загрузить голосовое (${response.status})`)
+  if (!response.ok)
+    throw new Error(t('Не удалось загрузить голосовое ({status})', { status: response.status }))
   const data = await response.arrayBuffer()
   const buffer = await ctx.decodeAudioData(data)
 

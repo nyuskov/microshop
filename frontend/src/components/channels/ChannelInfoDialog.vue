@@ -88,7 +88,14 @@
           <q-btn flat color="negative" :label="t('Отписаться')" v-close-popup @click="leave" />
         </div>
         <p class="ch-hint">
-          Постов: {{ channel?.posts ?? 0 }} · подписчиков: {{ channel?.subscribers ?? 0 }}
+          {{ plural(channel?.posts ?? 0, ['пост', 'поста', 'постов'], ['post', 'posts']) }} ·
+          {{
+            plural(
+              channel?.subscribers ?? 0,
+              ['подписчик', 'подписчика', 'подписчиков'],
+              ['subscriber', 'subscribers']
+            )
+          }}
         </p>
       </template>
 
@@ -98,7 +105,15 @@
         <p v-if="channel?.description" class="ch-readonly-desc">{{ channel.description }}</p>
         <p class="ch-hint">
           <template v-if="channel?.username"> @{{ channel.username }} · </template>
-          {{ channel?.subscribers ?? 0 }} подписчиков · постов: {{ channel?.posts ?? 0 }}
+          {{
+            plural(
+              channel?.subscribers ?? 0,
+              ['подписчик', 'подписчика', 'подписчиков'],
+              ['subscriber', 'subscribers']
+            )
+          }}
+          ·
+          {{ plural(channel?.posts ?? 0, ['пост', 'поста', 'постов'], ['post', 'posts']) }}
         </p>
         <div class="ch-info-actions">
           <q-btn flat color="negative" :label="t('Отписаться')" v-close-popup @click="leave" />
@@ -176,7 +191,7 @@ import {
   updateChannel
 } from '@/services/channelService'
 import { getErrorMessage } from '@/services/errors'
-import { t } from '@/i18n'
+import { t, plural } from '@/i18n'
 import { useHScroll } from '@/composables/useHScroll'
 import type { ChannelCard, ChannelSuggestion } from '@/types'
 
@@ -231,8 +246,14 @@ const TABS = computed<ReadonlyArray<{ key: ChannelTabKey; title: () => string }>
   ]
   if (canManage.value) {
     tabs.push(
-      { key: 'people', title: () => `Подписчики · ${channel.value?.subscribers ?? 0}` },
-      { key: 'suggestions', title: () => `Предложки · ${pending.value.length}` }
+      {
+        key: 'people',
+        title: () => t('Подписчики · {count}', { count: channel.value?.subscribers ?? 0 })
+      },
+      {
+        key: 'suggestions',
+        title: () => t('Предложки · {count}', { count: pending.value.length })
+      }
     )
   }
   return tabs

@@ -10,6 +10,7 @@ import ExternalLinkDialog from '@/components/common/ExternalLinkDialog.vue'
 import FatalErrorScreen from '@/components/common/FatalErrorScreen.vue'
 import MaintenanceScreen from '@/components/common/MaintenanceScreen.vue'
 import { setMaintenanceExempt } from '@/utils/maintenance'
+import { t } from '@/i18n'
 
 // Высота с учётом экранной клавиатуры — нужна всему приложению (и логину тоже).
 useVisualViewport()
@@ -57,8 +58,10 @@ onBeforeUnmount(() => {
     :class="{ shifted: connectionBannerVisible }"
     role="status"
   >
-    <span class="pwa-update-text">Доступна новая версия приложения</span>
-    <button type="button" class="pwa-update-btn" @click="onUpdateClick">Обновить</button>
+    <span class="pwa-update-text">{{ t('Доступна новая версия приложения') }}</span>
+    <button type="button" class="pwa-update-btn" @click="onUpdateClick">
+      {{ t('Обновить') }}
+    </button>
   </div>
   <!-- Нет сети / связь восстановлена (работает и на экране входа) -->
   <OfflineBanner />

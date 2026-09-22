@@ -1,7 +1,7 @@
 <template>
   <q-dialog :model-value="modelValue" @update:model-value="onUpdate" @hide="emit('close')">
     <q-card class="invite-card">
-      <div class="invite-avatar" :style="avatarStyle(preview?.name || 'Группа')">
+      <div class="invite-avatar" :style="avatarStyle(preview?.name || t('Группа'))">
         <img v-if="avatarUrl" :src="avatarUrl" class="invite-avatar-img" alt="" decoding="async" />
         <template v-else>{{ initials(preview?.name || t('Группа')) }}</template>
       </div>
@@ -38,7 +38,7 @@
 import { computed } from 'vue'
 import type { GroupInvitePreview } from '@/types'
 import { avatarStyle, avatarUrlOf, initials } from '@/utils/user'
-import { t } from '@/i18n'
+import { plural, t } from '@/i18n'
 
 const props = defineProps<{
   modelValue: boolean
@@ -64,12 +64,7 @@ const avatarUrl = computed<string | undefined>(() =>
 /** Число участников словами: «1 участник», «2 участника», «5 участников». */
 const memberText = computed<string>(() => {
   const count = props.preview?.member_count ?? 0
-  const last = count % 10
-  const lastTwo = count % 100
-  if (lastTwo >= 11 && lastTwo <= 14) return `${count} участников`
-  if (last === 1) return `${count} участник`
-  if (last >= 2 && last <= 4) return `${count} участника`
-  return `${count} участников`
+  return `${count} ${plural(count, ['участник', 'участника', 'участников'], ['member', 'members'])}`
 })
 </script>
 

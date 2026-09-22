@@ -30,7 +30,9 @@
           <section class="stats-block">
             <div class="block-head">
               <h3 class="block-title">{{ t('Активность за 30 дней') }}</h3>
-              <span v-if="average" class="block-hint">в среднем {{ average }} в активный день</span>
+              <span v-if="average" class="block-hint">
+                {{ t('в среднем {average} в активный день', { average }) }}
+              </span>
             </div>
             <div class="bars" role="img" :aria-label="barsLabel">
               <span
@@ -90,7 +92,7 @@ import { getErrorMessage } from '@/services/errors'
 import { icon } from '@/utils/icons'
 import { dailyAverage, senderShare, statsBars, statsPeriod } from '@/utils/chatStats'
 import { parseServerTime } from '@/utils/format'
-import { plural, t } from '@/i18n'
+import { dateLocale, plural, t } from '@/i18n'
 
 /**
  * «Статистика чата»: сколько писали, когда, кто активнее и что за вложения.
@@ -116,7 +118,7 @@ const barsAxis = computed(() => {
   const first = bars.value[0]
   const last = bars.value[bars.value.length - 1]
   const format = (iso: string): string =>
-    parseServerTime(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+    parseServerTime(iso).toLocaleDateString(dateLocale(), { day: 'numeric', month: 'short' })
   return {
     start: first ? format(first.date) : '',
     end: last ? format(last.date) : ''
@@ -126,7 +128,7 @@ const barsAxis = computed(() => {
 /** Подпись графика для скринридера: числами, а не «картинкой». */
 const barsLabel = computed(() => {
   const total = bars.value.reduce((sum, bar) => sum + bar.count, 0)
-  return `Сообщений за 30 дней: ${total}`
+  return t('Сообщений за 30 дней: {count}', { count: total })
 })
 
 const mediaTiles = computed(() => {

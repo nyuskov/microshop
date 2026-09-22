@@ -11,6 +11,8 @@
  * показываем, а не показываем недостижимое.
  */
 
+import { dateLocale, t } from '@/i18n'
+
 /** Готовый вариант «напомнить»: подпись в списке и момент напоминания. */
 export interface ReminderPreset {
   label: string
@@ -28,7 +30,7 @@ const atTime = (day: Date, hour: number, minute = 0): Date => {
 }
 
 const timeLabel = (date: Date): string =>
-  date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  date.toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' })
 
 /**
  * Варианты «напомнить» для меню сообщения.
@@ -38,20 +40,26 @@ const timeLabel = (date: Date): string =>
  */
 export const reminderPresets = (now: Date = new Date()): ReminderPreset[] => {
   const presets: ReminderPreset[] = [
-    { label: 'Через 20 минут', at: new Date(now.getTime() + 20 * 60 * 1000) },
-    { label: 'Через час', at: new Date(now.getTime() + 60 * 60 * 1000) }
+    { label: t('Через 20 минут'), at: new Date(now.getTime() + 20 * 60 * 1000) },
+    { label: t('Через час'), at: new Date(now.getTime() + 60 * 60 * 1000) }
   ]
 
   const todayEvening = atTime(now, EVENING_HOUR)
   if (todayEvening.getTime() > now.getTime()) {
-    presets.push({ label: `Сегодня в ${timeLabel(todayEvening)}`, at: todayEvening })
+    presets.push({
+      label: t('Сегодня в {time}', { time: timeLabel(todayEvening) }),
+      at: todayEvening
+    })
   }
 
   const tomorrowMorning = atTime(new Date(now.getTime() + 24 * 60 * 60 * 1000), MORNING_HOUR)
-  presets.push({ label: `Завтра в ${timeLabel(tomorrowMorning)}`, at: tomorrowMorning })
+  presets.push({
+    label: t('Завтра в {time}', { time: timeLabel(tomorrowMorning) }),
+    at: tomorrowMorning
+  })
 
   const week = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-  presets.push({ label: `Через неделю в ${timeLabel(week)}`, at: week })
+  presets.push({ label: t('Через неделю в {time}', { time: timeLabel(week) }), at: week })
 
   return presets
 }

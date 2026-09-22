@@ -13,6 +13,7 @@
  * «тёмный модуль»), сведения о формате и версии, укладка данных «змейкой» и
  * выбор маски по штрафным очкам.
  */
+import { t } from '@/i18n'
 
 /** Уровень коррекции: M — «средний» (~15% ошибок), стандарт для ссылок. */
 const ECC_M = 0b00
@@ -100,7 +101,11 @@ export const qrVersionFor = (text: string): number => {
   for (let version = 1; version <= MAX_VERSION; version += 1) {
     if (size <= dataCapacity(version)) return version
   }
-  throw new Error(`Слишком длинный текст для QR (больше ${dataCapacity(MAX_VERSION)} знаков)`)
+  throw new Error(
+    t('Слишком длинный текст для QR (больше {max} знаков)', {
+      max: dataCapacity(MAX_VERSION)
+    })
+  )
 }
 
 // ---------- Поля Галуа GF(256) и коды Рида-Соломона ----------

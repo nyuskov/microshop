@@ -1,4 +1,5 @@
 import { api } from '@/services/api'
+import { t } from '@/i18n'
 import { ICE_SERVERS as FALLBACK_ICE_SERVERS } from '@/config'
 
 /**
@@ -34,7 +35,7 @@ export async function fetchIceServers(): Promise<RTCIceServer[]> {
   try {
     const { data } = await api.get<IceServersResponse>('/calls/ice-servers/')
     const servers = Array.isArray(data?.ice_servers) ? data.ice_servers : []
-    if (!servers.length) throw new Error('пустой список ICE-серверов')
+    if (!servers.length) throw new Error(t('Пустой список ICE-серверов'))
     const ttlMs = (data.ttl > 0 ? data.ttl : 600) * 1000
     cached = { servers, expiresAt: now + Math.max(ttlMs - EXPIRY_SAFETY_MS, 60_000) }
     return servers

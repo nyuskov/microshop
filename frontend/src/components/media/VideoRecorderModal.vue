@@ -31,7 +31,7 @@
 
           <div v-if="phase === 'recording'" class="vrm-rec-badge">
             <span class="vrm-dot"></span>
-            Запись {{ formatClock(durationMs / 1000) }}
+            {{ t('Запись') }} {{ formatClock(durationMs / 1000) }}
           </div>
           <div v-else-if="phase === 'live' && !error" class="vrm-hint">
             {{ t('Нажмите «Запись», чтобы начать') }}

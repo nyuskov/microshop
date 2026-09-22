@@ -1,6 +1,7 @@
 /** Истории (статусы): лента, публикация, просмотры. */
 
 import { defineStore } from 'pinia'
+import { t } from '@/i18n'
 
 import {
   deleteStory,
@@ -72,7 +73,7 @@ export const useStoriesStore = defineStore('stories', {
           this.error = ''
           this.loaded = true
         } catch (error) {
-          this.error = getErrorMessage(error, 'Не удалось загрузить истории')
+          this.error = getErrorMessage(error, t('Не удалось загрузить истории'))
         } finally {
           this.loading = false
           feedLoad = null
@@ -99,7 +100,7 @@ export const useStoriesStore = defineStore('stories', {
         await this.load()
         return true
       } catch (error) {
-        this.error = getErrorMessage(error, 'Не удалось опубликовать историю')
+        this.error = getErrorMessage(error, t('Не удалось опубликовать историю'))
         return false
       } finally {
         this.publishing = false
@@ -141,7 +142,7 @@ export const useStoriesStore = defineStore('stories', {
         story.reactions = updated.reactions
       } catch (error) {
         story.reactions = previous
-        this.error = getErrorMessage(error, 'Не удалось поставить реакцию')
+        this.error = getErrorMessage(error, t('Не удалось поставить реакцию'))
       }
     },
 
@@ -157,7 +158,7 @@ export const useStoriesStore = defineStore('stories', {
           .filter((group) => group.items.length > 0)
         return true
       } catch (error) {
-        this.error = getErrorMessage(error, 'Не удалось удалить историю')
+        this.error = getErrorMessage(error, t('Не удалось удалить историю'))
         return false
       }
     },

@@ -87,8 +87,15 @@ export function t(source: string, vars?: Record<string, string | number>): strin
   )
 }
 
-/** Локаль для `toLocaleDateString`/`toLocaleTimeString` (даты — тоже интерфейс). */
-export const dateLocale = (): string => (locale.value === 'en' ? 'en-US' : 'ru-RU')
+/**
+ * Локаль для `toLocaleDateString`/`toLocaleTimeString` (даты — тоже интерфейс).
+ *
+ * Для английского берём `en-GB`, а не `en-US`: в американской локали время
+ * выводится 12-часовым («12:12 PM»), а у нас везде 24-часовое, как в русском
+ * интерфейсе. Порядок частей даты в `en-GB` тоже совпадает с привычным
+ * (день, затем месяц).
+ */
+export const dateLocale = (): string => (locale.value === 'en' ? 'en-GB' : 'ru-RU')
 
 /**
  * Число с правильной формой слова.

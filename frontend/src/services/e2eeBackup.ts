@@ -75,7 +75,7 @@ const isBackupFile = (value: unknown): value is BackupFile => {
 
 const assertPassphrase = (passphrase: string): void => {
   if (passphrase.trim().length < MIN_PASSPHRASE_LENGTH) {
-    throw new Error(`Парольная фраза короче ${MIN_PASSPHRASE_LENGTH} символов`)
+    throw new Error(t('Парольная фраза короче {count} символов', { count: MIN_PASSPHRASE_LENGTH }))
   }
 }
 

@@ -10,8 +10,16 @@
 
       <q-card-section class="reminder-body">
         <p class="reminder-hint">
-          Вернём вас к этому сообщению в выбранное время. Уведомление придёт, даже если приложение
-          закрыто<template v-if="chatTitle"> — из чата «{{ chatTitle }}»</template>.
+          {{
+            chatTitle
+              ? t(
+                  'Вернём вас к этому сообщению в выбранное время. Уведомление придёт, даже если приложение закрыто — из чата «{title}».',
+                  { title: chatTitle }
+                )
+              : t(
+                  'Вернём вас к этому сообщению в выбранное время. Уведомление придёт, даже если приложение закрыто.'
+                )
+          }}
         </p>
 
         <!-- О чём напоминаем: без этого списка непонятно, к какой строке вернёшься. -->
@@ -19,7 +27,7 @@
 
         <div v-if="reminder" class="reminder-current" role="status">
           <q-icon :name="icon('notifications')" size="16px" aria-hidden="true" />
-          <span>Напоминание уже стоит: {{ existingLabel }}</span>
+          <span>{{ t('Напоминание уже стоит: {label}', { label: existingLabel }) }}</span>
         </div>
 
         <ul class="reminder-list" role="radiogroup" :aria-label="t('Когда напомнить')">

@@ -1,6 +1,7 @@
 import { computed, ref, watch, type Ref } from 'vue'
 
 import type { Chat } from '@/types'
+import { t } from '@/i18n'
 import { setAppBadge } from '@/utils/appBadge'
 import {
   applyServerChatUnreadPolicy,
@@ -9,7 +10,7 @@ import {
   unreadCountOfChat
 } from '@/utils/chatUnread'
 
-const BASE_DOC_TITLE = 'Pismo — мессенджер'
+const baseDocTitle = (): string => t('Pismo — мессенджер')
 
 export interface ChatUnreadStateOptions {
   chats: Ref<Chat[]>
@@ -78,7 +79,7 @@ export function useChatUnreadState(options: ChatUnreadStateOptions) {
   watch(
     totalUnread,
     (count) => {
-      document.title = count > 0 ? `(${count}) ${BASE_DOC_TITLE}` : BASE_DOC_TITLE
+      document.title = count > 0 ? `(${count}) ${baseDocTitle()}` : baseDocTitle()
       void setAppBadge(count)
     },
     { immediate: true }

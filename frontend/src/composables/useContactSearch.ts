@@ -12,6 +12,7 @@ import { computed, onScopeDispose, ref, watch, type ComputedRef, type Ref } from
 import { getErrorMessage } from '@/services/errors'
 import { searchUsers, type SearchUserResult } from '@/services/chatService'
 import type { ChatUser } from '@/types'
+import { t } from '@/i18n'
 
 /** Пауза перед запросом к серверу, пока человек печатает. */
 export const CONTACTS_SEARCH_DEBOUNCE_MS = 300
@@ -90,7 +91,7 @@ export function useContactSearch(options: UseContactSearchOptions): UseContactSe
           (user) => !mine.has(user.id) && user.id !== options.currentUserId()
         )
       } catch (err) {
-        error.value = getErrorMessage(err, 'Не удалось выполнить поиск')
+        error.value = getErrorMessage(err, t('Не удалось выполнить поиск'))
       } finally {
         busy.value = false
       }

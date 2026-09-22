@@ -170,7 +170,7 @@ const itemSubtitle = (chat: Chat): string => {
   if (!last) return t('Нет сообщений')
   const body = last.file ? mediaTypeLabel(last.file) : last.text
   if (last.forwarded_from) return `${body} ↪`
-  return last.user_id === props.currentUserId ? `Вы: ${body}` : body
+  return last.user_id === props.currentUserId ? t('Вы: {body}', { body }) : body
 }
 
 const confirmShare = () => {

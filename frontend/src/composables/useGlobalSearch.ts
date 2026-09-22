@@ -23,6 +23,7 @@ import { searchChannels } from '@/services/channelService'
 import { searchMessages, searchUsers, type SearchUserResult } from '@/services/chatService'
 import { searchLocalMessages, toSearchMessage } from '@/utils/localSearchIndex'
 import type { ChannelCard, Message } from '@/types'
+import { t } from '@/i18n'
 
 /** Пауза перед запросом: пока человек печатает, сервер не дёргаем. */
 export const SEARCH_DEBOUNCE_MS = 350
@@ -125,7 +126,7 @@ export function useGlobalSearch(): UseGlobalSearch {
           channels.value = []
         }
       } catch (err) {
-        error.value = getErrorMessage(err, 'Не удалось выполнить поиск')
+        error.value = getErrorMessage(err, t('Не удалось выполнить поиск'))
       } finally {
         loading.value = false
       }

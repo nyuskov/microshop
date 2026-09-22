@@ -10,8 +10,12 @@
 
       <q-card-section class="picker-body">
         <p class="picker-hint">
-          {{ target }} — отметьте папки, где чат должен быть виден. Порядок внутри папки
-          расставляется в «Папки чатов».
+          {{
+            t(
+              '{target} — отметьте папки, где чат должен быть виден. Порядок внутри папки расставляется в «Папки чатов».',
+              { target }
+            )
+          }}
         </p>
 
         <ul v-if="props.folders.length" class="picker-list" role="group" :aria-label="t('Папки')">

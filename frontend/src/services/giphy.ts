@@ -5,6 +5,7 @@
  * (файл frontend/.env) — см. frontend/.env.example.
  * Без ключа панель GIF показывает подсказку и не загружает гифки.
  */
+import { t } from '@/i18n'
 
 export interface GiphyGif {
   id: string
@@ -66,7 +67,7 @@ function mapGif(raw: GiphyRaw): GiphyGif | null {
 async function request(url: string): Promise<GiphyGif[]> {
   const response = await fetch(url)
   if (!response.ok) {
-    throw new Error(`Сервис GIF вернул ошибку (${response.status})`)
+    throw new Error(t('Сервис GIF вернул ошибку ({status})', { status: response.status }))
   }
   const data = (await response.json()) as { data?: GiphyRaw[] }
   const gifs: GiphyGif[] = []

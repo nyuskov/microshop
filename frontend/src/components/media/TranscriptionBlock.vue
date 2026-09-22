@@ -49,7 +49,7 @@
           :aria-pressed="speechLanguage === ''"
           @click="setSpeechLanguage('')"
         >
-          Авто
+          {{ t('Авто') }}
         </button>
         <button
           v-for="item in SPEECH_LANGUAGES"
@@ -159,7 +159,7 @@ const runningLabel = computed<string>(() => {
   if (state.stage === 'download') {
     const percent = state.progress ? Math.round(state.progress * 100) : 0
     return percent > 0
-      ? `Скачиваем модель распознавания… ${percent}%`
+      ? t('Скачиваем модель распознавания… {percent}%', { percent })
       : t('Скачиваем модель распознавания…')
   }
   if (state.stage === 'recognize') return t('Распознаём на устройстве…')

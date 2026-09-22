@@ -25,6 +25,7 @@ import {
   STICKER_IMAGE_RECENT_LIMIT
 } from '@/utils/emoji'
 import type { StandardStickerPack } from '@/utils/standardStickers'
+import { t } from '@/i18n'
 import { readImportedSets, writeImportedSets } from '@/utils/stickerSetImports'
 
 /** Сколько раз пережидаем лимит загрузок, прежде чем сдаться (10 файлов в минуту). */
@@ -100,7 +101,7 @@ export const useStickersStore = defineStore('stickers', () => {
   }
 
   /** Создаёт пак и ставит его последним. */
-  const createPack = async (title = 'Мои стикеры'): Promise<StickerPack> => {
+  const createPack = async (title = t('Мои стикеры')): Promise<StickerPack> => {
     const pack = await createStickerPack(title)
     packs.value = sortPacks([...packs.value, { ...pack, stickers: pack.stickers ?? [] }])
     return pack

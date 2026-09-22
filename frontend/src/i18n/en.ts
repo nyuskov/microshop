@@ -987,6 +987,11 @@ export const EN: Record<string, string> = {
   'Удалить для {name}': 'Delete for {name}',
   'Публикуют владелец и админы канала': 'Only the owner and channel admins can post',
   'Предложить пост': 'Suggest a post',
+  Комментарии: 'Comments',
+  Эмодзи: 'Emoji',
+  Стикеры: 'Stickers',
+  'Подписчики · {count}': 'Subscribers · {count}',
+  'Предложки · {count}': 'Suggestions · {count}',
   'Добавить набор': 'Add the set',
 
   // --- Вложения и превью (utils/media.ts, utils/chatPreview.ts) ---
@@ -1901,6 +1906,12 @@ export const EN: Record<string, string> = {
   Капля: 'Drop',
   Мягкий: 'Soft',
   Яркий: 'Bright',
+  'Не удалось прочитать изображение': 'Could not read the image',
+  'Скоро вернёмся.': 'We will be back soon.',
+  'Проверяем…': 'Checking…',
+  'Проверить обновления': 'Check for updates',
+  'Забанить {name}?': 'Ban {name}?',
+  локальная: 'local',
   // Категории эмодзи (utils/emojiCatalog.ts)
   Смайлы: 'Smileys',
   Люди: 'People',
@@ -2004,5 +2015,144 @@ export const EN: Record<string, string> = {
   'Свернуть реакции': 'Collapse the reactions',
   'Ещё реакции': 'More reactions',
   'Удалить чаты': 'Delete the chats',
-  'Удалить чат': 'Delete the chat'
+  'Удалить чат': 'Delete the chat',
+
+  // --- Ошибки и подписи из кода (composables, stores, utils) ---
+  'Не удалось выполнить поиск': 'Search failed',
+  'Не удалось расшифровать': 'Could not decrypt',
+  'Не удалось поставить напоминание': 'Could not set the reminder',
+  'Не удалось убрать напоминание': 'Could not remove the reminder',
+  'Файл слишком большой': 'The file is too large',
+  'Отправим только текст': 'We will send the text only',
+  'Не удалось отправить': 'Could not send',
+  'Не удалось заблокировать пользователя': 'Could not block the user',
+  'Не удалось изменить запрет звонков': 'Could not change the calls ban',
+  'Запись видео': 'Recording video',
+  'Запись голоса': 'Recording voice',
+  'Не удалось отложить сообщение': 'Could not schedule the message',
+  'Не удалось отменить отправку': 'Could not cancel the sending',
+  'Pismo для Android': 'Pismo for Android',
+  'Сессия завершена. Войдите заново — другим устройствам доступ закрыт.':
+    'The session has ended. Sign in again — other devices have lost access.',
+  'Не удалось загрузить истории': 'Could not load the stories',
+  'Не удалось поставить реакцию': 'Could not add the reaction',
+  'Не удалось удалить историю': 'Could not delete the story',
+  'Нет встроенного перевода': 'No built-in translation available',
+  'Отправка… {percent}%': 'Sending… {percent}%',
+  'Отправка…': 'Sending…',
+  'Сохранённые сообщения': 'Saved messages',
+
+  // --- Тексты разметки, найденные при сплошной проверке ---
+  'Доступна новая версия приложения': 'A new version of the app is available',
+  'Проверяем ссылку-приглашение…': 'Checking the invite link…',
+  'Ссылка недействительна': 'The link is no longer valid',
+  'Эта ссылка-приглашение уже использована, истекла или не существует. Обратитесь к тому, кто её отправил, за новой ссылкой.':
+    'This invite link has already been used, has expired or does not exist. Ask the person who sent it for a new one.',
+  'На страницу входа': 'Go to sign-in',
+  'Регистрация по приглашению': 'Sign-up by invitation',
+  'Придумайте пароль, чтобы завершить создание аккаунта.':
+    'Create a password to finish setting up your account.',
+  'Минимум {count} символов': 'At least {count} characters',
+  'Создать аккаунт': 'Create account',
+  'Приложение столкнулось с ошибкой и не смогло продолжить. Перезагрузка обычно помогает — данные и переписка не потеряны.':
+    'The app hit an error and could not continue. Reloading usually helps — your data and chats are not lost.',
+  'Скорость {speed} — нажмите, чтобы изменить': 'Speed {speed} — tap to change',
+  'Не задан ключ Giphy. Добавьте': 'No Giphy key is set. Add',
+  '(см. .env.example) и перезапустите frontend.': '(see .env.example) and restart the frontend.',
+  Авто: 'Auto',
+  'Скачиваем модель распознавания… {percent}%': 'Downloading the speech model… {percent}%',
+  '{target} — отметьте папки, где чат должен быть виден. Порядок внутри папки расставляется в «Папки чатов».':
+    '{target} — tick the folders where the chat should be visible. The order inside a folder is set in “Chat folders”.',
+  'Убрать из папки': 'Remove from the folder',
+  'Больше {count} папок не поместится в строку фильтров.':
+    'No more than {count} folders fit in the filter row.',
+  'Удалить папку «{name}»?': 'Delete the folder “{name}”?',
+  'Как звучит новое сообщение в чате «{title}». Настройка действует только на этом устройстве; при выключенном «Звуке сообщений» в профиле здесь всё равно будет тихо.':
+    'How a new message sounds in the chat “{title}”. The setting applies to this device only; with “Message sound” turned off in your profile it will still be silent here.',
+  'Как звучит новое сообщение. Настройка действует только на этом устройстве; при выключенном «Звуке сообщений» в профиле здесь всё равно будет тихо.':
+    'How a new message sounds. The setting applies to this device only; with “Message sound” turned off in your profile it will still be silent here.',
+  'в среднем {average} в активный день': '{average} on an average active day',
+  'Сообщений за 30 дней: {count}': 'Messages in 30 days: {count}',
+  'Из телефонной книги: {count}': 'From the phone book: {count}',
+  'Аккаунт и все данные будут удалены': 'The account and all data will be deleted',
+  'профиль, аватар, переписка, вложения, push-подписки. Восстановить их не получится.':
+    'profile, avatar, chats, attachments, push subscriptions. They cannot be restored.',
+  'Введите {code} для подтверждения': 'Enter {code} to confirm',
+  'Открыто: {label}': 'Opened from: {label}',
+  'Ключ восстановлен (устройство {device}…). Перечитываем переписку…':
+    'The key has been restored (device {device}…). Re-reading your chats…',
+  'Вы: {body}': 'You: {body}',
+  'Включён с {time}': 'Enabled since {time}',
+  'Последнее переключение: {time}': 'Last toggled: {time}',
+  'Откроется один раз и сгорит после просмотра': 'It opens once and is gone after viewing',
+  'У «{name}» новое устройство — так бывает, когда входят с телефона или компьютера.':
+    '“{name}” has a new device — this happens when they sign in from a phone or a computer.',
+  'Вернём вас к этому сообщению в выбранное время. Уведомление придёт, даже если приложение закрыто — из чата «{title}».':
+    'We will bring you back to this message at the chosen time. The notification will arrive even if the app is closed — from the chat “{title}”.',
+  'Вернём вас к этому сообщению в выбранное время. Уведомление придёт, даже если приложение закрыто.':
+    'We will bring you back to this message at the chosen time. The notification will arrive even if the app is closed.',
+  'Напоминание уже стоит: {label}': 'A reminder is already set: {label}',
+  'Жалоба на': 'Report on',
+  ' — сообщение: «{preview}»': ' — message: “{preview}”',
+  '. Мы проверим её и примем меры.': '. We will review it and take action.',
+  'Что считается нарушением —': 'What counts as a violation —',
+  'Сравните этот код с': 'Compare this code with',
+  '— лично, по телефону или голосом. Если код совпадает, переписку читаете только вы двое: ключи не подменены, и сервер в середине отсутствует.':
+    '— in person, by phone or by voice. If the code matches, only the two of you can read the chat: the keys are not substituted and there is no server in the middle.',
+  'Короткая версия (30 цифр):': 'Short version (30 digits):',
+  'ближайшее {time}': 'next {time}',
+  'Мы прислали уведомление о входе с нового устройства ({device} · {ip}). Если вы этого не делали — закройте доступ чужим.':
+    'We have sent a notice about a sign-in from a new device ({device} · {ip}). If it was not you, close access to strangers.',
+  'Мы прислали уведомление о входе с нового устройства. Если вы этого не делали — закройте доступ чужим.':
+    'We have sent a notice about a sign-in from a new device. If it was not you, close access to strangers.',
+  'Возможно, ссылка устарела, чат удалён или в адресе опечатка. Проверьте адрес или вернитесь в приложение.':
+    'The link may be outdated, the chat deleted, or the address mistyped. Check the address or go back to the app.',
+
+  // --- Тексты в коде: истории, отправка файлов, обработчики ошибок ---
+  'Pismo — мессенджер': 'Pismo — messenger',
+  'Парольная фраза короче {count} символов': 'The passphrase is shorter than {count} characters',
+  'Сервис GIF вернул ошибку ({status})': 'The GIF service returned an error ({status})',
+  'Пустой список ICE-серверов': 'The ICE server list is empty',
+  'Распознавание не ответило': 'Speech recognition did not respond',
+  'Распознавание не получило звук': 'Speech recognition received no audio',
+  'Стикер недоступен ({status})': 'The sticker is unavailable ({status})',
+  'Открыть файл': 'Open the file',
+  'Ответить {name}…': 'Reply to {name}…',
+  'Сервер ответил {status}': 'The server responded with {status}',
+  'Не удалось отправить «{name}»': 'Could not send “{name}”',
+  'Не удалось отправить {failed} из {total} файлов': 'Could not send {failed} of {total} files',
+  '{name}: реакция на вашу историю': '{name}: reacted to your story',
+  'Логин «{login}» не найден': 'Username “{login}” was not found',
+
+  // --- Профиль: журнал безопасности, ключ шифрования, документы ---
+  'История хранится 180 дней и видна только вам. Если увидели незнакомый вход — смените пароль и нажмите «Выйти на всех устройствах».':
+    'The history is kept for 180 days and is visible only to you. If you see an unfamiliar sign-in, change your password and tap “Sign out on all devices”.',
+  'Резервная копия': 'Backup copy',
+  'Ключ сквозного шифрования хранится только в этом браузере: переустановка приложения или потеря телефона уносят с собой переписку зашифрованных чатов. Сохраните копию ключа — она вернёт доступ на новом устройстве.':
+    'The end-to-end encryption key is stored only in this browser: reinstalling the app or losing the phone takes the chats from encrypted conversations with it. Save a copy of the key — it will restore access on a new device.',
+  'Правила сообщества': 'Community rules',
+  'Политика конфиденциальности': 'Privacy policy',
+  'Пользовательское соглашение': 'Terms of service',
+
+  // --- Утилиты: подписи, ошибки, время ---
+  'Не удалось загрузить голосовое ({status})': 'Could not load the voice message ({status})',
+  'работает: {count}': 'works: {count}',
+  'с оговоркой: {count}': 'with caveats: {count}',
+  'недоступно: {count}': 'unavailable: {count}',
+  '{date}: сообщений не было': '{date}: no messages',
+  'Год не раньше {year}': 'The year must be {year} or later',
+  'Неизвестная ошибка': 'Unknown error',
+  'Слишком длинный текст для QR (больше {max} знаков)':
+    'The text is too long for a QR code (more than {max} characters)',
+  'Не беспокоить с {start} до {end}{night}; {calls}':
+    'Do not disturb from {start} to {end}{night}; {calls}',
+  'Через неделю в {time}': 'In a week at {time}',
+  '{count} мин': '{count} min',
+  '{count} ч': '{count} h',
+  '{count} дн': '{count} d',
+
+  // --- Удаление чатов и поле даты ---
+  'Удалить выбранные чаты ({count})?': 'Delete the selected chats ({count})?',
+  'Удалить чат с': 'Delete the chat with',
+  'ДД.ММ.ГГГГ': 'DD.MM.YYYY'
 }

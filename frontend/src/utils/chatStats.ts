@@ -6,7 +6,7 @@
  * сдвигать столбики, а «0» и «мало» должны отличаться визуально.
  */
 
-import { plural } from '@/i18n'
+import { dateLocale, plural, t } from '@/i18n'
 import type { ChatStatsDay, ChatStatsSender } from '@/services/chatService'
 import { parseServerTime } from '@/utils/format'
 
@@ -35,9 +35,10 @@ const localIsoDate = (date: Date): string => {
 }
 
 const dayTitle = (date: Date, count: number): string => {
-  const label = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
-  if (count === 0) return `${label}: сообщений не было`
-  return `${label}: ${count} ${plural(count, ['сообщение', 'сообщения', 'сообщений'], ['message', 'messages'])}`
+  const label = date.toLocaleDateString(dateLocale(), { day: 'numeric', month: 'long' })
+  if (count === 0) return t('{date}: сообщений не было', { date: label })
+  const messages = `${count} ${plural(count, ['сообщение', 'сообщения', 'сообщений'], ['message', 'messages'])}`
+  return `${label}: ${messages}`
 }
 
 /**
@@ -99,7 +100,7 @@ export function statsPeriod(first: string | null, last: string | null): string {
   const end = parseServerTime(last)
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return ''
   const format = (date: Date): string =>
-    date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+    date.toLocaleDateString(dateLocale(), { day: 'numeric', month: 'long', year: 'numeric' })
   const startLabel = format(start)
   const endLabel = format(end)
   return startLabel === endLabel ? startLabel : `${startLabel} — ${endLabel}`

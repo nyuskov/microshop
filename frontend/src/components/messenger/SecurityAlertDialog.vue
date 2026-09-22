@@ -12,9 +12,16 @@
       <q-separator />
       <q-card-section class="sa-body">
         <p class="sa-text">
-          Мы прислали уведомление о входе с нового устройства
-          <template v-if="latest">({{ latest.device }} · {{ latest.ip }})</template>. Если вы этого
-          не делали — закройте доступ чужим.
+          {{
+            latest
+              ? t(
+                  'Мы прислали уведомление о входе с нового устройства ({device} · {ip}). Если вы этого не делали — закройте доступ чужим.',
+                  { device: latest.device, ip: latest.ip }
+                )
+              : t(
+                  'Мы прислали уведомление о входе с нового устройства. Если вы этого не делали — закройте доступ чужим.'
+                )
+          }}
         </p>
 
         <div v-if="state === 'done'" class="sa-result">{{ result }}</div>

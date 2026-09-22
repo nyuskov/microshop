@@ -228,7 +228,9 @@ const restore = async (): Promise<void> => {
   try {
     const text = await chosen.text()
     const { deviceId } = await restoreBackup(userId, text, passphrase.value)
-    done.value = `Ключ восстановлен (устройство ${deviceId.slice(0, 8)}…). Перечитываем переписку…`
+    done.value = t('Ключ восстановлен (устройство {device}…). Перечитываем переписку…', {
+      device: deviceId.slice(0, 8)
+    })
     // Столько кэшей (расшифрованные сообщения, ключи чатов) держать в памяти
     // после подмены ключа нельзя — проще и надёжнее начать сессию заново.
     globalThis.setTimeout(() => {

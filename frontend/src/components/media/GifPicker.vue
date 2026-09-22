@@ -42,8 +42,8 @@
       </div>
 
       <div v-if="!keyAvailable" class="gif-status">
-        Не задан ключ Giphy. Добавьте <b>VITE_GIPHY_API_KEY</b> {{ t('в файл') }}
-        <b>frontend/.env</b> (см. .env.example) и перезапустите frontend.
+        {{ t('Не задан ключ Giphy. Добавьте') }} <b>VITE_GIPHY_API_KEY</b> {{ t('в файл') }}
+        <b>frontend/.env</b> {{ t('(см. .env.example) и перезапустите frontend.') }}
       </div>
       <div v-else-if="loading" class="gif-status">
         <span class="gif-spinner"></span> {{ t('Загрузка…') }}

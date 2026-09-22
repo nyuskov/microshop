@@ -3,6 +3,7 @@
 import { ref } from 'vue'
 
 import { mediaUrl } from '@/config'
+import { t } from '@/i18n'
 import type { Chat, ChatUser } from '@/types'
 
 /**
@@ -111,9 +112,17 @@ export const chatPeer = (chat: Chat, currentUserId: number | null): ChatUser | u
 /** Отображаемое название чата (для личных чатов — имя собеседника). */
 export const chatPeerTitle = (chat: Chat, currentUserId: number | null): string => {
   // «Сохранённые сообщения» — это чат с собой, показываем его название.
-  if (chat.is_self) return chat.name || 'Сохранённые сообщения'
+  // Сервер создаёт его с русским именем, поэтому своё (русское) имя показываем
+  // только когда человек его переименовал сам.
+  if (chat.is_self) return savedMessagesTitle(chat.name)
   const peer = chatPeer(chat, currentUserId)
   return peer ? displayName(peer) : chat.name
+}
+
+/** Название чата с собой: русский дефолт с сервера показываем переводом. */
+export const savedMessagesTitle = (name?: string | null): string => {
+  const trimmed = name?.trim()
+  return !trimmed || trimmed === 'Сохранённые сообщения' ? t('Сохранённые сообщения') : trimmed
 }
 
 /** Личный чат ровно с двумя участниками. */
@@ -141,7 +150,7 @@ export const chatAvatarRounded = (chat: Chat): boolean =>
  * «Сохранённые сообщения» — как в chatPeerTitle.
  */
 export const chatTitle = (chat: Chat, currentUserId: number | null): string => {
-  if (isGroupChat(chat)) return chat.name || 'Группа'
+  if (isGroupChat(chat)) return chat.name || t('Группа')
   return chatPeerTitle(chat, currentUserId)
 }
 

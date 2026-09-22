@@ -11,6 +11,7 @@
  */
 import { api } from './api'
 import { parseServerTime } from '@/utils/format'
+import { dateLocale, t } from '@/i18n'
 
 export interface SecurityLogEntry {
   id: number
@@ -51,7 +52,7 @@ export function isAlertEvent(event: string): boolean {
 export function formatEventTime(iso: string): string {
   const date = parseServerTime(iso)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleString('ru-RU', {
+  return date.toLocaleString(dateLocale(), {
     day: '2-digit',
     month: '2-digit',
     hour: '2-digit',
@@ -62,7 +63,7 @@ export function formatEventTime(iso: string): string {
 /** Подпись устройства: браузер/ОС вместо полной строки User-Agent. */
 export function deviceLabelOf(agent: string): string {
   if (!agent) return ''
-  if (/pismo/i.test(agent) && /android/i.test(agent)) return 'Pismo для Android'
+  if (/pismo/i.test(agent) && /android/i.test(agent)) return t('Pismo для Android')
   if (/edg\//i.test(agent)) return 'Edge'
   if (/opr\//i.test(agent)) return 'Opera'
   if (/chrome\//i.test(agent) && !/chromium/i.test(agent)) return 'Chrome'

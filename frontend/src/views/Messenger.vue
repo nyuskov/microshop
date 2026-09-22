@@ -1598,7 +1598,7 @@ const fetchViewOnceUrl = async (message: Message): Promise<string | null> => {
     throw new Error(t('Расшифровка не завершилась'))
   }
   const response = await fetch(mediaUrl(file.url))
-  if (!response.ok) throw new Error(`Сервер ответил ${response.status}`)
+  if (!response.ok) throw new Error(t('Сервер ответил {status}', { status: response.status }))
   return URL.createObjectURL(await response.blob())
 }
 
@@ -3134,7 +3134,9 @@ const sendFiles = async (files: File[], viewOnce = false, caption?: string) => {
         } catch (error) {
           // Один неудачный файл не отменяет остальные: копим причины и показываем
           // итог после всей пачки.
-          failures.push(getErrorMessage(error, `Не удалось отправить «${file.name}»`))
+          failures.push(
+            getErrorMessage(error, t('Не удалось отправить «{name}»', { name: file.name }))
+          )
         }
       }
       captionLeft = null
@@ -3143,7 +3145,9 @@ const sendFiles = async (files: File[], viewOnce = false, caption?: string) => {
     try {
       await sendFileMessage(item.file, viewOnce, { caption: captionLeft })
     } catch (error) {
-      failures.push(getErrorMessage(error, `Не удалось отправить «${item.file.name}»`))
+      failures.push(
+        getErrorMessage(error, t('Не удалось отправить «{name}»', { name: item.file.name }))
+      )
     }
     captionLeft = null
   }
@@ -3157,7 +3161,10 @@ const sendFiles = async (files: File[], viewOnce = false, caption?: string) => {
 
   if (failures.length === 1) sendError.value = failures[0]
   else if (failures.length > 1) {
-    sendError.value = `Не удалось отправить ${failures.length} из ${files.length} файлов`
+    sendError.value = t('Не удалось отправить {failed} из {total} файлов', {
+      failed: failures.length,
+      total: files.length
+    })
   }
 }
 
@@ -4011,7 +4018,7 @@ const handleIncomingMessage = (chatId: number) => {
  */
 const handleStoryReaction = (event: { name: string; emoji: string }) => {
   void storiesStore.load()
-  announceLiveMessage(`${event.name}: реакция на вашу историю`)
+  announceLiveMessage(t('{name}: реакция на вашу историю', { name: event.name }))
 }
 
 /**
@@ -4297,7 +4304,7 @@ const resolveProfileLink = async () => {
     Notify.create({
       type: 'negative',
       message: t('Ссылка не открылась'),
-      caption: `Логин «${username}» не найден`,
+      caption: t('Логин «{login}» не найден', { login: username }),
       timeout: 4000
     })
     console.error(t('Не удалось открыть ссылку-профиль:'), getErrorMessage(error))

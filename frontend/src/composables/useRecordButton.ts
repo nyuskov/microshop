@@ -5,6 +5,8 @@
  */
 import { onScopeDispose, ref } from 'vue'
 
+import { t } from '@/i18n'
+
 export type RecordMode = 'audio' | 'video'
 
 export interface RecordButtonOptions {
@@ -40,7 +42,7 @@ export function useRecordButton(options: RecordButtonOptions) {
 
   const showModeHint = () => {
     clearModeHint()
-    recordModeHint.value = recordMode.value === 'video' ? 'Запись видео' : 'Запись голоса'
+    recordModeHint.value = recordMode.value === 'video' ? t('Запись видео') : t('Запись голоса')
     modeHintTimer = window.setTimeout(() => {
       recordModeHint.value = ''
       modeHintTimer = null

@@ -1,6 +1,7 @@
 /** Клиент API стикеров: паки, картинки и «в стикеры» из сообщения. */
 
 import { api } from './api'
+import { t } from '@/i18n'
 import type { StandardSticker } from '@/utils/standardStickers'
 
 /**
@@ -89,7 +90,7 @@ export const setStickerPackPreset = async (
 }
 
 /** Создаёт пак (название по умолчанию подставит сервер). */
-export const createStickerPack = async (title = 'Мои стикеры'): Promise<StickerPack> => {
+export const createStickerPack = async (title = t('Мои стикеры')): Promise<StickerPack> => {
   const response = await api.post<StickerPack>('/stickers/packs/', { title })
   return response.data
 }
@@ -147,7 +148,7 @@ export const deleteSticker = async (stickerId: number): Promise<void> => {
  */
 export const fetchStandardStickerFile = async (sticker: StandardSticker): Promise<File> => {
   const response = await fetch(sticker.url)
-  if (!response.ok) throw new Error(`Стикер недоступен (${response.status})`)
+  if (!response.ok) throw new Error(t('Стикер недоступен ({status})', { status: response.status }))
   const blob = await response.blob()
   const name = sticker.url.split('/').pop() ?? `${sticker.name}.png`
   // Имя файла важно: сервер смотрит на расширение, а не на Content-Type.

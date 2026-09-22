@@ -14,6 +14,7 @@ import { reactive } from 'vue'
 import { mediaUrl } from '@/config'
 import type { Message } from '@/types'
 import { decryptFileBlob } from '@/services/e2eeFiles'
+import { t } from '@/i18n'
 
 export type DecryptedStatus = 'loading' | 'ready' | 'failed'
 
@@ -84,7 +85,7 @@ async function load(message: Message): Promise<void> {
     const response = await fetch(mediaUrl(file.url))
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const blob = await decryptFileBlob(meta, await response.arrayBuffer())
-    if (!blob) throw new Error('Не удалось расшифровать')
+    if (!blob) throw new Error(t('Не удалось расшифровать'))
     cache[message.id] = {
       status: 'ready',
       url: URL.createObjectURL(blob),
