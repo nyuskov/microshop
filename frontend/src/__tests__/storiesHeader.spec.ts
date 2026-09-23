@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { StoryGroup, StoryItem } from '@/services/stories'
 import {
   firstStoryToOpen,
+  headerHiddenStoryGroups,
   headerStoriesLimit,
   headerStoryGroups,
   HEADER_STORIES_LIMIT,
@@ -75,6 +76,17 @@ describe('лимит кружков в шапке', () => {
     // Без ограничения (0) ряд не режем: так живёт раскрытая полоса.
     expect(headerStoryGroups(others, 0)).toHaveLength(7)
   })
+
+  it('счётчик «+N» показывает, сколько историй не влезло', () => {
+    const others = [group(1, [story(10)]), group(2, [story(20)]), group(3, [story(30)])]
+
+    // 2 кружка в шапке = «моя» + 1 чужая → на счётчике остальные двое.
+    expect(headerHiddenStoryGroups(others, 2)).toBe(2)
+    // Без надписи в середине видно шесть кружков — все авторы влезли.
+    expect(headerHiddenStoryGroups(others, 6)).toBe(0)
+    // Раскрытая полоса лимита не знает — счётчику считать нечего.
+    expect(headerHiddenStoryGroups(others, 0)).toBe(0)
+  })
 })
 
 describe('что открывает воспроизведение историй', () => {
@@ -110,6 +122,15 @@ describe('связка с разметкой', () => {
   it('сжатый ряд обрезается по лимиту, а раскрытая полоса — нет', () => {
     expect(strip).toContain('props.mini ? headerStoryGroups(stories.others, props.limit)')
     expect(strip).toContain('v-for="(group, index) in visibleOthers"')
+  })
+
+  it('о скрытых историях говорит счётчик «+N» рядом с полосой', () => {
+    expect(strip).toContain('props.mini ? headerHiddenStoryGroups(stories.others, props.limit) : 0')
+    // Счётчик — только сжатый ряд и только когда есть что считать.
+    expect(strip).toContain('v-if="mini && hiddenOthers > 0"')
+    expect(strip).toContain('+{{ hiddenOthers }}')
+    // Нажатие по счётчику равносильно нажатию по кружку — раскрывает полосу.
+    expect(strip).toContain('@click="emit(\'toggle-expand\')"')
   })
 
   it('кружки в шапке стоят плотнее (наложение 24 px)', () => {

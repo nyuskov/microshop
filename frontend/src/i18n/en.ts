@@ -282,6 +282,7 @@ export const EN: Record<string, string> = {
   Я: 'Me',
   'История может быть фото или видео': 'A story can be a photo or a video',
   'Не удалось опубликовать историю': 'Could not publish the story',
+  'Ещё {count} — показать всю полосу': '{count} more — show the whole strip',
 
   // --- Отчёт «что умеет это устройство» (utils/browserSupport.ts) ---
   'Неизвестное окружение': 'Unknown environment',

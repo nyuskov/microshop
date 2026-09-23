@@ -85,6 +85,23 @@
       </p>
     </div>
 
+    <!-- Счётчик «+N»: сколько историй НЕ влезло в сжатый ряд. Нужен потому, что
+         в шапке ряд обрезан лимитом (2 кружка рядом с надписью о связи) и по
+         двум кружкам не понять, что за ними есть ещё другие (владелец:
+         «чтобы понятно было, что их не две, а больше»). Стоит РЯДОМ с полосой,
+         а не внутри неё: внутри он уехал бы за край вместе с прокруткой. Тап —
+         как по кружку: раскрывает полосу, где лимита нет. -->
+    <button
+      v-if="mini && hiddenOthers > 0"
+      class="story-more"
+      type="button"
+      :title="t('Ещё {count} — показать всю полосу', { count: hiddenOthers })"
+      :aria-label="t('Ещё {count} — показать всю полосу', { count: hiddenOthers })"
+      @click="emit('toggle-expand')"
+    >
+      +{{ hiddenOthers }}
+    </button>
+
     <!-- Выбор файла и подпись нужны только раскрытой полосе: в шапке их нет. -->
     <template v-if="!mini">
       <input
@@ -152,6 +169,7 @@ import { useMobileLayer } from '@/composables/useMobileOverlay'
 import type { StoryGroup } from '@/services/stories'
 import {
   firstUnseenStoryId,
+  headerHiddenStoryGroups,
   headerStoryGroups,
   probeVideoPlayback,
   type VideoProbe
@@ -204,6 +222,14 @@ const authStore = useAuthStore()
  */
 const visibleOthers = computed(() =>
   props.mini ? headerStoryGroups(stories.others, props.limit) : stories.others
+)
+
+/**
+ * Сколько авторов не влезло в сжатый ряд шапки — их число показывает счётчик
+ * «+N» рядом с полосой. В раскрытой полосе ограничения нет, поэтому там 0.
+ */
+const hiddenOthers = computed(() =>
+  props.mini ? headerHiddenStoryGroups(stories.others, props.limit) : 0
 )
 
 /**
@@ -379,6 +405,38 @@ const publish = async () => {
 .stories-wrap.mini {
   flex: 0 1 auto;
   min-width: 0;
+  /* Ряд листается и может уехать за край, а счётчик «+N» должен остаться на
+     виду — поэтому он сосед полосы, а не её содержимое. */
+  display: flex;
+  align-items: center;
+}
+
+/* Счётчик «+N» — просто ЧИСЛО рядом с кружками, без подложки и своей формы.
+   Владелец: сначала «+1 как-то плотнее надо и без кружка», потом пробовали
+   бейдж с акцентным фоном, как у непрочитанных (`assets/rows.css` →
+   `.unread-badge`) — вердикт: «без фона лучше». Плашка в ряду кружков выглядит
+   чужим элементом, а рядом с надписью в середине шапки их было бы две.
+   Кегль и вес — как у инициалов внутри кружков (замерено в браузере: 14 px / 600),
+   чтобы ряд читался одним набором. Прижат к последнему кружку тем же шагом,
+   каким кружки находят друг на друга. z-index выше кружков (у них 95…100):
+   число не должно уехать под аватар. */
+.mini .story-more {
+  position: relative;
+  z-index: 101;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  margin-left: -2px;
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--ms-accent);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transform: none;
 }
 
 .mini .stories-strip {
