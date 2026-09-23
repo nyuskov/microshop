@@ -164,8 +164,20 @@
 - стражи, читавшие исходники, переведены на новых владельцев: `albums`,
   `localSearch`, `inlineSearch`, `mediaSendCaption`, `emojiStickers`,
   `errorNotice`, `viewOnce`;
-- осталось по этой области: шапка пузыря (пересылка/цитата/ответ на историю) в
-  `MessageRow.vue`, разбор `MessageComposer.vue` (2094) и `CallOverlay.vue` (1876).
+
+Обновление 24.09.2026 (шаг 3 — шапка пузыря, `MessageRow.vue` 1542 → 1370):
+
+- пересылка — `components/messenger/ForwardBanner.vue` (122): подпись (в том
+  числе «от вас»), аватар автора и переход в его чат; разметка и три ветки
+  подписи раньше жили в строке;
+- цитата — `components/messenger/ReplyQuote.vue` (70): здесь же объявлен тип
+  `MessageQuote`, который импортируют и строка, и лента (до этого было две копии
+  одного типа);
+- ответ на историю — `components/messenger/StoryReply.vue` (77): миниатюра
+  снимка или значок камеры для видео;
+- `storyReply.spec.ts` читает нового владельца разметки вместо среза исходника;
+- осталось по этой области: разбор `MessageComposer.vue` (2094) и
+  `CallOverlay.vue` (1876).
 
 ### 2. `frontend/src/components/messenger/ChatSidebar.vue` — 2600 → 823 строки (сделано)
 
