@@ -112,7 +112,7 @@ export function useNativeShare(options: UseNativeShareOptions): UseNativeShare {
         previewUrl.value = URL.createObjectURL(received)
       }
     } catch (error) {
-      console.error('Не удалось прочитать присланный файл:', getErrorMessage(error))
+      console.error(t('Не удалось прочитать присланный файл:'), getErrorMessage(error))
     }
   }
 

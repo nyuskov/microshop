@@ -16,6 +16,7 @@
 
 import { nextTick, ref, type Ref } from 'vue'
 
+import { t } from '@/i18n'
 import { fetchMessages } from '@/services/chatService'
 import { getErrorMessage } from '@/services/errors'
 import type { Message } from '@/types'
@@ -71,7 +72,7 @@ export function useThreadPagination(deps: ThreadPaginationDeps) {
         await fetchMessages(chatId, { limit: MESSAGES_PAGE_SIZE })
       )
     } catch (error) {
-      console.error('Не удалось загрузить сообщения:', getErrorMessage(error))
+      console.error(t('Не удалось загрузить сообщения:'), getErrorMessage(error))
     } finally {
       messagesLoading.value = false
     }
@@ -129,7 +130,7 @@ export function useThreadPagination(deps: ThreadPaginationDeps) {
       await nextTick()
       deps.thread()?.restoreScroll(prevScrollTop, prevScrollHeight)
     } catch (error) {
-      console.error('Не удалось загрузить более старые сообщения:', getErrorMessage(error))
+      console.error(t('Не удалось загрузить более старые сообщения:'), getErrorMessage(error))
     } finally {
       loadingOlder.value = false
     }

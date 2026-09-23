@@ -35,6 +35,47 @@ const CODE_EXTENSIONS = new Set(['.ts', '.vue', '.js', '.mjs'])
 /** Вызовы `t('...')` / `t("...")`, в том числе на нескольких строках. */
 const CALL_RE = /\bt\(\s*(['"])([\s\S]*?)\1/g
 
+/**
+ * Литералы, которые обязаны остаться русскими: это ДАННЫЕ, а не подписи.
+ *
+ * Без исключений счёт «осталось перевести» не дойдёт до нуля никогда, а
+ * переводить эти строки нельзя — смысл потеряется:
+ *   - `passwordPolicy.ts` — словарь слабых паролей: переводить его нельзя,
+ *     иначе проверка перестанет ловить «пароль» (английский `password` там уже
+ *     есть отдельной строкой);
+ *   - `errors.ts` — русский текст 404-ответа сервера, по которому узнаём, что чат
+ *     удалён: признак сверяется дословно;
+ *   - названия языков (`Русский`, `Українська`, `Қазақша`) показываются СВОИМ
+ *     именем — так и должно быть в выборе языка, а не «Russian»;
+ *   - `countries.ts` — русские названия стран: английские берёт
+ *     `countryName(code, 'en')`, то есть перевод есть, но он не в каталоге.
+ */
+const KEEP_RUSSIAN = new Map([
+  ['services/errors.ts', ['чат не найден']],
+  ['utils/passwordPolicy.ts', ['йцукен', 'пароль', 'привет', 'любовь', 'россия', 'москва']],
+  ['utils/countries.ts', ['США', 'Южная Корея']],
+  ['utils/translation.ts', ['Русский', 'Українська']],
+  ['utils/voiceRecognition.ts', ['Русский', 'Українська', 'Қазақша']],
+  // Название чата «Сохранённые сообщения» приходит с сервера по-русски: с ним
+  // сравниваемся, чтобы показать перевод (`savedMessagesTitle`).
+  ['utils/user.ts', ['Сохранённые сообщения']]
+])
+
+/**
+ * Файлы, где русские литералы — это словари КЛЮЧЕЙ, а переводятся они вызовом
+ * (`t(STATUS_MESSAGES[status])`, `t(elsewhere[reason])`) или при показе списка.
+ *
+ * Исключение файла целиком — осознанно: перечислять здесь полтора десятка
+ * кодов ответов и статусов жалоб значило бы дублировать сам словарь, а он
+ * меняется. Условие «есть в каталоге» (см. `isDataKey`) для этих файлов
+ * обязательно, иначе правило спрятало бы и сырые подписи.
+ */
+const DATA_ONLY_FILES = new Map([
+  ['services/errors.ts', 'таблица текстов по коду ответа: переводится вызовом'],
+  ['services/moderation.ts', 'статусы и причины жалоб: ключи, переводятся при показе'],
+  ['stores/call.ts', 'причины завершения на другом устройстве: переводит вызов']
+])
+
 /** Строки каталога: `'Ключ': 'Значение',` — ключ бывает и без кавычек (TS это позволяет). */
 const ENTRY_RE = /^\s*(?:'((?:\\.|[^'])*)'|"((?:\\.|[^"])*)"|([^\s:'"]+))\s*:/gm
 
@@ -64,6 +105,131 @@ function normalizeKey(raw) {
     .join(' ')
 }
 
+/** Заменяет текст пробелами, оставляя переводы строк (нумерация не едет). */
+function blank(text) {
+  return text.replace(/[^\n]/g, ' ')
+}
+
+/**
+ * Границы строкового литерала начиная с кавычки на позиции `start`.
+ * Возвращает индекс ЗА закрывающей кавычкой (или конец текста, если её нет).
+ */
+function literalEnd(source, start) {
+  const quote = source[start]
+  let i = start + 1
+  while (i < source.length) {
+    if (source[i] === '\\') {
+      i += 2
+      continue
+    }
+    if (source[i] === quote) return i + 1
+    i += 1
+  }
+  return i
+}
+
+/**
+ * Границы вызова начиная с его имени: ищет закрывающую скобку с учётом строк.
+ */
+function callEnd(source, openIndex) {
+  let depth = 0
+  let i = openIndex
+  while (i < source.length) {
+    const char = source[i]
+    if (char === "'" || char === '"' || char === '`') {
+      i = literalEnd(source, i)
+      continue
+    }
+    if (char === '(') depth += 1
+    else if (char === ')') {
+      depth -= 1
+      if (depth === 0) return i + 1
+    }
+    i += 1
+  }
+  return i
+}
+
+/**
+ * Участки текста, которые УЖЕ переведены: аргументы `t('…')` и формы `plural(…)`.
+ *
+ * Зачем именно участки, а не поиск `t(` в строке: prettier разбивает длинный
+ * вызов на несколько строк (`t(\n  'Очень длинный текст'\n)`), и построчный счёт
+ * считал такие подписи непереведёнными. Так делался весь раздел «Настройки
+ * устройства» и почти все окна с пояснениями.
+ */
+function translatedRanges(source) {
+  const ranges = []
+  for (const match of source.matchAll(/\bt\(/g)) {
+    const open = match.index + match[0].length - 1
+    ranges.push([open, callEnd(source, open)])
+  }
+  for (const match of source.matchAll(/\bplural\(/g)) {
+    const open = match.index + match[0].length - 1
+    ranges.push([open, callEnd(source, open)])
+  }
+  return ranges
+}
+
+/** Строковые литералы с позициями: по ним и считаем очередь перевода. */
+function literalsWithPositions(source) {
+  const out = []
+  for (const match of source.matchAll(LITERAL_RE)) {
+    const value = match[1] ?? match[2] ?? match[3] ?? ''
+    const start = match.index
+    out.push({ value: normalizeKey(value), start, end: start + match[0].length })
+  }
+  return out
+}
+
+/**
+ * Литерал — метка-ДАННЫЕ, а не подпись: значение `label:`/`title:` в пресетах.
+ *
+ * Так устроены списки оформления (акценты, обои, размер текста), категории
+ * эмодзи, статусы жалоб: русский текст там — КЛЮЧ, а переводятся они в месте
+ * показа (`t(preset.label)`), потому что список строится один раз при импорте и
+ * перевод в нём застыл бы на языке, который был в тот момент.
+ *
+ * Условие «есть в каталоге» обязательно: иначе под эту же маску попадёт
+ * случайная сырая подпись с тем же текстом.
+ */
+function isDataKey(source, literal) {
+  if (!known.has(literal.value)) return false
+  const lineStart = source.lastIndexOf('\n', literal.start - 1) + 1
+  return /(?:label|title|text|hint|subtitle|note|desc)\s*:\s*$/.test(
+    source.slice(lineStart, literal.start)
+  )
+}
+
+/**
+ * Текст файла без комментариев и без блока `<style>`.
+ *
+ * Нужен и для поиска вызовов `t()`, и для ОЦЕНКИ прогресса: русский текст в
+ * комментариях — не интерфейс (в `StoriesStrip.vue` его было 72 «строки» при
+ * трёх реальных подписях), а правила CSS подписей не содержат вовсе.
+ *
+ * Комментарии убираем ПО СТРОКАМ (начало строки — `//`, `/*` или `*`):
+ * посимвольный разбор приходилось бы учить отличать комментарий от регулярки
+ * (`/[А-Яа-я]/`), и ошибка в этом месте «съедала» код вместе с вызовами `t()`.
+ * Русский текст в конце строки после кода — редкий случай, и кавычек он обычно
+ * не содержит, а считаем мы именно строковые литералы.
+ */
+function withoutCommentsAndStyles(source) {
+  const cleaned = source
+    .replace(/<!--[\s\S]*?-->/g, blank)
+    .replace(/<style[\s\S]*?<\/style>/g, blank)
+  return cleaned
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim()
+      if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
+        return ''
+      }
+      return line
+    })
+    .join('\n')
+}
+
 const catalogSource = await readFile(CATALOG, 'utf8')
 const known = new Set()
 /** Повторённые ключи: TS падает на них («multiple properties with the same name»). */
@@ -86,8 +252,10 @@ const pending = []
 for (const file of files) {
   const source = await readFile(file, 'utf8')
   const relative = path.relative(SRC, file)
+  // Комментарии и стили — не интерфейс: и для поиска ключей, и для оценки.
+  const ui = withoutCommentsAndStyles(source)
 
-  for (const match of source.matchAll(CALL_RE)) {
+  for (const match of ui.matchAll(CALL_RE)) {
     const key = normalizeKey(match[2])
     if (!key) continue
     if (!used.has(key)) used.set(key, relative)
@@ -96,26 +264,32 @@ for (const file of files) {
 
   // Тексты, которые в `t()` приходят ПЕРЕМЕННОЙ (`t(filter.title)`), вызовом не
   // видны — считаем их «живыми» по самому литералу в коде.
-  for (const match of source.matchAll(LITERAL_RE)) {
+  for (const match of ui.matchAll(LITERAL_RE)) {
     literals.add(normalizeKey(match[1] ?? match[2] ?? match[3] ?? ''))
   }
 
-  // Оценка прогресса: строки с кириллицей, которые не являются вызовом `t(` и
-  // не комментарием (ни `//`, ни шаблонным `<!-- -->`). Точность не нужна —
-  // важен порядок величины и то, чтобы счёт не раздували комментарии.
-  const withoutTemplateComments = source.replace(/<!--[\s\S]*?-->/g, (block) =>
-    block.replace(/[^\n]/g, ' ')
-  )
-  const lines = withoutTemplateComments.split('\n')
-  let untranslated = 0
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!/[А-Яа-яЁё]/.test(line)) continue
-    if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) continue
-    if (trimmed.includes('t(')) continue
-    untranslated += 1
+  // Оценка прогресса: русские литералы, которые НЕ являются аргументом `t()`
+  // или формой `plural()`. Разбор по литералам, а не по строкам: многострочный
+  // вызов prettier'а — это одна переведённая подпись, а не три непереведённых.
+  const translated = translatedRanges(ui)
+  const keepRussian = new Set(KEEP_RUSSIAN.get(relative) ?? [])
+  const pendingLines = []
+  for (const literal of literalsWithPositions(ui)) {
+    if (!/[А-Яа-яЁё]/.test(literal.value)) continue
+    if (keepRussian.has(literal.value)) continue
+    // Файлы-словари: литерал — ключ, который переводится в месте показа.
+    if (DATA_ONLY_FILES.has(relative) && known.has(literal.value)) continue
+    if (isDataKey(ui, literal)) continue
+    // Пересечение, а не «целиком внутри»: в разметке атрибут — это тоже строка
+    // (`:title="t('Открыть')"`), и она «съедает» вложенный вызов вместе с его
+    // кавычками. Такой литерал переведён — его и пропускаем.
+    if (translated.some(([from, to]) => literal.start < to && literal.end > from)) continue
+    const line = ui.slice(0, literal.start).split('\n').length
+    pendingLines.push(`${line}: ${literal.value.slice(0, 80)}`)
   }
-  if (untranslated > 0) pending.push({ relative, untranslated })
+  if (pendingLines.length > 0) {
+    pending.push({ relative, untranslated: pendingLines.length, lines: pendingLines })
+  }
 }
 
 const missing = [...used.entries()].filter(([key]) => !known.has(key))
@@ -132,10 +306,17 @@ if (unused.length > 0) {
 pending.sort((a, b) => b.untranslated - a.untranslated)
 const totalPending = pending.reduce((sum, item) => sum + item.untranslated, 0)
 console.log(
-  `\nОсталось перевести (оценка по строкам с русским текстом вне t()): ${totalPending} в ${pending.length} файлах.`
+  `\nОсталось перевести (строковые литералы с русским текстом вне t()): ${totalPending} в ${pending.length} файлах.`
 )
 for (const item of pending.slice(0, 15)) {
   console.log(`  ${item.untranslated}\t${item.relative}`)
+  for (const line of item.lines.slice(0, 3)) console.log(`      ${line}`)
+}
+if (process.argv.includes('--list')) {
+  for (const item of pending) {
+    console.log(`\n=== ${item.relative} (${item.untranslated}) ===`)
+    for (const line of item.lines) console.log(`  ${line}`)
+  }
 }
 
 if (duplicates.length > 0) {

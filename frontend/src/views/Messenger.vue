@@ -672,15 +672,10 @@ import {
   fetchUserByUsername,
   searchMessages,
   editMessage,
-  forwardMessage,
   fetchChatDetail,
   openPrivateChat,
   sendAttachmentMessage,
   sendNewMessage,
-  setMessagePinned,
-  setMessageReaction,
-  removeMessageReaction,
-  deleteMessage,
   deleteChat,
   setChatMuted,
   setChatE2ee,
@@ -716,15 +711,8 @@ import { useMessageSelection } from '@/composables/useMessageSelection'
 import { useOutbox } from '@/composables/useOutbox'
 import { usePeerBlocking } from '@/composables/usePeerBlocking'
 import { useScheduledSend } from '@/composables/useScheduledSend'
-import { useStandardSetImport } from '@/composables/useStandardSetImport'
 import { useThreadPagination, MESSAGES_PAGE_SIZE } from '@/composables/useThreadPagination'
-import {
-  packIdOfFileName,
-  presetSetOfFileName,
-  presetStickerFileName,
-  packStickerFileName
-} from '@/utils/presetStickers'
-import { resolveStickerSet, type StickerSetRef } from '@/utils/stickerSet'
+import { presetStickerFileName, packStickerFileName } from '@/utils/presetStickers'
 import type {
   Chat,
   ChatUser,
@@ -748,8 +736,6 @@ import type { CallHistoryItem } from '@/utils/callHistory'
 import { fetchChannel, fetchPostsMeta, markPostViewed } from '@/services/channelService'
 import { type Section } from '@/utils/mobileNav'
 import { mediaUrl } from '@/config'
-import { stickerFromMessage } from '@/services/stickers'
-import { useStickersStore } from '@/stores/stickers'
 import { chatIdFromUrl, isReplyLaunch, readStoredSection, storeSection } from '@/utils/chatUrl'
 import { haptic } from '@/utils/haptics'
 import { usePeerActivity } from '@/composables/usePeerActivity'
@@ -763,6 +749,7 @@ import { useChatFolders } from '@/composables/useChatFolders'
 import { useChatUnreadState } from '@/composables/useChatUnreadState'
 import { useDrafts } from '@/composables/useDrafts'
 import { useForward } from '@/composables/useForward'
+import { useMessageActions } from '@/composables/useMessageActions'
 import { useMediaRecording } from '@/composables/useMediaRecording'
 import { useLightbox } from '@/composables/useLightbox'
 import { useNativeShare } from '@/composables/useNativeShare'
@@ -1059,9 +1046,6 @@ const retryFailedSend = () => {
   sendError.value = ''
   run()
 }
-/** Паки стикеров: панель в композере и «В стикеры» из меню картинки. */
-const stickerStore = useStickersStore()
-const replyTarget = ref<Message | null>(null)
 const inlineSearchOpen = ref(false)
 const inlineQuery = ref('')
 const emojiPickerFor = ref<number | null>(null)
@@ -1525,19 +1509,6 @@ const distributePersonalChatKey = async (chat: Chat, create = true): Promise<voi
 const onChatInfoToggleE2ee = (enabled: boolean) => {
   const chat = selectedChat.value
   if (chat !== null) void applyChatE2ee(chat.id, enabled)
-}
-
-/** «Сохранить в Сохранённые сообщения» — пересылка сообщения в self-чат. */
-const saveMessageToSelf = async (message: Message) => {
-  const selfChat = chats.value.find((chat) => chat.is_self)
-  const current = selectedChat.value
-  // В самом «Сохранённых» или для служебных сообщений (звонки) не дублируем.
-  if (!selfChat || message.kind === 'call' || (current !== null && current.is_self)) return
-  try {
-    await forwardMessage(message.id, selfChat.id)
-  } catch (error) {
-    console.error(t('Не удалось сохранить сообщение:'), getErrorMessage(error))
-  }
 }
 
 // ---------- Просмотр изображений (lightbox) ----------
@@ -2364,15 +2335,6 @@ const authorNameOfMessage = (message: Message): string => {
   return author ? displayName(author) : t('Собеседник')
 }
 
-/** Имя в шапке цитаты при ответе в композере (семантика исходного Messenger). */
-const quoteName = (message: Message): string => {
-  const target = replyMessage(message)
-  if (!target) return t('Сообщение')
-  return isOwnMessage(target) ? t('Вы') : authorNameOfMessage(target)
-}
-
-const replyBarName = computed<string>(() => (replyTarget.value ? quoteName(replyTarget.value) : ''))
-
 /** Данные ответа-цитаты для строки сообщения (null — цитата не загружена). */
 const quoteFor = (message: Message): { name: string; mine: boolean; text: string } | null => {
   if (message.reply_to_id == null) return null
@@ -2411,10 +2373,7 @@ const senderNameOfMessage = (message: Message): string => authorNameOfMessage(me
 const pinnedSnippet = (message: Message): string =>
   `${message.user_id === currentUserId.value ? t('Вы: ') : senderNameOfMessage(message) + ': '}${messageSnippet(message)}`
 
-// ---------- Реакции ----------
-const hasMyReaction = (message: Message, emoji: string): boolean =>
-  message.reactions.some((reaction) => reaction.reacted_by_me && reaction.emoji === emoji)
-
+// ---------- Палитра реакций у строки ----------
 const toggleEmojiPicker = (messageId: number) => {
   emojiPickerFor.value = emojiPickerFor.value === messageId ? null : messageId
 }
@@ -2461,40 +2420,6 @@ const hideMessageActions = () => {
 const onThreadScrolled = () => {
   emojiPickerFor.value = null
   hideMessageActions()
-}
-
-/**
- * Действия с сообщением — в мини-панели под ним (`MessageActionsBar`): реакции,
- * ответ, пересылка и «Ещё». Удержание сообщения включает режим выделения.
- */
-const toggleReaction = async (message: Message, emoji: string) => {
-  const mine = hasMyReaction(message, emoji)
-  try {
-    const updated = mine
-      ? await removeMessageReaction(message.id)
-      : await setMessageReaction(message.id, emoji)
-    emojiPickerFor.value = null
-    replaceMessageInThread(updated)
-  } catch (error) {
-    console.error(t('Не удалось изменить реакцию:'), getErrorMessage(error))
-  }
-}
-
-/**
- * Кто поставил реакцию: открывается удержанием чипа (или правым кликом).
- *
- * Тап по реакции ставит/снимает СВОЮ — это привычное действие, поэтому список
- * живёт на отдельном жесте.
- */
-const reactionUsersFor = ref<{
-  message: Message
-  emoji: string
-  /** Чип, у которого открывается список (или null — тогда по центру). */
-  anchor: HTMLElement | null
-} | null>(null)
-
-const openReactionUsers = (message: Message, emoji: string, anchor: HTMLElement | null): void => {
-  reactionUsersFor.value = { message, emoji, anchor }
 }
 
 // ---------- Загрузка данных ----------
@@ -2853,73 +2778,6 @@ const onStickerError = (message: string) => {
 }
 
 /**
- * «В стикеры» из сообщения: сервер копирует картинку в пак по умолчанию.
- *
- * Пункт показывается только там, где сервер может прочитать файл (обычный чат),
- * поэтому расшифровывать на клиенте нечего: см. `canBecomeSticker`.
- */
-const makeStickerFromMessage = async (message: Message) => {
-  sendError.value = ''
-  try {
-    await stickerFromMessage(message.id)
-    // Библиотека изменилась — панель стикеров должна увидеть новый стикер сразу.
-    await stickerStore.load(true)
-  } catch (error) {
-    failSend(
-      getErrorMessage(error, t('Не удалось добавить стикер')),
-      () => void makeStickerFromMessage(message)
-    )
-  }
-}
-
-/**
- * «Добавить набор» из меню стикера — как «Добавить стикеры» в Телеграме.
- *
- * Так работают только ВСТРОЕННЫЕ наборы: метка `st-…` в имени файла говорит, какой
- * это набор (`utils/presetStickers.ts`). Стикеры из серверных наборов (своих и
- * публичных) добавляются из окна набора — тап по стикеру в ленте.
- */
-const { run: runStandardSetImport } = useStandardSetImport()
-
-const addStickerSet = (message: Message) => {
-  // Имя берём из эффективного вложения: в E2EE в `message.file.name` лежит
-  // нейтральное `enc_*.bin`, а метка набора — в расшифрованном конверте.
-  const set = presetSetOfFileName(effectiveFile(message)?.name ?? null)
-  if (!set) return
-  void runStandardSetImport(set).then((problem) => {
-    if (problem) sendError.value = problem
-  })
-}
-
-/** Открытый набор стикера (окно): null — окно закрыто. */
-const stickerSet = ref<StickerSetRef | null>(null)
-
-/**
- * Тап по стикеру в ленте: показываем его набор — как в Телеграме.
- *
- * Набор узнаём по метке в имени файла (`utils/presetStickers.ts`): `st-…` —
- * встроенный, `sp-<id>` — свой или публичный с сервера. Метки нет (старый стикер,
- * чужой личный набор, обычная картинка) — ведём себя как раньше и открываем
- * просмотр картинки: обещать нечего.
- */
-const openStickerSetOf = async (message: Message) => {
-  // Имя — из эффективного вложения: у E2EE-стикера настоящее имя (с меткой
-  // набора) лежит в расшифрованном конверте, а `message.file.name` — `enc_*.bin`.
-  // Без этого тап по стикеру в зашифрованном чате открывал просмотр картинки.
-  const fileName = effectiveFile(message)?.name ?? null
-  const packId = packIdOfFileName(fileName)
-  let set = resolveStickerSet(fileName, stickerStore.packs, stickerStore.presets)
-  if (!set && packId !== null) {
-    // Списки могли быть ещё не загружены (панель стикеров не открывали) —
-    // подтягиваем и пробуем снова: без них серверный набор не опознать.
-    await Promise.all([stickerStore.load(), stickerStore.loadPresets()])
-    set = resolveStickerSet(fileName, stickerStore.packs, stickerStore.presets)
-  }
-  if (set) stickerSet.value = set
-  else openImageFromMessage(message)
-}
-
-/**
  * Отправляет стикер-картинку сообщением (тап в панели «Стикеры»).
  *
  * Стикер скачиваем по ссылке и отправляем теми же байтами, что обычное
@@ -3255,37 +3113,68 @@ const {
   }
 })
 
-// ---------- Ответ (reply) ----------
-const setReply = (message: Message) => {
-  replyTarget.value = message
-  emojiPickerFor.value = null
-}
-
-const clearReply = () => {
-  replyTarget.value = null
-}
-
 // ---------- Действия над сообщением ----------
-const togglePinMessage = async (message: Message) => {
-  try {
-    const updated = await setMessagePinned(message.id, !message.is_pinned)
-    replaceMessageInThread(updated)
-    const chatId = selectedChatId.value
-    if (chatId !== null) {
-      await loadPinned(chatId)
-    }
-  } catch (error) {
-    console.error(t('Не удалось изменить закрепление:'), getErrorMessage(error))
-  }
-}
+//
+// Ответ, реакции, закрепление, копирование, правка, удаление («у себя» / «для
+// всех»), «Сохранённые», стикеры и их наборы живут в `useMessageActions`: это
+// одна тема (что делает человек с ОДНИМ сообщением), а мессенджер только
+// связывает её с лентой, композером и диалогами. Часть зависимостей объявлена
+// ниже по `<script setup>` (`saveDraftFor`, `cancelForward`) — поэтому они
+// переданы стрелками: composable обращается к ним по действию человека, а не на
+// этапе setup (см. граблю TDZ в шапке файла).
 
-const copyMessage = async (message: Message) => {
-  try {
-    await navigator.clipboard.writeText(message.text || '')
-  } catch (error) {
-    console.error(t('Не удалось скопировать:'), getErrorMessage(error))
-  }
-}
+const {
+  replyTarget,
+  replyBarName,
+  setReply,
+  clearReply,
+  editingMessage,
+  startEditMessage,
+  cancelEditing,
+  toggleReaction,
+  reactionUsersFor,
+  openReactionUsers,
+  togglePinMessage,
+  copyMessage,
+  saveMessageToSelf,
+  makeStickerFromMessage,
+  addStickerSet,
+  stickerSet,
+  openStickerSetOf,
+  showDeleteMessageDialog,
+  deleteMessageCount,
+  deleteMessageCanForAll,
+  deleteForAllLabel,
+  deleteForAllHint,
+  askDeleteScope,
+  finishDeleteScope,
+  deleteMessageOf
+} = useMessageActions({
+  selectedChat: () => selectedChat.value,
+  selectedChatId: () => selectedChatId.value,
+  currentUserId: () => currentUserId.value,
+  chats: () => chats.value,
+  replaceMessage: (message) => replaceMessageInThread(message),
+  removeMessage: (messageId) => removeMessageFromThread(messageId),
+  reloadPinned: (chatId) => loadPinned(chatId),
+  reloadChats: () => loadChats(),
+  setSendError: (message) => {
+    sendError.value = message
+  },
+  failSend: (message, retry) => failSend(message, retry),
+  isOwnMessage: (message) => isOwnMessage(message),
+  isPrivateChat: (chat) => isPrivateChat(chat),
+  nameOf: (message) => authorNameOfMessage(message),
+  closeEmojiPicker: () => {
+    emojiPickerFor.value = null
+  },
+  closePopups: () => closePopups(),
+  composerText: () => newMessage.value,
+  setComposerText: (text) => setComposerText(text),
+  saveDraft: (chatId) => saveDraftFor(chatId),
+  cancelForward: () => cancelForward(),
+  openImage: (message) => openImageFromMessage(message)
+})
 
 /**
  * Собрать текст для отправки: в «зашифрованном» чате шифруем в момент отправки
@@ -3451,9 +3340,6 @@ const openForwarderChat = async (message: Message) => {
   }
 }
 
-// ---------- Редактирование / пересылка ----------
-const editingMessage = ref<Message | null>(null)
-
 // ---------- Черновики сообщений (локально + на сервере) ----------
 //
 // Локальная копия (localStorage, ключ `userId:chatId`) и серверная (черновик виден
@@ -3588,23 +3474,6 @@ const onDeleteChatConfirmed = async ({ ids, forAll }: { ids: number[]; forAll: b
   }
 }
 
-const startEditMessage = (message: Message) => {
-  if (!isOwnMessage(message)) return
-  clearReply()
-  cancelForward()
-  // Набранный текст не теряем: перед входом в режим правки убираем его в черновик.
-  if (selectedChatId.value !== null && newMessage.value.trim()) {
-    saveDraftFor(selectedChatId.value)
-  }
-  editingMessage.value = message
-  setComposerText(message.text || '')
-}
-
-const cancelEditing = () => {
-  editingMessage.value = null
-  newMessage.value = ''
-}
-
 // Пересылка: выбор чатов, отправка и состояние диалога — в useForward.
 const {
   source: forwardSource,
@@ -3625,81 +3494,6 @@ const {
     closePopups()
   }
 })
-
-// ---------- Удаление сообщений: «только у меня» или «для всех» ----------
-//
-// Область выбирает человек в диалоге (`DeleteMessageDialog`), и диалог один на
-// два входа — удаление одного сообщения и удаление выделенных: вариантов два, а
-// «для всех» необратимо у собеседника, поэтому молча его выбирать нельзя.
-const deleteMessageCount = ref(0)
-const deleteMessageCanForAll = ref(false)
-const showDeleteMessageDialog = ref(false)
-/** Ожидающий ответа диалог: промис разрешается выбором человека. */
-let deleteScopeResolve: ((scope: 'me' | 'all' | null) => void) | null = null
-
-const askDeleteScope = (payload: {
-  count: number
-  canForAll: boolean
-}): Promise<'me' | 'all' | null> => {
-  deleteMessageCount.value = payload.count
-  deleteMessageCanForAll.value = payload.canForAll
-  showDeleteMessageDialog.value = true
-  return new Promise((resolve) => {
-    deleteScopeResolve = resolve
-  })
-}
-
-/**
- * Подпись галки: в личном чате — имя собеседника (как в подписи чата), в группе —
- * «Удалить для всех». Пустая строка — галки нет: в «Сохранённых сообщениях»
- * удалять «для кого-то» нечего, там сообщение и так только моё.
- */
-const deleteForAllLabel = computed<string>(() => {
-  const chat = selectedChat.value
-  if (!chat || chat.is_self) return ''
-  return isPrivateChat(chat)
-    ? t('Удалить для {name}', { name: chatTitle(chat, currentUserId.value) })
-    : t('Удалить для всех')
-})
-
-/** Пояснение под отмеченной галкой: без него «вернуть нельзя» остаётся догадкой. */
-const deleteForAllHint = computed<string>(() => {
-  const chat = selectedChat.value
-  if (!chat || chat.is_self) return ''
-  const many = deleteMessageCount.value > 1
-  const what = many ? t('Исчезнут') : t('Исчезнет')
-  if (isPrivateChat(chat)) {
-    const name = chatTitle(chat, currentUserId.value)
-    return t('{what} и у {name} — вернуть нельзя.', { what, name })
-  }
-  return t('{what} у всех участников — вернуть нельзя.', { what })
-})
-
-/** Ответ диалога: `null` — отмена или закрытие окна. */
-const finishDeleteScope = (scope: 'me' | 'all' | null): void => {
-  showDeleteMessageDialog.value = false
-  const resolve = deleteScopeResolve
-  deleteScopeResolve = null
-  resolve?.(scope)
-}
-
-const deleteMessageOf = async (message: Message) => {
-  const scope = await askDeleteScope({
-    count: 1,
-    canForAll: message.user_id === currentUserId.value
-  })
-  if (scope === null) return
-  try {
-    await deleteMessage(message.id, scope === 'all')
-    removeMessageFromThread(message.id)
-    const chatId = selectedChatId.value
-    if (chatId !== null) {
-      await Promise.all([loadPinned(chatId), loadChats()])
-    }
-  } catch (error) {
-    console.error(t('Не удалось удалить сообщение:'), getErrorMessage(error))
-  }
-}
 
 // ---------- Переход к закреплённому сообщению ----------
 const scrollToPinnedMessage = async (messageId: number) => {

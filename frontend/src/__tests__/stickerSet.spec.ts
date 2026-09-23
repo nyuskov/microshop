@@ -162,9 +162,10 @@ describe('набор стикера в E2EE-чате', () => {
     // Тап по стикеру (`openStickerSetOf`) и пункт меню «Добавить набор»
     // (`presetSet`) обязаны смотреть на расшифрованное имя: у E2EE в
     // `message.file.name` только `enc_*.bin`, и метка набора теряется.
-    const messenger = readFileSync('src/views/Messenger.vue', 'utf8')
-    const openSet = messenger.slice(messenger.indexOf('const openStickerSetOf'))
-    const openSetBody = openSet.slice(0, openSet.indexOf('const sendStickerImage'))
+    // Сами действия живут в `useMessageActions` (вынесены из Messenger — G6).
+    const actions = readFileSync('src/composables/useMessageActions.ts', 'utf8')
+    const openSet = actions.slice(actions.indexOf('const openStickerSetOf'))
+    const openSetBody = openSet.slice(0, openSet.indexOf('// ---------- Удаление сообщений'))
     expect(openSetBody).toContain('effectiveFile(message)?.name')
     expect(openSetBody).not.toContain('message.file?.name')
 

@@ -8,6 +8,7 @@
  */
 
 import { ref, type Ref } from 'vue'
+import { t } from '@/i18n'
 import { forwardMessage } from '@/services/chatService'
 import { getErrorMessage } from '@/services/errors'
 import type { Message } from '@/types'
@@ -71,7 +72,7 @@ export function useForward(options: UseForwardOptions): UseForward {
       await options.refreshChats()
       cancel()
     } catch (error) {
-      console.error('Не удалось переслать сообщения:', getErrorMessage(error))
+      console.error(t('Не удалось переслать сообщения:'), getErrorMessage(error))
       cancel()
     } finally {
       busy.value = false

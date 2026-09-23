@@ -37,7 +37,7 @@
     v-else-if="quiet"
     class="conn-status quiet"
     :title="t('Тихие часы: уведомления не приходят')"
-    aria-label="Тихие часы"
+    :aria-label="t('Тихие часы')"
   >
     <q-icon :name="icon('dark_mode')" size="15px" aria-hidden="true" />
     <span class="conn-text">{{ t('Тихие часы') }}</span>

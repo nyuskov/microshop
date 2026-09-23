@@ -22,7 +22,9 @@ const read = (path: string): string => readFileSync(path, 'utf8')
 const dialog = read('src/components/messenger/DeleteMessageDialog.vue')
 const service = read('src/services/chatService.ts')
 const selection = read('src/composables/useMessageSelection.ts')
-const messenger = read('src/views/Messenger.vue')
+// Действия над сообщением (включая выбор области удаления) вынесены из
+// Messenger в композабл — проверяем договорённости там, где они живут.
+const actions = read('src/composables/useMessageActions.ts')
 const bar = read('src/components/messenger/MessageActionsBar.vue')
 const router = read('src/router/index.ts')
 const authPage = read('src/views/AuthPage.vue')
@@ -50,11 +52,11 @@ describe('диалог удаления сообщения', () => {
 
   it('подпись галки — с именем собеседника', () => {
     // Пустая подпись (группа-сам с собой/некуда удалять) = галки нет.
-    expect(messenger).toMatch(
-      /t\('Удалить для \{name\}', \{ name: chatTitle\(chat, currentUserId\.value\) \}\)/
+    expect(actions).toMatch(
+      /t\('Удалить для \{name\}', \{ name: chatTitle\(chat, deps\.currentUserId\(\)\) \}\)/
     )
-    expect(messenger).toContain("'Удалить для всех'")
-    expect(messenger).toMatch(/if \(!chat \|\| chat\.is_self\) return ''/)
+    expect(actions).toContain("'Удалить для всех'")
+    expect(actions).toMatch(/if \(!chat \|\| chat\.is_self\) return ''/)
   })
 })
 
@@ -79,8 +81,8 @@ describe('где предлагается удаление', () => {
   })
 
   it('одиночное удаление спрашивает область и знает про авторство', () => {
-    expect(messenger).toMatch(/canForAll: message\.user_id === currentUserId\.value/)
-    expect(messenger).toMatch(/deleteMessage\(message\.id, scope === 'all'\)/)
+    expect(actions).toMatch(/canForAll: message\.user_id === deps\.currentUserId\(\)/)
+    expect(actions).toMatch(/deleteMessage\(message\.id, scope === 'all'\)/)
   })
 })
 

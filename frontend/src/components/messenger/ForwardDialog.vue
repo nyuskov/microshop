@@ -79,7 +79,9 @@
         <!-- Низ: количество + кнопки -->
         <footer class="fwd-foot">
           <span class="fwd-count">{{
-            selectedIds.length ? `Выбрано: ${selectedIds.length}` : t('Выберите чат для пересылки')
+            selectedIds.length
+              ? t('Выбрано: {count}', { count: selectedIds.length })
+              : t('Выберите чат для пересылки')
           }}</span>
           <div class="fwd-actions">
             <button class="fwd-btn ghost" :disabled="sending" @click="emit('close')">
@@ -138,7 +140,9 @@ const sources = computed<Message[]>(() =>
 )
 
 const previewLabel = computed<string>(() =>
-  sources.value.length > 1 ? `Сообщения: ${sources.value.length}` : t('Сообщение')
+  sources.value.length > 1
+    ? t('Сообщения: {count}', { count: sources.value.length })
+    : t('Сообщение')
 )
 
 const previewIcon = computed<string | null>(() => {

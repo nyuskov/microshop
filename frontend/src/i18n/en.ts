@@ -2158,5 +2158,25 @@ export const EN: Record<string, string> = {
   // --- Удаление чатов и поле даты ---
   'Удалить выбранные чаты ({count})?': 'Delete the selected chats ({count})?',
   'Удалить чат с': 'Delete the chat with',
-  'ДД.ММ.ГГГГ': 'DD.MM.YYYY'
+  'ДД.ММ.ГГГГ': 'DD.MM.YYYY',
+
+  // --- Действия с сообщениями: удаление и окна со счётчиками ---
+  'Удалить сообщения ({count})?': 'Delete the messages ({count})?',
+  'Сообщения: {count}': 'Messages: {count}',
+  'Отправить в «{title}»': 'Send to “{title}”',
+  'Сервер ответил ошибкой {status}. {fallback}':
+    'The server responded with error {status}. {fallback}',
+
+  // --- Журнал (диагностика): те же тексты, что и в плашках ошибок ---
+  'Не удалось сохранить черновик:': 'Could not save the draft:',
+  'Не удалось загрузить черновики:': 'Could not load drafts:',
+  'Не удалось переслать сообщения:': 'Could not forward the messages:',
+  'Не удалось сохранить сообщения:': 'Could not save the messages:',
+  'Не удалось загрузить сообщения:': 'Could not load messages:',
+  'Не удалось загрузить более старые сообщения:': 'Could not load older messages:',
+  'Не удалось прочитать присланный файл:': 'Could not read the shared file:',
+  'Не удалось включить push-уведомления:': 'Could not enable push notifications:',
+  'Фатальная ошибка приложения:': 'Fatal application error:',
+  'FatalError: сообщение не показано (лимит показов)':
+    'FatalError: message not shown (display limit reached)'
 }

@@ -57,6 +57,15 @@ const OFFLINE_MESSAGE = 'Нет подключения к серверу. Про
 const TIMEOUT_MESSAGE = 'Сервер не ответил вовремя. Проверьте связь и повторите.'
 
 /**
+ * Русский текст 404-ответа сервера «чат не найден».
+ *
+ * Это строка СЕРВЕРА, а не подпись интерфейса: по ней узнаём, что чат удалили
+ * или нас исключили из группы (серверные тексты всегда русские, см.
+ * `docs/backend.md`). Переводить её нельзя — признак перестанет совпадать.
+ */
+const SERVER_CHAT_GONE_TEXT = 'чат не найден'
+
+/**
  * Возвращает человекочитаемое сообщение об ошибке.
  *
  * Порядок разбора: объяснение бэкенда (`detail`/`message`) → наш текст по коду
@@ -80,7 +89,9 @@ export function getErrorMessage(error: unknown, fallback = t('Произошла
     if (status) {
       // Код без таблицы (нестандартный ответ прокси): показываем и его — по
       // нему хотя бы понятно, куда смотреть в логах.
-      return t(STATUS_MESSAGES[status] ?? `Сервер ответил ошибкой ${status}. ${fallback}`)
+      return STATUS_MESSAGES[status]
+        ? t(STATUS_MESSAGES[status]!)
+        : t('Сервер ответил ошибкой {status}. {fallback}', { status, fallback })
     }
     if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') return t(TIMEOUT_MESSAGE)
     // Отменённый запрос (навигация, смена чата) — не поломка: молчим и отдаём
@@ -105,5 +116,7 @@ export function getErrorMessage(error: unknown, fallback = t('Произошла
 export function isChatGoneError(error: unknown): boolean {
   if (!axios.isAxiosError(error)) return false
   if (error.response?.status !== 404) return false
-  return getErrorMessage(error).toLowerCase().includes('чат не найден')
+  // Сверяемся с текстом СЕРВЕРА (он всегда русский, см. docs/backend.md) — это
+  // не подпись интерфейса, а признак ответа, поэтому строка не переводится.
+  return getErrorMessage(error).toLowerCase().includes(SERVER_CHAT_GONE_TEXT)
 }

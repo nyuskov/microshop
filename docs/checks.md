@@ -36,7 +36,7 @@ docker-образов. Если интерпретатор не в `PATH`: `PY=/
 | `check-contrast.mjs` | контраст токенов WCAG AA (светлая и тёмная темы) | `frontend/src/assets/appearance.css` |
 | `check-style-duplicates.mjs` | правила слоя `html .messenger-shell`, которые молча перебивают компоненты | `frontend/scripts/style-duplicates-baseline.json` |
 | `check-geometry.mjs` | новые **литеральные радиусы и тени** в `<style>` компонентов (смысл — шкала `--ms-radius-*`, см. `docs/design-system.md`) | `frontend/scripts/style-geometry-baseline.json` |
-| `check-i18n.mjs` | `t('...')` из кода без перевода (в английском молча осталась бы русская строка) и повторённые ключи каталога; заодно показывает остаток перевода по файлам | `frontend/src/i18n/en.ts` |
+| `check-i18n.mjs` | `t('...')` из кода без перевода (в английском молча осталась бы русская строка) и повторённые ключи каталога; заодно показывает остаток перевода — **строковые литералы** вне `t()` (комментарии, CSS и данные-ключи не считаются, исключения перечислены в скрипте с причиной) | `frontend/src/i18n/en.ts` |
 | `check-bundle-size.mjs` | бюджет gzip по `dist/assets` (после сборки) | `frontend/scripts/bundle-size-baseline.json` |
 | `gitleaks` | секреты в диффе | `.github/workflows/ci.yml` |
 | `smoke_prod.sh` | прод отвечает после деплоя | `scripts/ci/smoke_prod.sh` |

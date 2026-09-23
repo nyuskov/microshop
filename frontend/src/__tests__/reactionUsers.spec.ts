@@ -388,9 +388,12 @@ describe('жесты на чипе реакции (стражи разметки
   })
 
   it('Messenger подключает окно лениво и сбрасывает его при смене чата', () => {
+    // Цель списка реакций теперь объявляется в useMessageActions (вынесено из
+    // Messenger — G6), а подключает окно и гасит его по-прежнему Messenger.
+    const actions = readFileSync('src/composables/useMessageActions.ts', 'utf8')
+    expect(actions).toContain('anchor: HTMLElement | null')
     expect(messenger).toContain("import('@/components/messenger/ReactionUsersDialog.vue')")
     expect(messenger).toContain('@open-reactions="openReactionUsers"')
-    expect(messenger).toContain('anchor: HTMLElement | null')
     expect(messenger).toContain(':anchor="reactionUsersFor.anchor"')
     expect(messenger).toContain(':my-user-id="currentUserId"')
     expect(messenger).toContain('@close="reactionUsersFor = null"')

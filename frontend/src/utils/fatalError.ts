@@ -29,7 +29,7 @@ const MAX_SHOWS = 3
 export const reportFatalError = (error: unknown): void => {
   const message = error instanceof Error ? error.message : String(error ?? '')
   if (shown >= MAX_SHOWS) {
-    console.warn('FatalError: сообщение не показано (лимит показов)', message)
+    console.warn(t('FatalError: сообщение не показано (лимит показов)'), message)
     return
   }
   shown += 1

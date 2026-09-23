@@ -85,7 +85,9 @@ const emit = defineEmits<{
 const forAll = ref(false)
 
 const title = computed<string>(() =>
-  props.count > 1 ? `Удалить сообщения (${props.count})?` : t('Удалить сообщение?')
+  props.count > 1
+    ? t('Удалить сообщения ({count})?', { count: props.count })
+    : t('Удалить сообщение?')
 )
 
 const bodyText = computed<string>(() =>

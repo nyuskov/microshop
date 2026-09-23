@@ -192,7 +192,7 @@ export async function enablePushNotifications(): Promise<
     }
     return 'granted'
   } catch (error) {
-    console.error('Не удалось включить push-уведомления:', error)
+    console.error(t('Не удалось включить push-уведомления:'), error)
     return 'disabled'
   }
 }

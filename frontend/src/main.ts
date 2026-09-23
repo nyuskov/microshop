@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 
 import App from './App.vue'
 import router from './router'
+import { t } from '@/i18n'
 import { useAuthStore } from './stores/auth' // Import the auth store
 
 // Quasar (UI framework) + Material Symbols Rounded — импортируем до наших
@@ -48,7 +49,7 @@ const app = createApp(App)
 // понятным экраном с перезагрузкой вместо белого экрана — см. FatalErrorScreen.
 // Ошибки запросов сюда не попадают: их разбирает интерфейс.
 app.config.errorHandler = (error) => {
-  console.error('Фатальная ошибка приложения:', error)
+  console.error(t('Фатальная ошибка приложения:'), error)
   reportFatalError(error)
 }
 window.addEventListener('error', (event) => {

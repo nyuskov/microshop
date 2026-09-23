@@ -31,7 +31,7 @@
           <div class="shr-preview-body">
             <span class="shr-preview-label">{{ t('Содержимое из другого приложения') }}</span>
             <span class="shr-preview-text">{{
-              text.trim() || (fileName ? `Файл: ${fileName}` : t('Файл'))
+              text.trim() || (fileName ? t('Файл: {name}', { name: fileName }) : t('Файл'))
             }}</span>
           </div>
         </div>
@@ -87,7 +87,9 @@
         <!-- Низ: выбранный чат + кнопки -->
         <footer class="shr-foot">
           <span class="shr-count">{{
-            selectedChat ? `Отправить в «${titleOf(selectedChat)}»` : t('Выберите чат')
+            selectedChat
+              ? t('Отправить в «{title}»', { title: titleOf(selectedChat) })
+              : t('Выберите чат')
           }}</span>
           <div class="shr-actions">
             <button class="shr-btn ghost" :disabled="busy" @click="emit('close')">

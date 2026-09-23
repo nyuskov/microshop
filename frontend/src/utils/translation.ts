@@ -52,6 +52,15 @@ export interface MessageTranslation {
    * ждать минуту или зависло навсегда (симптом владельца: «очень долго ждал»).
    */
   progress?: number
+  /**
+   * Сейчас качается модель (а не идёт перевод).
+   *
+   * Флаг нужен, потому что по нему решается, что показать после отмены: экран
+   * «нажмите, чтобы скачать» или ошибку. Раньше это угадывали по ПОДПИСИ
+   * (регулярка /Скачиваем/), и в английском интерфейсе признак не совпадал —
+   * отмена загрузки выглядела как ошибка перевода.
+   */
+  downloading?: boolean
 }
 
 /** Языки, на которые можно перевести (в порядке частоты у нас). */
@@ -236,7 +245,7 @@ export const stopTranslationWork = (messageId: number): void => {
   cancel()
   if (!current) return
   releasePair(pairKey(current.source, current.target))
-  const wasDownloading = current.progress !== undefined || /Скачиваем/.test(current.note ?? '')
+  const wasDownloading = current.downloading === true || current.progress !== undefined
   translations[messageId] = wasDownloading
     ? { status: 'download', text: '', source: current.source, target: current.target, note: '' }
     : {
@@ -552,7 +561,8 @@ export const translateMessage = async (
       source,
       target,
       note: downloading ? t('Скачиваем модель перевода…') : t('Переводим…'),
-      progress: downloading ? 0 : undefined
+      progress: downloading ? 0 : undefined,
+      downloading: downloading || undefined
     }
 
     const key = pairKey(source, target)
@@ -564,7 +574,8 @@ export const translateMessage = async (
         source,
         target,
         note: t('Скачиваем модель перевода: {percent}%', { percent: Math.round(loaded * 100) }),
-        progress: loaded
+        progress: loaded,
+        downloading: true
       }
     })
     const outcome = await withTimeout(prepared, translationTimeouts.runMs)

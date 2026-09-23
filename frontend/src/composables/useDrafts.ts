@@ -17,6 +17,7 @@
 
 import { reactive, ref, watch, type Ref } from 'vue'
 
+import { t } from '@/i18n'
 import { deleteDraft, fetchDrafts, putDraft } from '@/services/drafts'
 import { getErrorMessage } from '@/services/errors'
 import { decryptTextWithKeys, isEncryptedPayload } from '@/services/e2ee'
@@ -126,7 +127,7 @@ export function useDrafts(deps: DraftsDeps): DraftsApi {
       await putDraft(chatId, wire ? wire.wireText : text)
     } catch (error) {
       // Сеть пропала — черновик остался в localStorage и уйдёт при следующем наборе.
-      console.error('Не удалось сохранить черновик:', getErrorMessage(error))
+      console.error(t('Не удалось сохранить черновик:'), getErrorMessage(error))
     }
   }
 
@@ -212,7 +213,7 @@ export function useDrafts(deps: DraftsDeps): DraftsApi {
       }
       writeDrafts(local)
     } catch (error) {
-      console.error('Не удалось загрузить черновики:', getErrorMessage(error))
+      console.error(t('Не удалось загрузить черновики:'), getErrorMessage(error))
     }
   }
 

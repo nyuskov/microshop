@@ -11,6 +11,7 @@
 
 import { computed, ref, type ComputedRef, type Ref } from 'vue'
 
+import { t } from '@/i18n'
 import { deleteMessage, forwardMessage } from '@/services/chatService'
 import { getErrorMessage } from '@/services/errors'
 import type { Chat, Message } from '@/types'
@@ -153,7 +154,7 @@ export function useMessageSelection(deps: MessageSelectionDeps): MessageSelectio
       // Обновляем список: «Сохранённые» поднимутся наверх с новым превью.
       await deps.reloadChats()
     } catch (error) {
-      console.error('Не удалось сохранить сообщения:', getErrorMessage(error))
+      console.error(t('Не удалось сохранить сообщения:'), getErrorMessage(error))
     }
   }
 
@@ -171,7 +172,7 @@ export function useMessageSelection(deps: MessageSelectionDeps): MessageSelectio
         await deleteMessage(message.id, scope === 'all')
         deps.removeMessageFromThread(message.id)
       } catch (error) {
-        console.error('Не удалось удалить сообщение:', getErrorMessage(error))
+        console.error(t('Не удалось удалить сообщение:'), getErrorMessage(error))
       }
     }
     const chatId = deps.selectedChatId()
