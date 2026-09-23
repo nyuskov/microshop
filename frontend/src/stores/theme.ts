@@ -143,6 +143,8 @@ interface AppearanceState {
   /** Границы расписания тёмной темы — минуты от полуночи (см. `utils/themeSchedule.ts`). */
   darkFrom: number
   darkTo: number
+  /** Повышенная контрастность: текст и границы темнее (см. блок в appearance.css). */
+  highContrast: boolean
   accentKey: string
   bubbleKey: string
   textSizeKey: string
@@ -157,6 +159,7 @@ const DEFAULT_STATE: Omit<AppearanceState, 'isSidebarCollapsed'> = {
   amoled: false,
   darkFrom: SCHEDULE_DEFAULT_START,
   darkTo: SCHEDULE_DEFAULT_END,
+  highContrast: false,
   accentKey: 'green',
   bubbleKey: 'green',
   textSizeKey: 'normal',
@@ -212,12 +215,72 @@ function systemPrefersDark(): boolean {
   )
 }
 
+/**
+ * Системная настройка «повышенная контрастность».
+ *
+ * В Windows и Android это отдельный переключатель (не тема), поэтому у нас он
+ * тоже флаг, а не четвёртая тема: пороги WCAG в этом режиме выше, а вся
+ * геометрия остаётся прежней.
+ */
+function systemPrefersContrast(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    !!window.matchMedia &&
+    window.matchMedia('(prefers-contrast: more)').matches
+  )
+}
+
+/**
+ * Есть ли смысл в плавной смене темы.
+ *
+ * View Transitions есть не везде (Safari и WebView постарше), а при
+ * `prefers-reduced-motion` переход нужно пропустить: в a11y.css глушатся
+ * обычные анимации, но псевдоэлементы `::view-transition-*` под них не попадают.
+ */
+function canCrossfadeTheme(): boolean {
+  if (typeof document === 'undefined' || typeof document.startViewTransition !== 'function') {
+    return false
+  }
+  return !(
+    typeof window !== 'undefined' &&
+    !!window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
+}
+
+/**
+ * Меняет тему документа, по возможности — кроссфейдом.
+ *
+ * Смена темы = подмена значений токенов, анимацией её не описать (переменные
+ * не интерполируются). Снимок прежнего кадра делает сам браузер, нам остаётся
+ * только попросить об этом. Без API — мгновенная смена, как раньше.
+ */
+function applyThemeAttribute(next: Theme) {
+  const root = document.documentElement
+  // Атрибут уже такой (в том числе после theme-boot.js в index.html) или
+  // перехода нет — обычная смена без снимка.
+  if (root.getAttribute('data-theme') === next || !canCrossfadeTheme()) {
+    root.setAttribute('data-theme', next)
+    return
+  }
+  try {
+    const transition = document.startViewTransition(() => root.setAttribute('data-theme', next))
+    // Переход могут отменить (вкладка ушла в фон) — это не ошибка приложения.
+    void transition.finished.catch(() => undefined)
+  } catch {
+    root.setAttribute('data-theme', next)
+  }
+}
+
 export const useThemeStore = defineStore('theme', {
   state: (): AppearanceState => {
     const stored = loadAppearance()
     return {
       ...DEFAULT_STATE,
       ...stored,
+      // Системную настройку берём только при первом запуске: дальше решает
+      // тумблер, иначе явно выключенный режим включался бы на каждом старте.
+      highContrast: stored.highContrast ?? systemPrefersContrast(),
       isSidebarCollapsed: false
     }
   },
@@ -261,7 +324,7 @@ export const useThemeStore = defineStore('theme', {
       // атрибут `data-theme`, иначе получится чёрное окно со светлыми токенами.
       const resolved: Theme = base === 'dark' && this.amoled ? 'amoled' : base
       this.currentTheme = resolved
-      document.documentElement.setAttribute('data-theme', resolved)
+      applyThemeAttribute(resolved)
       try {
         localStorage.setItem(LEGACY_THEME_KEY, resolved)
       } catch {
@@ -272,6 +335,7 @@ export const useThemeStore = defineStore('theme', {
       const accentHex = accent?.hex ?? ACCENT_PRESETS[0].hex
       document.documentElement.style.setProperty('--ms-accent', accentHex)
       document.documentElement.setAttribute('data-bubble', this.bubbleKey)
+      document.documentElement.setAttribute('data-contrast', this.highContrast ? 'high' : 'normal')
 
       // Размер текста: множитель читают CSS-правила текста сообщений, композера и списка чатов.
       const textSize =
@@ -297,6 +361,7 @@ export const useThemeStore = defineStore('theme', {
             amoled: this.amoled,
             darkFrom: this.darkFrom,
             darkTo: this.darkTo,
+            highContrast: this.highContrast,
             accentKey: this.accentKey,
             bubbleKey: this.bubbleKey,
             textSizeKey: this.textSizeKey,
@@ -338,6 +403,12 @@ export const useThemeStore = defineStore('theme', {
     /** Чёрный фон (AMOLED). Действует, только пока активна тёмная схема. */
     setAmoled(on: boolean) {
       this.amoled = on
+      this.applyAppearance()
+    },
+
+    /** Повышенная контрастность: текст и границы темнее (лучше видно на солнце). */
+    setHighContrast(on: boolean) {
+      this.highContrast = on
       this.applyAppearance()
     },
 
@@ -387,6 +458,7 @@ export const useThemeStore = defineStore('theme', {
       this.amoled = DEFAULT_STATE.amoled
       this.darkFrom = DEFAULT_STATE.darkFrom
       this.darkTo = DEFAULT_STATE.darkTo
+      this.highContrast = DEFAULT_STATE.highContrast
       this.accentKey = DEFAULT_STATE.accentKey
       this.bubbleKey = DEFAULT_STATE.bubbleKey
       this.textSizeKey = DEFAULT_STATE.textSizeKey

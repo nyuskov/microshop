@@ -30,6 +30,19 @@
     }
     root.style.setProperty('--ms-accent', accents[stored.accentKey] || '#2ea25e')
     if (stored.bubbleKey) root.setAttribute('data-bubble', stored.bubbleKey)
+    // Повышенная контрастность — флаг (не тема): либо из настроек, либо из
+    // системного переключателя при первом запуске (как в stores/theme.ts).
+    var prefersContrast = window.matchMedia && window.matchMedia('(prefers-contrast: more)').matches
+    root.setAttribute(
+      'data-contrast',
+      stored.highContrast === undefined
+        ? prefersContrast
+          ? 'high'
+          : 'normal'
+        : stored.highContrast
+          ? 'high'
+          : 'normal'
+    )
     var themeColor = document.querySelector('meta[name="theme-color"]')
     if (themeColor)
       themeColor.setAttribute(

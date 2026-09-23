@@ -1352,6 +1352,9 @@ export const EN: Record<string, string> = {
   до: 'until',
   'Конец тёмной темы': 'Dark theme ends',
   'Чёрный фон (AMOLED)': 'Black background (AMOLED)',
+  'Повышенная контрастность': 'High contrast',
+  'Текст и границы темнее — легче читать на солнце':
+    'Darker text and borders — easier to read in sunlight',
   'Акцентный цвет': 'Accent color',
   'Цвет моих сообщений': 'Color of my messages',
   'Размер текста': 'Text size',

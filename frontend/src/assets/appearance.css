@@ -292,6 +292,102 @@ html[data-theme='amoled'] {
     --ms-chat-bg: #000000;
 }
 
+/* ---------- Повышенная контрастность ----------
+   Флаг `data-contrast='high'` (тумблер в профиле → «Внешний вид» или системный
+   переключатель `prefers-contrast: more`) — не пятая тема, а усиление
+   читаемости внутри любой схемы: текст, иконки и границы тёмнее, поэтому запас
+   по WCAG выше AA. Проверка — scripts/check-contrast.mjs: наборы «высокая
+   контрастность» считаются по строгому порогу (7:1 текст, 4.5:1 иконки).
+
+   Поверхности, акцент и цвет пузырей НЕ трогаем: их выбирает пользователь, а
+   затемнение поверхности уменьшило бы контраст там, где он и так в норме. */
+html[data-contrast='high'] {
+    --ms-text: #0d1620;
+    --ms-text-strong: #05090d;
+    --ms-muted: #3f4c57;
+    --ms-muted-2: #3f4c57;
+    --ms-muted-3: #4c5a66;
+
+    --ms-icon: #2f3d49;
+    --ms-icon-2: #35424e;
+    --ms-icon-3: #4c5a66;
+
+    /* Границы и разделители: рамок интерактивных полей у нас нет, но в этом
+       режиме любая линия должна быть видна, поэтому берём заметный серый. */
+    --ms-border: #97a4b0;
+    --ms-hairline: #8b98a4;
+
+    --ms-danger: #7d0f0f;
+    --ms-danger-bg: #fbe0e0;
+    --ms-info: #0b4a70;
+    --ms-tick: #0b4a70;
+    --ms-warn: #5c4203;
+
+    --ms-bubble-time: #3a4650;
+
+    --ms-pinned-icon: #6b5205;
+    --ms-pinned-text: #55450f;
+    --ms-pinned-item: #23241a;
+
+    /* Подложка плашки даты плотнее: с размытием фон читается, но при
+       повышенной контрастности важнее сама надпись. */
+    --ms-date-pill: rgba(255, 255, 255, 0.88);
+}
+
+/* Та же повышенная контрастность в тёмной схеме: светлые значения наоборот
+   светлее, потому что фон здесь тёмный. */
+html[data-theme='dark'][data-contrast='high'],
+html[data-theme='amoled'][data-contrast='high'] {
+    --ms-text: #f4f8fb;
+    --ms-text-strong: #ffffff;
+    --ms-muted: #c2cdd7;
+    --ms-muted-2: #c2cdd7;
+    --ms-muted-3: #a8b8c6;
+
+    --ms-icon: #e2eaf1;
+    --ms-icon-2: #d5e0e8;
+    --ms-icon-3: #a8b8c6;
+
+    --ms-border: #5b6873;
+    --ms-hairline: #6d7a86;
+
+    --ms-danger: #ffb4ac;
+    --ms-info: #9ad6f8;
+    --ms-tick: #9ad6f8;
+    --ms-warn: #f5d271;
+
+    --ms-bubble-time: #cbd6e0;
+
+    --ms-pinned-icon: #f5dd8a;
+    --ms-pinned-text: #f0dfa0;
+    --ms-pinned-item: #ece7d6;
+
+    --ms-date-pill: rgba(23, 30, 38, 0.88);
+}
+
+/* ---------- Плавная смена темы ----------
+   Смена темы — подмена значений токенов, интерполяцией её не описать: снимок
+   прежнего кадра делает сам браузер (View Transitions, запрашивает
+   stores/theme.ts). Старый кадр держим статично, новый проявляем — это и есть
+   кроссфейд. Длительность и кривая те же, что у панелей приложения. */
+::view-transition-old(root) {
+    animation: none;
+}
+
+::view-transition-new(root) {
+    animation: ms-theme-fade var(--ms-dur) var(--ms-ease);
+}
+
+@keyframes ms-theme-fade {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
 /* ---------- Цвет исходящих сообщений (светлая тема) ---------- */
 html[data-bubble='blue'] {
     --ms-bubble-out: #cfe6f9;

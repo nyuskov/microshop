@@ -67,6 +67,25 @@
           @update:model-value="themeStore.setAmoled(!!$event)"
         />
       </div>
+
+      <!-- Повышенная контрастность — тоже флаг, а не пятая тема: работает в
+           любой схеме и только усиливает текст и рамки. Нужна на солнце и при
+           слабом зрении; при первом запуске включается по системной настройке
+           (`prefers-contrast: more`), дальше решает тумблер. -->
+      <div class="toggle-row">
+        <div class="toggle-text">
+          <span class="toggle-name">{{ t('Повышенная контрастность') }}</span>
+          <span class="toggle-desc">
+            {{ t('Текст и границы темнее — легче читать на солнце') }}
+          </span>
+        </div>
+        <q-toggle
+          :model-value="themeStore.highContrast"
+          color="primary"
+          keep-color
+          @update:model-value="themeStore.setHighContrast(!!$event)"
+        />
+      </div>
     </section>
 
     <!-- Акцентный цвет -->

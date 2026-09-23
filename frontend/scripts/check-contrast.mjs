@@ -12,6 +12,11 @@
  *
  * Запуск: node scripts/check-contrast.mjs  (из каталога frontend/)
  *
+ * Кроме трёх тем проверяются наборы повышенной контрастности (`data-contrast='high'`:
+ * тумблер в профиле или системный `prefers-contrast: more`) — по строгому
+ * порогу: текст 7:1, иконки 4.5:1 (WCAG 2.1 AAA 1.4.6 и запас к 1.4.11). Иначе
+ * режим, который включают именно ради читаемости, мог бы сам не проходить норму.
+ *
  * Значения вида `color-mix()` / `rgba()` статически посчитать нельзя — такие
  * пары помечаются SKIP и проверяются глазами в обеих темах.
  */
@@ -36,6 +41,10 @@ const CSS_PATH = path.resolve(import.meta.dirname, '..', 'src', 'assets', 'appea
  *     норме для элементов (3:1);
  *   - подложки из `color-mix()` (активная строка, тёмные пузыри) — статически
  *     не считаются, смотрю глазами.
+ *
+ * Флаг `noHc` отключает строгий порог повышенной контрастности: он есть у пары
+ * «текст на акцентной кнопке», где цвет выбирает пользователь, и у QR-кода (он
+ * и так максимально контрастен).
  */
 const CHECKS = [
   { fg: '--ms-text', bg: '--ms-surface', min: 4.5, note: 'основной текст' },
@@ -54,7 +63,13 @@ const CHECKS = [
   { fg: '--ms-bubble-text', bg: '--ms-bubble-out', min: 4.5, note: 'текст сообщения' },
   { fg: '--ms-bubble-time', bg: '--ms-bubble-out', min: 4.5, note: 'время в пузыре' },
   { fg: '--ms-tick', bg: '--ms-bubble-out', min: 3, note: 'галочки прочтения' },
-  { fg: '--ms-on-accent', bg: '--ms-accent', min: 3, note: 'текст на кнопках и бейджах' },
+  {
+    fg: '--ms-on-accent',
+    bg: '--ms-accent',
+    min: 3,
+    note: 'текст на кнопках и бейджах',
+    noHc: true
+  },
   { fg: '--ms-danger', bg: '--ms-surface', min: 4.5, note: 'ошибки, «удалить»' },
   { fg: '--ms-danger', bg: '--ms-danger-bg', min: 4.5, note: 'ошибка на своей подложке' },
   { fg: '--ms-info', bg: '--ms-surface', min: 4.5, note: 'ссылки, цитаты, «печатает»' },
@@ -86,6 +101,25 @@ const THEMES = [
     name: 'AMOLED',
     selector: "html[data-theme='amoled']",
     base: "html[data-theme='dark']"
+  },
+  {
+    // Повышенная контрастность внутри светлой схемы (флаг в профиле). Цвет
+    // пузырей берётся из светлых пресетов: они идут в файле НИЖЕ блока
+    // контрастности, поэтому при равной специфичности выигрывает пресет.
+    name: 'светлая, повышенная контрастность',
+    selector: "html[data-contrast='high']",
+    bubbleSelector: (variant) => `html[data-bubble='${variant}']`,
+    hc: true
+  },
+  {
+    // И внутри тёмной. AMOLED-вариант отдельно не проверяем: он наследует эти
+    // же токены, а чёрная поверхность даёт контраст только выше (AMOLED-набор
+    // проверен выше отдельно).
+    name: 'тёмная, повышенная контрастность',
+    selector: "html[data-theme='dark'][data-contrast='high']",
+    base: "html[data-theme='dark']",
+    bubbleSelector: (variant) => `html[data-theme='dark'][data-bubble='${variant}']`,
+    hc: true
   }
 ]
 
@@ -199,12 +233,12 @@ function contrastRatio(a, b) {
 }
 
 /** Проверяет набор пар на одном наборе токенов. Возвращает число провалов. */
-function runChecks(tokens, label) {
+function runChecks(tokens, label, hc = false) {
   const surface = resolveColor(tokens.get('--ms-surface') ?? '', tokens, null)
   let failures = 0
 
   console.log(`\n=== ${label} ===`)
-  for (const { fg, bg, min, note } of CHECKS) {
+  for (const { fg, bg, min, note, noHc } of CHECKS) {
     const fgColor = resolveColor(tokens.get(fg) ?? '', tokens, surface?.rgb)
     const bgColor = resolveColor(tokens.get(bg) ?? '', tokens, surface?.rgb)
 
@@ -213,11 +247,14 @@ function runChecks(tokens, label) {
       continue
     }
 
+    // В режиме повышенной контрастности порог строже: текст 7:1 (WCAG AAA),
+    // иконки 4.5:1. Исключения помечены `noHc` (см. пояснение в CHECKS).
+    const need = hc && !noHc ? (min >= 4.5 ? 7 : 4.5) : min
     const ratio = contrastRatio(fgColor.rgb, bgColor.rgb)
-    const ok = ratio >= min
+    const ok = ratio >= need
     if (!ok) failures += 1
     console.log(
-      `${ok ? 'OK  ' : 'ФЕЙЛ'}  ${fg} на ${bg} — ${ratio.toFixed(2)}:1 (норма ${min}:1, ${note})`
+      `${ok ? 'OK  ' : 'ФЕЙЛ'}  ${fg} на ${bg} — ${ratio.toFixed(2)}:1 (норма ${need}:1, ${note})`
     )
   }
 
@@ -240,18 +277,19 @@ async function main() {
       theme.selector === ':root'
         ? rootTokens
         : new Map([...parent, ...parseTokens(extractBlock(css, theme.selector))])
-    failures += runChecks(baseTokens, `${theme.name} тема (${theme.selector})`)
+    failures += runChecks(baseTokens, `${theme.name} тема (${theme.selector})`, theme.hc)
 
     // Цвет исходящих сообщений выбирается в настройках — проверяем каждый вариант.
     for (const variant of BUBBLE_VARIANTS) {
-      const selector =
-        theme.selector === ':root'
+      const selector = theme.bubbleSelector
+        ? theme.bubbleSelector(variant)
+        : theme.selector === ':root'
           ? `html[data-bubble='${variant}']`
           : `${theme.selector}[data-bubble='${variant}']`
       const variantBlock = extractBlockOrNull(css, selector)
       if (!variantBlock) continue
       const tokens = new Map([...baseTokens, ...parseTokens(variantBlock)])
-      failures += runChecks(tokens, `${theme.name} тема, пузыри «${variant}»`)
+      failures += runChecks(tokens, `${theme.name} тема, пузыри «${variant}»`, theme.hc)
     }
   }
 

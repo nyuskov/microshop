@@ -240,3 +240,156 @@ describe('AMOLED: селекторы в CSS', () => {
     expect(quasar).toContain("html[data-theme='amoled'] .q-dialog__backdrop")
   })
 })
+
+/**
+ * Повышенная контрастность — флаг `data-contrast='high'` поверх любой темы.
+ * В CSS он задаёт другой набор токенов, поэтому проверяем и сам атрибут, и то,
+ * что значения описаны для обеих схем: забытая тёмная половина дала бы светлые
+ * токены на тёмном фоне (текст почти не виден).
+ */
+describe('theme store: повышенная контрастность', () => {
+  beforeEach(() => {
+    resetDom()
+    setActivePinia(createPinia())
+  })
+
+  it('тумблер ставит атрибут и сохраняется в настройках', () => {
+    const store = useThemeStore()
+    store.setHighContrast(true)
+    expect(document.documentElement.getAttribute('data-contrast')).toBe('high')
+    expect(storedAppearance().highContrast).toBe(true)
+
+    store.setHighContrast(false)
+    expect(document.documentElement.getAttribute('data-contrast')).toBe('normal')
+  })
+
+  it('работает в любой теме: атрибут не зависит от data-theme', () => {
+    const store = useThemeStore()
+    store.setHighContrast(true)
+    store.setTheme('light')
+    expect(themeAttr()).toBe('light')
+    expect(document.documentElement.getAttribute('data-contrast')).toBe('high')
+  })
+
+  it('при первом запуске берётся системная настройка prefers-contrast', () => {
+    // jsdom не реализует matchMedia — подставляем свою, как это делает система,
+    // когда в ОС включено «Увеличить контраст».
+    withMedia({ 'prefers-contrast: more': true }, () => {
+      const store = useThemeStore()
+      expect(store.highContrast).toBe(true)
+    })
+  })
+
+  it('явный выбор в настройках важнее системного', () => {
+    localStorage.setItem('appearance', JSON.stringify({ highContrast: false }))
+    withMedia({ 'prefers-contrast: more': true }, () => {
+      const store = useThemeStore()
+      expect(store.highContrast).toBe(false)
+    })
+  })
+
+  it('сброс настроек выключает режим', () => {
+    const store = useThemeStore()
+    store.setHighContrast(true)
+    store.resetAppearance()
+    expect(store.highContrast).toBe(false)
+    expect(document.documentElement.getAttribute('data-contrast')).toBe('normal')
+  })
+
+  it('токены описаны для светлой и тёмной схем, а boot ставит атрибут до кадра', () => {
+    const appearance = readFileSync('src/assets/appearance.css', 'utf8')
+    expect(appearance).toContain("html[data-contrast='high'] {")
+    expect(appearance).toContain("html[data-theme='dark'][data-contrast='high']")
+    expect(appearance).toContain("html[data-theme='amoled'][data-contrast='high']")
+
+    const boot = readFileSync('public/theme-boot.js', 'utf8')
+    expect(boot).toContain("'data-contrast'")
+    expect(boot).toContain('prefers-contrast')
+  })
+})
+
+/**
+ * Плавная смена темы: снимок кадра просим у браузера (View Transitions),
+ * но только когда тема действительно меняется и в системе не отключены
+ * анимации. Иначе получилось бы мигание при первой отрисовке.
+ */
+describe('плавная смена темы (View Transitions)', () => {
+  type TransitionDoc = Document & {
+    startViewTransition?: (cb: () => void) => { finished: Promise<void> }
+  }
+
+  beforeEach(() => {
+    resetDom()
+    setActivePinia(createPinia())
+  })
+
+  it('переход запрашивается на смене темы и не запрашивается без изменений', () => {
+    const doc = document as TransitionDoc
+    let calls = 0
+    doc.startViewTransition = (cb) => {
+      calls += 1
+      cb()
+      return { finished: Promise.resolve() }
+    }
+    try {
+      const store = useThemeStore()
+      store.applyAppearance()
+      const first = calls
+      store.setTheme('light')
+      expect(calls).toBe(first + 1)
+      // Тема та же — снимок кадра не нужен (иначе он делался бы на каждое
+      // изменение акцента и размера текста).
+      store.applyAppearance()
+      expect(calls).toBe(first + 1)
+    } finally {
+      delete doc.startViewTransition
+    }
+  })
+
+  it('при prefers-reduced-motion переход не запрашивается', () => {
+    const doc = document as TransitionDoc
+    let calls = 0
+    doc.startViewTransition = (cb) => {
+      calls += 1
+      cb()
+      return { finished: Promise.resolve() }
+    }
+    try {
+      withMedia({ 'prefers-reduced-motion: reduce': true }, () => {
+        const store = useThemeStore()
+        store.applyAppearance()
+        store.setTheme('light')
+        expect(themeAttr()).toBe('light')
+        expect(calls).toBe(0)
+      })
+    } finally {
+      delete doc.startViewTransition
+    }
+  })
+})
+
+/**
+ * Подмена `window.matchMedia` на время проверки: в jsdom её нет вовсе, а
+ * поведение системы (`prefers-contrast`, `prefers-reduced-motion`) проверять надо.
+ *
+ * Сравнение по ВХОЖДЕНИЮ признака: запрос всегда приходит со скобками
+ * (`(prefers-contrast: more)`), поэтому ключи можно писать как удобно.
+ */
+function withMedia(flags: Record<string, boolean>, run: () => void) {
+  const original = window.matchMedia
+  window.matchMedia = ((query: string) => ({
+    matches: Object.entries(flags).some(([feature, on]) => on && query.includes(feature)),
+    media: query,
+    onchange: null,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    dispatchEvent: () => false
+  })) as unknown as typeof window.matchMedia
+  try {
+    run()
+  } finally {
+    window.matchMedia = original
+  }
+}

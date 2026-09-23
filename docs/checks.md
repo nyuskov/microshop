@@ -33,7 +33,7 @@ docker-образов. Если интерпретатор не в `PATH`: `PY=/
 | `vue-tsc --noEmit -p tsconfig.app.json` | типы фронтенда | `frontend/tsconfig.app.json` |
 | `eslint --no-cache src` | линт фронтенда | `frontend/eslint.config.js` |
 | `check-tokens.mjs` | новые **литеральные цвета** в `<style>` компонентов | `frontend/scripts/style-tokens-baseline.json` |
-| `check-contrast.mjs` | контраст токенов WCAG AA (светлая и тёмная темы) | `frontend/src/assets/appearance.css` |
+| `check-contrast.mjs` | контраст токенов WCAG AA (светлая, тёмная, AMOLED) и строже — в наборах повышенной контрастности (`data-contrast='high'`: текст 7:1, иконки 4.5:1) | `frontend/src/assets/appearance.css` |
 | `check-style-duplicates.mjs` | правила слоя `html .messenger-shell`, которые молча перебивают компоненты | `frontend/scripts/style-duplicates-baseline.json` |
 | `check-geometry.mjs` | новые **литеральные радиусы и тени** в `<style>` компонентов (смысл — шкала `--ms-radius-*`, см. `docs/design-system.md`) | `frontend/scripts/style-geometry-baseline.json` |
 | `check-i18n.mjs` | `t('...')` из кода без перевода (в английском молча осталась бы русская строка) и повторённые ключи каталога; заодно показывает остаток перевода — **строковые литералы** вне `t()` (комментарии, CSS и данные-ключи не считаются, исключения перечислены в скрипте с причиной) | `frontend/src/i18n/en.ts` |
