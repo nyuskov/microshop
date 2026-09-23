@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest'
 const viewer = readFileSync('src/components/stories/StoryViewer.vue', 'utf8')
 const messenger = readFileSync('src/views/Messenger.vue', 'utf8')
 const row = readFileSync('src/components/messenger/MessageRow.vue', 'utf8')
+const banner = readFileSync('src/components/messenger/StoryReply.vue', 'utf8')
 const service = readFileSync('src/services/chatService.ts', 'utf8')
 const storiesStore = readFileSync('src/stores/stories.ts', 'utf8')
 
@@ -75,15 +76,17 @@ describe('отправка ответа в личный чат автора', ()
 
 describe('плашка «Ответ на историю» в ленте', () => {
   it('рисуется из снимка сообщения', () => {
-    expect(row).toContain('v-if="storyReply"')
-    expect(row).toContain('class="story-reply"')
+    // Разметка плашки живёт в StoryReply.vue, в строке — только подключение.
     expect(row).toContain('reply_to_story')
+    expect(row).toContain('<StoryReply v-if="storyReply" :story="storyReply" />')
+    expect(banner).toContain('class="story-reply"')
+    expect(banner).toContain("t('Ответ на историю')")
   })
 
   it('миниатюра берётся из снимка, видео помечается значком', () => {
-    const computed = row.slice(row.indexOf('const storyReplyThumb'))
-    expect(computed).toContain('storyReply.value?.media_url')
-    expect(row).toContain('storyReplyIsVideo')
+    expect(banner).toContain('props.story.media_url')
+    expect(banner).toContain("startsWith('video/')")
+    expect(banner).toContain("icon(isVideo ? 'videocam' : 'image')")
   })
 })
 

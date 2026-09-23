@@ -207,13 +207,8 @@ import type { MessageRow as ThreadRow, SeriesKind } from '@/utils/thread'
 import { displayName } from '@/utils/user'
 import { albumLayout } from '@/utils/albums'
 import MessageRow from '@/components/messenger/MessageRow.vue'
+import type { MessageQuote } from '@/components/messenger/ReplyQuote.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-
-interface MessageQuote {
-  name: string
-  mine: boolean
-  text: string
-}
 
 /**
  * Временный пузырь внизу ленты.

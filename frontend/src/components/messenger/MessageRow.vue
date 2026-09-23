@@ -74,57 +74,22 @@
       </div>
       <!-- Имя автора в групповом чате (у входящих, в начале «серии» сообщений) -->
       <span v-if="authorName && !isOwn" class="msg-author">{{ authorName }}</span>
-      <!-- Плашка «Переслано от …» (клик — открыть автора) -->
-      <div
-        v-if="forwardLabel"
-        class="forward-banner"
-        :class="{ clickable: forwarderClickable }"
-        :title="forwarderClickable ? t('Открыть чат с автором') : undefined"
-        @click.stop="onForwarderClick"
-      >
-        <span class="forward-sender-avatar" :style="forwarderAvatarStyle" aria-hidden="true">
-          <img
-            v-if="forwarderAvatarUrl"
-            :src="forwarderAvatarUrl"
-            class="forward-sender-avatar-img"
-            alt=""
-            loading="lazy"
-            decoding="async"
-          />
-          <template v-else>{{ forwarderInitials }}</template>
-        </span>
-        <span class="forward-label-text">{{ forwardLabel }}</span>
-      </div>
+      <!-- Плашка «Переслано от …» и ответ-цитата — свои компоненты. -->
+      <ForwardBanner
+        :message="message"
+        :viewer-id="viewerId"
+        @forwarder-click="emit('forwarder-click')"
+      />
 
       <!-- Ответ-цитата -->
-      <div
+      <ReplyQuote
         v-if="message.reply_to_id && quote"
-        class="reply-quote"
-        @click.stop="emit('quote-click')"
-      >
-        <span class="quote-name" :class="{ mine: quote.mine }">{{ quote.name }}</span>
-        <span class="quote-text">{{ quote.text }}</span>
-      </div>
+        :quote="quote"
+        @quote-click="emit('quote-click')"
+      />
 
       <!-- Ответ на историю: снимок медиа истории (живёт и после её удаления). -->
-      <div v-if="storyReply" class="story-reply">
-        <span class="story-reply-thumb">
-          <img
-            v-if="storyReplyThumb && !storyReplyIsVideo"
-            :src="storyReplyThumb"
-            alt=""
-            loading="lazy"
-            decoding="async"
-          />
-          <q-icon
-            v-else
-            :name="icon(storyReplyIsVideo ? 'videocam' : 'image')"
-            size="16px"
-            aria-hidden="true"
-          />
-        </span>
-        <span class="story-reply-text">{{ t('Ответ на историю') }}</span>
-      </div>
+      <StoryReply v-if="storyReply" :story="storyReply" />
 
       <!-- Вложение — в MessageAttachment.vue (там же расшифровка E2EE). -->
       <MessageAttachment
@@ -268,7 +233,6 @@ import { icon } from '@/utils/icons'
 import { t } from '@/i18n'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { ChatUser, Message } from '@/types'
-import { mediaUrl } from '@/config'
 import { lastQuickReaction } from '@/utils/reactions'
 import { emojiLayout, type EmojiLayout } from '@/utils/emoji'
 import { haptic, HAPTIC_HOLD } from '@/utils/haptics'
@@ -280,7 +244,7 @@ import {
   translationActionFor,
   translationOf
 } from '@/utils/translation'
-import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
+import { avatarUrlOf, displayName, initials } from '@/utils/user'
 import { useVisibleOnce } from '@/composables/useVisibleOnce'
 import {
   callMessageIcon,
@@ -295,17 +259,15 @@ import { presetSetOfFileName } from '@/utils/presetStickers'
 import { importedSetPackId } from '@/utils/stickerSetImports'
 import type { SeriesKind } from '@/utils/thread'
 import LinkPreviewCard from '@/components/messenger/LinkPreviewCard.vue'
+import ForwardBanner from '@/components/messenger/ForwardBanner.vue'
+import ReplyQuote from '@/components/messenger/ReplyQuote.vue'
+import StoryReply from '@/components/messenger/StoryReply.vue'
 import MessageActionsBar from '@/components/messenger/MessageActionsBar.vue'
 import MessageAttachment from '@/components/messenger/MessageAttachment.vue'
 import MessageText from '@/components/messenger/MessageText.vue'
 import MessageTranslation from '@/components/common/MessageTranslation.vue'
+import type { MessageQuote } from '@/components/messenger/ReplyQuote.vue'
 import { useLinkPreview } from '@/composables/useLinkPreview'
-
-export interface MessageQuote {
-  name: string
-  mine: boolean
-  text: string
-}
 
 /* ---------- Свайпы по сообщению: вправо — ответ, влево — пересылка ----------
  * Стороны симметричны: одно расстояние и один порог, значок появляется с той
@@ -424,17 +386,6 @@ const props = defineProps<{
   actionsReset?: number
 }>()
 
-/** Текст плашки «Переслано от …» (null, если сообщение не переслано). */
-const forwardLabel = computed<string | null>(() => {
-  const forwarded = props.message.forwarded_from
-  if (!forwarded) return null
-  if (props.viewerId !== null && forwarded.sender_id === props.viewerId) {
-    return t('Переслано от вас')
-  }
-  const name = forwarded.sender_name?.trim()
-  return name ? t('Переслано от {name}', { name }) : t('Переслано')
-})
-
 /** Плашка «Ответ на историю» (null, если это обычное сообщение). */
 const storyReply = computed(() => props.message.reply_to_story ?? null)
 
@@ -485,16 +436,6 @@ const onTranslate = () => {
  */
 const shownOwn = computed<boolean>(() => props.isOwn && !props.channel)
 
-/** Миниатюра истории: путь к нашему файлу, поэтому через `mediaUrl`. */
-const storyReplyThumb = computed<string>(() => {
-  const url = storyReply.value?.media_url
-  return url ? mediaUrl(url) : ''
-})
-
-const storyReplyIsVideo = computed<boolean>(() =>
-  Boolean(storyReply.value?.mime_type?.startsWith('video/'))
-)
-
 const emit = defineEmits<{
   (e: 'quote-click'): void
   (e: 'forwarder-click'): void
@@ -543,26 +484,6 @@ const { preview: linkPreview } = useLinkPreview(() => linkPreviewText.value, {
   // открытие чата уходили бы десятки запросов сразу (см. useVisibleOnce).
   enabled: () => rowVisible.value
 })
-
-// ---------- «Переслано от …»: аватар автора и переход к нему ----------
-const forwarderName = computed<string>(
-  () => props.message.forwarded_from?.sender_name?.trim() || ''
-)
-const forwarderAvatarUrl = computed<string | null>(() => {
-  const url = props.message.forwarded_from?.sender_avatar_url
-  return url ? mediaAbsolute(url) : null
-})
-const forwarderClickable = computed<boolean>(() => {
-  const senderId = props.message.forwarded_from?.sender_id
-  return senderId !== null && senderId !== undefined && senderId !== props.viewerId
-})
-const forwarderInitials = computed<string>(() => initials(forwarderName.value || '?'))
-const forwarderAvatarStyle = computed(() => avatarStyle(forwarderName.value || '?'))
-const onForwarderClick = () => {
-  if (forwarderClickable.value) emit('forwarder-click')
-}
-
-const mediaAbsolute = (path: string): string => mediaUrl(path)
 
 /** Вложение с настоящим именем/типом (у E2EE — из расшифрованного конверта). */
 const file = computed(() => effectiveFile(props.message))
@@ -1202,118 +1123,6 @@ onBeforeUnmount(() => {
   font-size: var(--ms-fs-xs);
   font-weight: 600;
   line-height: 1.3;
-}
-
-/* Плашка «Переслано от …» (как в Telegram: мелко, над содержимым) */
-.forward-banner {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin: -1px 0 3px;
-  font-size: 12.5px;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--ms-info, #3aa6e0);
-  letter-spacing: 0.1px;
-  user-select: none;
-}
-
-.forward-banner.clickable {
-  cursor: pointer;
-}
-
-.forward-sender-avatar {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ms-on-accent);
-  /* Кружок пересылки всего 18 px: текст мельче нечитаем, но и 11.5 px в него
-     не влезет — держим 10 px, зато с множителем настройки «Размер текста». */
-  font-size: calc(10px * var(--ms-text-scale, 1));
-  font-weight: 700;
-  overflow: hidden;
-}
-
-.forward-sender-avatar-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-/* Ответ-цитата */
-.reply-quote {
-  display: flex;
-  flex-direction: column;
-  background: color-mix(in srgb, var(--ms-icon) 8%, transparent);
-  border-left: 3px solid var(--ms-info);
-  border-radius: var(--ms-radius-xs);
-  padding: 5px 9px;
-  margin-bottom: 5px;
-  cursor: pointer;
-  min-width: 120px;
-}
-
-.msg.out .reply-quote {
-  border-left-color: var(--ms-accent);
-}
-
-.quote-name {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--ms-info);
-}
-
-.quote-name.mine {
-  color: var(--ms-accent);
-}
-
-.quote-text {
-  font-size: 13px;
-  color: var(--ms-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Плашка «Ответ на историю»: миниатюра + подпись, вид как у цитаты. */
-.story-reply {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  background: color-mix(in srgb, var(--ms-icon) 8%, transparent);
-  border-left: 3px solid var(--ms-accent);
-  border-radius: var(--ms-radius-xs);
-  padding: 4px 9px 4px 6px;
-  margin-bottom: 5px;
-  min-width: 120px;
-}
-
-.story-reply-thumb {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  overflow: hidden;
-  background: var(--ms-surface-2);
-  color: var(--ms-muted-2);
-  flex: none;
-}
-
-.story-reply-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.story-reply-text {
-  font-size: 12.5px;
-  color: var(--ms-muted);
 }
 
 /* Вложения переехали в MessageAttachment.vue вместе с разметкой и стилями. */
