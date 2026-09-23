@@ -21,9 +21,12 @@ async def _delete_expired() -> int:
     from api_v1.stories import crud
 
     engine = make_engine()
-    session_factory = make_session(engine)
     try:
-        async with session_factory() as session:
+        # `make_session` отдаёт ГОТОВУЮ сессию, а не фабрику (см. `tasks/base.py`).
+        # Раньше её вызывали как `session_factory()` → TypeError «'AsyncSession'
+        # object is not callable», и уборка не работала НИ РАЗУ (по логам прода:
+        # задача падала каждое выполнение, 23.09.2026).
+        async with make_session(engine) as session:
             removed = await crud.delete_expired(session)
             await session.commit()
             return removed

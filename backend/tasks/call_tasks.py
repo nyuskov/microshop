@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 
 from core.celery_app import celery_app
-from tasks.base import run_async
+from tasks.base import make_engine, make_session, run_async
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,17 @@ async def _prune() -> None:
     # Импорт внутри функции: воркеру не нужны роутеры звонков и FastAPI.
     from api_v1.calls import store
 
-    await store.prune_expired_signals()
+    # Движок — СВОЙ на этот цикл событий (см. `tasks/base.py`): общий `db_helper`
+    # живёт весь процесс воркера, и его пул остаётся привязан к прошлому
+    # event loop — задача падала с InterfaceError «another operation is in
+    # progress» / RuntimeError «attached to a different loop» (каждое десятое
+    # выполнение по логам прода 23.09.2026).
+    engine = make_engine()
+    session = make_session(engine)
+    try:
+        await store.prune_expired_signals(session)
+    finally:
+        await engine.dispose()
 
 
 @celery_app.task(name="tasks.call_tasks.prune_call_signals")

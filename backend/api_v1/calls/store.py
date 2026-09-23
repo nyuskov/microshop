@@ -157,16 +157,36 @@ async def take_queued_signals(user_id: int) -> list[dict[str, Any]]:
     return [dict(row.payload or {}) for row in rows]
 
 
-async def prune_expired_signals() -> None:
-    """Чистит истёкшие парковки и очередь (зовётся по расписанию задач)."""
-    async with db_helper.session_factory() as session:
-        await session.execute(
-            delete(PendingCallOffer).where(PendingCallOffer.expires_at < _now())
-        )
-        await session.execute(
-            delete(QueuedCallSignal).where(QueuedCallSignal.expires_at < _now())
-        )
+async def prune_expired_signals(session: AsyncSession | None = None) -> None:
+    """Чистит истёкшие парковки и очередь (зовётся по расписанию задач).
+
+    ``session`` передаёт воркер (``tasks/call_tasks.py``): у фоновых задач свой
+    движок на каждый цикл событий (см. ``tasks/base.py``), а общий ``db_helper``
+    для них не годится — его пул живёт весь процесс воркера, и соединения
+    остаются привязаны к ПРОШЛОМУ event loop. Из-за этого задача падала с
+    ``InterfaceError: cannot perform operation: another operation is in
+    progress`` / ``RuntimeError: attached to a different loop`` (29 падений за
+    сутки 23.09.2026). Из web-процесса сессию не передают — работает общий
+    ``db_helper``, как раньше.
+    """
+    if session is not None:
+        await _prune_expired(session)
         await session.commit()
+        return
+
+    async with db_helper.session_factory() as own:
+        await _prune_expired(own)
+        await own.commit()
+
+
+async def _prune_expired(session: AsyncSession) -> None:
+    """Удаления без ``commit``: решает вызывающий (своя сессия или общая)."""
+    await session.execute(
+        delete(PendingCallOffer).where(PendingCallOffer.expires_at < _now())
+    )
+    await session.execute(
+        delete(QueuedCallSignal).where(QueuedCallSignal.expires_at < _now())
+    )
 
 
 async def _delete_expired(session: AsyncSession, user_id: int) -> None:
