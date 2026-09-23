@@ -81,7 +81,11 @@ const onClick = () => {
   gap: 5px;
   min-width: 0;
   max-width: 100%;
-  padding: 5px 9px;
+  /* Отступы намеренно узкие (было 5 px 9 px): пилюля прозрачная, а её ширина
+     на узком телефоне (360 px) — это ровно то, что надпись отдаёт ряду историй
+     со счётчиком «+N». Экономия 4 px — и «Тихие часы» / «Quiet hours» видны
+     целиком, а не «Quiet hou…» (владелец прислал такой скрин с телефона). */
+  padding: 5px 7px;
   border: 1px solid transparent;
   border-radius: var(--ms-radius-pill);
   font-family: inherit;
