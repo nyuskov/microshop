@@ -14,9 +14,10 @@ import {
  *
  * Кружки историй, кнопки и надпись о связи (состояние связи, тихие часы) делят
  * одну строку, поэтому число кружков зависит от того, занята ли середина
- * (владелец: «с надписью в центре — 3, без неё — 6»). Раскладку jsdom не
- * считает, поэтому сами правила проверяем как чистые функции, а связку с
- * разметкой — чтением исходников (как в `storiesHighlight.spec.ts`).
+ * (владелец: «не больше 2, если сообщение показывается по центру, а если не
+ * показывается — не больше 6»). Раскладку jsdom не считает, поэтому сами правила
+ * проверяем как чистые функции, а связку с разметкой — чтением исходников (как в
+ * `storiesHighlight.spec.ts`).
  */
 
 const story = (id: number, viewed = false): StoryItem => ({
@@ -49,20 +50,30 @@ const group = (userId: number, items: StoryItem[], isMine = false): StoryGroup =
 const flat = (source: string): string => source.replace(/\s+/g, ' ')
 
 describe('лимит кружков в шапке', () => {
-  it('в шапке не больше двух кружков — и с надписью, и без неё', () => {
+  it('с надписью в середине — два кружка, без неё — шесть', () => {
     expect(headerStoriesLimit(true)).toBe(HEADER_STORIES_LIMIT_WITH_NOTICE)
     expect(headerStoriesLimit(false)).toBe(HEADER_STORIES_LIMIT)
     expect(HEADER_STORIES_LIMIT_WITH_NOTICE).toBe(2)
-    expect(HEADER_STORIES_LIMIT).toBe(2)
+    expect(HEADER_STORIES_LIMIT).toBe(6)
   })
 
   it('лимит считается вместе с кружком «Моя история»', () => {
-    const others = [group(1, [story(10)]), group(2, [story(20)]), group(3, [story(30)])]
+    const others = [
+      group(1, [story(10)]),
+      group(2, [story(20)]),
+      group(3, [story(30)]),
+      group(4, [story(40)]),
+      group(5, [story(50)]),
+      group(6, [story(60)]),
+      group(7, [story(70)])
+    ]
 
-    // 2 всего = «моя» + 1 чужая: больше в шапке не показываем.
+    // 2 всего = «моя» + 1 чужая: столько влезает рядом с надписью в середине.
     expect(headerStoryGroups(others, 2).map((item) => item.user.id)).toEqual([1])
+    // Без надписи — «моя» + 5 чужих: шесть кружков, больше не показываем.
+    expect(headerStoryGroups(others, 6).map((item) => item.user.id)).toEqual([1, 2, 3, 4, 5])
     // Без ограничения (0) ряд не режем: так живёт раскрытая полоса.
-    expect(headerStoryGroups(others, 0)).toHaveLength(3)
+    expect(headerStoryGroups(others, 0)).toHaveLength(7)
   })
 })
 
