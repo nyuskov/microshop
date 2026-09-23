@@ -138,47 +138,13 @@
         @open-view-once="emit('open-view-once')"
       />
 
-      <!-- Очень длинные тексты показываем свёрнутыми: иначе одна «простыня»
-           растягивает ленту на несколько экранов. -->
-      <!-- Стикер: сообщение из одних эмодзи (1–3) — крупно и без пузыря, как в
-           Telegram. Форматирование и ссылки тут не нужны: текста нет. -->
-      <span v-if="stickerLayout !== 'text'" class="msg-sticker" :class="stickerLayout">
-        {{ message.text.trim() }}
-      </span>
-      <!-- Упоминания @логин подсвечиваем: видно, к кому обращаются -->
-      <span v-else-if="message.text" class="msg-text" :class="{ clamped: isClamped }">
-        <template v-for="(part, index) in textParts" :key="index">
-          <span v-if="part.type === 'mention'" class="msg-mention">{{ part.value }}</span>
-          <a
-            v-else-if="part.type === 'link'"
-            class="msg-link"
-            :href="part.href"
-            rel="noopener noreferrer"
-            @click.stop.prevent="followMessageLink(part.href)"
-            >{{ part.value }}</a
-          >
-          <!-- Оформление: *жирный*, _курсив_, `код`, ~~зачёркнутый~~ -->
-          <strong v-else-if="part.type === 'bold'" class="msg-bold">{{ part.value }}</strong>
-          <em v-else-if="part.type === 'italic'" class="msg-italic">{{ part.value }}</em>
-          <s v-else-if="part.type === 'strike'" class="msg-strike">{{ part.value }}</s>
-          <code v-else-if="part.type === 'code'" class="msg-code">{{ part.value }}</code>
-          <!-- Совпадение поиска по сообщениям: видно, ЧТО именно нашлось -->
-          <mark v-else-if="part.type === 'search'" class="msg-search-hit">{{ part.value }}</mark>
-          <!-- Спойлер скрыт, пока по нему не нажмут -->
-          <span
-            v-else-if="part.type === 'spoiler'"
-            class="msg-spoiler"
-            :class="{ on: revealedSpoilers.has(index) }"
-            :title="revealedSpoilers.has(index) ? undefined : t('Нажмите, чтобы показать')"
-            @click.stop="revealSpoiler(index)"
-            >{{ part.value }}</span
-          >
-          <template v-else>{{ part.value }}</template>
-        </template>
-      </span>
-      <button v-if="canCollapse" type="button" class="msg-more" @click.stop="expanded = !expanded">
-        {{ expanded ? t('Свернуть') : t('Показать полностью') }}
-      </button>
+      <!-- Текст сообщения — в MessageText.vue (стикер-эмодзи, разметка,
+           спойлеры и сворачивание длинного). -->
+      <MessageText
+        :text="message.text ?? ''"
+        :layout="stickerLayout"
+        :search-query="props.searchQuery"
+      />
 
       <!-- Перевод текста: встроенный переводчик браузера, текст никуда не уходит.
            Блок появляется только когда перевод запросили через меню. В E2EE-чате
@@ -315,8 +281,6 @@ import {
   translationOf
 } from '@/utils/translation'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
-import { highlightQuery, splitMessageText } from '@/utils/mentions'
-import { followLink } from '@/composables/useExternalLinkGuard'
 import { useVisibleOnce } from '@/composables/useVisibleOnce'
 import {
   callMessageIcon,
@@ -333,6 +297,7 @@ import type { SeriesKind } from '@/utils/thread'
 import LinkPreviewCard from '@/components/messenger/LinkPreviewCard.vue'
 import MessageActionsBar from '@/components/messenger/MessageActionsBar.vue'
 import MessageAttachment from '@/components/messenger/MessageAttachment.vue'
+import MessageText from '@/components/messenger/MessageText.vue'
 import MessageTranslation from '@/components/common/MessageTranslation.vue'
 import { useLinkPreview } from '@/composables/useLinkPreview'
 
@@ -362,33 +327,6 @@ let swipeStartY = 0
 let swipeAxis: 'none' | 'x' | 'y' = 'none'
 /** Отклик на достижение порога ответа — один раз за жест. */
 let swipeFeedback = false
-
-/** С какого размера текст сворачиваем (примерно 12 строк). */
-const LONG_TEXT_LIMIT = 600
-
-const textParts = computed(() =>
-  highlightQuery(splitMessageText(props.message.text ?? ''), props.searchQuery ?? '')
-)
-
-/** Спойлеры, которые пользователь уже раскрыл нажатием (по индексу фрагмента). */
-const revealedSpoilers = ref<Set<number>>(new Set())
-
-function revealSpoiler(index: number) {
-  if (revealedSpoilers.value.has(index)) return
-  revealedSpoilers.value = new Set(revealedSpoilers.value).add(index)
-}
-
-/**
- * Переход по ссылке из текста.
- *
- * Сами не открываем: свой адрес откроет приложение, а чужой — только после
- * подтверждения «Переходите на внешний сайт» (см. useExternalLinkGuard).
- */
-const followMessageLink = (url?: string) => {
-  if (url) void followLink(url)
-}
-
-const expanded = ref(false)
 /** Корень строки сообщения — нужен для замеров (свайп, лист действий). */
 const rowRoot = ref<HTMLElement | null>(null)
 /**
@@ -399,8 +337,6 @@ const rowRoot = ref<HTMLElement | null>(null)
  * чата уходили десятки запросов и расшифровок.
  */
 const { visible: rowVisible } = useVisibleOnce(rowRoot)
-const canCollapse = computed(() => (props.message.text?.length ?? 0) > LONG_TEXT_LIMIT)
-const isClamped = computed(() => canCollapse.value && !expanded.value)
 
 /**
  * Насколько крупно рисовать сообщение из эмодзи (`text` — обычный пузырь).
@@ -1133,19 +1069,6 @@ onBeforeUnmount(() => {
   max-width: min(70%, 320px);
 }
 
-.msg-sticker {
-  display: block;
-  line-height: 1.05;
-  /* Эмодзи — картинки шрифта, поэтому цвет текста на них не влияет. */
-  font-size: calc(44px * var(--ms-text-scale, 1));
-  word-break: break-word;
-}
-
-/* Три эмодзи — помельче: в ряд они должны влезать на телефоне. */
-.msg-sticker.large {
-  font-size: calc(32px * var(--ms-text-scale, 1));
-}
-
 /* Картинка-стикер: пузырь тоже прозрачный — в ленте это не «сообщение с
    картинкой», а сам стикер (в Telegram у стикеров подложки нет). Без этого
    прозрачная картинка лежала на тёмной подложке пузыря и читалась как «тёмное
@@ -1225,111 +1148,6 @@ onBeforeUnmount(() => {
 .swipe-forward.ready {
   background: var(--ms-info-bg);
   color: var(--ms-info);
-}
-
-/* Свёрнутый длинный текст: 12 строк и кнопка «Показать полностью». */
-.msg-text.clamped {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 12;
-  overflow: hidden;
-}
-
-.msg-more {
-  display: block;
-  margin: 2px 0 0;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--ms-accent);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-/* Упоминание в тексте: акцентный цвет и полужирное начертание */
-.msg-mention {
-  color: var(--ms-accent, #2ea25e);
-  font-weight: 600;
-}
-
-/* Оформление текста (*жирный*, _курсив_, `код`, ~~зачёркнутый~~, ||спойлер||).
-   Цвет берём от пузыря: он бывает и своим (зелёным), и чужим (белым). */
-.msg-bold {
-  font-weight: 700;
-}
-
-.msg-italic {
-  font-style: italic;
-}
-
-.msg-strike {
-  text-decoration: line-through;
-}
-
-.msg-code {
-  font-family: var(--ms-font-mono);
-  font-size: 0.92em;
-  background: var(--ms-mark-bg);
-  border-radius: var(--ms-radius-xs);
-  padding: 0 4px;
-}
-
-/* Совпадение поиска по сообщениям. Фон — предупреждающая подложка (пара
-   «текст на --ms-warn-bg» уже проверена по контрасту), цвет текста наследуем:
-   пузыри бывают разных цветов, и свой цвет здесь выглядел бы чужеродно. */
-.msg-search-hit {
-  background: var(--ms-warn-bg);
-  color: inherit;
-  border-radius: 4px;
-  padding: 0 2px;
-}
-
-.msg-spoiler {
-  background: var(--ms-mark-bg);
-  border-radius: var(--ms-radius-xs);
-  padding: 0 3px;
-  /* Размытие скрывает текст, но не ломает высоту строки, как display: none. */
-  filter: blur(3.5px);
-  cursor: pointer;
-  user-select: none;
-}
-
-.msg-spoiler.on {
-  background: transparent;
-  padding: 0;
-  filter: none;
-  user-select: text;
-}
-
-/* Ссылка в тексте: подчёркнутая, цвет — как у текста (читается в любом пузыре) */
-.msg-link {
-  color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  text-decoration-thickness: 1px;
-  cursor: pointer;
-  word-break: break-all;
-}
-
-.msg-link:hover {
-  opacity: 0.85;
-}
-
-.msg-more:hover {
-  text-decoration: underline;
-}
-
-.msg-text {
-  display: block;
-  color: var(--ms-bubble-text);
-  /* Размер текста сообщений — токен шкалы: он же несёт множитель настройки
-     «Размер текста» из оформления. */
-  font-size: var(--ms-fs-base);
-  line-height: 1.35;
-  word-wrap: break-word;
-  white-space: pre-wrap;
 }
 
 .msg-meta {

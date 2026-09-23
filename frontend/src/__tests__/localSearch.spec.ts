@@ -211,7 +211,9 @@ describe('локальный поиск: как он встроен', () => {
     expect(messenger).toContain('if (!chat?.e2ee_enabled) return')
     expect(messenger).toContain('indexForLocalSearch(chat, decoded.out)')
     // Своё отправленное сообщение: текст известен устройству, сервер его не видит.
-    expect(messenger).toContain('void indexLocalMessages([message])')
+    // Отправка текста вынесена в `useMessageSend` (G6).
+    const send = read('src/composables/useMessageSend.ts')
+    expect(send).toContain('void indexLocalMessages([message])')
     // Чат удалили — его текст не должен находиться поиском.
     expect(messenger).toContain('void forgetLocalChat(chat.id)')
   })

@@ -115,11 +115,14 @@ describe('подпись к вложению: как оно встроено', (
 
   it('файлы из любого источника сначала попадают в окно отправки', () => {
     const messenger = read('src/views/Messenger.vue')
+    // Отправка вложений живёт в `useMessageSend` (G6), а монтирование окна и
+    // кнопки — в мессенджере.
+    const send = read('src/composables/useMessageSend.ts')
     // Кнопка «Прикрепить», вставка из буфера и перетаскивание — одна дорога.
-    expect(messenger).toContain('const onFilesSelected = (files: File[], viewOnce = false) => {')
-    expect(messenger).toContain('openSendDialog(files, viewOnce)')
-    expect(messenger).toContain('openSendDialog(files)')
-    expect(messenger).toContain('void sendFiles(pending.files, pending.viewOnce, caption)')
+    expect(send).toContain('const onFilesSelected = (files: File[], viewOnce = false): void => {')
+    expect(send).toContain('openSendDialog(files, viewOnce)')
+    expect(send).toContain('openSendDialog(files)')
+    expect(send).toContain('void sendFiles(pending.files, pending.viewOnce, caption)')
     // Окно монтируется, когда есть что отправлять.
     expect(messenger).toContain('v-if="pendingSend"')
     expect(messenger).toContain(
@@ -128,9 +131,9 @@ describe('подпись к вложению: как оно встроено', (
   })
 
   it('подпись уходит первым файлом пачки, остальным — ничего', () => {
-    const messenger = read('src/views/Messenger.vue')
-    expect(messenger).toContain('let captionLeft: string | null | undefined = caption')
-    expect(messenger).toContain('const partCaption = index === 0 ? captionLeft : null')
+    const send = read('src/composables/useMessageSend.ts')
+    expect(send).toContain('let captionLeft: string | null | undefined = caption')
+    expect(send).toContain('const partCaption = index === 0 ? captionLeft : null')
   })
 
   it('гифка уходит с комментарием из поля ввода', () => {

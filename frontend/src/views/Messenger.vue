@@ -663,15 +663,13 @@ import {
 import { Notify, useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
-import { getErrorMessage, isChatGoneError, isNetworkError } from '@/services/errors'
+import { getErrorMessage, isChatGoneError } from '@/services/errors'
 import { watchServiceWorkerUpdate } from '@/services/swUpdate'
 import {
   fetchMessages,
   fetchMyChats,
   fetchPinnedMessages,
   fetchUserByUsername,
-  searchMessages,
-  editMessage,
   fetchChatDetail,
   openPrivateChat,
   sendAttachmentMessage,
@@ -707,12 +705,14 @@ import {
   releaseDecryptedMediaExcept
 } from '@/composables/useDecryptedMedia'
 import { useMessageReminders } from '@/composables/useMessageReminders'
+import { useMessageReveal } from '@/composables/useMessageReveal'
+import { useMessageSend } from '@/composables/useMessageSend'
+import { useThreadSearch } from '@/composables/useThreadSearch'
 import { useMessageSelection } from '@/composables/useMessageSelection'
 import { useOutbox } from '@/composables/useOutbox'
 import { usePeerBlocking } from '@/composables/usePeerBlocking'
 import { useScheduledSend } from '@/composables/useScheduledSend'
-import { useThreadPagination, MESSAGES_PAGE_SIZE } from '@/composables/useThreadPagination'
-import { presetStickerFileName, packStickerFileName } from '@/utils/presetStickers'
+import { useThreadPagination } from '@/composables/useThreadPagination'
 import type {
   Chat,
   ChatUser,
@@ -728,7 +728,6 @@ import { channelUsernameFromPath } from '@/utils/channelLink'
 import { inviteTokenFromPath } from '@/utils/groupInvite'
 import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
-import { newAlbumId, planFileSend } from '@/utils/albums'
 import BrandSpinner from '@/components/common/BrandSpinner.vue'
 import { forgetLocalChat, indexLocalMessages } from '@/utils/localSearchIndex'
 import { effectiveFile, messageSnippet, optimizeImageFile } from '@/utils/media'
@@ -739,7 +738,7 @@ import { mediaUrl } from '@/config'
 import { chatIdFromUrl, isReplyLaunch, readStoredSection, storeSection } from '@/utils/chatUrl'
 import { haptic } from '@/utils/haptics'
 import { usePeerActivity } from '@/composables/usePeerActivity'
-import { activityKindOfFile, peerActivityLabel, type PeerActivityKind } from '@/utils/peerActivity'
+import { peerActivityLabel, type PeerActivityKind } from '@/utils/peerActivity'
 import { useRealtimeSync } from '@/composables/useRealtimeSync'
 import { useRecordButton } from '@/composables/useRecordButton'
 import { useCallSession } from '@/composables/useCallSession'
@@ -965,46 +964,6 @@ const view = ref<Section>(readStoredSection())
 const chats = ref<Chat[]>([])
 const messages = ref<Message[]>([])
 
-// ---------- Временные пузыри «Отправка…» для загружаемых вложений ----------
-interface PendingUpload {
-  localId: number
-  label: string
-  previewUrl?: string | null
-  /** Процент загрузки на сервер (undefined — ещё не началась). */
-  progress?: number
-}
-const pendingUploads = ref<PendingUpload[]>([])
-let pendingSeq = 0
-
-/**
- * Отметить прогресс загрузки вложения. Массив пересобираем: строка в ленте
- * должна обновиться, а лишние перерисовки гасим сравнением процента.
- */
-const setPendingProgress = (localId: number, percent: number) => {
-  if (!pendingUploads.value.some((p) => p.localId === localId && p.progress !== percent)) return
-  pendingUploads.value = pendingUploads.value.map((p) =>
-    p.localId === localId ? { ...p, progress: percent } : p
-  )
-}
-
-/** Создать временный пузырь «Отправка…» и вернуть его localId. */
-const addPendingUpload = (label: string, previewUrl: string | null = null): number => {
-  const localId = --pendingSeq
-  pendingUploads.value = [...pendingUploads.value, { localId, label, previewUrl }]
-  return localId
-}
-
-/** Убрать временный пузырь (успех, ошибка или смена чата). */
-const removePendingUpload = (localId: number) => {
-  pendingUploads.value = pendingUploads.value.filter((p) => p.localId !== localId)
-}
-
-const clearPendingUploads = () => {
-  for (const p of pendingUploads.value) {
-    if (p.previewUrl) URL.revokeObjectURL(p.previewUrl)
-  }
-  pendingUploads.value = []
-}
 const pinnedMessages = ref<Message[]>([])
 // Раздел «Контакты» — моя записная книжка (кого я добавил и как назвал),
 // а не справочник всех пользователей: справочник ищется через поиск.
@@ -1015,8 +974,6 @@ const contactsLoading = computed(() => contactsStore.loading)
 const selectedChatId = ref<number | null>(initialChatId)
 
 const newMessage = ref('')
-const sending = ref(false)
-const sendingFile = ref(false)
 const sendError = ref('')
 
 /**
@@ -1046,8 +1003,6 @@ const retryFailedSend = () => {
   sendError.value = ''
   run()
 }
-const inlineSearchOpen = ref(false)
-const inlineQuery = ref('')
 const emojiPickerFor = ref<number | null>(null)
 // Единое меню доп.контента поля ввода: 'emoji' | 'gif' | закрыто.
 const extrasTab = ref<'emoji' | 'stickers' | 'gif'>('emoji')
@@ -1093,8 +1048,6 @@ const closeExtras = () => {
 const pinnedOpen = ref(false)
 /** Шторка закреплённых скрыта в этом чате (крестик); при переходе в чат — снова видна. */
 const pinnedHidden = ref(false)
-const highlightedMessageId = ref<number | null>(null)
-let highlightTimer: number | undefined
 
 /** Ссылка на ленту сообщений (MessageThread) для управления прокруткой. */
 const threadRef = ref<InstanceType<typeof MessageThread> | null>(null)
@@ -1659,46 +1612,50 @@ const openChannelByUsername = (username: string) => {
 }
 
 /** Открыть изображение из «Информации о чате» в лайтбоксе. */
-const openChatInfoImage = async (messageId: number) => {
-  // Галерея показывает вложения всей истории, а в ленте загружены только
-  // последние страницы: нужную подгружаем перед открытием лайтбокса.
-  const message = await ensureMessageLoaded(messageId)
-  if (message) openImageFromMessage(message)
-}
 
-/**
- * Гарантирует, что сообщение есть в ленте (для перехода к нему/просмотра).
- *
- * Если его нет в загруженных страницах, догружает страницу, в которую оно
- * попадает, вставляет в ленту и возвращает позицию прокрутки на место — иначе
- * лента «прыгнула» бы вверх у пользователя.
- */
-const ensureMessageLoaded = async (messageId: number): Promise<Message | undefined> => {
-  const known = messages.value.find((m) => m.id === messageId)
-  if (known) return known
-  const chatId = selectedChatId.value
-  if (chatId === null) return undefined
-  const saved = threadRef.value?.capture()
-  try {
-    const raw = await fetchMessages(chatId, {
-      limit: MESSAGES_PAGE_SIZE,
-      beforeId: messageId + 1
-    })
-    const page = await applyDecryptMessages(chatId, raw)
-    if (!page.some((m) => m.id === messageId)) return undefined
-    const existingIds = new Set(messages.value.map((m) => m.id))
-    const toAdd = page.filter((m) => !existingIds.has(m.id))
-    if (toAdd.length > 0) {
-      messages.value = [...toAdd, ...messages.value].sort((a, b) => a.id - b.id)
-      await nextTick()
-      if (saved) threadRef.value?.restoreScroll(saved.top, saved.height)
-    }
-    return messages.value.find((m) => m.id === messageId)
-  } catch (error) {
-    console.error(t('Не удалось загрузить сообщение с вложением:'), getErrorMessage(error))
-    return undefined
-  }
-}
+// Переходы к сообщению (подсветка, центрирование, догрузка страницы) и поиск по
+// ленте живут в `useMessageReveal` и `useThreadSearch`. Зависимости-функции
+// переданы стрелками: часть объявлена ниже по `<script setup>`, а читается по
+// действию человека (см. граблю TDZ в шапке файла).
+
+const {
+  highlightedMessageId,
+  clearHighlight,
+  ensureMessageLoaded,
+  revealMessageInThread,
+  scrollToPinnedMessage,
+  openGlobalMessage,
+  quoteClick,
+  openChatInfoImage
+} = useMessageReveal({
+  messages,
+  selectedChatId: () => selectedChatId.value,
+  captureScroll: () => threadRef.value?.capture() ?? null,
+  restoreScroll: (top, height) => threadRef.value?.restoreScroll(top, height),
+  decryptPage: (chatId, list) => applyDecryptMessages(chatId, list),
+  revealInThread: (messageId) => threadRef.value?.reveal(messageId),
+  closeSearch: () => toggleInlineSearch(),
+  closeEmojiPicker: () => {
+    emojiPickerFor.value = null
+  },
+  openThread: (chatId) => openChatThread(chatId),
+  loadOlderMessages: () => loadOlderMessages(),
+  noMoreOlder: () => noMoreOlder.value,
+  openImage: (message) => openImageFromMessage(message)
+})
+
+const {
+  searchOpen: inlineSearchOpen,
+  query: inlineQuery,
+  toggleSearch: toggleInlineSearch,
+  matchCount: serverMatchCount,
+  matchIndex: inlineMatchIndex,
+  goToMatch: goToInlineMatch
+} = useThreadSearch({
+  selectedChatId: () => selectedChatId.value,
+  ensureMessageLoaded: (messageId) => ensureMessageLoaded(messageId),
+  revealMessageInThread: (messageId) => revealMessageInThread(messageId)
+})
 
 // ---------- Создание группы ----------
 const openCreateGroup = () => {
@@ -2348,26 +2305,6 @@ const quoteFor = (message: Message): { name: string; mine: boolean; text: string
   }
 }
 
-/** Клик по цитате-ответу: закрыть меню и перейти к исходному сообщению. */
-const quoteClick = (message: Message) => {
-  emojiPickerFor.value = null
-  const targetId = message.reply_to_id
-  if (targetId == null) return
-  // Исходное сообщение может быть не загружено — тогда ничего не делаем.
-  if (!messages.value.some((item) => item.id === targetId)) return
-  if (highlightTimer !== undefined) {
-    window.clearTimeout(highlightTimer)
-    highlightTimer = undefined
-  }
-  highlightedMessageId.value = targetId
-  void nextTick(() => {
-    threadRef.value?.reveal(targetId)
-    highlightTimer = window.setTimeout(() => {
-      highlightedMessageId.value = null
-    }, 2400)
-  })
-}
-
 const senderNameOfMessage = (message: Message): string => authorNameOfMessage(message)
 
 const pinnedSnippet = (message: Message): string =>
@@ -2590,89 +2527,69 @@ const upsertChat = (chat: Chat) => {
 }
 
 // ---------- Отправка ----------
-/**
- * Доставка текста: E2EE, отправка, показ в ленте.
- *
- * Общая для обычного сообщения и для стикера (стикер — это тоже текст из
- * эмодзи): различается только то, что делает вызывающий до и после.
- */
-const deliverText = async (chatId: number, text: string, replyTo: number | null) => {
-  // E2EE шифрует, только если чат «зашифрованный» (e2ee_enabled) и обе стороны
-  // опубликовали ключи. Обычные чаты идут открытым текстом (текст виден в
-  // превью списка и в push-уведомлениях — как в обычных чатах Telegram).
-  let wireText = text
-  let wireEncrypted = false
-  const aes = await chatKeyOf(selectedChat.value)
-  if (aes) {
-    wireText = await encryptText(aes, text)
-    wireEncrypted = true
-    e2eePeerReadyByChat.value = {
-      ...e2eePeerReadyByChat.value,
-      [chatId]: true
-    }
-  }
-  const message = await sendNewMessage(chatId, wireText, replyTo, wireEncrypted)
-  if (wireEncrypted) {
-    // Локально в ленте показываем открытый текст; шифротекст живёт на сервере.
-    message.text = text
-    message.encrypted = false
-    // И сразу запоминаем его для локального поиска: сервер этот текст не видит
-    // (см. utils/localSearchIndex.ts).
-    void indexLocalMessages([message])
-  }
-  await refreshThread()
-  messages.value = appendMessage(messages.value, message)
-  await loadPinned(chatId)
-  // Короткий отклик при отправке: понятно, что сообщение ушло, не сверяясь
-  // с галочками (на телефоне ощущается как «нажалось»).
-  haptic()
-  scrollToBottom()
-}
+//
+// Текст, стикеры (эмодзи и картинкой) и вложения живут в `useMessageSend` —
+// вместе с временными пузырями «Отправка…», окном отправки с подписью, альбомами
+// и уходом в очередь при обрыве связи. Здесь только связь с лентой, черновиками,
+// очередью и плашкой ошибки. Зависимости-функции переданы стрелками: часть из них
+// объявлена ниже по `<script setup>` (`clearDraftFor`, `queueOutgoingText`,
+// `stopTyping`, `editing`), а обращается к ним composable по действию человека
+// (см. граблю TDZ в шапке файла).
 
-const sendText = async () => {
-  const chatId = selectedChatId.value
-  const text = newMessage.value.trim()
-  if (chatId === null || !text || sending.value) return
-
-  sending.value = true
-  sendError.value = ''
-  // Сообщение уходит — панель смайлов/стикеров больше не нужна (как в Телеграме).
-  closeExtras()
-  try {
-    const editing = editingMessage.value
-    if (editing) {
-      const updated = await editMessage(editing.id, text)
-      newMessage.value = ''
-      clearDraftFor(chatId)
-      editingMessage.value = null
-      replaceMessageInThread(updated)
-      sendTypingStop(chatId)
-      await loadPinned(chatId)
-      scrollToBottom()
-      return
-    }
-
-    await deliverText(chatId, text, replyTarget.value?.id ?? null)
-    newMessage.value = ''
-    clearDraftFor(chatId)
-    sendTypingStop(chatId)
-    clearReply()
-  } catch (error) {
-    // Связь пропала — не теряем набранное: ставим в очередь и отправим сами,
-    // как только сеть вернётся (сообщение видно в ленте как «Ждёт сети»).
-    if (isNetworkError(error)) {
-      queueOutgoingText(chatId, text, replyTarget.value?.id)
-      newMessage.value = ''
-      clearDraftFor(chatId)
-      clearReply()
-      void nextTick(scrollToBottom)
-    } else {
-      failSend(getErrorMessage(error, t('Не удалось отправить сообщение')), () => void sendText())
-    }
-  } finally {
-    sending.value = false
+const {
+  sending,
+  sendingFile,
+  pendingUploads,
+  sendText,
+  sendSticker,
+  sendStickerImage,
+  onFilesSelected,
+  handleDroppedFiles,
+  canDropFiles,
+  pendingSend,
+  pendingSendReply,
+  confirmSend,
+  cancelSend,
+  addPendingUpload,
+  removePendingUpload,
+  hasPendingUpload,
+  setPendingProgress,
+  clearPendingUploads,
+  onStickerError
+} = useMessageSend({
+  selectedChat: () => selectedChat.value,
+  selectedChatId: () => selectedChatId.value,
+  composerText: newMessage,
+  closeExtras: () => closeExtras(),
+  clearDraftFor: (chatId) => clearDraftFor(chatId),
+  queueOutgoingText: (chatId, text, replyToId) => queueOutgoingText(chatId, text, replyToId),
+  stopTyping: (chatId) => sendTypingStop(chatId),
+  editing: () => editingMessage.value,
+  endEditing: () => {
+    editingMessage.value = null
+  },
+  replaceMessage: (message) => replaceMessageInThread(message),
+  replyTarget: () => replyTarget.value,
+  replyName: () => replyBarName.value,
+  clearReply: () => clearReply(),
+  chatKeyOf: (chat) => chatKeyOf(chat),
+  markPeerReady: (chatId) => {
+    e2eePeerReadyByChat.value = { ...e2eePeerReadyByChat.value, [chatId]: true }
+  },
+  applyLocalFileEnvelope: (message, meta) => applyLocalFileEnvelope(message, meta),
+  refreshThread: () => refreshThread(),
+  reloadPinned: (chatId) => loadPinned(chatId),
+  reloadChats: () => loadChats(),
+  addMessage: (message) => {
+    messages.value = appendMessage(messages.value, message)
+  },
+  beginActivity: (chatId, kind) => beginActivity(chatId, kind),
+  scrollToBottom: () => scrollToBottom(),
+  failSend: (message, retry) => failSend(message, retry),
+  setSendError: (message) => {
+    sendError.value = message
   }
-}
+})
 
 // ---------- Отложенная отправка («отправить позже») ----------
 //
@@ -2734,327 +2651,13 @@ const {
   }
 })
 
-/**
- * Отправляет стикер (эмодзи) отдельным сообщением — тап в панели «Стикеры».
- *
- * Черновик в поле ввода НЕ трогаем: человек мог параллельно набирать текст, а
- * стикер — отдельное сообщение. В ленте оно рисуется крупно и без пузыря
- * (`MessageRow.vue`, `emojiLayout`).
- */
-const sendSticker = async (sticker: string) => {
-  const chatId = selectedChatId.value
-  if (chatId === null || !sticker || sending.value) return
-  sending.value = true
-  sendError.value = ''
-  // Стикер уходит сразу — панель закрываем, как в Телеграме: лента остаётся видна.
-  closeExtras()
-  try {
-    await deliverText(chatId, sticker, replyTarget.value?.id ?? null)
-    clearReply()
-  } catch (error) {
-    if (isNetworkError(error)) {
-      queueOutgoingText(chatId, sticker, replyTarget.value?.id)
-      clearReply()
-      void nextTick(scrollToBottom)
-    } else {
-      failSend(
-        getErrorMessage(error, t('Не удалось отправить стикер')),
-        () => void sendSticker(sticker)
-      )
-    }
-  } finally {
-    sending.value = false
-  }
-}
-
 const appendMessage = (list: Message[], message: Message): Message[] => {
   if (list.some((item) => item.id === message.id)) return list
   return [...list, message]
 }
 
-/** Ошибка добавления стикера (из панели стикеров): показываем в строке ошибок. */
-const onStickerError = (message: string) => {
-  sendError.value = message
-}
-
-/**
- * Отправляет стикер-картинку сообщением (тап в панели «Стикеры»).
- *
- * Стикер скачиваем по ссылке и отправляем теми же байтами, что обычное
- * вложение, только с ``sticker=true``: сообщение получает ``kind='sticker'`` и
- * рисуется без пузыря. Ссылка приходит готовая — свои стикеры лежат на сервере
- * (`media/`), стандартные — ассеты приложения (`public/stickers/`).
- * В E2EE-чате байты сначала шифруются — как и любое другое вложение.
- */
-const sendStickerImage = async (image: {
-  url: string
-  mime: string
-  /** Встроенный набор приложения: метка `st-<набор>-<имя>.png`. */
-  preset?: { setKey: string; name: string }
-  /** Набор с сервера: метка `sp-<id>-<имя>.png` (свой или публичный). */
-  pack?: { packId: number; position: number }
-}) => {
-  const chatId = selectedChatId.value
-  if (chatId === null || sending.value) return
-  sending.value = true
-  sendError.value = ''
-  // Картинка-стикер уходит сразу: панель закрываем — как при отправке стикера-эмодзи.
-  closeExtras()
-  try {
-    const response = await fetch(image.url)
-    if (!response.ok) throw new Error(t('Не удалось прочитать стикер'))
-    const blob = await response.blob()
-    // Имя файла несёт метку набора: по ней получатель поймёт, из какого набора
-    // стикер, и сможет открыть его целиком — см. utils/presetStickers.ts.
-    const fileName = image.preset
-      ? presetStickerFileName(image.preset.setKey, image.preset.name)
-      : image.pack
-        ? packStickerFileName(image.pack.packId, String(image.pack.position))
-        : 'sticker.webp'
-    const file = new File([blob], fileName, {
-      type: image.mime || blob.type || 'image/webp'
-    })
-    const aes = await chatKeyOf(selectedChat.value)
-    const payload = aes ? await encryptFileForChat(aes, file, '') : null
-    const message = await sendAttachmentMessage(
-      chatId,
-      payload ? payload.blob : file,
-      payload ? payload.text : '',
-      replyTarget.value?.id ?? null,
-      undefined,
-      !!payload,
-      true
-    )
-    if (payload) applyLocalFileEnvelope(message, payload.meta)
-    clearReply()
-    sendTypingStop(chatId)
-    messages.value = appendMessage(messages.value, message)
-    scrollToBottom()
-  } catch (error) {
-    failSend(
-      getErrorMessage(error, t('Не удалось отправить стикер')),
-      () => void sendStickerImage(image)
-    )
-  } finally {
-    sending.value = false
-  }
-}
-
-// ---------- Окно отправки вложения (превью + подпись) ----------
-
-/**
- * Файлы, выбранные для отправки, но ещё не отправленные.
- *
- * Пока они здесь, человек видит превью, может написать подпись (и поправить
- * её) и только потом нажать «Отправить». Без этого окна подпись получалась
- * лишь у того файла, который шёл первым, и только если текст был набран ДО
- * выбора файла.
- */
-const pendingSend = ref<{ files: File[]; viewOnce: boolean } | null>(null)
-
-/** Цитата для окна отправки: к какому сообщению уйдёт вложение. */
-const pendingSendReply = computed<{ name: string; text: string } | null>(() => {
-  const target = replyTarget.value
-  if (!target) return null
-  return { name: replyBarName.value, text: messageSnippet(target) }
-})
-
-/** Файлы выбраны: показать окно отправки (подпись пишется здесь же). */
-const openSendDialog = (files: File[], viewOnce = false) => {
-  if (files.length === 0) return
-  sendError.value = ''
-  pendingSend.value = { files, viewOnce }
-}
-
-/** «Отправить» в окне: подпись уже написана — отправляем пачку. */
-const confirmSend = (caption: string) => {
-  const pending = pendingSend.value
-  pendingSend.value = null
-  if (!pending) return
-  void sendFiles(pending.files, pending.viewOnce, caption)
-}
-
-/** Закрыть окно без отправки: файлы не уходят, текст в поле ввода остаётся. */
-const cancelSend = () => {
-  pendingSend.value = null
-}
-
-/**
- * Отправка одного файла: временный пузырь с прогрессом → сжатие фото → E2EE →
- * загрузка. На ошибке бросает исключение (почистив за собой временный пузырь) —
- * что показать пользователю, решает вызывающий: отправка одного файла или пачки.
- *
- * `options.albumId` — файл входит в альбом (см. utils/albums.ts).
- * `options.caption === null` — подписи этому файлу не даём: она уже уехала с
- * первым вложением пачки (и поле ввода чистить второй раз нельзя).
- * `options.refresh === false` — не перечитывать список чатов и закреплённые:
- * пачка из десяти фото не должна дёргать их десять раз.
- */
-const sendFileMessage = async (
-  file: File,
-  viewOnce = false,
-  options: { albumId?: string; caption?: string | null; refresh?: boolean } = {}
-) => {
-  const chatId = selectedChatId.value
-  if (chatId === null) return
-
-  // Сразу показываем временный пузырь (для фото — с превью), чтобы было видно,
-  // что отправка идёт; затем заменяем его настоящим сообщением.
-  const isImage = file.type.startsWith('image/')
-  const previewUrl = isImage ? URL.createObjectURL(file) : null
-  const localId = addPendingUpload(file.name || t('Вложение'), previewUrl)
-  void nextTick(scrollToBottom)
-
-  sendingFile.value = true
-  // Что именно отправляем — видно по типу файла: фото, видео или документ.
-  const finishActivity = beginActivity(chatId, activityKindOfFile(file))
-  try {
-    // Фото с камеры/галереи сжимаем на клиенте — грузится быстрее.
-    const optimized = isImage ? await optimizeImageFile(file) : file
-    // Подпись: своя (у альбома её несёт первое вложение), из поля ввода — или
-    // никакая (продолжение альбома приходит с `caption: null`).
-    const ownCaption = options.caption !== null
-    const caption = ownCaption ? (options.caption ?? newMessage.value.trim()) : ''
-    // «Зашифрованный» чат: и содержимое, и настоящее имя файла уезжают
-    // только в шифрованном виде (на сервере остаётся блоб enc_*.bin).
-    const aes = await chatKeyOf(selectedChat.value)
-    const payload = aes ? await encryptFileForChat(aes, optimized, caption) : null
-    const message = await sendAttachmentMessage(
-      chatId,
-      payload ? payload.blob : optimized,
-      payload ? payload.text : caption,
-      replyTarget.value?.id,
-      (percent) => {
-        // Сжатие могло занять время — прогресс показываем только актуального пузыря.
-        if (pendingUploads.value.some((p) => p.localId === localId)) {
-          setPendingProgress(localId, percent)
-        }
-      },
-      !!payload,
-      // Стикером это не отправляем, а «посмотреть один раз» — флаг сообщения.
-      false,
-      viewOnce,
-      options.albumId ?? null
-    )
-    if (payload) applyLocalFileEnvelope(message, payload.meta)
-    removePendingUpload(localId)
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
-    // Поле ввода и «ответ» относятся ко всей отправке, а не к каждому файлу:
-    // у альбома их забирает первое вложение.
-    if (ownCaption) {
-      newMessage.value = ''
-      clearDraftFor(chatId)
-      clearReply()
-    }
-    messages.value = appendMessage(messages.value, message)
-    if (options.refresh !== false) await Promise.all([loadPinned(chatId), loadChats()])
-    scrollToBottom()
-  } catch (error) {
-    removePendingUpload(localId)
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
-    throw error
-  } finally {
-    finishActivity()
-    sendingFile.value = false
-  }
-}
-
-/**
- * Отправка файлов: кнопка «Прикрепить», вставка из буфера и перетаскивание в
- * окно. Подряд идущие картинки уходят одним АЛЬБОМОМ — в ленте они рисуются
- * сеткой (см. utils/albums.ts), остальные файлы — отдельными сообщениями.
- * Подпись из поля ввода достаётся первому отправленному файлу: после него поле
- * очищается — ровно как при отправке одного файла.
- */
-const sendFiles = async (files: File[], viewOnce = false, caption?: string) => {
-  if (selectedChatId.value === null || files.length === 0) return
-  sendError.value = ''
-  const chatId = selectedChatId.value
-  const failures: string[] = []
-  // Подпись из окна отправки достаётся ПЕРВОМУ ушедшему файлу (у альбома —
-  // первой картинке пачки), остальным — ничего: так же ведёт себя Телеграм.
-  let captionLeft: string | null | undefined = caption
-
-  for (const item of planFileSend(files, !viewOnce)) {
-    if (item.kind === 'album') {
-      // Одна метка на всю пачку: по ней лента собирает сетку и понимает, что
-      // push на эту отправку нужен один, а не на каждый файл.
-      const albumId = newAlbumId()
-      for (let index = 0; index < item.files.length; index += 1) {
-        const file = item.files[index] as File
-        const partCaption = index === 0 ? captionLeft : null
-        try {
-          await sendFileMessage(file, false, {
-            albumId,
-            caption: partCaption,
-            refresh: false
-          })
-        } catch (error) {
-          // Один неудачный файл не отменяет остальные: копим причины и показываем
-          // итог после всей пачки.
-          failures.push(
-            getErrorMessage(error, t('Не удалось отправить «{name}»', { name: file.name }))
-          )
-        }
-      }
-      captionLeft = null
-      continue
-    }
-    try {
-      await sendFileMessage(item.file, viewOnce, { caption: captionLeft })
-    } catch (error) {
-      failures.push(
-        getErrorMessage(error, t('Не удалось отправить «{name}»', { name: item.file.name }))
-      )
-    }
-    captionLeft = null
-  }
-
-  // Список чатов и закреплённые перечитываем один раз на всю пачку — и только
-  // если человек всё ещё в том же чате.
-  if (selectedChatId.value === chatId) {
-    await Promise.all([loadPinned(chatId), loadChats()])
-    scrollToBottom()
-  }
-
-  if (failures.length === 1) sendError.value = failures[0]
-  else if (failures.length > 1) {
-    sendError.value = t('Не удалось отправить {failed} из {total} файлов', {
-      failed: failures.length,
-      total: files.length
-    })
-  }
-}
-
-/**
- * Файлы выбраны (кнопка «Прикрепить», вставка из буфера, перетаскивание):
- * открываем ОКНО ОТПРАВКИ, а не шлём сразу.
- *
- * Раньше подпись уходила в файл только если текст был набран ДО выбора файла —
- * то есть обычный порядок «прикрепил, потом написал комментарий» не работал
- * (владелец: «отсылать фото с комментарием, как в Телеграме»).
- */
-const onFilesSelected = (files: File[], viewOnce = false) => {
-  openSendDialog(files, viewOnce)
-}
-
-/**
- * Файлы, брошенные в окно. Нужен именно открытый (загруженный) чат: пока чат
- * восстанавливается из адреса, ключа E2EE ещё нет — файл уехал бы на сервер
- * открытым. О том же говорит и подсказка (FileDropOverlay, `canDropFiles`).
- */
-const handleDroppedFiles = (files: File[]) => {
-  if (selectedChat.value === null) {
-    Notify.create({ message: t('Откройте чат, чтобы отправить файл'), timeout: 3000 })
-    return
-  }
-  openSendDialog(files)
-}
-
 /* Файл можно бросить в любое место окна — слушатели живут в composable. */
 const { active: fileDropActive } = useFileDrop({ onFiles: handleDroppedFiles })
-/** Отправлять есть куда: чат открыт (пока он грузится, подсказка нейтральная). */
-const canDropFiles = computed(() => selectedChat.value !== null)
 
 // ---------- Запись аудио/видеосообщений ----------
 const {
@@ -3076,7 +2679,7 @@ const {
   addPendingUpload,
   removePendingUpload,
   setPendingProgress,
-  hasPendingUpload: (localId) => pendingUploads.value.some((p) => p.localId === localId),
+  hasPendingUpload,
   applyLocalFileEnvelope,
   appendToThread: (message) => {
     messages.value = appendMessage(messages.value, message)
@@ -3496,23 +3099,8 @@ const {
 })
 
 // ---------- Переход к закреплённому сообщению ----------
-const scrollToPinnedMessage = async (messageId: number) => {
-  // Если активен поиск по сообщениям — снимаем фильтр, иначе сообщения может не быть в ленте.
-  if (inlineSearchOpen.value) {
-    inlineSearchOpen.value = false
-    inlineQuery.value = ''
-  }
-  if (highlightTimer !== undefined) {
-    window.clearTimeout(highlightTimer)
-    highlightTimer = undefined
-  }
-  highlightedMessageId.value = messageId
-  await nextTick()
-  threadRef.value?.reveal(messageId)
-  highlightTimer = window.setTimeout(() => {
-    highlightedMessageId.value = null
-  }, 2400)
-}
+// Переходы к сообщению и поиск по ленте живут в `useMessageReveal` и
+// `useThreadSearch` (вызов выше — там объявлены их зависимости).
 
 /**
  * Скрывает/показывает шторку закреплённых.
@@ -3525,106 +3113,6 @@ const togglePinnedBar = () => {
   pinnedHidden.value = !pinnedHidden.value
   if (!pinnedHidden.value) pinnedOpen.value = true
 }
-
-// ---------- Поиск по сообщениям ----------
-const toggleInlineSearch = () => {
-  inlineSearchOpen.value = !inlineSearchOpen.value
-  if (!inlineSearchOpen.value) inlineQuery.value = ''
-}
-
-// ---------- Поиск по сообщениям (серверный) ----------
-let inlineSearchTimer: number | null = null
-const serverMatchCount = ref(0)
-/** Найденные совпадения (по возрастанию) и номер того, что показано сейчас. */
-const inlineMatches = ref<{ id: number }[]>([])
-const inlineMatchIndex = ref(0)
-
-/**
- * Переход к совпадению по кругу: после последнего снова первое.
- *
- * Поиск серверный, поэтому совпадение может лежать в ещё не загруженной части
- * истории — `ensureMessageLoaded` догружает нужную страницу и не даёт ленте
- * «прыгнуть» (см. выше).
- */
-const goToInlineMatch = async (delta: number) => {
-  const total = inlineMatches.value.length
-  if (total === 0) return
-  inlineMatchIndex.value = (inlineMatchIndex.value + delta + total) % total
-  const match = inlineMatches.value[inlineMatchIndex.value]
-  const loaded = await ensureMessageLoaded(match.id)
-  if (loaded) await revealMessageInThread(match.id)
-}
-
-const revealMessageInThread = async (messageId: number) => {
-  if (highlightTimer !== undefined) {
-    window.clearTimeout(highlightTimer)
-    highlightTimer = undefined
-  }
-  highlightedMessageId.value = messageId
-  await nextTick()
-  threadRef.value?.reveal(messageId)
-  highlightTimer = window.setTimeout(() => {
-    highlightedMessageId.value = null
-  }, 2400)
-}
-
-/** Глобальный поиск: открыть чат и перейти (с подсветкой) к найденному сообщению. */
-const openGlobalMessage = async (chatId: number, messageId: number) => {
-  await openChatThread(chatId)
-  // Если сообщения нет в загруженной порции — догружаем более старые.
-  if (!messages.value.some((m) => m.id === messageId)) {
-    for (let i = 0; i < 40 && !noMoreOlder.value; i += 1) {
-      await loadOlderMessages()
-      if (messages.value.some((m) => m.id === messageId)) break
-    }
-  }
-  await revealMessageInThread(messageId)
-}
-
-/** Серверный поиск по всей истории + догрузка старых до найденного. */
-const runInlineServerSearch = async () => {
-  const chatId = selectedChatId.value
-  const query = inlineQuery.value.trim()
-  if (!query || chatId === null) {
-    serverMatchCount.value = 0
-    inlineMatches.value = []
-    inlineMatchIndex.value = 0
-    return
-  }
-  const results = await searchMessages(query, chatId)
-  serverMatchCount.value = results.length
-  inlineMatches.value = results.map((message) => ({ id: message.id }))
-  if (results.length === 0) {
-    inlineMatchIndex.value = 0
-    return
-  }
-
-  // Показываем САМОЕ СВЕЖЕЕ совпадение: с него начинают смотреть, а дальше по
-  // стрелкам уходим вглубь истории (счётчик при этом показывает «N из M»).
-  inlineMatchIndex.value = results.length - 1
-  const newest = results[results.length - 1]
-  const loaded = await ensureMessageLoaded(newest.id)
-  if (loaded) await revealMessageInThread(newest.id)
-}
-
-watch(inlineQuery, (value) => {
-  if (inlineSearchTimer !== null) {
-    window.clearTimeout(inlineSearchTimer)
-    inlineSearchTimer = null
-  }
-  if (!value.trim() || selectedChatId.value === null) {
-    serverMatchCount.value = 0
-    inlineMatches.value = []
-    inlineMatchIndex.value = 0
-    return
-  }
-  inlineSearchTimer = window.setTimeout(() => {
-    inlineSearchTimer = null
-    void runInlineServerSearch().catch((error) => {
-      console.error(t('Не удалось выполнить поиск по сообщениям:'), getErrorMessage(error))
-    })
-  }, 350)
-})
 
 // ---------- Эмодзи / стикеры / GIF в поле ввода ----------
 const appendEmoji = (emoji: string) => {
@@ -4662,14 +4150,6 @@ onBeforeUnmount(() => {
   disposeNativePush()
   stopRealtime()
   realtimeStore.setHandler(null)
-  if (highlightTimer !== undefined) {
-    window.clearTimeout(highlightTimer)
-    highlightTimer = undefined
-  }
-  if (inlineSearchTimer !== null) {
-    window.clearTimeout(inlineSearchTimer)
-    inlineSearchTimer = null
-  }
   stopCallLaunchScreen()
 })
 
@@ -4710,11 +4190,7 @@ watch(
     voiceRecOpen.value = false
     videoRecOpen.value = false
     resetRecordMode()
-    highlightedMessageId.value = null
-    if (highlightTimer !== undefined) {
-      window.clearTimeout(highlightTimer)
-      highlightTimer = undefined
-    }
+    clearHighlight()
     // Восстанавливаем черновик открытого чата (после сброса состояния выше).
     if (newId !== null) setComposerText(loadDraftFor(newId))
   },

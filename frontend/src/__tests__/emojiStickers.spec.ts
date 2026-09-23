@@ -127,18 +127,23 @@ describe('связки в интерфейсе', () => {
     expect(composer).toContain('STICKER_RECENT_KEY')
     expect(messenger).toContain('@send-sticker="sendSticker"')
     // Стикер — отдельное сообщение: набранный текст в поле остаётся.
-    const handler = messenger.slice(
-      messenger.indexOf('const sendSticker'),
-      messenger.indexOf('const appendMessage')
+    // Сам обработчик живёт в `useMessageSend` (G6).
+    const send = readFileSync('src/composables/useMessageSend.ts', 'utf8')
+    const handler = send.slice(
+      send.indexOf('const sendSticker = async'),
+      send.indexOf('const onStickerError')
     )
     expect(handler).toContain('deliverText(chatId, sticker')
-    expect(handler).not.toContain('newMessage.value = ')
+    expect(handler).not.toContain('composerText.value = ')
   })
 
   it('в ленте стикер рисуется крупно и без пузыря', () => {
-    expect(row).toContain("import { emojiLayout, type EmojiLayout } from '@/utils/emoji'")
+    // Сам текст сообщения (включая крупные эмодзи) рисует MessageText.vue:
+    // он вынесен из строки сообщения (G6), поэтому и проверяем там.
+    const text = readFileSync('src/components/messenger/MessageText.vue', 'utf8')
     expect(row).toContain("'sticker-only': stickerLayout !== 'text'")
-    expect(row).toContain('class="msg-sticker"')
+    expect(text).toContain('class="msg-sticker"')
+    expect(text).toContain('.msg-sticker {')
     expect(row).toContain('.msg-bubble.sticker-only')
   })
 
@@ -166,23 +171,25 @@ describe('связки в интерфейсе', () => {
     // Раньше панель оставалась висеть поверх ленты после отправки стикера,
     // сообщения и GIF (проверено в живом приложении 20.09.2026): лента
     // закрыта, а закрыть панель можно было только той же кнопкой «смайлы».
-    const stickerHandler = messenger.slice(
-      messenger.indexOf('const sendSticker'),
-      messenger.indexOf('const appendMessage')
+    // Отправка переехала в `useMessageSend` (G6) — читаем там же.
+    const send = readFileSync('src/composables/useMessageSend.ts', 'utf8')
+    const stickerHandler = send.slice(
+      send.indexOf('const sendSticker = async'),
+      send.indexOf('const appendMessage')
     )
-    expect(stickerHandler).toContain('closeExtras()')
+    expect(stickerHandler).toContain('deps.closeExtras()')
 
-    const imageHandler = messenger.slice(
-      messenger.indexOf('const sendStickerImage'),
-      messenger.indexOf('const pendingSend')
+    const imageHandler = send.slice(
+      send.indexOf('const sendStickerImage = async'),
+      send.indexOf('// ---------- Окно отправки вложения')
     )
-    expect(imageHandler).toContain('closeExtras()')
+    expect(imageHandler).toContain('deps.closeExtras()')
 
-    const textHandler = messenger.slice(
-      messenger.indexOf('const sendText'),
-      messenger.indexOf('// ---------- Отложенная отправка')
+    const textHandler = send.slice(
+      send.indexOf('const sendText = async'),
+      send.indexOf('/**\n   * Отправляет стикер (эмодзи)')
     )
-    expect(textHandler).toContain('closeExtras()')
+    expect(textHandler).toContain('deps.closeExtras()')
   })
 
   it('панель закрывают клик мимо неё и Escape', () => {

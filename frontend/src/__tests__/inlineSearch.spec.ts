@@ -11,7 +11,10 @@ import { describe, expect, it } from 'vitest'
 const bar = readFileSync('src/components/messenger/InlineSearchBar.vue', 'utf8')
 const messenger = readFileSync('src/views/Messenger.vue', 'utf8')
 const thread = readFileSync('src/components/messenger/MessageThread.vue', 'utf8')
-const row = readFileSync('src/components/messenger/MessageRow.vue', 'utf8')
+// Текст сообщения (включая подсветку найденного) вынесен в MessageText.vue,
+// а сам поиск по ленте — в useThreadSearch (G6): проверяем там, где живёт код.
+const text = readFileSync('src/components/messenger/MessageText.vue', 'utf8')
+const search = readFileSync('src/composables/useThreadSearch.ts', 'utf8')
 
 describe('строка поиска по сообщениям', () => {
   it('показывает, на каком совпадении мы стоим', () => {
@@ -34,25 +37,23 @@ describe('строка поиска по сообщениям', () => {
 
 describe('переходы по совпадениям в Messenger', () => {
   it('хранит список совпадений и ходит по кругу', () => {
-    expect(messenger).toMatch(/const inlineMatches = ref<\{ id: number \}\[\]>\(\[\]\)/)
-    expect(messenger).toMatch(
-      /inlineMatchIndex\.value = \(inlineMatchIndex\.value \+ delta \+ total\) % total/
-    )
+    expect(search).toMatch(/const matches = ref<\{ id: number \}\[\]>\(\[\]\)/)
+    expect(search).toMatch(/matchIndex\.value = \(matchIndex\.value \+ delta \+ total\) % total/)
   })
 
   it('переход догружает историю, если совпадение ещё не загружено', () => {
     // Поиск серверный: найденное сообщение может быть в не загруженной части
     // истории — прямое обращение к ленте показало бы пустоту.
-    expect(messenger).toMatch(/const loaded = await ensureMessageLoaded\(match\.id\)/)
-    expect(messenger).toMatch(/if \(loaded\) await revealMessageInThread\(match\.id\)/)
+    expect(search).toMatch(/const loaded = await deps\.ensureMessageLoaded\(match\.id\)/)
+    expect(search).toMatch(/if \(loaded\) await deps\.revealMessageInThread\(match\.id\)/)
   })
 
   it('сначала показывает самое свежее совпадение', () => {
-    expect(messenger).toMatch(/inlineMatchIndex\.value = results\.length - 1/)
+    expect(search).toMatch(/matchIndex\.value = results\.length - 1/)
   })
 
   it('сбрасывает совпадения, когда запрос очистили', () => {
-    expect(messenger.match(/inlineMatches\.value = \[\]/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
+    expect(search.match(/matches\.value = \[\]/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
   })
 })
 
@@ -60,11 +61,13 @@ describe('подсветка совпадений в ленте', () => {
   it('запрос доходит до строки сообщения', () => {
     expect(messenger).toMatch(/:search-query="inlineSearchOpen \? inlineQuery\.trim\(\) : ''"/)
     expect(thread).toMatch(/:search-query="searchQuery"/)
-    expect(row).toMatch(/highlightQuery\(splitMessageText\(props\.message\.text \?\? ''\)/)
+    expect(text).toMatch(
+      /highlightQuery\(splitMessageText\(props\.text\), props\.searchQuery \?\? ''\)/
+    )
   })
 
   it('совпадение рисуется тегом mark, а не разметкой из текста', () => {
-    expect(row).toMatch(/<mark v-else-if="part\.type === 'search'"/)
-    expect(row).not.toMatch(/v-html/)
+    expect(text).toMatch(/<mark v-else-if="part\.type === 'search'"/)
+    expect(text).not.toMatch(/v-html/)
   })
 })

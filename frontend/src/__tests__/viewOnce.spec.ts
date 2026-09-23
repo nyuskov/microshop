@@ -121,12 +121,15 @@ describe('отправка одноразовых медиа', () => {
   it('флаг доходит до отправки вложения в Messenger', () => {
     // Подпись функции выросла (появились параметры альбома), поэтому проверяем
     // сам факт передачи флага «посмотреть один раз», а не строку целиком.
-    expect(messenger).toContain('const sendFileMessage = async (')
-    expect(messenger).toContain('viewOnce = false')
-    expect(messenger).toContain('viewOnce,')
-    expect(messenger).toContain('sendAttachmentMessage(')
+    // Отправка вложений вынесена в `useMessageSend` (G6).
+    const send = readFileSync('src/composables/useMessageSend.ts', 'utf8')
+    expect(messenger).toContain('@files-selected="onFilesSelected"')
+    expect(send).toContain('const sendFileMessage = async (')
+    expect(send).toContain('viewOnce = false')
+    expect(send).toContain('viewOnce,')
+    expect(send).toContain('sendAttachmentMessage(')
     // Одноразовый файл альбомом не отправляется: сервер отвечает 400.
-    expect(messenger).toContain('planFileSend(files, !viewOnce)')
+    expect(send).toContain('planFileSend(files, !viewOnce)')
   })
 })
 

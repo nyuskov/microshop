@@ -193,13 +193,14 @@ describe('альбом в разметке ленты', () => {
   })
 
   it('подпись и «ответ» забирает первое вложение пачки', () => {
-    const messenger = read('src/views/Messenger.vue')
-    expect(messenger).toContain('planFileSend(files, !viewOnce)')
-    expect(messenger).toContain('newAlbumId()')
-    expect(messenger).toContain('caption: partCaption')
-    expect(messenger).toContain('const partCaption = index === 0 ? captionLeft : null')
+    // Сборка альбома и подпись живут в `useMessageSend` (G6).
+    const send = read('src/composables/useMessageSend.ts')
+    expect(send).toContain('planFileSend(files, !viewOnce)')
+    expect(send).toContain('newAlbumId()')
+    expect(send).toContain('caption: partCaption')
+    expect(send).toContain('const partCaption = index === 0 ? captionLeft : null')
     // Список чатов и закреплённые перечитываются один раз на всю пачку.
-    expect(messenger).toContain('if (options.refresh !== false)')
+    expect(send).toContain('if (options.refresh !== false)')
   })
 
   it('пачку можно выбрать и кнопкой «Прикрепить», а не только перетаскиванием', () => {

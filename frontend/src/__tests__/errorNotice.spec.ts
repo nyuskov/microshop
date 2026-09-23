@@ -132,8 +132,9 @@ describe('связки в интерфейсе', () => {
     // Ошибку погасили — повтор больше не нужен (иначе крестик оставался бы с
     // невидимым «Повторить» для уже исчезнувшей ошибки).
     expect(messenger).toContain('if (!value) retrySend.value = null')
-    // Повторяемые отправки называют его при сбое.
-    expect(messenger).toContain("getErrorMessage(error, t('Не удалось отправить стикер')),")
-    expect(messenger).toContain('() => void sendSticker(sticker)')
+    // Повторяемые отправки называют его при сбое — в `useMessageSend` (G6).
+    const send = readFileSync('src/composables/useMessageSend.ts', 'utf8')
+    expect(send).toContain("getErrorMessage(error, t('Не удалось отправить стикер')),")
+    expect(send).toContain('() => void sendSticker(sticker)')
   })
 })
