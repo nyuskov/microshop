@@ -82,7 +82,7 @@
          (раньше про обрыв сообщала отдельная полоса во всю ширину сверху, она
          перекрывала содержимое). Значки не прячем и не сдвигаем: пилюля
          занимает только свободную середину и усечётся, если места мало. -->
-    <div class="panel-header-status">
+    <div class="panel-header-status" :class="{ 'with-more': moreVisible }">
       <ConnectionStatus />
     </div>
 
@@ -176,7 +176,8 @@ import { avatarStyle, initials } from '@/utils/user'
 import StoriesStrip from '@/components/stories/StoriesStrip.vue'
 import ConnectionStatus from '@/components/common/ConnectionStatus.vue'
 import { useConnectionNotice } from '@/composables/useConnectionNotice'
-import { headerStoriesLimit } from '@/utils/stories'
+import { useStoriesStore } from '@/stores/stories'
+import { headerHiddenStoryGroups, headerStoriesLimit } from '@/utils/stories'
 
 export interface SettingsAction {
   key: 'calls' | 'group' | 'channel' | 'blocked'
@@ -230,6 +231,17 @@ const emit = defineEmits<{
  */
 const { visible: noticeVisible } = useConnectionNotice()
 const storiesLimit = computed(() => headerStoriesLimit(noticeVisible.value))
+
+/**
+ * Виден ли рядом с кружками счётчик «+N» (сколько историй не влезло в лимит).
+ *
+ * Нужно надписи в середине: счётчик вынут из потока и заходит на несколько
+ * пикселей в её коробку (см. `.panel-header-status.with-more`). Число скрытых
+ * историй считаем тем же правилом, что и сама полоса (`headerHiddenStoryGroups`),
+ * иначе отступ разъехался бы с кружками.
+ */
+const stories = useStoriesStore()
+const moreVisible = computed(() => headerHiddenStoryGroups(stories.others, storiesLimit.value) > 0)
 
 /** Обёртка меню «⋯» (кнопка + выпадающий список) — по ней считаем «клик мимо». */
 const menuWrapEl = ref<HTMLElement | null>(null)
@@ -321,6 +333,26 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Счётчик «+N» заходит в эту коробку слева (он вынут из потока, а его цифры
+   стоят вплотную к ободку крайнего кружка), поэтому свободного места слева от
+   надписи оставалось 13 px, а справа 26 px. Формально надпись центрировалась,
+   но выглядела сдвинутой влево — владелец: «quiet hours [должен быть] к центру
+   свободного пространства, а как бы слева меньше места, справа больше».
+   Заход по замеру в браузере — 6 px (зазор шапки между полосой и надписью),
+   а отступ нужен вдвое больше: центр надписи сдвигается на половину отступа.
+   Числа связаны со счётчиком (`StoriesStrip.vue`: `right: -18px` и
+   `padding: 0 6px`): меняешь там — правь и здесь. */
+.panel-header-status.with-more {
+  padding-left: 12px;
+}
+
+/* На телефоне (до 420 px) зазор шапки уже 4 px — счётчик заходит на 8 px. */
+@media (max-width: 420px) {
+  .panel-header-status.with-more {
+    padding-left: 16px;
+  }
 }
 
 /* Кнопки справа — фиксированного размера: середину отдаёт связи только свободное
