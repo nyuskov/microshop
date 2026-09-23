@@ -133,8 +133,8 @@ describe('связка с разметкой', () => {
     expect(strip).toContain('@click="emit(\'toggle-expand\')"')
   })
 
-  it('кружки в шапке стоят плотнее (наложение 24 px)', () => {
-    expect(strip).toContain('margin-left: -24px')
+  it('кружки в шапке стоят плотнее (наложение 28 px)', () => {
+    expect(strip).toContain('margin-left: -28px')
   })
 
   it('историю открывают по общему правилу — и кружок, и протяжка', () => {
