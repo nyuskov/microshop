@@ -24,10 +24,17 @@ BACKUP_DIR="${BACKUP_DIR:-$HOME/Документы/pismo_backup}"
 DB_DIR="$BACKUP_DIR/db"
 STALE_HOURS="${STALE_HOURS:-20}"
 
+# Логи пишем и в stdout, и в общий файл: у задач из cron вывод уходит «в никуда»
+# (почта не настроена), и о НЕснятом бэкапе никто не узнавал — ровно так копий
+# не было 21–24.09.2026, хотя `@reboot` у машины был.
+
 CHECK_ONLY=0
 [[ "${1:-}" == "--check" ]] && CHECK_ONLY=1
 
-log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
+mkdir -p "$BACKUP_DIR/logs"
+LOG_FILE="$BACKUP_DIR/logs/backup.log"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
 # Свежий дамп ищем по времени изменения: имена содержат метку, но полагаться на
 # разбор имени не нужно — файл всё равно ложится сразу после снятия.

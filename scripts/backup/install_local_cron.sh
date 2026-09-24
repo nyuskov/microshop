@@ -23,7 +23,12 @@ SCRIPT="$ROOT/scripts/backup/pull_prod_backup.sh"
 CATCHUP_SCRIPT="$ROOT/scripts/backup/backup_if_stale.sh"
 MARKER="# pismo-prod-backup"
 CATCHUP_MARKER="# pismo-prod-backup-catchup"
+# Догоняющий запуск не только при включении: машина может неделю не
+# перезагружаться (только засыпать), и тогда `@reboot` не срабатывает вовсе.
+# Полдень — время, когда машина обычно включена; свежая копия ничего не делает.
+CATCHUP_DAY_MARKER="# pismo-prod-backup-catchup-day"
 CRON_SCHEDULE="${CRON_SCHEDULE:-15 4 * * *}"
+CATCHUP_DAY_SCHEDULE="${CATCHUP_DAY_SCHEDULE:-0 12 * * *}"
 
 if ! command -v crontab >/dev/null 2>&1; then
     echo "!!! crontab не найден. Установи cron (например: sudo apt install cron)." >&2
@@ -46,21 +51,31 @@ CRON_LINE="$CRON_SCHEDULE '$ESCAPED_SCRIPT' $MARKER"
 # `@reboot` — догоняющий запуск: если копия старше STALE_HOURS (20 ч), снимаем её
 # сразу после включения; свежая — ничего не делаем (см. backup_if_stale.sh).
 CATCHUP_LINE="@reboot '$ESCAPED_CATCHUP' $CATCHUP_MARKER"
+CATCHUP_DAY_LINE="$CATCHUP_DAY_SCHEDULE '$ESCAPED_CATCHUP' $CATCHUP_DAY_MARKER"
 
 CURRENT="$(crontab -l 2>/dev/null || true)"
 # Один фильтр на оба маркера: второй содержит первый как префикс.
 FILTERED="$(printf '%s\n' "$CURRENT" | grep -v -F "$MARKER" | sed '/^[[:space:]]*$/d' || true)"
 
 if [[ -n "$FILTERED" ]]; then
-    { printf '%s\n' "$FILTERED"; printf '%s\n' "$CRON_LINE"; printf '%s\n' "$CATCHUP_LINE"; } | crontab -
+    {
+        printf '%s\n' "$FILTERED"
+        printf '%s\n' "$CRON_LINE"
+        printf '%s\n' "$CATCHUP_LINE"
+        printf '%s\n' "$CATCHUP_DAY_LINE"
+    } | crontab -
 else
-    { printf '%s\n' "$CRON_LINE"; printf '%s\n' "$CATCHUP_LINE"; } | crontab -
+    {
+        printf '%s\n' "$CRON_LINE"
+        printf '%s\n' "$CATCHUP_LINE"
+        printf '%s\n' "$CATCHUP_DAY_LINE"
+    } | crontab -
 fi
 
 echo "=== Задачи установлены в локальный crontab ==="
 crontab -l | grep -F "$MARKER"
 echo
-echo "Расписание : $CRON_SCHEDULE (+ догоняющий запуск при включении машины)"
+echo "Расписание : $CRON_SCHEDULE (+ догоняющий запуск при включении машины и в $CATCHUP_DAY_SCHEDULE)"
 echo "Скрипт     : $SCRIPT"
 echo "Догоняющий : $CATCHUP_SCRIPT (порог STALE_HOURS=20)"
 echo "Куда кладёт: ${BACKUP_DIR:-$HOME/Документы/pismo_backup}"
