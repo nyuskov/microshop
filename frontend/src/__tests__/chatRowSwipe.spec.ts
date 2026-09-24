@@ -163,6 +163,17 @@ describe('свайп по строке чата', () => {
     expect(wrapper.emitted('row-pointer-cancel')).toBeTruthy()
   })
 
+  it('медленная протяжка вниз тоже отменяет удержание строки', async () => {
+    // Владелец: «протяжка работает только справа». Причина — удержание строки:
+    // при вертикальном движении оно НЕ отменялось, через 480 мс включался режим
+    // выделения и протяжка вниз обрывалась на середине.
+    const wrapper = mountList()
+    swipeRow(wrapper, 20, 90, true)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.emitted('row-pointer-cancel')).toBeTruthy()
+    expect(wrapper.emitted('swipe-pin')).toBeUndefined()
+  })
+
   it('в режиме выделения строки не сдвигаются', async () => {
     const wrapper = mountList({ selectionMode: true, selectedIds: [CHATS[0]!.id] })
     swipeRow(wrapper, 80)
