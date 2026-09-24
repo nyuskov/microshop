@@ -737,3 +737,212 @@ async def _never_blocked(*args: object, **kwargs: object) -> bool:
 
 async def _noop(*args: object, **kwargs: object) -> None:
     return None
+
+
+# ---------- Звонок не «висит» у собеседника после ухода ----------
+#
+# Владелец (24.09.2026): «закрываю приложение — у меня звонок разрывается, а у
+# собеседника продолжается». Ушедшая страница отправить ничего не может, поэтому
+# завершение планирует сервер: ждёт несколько секунд и, если человек не вернулся
+# (перезагрузка страницы отменяет уход), говорит собеседникам, что звонок кончился.
+
+
+async def _settle() -> None:
+    """Даёт фоновым задачам (`_spawn`) выполниться."""
+    import asyncio
+
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+
+async def test_signal_loss_ends_call_for_peer(call_db, monkeypatch) -> None:
+    """Канал замолчал (закрыли приложение) — собеседник получает `call-end`.
+
+    Без этого вторая сторона продолжает «разговор» с тишиной: её собственный
+    сторож срабатывает не всегда — в свёрнутом приложении браузер душит таймеры.
+    """
+    from datetime import datetime, timezone
+
+    from api_v1.calls import views as calls_views
+
+    delivered: list[tuple[int, dict]] = []
+    pushed: list[tuple[int, str]] = []
+    persisted: list[tuple[str, int]] = []
+
+    async def fake_deliver(user_id: int, envelope: dict) -> bool:
+        delivered.append((user_id, envelope))
+        return True
+
+    async def fake_persist(meta: dict, state: str, duration: int) -> None:
+        persisted.append((state, duration))
+
+    monkeypatch.setattr(calls_views, "_deliver_signal", fake_deliver)
+    monkeypatch.setattr(
+        calls_views,
+        "_notify_call_finished",
+        lambda uid, cid, why: pushed.append((uid, why)),
+    )
+    monkeypatch.setattr(calls_views, "_persist_call_record", fake_persist)
+    started = datetime.now(timezone.utc)
+    monkeypatch.setitem(
+        calls_views._active_calls,
+        "call-lost",
+        {"caller": 5, "callee": 7, "kind": "audio", "started": started},
+    )
+
+    calls_views._schedule_call_end(
+        "call-lost", 7, 0, "signal-lost", targets=[], group=False, chat_id=None
+    )
+    task = calls_views._pending_call_ends[("call-lost", 7)][0]
+    await task
+    await _settle()
+
+    assert [item[0] for item in delivered] == [5]
+    envelope = delivered[0][1]
+    assert envelope["type"] == "call-end"
+    assert envelope["call_id"] == "call-lost"
+    assert envelope["reason"] == "signal-lost"
+    # Тихий push: у свёрнутого приложения сигналинг живой не всегда.
+    assert pushed == [(5, "ended")]
+    # Память о вызове очищена, а исход записан в историю чата.
+    assert "call-lost" not in calls_views._active_calls
+    assert persisted and persisted[0][0] == "completed"
+    assert "call-lost" not in calls_views._pending_call_ends
+
+
+async def test_ringing_caller_leave_is_cancelled_not_ended(
+    call_db, monkeypatch
+) -> None:
+    """Зовущий ушёл, пока вызов звонил — у абонента это «отмена», а не «конец».
+
+    Смысл тот же, что у `call-cancel`: вызова уже нет, отвечать не на что.
+    """
+    from api_v1.calls import views as calls_views
+
+    delivered: list[dict] = []
+
+    async def fake_deliver(user_id: int, envelope: dict) -> bool:
+        delivered.append(envelope)
+        return True
+
+    async def fake_persist(meta: dict, state: str, duration: int) -> None:
+        return None
+
+    monkeypatch.setattr(calls_views, "_deliver_signal", fake_deliver)
+    monkeypatch.setattr(calls_views, "_notify_call_finished", lambda *args: None)
+    monkeypatch.setattr(calls_views, "_persist_call_record", fake_persist)
+    monkeypatch.setitem(
+        calls_views._active_calls,
+        "call-ring",
+        {"caller": 5, "callee": 7, "kind": "video", "started": None},
+    )
+
+    calls_views._schedule_call_end(
+        "call-ring", 5, 0, "left", targets=[7], group=False, chat_id=None
+    )
+    await calls_views._pending_call_ends[("call-ring", 5)][0]
+    await _settle()
+
+    assert [item["type"] for item in delivered] == ["call-cancel"]
+    assert delivered[0]["to_user_id"] == 7
+
+
+async def test_returning_page_cancels_call_end(call_db, monkeypatch) -> None:
+    """Вернувшаяся страница (перезагрузка) отменяет завершение звонка.
+
+    Иначе «звонок срывается при перезагрузке»: сервер завершил бы его раньше,
+    чем страница успела подняться и сказать `call-rejoin`.
+    """
+    from api_v1.calls import views as calls_views
+
+    delivered: list[dict] = []
+
+    async def fake_deliver(user_id: int, envelope: dict) -> bool:
+        delivered.append(envelope)
+        return True
+
+    monkeypatch.setattr(calls_views, "_deliver_signal", fake_deliver)
+    monkeypatch.setattr(calls_views, "_notify_call_finished", lambda *args: None)
+    monkeypatch.setitem(
+        calls_views._active_calls,
+        "call-back",
+        {"caller": 5, "callee": 7, "kind": "audio", "started": None},
+    )
+
+    calls_views._schedule_call_end(
+        "call-back", 7, 0.05, "signal-lost", targets=[5], group=False, chat_id=None
+    )
+    # Возвращение: отмена и от сигнального канала (без номера вызова), и запросом
+    # `/calls/leave/cancel/` — оба пути должны снимать ожидание.
+    calls_views._cancel_call_end("", 7)
+    calls_views._cancel_call_end("call-back", 7)
+    await _settle()
+    assert ("call-back", 7) not in calls_views._pending_call_ends
+    assert delivered == []
+
+
+async def test_rejoin_message_cancels_pending_end(call_db, monkeypatch) -> None:
+    """Любое сигнальное сообщение по вызову снимает запланированное завершение."""
+    from api_v1.calls import views as calls_views
+
+    async def fake_never_blocked(*args: object, **kwargs: object) -> bool:
+        return False
+
+    async def fake_noop(*args: object, **kwargs: object) -> None:
+        return None
+
+    async def fake_send_to_user(user_id: int, payload: dict) -> bool:
+        return True
+
+    monkeypatch.setattr(calls_views, "_is_call_blocked", fake_never_blocked)
+    monkeypatch.setattr(calls_views, "_track_call_event", fake_noop)
+    monkeypatch.setattr(calls_views, "_notify_call_finished", lambda *args: None)
+    monkeypatch.setattr(calls_views.call_manager, "send_to_user", fake_send_to_user)
+    calls_views._schedule_call_end(
+        "call-rejoin-1", 7, 60, "signal-lost", targets=[5], group=False, chat_id=None
+    )
+
+    await calls_views._relay_message(
+        7, {"type": "call-rejoin", "to_user_id": 5, "call_id": "call-rejoin-1"}
+    )
+    await _settle()
+
+    assert ("call-rejoin-1", 7) not in calls_views._pending_call_ends
+
+
+async def test_group_leave_ends_only_for_the_leaver(call_db, monkeypatch) -> None:
+    """В группе уход одного участника не завершает разговор остальных.
+
+    Остальные получают `call-end` именно от вышедшего — по нему клиент убирает
+    его плитку, а разговор продолжается.
+    """
+    from api_v1.calls import views as calls_views
+
+    delivered: list[tuple[int, dict]] = []
+    peers_broadcasts: list[str] = []
+
+    async def fake_deliver(user_id: int, envelope: dict) -> bool:
+        delivered.append((user_id, envelope))
+        return True
+
+    async def fake_broadcast(call_id: str, chat_id: int) -> None:
+        peers_broadcasts.append(call_id)
+
+    monkeypatch.setattr(calls_views, "_deliver_signal", fake_deliver)
+    monkeypatch.setattr(calls_views, "_notify_call_finished", lambda *args: None)
+    monkeypatch.setattr(calls_views, "_broadcast_group_peers", fake_broadcast)
+    monkeypatch.setitem(calls_views._group_calls, "call-group", {5, 7, 9})
+    monkeypatch.setitem(calls_views._group_call_chats, "call-group", 44)
+
+    calls_views._schedule_call_end(
+        "call-group", 7, 0, "left", targets=[5, 9], group=True, chat_id=44
+    )
+    await calls_views._pending_call_ends[("call-group", 7)][0]
+    await _settle()
+
+    assert sorted(item[0] for item in delivered) == [5, 9]
+    assert {item[1]["type"] for item in delivered} == {"call-end"}
+    assert {item[1]["reason"] for item in delivered} == {"left"}
+    # О состав сообщаем остальным: клиент по нему достраивает mesh.
+    assert peers_broadcasts == ["call-group"]
+    assert calls_views._group_calls["call-group"] == {5, 9}

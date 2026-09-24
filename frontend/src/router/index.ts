@@ -1,9 +1,18 @@
-import Messenger from '../views/Messenger.vue' // Импортируем новый компонент
-// import Home from '../components/Home.vue' // Закомментируем старый
-// import Registration from '../components/Registration.vue' // Закомментировал импорт
 import AuthPage from '../views/AuthPage.vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth' // Import the auth store
+
+/**
+ * Мессенджер и экран входа — ОТДЕЛЬНЫМИ чанками.
+ *
+ * Так браузер разбирает при первом кадре только оболочку приложения: на слабом
+ * телефоне разбор всего интерфейса (а он большой) занимал секунды, и всё это
+ * время человек видел экран загрузки (`index.html`). Теперь экран загрузки виден
+ * сразу, а чанк приходит параллельно; заодно CSS мессенджера не тормозит первую
+ * отрисовку, а незалогиненный человек получает только маленький экран входа.
+ */
+const Messenger = () => import('../views/Messenger.vue')
+const Login = () => import('../views/AuthPage.vue')
 
 const routes = [
   {
@@ -44,7 +53,7 @@ const routes = [
   {
     path: '/auth/login/',
     name: 'Login',
-    component: AuthPage,
+    component: Login,
     // Та же обёртка, что у приглашения: центровка страницы, а поля задаёт сам экран.
     props: { kind: 'login' }
   },

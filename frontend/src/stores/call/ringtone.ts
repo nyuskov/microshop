@@ -1,5 +1,7 @@
 /* ------------------ Гудки (WebAudio, без внешних файлов) ------------------ */
 
+import { startCallVibration, stopCallVibration } from '@/utils/callVibration'
+
 /**
  * Мелодия синтезируется на месте: в PWA звуковой файл — лишний риск (его надо
  * успеть скачать и не промахнуться с кэшем), а звонок это критический путь.
@@ -90,6 +92,9 @@ function ensureRingChain(ctx: AudioContext): GainNode {
 }
 
 export function stopRingtone() {
+  // Вибрация — часть звонка: гасим её вместе со звуком (ответили, отклонили,
+  // звонок завершился) — иначе телефон продолжал бы дрожать.
+  stopCallVibration()
   if (ringTimer !== undefined) {
     window.clearTimeout(ringTimer)
     ringTimer = undefined
@@ -372,17 +377,14 @@ function scheduleRing(tune: RingTune) {
 }
 
 /**
- * Лёгкая вибрация при входящем звонке (Android, когда страница видима).
- * Два коротких толчка с длинной паузой: частые толчки бьют по нервам.
+ * Вибрация входящего звонка.
+ *
+ * Сам ритм и настройка живут в `utils/callVibration.ts`: он совпадает с ритмом
+ * системного уведомления о звонке и ПОВТОРЯЕТСЯ, пока вызов звонит — один толчок
+ * в начале вызова легко не заметить, а звук может быть приглушён.
  */
 function vibrateRing() {
-  try {
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate([160, 800, 160])
-    }
-  } catch {
-    /* вибрация недоступна — не критично */
-  }
+  startCallVibration()
 }
 
 /** Возобновляет аудио-контекст, если браузер приостановил его (автоплей). */

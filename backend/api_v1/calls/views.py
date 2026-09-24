@@ -20,6 +20,7 @@
 
 import asyncio
 import logging
+import time
 from collections.abc import Coroutine
 from datetime import datetime, timezone
 from typing import Any
@@ -68,6 +69,22 @@ class CallDeclineRequest(BaseModel):
 
     call_id: str
     to_user_id: int
+
+
+class CallLeaveRequest(BaseModel):
+    """Уход из звонка: страница закрывается или перезагружается."""
+
+    call_id: str = ""
+    #: Кого предупредить. В группе клиент знает всех участников набора.
+    to_user_ids: list[int] = []
+    group: bool = False
+    chat_id: int | None = None
+
+
+class CallLeaveCancelRequest(BaseModel):
+    """Страница вернулась (перезагрузка) — завершать звонок не нужно."""
+
+    call_id: str = ""
 
 
 @router_rest.get("/pending/")
@@ -301,6 +318,10 @@ async def _admit_group_call(
         return False, "forbidden"
 
     participants = _group_calls.setdefault(call_id, set())
+    # Чат помним отдельно: после выхода участника остальным нужно разослать
+    # актуальный состав, а в `_group_calls` лежат только id (см.
+    # `_schedule_call_end`).
+    _group_call_chats[call_id] = chat_id
     # Место зовущего считается занятым: он уже в звонке, даже если это его
     # первый offer в этом наборе.
     if (
@@ -325,6 +346,7 @@ def _leave_group_call(data: dict[str, Any], user_id: int) -> None:
     participants.discard(user_id)
     if not participants:
         _group_calls.pop(call_id, None)
+        _group_call_chats.pop(call_id, None)
 
 
 def _group_call_peers(call_id: str) -> list[int]:
@@ -409,6 +431,290 @@ async def _persist_call_record(meta: dict[str, Any], state: str, duration: int) 
         logger.exception("Не удалось записать отметку о звонке")
 
 
+# ---------- Звонок не «висит» у собеседника после ухода ----------
+#
+# Симптом (владелец, 24.09.2026): «закрываю приложение — у меня звонок
+# разрывается, а у собеседника продолжается». Ушедшая страница отправить уже
+# ничего не может, а сигнальный канал обрывается молча: сервер просто забывает
+# сокет, и вторая сторона продолжает «разговор» с тишиной. Её собственный сторож
+# срабатывает не всегда: в свёрнутом приложении браузер душит таймеры.
+#
+# Поэтому завершение планирует СЕРВЕР. Мгновенно рвать нельзя: перезагрузка
+# страницы закрывает сигнальный канал точно так же, а звонок после неё
+# поднимается заново (`call-rejoin`, см. stores/call/session.ts) — на слабом
+# телефоне это занимает секунды. Значит, завершение откладывается, а вернувшийся
+# клиент его отменяет:
+#
+# * явный уход (`POST /calls/leave/` из `pagehide`, окно
+#   ``CALL_LEAVE_GRACE_SECONDS``): отмену присылает сама возвращающаяся вкладка,
+#   причём ДО загрузки бандла (`public/theme-boot.js`) — иначе на слабом телефоне
+#   окно успевало истечь;
+# * молча оборвавшийся канал (``CALL_SIGNAL_LOST_GRACE_SECONDS``) — страховка на
+#   случай, когда приложение выгрузила система (просьбы от страницы не было).
+#
+# Отменяют завершение: новое подключение сигнального канала, любое сигнальное
+# сообщение этого человека по этому вызову и запрос `/calls/leave/cancel/`.
+
+#: Сколько ждём возвращения страницы, прежде чем завершить звонок у собеседника.
+#: Окно короткое: уход явный, а отмену возвращающаяся вкладка присылает первым
+#: же запросом — до того, как загрузится само приложение.
+CALL_LEAVE_GRACE_SECONDS = 5.0
+#: То же окно для молча оборвавшегося канала (страницу могла выгрузить система).
+#: Ждём дольше: холодный старт на слабом телефоне занимает секунды, и звонок
+#: после перезагрузки обязан выжить — иначе «звонок срывается при перезагрузке».
+CALL_SIGNAL_LOST_GRACE_SECONDS = 25.0
+
+#: Запланированные завершения: `(call_id, user_id)` → (задача, срок).
+_pending_call_ends: dict[tuple[str, int], tuple[asyncio.Task[None], float]] = {}
+#: Чат группового звонка: в `_group_calls` лежат только участники, а после выхода
+#: одного из них остальным нужно разослать состав (для этого нужен `chat_id`).
+_group_call_chats: dict[str, int] = {}
+
+
+def _cancel_call_end(call_id: str, user_id: int) -> None:
+    """Человек вернулся: завершать звонок не нужно.
+
+    Пустой ``call_id`` — «отменить всё, что ждём по этому человеку»: так
+    сигнальный канал, подключившись заново, снимает и уход, и обрыв (в запросе
+    на подключение номера вызова нет).
+    """
+    if not call_id:
+        for key in [key for key in _pending_call_ends if key[1] == user_id]:
+            pending = _pending_call_ends.pop(key, None)
+            if pending is not None:
+                pending[0].cancel()
+        return
+    pending = _pending_call_ends.pop((call_id, user_id), None)
+    if pending is not None:
+        pending[0].cancel()
+
+
+def _schedule_call_end(
+    call_id: str,
+    user_id: int,
+    delay: float,
+    reason: str,
+    *,
+    targets: list[int],
+    group: bool,
+    chat_id: int | None,
+) -> None:
+    """Планирует завершение звонка, если человек так и не вернётся.
+
+    ``reason`` уходит собеседникам как причина: ``left`` (страница ушла по своей
+    воле) или ``signal-lost`` (канал замолчал) — приложение по ним показывает
+    «собеседник отключился» вместо «звонок завершён».
+    """
+    if not call_id or not user_id:
+        return
+    key = (call_id, user_id)
+    pending = _pending_call_ends.get(key)
+    if pending is not None and not pending[0].done():
+        # Уже ждём. Раньше срока НЕ переносим: у явного ухода окно короче, чем у
+        # оборвавшегося канала, а прийти эти поводы могут в любом порядке
+        # (`pagehide` и закрытие сокета случаются одновременно).
+        if pending[1] <= time.monotonic() + delay:
+            return
+        pending[0].cancel()
+    task = asyncio.create_task(
+        _end_call_after_user_left(
+            call_id,
+            user_id,
+            delay,
+            reason,
+            targets=targets,
+            group=group,
+            chat_id=chat_id,
+        )
+    )
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    _pending_call_ends[key] = (task, time.monotonic() + delay)
+
+
+async def _end_call_after_user_left(
+    call_id: str,
+    user_id: int,
+    delay: float,
+    reason: str,
+    *,
+    targets: list[int],
+    group: bool,
+    chat_id: int | None,
+) -> None:
+    """Завершает звонок у собеседников: человек ушёл и не вернулся."""
+    await asyncio.sleep(delay)
+    # Себя из ожидающих убираем ПЕРВЫМ делом: возвращение клиента в этот момент
+    # уже не должно обрывать рассылку на половине (отмена — только до начала).
+    _pending_call_ends.pop((call_id, user_id), None)
+
+    # Что знает ЭТОТ процесс — уточняет картину: настоящий состав группы и исход
+    # для истории чата (список от клиента может быть неполным).
+    participants = _group_calls.get(call_id)
+    meta = _active_calls.get(call_id)
+    if participants and user_id in participants:
+        group = True
+        targets = [item for item in participants if item != user_id]
+        chat_id = _group_call_chats.get(call_id) or chat_id
+        _leave_group_call({"call_id": call_id}, user_id)
+        if chat_id and _group_calls.get(call_id):
+            _spawn(_broadcast_group_peers(call_id, chat_id))
+    elif meta is not None and user_id in (meta.get("caller"), meta.get("callee")):
+        other = meta["callee"] if meta.get("caller") == user_id else meta["caller"]
+        if other:
+            targets = [other]
+    peers = sorted({item for item in targets if item and item != user_id})
+    # Своя парковка (нам ещё «звонили») больше не нужна: вызова нет.
+    await call_manager.discard_pending_offer(user_id, call_id)
+    if peers:
+        await _tell_peers_call_is_over(
+            call_id,
+            user_id,
+            peers,
+            meta,
+            reason=reason,
+            group=group,
+            chat_id=chat_id,
+        )
+    _forget_finished_call(call_id, user_id, meta)
+
+
+async def _tell_peers_call_is_over(
+    call_id: str,
+    user_id: int,
+    peers: list[int],
+    meta: dict[str, Any] | None,
+    *,
+    reason: str,
+    group: bool,
+    chat_id: int | None,
+) -> None:
+    """Сообщает собеседникам, что звонок закончился (и будит их push'ом)."""
+    # Зовущий снял ещё не принятый вызов — это ОТМЕНА: у абонента окно входящего
+    # закроется со смыслом «зовущий передумал», как при `call-cancel`.
+    ringing_outgoing = (
+        not group
+        and meta is not None
+        and meta.get("started") is None
+        and meta.get("caller") == user_id
+    )
+    message_type = "call-cancel" if ringing_outgoing else "call-end"
+    for peer_id in peers:
+        envelope: dict[str, Any] = {
+            "type": message_type,
+            "call_id": call_id,
+            "from_user_id": user_id,
+            "to_user_id": peer_id,
+            "reason": reason,
+        }
+        if group:
+            envelope["group"] = True
+            if chat_id:
+                envelope["chat_id"] = chat_id
+        await call_manager.discard_pending_offer(peer_id, call_id)
+        if not await _deliver_signal(peer_id, envelope):
+            # Канал собеседника молчит — придержим до подключения (как и для
+            # обычного `call-end`), иначе он узнает о конце только по таймауту.
+            await call_manager.queue_message(
+                peer_id, envelope, CALL_OVER_QUEUE_TTL_SECONDS
+            )
+        # И тихий push: у свёрнутого приложения сигналинг живой не всегда, а
+        # уведомление «Вам звонят» там продолжает звонить.
+        _notify_call_finished(peer_id, call_id, "ended")
+
+
+def _forget_finished_call(
+    call_id: str, user_id: int, meta: dict[str, Any] | None
+) -> None:
+    """Убирает память о закончившемся звонке и пишет исход в историю чата."""
+    _pending_call_ends.pop((call_id, user_id), None)
+    if _active_calls.get(call_id) is meta and meta is not None:
+        _active_calls.pop(call_id, None)
+    if not _group_calls.get(call_id):
+        _group_call_chats.pop(call_id, None)
+    if meta is None or user_id not in (meta.get("caller"), meta.get("callee")):
+        return
+    # Запись в истории чата — какую сделал бы `_track_call_event` по `call-end`:
+    # состоявшийся разговор — «завершён» с длительностью, несостоявшийся —
+    # «пропущен» (человек не дождался ответа).
+    if meta.get("started") is not None:
+        started = meta["started"]
+        duration = max(0, int((datetime.now(timezone.utc) - started).total_seconds()))
+        _spawn(_persist_call_record(meta, "completed", duration))
+    else:
+        _spawn(_persist_call_record(meta, "missed", 0))
+
+
+def _schedule_call_ends_after_signal_loss(user_id: int) -> None:
+    """Сигнальный канал закрылся: если человек в звонке, готовим завершение.
+
+    Именно закрытие канала отличает «приложение свернули» (канал живой, звонок
+    продолжается) от «приложение закрыли или выгрузила система» — во втором
+    случае просьбы от страницы может не быть вовсе.
+    """
+    if not user_id:
+        return
+    for call_id, meta in list(_active_calls.items()):
+        if user_id in (meta.get("caller"), meta.get("callee")):
+            _schedule_call_end(
+                call_id,
+                user_id,
+                CALL_SIGNAL_LOST_GRACE_SECONDS,
+                "signal-lost",
+                targets=[],
+                group=False,
+                chat_id=None,
+            )
+    for call_id, participants in list(_group_calls.items()):
+        if user_id in participants:
+            _schedule_call_end(
+                call_id,
+                user_id,
+                CALL_SIGNAL_LOST_GRACE_SECONDS,
+                "signal-lost",
+                targets=[],
+                group=True,
+                chat_id=_group_call_chats.get(call_id),
+            )
+
+
+@router_rest.post("/leave/")
+async def leave_call(
+    payload: CallLeaveRequest, user: User = Depends(get_current_user)
+) -> dict[str, bool]:
+    """«Моя страница уходит»: предупреждаем собеседников, если я не вернусь.
+
+    Клиент зовёт это из `pagehide` (см. `stores/call.ts`): страница выгружается и
+    отправить что-либо сама уже не может, поэтому решение отдаём серверу — он
+    подождёт `CALL_LEAVE_GRACE_SECONDS` и завершит звонок, если человек не
+    вернулся. Перезагрузка страницы идёт тем же путём, но её отменяет сама
+    возвращающаяся вкладка (`public/theme-boot.js`) — звонок после перезагрузки
+    обязан выжить.
+    """
+    targets = [item for item in payload.to_user_ids if item and item != user.id]
+    if not payload.call_id or not targets:
+        return {"ok": False}
+    _schedule_call_end(
+        payload.call_id,
+        user.id,
+        CALL_LEAVE_GRACE_SECONDS,
+        "left",
+        targets=targets,
+        group=payload.group,
+        chat_id=payload.chat_id,
+    )
+    return {"ok": True}
+
+
+@router_rest.post("/leave/cancel/")
+async def cancel_call_leave(
+    payload: CallLeaveCancelRequest, user: User = Depends(get_current_user)
+) -> dict[str, bool]:
+    """Отменяет запланированное завершение звонка: страница вернулась."""
+    _cancel_call_end(payload.call_id, user.id)
+    return {"ok": True}
+
+
 async def _deliver_signal(user_id: int, envelope: dict[str, Any]) -> bool:
     """Отдаёт сигнальное сообщение абоненту — где бы он ни был подключён.
 
@@ -480,6 +786,11 @@ async def _relay_message(
         to_user_id = int(raw_target)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return
+
+    # Человек снова на связи по этому вызову — запланированное завершение
+    # отменяем (см. `_schedule_call_end`). Достаточно ЛЮБОГО его сообщения о
+    # звонке: `call-rejoin` после перезагрузки, ответ, ICE-адреса.
+    _cancel_call_end(str(data.get("call_id") or ""), from_user_id)
 
     envelope = dict(data)
     envelope["from_user_id"] = from_user_id
@@ -901,6 +1212,10 @@ async def websocket_calls(websocket: WebSocket) -> None:
         return
 
     await call_manager.connect(user.id, websocket)
+    # Канал вернулся (перезагрузка страницы, смена сети): снимаем запланированное
+    # завершение звонка — «я снова здесь» (см. `_schedule_call_end`). Номера
+    # вызова тут нет, поэтому отменяем всё, что ждали по этому человеку.
+    _cancel_call_end("", user.id)
     try:
         while True:
             data = await websocket.receive_json()
@@ -909,3 +1224,7 @@ async def websocket_calls(websocket: WebSocket) -> None:
         logger.debug("Пользователь %s отключился от сигналинга", user.id)
     finally:
         await call_manager.disconnect(user.id, websocket)
+        # Канал замолчал: если человек был в звонке, собеседники не должны
+        # остаться «в разговоре» с тишиной. Подробности — в
+        # `_schedule_call_ends_after_signal_loss`.
+        _schedule_call_ends_after_signal_loss(user.id)

@@ -53,9 +53,80 @@
          Вынесено из index.html: строгий CSP (script-src 'self') запрещает
          inline-скрипты, а хешировать их руками — лишняя хрупкость. -->
     <script src="/theme-boot.js"></script>
+    <!-- Экран загрузки на время, пока браузер скачивает и разбирает бандл.
+         Раньше всё это время была ПУСТАЯ белая страница: на слабом телефоне с
+         медленной сетью это выглядело как «загрузка виснет» (владелец,
+         24.09.2026).
+         Показываем ровно тот же кружок ожидания, что и в самом приложении
+         (`components/common/BrandSpinner.vue`): ни надписи, ни логотипа — «как
+         везде, просто загрузка» (владелец, 24.09.2026). Размер, толщина кольца,
+         скорость вращения и цвета взяты из него один в один, поэтому переход к
+         интерфейсу не мигает.
+         Экран гаснет сам, без JavaScript: правило `#app:not(:empty) ~ #boot`
+         срабатывает, как только Vue отрисовал первый кадр. Поэтому его работа
+         не зависит от того, успел ли загрузиться бандл (а если не успел —
+         человек видит кружок ожидания, а не белое полотно).
+         Стили встроены намеренно: отдельный файл — это ещё один запрос в
+         критическом пути, а CSP (`style-src 'self' 'unsafe-inline'`) такой
+         <style> разрешает. -->
+    <style>
+      #boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f4f5f7;
+      }
+      html[data-theme='dark'] #boot {
+        background: #10151c;
+      }
+      html[data-theme='amoled'] #boot {
+        background: #000000;
+      }
+      /* Диаметр 56 и толщина 4 (size / 14 из BrandSpinner), вращение 0,9 с.
+         Акцент берём из `--ms-accent`: его ставит theme-boot.js по настройке
+         человека — кружок получается того же цвета, что и в приложении. */
+      #boot .boot-ring {
+        box-sizing: border-box;
+        width: 56px;
+        height: 56px;
+        border: 4px solid rgba(0, 0, 0, 0.12);
+        border-top-color: var(--ms-accent, #2ea25e);
+        border-radius: 50%;
+        animation: boot-spin 0.9s linear infinite;
+      }
+      html[data-theme='dark'] #boot .boot-ring {
+        border-color: rgba(255, 255, 255, 0.16);
+        border-top-color: var(--ms-accent, #2ea25e);
+      }
+      html[data-theme='amoled'] #boot .boot-ring {
+        border-color: rgba(255, 255, 255, 0.18);
+        border-top-color: var(--ms-accent, #2ea25e);
+      }
+      @keyframes boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      /* Приложение отрисовалось — экран загрузки больше не нужен. */
+      #app:not(:empty) ~ #boot {
+        display: none;
+      }
+      /* «Уменьшить движение»: кружок замедляем, но не останавливаем — как в
+         BrandSpinner, иначе непонятно, что что-то происходит. */
+      @media (prefers-reduced-motion: reduce) {
+        #boot .boot-ring {
+          animation-duration: 2.4s;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>
+    <div id="boot" role="status" aria-label="Загрузка">
+      <div class="boot-ring" aria-hidden="true"></div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 
 import { t } from '@/i18n'
+import { API_BASE_URL } from '@/config'
 import { useAuthStore } from '@/stores/auth'
 import { kindAfterScreenShare } from '@/utils/callMode'
 import {
@@ -107,7 +108,8 @@ import {
   REJOIN_OFFER_DELAY_MS,
   callAfterReload,
   forgetActiveCall,
-  rememberActiveCall
+  rememberActiveCall,
+  rememberCallLeave
 } from './call/session'
 import type {
   CallKind,
@@ -1309,11 +1311,19 @@ export const useCallStore = defineStore('call', {
             if (this.participants.length === 0) {
               this._cleanup()
               this.notice = t('Звонок завершён')
+            } else if (message.reason === 'left' || message.reason === 'signal-lost') {
+              // Человек закрыл приложение — остальным стоит сказать это прямо.
+              this.notice = t('Собеседник отключился')
             }
             break
           }
           this._cleanup()
-          this.notice = t('Звонок завершён')
+          // Причина «отключился» (закрыл приложение или замолчал его канал) —
+          // это не осознанное «завершить»: человеку важно понимать, что вышло.
+          this.notice =
+            message.reason === 'left' || message.reason === 'signal-lost'
+              ? t('Собеседник отключился')
+              : t('Звонок завершён')
           break
         }
         case 'call-ended-elsewhere': {
@@ -1727,6 +1737,41 @@ export const useCallStore = defineStore('call', {
           ...context.extra
         })
       }
+    },
+
+    /**
+     * Страница закрывается или перезагружается — а звонок идёт.
+     *
+     * Сами завершить его не можем: перезагрузка выглядит точно так же, а звонок
+     * после неё поднимается заново (`recoverCallAfterReload`). Поэтому просим об
+     * этом СЕРВЕР: он подождёт несколько секунд и, если мы не вернёмся, скажет
+     * собеседникам, что звонок кончился (`POST /calls/leave/`). Возвращающаяся
+     * вкладка отменяет уход запросом из `public/theme-boot.js` — то есть до того,
+     * как загрузится само приложение (иначе на слабом телефоне окно сервера
+     * истекало бы раньше, чем мы успеем сказать «я здесь»).
+     *
+     * Запрос отправляем с `keepalive`: он должен дойти уже после выгрузки
+     * страницы (то же делает `sayGoodbye` для присутствия).
+     */
+    leaveCallOnUnload() {
+      if (this.status === 'idle' || !this.callId) return
+      const callId = this.callId
+      const targets = this._callTargets().filter((id) => id > 0)
+      if (targets.length === 0) return
+      const token = useAuthStore().accessToken
+      if (!token) return
+      rememberCallLeave(callId, `${API_BASE_URL}/calls/leave/cancel/`)
+      void fetch(`${API_BASE_URL}/calls/leave/`, {
+        method: 'POST',
+        keepalive: true,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          call_id: callId,
+          to_user_ids: targets,
+          group: this.isGroup,
+          chat_id: this.groupChatId ?? undefined
+        })
+      }).catch(() => undefined)
     },
 
     /** Признак группового звонка для исходящего сообщения. */

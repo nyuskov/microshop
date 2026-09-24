@@ -56,4 +56,38 @@
   } catch (e) {
     /* невалидный localStorage — пропускаем */
   }
+  // Страница уходила из звонка (закрытие приложения или перезагрузка) — см.
+  // rememberCallLeave в stores/call/session.ts.
+  //
+  // Для сервера перезагрузка выглядит точно так же, как закрытие: он ждёт
+  // несколько секунд и завершает звонок у собеседников, если человек не вернулся.
+  // Поэтому отменяем уход ПЕРВЫМ же запросом, не дожидаясь загрузки приложения:
+  // на слабом телефоне бандл идёт секунды, и сервер успел бы завершить звонок
+  // раньше, чем приложение сказало бы «я здесь».
+  try {
+    var leaving = sessionStorage.getItem('pismo_call_leaving')
+    if (leaving) {
+      sessionStorage.removeItem('pismo_call_leaving')
+      try {
+        var leave = JSON.parse(leaving) || {}
+        var auth = JSON.parse(localStorage.getItem('authState') || '{}')
+        var token = auth && auth.accessToken
+        if (leave.cancelUrl && token) {
+          fetch(leave.cancelUrl, {
+            method: 'POST',
+            keepalive: true,
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: 'Bearer ' + token
+            },
+            body: JSON.stringify({ call_id: leave.callId || '' })
+          }).catch(function () {})
+        }
+      } catch (inner) {
+        /* запись повреждена — уход отменит подключение сигнального канала */
+      }
+    }
+  } catch (e2) {
+    /* приватный режим — sessionStorage недоступен */
+  }
 })()

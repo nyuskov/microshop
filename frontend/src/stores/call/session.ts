@@ -43,6 +43,16 @@ export const PEER_REJOIN_WINDOW_MS = 30_000
 /** Пауза перед своим предложением: собеседнику нужно время применить наше `call-rejoin`. */
 export const REJOIN_OFFER_DELAY_MS = 1500
 
+/* --------- Уход страницы (закрытие или перезагрузка) --------- */
+
+/**
+ * Где страница помечает, что уходит из звонка.
+ *
+ * Ключ читает `public/theme-boot.js` — до загрузки приложения, чтобы успеть
+ * сказать серверу «я вернулась» (см. `rememberCallLeave`).
+ */
+const CALL_LEAVE_KEY = 'pismo_call_leaving'
+
 export interface StoredCall {
   callId: string
   peerId: number
@@ -90,6 +100,27 @@ export function forgetActiveCall(): void {
     window.sessionStorage.removeItem(CALL_SESSION_KEY)
   } catch {
     /* нечего чистить */
+  }
+}
+
+/**
+ * Помечает уход страницы из звонка (закрытие или перезагрузка).
+ *
+ * Пишем в sessionStorage, а не в localStorage: перезагрузка сохраняет эту
+ * запись, а закрытая вкладка — нет. По ней `theme-boot.js` отменит уход, если
+ * страница на самом деле вернулась (перезагрузка выглядит точно как закрытие).
+ *
+ * ``cancelUrl`` кладём в саму запись: boot-скрипт статический и не знает, на
+ * каком origin живёт API.
+ */
+export function rememberCallLeave(callId: string, cancelUrl: string): void {
+  try {
+    window.sessionStorage.setItem(
+      CALL_LEAVE_KEY,
+      JSON.stringify({ callId, cancelUrl, at: Date.now() })
+    )
+  } catch {
+    /* приватный режим — уход отменит само подключение сигнального канала */
   }
 }
 

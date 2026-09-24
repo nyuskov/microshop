@@ -2988,12 +2988,31 @@ const handleBeforeUnload = () => {
   saveDraftFor(selectedChatId.value)
   // Черновик пишется на сервер с задержкой — на уходе отправляем сразу.
   flushDraftPushes()
+  // Звонок страница сама завершить не может (перезагрузка выглядит так же),
+  // поэтому просим об этом сервер: не вернёмся — он скажет собеседникам (см.
+  // `leaveCallOnUnload`). ДО закрытия сокета: запрос уходит по HTTP.
+  callStore.leaveCallOnUnload()
   // Сигнальный канал звонка закрываем сразу: у человека может быть несколько
   // устройств, и уходящая страница не должна получать сигналинг за него.
   callStore.detachSignaling()
   // Сразу сообщаем, что уходим: иначе собеседник ещё минуту видит «в сети»,
   // пока сервер не решит, что канал молчит (см. heartbeat в realtime-сторе).
   realtimeStore.sayGoodbye()
+}
+
+/**
+ * Уход страницы на мобильных: `beforeunload` там не приходит, а `pagehide` — да.
+ *
+ * Ничего, кроме звонка, здесь не делаем: остальное (черновики, присутствие)
+ * уже сделано в `handleBeforeUnload` (он мог и не сработать) — дублировать их
+ * не нужно, а `leaveCallOnUnload` повторный вызов переносит без вреда.
+ */
+const handlePageHide = (event: PageTransitionEvent) => {
+  // `persisted` — страница уходит в «заморозку» (bfcache) и вернётся как есть:
+  // из звонка мы при этом не уходим, и говорить серверу нечего. Иначе звонок у
+  // собеседника завершился бы, пока наша страница просто лежит в памяти.
+  if (event.persisted) return
+  callStore.leaveCallOnUnload()
 }
 
 /**
@@ -3923,11 +3942,13 @@ const peerKeyNameFor = (userId: number): string => {
 /** Отписка от события E2EE (снимается при уходе с экрана). */
 let unsubscribePeerKey: (() => void) | null = null
 
-onMounted(async () => {
-  await authStore.initializeApp()
-  // Истории грузим сразу: точка «есть новое» должна быть видна без захода в раздел.
-  if (authStore.isAuthenticated) void storiesStore.load()
+onMounted(() => {
+  // Слушатели — ДО сетевого запроса за профилем: пока он идёт (на слабой сети
+  // это легко секунды), приложение должно уже реагировать на уход страницы,
+  // возврат в приложение по push и на смену видимости.
   window.addEventListener('beforeunload', handleBeforeUnload)
+  // `pagehide` — единственное, что приходит при закрытии страницы на телефоне.
+  window.addEventListener('pagehide', handlePageHide)
   window.addEventListener('message', handleWindowMessage)
   window.addEventListener('visibilitychange', handleCallVisibility)
   window.addEventListener('visibilitychange', handleVisibilityForDrafts)
@@ -3941,6 +3962,16 @@ onMounted(async () => {
     accountOverlaysRef.value?.openPeerKeyChanged(change)
   })
   startOutboxTimer()
+
+  // Профиль тянем ПАРАЛЛЕЛЬНО с остальным запуском: он нужен ради имени/аватара
+  // в шапке и прав, но не должен задерживать открытие чата или экрана звонка по
+  // уведомлению (запросы сами обновят токен при 401 — см. services/api.ts).
+  void authStore.initializeApp().catch(() => {
+    // Сеть могла не подняться при запуске: работаем по сохранённому профилю,
+    // а плашку «нет сети» показывает `useOnlineStatus`.
+  })
+  // Истории грузим сразу: точка «есть новое» должна быть видна без захода в раздел.
+  if (authStore.isAuthenticated) void storiesStore.load()
   // Холодный старт: уведомления о звонках прошлых запусков («Вам звонят» о
   // вызове, который давно принят/отклонён/отменён) на экране не оставляем.
   if (callStore.status !== 'incoming') void closeCallRings()
@@ -4151,6 +4182,7 @@ const handleWindowMessage = (event: MessageEvent) => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload)
+  window.removeEventListener('pagehide', handlePageHide)
   window.removeEventListener('message', handleWindowMessage)
   window.removeEventListener('visibilitychange', handleCallVisibility)
   window.removeEventListener('visibilitychange', handleVisibilityForDrafts)

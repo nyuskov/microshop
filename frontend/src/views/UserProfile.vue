@@ -37,6 +37,11 @@ import {
   setLocalSearchEnabled
 } from '@/utils/localSearchIndex'
 import { isMessageSoundEnabled, setMessageSoundEnabled } from '@/utils/sounds'
+import {
+  callVibrationSupported,
+  isCallVibrationEnabled,
+  setCallVibrationEnabled
+} from '@/utils/callVibration'
 import { deviceLabelOf, formatEventTime, isAlertEvent } from '@/services/securityLog'
 import { PASSWORD_MIN_LENGTH } from '@/utils/passwordPolicy'
 import {
@@ -377,6 +382,18 @@ const messageSoundEnabled = ref(isMessageSoundEnabled())
 const onMessageSoundToggle = (val: boolean) => {
   setMessageSoundEnabled(val)
   messageSoundEnabled.value = val
+}
+
+/**
+ * Вибрация при входящем звонке — тоже настройка УСТРОЙСТВА: на телефоне она
+ * нужна, а на компьютере её просто нет (и на iPhone тоже — там нет Vibration API).
+ */
+const callVibrationEnabled = ref(isCallVibrationEnabled())
+const callVibrationAvailable = callVibrationSupported()
+
+const onCallVibrationToggle = (val: boolean) => {
+  setCallVibrationEnabled(val)
+  callVibrationEnabled.value = val
 }
 const currentSectionTitle = computed(() => {
   if (section.value === 'admin') return t('Администрирование')
@@ -1266,6 +1283,22 @@ const onNotificationsToggle = async (val: boolean) => {
               color="primary"
               keep-color
               @update:model-value="onMessageSoundToggle"
+            />
+          </div>
+
+          <!-- Вибрация звонка: настройка устройства (как звук сообщений).
+               Живёт здесь же, потому что относится к тому, как устройство
+               сообщает о вызове. -->
+          <div v-if="callVibrationAvailable" class="toggle-row">
+            <div class="toggle-text">
+              <span class="toggle-name">{{ t('Вибрация при звонке') }}</span>
+              <span class="toggle-desc">{{ t('Вибрация повторяется, пока звонок звонит') }}</span>
+            </div>
+            <q-toggle
+              v-model="callVibrationEnabled"
+              color="primary"
+              keep-color
+              @update:model-value="onCallVibrationToggle"
             />
           </div>
 

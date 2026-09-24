@@ -436,6 +436,8 @@ export const EN: Record<string, string> = {
     'If disabled, the notification will show only the sender name',
   'Звук сообщений': 'Message sound',
   'Короткий звук в приложении; на этом устройстве': 'A short sound in the app; on this device',
+  'Вибрация при звонке': 'Vibration on calls',
+  'Вибрация повторяется, пока звонок звонит': 'The vibration repeats while the call is ringing',
   'Тихие часы': 'Quiet hours',
   'Не присылать уведомления о сообщениях в выбранное время':
     'Do not send message notifications during the selected time',
@@ -913,6 +915,7 @@ export const EN: Record<string, string> = {
     'No sound and no video — try switching the network or calling back',
   'Звонок отменён': 'The call was cancelled',
   'Звонок завершён': 'The call has ended',
+  'Собеседник отключился': 'The other person disconnected',
   'Звонок завершён: не удалось восстановить связь':
     'The call has ended: the connection could not be restored',
   'Никто не ответил': 'No one answered',
