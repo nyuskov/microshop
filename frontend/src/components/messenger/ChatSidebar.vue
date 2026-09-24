@@ -316,28 +316,27 @@ const emit = defineEmits<{
  *
  * Раскрыть можно нажатием на кружки в шапке или протяжкой списка вниз у самого
  * верха (вместе с полосой открывается и поле поиска); прокрутка списка вверх —
- * снова сжимает обе панели (как в Telegram). Выбор запоминаем, чтобы после
- * перезапуска всё осталось как у человека было.
+ * снова сжимает обе панели (как в Telegram).
+ *
+ * Раскрытие между запусками НЕ запоминаем: приложение всегда открывается со
+ * сжатой шапкой (решение владельца 24.09.2026). Раньше выбор лежал в
+ * localStorage и возвращался при открытии — и получалось «истории раскрыты, а
+ * поиска нет»: поле поиска между запусками не помнится (это состояние сеанса,
+ * и открывать его с фокусом на старте нельзя — выехала бы клавиатура), поэтому
+ * вернувшаяся раскрытая полоса выглядела поломкой. Ключ прежней версии убираем,
+ * чтобы он не тянулся за человеком дальше.
  */
-const STORIES_EXPANDED_KEY = 'pismo_stories_expanded'
-const readStoriesExpanded = (): boolean => {
-  try {
-    return localStorage.getItem(STORIES_EXPANDED_KEY) === '1'
-  } catch {
-    /* localStorage недоступен — считаем, что полоса сжата */
-    return false
-  }
+const LEGACY_STORIES_EXPANDED_KEY = 'pismo_stories_expanded'
+try {
+  localStorage.removeItem(LEGACY_STORIES_EXPANDED_KEY)
+} catch {
+  /* приватный режим — чистить нечего */
 }
-const storiesExpanded = ref(readStoriesExpanded())
+const storiesExpanded = ref(false)
 
 const setStoriesExpanded = (value: boolean) => {
   if (storiesExpanded.value === value) return
   storiesExpanded.value = value
-  try {
-    localStorage.setItem(STORIES_EXPANDED_KEY, value ? '1' : '0')
-  } catch {
-    /* приватный режим — выбор запомнится только до перезагрузки */
-  }
 }
 
 const toggleStoriesExpand = () => setStoriesExpanded(!storiesExpanded.value)

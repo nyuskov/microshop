@@ -27,3 +27,24 @@ describe('кружок историй в шапке', () => {
     expect(strip).toContain('border-width: 2px')
   })
 })
+
+/**
+ * Раскрытие полосы НЕ переживает запуск приложения.
+ *
+ * Владелец, 24.09.2026: «иногда при открытии приложения истории раскрыты, а
+ * поиска нет». Полоса хранилась в `localStorage` и возвращалась раскрытой, а поле
+ * поиска — состояние сеанса (его нельзя открывать с фокусом на старте: выехала бы
+ * клавиатура). Теперь при открытии шапка всегда сжата.
+ */
+describe('раскрытие панелей не запоминается', () => {
+  it('стартуем с сжатой шапкой', () => {
+    expect(sidebar).toContain('const storiesExpanded = ref(false)')
+    expect(sidebar).not.toContain('storiesExpanded = ref(readStoriesExpanded())')
+  })
+
+  it('в хранилище ничего не пишем, а прежний ключ убираем', () => {
+    expect(sidebar).not.toContain("localStorage.setItem('pismo_stories_expanded'")
+    expect(sidebar).not.toContain('localStorage.setItem(LEGACY_STORIES_EXPANDED_KEY')
+    expect(sidebar).toContain('localStorage.removeItem(LEGACY_STORIES_EXPANDED_KEY)')
+  })
+})
