@@ -187,6 +187,15 @@ interface CallState {
   seconds: number
   connected: boolean
   notice: string
+  /**
+   * Звонок свёрнут в плашку над шапкой чата (как в MAX): разговор идёт, а
+   * оверлей не закрывает экран — человек продолжает переписку.
+   *
+   * Потоки при сворачивании НЕ отвязываем: элементы `<video>` остаются в
+   * разметке (иначе Chrome перестаёт отдавать звук в Web Audio — проверено
+   * живьём 18.09.2026).
+   */
+  minimized: boolean
   secondsTimer: ReturnType<typeof setInterval> | undefined
   ringOutTimer: number | undefined
   /** Сколько раз повторили уже принятый/идущий вызов (чтобы погасить уведомление). */
@@ -246,6 +255,7 @@ const DEFAULT_STATE: CallState = {
   seconds: 0,
   connected: false,
   notice: '',
+  minimized: false,
   secondsTimer: undefined,
   ringOutTimer: undefined,
   ignoredCallOffers: 0,
@@ -2095,6 +2105,24 @@ export const useCallStore = defineStore('call', {
       })
       // Собеседник должен видеть, что нас не слышно (а не думать, что сломалось).
       this._sendMediaState()
+    },
+
+    /**
+     * Свернуть звонок в плашку над шапкой чата (как в MAX).
+     *
+     * Свернуть можно идущий разговор и свой вызов — входящий нельзя: его надо
+     * принять или отклонить, и спрятанная кнопка «Ответить» была бы поломкой.
+     * Полный экран при этом не размонтируется: потоки остаются привязанными к
+     * элементам, иначе пропал бы звук (см. `minimized`).
+     */
+    minimizeCall() {
+      if (this.status !== 'active' && this.status !== 'outgoing') return
+      this.minimized = true
+    },
+
+    /** Вернуть полный экран звонка из плашки. */
+    restoreCall() {
+      this.minimized = false
     },
 
     /** Переключить камеру. */

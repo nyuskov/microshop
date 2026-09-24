@@ -189,8 +189,9 @@ describe('разговор начинается, не дожидаясь все�
       overlay.indexOf("status === 'active'")
     )
     // Плашка вызова и сетка — отдельные строки: плашка сверху, плитки под ней
-    // (раньше плашка лежала поверх плиток и закрывала кнопки сброса).
-    expect(outgoing).toMatch(/v-if="callStore\.isGroup"[\s\S]{0,900}<CallGrid[^>]*\/>/)
+    // (раньше плашка лежала поверх плиток и закрывала кнопки сброса). Окно с
+    // запасом: в строке вызова стоит ещё и «Свернуть» (24.09.2026).
+    expect(outgoing).toMatch(/v-if="callStore\.isGroup"[\s\S]{0,1400}<CallGrid[^>]*\/>/)
     expect(outgoing).toContain('Звоним…')
     expect(outgoing).toMatch(/class="group-stage"/)
   })

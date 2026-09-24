@@ -27,6 +27,9 @@
       bordered
       class="ms-drawer"
     >
+      <!-- Свёрнутый звонок на телефоне: список чатов закрывает панель чата
+           (drawer поверх), поэтому без плашки здесь звонок был бы недостижим. -->
+      <CallBanner v-if="isPhone && callStore.minimized" class="call-banner-drawer" />
       <ChatSidebar
         ref="sidebarRef"
         :view="view"
@@ -72,6 +75,15 @@
     <!-- ======= Правая область чата ======= -->
     <q-page-container class="messenger-page" :class="{ 'has-rail': railVisible }">
       <main class="chat-panel" :style="chatBgStyle">
+        <!-- Свёрнутый звонок: плашка ложится ПОВЕРХ шапки чата (как в MAX) —
+             разговор идёт, а переписка остаётся рабочей. Оверлей звонка при
+             этом скрыт, но не размонтирован: иначе пропал бы звук. -->
+        <CallBanner
+          v-if="callStore.minimized"
+          class="call-banner-overlay"
+          :show-back="isPhone"
+          @back="goBackToList"
+        />
         <template v-if="!selectedChatId">
           <ChatPlaceholder @open-contacts="openContacts" />
         </template>
@@ -761,6 +773,7 @@ import {
 import ChatSidebar from '@/components/messenger/ChatSidebar.vue'
 import ChatHeader from '@/components/messenger/ChatHeader.vue'
 import ChatPlaceholder from '@/components/messenger/ChatPlaceholder.vue'
+import CallBanner from '@/components/calls/CallBanner.vue'
 import FileDropOverlay from '@/components/messenger/FileDropOverlay.vue'
 import InlineSearchBar from '@/components/messenger/InlineSearchBar.vue'
 import PinnedBar from '@/components/messenger/PinnedBar.vue'
@@ -4334,12 +4347,36 @@ useMobileLayer(() => inviteDialogOpen.value, closeInviteDialog)
   min-width: 0;
   min-height: 0;
   overflow: hidden; /* не даём контенту распирать панель и создавать скролл страницы */
+  /* Плашка свёрнутого звонка позиционируется от панели (ложится на шапку). */
+  position: relative;
   /* Точки фона — токеном: у него значения под светлую и тёмную тему
      (раньше был литерал rgba(), который в тёмной теме приходилось перебивать
      из appearance.css). */
   background-image: var(--ms-chat-dots);
   background-size: 22px 22px;
   background-color: var(--ms-chat-bg);
+}
+
+/*
+ * Плашка свёрнутого звонка ложится РОВНО на шапку чата и перекрывает её значки
+ * (`z-index` выше `z-index: 2` у шапки).
+ */
+.call-banner-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+}
+
+/*
+ * В списке чатов (телефон) плашка стоит в потоке над панелью — сама панель
+ * рассчитана на всю высоту (`height: 100%`), поэтому отдаём ей остаток.
+ */
+.call-banner-drawer + :deep(.side-panel) {
+  height: auto;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 /* Drawer со списком чатов: тень и высота на весь экран. */

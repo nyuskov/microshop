@@ -5,6 +5,8 @@
       <div
         v-if="callStore.status !== 'idle'"
         class="call-overlay"
+        :class="{ 'call-overlay-hidden': callStore.minimized }"
+        :inert="callStore.minimized || undefined"
         @mousedown.stop
         @pointerdown="onOverlayPointerDown"
       >
@@ -53,16 +55,26 @@
           <template v-if="callStore.isGroup">
             <div class="group-stage">
               <!-- Та же верхняя строка, что и в разговоре: подпись слева,
-                   кнопка отмены справа. Плитки ниже — их кнопки сброса видны. -->
+                   кнопка «Свернуть» и отмена справа. Плитки ниже — их кнопки сброса видны. -->
               <div class="group-ringing">
                 <p class="call-subtitle">{{ t('Звоним…') }}</p>
-                <button
-                  class="ctl-btn danger big"
-                  :title="t('Отменить')"
-                  @click="callStore.cancelCall()"
-                >
-                  <q-icon :name="icon('call_end')" size="28px" />
-                </button>
+                <span class="ringing-actions">
+                  <button
+                    class="ctl-btn"
+                    :title="t('Свернуть звонок')"
+                    :aria-label="t('Свернуть звонок')"
+                    @click="callStore.minimizeCall()"
+                  >
+                    <q-icon :name="icon('keyboard_arrow_down')" size="24px" />
+                  </button>
+                  <button
+                    class="ctl-btn danger big"
+                    :title="t('Отменить')"
+                    @click="callStore.cancelCall()"
+                  >
+                    <q-icon :name="icon('call_end')" size="28px" />
+                  </button>
+                </span>
               </div>
               <CallGrid @drop="callStore.dropPeer" />
             </div>
@@ -578,6 +590,20 @@
             </div>
           </div>
         </template>
+
+        <!-- «Свернуть»: звонок уходит в плашку над шапкой чата (как в MAX) —
+             разговор идёт, а переписка остаётся доступной. В групповом вызове
+             кнопка живёт в своей верхней строке (см. `group-ringing`): там
+             рядом с ней уже стоят кнопки участников. -->
+        <button
+          v-if="canMinimizeHere"
+          class="call-collapse"
+          :title="t('Свернуть звонок')"
+          :aria-label="t('Свернуть звонок')"
+          @click="callStore.minimizeCall()"
+        >
+          <q-icon :name="icon('keyboard_arrow_down')" size="24px" />
+        </button>
       </div>
     </transition>
 
@@ -644,6 +670,18 @@ let attachTimer: ReturnType<typeof setInterval> | undefined
 /** Видно ли картинку собеседника (иначе элемент невидим, но звук остаётся). */
 const remoteVideoVisible = computed<boolean>(
   () => callStore.kind === 'video' && callStore.peerVideoOn
+)
+
+/**
+ * Сворачивать тут — кнопкой в углу, или в своей верхней строке (групповой вызов).
+ *
+ * Входящий вызов не сворачиваем вовсе: его надо принять или отклонить. В
+ * групповом ВЫЗОВЕ кнопка стоит рядом с «Отменить» — отдельная в углу легла бы
+ * на неё. В групповом разговоре угловая свободна (там верхняя строка — плашка
+ * с именем), поэтому она общая.
+ */
+const canMinimizeHere = computed<boolean>(
+  () => callStore.status === 'active' || (callStore.status === 'outgoing' && !callStore.isGroup)
 )
 
 /** Есть ли у собеседника видеодорожка (нужно, чтобы переписать элемент при её появлении). */
@@ -1127,6 +1165,18 @@ watch(
   }
 )
 
+// Свернули звонок — панели и окно эффектов закрываем: они принадлежат полному
+// экрану, а в плашке их места нет (и «висящие» открытыми они бы вернулись
+// развёрнутыми, хотя человек этого не просил).
+watch(
+  () => callStore.minimized,
+  (minimized) => {
+    if (!minimized) return
+    closePanels()
+    effectsOpen.value = false
+  }
+)
+
 watch(
   () => callStore.notice,
   (notice) => {
@@ -1170,6 +1220,19 @@ onBeforeUnmount(() => {
      pull-to-refresh и перезагрузил страницу прямо во время разговора. */
   overscroll-behavior: none;
   touch-action: manipulation;
+}
+
+/*
+ * Свёрнутый звонок (плашка над шапкой чата — см. `CallBanner.vue`).
+ *
+ * Оверлей НЕ убираем из разметки: удалённый поток привязан к своему `<video>`,
+ * и без элемента Chrome перестаёт отдавать звук в Web Audio (проверено живьём
+ * 18.09.2026). Прячем прозрачностью — тем же способом, что скрытые видео в
+ * `CallGrid.vue`; `inert` из разметки снимает с невидимых кнопок фокус и клики.
+ */
+.call-overlay.call-overlay-hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .call-card {
@@ -1227,6 +1290,13 @@ onBeforeUnmount(() => {
 .group-stage .group-ringing {
   position: static;
   flex: 0 0 auto;
+}
+
+/* Кнопки верхней строки вызова: «Свернуть» и «Отменить» — рядом, справа. */
+.ringing-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
 }
 
 /* Своя картинка уже есть плиткой «Вы» — второе превью только закрывало плитки. */
@@ -1738,6 +1808,33 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 18px;
+}
+
+/*
+ * «Свернуть» — в правом верхнем углу, поверх плашки с именем (у неё правый
+ * край свободен; в видео-режиме кнопка ложится внутрь той же плашки — так её и
+ * видно, и она не спорит с картинкой).
+ */
+.call-collapse {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  z-index: 8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.42);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.call-collapse:hover {
+  background: rgba(0, 0, 0, 0.62);
 }
 
 .incoming-controls {
