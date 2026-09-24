@@ -12,10 +12,12 @@
     @touchend.passive="onPanelTouchEnd"
     @touchcancel.passive="onPanelTouchEnd"
   >
-    <!-- Отклик на протяжку вниз: полоса показывает, сколько осталось до
-         следующего шага (поиск → истории → воспроизведение). Сама панель при
-         этом едет за пальцем — см. `--ms-pull-y`. -->
-    <span class="pull-bar" aria-hidden="true"></span>
+    <!--
+    Отклик на протяжку вниз (22.04?): панель едет за пальцем по «резинке», а на
+    пороге раскрытие продолжается ровно с той высоты, где её держал палец
+    (`pullHandoff` + `startFrom` в `useSlideDown`). Полосы прогресса сверху нет:
+    на телефоне она выглядела чужой цветной чертой над шапкой.
+  -->
     <!-- Шапка панели (обычный режим и режим выделения чатов — в SidebarHeader.vue) -->
     <SidebarHeader
       :selection-mode="selectionMode"
@@ -240,8 +242,8 @@ const ContactsPanel = defineAsyncComponent(() => import('@/components/messenger/
  * Хуки раскрытия (см. composables/useSlideDown): у поиска — обычный слайд,
  * у полосы историй — усиленный (она раскрывается вторым шагом и живёт выше).
  */
-const slideDown = useSlideDown()
-const slideDownStories = useSlideDown()
+const slideDown = useSlideDown({ startFrom: () => pullHandoff.value })
+const slideDownStories = useSlideDown({ startFrom: () => pullHandoff.value })
 
 /**
  * Истории нужны не только полосе, но и жесту: третья ступень протяжки открывает
@@ -441,37 +443,52 @@ let pullUsed = false
 let pullFromList = false
 
 /**
- * Отклик на протяжку: панель едет за пальцем, сверху растёт полоса прогресса.
+ * Отклик на протяжку: панель едет за пальцем по «резинке».
  *
- * Раньше жест был «молчаливым»: до порога не происходило НИЧЕГО, и человек не
- * понимал, тянет он поиск, истории или уже открытие историй. Теперь движение
- * видно с первого пикселя, на пороге отзывается вибрация, а полоса говорит,
- * сколько осталось до следующего шага.
+ * Ход был линейным с жёстким пределом (0.55 × расстояние, максимум 68px): панель
+ * упиралась в стену, и это читалось как сильная натяжка — ровно то, что видно
+ * глазом. Теперь ход асимптотический: чем дальше тянешь, тем меньше двигается,
+ * стены нет; максимум меньше порога раскрытия поиска, поэтому «упора» не видно.
  */
-const PULL_DAMPING = 0.55
+const PULL_SOFT_PX = 90
 
-/** Дальше этого панель не уезжает: длиннее движение уже не читается. */
-const PULL_MAX_PX = 68
+/** Максимум хода: меньше порога раскрытия поиска (48px). */
+const PULL_MAX_PX = 40
 
 const pullOffset = ref(0)
-/** Прогресс до ближайшего порога (0…1) — им живёт полоса сверху. */
-const pullProgress = ref(0)
 const pulling = ref(false)
+/**
+ * С какой высоты панель продолжит раскрытие на пороге.
+ *
+ * Смещение панели в этот же момент снимается, а панель вырастает на ту же
+ * высоту — содержимое остаётся на месте (без скачка), и переход читает это
+ * значение своим `startFrom`.
+ */
+const pullHandoff = ref(0)
+let pullHandoffTimer: ReturnType<typeof setTimeout> | undefined
 const pullStyle = computed<Record<string, string>>(() => ({
-  '--ms-pull-y': `${Math.round(pullOffset.value)}px`,
-  '--ms-pull-progress': pullProgress.value.toFixed(3)
+  '--ms-pull-y': `${pullOffset.value}px`
 }))
 
-/** Ближайший порог — он же знаменатель полосы прогресса. */
-const pullThreshold = (): number => {
-  if (!searchOpen.value) return PULL_EXPAND_PX
-  return storiesExpanded.value ? PULL_PLAY_PX : PULL_STORIES_PX
-}
+/** Ход панели за пальцем: резинка (асимптота), а не линейная привязка. */
+const pullOffsetFor = (distance: number): number =>
+  Math.round(PULL_MAX_PX * (1 - Math.exp(-distance / PULL_SOFT_PX)))
 
 const resetPull = () => {
   pulling.value = false
   pullOffset.value = 0
-  pullProgress.value = 0
+}
+
+/** Запомнить высоту, с которой панель начнёт раскрываться (см. `pullHandoff`). */
+const handOffPull = () => {
+  pullHandoff.value = pullOffset.value
+  if (pullHandoffTimer !== undefined) window.clearTimeout(pullHandoffTimer)
+  // Переход читает значение в следующем кадре — после него обнуляем, иначе
+  // следующее раскрытие (значком в шапке) началось бы с чужой высоты.
+  pullHandoffTimer = window.setTimeout(() => {
+    pullHandoffTimer = undefined
+    pullHandoff.value = 0
+  }, 600)
 }
 
 const onPanelTouchEnd = () => {
@@ -520,14 +537,13 @@ const onPanelTouchMove = (event: TouchEvent) => {
   }
   // Дальше — только протяжка вниз по самому списку, с его верха.
   if (!pullFromList || listIsScrolled(list)) return
-  // Панель едет за пальцем и показывает, сколько осталось до шага: до порога
-  // глаз видит отклик, а не пустоту.
+  // Панель едет за пальцем: отклик виден с первого пикселя, без «упора».
   pulling.value = true
-  pullOffset.value = Math.min(distance * PULL_DAMPING, PULL_MAX_PX)
-  pullProgress.value = Math.min(distance / pullThreshold(), 1)
+  pullOffset.value = pullOffsetFor(distance)
   if (!searchOpen.value) {
     if (distance < PULL_EXPAND_PX) return
     pullUsed = true
+    handOffPull()
     resetPull()
     haptic()
     revealSearch()
@@ -538,6 +554,7 @@ const onPanelTouchMove = (event: TouchEvent) => {
     // воспроизведение: с этого места истории смотрят, а не разглядывают кружки.
     if (distance < PULL_PLAY_PX) return
     pullUsed = true
+    handOffPull()
     resetPull()
     haptic()
     openStoriesPlayback()
@@ -545,6 +562,7 @@ const onPanelTouchMove = (event: TouchEvent) => {
   }
   if (distance < PULL_STORIES_PX) return
   pullUsed = true
+  handOffPull()
   resetPull()
   haptic()
   setStoriesExpanded(true)
@@ -907,22 +925,6 @@ useMobileLayer(() => phoneImportOpen.value, closePhoneImport)
 
 .side-panel.pulling {
   transition: none;
-}
-
-/* Полоса прогресса до следующего шага. Она «прилипла» к верху drawer'а,
-   поэтому своим transform гасит смещение панели. */
-.pull-bar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  z-index: 5;
-  transform-origin: left center;
-  transform: translateY(calc(-1 * var(--ms-pull-y, 0px))) scaleX(var(--ms-pull-progress, 0));
-  background: var(--ms-accent);
-  opacity: var(--ms-pull-progress, 0);
-  pointer-events: none;
 }
 
 .icon-btn.open {

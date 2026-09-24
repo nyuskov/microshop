@@ -28,6 +28,19 @@ type SlideHooks = Pick<
   'onBeforeEnter' | 'onEnter' | 'onAfterEnter' | 'onLeave' | 'onAfterLeave'
 >
 
+/** Настройки раскрытия. */
+export interface SlideDownOptions {
+  /**
+   * С какой высоты начинать раскрытие (px).
+   *
+   * Нужно для протяжки вниз: панель обязана появиться РОВНО той высоты, на
+   * которую её уже вытянул палец. Без этого в момент порога содержимое прыгает:
+   * панель начинается с нуля, а смещение панели уже снято — сумма меняется
+   * скачком, и глаз видит «натяжку».
+   */
+  startFrom?: () => number
+}
+
 /** Реальная высота: в jsdom layout пуст, поэтому есть запасные варианты. */
 const heightOf = (el: HTMLElement): number => {
   const measured = el.getBoundingClientRect().height
@@ -50,20 +63,24 @@ const clearInline = (el: HTMLElement): void => {
  * Хуки для `<Transition name="slide-down" v-bind="slideDown">`.
  * Классы `*-active` объявлены в стилях компонента (там же transition и клип).
  */
-export function useSlideDown(): SlideHooks {
+export function useSlideDown(options: SlideDownOptions = {}): SlideHooks {
+  /** Высота старта: из протяжки — уже вытянутая пальцем, иначе ноль. */
+  const startHeight = (): number => Math.max(0, Math.round(options.startFrom?.() ?? 0))
   return {
     onBeforeEnter(el) {
       const node = el as HTMLElement
-      // Элемента ещё нет в DOM — мерить нечего, просто прячем до старта.
-      node.style.height = '0px'
-      node.style.opacity = '0'
+      const start = startHeight()
+      node.style.height = `${start}px`
+      // Панель, которую уже вытянул палец, гасить в ноль не надо: она видна глазом.
+      node.style.opacity = start > 0 ? '1' : '0'
     },
     onEnter(el) {
       const node = el as HTMLElement
+      const start = startHeight()
       // Элемент уже вставлен: считаем высоту, которую он занял бы сам.
       node.style.height = 'auto'
       const expanded = heightOf(node)
-      node.style.height = '0px'
+      node.style.height = `${start}px`
       // Фиксируем «нулевую» высоту вместе с transition из класса *-active —
       // без этого браузер может разом прыгнуть в конечное значение.
       reflow(node)

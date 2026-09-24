@@ -54,6 +54,26 @@ describe('раскрытие слайдом вниз', () => {
     expect(writes).toEqual(['height:0px', 'opacity:0'])
   })
 
+  it('может начать раскрытие с высоты протяжки (содержимое не прыгает)', () => {
+    // Протяжка вниз: панель уже вытянута пальцем на 18px, и раскрытие обязано
+    // продолжиться с этой высоты, иначе в момент порога список прыгнул бы.
+    const pulled = useSlideDown({ startFrom: () => 18 })
+    const { el, writes } = setup(96)
+
+    pulled.onBeforeEnter?.(el)
+    pulled.onEnter?.(el)
+
+    expect(writes).toEqual([
+      'height:18px',
+      // Из протяжки панель уже видна — в ноль её не гасим.
+      'opacity:1',
+      'height:auto',
+      'height:18px',
+      'height:96px',
+      'opacity:1'
+    ])
+  })
+
   it('на входе раскрывается до измеренной высоты содержимого', () => {
     const { el, writes } = setup(96)
 

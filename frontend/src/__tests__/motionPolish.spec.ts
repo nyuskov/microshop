@@ -80,14 +80,38 @@ describe('полёт реакции', () => {
 })
 
 describe('отклик на протяжку вниз', () => {
-  it('панель едет за пальцем и показывает прогресс до шага', () => {
-    // Высота панели и полоса живут на переменных: их пишет жест, читает CSS.
+  it('панель едет за пальцем по резинке', () => {
+    // Смещение панели живёт на переменной: его пишет жест, читает CSS.
     expect(sidebar).toContain("'--ms-pull-y'")
-    expect(sidebar).toContain("'--ms-pull-progress'")
-    expect(sidebar).toContain('class="pull-bar"')
     expect(sidebar).toMatch(/\.side-panel \{[\s\S]{0,600}translateY\(var\(--ms-pull-y/)
     // Во время движения переход выключен, иначе панель отставала бы от пальца.
     expect(sidebar).toContain('.side-panel.pulling {')
+    // Ход асимптотический: линейный с жёстким пределом читался как сильная
+    // натяжка («панель упёрлась в стену»).
+    expect(sidebar).toMatch(/PULL_SOFT_PX = \d+/)
+    expect(sidebar).toContain('1 - Math.exp(-distance / PULL_SOFT_PX)')
+    expect(sidebar).not.toContain('PULL_DAMPING')
+    // Максимум хода меньше порога раскрытия поиска — «упора» не видно.
+    const max = Number(sidebar.match(/PULL_MAX_PX = (\d+)/)?.[1] ?? '0')
+    const search = Number(sidebar.match(/PULL_EXPAND_PX = (\d+)/)?.[1] ?? '0')
+    expect(max).toBeGreaterThan(0)
+    expect(max).toBeLessThan(search)
+  })
+
+  it('полосы прогресса сверху нет', () => {
+    // Владелец: «сверху всегда синяя полоса появляется» — выглядело чужой
+    // цветной чертой над шапкой, поэтому отклик живёт только в самом движении.
+    expect(sidebar).not.toContain('pull-bar')
+    expect(sidebar).not.toContain('--ms-pull-progress')
+  })
+
+  it('раскрытие продолжается с высоты протяжки — без прыжка', () => {
+    // Панель появляется ровно той высоты, на которую её вытянул палец, а
+    // смещение панели снимается тем же кадром — сумма не меняется скачком.
+    expect(sidebar).toMatch(/startFrom: \(\) => pullHandoff\.value/)
+    expect(sidebar).toContain('const handOffPull = () => {')
+    const body = fnBody(sidebar, 'const onPanelTouchMove = ')
+    expect(body).toContain('handOffPull()')
   })
 
   it('на порогах отзывается вибрация, а шаги и порядок не изменились', () => {

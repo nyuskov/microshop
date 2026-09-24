@@ -45,13 +45,7 @@ const TOKENS_PATH = path.join(SRC, 'assets', 'appearance.css')
  * резервировала под неё место, `ChatSidebar` — смещение панели при протяжке вниз
  * и прогресс до следующего шага).
  */
-const RUNTIME_TOKENS = new Set([
-  '--ms-vv-h',
-  '--ms-vv-top',
-  '--ms-extras-h',
-  '--ms-pull-y',
-  '--ms-pull-progress'
-])
+const RUNTIME_TOKENS = new Set(['--ms-vv-h', '--ms-vv-top', '--ms-extras-h', '--ms-pull-y'])
 
 /** Пути относительно src/. Литеральные цвета здесь оправданы. */
 const ALLOWED = new Map([
