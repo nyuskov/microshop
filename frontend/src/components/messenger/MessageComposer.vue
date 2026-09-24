@@ -1665,6 +1665,20 @@ watch(newMessage, () => {
 .send-wrap {
   position: relative;
   display: inline-flex;
+  /* Кнопка «выпрыгивает», когда текст появился: раньше она появлялась мгновенно
+     вместе с вводом, и момент «теперь можно отправить» проходил мимо глаза. */
+  animation: send-pop 0.18s var(--ms-ease);
+}
+
+@keyframes send-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .send-btn {
@@ -1679,6 +1693,12 @@ watch(newMessage, () => {
   justify-content: center;
   cursor: pointer;
   font-size: 1rem;
+}
+
+/* Нажатие отзывается сжатием: на телефоне палец попадает по кнопке — она должна
+   подтвердить нажатие до отправки (запрос уходит не мгновенно). */
+.send-btn:active {
+  transform: scale(0.9);
 }
 
 .send-btn:hover {

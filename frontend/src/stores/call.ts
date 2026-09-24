@@ -146,6 +146,14 @@ interface CallState {
   micProcessing: MicProcessing
   /** Микрофон собеседника (по его сигналу `call-media-state`). */
   peerMicOn: boolean
+  /**
+   * Говорит ли собеседник (1:1) — по уровню звука с нашего анализатора.
+   *
+   * В группе то же самое живёт в `participants[].speaking` (там плитки, и у
+   * каждого своё кольцо), а в 1:1 плиток нет — признак нужен аватару в плашке и
+   * в звонке, чтобы разговор был виден, даже когда экран не развёрнут.
+   */
+  peerSpeaking: boolean
   /** Идёт ли видео от собеседника (камера или показ экрана). */
   peerVideoOn: boolean
   /** Последняя снятая статистика соединения (качество связи и диагностика). */
@@ -237,6 +245,7 @@ const DEFAULT_STATE: CallState = {
   videoPausedForNetwork: false,
   micProcessing: 'clean',
   peerMicOn: true,
+  peerSpeaking: false,
   peerVideoOn: true,
   diagnostics: null,
   peerDiagnostics: {},
@@ -1856,10 +1865,18 @@ export const useCallStore = defineStore('call', {
      * работает и служит фолбэком.
      */
     _updateSpeaking() {
-      // Признак нужен только там, где видны плитки других участников.
-      if (this.status !== 'active' || this.participants.length < 2) return
+      if (this.status !== 'active') return
       const viaWebAudio = remoteOutputReady()
       const levels = viaWebAudio ? remoteLevels() : new Map<number, number>()
+      // 1:1 — собеседник один, плиток нет: тот же уровень ведёт аватар в плашке
+      // и в звонке (в группе плитки рисуют кольца сами).
+      if (!this.isGroup) {
+        const level = viaWebAudio
+          ? (levels.get(this.peerId ?? 0) ?? 0)
+          : (this.diagnostics?.audioLevel ?? 0)
+        this.peerSpeaking = speakingNow(level, this.peerSpeaking)
+        return
+      }
       for (const participant of [...this.participants]) {
         const level = viaWebAudio
           ? (levels.get(participant.id) ?? 0)

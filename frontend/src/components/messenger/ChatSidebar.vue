@@ -5,9 +5,17 @@
   <aside
     ref="panelRoot"
     class="side-panel ms-rows"
+    :class="{ pulling }"
+    :style="pullStyle"
     @touchstart.passive="onPanelTouchStart"
     @touchmove.passive="onPanelTouchMove"
+    @touchend.passive="onPanelTouchEnd"
+    @touchcancel.passive="onPanelTouchEnd"
   >
+    <!-- Отклик на протяжку вниз: полоса показывает, сколько осталось до
+         следующего шага (поиск → истории → воспроизведение). Сама панель при
+         этом едет за пальцем — см. `--ms-pull-y`. -->
+    <span class="pull-bar" aria-hidden="true"></span>
     <!-- Шапка панели (обычный режим и режим выделения чатов — в SidebarHeader.vue) -->
     <SidebarHeader
       :selection-mode="selectionMode"
@@ -212,6 +220,7 @@ import {
   type ChatFolder
 } from '@/utils/chatFolders'
 import { usePhoneImport } from '@/composables/usePhoneImport'
+import { haptic } from '@/utils/haptics'
 import { useSlideDown } from '@/composables/useSlideDown'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import { useMobileLayer } from '@/composables/useMobileOverlay'
@@ -431,6 +440,44 @@ let pullUsed = false
 /** Касание началось на самом списке — только там работает протяжка вниз. */
 let pullFromList = false
 
+/**
+ * Отклик на протяжку: панель едет за пальцем, сверху растёт полоса прогресса.
+ *
+ * Раньше жест был «молчаливым»: до порога не происходило НИЧЕГО, и человек не
+ * понимал, тянет он поиск, истории или уже открытие историй. Теперь движение
+ * видно с первого пикселя, на пороге отзывается вибрация, а полоса говорит,
+ * сколько осталось до следующего шага.
+ */
+const PULL_DAMPING = 0.55
+
+/** Дальше этого панель не уезжает: длиннее движение уже не читается. */
+const PULL_MAX_PX = 68
+
+const pullOffset = ref(0)
+/** Прогресс до ближайшего порога (0…1) — им живёт полоса сверху. */
+const pullProgress = ref(0)
+const pulling = ref(false)
+const pullStyle = computed<Record<string, string>>(() => ({
+  '--ms-pull-y': `${Math.round(pullOffset.value)}px`,
+  '--ms-pull-progress': pullProgress.value.toFixed(3)
+}))
+
+/** Ближайший порог — он же знаменатель полосы прогресса. */
+const pullThreshold = (): number => {
+  if (!searchOpen.value) return PULL_EXPAND_PX
+  return storiesExpanded.value ? PULL_PLAY_PX : PULL_STORIES_PX
+}
+
+const resetPull = () => {
+  pulling.value = false
+  pullOffset.value = 0
+  pullProgress.value = 0
+}
+
+const onPanelTouchEnd = () => {
+  resetPull()
+}
+
 /** Панель целиком: на ней и слушаем жесты. */
 const panelRoot = ref<HTMLElement | null>(null)
 
@@ -444,6 +491,7 @@ const listIsScrolled = (el: HTMLElement | null): boolean => (el?.scrollTop ?? 0)
 const onPanelTouchStart = (event: TouchEvent) => {
   pullStartY = event.touches[0]?.clientY ?? 0
   pullUsed = false
+  resetPull()
   const target = event.target
   pullFromList = target instanceof Element && target.closest('.chat-scroll') !== null
 }
@@ -472,9 +520,16 @@ const onPanelTouchMove = (event: TouchEvent) => {
   }
   // Дальше — только протяжка вниз по самому списку, с его верха.
   if (!pullFromList || listIsScrolled(list)) return
+  // Панель едет за пальцем и показывает, сколько осталось до шага: до порога
+  // глаз видит отклик, а не пустоту.
+  pulling.value = true
+  pullOffset.value = Math.min(distance * PULL_DAMPING, PULL_MAX_PX)
+  pullProgress.value = Math.min(distance / pullThreshold(), 1)
   if (!searchOpen.value) {
     if (distance < PULL_EXPAND_PX) return
     pullUsed = true
+    resetPull()
+    haptic()
     revealSearch()
     return
   }
@@ -483,11 +538,15 @@ const onPanelTouchMove = (event: TouchEvent) => {
     // воспроизведение: с этого места истории смотрят, а не разглядывают кружки.
     if (distance < PULL_PLAY_PX) return
     pullUsed = true
+    resetPull()
+    haptic()
     openStoriesPlayback()
     return
   }
   if (distance < PULL_STORIES_PX) return
   pullUsed = true
+  resetPull()
+  haptic()
   setStoriesExpanded(true)
 }
 
@@ -840,6 +899,30 @@ useMobileLayer(() => phoneImportOpen.value, closePhoneImport)
   min-width: 0;
   /* Плавающие элементы панели (кнопки у краёв) позиционируются от неё. */
   position: relative;
+  /* Протяжка вниз: панель едет за пальцем. Возврат на место — переходом, а во
+     время движения он выключен (`.pulling`), иначе панель отставала бы. */
+  transform: translateY(var(--ms-pull-y, 0));
+  transition: transform 0.2s var(--ms-ease);
+}
+
+.side-panel.pulling {
+  transition: none;
+}
+
+/* Полоса прогресса до следующего шага. Она «прилипла» к верху drawer'а,
+   поэтому своим transform гасит смещение панели. */
+.pull-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 5;
+  transform-origin: left center;
+  transform: translateY(calc(-1 * var(--ms-pull-y, 0px))) scaleX(var(--ms-pull-progress, 0));
+  background: var(--ms-accent);
+  opacity: var(--ms-pull-progress, 0);
+  pointer-events: none;
 }
 
 .icon-btn.open {

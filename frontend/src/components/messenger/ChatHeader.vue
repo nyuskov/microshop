@@ -25,7 +25,11 @@
       </span>
     </span>
     <div class="chat-header-info" :title="t('Информация о чате')" @click="emit('open-info')">
-      <div class="chat-title-row">
+      <!-- Ключ по id чата: при смене чата строки пересоздаются и въезжают снизу
+           (см. `chat-swap`) — открылся ДРУГОЙ чат, это видно глазу, а не только
+           по подмене текста. Постоянные обновления (статус, «печатает») ключ не
+           трогают: элемент не пересоздаётся и не мигает. -->
+      <div :key="props.chat.id" class="chat-title-row">
         <div class="chat-title">{{ title }}</div>
         <span
           v-if="e2ee"
@@ -36,7 +40,7 @@
         </span>
         <span v-if="statusPill" class="chat-status-pill">{{ statusPill }}</span>
       </div>
-      <div class="chat-subtitle">
+      <div :key="props.chat.id" class="chat-subtitle">
         <span
           v-if="connectionText"
           class="chat-subtitle-text connection-state"
@@ -406,6 +410,24 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   flex: 1;
   min-width: 0;
   overflow: hidden;
+}
+
+/* Смена чата: название и подпись въезжают снизу за 0,16 s. Уходящий кадр не
+   держим — задержка на каждый тап по списку была бы навязчивой. */
+.chat-title-row,
+.chat-subtitle {
+  animation: chat-swap 0.16s var(--ms-ease);
+}
+
+@keyframes chat-swap {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .chat-title-row {

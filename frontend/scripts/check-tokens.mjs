@@ -42,9 +42,16 @@ const TOKENS_PATH = path.join(SRC, 'assets', 'appearance.css')
  * Токены, которых в `appearance.css` нет и не должно быть: их выставляет JS в
  * рантайме (`useVisualViewport` пишет высоту/смещение visualViewport,
  * `MessageComposer` — высоту открытой панели эмодзи/стикеров, чтобы лента
- * резервировала под неё место).
+ * резервировала под неё место, `ChatSidebar` — смещение панели при протяжке вниз
+ * и прогресс до следующего шага).
  */
-const RUNTIME_TOKENS = new Set(['--ms-vv-h', '--ms-vv-top', '--ms-extras-h'])
+const RUNTIME_TOKENS = new Set([
+  '--ms-vv-h',
+  '--ms-vv-top',
+  '--ms-extras-h',
+  '--ms-pull-y',
+  '--ms-pull-progress'
+])
 
 /** Пути относительно src/. Литеральные цвета здесь оправданы. */
 const ALLOWED = new Map([

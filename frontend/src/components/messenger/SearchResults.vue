@@ -288,6 +288,54 @@ const snippetOf = (message: Message): string => messageSnippetText(message)
 </script>
 
 <style scoped>
+/*
+ * Результаты поиска входят друг за другом (по 16 мс), а не все разом: список
+ * собирается из ответов разных чатов, и ступенька показывает, что ответов много
+ * и они разные. Задержки — по номеру строки, дальше восьмой — одинаковые, иначе
+ * длинный ответ дописывался бы глазом дольше, чем длится сам поиск.
+ */
+.row-item {
+  animation: row-in 0.18s var(--ms-ease) both;
+}
+
+.row-item:nth-child(2) {
+  animation-delay: 16ms;
+}
+
+.row-item:nth-child(3) {
+  animation-delay: 32ms;
+}
+
+.row-item:nth-child(4) {
+  animation-delay: 48ms;
+}
+
+.row-item:nth-child(5) {
+  animation-delay: 64ms;
+}
+
+.row-item:nth-child(6) {
+  animation-delay: 80ms;
+}
+
+.row-item:nth-child(7) {
+  animation-delay: 96ms;
+}
+
+.row-item:nth-child(n + 8) {
+  animation-delay: 112ms;
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 /* Режимные вкладки прилипают к верху: результаты длинные и прокручиваются
    внутри своей области, а переключатель остаётся на месте. */
 .search-mode-tabs {

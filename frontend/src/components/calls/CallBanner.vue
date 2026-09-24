@@ -54,10 +54,14 @@
          обратно на весь экран. Отдельной стрелки «развернуть» тут нет: человек
          и так жмёт по плашке (решение владельца 24.09.2026). -->
     <button class="cb-info" :title="t('Вернуться в звонок')" @click="callStore.restoreCall()">
-      <span v-if="callStore.isGroup" class="cb-avatar cb-avatar-group">
+      <span
+        v-if="callStore.isGroup"
+        class="cb-avatar cb-avatar-group"
+        :class="{ speaking: peerSpeaking }"
+      >
         <q-icon :name="icon('group')" size="18px" />
       </span>
-      <span v-else class="cb-avatar" :style="avatarStyle(name)">
+      <span v-else class="cb-avatar" :class="{ speaking: peerSpeaking }" :style="avatarStyle(name)">
         <img
           v-if="avatarUrl && !avatarImgFailed"
           :src="avatarUrl"
@@ -125,6 +129,19 @@ defineProps<{
 const emit = defineEmits<{ back: [] }>()
 
 const callStore = useCallStore()
+
+/**
+ * Говорит ли собеседник (в группе — кто-нибудь из участников).
+ *
+ * Уровнем речи это уже считается в сторе (см. `_updateSpeaking`): в плашке он
+ * превращается в кольцо вокруг аватара — видно, что разговор живой, не
+ * разворачивая звонок.
+ */
+const peerSpeaking = computed<boolean>(() =>
+  callStore.isGroup
+    ? callStore.participants.some((participant) => participant.speaking)
+    : callStore.peerSpeaking
+)
 
 /** Имя собеседника (в группе — без списка участников: он не помещается). */
 const name = computed<string>(() => {
@@ -292,6 +309,22 @@ const hangUp = (): void => {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* Собеседник говорит: вокруг аватара расходится кольцо акцента. В свёрнутом
+   звонке это единственный признак живой речи (плиток участников не видно). */
+.cb-avatar.speaking {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ms-accent) 32%, transparent);
+  animation: cb-speaking 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes cb-speaking {
+  from {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ms-accent) 32%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--ms-accent) 10%, transparent);
+  }
 }
 
 .cb-text {

@@ -1163,13 +1163,15 @@ onBeforeUnmount(() => {
 
 .reaction-leave-active {
   transition:
-    opacity 0.12s ease,
-    transform 0.12s ease;
+    opacity 0.16s ease,
+    transform 0.16s cubic-bezier(0.4, 0, 0.7, 1);
 }
 
+/* Снятая реакция «сдувается» с легким разворотом — видно, что чип ушёл, а не
+   просто исчез между кадрами. */
 .reaction-leave-to {
   opacity: 0;
-  transform: scale(0.6);
+  transform: scale(0.5) rotate(-8deg);
 }
 
 @keyframes reaction-pop {
@@ -1210,6 +1212,13 @@ onBeforeUnmount(() => {
 .reaction-chip.mine {
   background: color-mix(in srgb, var(--ms-accent) 20%, transparent);
   color: var(--ms-text-strong);
+}
+
+/* Нажатие отзывается сжатием: без него чип на телефоне не отзывается никак.
+   Пере-ход тут не нужен: сжатие должно быть мгновенным (transition занят
+   анимацией появления/снятия чипа). */
+.reaction-chip:active {
+  transform: scale(0.92);
 }
 
 .reaction-count {

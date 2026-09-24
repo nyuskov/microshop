@@ -150,7 +150,11 @@
           >
             <!-- Аудио-режим: аватар поверх фона -->
             <template v-if="callStore.kind === 'audio'">
-              <span class="call-avatar huge" :style="avatarStyle(displayName)">
+              <span
+                class="call-avatar huge"
+                :class="{ speaking: peerSpeaking }"
+                :style="avatarStyle(displayName)"
+              >
                 <img
                   v-if="avatarUrl && !avatarImgFailed"
                   :src="avatarUrl"
@@ -210,7 +214,11 @@
 
             <!-- Видео-режим: HUD сверху -->
             <div v-else class="video-hud">
-              <span class="hud-avatar" :style="avatarStyle(displayName)">
+              <span
+                class="hud-avatar"
+                :class="{ speaking: peerSpeaking }"
+                :style="avatarStyle(displayName)"
+              >
                 <img
                   v-if="avatarUrl && !avatarImgFailed"
                   :src="avatarUrl"
@@ -670,6 +678,18 @@ let attachTimer: ReturnType<typeof setInterval> | undefined
 /** Видно ли картинку собеседника (иначе элемент невидим, но звук остаётся). */
 const remoteVideoVisible = computed<boolean>(
   () => callStore.kind === 'video' && callStore.peerVideoOn
+)
+
+/**
+ * Говорит ли собеседник (в группе — кто-нибудь): аватар отвечает кольцом.
+ *
+ * В 1:1 других признаков речи нет — плиток нет, а картинка в видеозвонке может
+ * быть выключена собеседником.
+ */
+const peerSpeaking = computed<boolean>(() =>
+  callStore.isGroup
+    ? callStore.participants.some((participant) => participant.speaking)
+    : callStore.peerSpeaking
 )
 
 /**
@@ -1325,6 +1345,23 @@ onBeforeUnmount(() => {
   height: 180px;
   font-size: 3.8rem;
   animation: none;
+}
+
+/* Собеседник говорит: кольцо вокруг аватара. В группе то же самое показывают
+   плитки (`CallGrid`), но аватар виден и в 1:1 — там других признаков речи нет. */
+.call-avatar.speaking,
+.hud-avatar.speaking {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ms-accent) 55%, transparent);
+  animation: avatar-speaking 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes avatar-speaking {
+  from {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ms-accent) 55%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 9px color-mix(in srgb, var(--ms-accent) 14%, transparent);
+  }
 }
 
 @keyframes avatar-pulse {

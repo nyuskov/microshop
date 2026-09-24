@@ -220,7 +220,7 @@
                     {{ previewText(chat, props.currentUserId) }}
                   </template>
                 </span>
-                <span v-if="chat.unread_count > 0" class="unread-badge">
+                <span v-if="chat.unread_count > 0" :key="chat.unread_count" class="unread-badge">
                   {{ chat.unread_count }}
                 </span>
               </span>
@@ -514,6 +514,23 @@ watch(
 </script>
 
 <style scoped>
+/* Новое число непрочитанных «подпрыгивает» (элемент пересоздаётся ключом по
+   счётчику): раньше цифра менялась незаметно — чат открыт, а в списке тихо +1. */
+.unread-badge {
+  animation: unread-bounce 0.26s var(--ms-ease);
+}
+
+@keyframes unread-bounce {
+  0% {
+    transform: scale(0.72);
+  }
+  60% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
 /* Список занимает место раздела: фильтры сверху, прокрутка — остаток высоты. */
 .chats-panel {
   flex: 1;

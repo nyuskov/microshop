@@ -16,7 +16,7 @@
         class="quick-emoji"
         :class="{ active: hasMyReaction(message, emoji) }"
         :title="t('Реакция {emoji}', { emoji })"
-        @click="onQuickReaction(emoji)"
+        @click="onQuickReaction(emoji, $event)"
       >
         {{ emoji }}
       </button>
@@ -146,6 +146,7 @@ import type { Message } from '@/types'
 import { icon } from '@/utils/icons'
 import { t } from '@/i18n'
 import { haptic } from '@/utils/haptics'
+import { flyEmoji } from '@/composables/useFlyingEmoji'
 import { isStickerMessage } from '@/utils/media'
 import {
   REACTION_EMOJIS,
@@ -317,17 +318,43 @@ const onForward = () => {
  * Палитру реакций закрывает родитель: при успешной реакции он сам сбрасывает
  * `emojiPickerFor` (см. `toggleReaction` в Messenger).
  */
-const onPickEmoji = (emoji: string) => {
+const onPickEmoji = (emoji: string, source: EventTarget | null = null) => {
   moreOpen.value = false
   rememberQuickReaction(emoji)
   haptic()
+  flyToMessage(emoji, source)
   emit('toggle-reaction', emoji)
   dismiss()
 }
 
+/**
+ * Откуда и куда летит эмодзи реакции.
+ *
+ * Откуда — кнопка, по которой нажали (в палитре — сама панель). Куда — чипы
+ * этого сообщения: к моменту клика они могут быть другой ширины, но место
+ * (нижний ряд пузыря) верное, а сам чип потом «выстреливает» на месте.
+ */
+const flyToMessage = (emoji: string, source: EventTarget | null) => {
+  const row = document.querySelector<HTMLElement>(`[data-message-id="${props.message.id}"]`)
+  if (!row) return
+  const target =
+    row.querySelector<HTMLElement>('.reactions') ??
+    row.querySelector<HTMLElement>('.msg-footer') ??
+    row
+  const origin = source instanceof Element ? source : barRef.value
+  const originRect = origin?.getBoundingClientRect()
+  const targetRect = target.getBoundingClientRect()
+  if (!originRect || !targetRect) return
+  flyEmoji(
+    emoji,
+    { x: originRect.left + originRect.width / 2, y: originRect.top + originRect.height / 2 },
+    { x: targetRect.left + 22, y: targetRect.top + targetRect.height / 2 }
+  )
+}
+
 /** Быстрая реакция прямо из панели: палитру не открываем. */
-const onQuickReaction = (emoji: string) => {
-  onPickEmoji(emoji)
+const onQuickReaction = (emoji: string, event: MouseEvent) => {
+  onPickEmoji(emoji, event.currentTarget)
 }
 
 const onPin = () => {
