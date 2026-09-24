@@ -10,13 +10,19 @@
  * сам WebRTC — его в jsdom нет.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { createPinia, setActivePinia } from 'pinia'
 
 vi.mock('@/services/iceServers', () => ({
   fetchIceServers: vi.fn(async () => [])
 }))
 
+import { useAuthStore } from '@/stores/auth'
 import { useCallStore } from '@/stores/call'
+import { runtime } from '@/stores/call/signaling'
+
+/** Исходник стора — для стражей, которые проверяют порядок действий. */
+const store = readFileSync('src/stores/call.ts', 'utf8')
 
 const STORAGE_KEY = 'pismo_call_session'
 
@@ -181,5 +187,148 @@ describe('память об идущем звонке', () => {
 
     store._cleanup()
     expect(storedCall()).toBeNull()
+  })
+})
+
+/**
+ * Перезагрузка во время ВЫЗОВА (ещё не ответили).
+ *
+ * Владелец, 24.09.2026: «а при созванивании проверь» — до этого памятка писалась
+ * только для идущего разговора, и перезагрузка на фазе «звоним…/входящий» теряла
+ * вызов целиком: собеседник продолжал звонить в тишину, а у перезагрузившегося не
+ * оставалось ни экрана, ни следа. Проверено живьём на dev: обе стороны (и
+ * звонящий, и принимающий) возвращаются, и разговор поднимается по ответу.
+ */
+describe('перезагрузка во время вызова (ещё звонит)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    window.sessionStorage.clear()
+    window.localStorage.clear()
+  })
+
+  it('свой вызов запоминается, поднимается и шлёт собеседнику новое предложение', async () => {
+    stubMedia()
+    const first = useCallStore()
+    first.$patch({ status: 'outgoing', callId: 'call-ring', peerId: 7, kind: 'audio' })
+    first.rememberCall()
+    expect(storedCall()?.ringing).toBe('outgoing')
+
+    // Перезагрузка: то же хранилище, но чистый стор.
+    setActivePinia(createPinia())
+    const store = useCallStore()
+    store.connected = true
+
+    expect(await store.recoverCallAfterReload()).toBe(true)
+    expect(store.status).toBe('outgoing')
+    expect(store.callId).toBe('call-ring')
+    // Прежний SDP мёртв вместе со страницей: собеседник ответит по НОВОМУ.
+    const link = store._linkFor(7)
+    expect(link?.pc.setLocalDescription).toHaveBeenCalled()
+    // Свой вызов не показываем разговором, пока не ответят.
+    expect(store.seconds).toBe(0)
+
+    store._cleanup()
+  })
+
+  it('входящий возвращается экраном звонка — и медиа до ответа не берём', async () => {
+    stubMedia()
+    window.sessionStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        callId: 'call-in',
+        peerId: 9,
+        kind: 'audio',
+        startedAt: Date.now() - 4_000,
+        touchedAt: Date.now() - 1_000,
+        ringing: 'incoming',
+        offerSdp: 'v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\n'
+      })
+    )
+    const store = useCallStore()
+    store.connected = true
+
+    expect(await store.recoverCallAfterReload()).toBe(true)
+    expect(store.status).toBe('incoming')
+    expect(store.peerId).toBe(9)
+    // Предложение собеседника лежит в памятке — по нему и ответим.
+    expect(runtime.pendingOffer?.sdp).toContain('v=0')
+    // Камеру и микрофон до ответа не включаем: человек ещё не согласился.
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled()
+
+    store._cleanup()
+  })
+
+  it('входящий без предложения поднимать нечем — говорим, что звонок завершён', async () => {
+    stubMedia()
+    window.sessionStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        callId: 'call-in2',
+        peerId: 9,
+        kind: 'audio',
+        startedAt: Date.now() - 4_000,
+        touchedAt: Date.now() - 1_000,
+        ringing: 'incoming'
+      })
+    )
+    const store = useCallStore()
+    store.connected = true
+
+    expect(await store.recoverCallAfterReload()).toBe(false)
+    expect(store.status).toBe('idle')
+  })
+
+  it('собеседник вернулся во время нашего вызова — переотдаём предложение', async () => {
+    stubMedia()
+    const store = useCallStore()
+    store.$patch({ status: 'outgoing', callId: 'call-ring2', peerId: 7 })
+    const link = store._newLink(7, {})
+
+    store._handleMessage({ type: 'call-rejoin', from_user_id: 7, call_id: 'call-ring2' })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(store.status).toBe('outgoing')
+    expect(link.pc.setLocalDescription).toHaveBeenCalled()
+    store._cleanup()
+  })
+})
+
+/**
+ * Пересогласование после перезагрузки ведёт ОДНА сторона.
+ *
+ * Два одновременных предложения («glare») не применяются ни одно — звонок рвётся
+ * уже безвозвратно. Поэтому инициатива у младшего по id (то же правило, что при
+ * сборке группового «mesh»), а второй только отвечает и выжидает.
+ */
+describe('пересогласование после перезагрузки: один инициатор', () => {
+  it('младший по id ведёт, старший ждёт', () => {
+    setActivePinia(createPinia())
+    const store = useCallStore()
+    useAuthStore().$patch({ current_user: { id: 5 } as never })
+
+    expect(store._rejoinOfferer(9)).toBe(true)
+    expect(store._rejoinOfferer(3)).toBe(false)
+  })
+
+  it('второй участник не шлёт своё предложение, а его попытки не «сгорают»', () => {
+    const restart = store.slice(store.indexOf('async _restartIce'))
+    expect(restart).toContain(
+      'if (runtime.rejoinPending && !this._rejoinOfferer(link.peerId)) return'
+    )
+    expect(restart).toContain('if (runtime.rejoinPending) link.iceRestartAttempts = 0')
+  })
+
+  it('наблюдатель медиа молчит, пока идёт пересогласование', () => {
+    const watchdog = store.slice(store.indexOf('async _checkMediaFlow'))
+    expect(watchdog).toContain('if (runtime.rejoinPending) return')
+  })
+
+  it('«Переподключаемся…» снимается, даже если ICE не сменил состояние', () => {
+    // Разговор уже идёт, а плашка оставалась висеть до конца звонка (нашли живьём).
+    expect(store).toContain('this._endRejoin()')
+    const renegotiate = store.slice(store.indexOf("case 'call-renegotiate-answer'"))
+    expect(renegotiate).toContain('this._resetIceRecovery()')
+    const answer = store.slice(store.indexOf('async _answerRenegotiate'))
+    expect(answer).toContain('this._resetIceRecovery()')
   })
 })

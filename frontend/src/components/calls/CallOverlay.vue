@@ -5,10 +5,17 @@
       <div
         v-if="callStore.status !== 'idle'"
         class="call-overlay"
-        :class="{ 'call-overlay-hidden': callStore.minimized }"
+        :class="{
+          'call-overlay-hidden': callStore.minimized,
+          'call-dragging': dragging || noDragTransition
+        }"
+        :style="dragStyle"
         :inert="callStore.minimized || undefined"
         @mousedown.stop
         @pointerdown="onOverlayPointerDown"
+        @pointermove="onOverlayPointerMove"
+        @pointerup="onOverlayPointerUp"
+        @pointercancel="onOverlayPointerUp"
       >
         <template v-if="callStore.status === 'incoming'">
           <div class="call-card">
@@ -861,11 +868,104 @@ const closePanels = () => {
  */
 const onOverlayPointerDown = (event: PointerEvent) => {
   callStore.resumeOutput()
+  // Протяжка вверх: помним начало. Решение принимаем на движении — палец мог
+  // просто тапнуть по экрану, и тогда жест не должен ничего делать.
+  dragStart.value = { x: event.clientX, y: event.clientY, id: event.pointerId }
+  dragAllowed.value =
+    canSwipeMinimize.value && event.pointerType !== 'mouse' && !dragBlockedTarget(event.target)
   const target = event.target
   if (!(target instanceof Node)) return
   if (popoversEl.value?.contains(target)) return
   if (moreBtnEl.value?.contains(target)) return
   closePanels()
+}
+
+/*
+ * Протяжка вверх по экрану звонка — тот же смысл, что у кнопки «свернуть».
+ *
+ * Владелец (24.09.2026): «сокрытие звонка не только по галке, а ещё и по просто
+ * протяжке вверх» — жест привычнее кнопки, и его и ждут от полноэкранного звонка.
+ * Слой едет за пальцем и слегка гаснет, а на отпускании сворачивается, если
+ * протянули достаточно: тот же `minimizeCall()`, что и у кнопки.
+ */
+const SWIPE_UP_HIDE_PX = 70
+/** Дальше не пускаем: слой и так уже наполовину сдвинут. */
+const SWIPE_UP_MAX_PX = 320
+/** На этой протяжке слой гаснет полностью (наполовину — уже заметно). */
+const SWIPE_UP_FADE_PX = 160
+
+const dragOffsetY = ref(0)
+const dragStart = ref<{ x: number; y: number; id: number } | null>(null)
+/** Жест начался там, где можно тянуть (не по кнопке и не по превью с маской). */
+const dragAllowed = ref(false)
+const dragging = ref(false)
+/** Слой возвращаем на место без перехода: иначе видно «съезжание» на место. */
+const noDragTransition = ref(false)
+
+const dragStyle = computed<Record<string, string>>(() => ({
+  '--call-drag': `${dragOffsetY.value}px`,
+  '--call-drag-fade': String(Math.min(1, Math.abs(dragOffsetY.value) / SWIPE_UP_FADE_PX))
+}))
+
+/** Свернуть протяжкой можно то же, что и кнопкой (см. `minimizeCall` в сторе). */
+const canSwipeMinimize = computed<boolean>(
+  () => callStore.status === 'active' || callStore.status === 'outgoing'
+)
+
+/**
+ * Жест не начинаем на кнопках, в меню и на превью с маской: у кнопок своё
+ * действие (тап), у превью — свой жест (перетаскивание маски).
+ */
+const dragBlockedTarget = (target: EventTarget | null): boolean => {
+  if (!(target instanceof Element)) return true
+  return Boolean(
+    target.closest('button, a, input, select, textarea, video, .call-popovers, [role="menu"]')
+  )
+}
+
+const onOverlayPointerMove = (event: PointerEvent) => {
+  const start = dragStart.value
+  if (!start || !dragAllowed.value || event.pointerId !== start.id) return
+  const dy = event.clientY - start.y
+  const dx = event.clientX - start.x
+  // Наш жест — только вверх и преимущественно вертикально: вбок и вниз не трогаем.
+  if (dy >= 0 || Math.abs(dx) > Math.abs(dy)) {
+    dragOffsetY.value = 0
+    dragging.value = false
+    return
+  }
+  dragging.value = true
+  dragOffsetY.value = Math.max(-SWIPE_UP_MAX_PX, dy)
+}
+
+const onOverlayPointerUp = (event: PointerEvent) => {
+  const start = dragStart.value
+  const allowed = dragAllowed.value
+  dragStart.value = null
+  dragAllowed.value = false
+  dragging.value = false
+  if (!start || !allowed || event.pointerId !== start.id) return
+  const pulled = -dragOffsetY.value
+  if (pulled < SWIPE_UP_HIDE_PX) {
+    // Не дотянули — слой возвращается на место переходом (см. `.call-overlay`).
+    dragOffsetY.value = 0
+    return
+  }
+  // Свернули: доводим слой вверх и гасим его классом `call-overlay-hidden`, а на
+  // место вернём при развороте (см. наблюдатель за `minimized`) — возвращать
+  // сейчас значило бы показать, как звонок съезжает обратно.
+  dragOffsetY.value = -SWIPE_UP_MAX_PX
+  callStore.minimizeCall()
+}
+
+/** Ставит слой на место без перехода: переход тут читается как «съезжание». */
+const resetDragOffset = () => {
+  noDragTransition.value = true
+  dragOffsetY.value = 0
+  dragging.value = false
+  void nextTick(() => {
+    noDragTransition.value = false
+  })
 }
 
 /** Открыть/закрыть меню «ещё»; панель устройств и меню разом не показываем. */
@@ -1191,9 +1291,23 @@ watch(
 watch(
   () => callStore.minimized,
   (minimized) => {
-    if (!minimized) return
+    if (!minimized) {
+      // Вернулись в звонок: слой ставим на место (в свёрнутом виде сдвиг от
+      // протяжки не виден, а тут он был бы виден как съезжание вниз).
+      resetDragOffset()
+      return
+    }
     closePanels()
     effectsOpen.value = false
+  }
+)
+
+// Звонок завершился или превратился во входящий — сдвиг от протяжки снимаем:
+// следующий звонок не должен открыться «уехавшим» вверх.
+watch(
+  () => callStore.status,
+  (status) => {
+    if (status === 'idle' || status === 'incoming') resetDragOffset()
   }
 )
 
@@ -1239,7 +1353,23 @@ onBeforeUnmount(() => {
   /* Жест «потянуть вниз» не должен уходить в документ: браузер понял бы это как
      pull-to-refresh и перезагрузил страницу прямо во время разговора. */
   overscroll-behavior: none;
-  touch-action: manipulation;
+  /* Своих прокручиваемых частей внутри нет (сетка участников и панели — с
+     `overflow: hidden`), поэтому вертикальную протяжку забираем себе: по ней
+     звонок сворачивается в плашку (см. `onOverlayPointerMove`). */
+  touch-action: none;
+  /* Протяжка вверх: слой едет за пальцем и гаснет (`--call-drag` задаёт
+     обработчик жеста). Вне жеста обе переменные нулевые, переход нужен для
+     возврата слоя на место и для появления звонка. */
+  transform: translateY(var(--call-drag, 0px));
+  opacity: calc(1 - var(--call-drag-fade, 0) * 0.8);
+  transition:
+    transform 0.18s ease-out,
+    opacity 0.18s ease-out;
+}
+
+/* Палец ведёт слой: он обязан следовать РОВНО за пальцем, без перехода. */
+.call-overlay.call-dragging {
+  transition: none;
 }
 
 /*

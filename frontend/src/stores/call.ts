@@ -103,6 +103,8 @@ import type { PeerLink } from './call/signaling'
 import {
   CALL_REJOIN_TIMEOUT_MS,
   CALL_TOUCH_EVERY_SECONDS,
+  PEER_REJOIN_WINDOW_MS,
+  REJOIN_OFFER_DELAY_MS,
   callAfterReload,
   forgetActiveCall,
   rememberActiveCall
@@ -115,6 +117,7 @@ import type {
   CameraFacing,
   SignalingMessage
 } from './call/types'
+import type { StoredCall } from './call/session'
 
 // Публичный контракт стора звонков остаётся прежним: всё это по-прежнему
 // импортируется из `@/stores/call`, хотя живёт в соседних модулях `stores/call/`.
@@ -757,10 +760,29 @@ export const useCallStore = defineStore('call', {
         window.clearTimeout(runtime.rejoinTimer)
         runtime.rejoinTimer = undefined
       }
+      // Пересогласование после перезагрузки закончилось: связь поднялась.
+      this._endRejoin()
       runtime.iceRestartAttempts = 0
       // Медиа пошло — значит ответ дошёл, повторять его больше не нужно.
       this._clearAnswerRetry()
       if (this.reconnecting && this.connected) this.reconnecting = false
+    },
+
+    /**
+     * Пересогласование после перезагрузки закончилось — дальше обычный ход звонка.
+     *
+     * Снять это состояние нужно ЯВНО: ICE мог остаться в том же состоянии
+     * (`connected`), и события `iceconnectionstatechange` не будет. Без явного
+     * снятия «Переподключаемся…» висело бы до конца разговора, а вместе с ним —
+     * запрет своих перезапусков ICE (проверено живьём 24.09.2026: звонок уже шёл,
+     * а плашка не гасла).
+     */
+    _endRejoin() {
+      runtime.rejoinPending = false
+      if (runtime.peerRejoinTimer !== undefined) {
+        window.clearTimeout(runtime.peerRejoinTimer)
+        runtime.peerRejoinTimer = undefined
+      }
     },
 
     _scheduleIceRestart(delay: number) {
@@ -839,9 +861,17 @@ export const useCallStore = defineStore('call', {
         // сеть в порядке, снимаем пометку «в прошлый раз помогал только релей».
         if (runtime.mediaWatchdogRestarts === 0) setRelayOnly(false)
         this._clearMediaWatchdog()
+        // Звонок мог только что собираться заново после перезагрузки: медиа идёт,
+        // значит пересогласование состоялось (даже если ICE не сменил состояние).
+        if (runtime.rejoinPending || this.reconnecting) this._resetIceRecovery()
         return
       }
       runtime.mediaWatchdogFailures += 1
+      // Связь пересобирается после перезагрузки (см. `rejoinPending`): от нас
+      // сейчас нужен только ответ на предложение собеседника. Свой перезапуск
+      // ICE был бы вторым предложением — оба не применятся («glare»), и звонок
+      // сорвался бы именно в этот момент.
+      if (runtime.rejoinPending) return
       // Зовущий ждёт меньше, отвечающий — дольше: иначе два одновременных
       // пересогласования SDP столкнутся (glare) и оба сорвутся.
       const failuresNeeded = runtime.isCaller
@@ -879,6 +909,14 @@ export const useCallStore = defineStore('call', {
       if (this.status !== 'active' || !link) return
       // Перезапуск уже идёт: второй только сожжёт попытки (см. наблюдатель медиа).
       if (runtime.iceRestartInFlight) return
+      // Пересогласование после перезагрузки: инициатива у одной стороны (см.
+      // `_rejoinOfferer`). Второй только отвечает — своё предложение он не шлёт.
+      if (runtime.rejoinPending && !this._rejoinOfferer(link.peerId)) return
+      // Пока собеседник возвращается в звонок, попытки не «сгорают»: его
+      // страница поднимается секунды (холодный старт на телефоне), и прежний
+      // лимит в три попытки заканчивался раньше, чем он успевал ответить.
+      // Ожидание заканчивает `PEER_REJOIN_WINDOW_MS`.
+      if (runtime.rejoinPending) link.iceRestartAttempts = 0
       // Лимит попыток — СВОЙ у каждой связи. В группе один участник может так и
       // не подключиться (вышел из сети, отказался, экзотический NAT), и если
       // считать попытки общими, его неудачи израсходуют лимит у всех — разговор
@@ -1019,6 +1057,20 @@ export const useCallStore = defineStore('call', {
           // Повторная доставка того же вызова (переподключение сокета, повторный
           // push из уведомления) — не начинаем звонок заново.
           if (callId && this.callId === callId && this.status !== 'idle') {
+            // Мы ещё не ответили, а предложение пришло СВЕЖЕЕ: собеседник
+            // перезагрузил страницу и перезвонил в тот же вызов (у него новые
+            // SDP и ICE-адреса). По старому предложению отвечать нельзя — по нему
+            // медиа не поднимется, — поэтому просто заменяем его. Окно вызова при
+            // этом не перезапускаем: человек уже видит звонок.
+            if (this.status === 'incoming' && message.sdp) {
+              runtime.pendingOffer = {
+                callId,
+                kind: message.kind ?? this.kind,
+                sdp: message.sdp
+              }
+              this.kind = message.kind ?? this.kind
+              this.rememberCall()
+            }
             // Интерфейсу нужно погасить возможное системное уведомление.
             this.ignoredCallOffers += 1
             break
@@ -1053,6 +1105,9 @@ export const useCallStore = defineStore('call', {
             ]
           })
           startRingtone('incoming')
+          // Помним звонок с самого начала: перезагрузка во время вызова тоже
+          // должна вернуть экран входящего (владелец, 24.09.2026).
+          this.rememberCall()
           // Страховка на случай, когда о завершении вызова нам не сообщили
           // (например, приложение было закрыто, а звонок приняли на другом
           // устройстве). Иначе «входящий» висел бы бесконечно и следующий
@@ -1076,7 +1131,11 @@ export const useCallStore = defineStore('call', {
               // обработку: первый уже применён, второй просто игнорируем.
               void answerLink.pc
                 .setRemoteDescription({ type: 'answer', sdp: message.sdp })
-                .then(() => this._flushCandidates(answerLink.peerId))
+                .then(() => {
+                  this._flushCandidates(answerLink.peerId)
+                  // Пересогласование состоялось — звонок больше не «поднимается».
+                  this._resetIceRecovery()
+                })
                 .catch(() => undefined)
             }
             if (this.status === 'outgoing') this._becomeActive()
@@ -1108,7 +1167,12 @@ export const useCallStore = defineStore('call', {
           if (!link || this.callId !== callId || !message.sdp) return
           void link.pc
             .setRemoteDescription({ type: 'answer', sdp: message.sdp })
-            .then(() => this._flushCandidates(link.peerId))
+            .then(() => {
+              this._flushCandidates(link.peerId)
+              // Наше предложение принято: «Переподключаемся…» больше не показываем
+              // и возвращаем себе право самому чинить связь (наблюдатель медиа).
+              this._resetIceRecovery()
+            })
             .catch(() => undefined)
           break
         }
@@ -1117,10 +1181,33 @@ export const useCallStore = defineStore('call', {
           // ICE-адреса, а его прежний SDP мёртв. Связь жива только у нас,
           // поэтому пересогласуемся заново: для него это выглядит как короткое
           // «Переподключаемся…», а не как сброшенный звонок.
+          // Наш вызов ещё ЗВОНИТ: собеседник вернулся и ждёт предложение, по
+          // которому ответит. Прежнее он потерял вместе со страницей — шлём новое.
+          if (this.status === 'outgoing' && this.callId === callId) {
+            void this._resendOffer()
+            break
+          }
           if (this.status !== 'active' || this.callId !== callId || runtime.links.size === 0) return
+          const rejoinPeer = from || this.peerId || 0
           runtime.iceRestartAttempts = 0
+          runtime.rejoinPending = true
+          // Перезагрузка — не «обрыв связи»: у собеседника всё в порядке, он
+          // просто поднимает страницу. Поэтому лимит попыток каждой связи
+          // начинаем заново, а пока он возвращается — попытки не считаем вовсе
+          // (`_restartIce`). Иначе мы сдавались раньше, чем он успевал ответить,
+          // и звонок «срывался» именно после перезагрузки.
           for (const link of [...runtime.links.values()]) {
-            void this._restartIce(link.pc)
+            link.iceRestartAttempts = 0
+          }
+          this._armPeerRejoinWindow(rejoinPeer)
+          // Инициатива у младшего по id — как при сборке группового «mesh».
+          // Если она наша — сразу пересогласуемся; иначе молчим и ждём
+          // предложения собеседника: два одновременных предложения («glare»)
+          // не применяются ни одно, и звонок срывается уже безвозвратно.
+          if (this._rejoinOfferer(rejoinPeer)) {
+            for (const link of [...runtime.links.values()]) {
+              void this._restartIce(link.pc)
+            }
           }
           break
         }
@@ -1409,6 +1496,9 @@ export const useCallStore = defineStore('call', {
           sdp: offer.sdp ?? ''
         })
         this._armRingOutTimer()
+        // Помним звонок с самого начала, а не только с разговора: иначе
+        // перезагрузка во время «звоним…» теряла вызов целиком.
+        this.rememberCall()
         void this.loadDevices()
       } catch (error) {
         this._cleanup()
@@ -1998,16 +2088,34 @@ export const useCallStore = defineStore('call', {
       runtime.statsSample = null
     },
 
-    /** Запоминает звонок для восстановления после перезагрузки страницы. */
-    rememberCall() {
-      if (!this.callId || !this.peerId || this.status !== 'active') return
+    /**
+     * Запоминает звонок для восстановления после перезагрузки страницы.
+     *
+     * `startedAt` передаём при восстановлении: тогда окно вызова считается от
+     * ИСХОДНОГО начала, и повторная перезагрузка не продлевает его собеседнику.
+     */
+    rememberCall(startedAt?: number) {
+      if (!this.callId || !this.peerId || this.status === 'idle') return
+      // Звонок ещё звонит — тоже помним: перезагрузка во время вызова не должна
+      // терять его (владелец, 24.09.2026). В группе так не пишем: её возврат —
+      // отдельная история (mesh собирается заново по `call-peers`), а не пара.
+      const ringing = this.isGroup
+        ? undefined
+        : this.status === 'outgoing'
+          ? ('outgoing' as const)
+          : this.status === 'incoming'
+            ? ('incoming' as const)
+            : undefined
       rememberActiveCall({
         callId: this.callId,
         peerId: this.peerId,
         kind: this.kind,
         isGroup: this.isGroup,
-        startedAt: Date.now() - this.seconds * 1000,
-        touchedAt: Date.now()
+        startedAt: startedAt ?? Date.now() - this.seconds * 1000,
+        touchedAt: Date.now(),
+        ringing,
+        // Входящему без SDP собеседника после перезагрузки отвечать нечем.
+        offerSdp: ringing === 'incoming' ? (runtime.pendingOffer?.sdp ?? undefined) : undefined
       })
     },
 
@@ -2024,7 +2132,10 @@ export const useCallStore = defineStore('call', {
       if (!stored || this.status !== 'idle' || !this.connected) return false
       // Попытка одна: не выйдет — сообщим, что звонок завершён.
       forgetActiveCall()
-
+      // Звонок ещё не отвечен: экран вызова возвращаем, а медиа возьмём при
+      // ответе (`acceptCall`) или переотдадим своё предложение.
+      if (stored.ringing === 'incoming') return this._restoreIncomingAfterReload(stored)
+      if (stored.ringing === 'outgoing') return this._recoverOutgoingAfterReload(stored)
       try {
         this._restoreSavedDevices()
         const ice = await loadIceConfiguration()
@@ -2052,15 +2163,146 @@ export const useCallStore = defineStore('call', {
         // Время разговора считаем от момента, когда звонок стал активным до
         // перезагрузки: счётчик не должен начинаться заново.
         this.seconds = Math.max(0, Math.round((Date.now() - stored.startedAt) / 1000))
-        this.rememberCall()
+        this.rememberCall(stored.startedAt)
         // Пока пересогласования нет, связи нет — показываем «Переподключаемся…».
         this.reconnecting = true
+        // Пока связь пересобирается, свои перезапуски ICE не делаем — их шлёт
+        // назначенный инициатор (см. `_rejoinOfferer`), иначе оба предложения
+        // не применятся и звонок сорвётся.
+        runtime.rejoinPending = true
         sendMessage({
           type: 'call-rejoin',
           to_user_id: stored.peerId,
           call_id: stored.callId
         })
         this._armRejoinTimeout()
+        // Инициатива у младшего по id. Если она наша — шлём предложение сами,
+        // не дожидаясь собеседника: пауза нужна лишь для того, чтобы наше
+        // `call-rejoin` дошло первым (иначе он начнёт своё — «glare»).
+        if (this._rejoinOfferer(stored.peerId)) {
+          window.setTimeout(() => this._offerAfterRejoin(stored.peerId), REJOIN_OFFER_DELAY_MS)
+        }
+        void this.loadDevices()
+        return true
+      } catch {
+        this._cleanup()
+        this.notice = t('Звонок завершён: не удалось восстановить связь')
+        return false
+      }
+    },
+
+    /**
+     * Возвращает экран входящего звонка после перезагрузки страницы.
+     *
+     * Медиа не берём: звонок ещё не принят, и камеру с микрофоном до ответа
+     * включать нельзя. Чтобы человек мог ответить, звонок должен выглядеть как
+     * обычно: то же имя, тот же рингтон, те же кнопки. Отвечать есть чем — SDP
+     * собеседника лежит в памятке, — а свежее предложение собеседник пришлёт в
+     * ответ на `call-rejoin` (в нём его актуальные ICE-адреса).
+     */
+    _restoreIncomingAfterReload(stored: StoredCall): boolean {
+      if (!stored.offerSdp) {
+        this.notice = t('Звонок завершён')
+        return false
+      }
+      const known = this.peerNames[stored.peerId]
+      const name = known?.name ?? `@${stored.peerId}`
+      runtime.pendingOffer = { callId: stored.callId, kind: stored.kind, sdp: stored.offerSdp }
+      this.$patch({
+        status: 'incoming',
+        kind: stored.kind,
+        callId: stored.callId,
+        peerId: stored.peerId,
+        peerName: name,
+        peerAvatar: known?.avatarUrl ?? null,
+        isGroup: Boolean(stored.isGroup),
+        participants: [
+          {
+            id: stored.peerId,
+            name,
+            avatarUrl: known?.avatarUrl ?? null,
+            micOn: true,
+            videoOn: stored.kind === 'video',
+            screenSharing: false,
+            connected: false,
+            speaking: false
+          }
+        ]
+      })
+      startRingtone('incoming')
+      // Окно звонка считаем от исходного начала: собеседник ориентируется на
+      // своё, и нечестно требовать у него ещё полтораста секунд.
+      const elapsed = Math.max(0, Date.now() - stored.startedAt)
+      this._armIncomingTimer(INCOMING_STALE_TIMEOUT_MS - elapsed)
+      sendMessage({ type: 'call-rejoin', to_user_id: stored.peerId, call_id: stored.callId })
+      this.rememberCall(stored.startedAt)
+      return true
+    },
+
+    /**
+     * Возвращает свой вызов, который в момент перезагрузки ещё звонил.
+     *
+     * Собеседник всё это время продолжал звонить — его соединение живо, а наш
+     * прежний SDP мёртв. Поэтому берём медиа заново и шлём ему НОВОЕ предложение
+     * с тем же `call_id`: по нему он и ответит.
+     */
+    async _recoverOutgoingAfterReload(stored: StoredCall): Promise<boolean> {
+      try {
+        this._restoreSavedDevices()
+        const ice = await loadIceConfiguration()
+        const { stream, kind: effectiveKind } = await acquireLocalMedia(stored.kind, {
+          cameraId: this.selectedCamera,
+          micId: this.selectedMic,
+          group: Boolean(stored.isGroup),
+          micProcessing: this.micProcessing
+        })
+        runtime.localMedia = stream
+        this._rememberRawCamera(stream)
+        this._applyAcquiredKind(stored.kind, effectiveKind)
+        applyTrackHints(stream)
+        const link = this._newLink(stored.peerId, ice)
+        stream.getTracks().forEach((track) => link.pc.addTrack(track, stream))
+        runtime.isCaller = true
+        const known = this.peerNames[stored.peerId]
+        const name = known?.name ?? `@${stored.peerId}`
+        this.$patch({
+          status: 'outgoing',
+          kind: stored.kind,
+          callId: stored.callId,
+          peerId: stored.peerId,
+          peerName: name,
+          peerAvatar: known?.avatarUrl ?? null,
+          isGroup: Boolean(stored.isGroup),
+          micOn: true,
+          videoOn: true,
+          seconds: 0,
+          participants: [
+            {
+              id: stored.peerId,
+              name,
+              avatarUrl: known?.avatarUrl ?? null,
+              micOn: true,
+              videoOn: stored.kind === 'video',
+              screenSharing: false,
+              connected: false,
+              speaking: false
+            }
+          ]
+        })
+        startRingtone('outgoing')
+        const offer = tunedDescription(await link.pc.createOffer())
+        await link.pc.setLocalDescription(offer)
+        sendMessage({
+          type: 'call-offer',
+          to_user_id: stored.peerId,
+          call_id: stored.callId,
+          kind: stored.kind,
+          sdp: offer.sdp ?? ''
+        })
+        // Таймаут — от исходного начала: собеседник ждёт ровно своё окно.
+        const elapsed = Math.max(0, Date.now() - stored.startedAt)
+        this._armRingOutTimer(RING_OUT_TIMEOUT_MS - elapsed)
+        this.rememberCall(stored.startedAt)
         void this.loadDevices()
         return true
       } catch {
@@ -2071,18 +2313,101 @@ export const useCallStore = defineStore('call', {
     },
 
     /** Если собеседник не откликнулся на возврат — звонок действительно кончился. */
-    _armRejoinTimeout() {
+    _armRejoinTimeout(secondAttempt = false) {
       if (runtime.rejoinTimer !== undefined) window.clearTimeout(runtime.rejoinTimer)
-      runtime.rejoinTimer = window.setTimeout(() => {
-        runtime.rejoinTimer = undefined
-        if (this.status !== 'active' || !this.reconnecting) return
-        const alive = [...runtime.links.values()].some(
-          (link) =>
-            link.pc.iceConnectionState === 'connected' || link.pc.connectionState === 'connected'
-        )
-        if (alive) return
-        this._forceEnd(t('Собеседник недоступен — звонок завершён'))
-      }, CALL_REJOIN_TIMEOUT_MS)
+      runtime.rejoinTimer = window.setTimeout(
+        () => {
+          runtime.rejoinTimer = undefined
+          if (this.status !== 'active' || !this.reconnecting) return
+          const alive = [...runtime.links.values()].some(
+            (link) =>
+              link.pc.iceConnectionState === 'connected' || link.pc.connectionState === 'connected'
+          )
+          if (alive) return
+          // Перезагрузка — редкая ситуация, и оборвать из-за неё разговор хуже,
+          // чем подождать: даём связи последний шанс своими силами. Собеседник к
+          // этому времени либо уже ответил, либо сам пересогласовывается.
+          if (!secondAttempt) {
+            for (const link of [...runtime.links.values()]) {
+              void this._restartIce(link.pc)
+            }
+            this._armRejoinTimeout(true)
+            return
+          }
+          this._forceEnd(t('Собеседник недоступен — звонок завершён'))
+        },
+        secondAttempt ? CALL_REJOIN_TIMEOUT_MS / 2 : CALL_REJOIN_TIMEOUT_MS
+      )
+    },
+
+    /**
+     * Кто инициирует пересогласование после перезагрузки страницы.
+     *
+     * Младший по id — то же правило, что при сборке группового «mesh»: оно простое
+     * и не требует согласования сторон. Второй участник только отвечает.
+     */
+    _rejoinOfferer(peerId: number | null): boolean {
+      const myId = useAuthStore().current_user?.id
+      if (myId === undefined || myId === null || peerId === null) return true
+      return myId < peerId
+    },
+
+    /** Своё предложение после перезагрузки — когда инициатива наша. */
+    _offerAfterRejoin(peerId: number) {
+      if (!runtime.rejoinPending || this.status !== 'active' || !this.callId) return
+      const link = this._linkFor(peerId)
+      // Собеседник уже успел пересогласоваться сам — отвечать нечем и не нужно.
+      if (!link || link.pc.remoteDescription) return
+      void this._restartIce(link.pc)
+    },
+
+    /**
+     * Повторное предложение собеседнику, который вернулся после перезагрузки.
+     *
+     * Условие: наш вызов ещё звонит, а он уже не может ответить по прежнему
+     * предложению (его страница умерла). Свежее предложение приносит и новые
+     * ICE-адреса — по ним медиа и поднимется.
+     */
+    async _resendOffer() {
+      const link = this._primaryLink()
+      if (!link || !this.callId || link.pc.remoteDescription) return
+      try {
+        const pc = link.pc as RTCPeerConnection & { restartIce?: () => void }
+        pc.restartIce?.()
+        const offer = tunedDescription(await pc.createOffer({ iceRestart: true }))
+        await pc.setLocalDescription(offer)
+        sendMessage({
+          type: 'call-offer',
+          to_user_id: link.peerId,
+          call_id: this.callId,
+          kind: this.kind,
+          sdp: offer.sdp ?? ''
+        })
+      } catch {
+        /* не вышло — у нас останется свой таймаут «не отвечают» */
+      }
+    },
+
+    /**
+     * Даёт собеседнику время прислать предложение, а потом берёт инициативу на себя.
+     *
+     * Без этой сторожи, если его `call-rejoin` дошёл, а предложение потерялось (или
+     * его сторона упала), звонок висел бы в «Переподключаемся…» вечно.
+     */
+    _armPeerRejoinWindow(peerId: number) {
+      if (runtime.peerRejoinTimer !== undefined) window.clearTimeout(runtime.peerRejoinTimer)
+      runtime.peerRejoinTimer = window.setTimeout(() => {
+        runtime.peerRejoinTimer = undefined
+        const waiting = runtime.rejoinPending
+        // Окно вышло: дальше звонок живёт обычной жизнью (и наблюдатель медиа
+        // снова может перезапускать ICE).
+        runtime.rejoinPending = false
+        if (!waiting || this.status !== 'active' || this._hasLiveLink()) return
+        // Собеседник молчит — ведём себя как при обычном обрыве связи: лимит
+        // попыток у связи уже обнулён, дальше решает ICE-восстановление.
+        const link = this._linkFor(peerId) ?? this._primaryLink()
+        if (link) void this._restartIce(link.pc)
+      }, PEER_REJOIN_WINDOW_MS)
     },
 
     /**
@@ -2379,6 +2704,10 @@ export const useCallStore = defineStore('call', {
           sdp: answer.sdp ?? '',
           ...(this.isGroup ? { group: true, chat_id: this.groupChatId ?? undefined } : {})
         })
+        // Мы ответили на пересогласование — оно состоялось: снимаем «ждём
+        // собеседника» (см. `_endRejoin`). Если медиа так и не пойдёт, связь
+        // починит наблюдатель медиа — он снова свободен.
+        this._resetIceRecovery()
       } catch {
         /* пересогласование не удалось — звонок продолжается как есть */
       }
@@ -2763,14 +3092,21 @@ export const useCallStore = defineStore('call', {
       this.notice = ''
     },
 
-    _armRingOutTimer() {
+    /**
+     * Таймер «не отвечают».
+     *
+     * `timeoutMs` — остаток окна, когда его считаем не с нуля (восстановление
+     * вызова после перезагрузки): собеседник ждёт ровно своё окно.
+     */
+    _armRingOutTimer(timeoutMs = RING_OUT_TIMEOUT_MS) {
       this._clearRingOutTimer()
+      const wait = Math.max(0, timeoutMs)
       this.ringOutTimer = window.setTimeout(() => {
         if (this.status === 'outgoing') {
           this.cancelCall()
           this.notice = this.isGroup ? t('Никто не ответил') : t('Абонент не отвечает')
         }
-      }, RING_OUT_TIMEOUT_MS)
+      }, wait)
     },
 
     _clearRingOutTimer() {
@@ -2781,13 +3117,14 @@ export const useCallStore = defineStore('call', {
     },
 
     /** Сторож входящего звонка (см. `INCOMING_STALE_TIMEOUT_MS`). */
-    _armIncomingTimer() {
+    _armIncomingTimer(timeoutMs = INCOMING_STALE_TIMEOUT_MS) {
       this._clearIncomingTimer()
-      runtime.incomingDeadline = Date.now() + INCOMING_STALE_TIMEOUT_MS
+      const wait = Math.max(0, timeoutMs)
+      runtime.incomingDeadline = Date.now() + wait
       runtime.incomingTimer = window.setTimeout(() => {
         runtime.incomingTimer = undefined
         this.dropStaleRinging()
-      }, INCOMING_STALE_TIMEOUT_MS)
+      }, wait)
     },
 
     _clearIncomingTimer() {
@@ -2876,6 +3213,11 @@ export const useCallStore = defineStore('call', {
         window.clearTimeout(runtime.rejoinTimer)
         runtime.rejoinTimer = undefined
       }
+      if (runtime.peerRejoinTimer !== undefined) {
+        window.clearTimeout(runtime.peerRejoinTimer)
+        runtime.peerRejoinTimer = undefined
+      }
+      runtime.rejoinPending = false
       if (runtime.socketRetryTimer !== undefined) {
         window.clearTimeout(runtime.socketRetryTimer)
         runtime.socketRetryTimer = undefined

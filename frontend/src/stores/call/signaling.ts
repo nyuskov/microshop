@@ -122,6 +122,17 @@ export interface CallSignalingRuntime {
   incomingTimer: number | undefined
   incomingDeadline: number
   rejoinTimer: number | undefined
+  /**
+   * Звонок пересогласовывается после перезагрузки страницы (чей-то из двух).
+   *
+   * Пока это так, ICE перезапускает ТОЛЬКО назначенный инициатор (младший по id):
+   * одновременные предложения обеих сторон («glare») не применяются, и звонок
+   * терялся бы уже безвозвратно. Наблюдатель медиа тоже молчит: связи ещё нет,
+   * и его перезапуск был бы вторым предложением.
+   */
+  rejoinPending: boolean
+  /** Сколько собеседник ждёт наше предложение, прежде чем взять инициативу на себя. */
+  peerRejoinTimer: number | undefined
   iceRecoveryTimer: number | undefined
   iceRestartAttempts: number
   socketRetryTimer: number | undefined
@@ -168,6 +179,8 @@ export const runtime: CallSignalingRuntime = {
   incomingTimer: undefined,
   incomingDeadline: 0,
   rejoinTimer: undefined,
+  rejoinPending: false,
+  peerRejoinTimer: undefined,
   iceRecoveryTimer: undefined,
   iceRestartAttempts: 0,
   socketRetryTimer: undefined,

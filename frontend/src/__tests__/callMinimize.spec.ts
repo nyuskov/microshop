@@ -68,6 +68,61 @@ describe('полный экран звонка при сворачивании',
   })
 })
 
+/**
+ * Протяжка вверх по экрану звонка — второе (и привычное) «свернуть».
+ *
+ * Владелец, 24.09.2026: «сокрытие звонка не только по галке, а ещё и по просто
+ * протяжке вверх». Жест делает РОВНО то же, что кнопка «Свернуть»: тот же
+ * `minimizeCall()` в сторе, поэтому поток остаётся привязанным к элементу и звук
+ * не пропадает (см. `call-overlay-hidden`).
+ */
+describe('протяжка вверх сворачивает звонок', () => {
+  it('жест слушается на всём экране звонка и сворачивает по порогу', () => {
+    expect(overlay).toContain('@pointermove="onOverlayPointerMove"')
+    expect(overlay).toContain('@pointerup="onOverlayPointerUp"')
+    expect(overlay).toContain('@pointercancel="onOverlayPointerUp"')
+    const up = overlay.slice(
+      overlay.indexOf('const onOverlayPointerUp'),
+      overlay.indexOf('const resetDragOffset')
+    )
+    expect(up).toMatch(/pulled < SWIPE_UP_HIDE_PX/)
+    expect(up).toContain('callStore.minimizeCall()')
+  })
+
+  it('тянем только вверх и только пальцем — не мешаем кнопкам и маске', () => {
+    const move = overlay.slice(overlay.indexOf('const onOverlayPointerMove'))
+    // Вниз и вбок — не наш жест: экран остаётся на месте.
+    expect(move).toMatch(/dy >= 0 \|\| Math\.abs\(dx\) > Math\.abs\(dy\)/)
+    const down = overlay.slice(overlay.indexOf('const onOverlayPointerDown'))
+    expect(down).toContain("event.pointerType !== 'mouse'")
+    // Кнопки, меню и превью с маской — со своими жестами и действиями.
+    expect(down).toContain('!dragBlockedTarget(event.target)')
+    expect(overlay).toContain(
+      'target.closest(\'button, a, input, select, textarea, video, .call-popovers, [role="menu"]\')'
+    )
+  })
+
+  it('входящий так не свернуть — его надо принять или отклонить', () => {
+    const allowed = overlay.slice(
+      overlay.indexOf('const canSwipeMinimize'),
+      overlay.indexOf('const dragBlockedTarget')
+    )
+    expect(allowed).toMatch(/callStore\.status === 'active' \|\| callStore\.status === 'outgoing'/)
+    expect(allowed).not.toContain("status === 'incoming'")
+  })
+
+  it('слой едет за пальцем и гаснет, а вертикальную прокрутку забираем себе', () => {
+    // Иначе браузер понял бы жест как прокрутку/pull-to-refresh и перезагрузил бы
+    // страницу прямо во время разговора.
+    expect(overlay).toMatch(/\.call-overlay \{[\s\S]{0,900}touch-action: none/)
+    expect(overlay).toMatch(/transform: translateY\(var\(--call-drag, 0px\)\)/)
+    expect(overlay).toMatch(/--call-drag-fade/)
+    // В момент жеста переходов нет: слой обязан следовать РОВНО за пальцем.
+    expect(overlay).toMatch(/\.call-overlay\.call-dragging \{[\s\S]{0,40}transition: none/)
+    expect(overlay).toContain("'call-dragging': dragging || noDragTransition")
+  })
+})
+
 describe('плашка свёрнутого звонка', () => {
   it('возвращает в звонок и даёт главные действия', () => {
     expect(banner).toContain('callStore.restoreCall()')
