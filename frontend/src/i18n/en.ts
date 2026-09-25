@@ -351,8 +351,8 @@ export const EN: Record<string, string> = {
     'The recording format (webm/Opus) is known to this device',
   'Устройство не умеет проигрывать формат записей (webm/Opus)':
     'This device cannot play the recording format (webm/Opus)',
-  'Записи не послушать, но их можно расшифровать в текст значком ↳A у записи — если расшифровка доступна':
-    'Recordings cannot be played, but they can be transcribed with the ↳A icon next to a recording — if transcription is available',
+  'Записи не послушать, но их можно расшифровать в текст значком ↳Т у записи — если расшифровка доступна':
+    'Recordings cannot be played, but they can be transcribed with the ↳T icon next to a recording — if transcription is available',
 
   // --- Каналы (components/channels/*) ---
   Канал: 'Channel',

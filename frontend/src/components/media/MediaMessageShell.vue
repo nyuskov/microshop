@@ -22,7 +22,7 @@
         <span v-if="sizeLabel" class="mms-size">{{ sizeLabel }}</span>
         <slot name="extra" />
       </template>
-      <span class="mms-transcribe">
+      <span v-if="!transcribeInline" class="mms-transcribe">
         <TranscribeButton :message-id="messageId" :src="src" />
       </span>
     </div>
@@ -58,6 +58,14 @@ defineProps<{
   broken?: boolean
   /** Текст ошибки воспроизведения (своей строкой над подписью). */
   brokenText?: string
+  /**
+   * Кнопка расшифровки нарисована В САМОЙ строке плеера, а не под ней.
+   *
+   * Так у голосового (владелец: «рядом с аудиозаписью-полоской ставь сразу
+   * справа значок, а не снизу»): бейдж «→Т» стоит справа от волны, в одной строке с
+   * ней, как в МАКСе. У кружка строки с волной нет — там кнопка остаётся в подписи.
+   */
+  transcribeInline?: boolean
 }>()
 </script>
 

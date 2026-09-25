@@ -20,6 +20,7 @@
       :size-label="!durationKnown && size ? formatBytes(size) : ''"
       :broken="broken"
       :broken-text="brokenText"
+      :transcribe-inline="true"
     >
       <template #player>
         <div class="am-row">
@@ -33,6 +34,7 @@
           </button>
           <div
             class="am-track"
+            :class="{ 'am-track-wave': hasWave }"
             role="slider"
             :aria-label="t('Перемотка')"
             :aria-valuemin="0"
@@ -44,8 +46,27 @@
             @pointerup="onSeekEnd"
             @pointercancel="onSeekEnd"
           >
-            <div class="am-fill" :style="progressStyle()"></div>
+            <!-- Реальная волна (громкость из файла): столбики вместо плоской полосы.
+                 Считается один раз и кэшируется, поэтому при перерисовке ленты не
+                 пересчитывается. Не посчиталась — показываем прежнюю плоскую полосу. -->
+            <template v-if="hasWave">
+              <i
+                v-for="(peak, index) in peaks"
+                :key="index"
+                class="am-bar"
+                :class="{ played: isPlayedBar(index) }"
+                :style="barHeight(peak)"
+              ></i>
+            </template>
+            <template v-else>
+              <div class="am-fill" :style="progressStyle()"></div>
+            </template>
           </div>
+          <!-- Бейдж расшифровки — сразу справа от полосы, в одной строке с ней
+               (владелец: «рядом с аудиозаписью-полоской ставь сразу справа значок,
+               а не снизу»). Время уходит правее него, чтобы бейдж не уезжал под
+               палец при перемотке. -->
+          <TranscribeButton :message-id="messageId" :src="src" />
           <span class="am-time">{{ timeLabel }}</span>
         </div>
       </template>
@@ -75,7 +96,9 @@ import { icon } from '@/utils/icons'
 import { computed, onMounted, ref, watch } from 'vue'
 import { formatClock } from '@/services/recorder'
 import { cyclePlaybackSpeed, playbackSpeed, speedLabel } from '@/utils/playbackSpeed'
+import { waveformPeaks } from '@/utils/waveform'
 import MediaMessageShell from '@/components/media/MediaMessageShell.vue'
+import TranscribeButton from '@/components/media/TranscribeButton.vue'
 import { t } from '@/i18n'
 
 const props = defineProps<{
@@ -165,6 +188,37 @@ const progressStyle = (): Record<string, string> => {
 }
 
 /**
+ * Пики громкости для волны: `null` — файл не разобрался (тогда показываем плоскую
+ * полосу). Считаются один раз на сообщение, в фоне, чтобы открытие чата не ждало
+ * декодирование звука.
+ */
+const peaks = ref<number[] | null>(null)
+
+/** Есть ли что рисовать волной: сломанный файл волну не показываем. */
+const hasWave = computed<boolean>(
+  () => !broken.value && Array.isArray(peaks.value) && peaks.value.length > 0
+)
+
+/** Доля прослушанного — по ней красим столбики слева направо (как в МАКСе). */
+const playedRatio = computed<number>(() => {
+  if (!durationKnown.value || duration.value <= 0) return 0
+  return Math.min(1, Math.max(0, current.value / duration.value))
+})
+
+/** Высота столбика: от 4 до 18 px — плоская запись не должна выглядеть мёртвой. */
+const barHeight = (peak: number): Record<string, string> => {
+  const value = Math.min(1, Math.max(0, peak))
+  return { height: `${Math.round(4 + value * 14)}px` }
+}
+
+/** Столбик уже прослушан (весь столбик целиком, а не его часть). */
+const isPlayedBar = (index: number): boolean => {
+  const bars = peaks.value?.length ?? 0
+  if (!bars) return false
+  return (index + 1) / bars <= playedRatio.value
+}
+
+/**
  * Перемотка: тап по полосе и протяжка пальцем (как в Телеграме).
  *
  * Пока палец ведёт — двигаем только позицию на экране, а самому плееру отдаём
@@ -234,7 +288,20 @@ const applySpeed = () => {
   if (audio) audio.playbackRate = playbackSpeed.value
 }
 
-onMounted(applySpeed)
+/**
+ * Волна считается после монтирования: сначала показывается плоская полоса, как
+ * раньше, и только когда звук разобран — на её месте появляются столбики. Так
+ * открытие чата не ждёт декодирования всех голосовых в ленте.
+ */
+const loadWave = async () => {
+  const bars = await waveformPeaks(props.messageId, props.src)
+  if (bars && bars.length) peaks.value = bars
+}
+
+onMounted(() => {
+  applySpeed()
+  void loadWave()
+})
 watch(playbackSpeed, applySpeed)
 
 const onCycleSpeed = () => {
@@ -245,8 +312,10 @@ const onCycleSpeed = () => {
 
 <style scoped>
 .audio-message {
-  min-width: 210px;
-  max-width: 260px;
+  /* Шире, чем было (210–260): в строке плеера теперь ещё бейдж расшифровки справа
+     от волны, и волне нужно остаться читаемой (36 столбиков по 2 px). */
+  min-width: 240px;
+  max-width: 300px;
   user-select: none;
 }
 
@@ -257,7 +326,7 @@ const onCycleSpeed = () => {
 .am-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .am-play {
@@ -316,13 +385,47 @@ const onCycleSpeed = () => {
   width: 0%;
 }
 
+/* Волна (реальная громкость из файла): столбики вместо плоской полосы. Высоту
+   задаёт каждый столбик, поэтому контейнер выше и без своего фона. Расстояние
+   между столбиками раскладывает `space-between` — так их число не зависит от
+   ширины пузыря и волна никогда не вылезает за полосу. */
+.am-track-wave {
+  height: 20px;
+  border-radius: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1px;
+}
+
+.am-track-wave::after {
+  /* Полоса стала выше — область нажатия снова примерно на палец. */
+  inset: -6px 0;
+}
+
+.am-bar {
+  width: 2px;
+  flex-shrink: 0;
+  border-radius: 1px;
+  background: currentColor;
+  /* Непроигранная часть тише проигранной — видно, где мы в записи. */
+  opacity: 0.35;
+}
+
+.am-bar.played {
+  opacity: 1;
+}
+
 .am-time {
   font-size: var(--ms-fs-xs);
   color: var(--ms-bubble-time, #8a98a3);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
-  min-width: 74px;
+  min-width: 64px;
   text-align: right;
+  /* Подпись «0:13 / 0:15» не переносится: в строке плеера иначе выросла бы высота. */
+  white-space: nowrap;
 }
 
 /* В «сломанном» состоянии кнопки скорости нет, поэтому к правому краю кнопку
@@ -347,5 +450,5 @@ const onCycleSpeed = () => {
   background: var(--ms-accent-soft, rgba(46, 162, 94, 0.12));
 }
 
-/* Значок расшифровки («↳A»): рядом с подписью файла, вторичный по весу. */
+/* Значок расшифровки («↳Т»): рядом с подписью файла, вторичный по весу. */
 </style>

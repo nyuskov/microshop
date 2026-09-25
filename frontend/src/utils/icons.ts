@@ -135,7 +135,8 @@ export const ICON_MAP: Record<string, string> = {
   // Архив: «короб с крышкой». В Lucide такого глифа нет, нарисован вручную —
   // см. DRAWN_GLYPHS ниже и assets/icons-drawn.css.
   archive: 'archive',
-  // Расшифровка записи в текст: стрелка «↳» и буква A — как в Telegram.
+  // Расшифровка записи в текст: стрелка «↳» и буква «Т» (Текст) — как значок
+  // «текст», но с направлением «запись → текст».
   // Глиф нарисован вручную (см. DRAWN_GLYPHS и assets/icons-drawn.css).
   transcribe: 'transcribe',
   // Папки чатов: свой список диалогов с ручным порядком.
