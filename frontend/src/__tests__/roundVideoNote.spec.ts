@@ -53,23 +53,29 @@ describe('RoundVideoMessage: недоступная запись', () => {
   })
 })
 
-describe('зеркало в видеосообщении', () => {
+describe('кадр видеосообщения: зеркала нет', () => {
   const recorder = readFileSync('src/components/media/VideoRecorderModal.vue', 'utf8')
 
-  it('зеркалит только предпросмотр, а в файл идёт поток как есть', () => {
-    // Владелец: «кружок записываешь — смотришь одно, сохраняется зеркальным».
-    // Так и должно быть: зеркальный вид при съёмке себя привычнее (как в зеркале),
-    // но в записи он был бы неверным — надписи в кадре читались бы наоборот.
-    expect(recorder).toContain(':class="{ mirrored: phase !== \'preview\' }"')
-    expect(recorder).toContain('transform: scaleX(-1)')
+  it('в предпросмотре ровно то видео, которое уйдёт собеседнику', () => {
+    // Владелец (25.09.2026): «чтобы запись видеосообщения сразу показывала
+    // актуальное видео, что будет при выкладке, а то зеркалит как будто».
+    // Поэтому переворота нет ни в предпросмотре, ни в файле: что видишь, то и
+    // отправляется (раньше зеркалился ТОЛЬКО предпросмотр и расходился с
+    // сообщением).
+    expect(recorder).not.toContain('mirrored')
+    expect(recorder).not.toContain('scaleX(-1)')
     // Файл — прямо из MediaRecorder, без переворота через canvas.
     expect(recorder).toContain('blob = new Blob(chunks')
     expect(recorder).not.toContain('drawImage')
     expect(recorder).not.toContain("getContext('2d')")
   })
 
-  it('человеку объяснено, почему предпросмотр зеркальный', () => {
-    expect(recorder).toContain('Предпросмотр зеркальный — в записи будет как есть')
+  it('в предпросмотре сказано, что так его увидит собеседник', () => {
     expect(recorder).toContain('Так увидит собеседник')
+  })
+
+  it('запись идёт кусками, а стоп — с паузой: хвост не теряется', () => {
+    expect(recorder).toContain('recorder.start(RECORD_TIMESLICE_MS)')
+    expect(recorder).toContain('STOP_GRACE_MS')
   })
 })

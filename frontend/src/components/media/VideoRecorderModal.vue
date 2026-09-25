@@ -16,7 +16,6 @@
             v-show="phase !== 'preview'"
             ref="liveVideoRef"
             class="vrm-video"
-            :class="{ mirrored: phase !== 'preview' }"
             autoplay
             muted
             playsinline
@@ -36,18 +35,13 @@
           <div v-else-if="phase === 'live' && !error" class="vrm-hint">
             {{ t('Нажмите «Запись», чтобы начать') }}
           </div>
-          <!-- Зеркальный предпросмотр — так удобнее снимать себя, но в записи
-               будет НЕ зеркально (иначе надписи в кадре читались бы наоборот).
-               Без этой строки человек думает, что видео «сохранилось
-               зеркальным»: он сравнивает запись со своим зеркальным видом. -->
-          <div v-if="phase !== 'preview' && !error" class="vrm-mirror-note">
-            {{
-              phase === 'recording'
-                ? t('В записи будет как есть, без зеркала')
-                : t('Предпросмотр зеркальный — в записи будет как есть')
-            }}
-          </div>
-          <div v-else-if="phase === 'preview' && !error" class="vrm-mirror-note">
+          <!-- Зеркала НЕТ ни в предпросмотре, ни в файле (владелец, 25.09.2026:
+               «чтобы запись видеосообщения сразу показывала актуальное видео, что
+               будет при выкладке, а то зеркалит как будто»). Раньше предпросмотр
+               переворачивался по горизонтали для привычного «как в зеркале» вида,
+               и человек видел одно, а в сообщении получалось другое. Теперь в
+               кадре ровно то, что уйдёт собеседнику. -->
+          <div v-if="phase === 'preview' && !error" class="vrm-stage-note">
             {{ t('Так увидит собеседник') }}
           </div>
         </div>
@@ -118,14 +112,30 @@ let chunks: Blob[] = []
 let blob: Blob | null = null
 let durationTimer: number | undefined
 let maxTimer: number | undefined
+/** Отложенный стоп: см. `STOP_GRACE_MS`. */
+let stopGraceTimer: number | undefined
 let previewUrl: string | null = null
 let disposed = false
+
+/** Куски пишем по ходу записи: иначе всё копится в буфере и хвост теряется. */
+const RECORD_TIMESLICE_MS = 250
+
+/**
+ * Пауза перед остановкой кодировщика (миллисекунды) — как у голосового.
+ *
+ * Владелец жаловался, что аудиозапись «обрывается в конце»: кодировщик держит
+ * последние кадры в буфере, и мгновенный `stop()` их не забирает. Для видео та же
+ * механика (последние кадры и звук), поэтому стоп тоже идёт с короткой паузой.
+ */
+const STOP_GRACE_MS = 180
 
 const clearTimers = () => {
   if (durationTimer !== undefined) window.clearInterval(durationTimer)
   if (maxTimer !== undefined) window.clearTimeout(maxTimer)
+  if (stopGraceTimer !== undefined) window.clearTimeout(stopGraceTimer)
   durationTimer = undefined
   maxTimer = undefined
+  stopGraceTimer = undefined
 }
 
 const openCamera = async (): Promise<boolean> => {
@@ -176,7 +186,7 @@ const start = async () => {
   recorder.onstop = () => {
     finalize()
   }
-  recorder.start()
+  recorder.start(RECORD_TIMESLICE_MS)
   phase.value = 'recording'
   durationMs.value = 0
   durationTimer = window.setInterval(() => {
@@ -190,10 +200,9 @@ const start = async () => {
 
 const finalize = () => {
   if (!recorder) return
-  // Грабли, из-за которых кажется, что «видео сохранилось зеркальным»:
-  // зеркалит ТОЛЬКО предпросмотр (`scaleX(-1)` в стилях), а в файл идёт поток
-  // камеры как есть — иначе надписи в кадре получились бы наоборот. Никакого
-  // переворачивания через canvas здесь быть не должно.
+  // В файл идёт тот же поток, что показан в предпросмотре: ни зеркала, ни
+  // переворота через canvas здесь быть не должно — человек снимает ровно то, что
+  // увидит собеседник.
   blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' })
   clearTimers()
   stopMediaStream(mediaStream)
@@ -210,9 +219,17 @@ const finalize = () => {
 
 const stop = () => {
   if (phase.value !== 'recording' || !recorder) return
-  if (recorder.state === 'recording') {
-    recorder.stop()
+  // Цифры таймера замирают сразу; сам кодировщик останавливаем с паузой, чтобы
+  // последние кадры успели попасть в файл (см. STOP_GRACE_MS).
+  if (durationTimer !== undefined) {
+    window.clearInterval(durationTimer)
+    durationTimer = undefined
   }
+  if (recorder.state !== 'recording') return
+  stopGraceTimer = window.setTimeout(() => {
+    stopGraceTimer = undefined
+    if (recorder && recorder.state === 'recording') recorder.stop()
+  }, STOP_GRACE_MS)
 }
 
 const retake = () => {
@@ -349,9 +366,6 @@ void openCamera()
   background: #000;
 }
 
-.vrm-video.mirrored {
-  transform: scaleX(-1);
-}
 .vrm-rec-badge {
   position: absolute;
   top: 12px;
@@ -399,9 +413,10 @@ void openCamera()
   white-space: nowrap;
 }
 
-/* Пояснение про зеркало: та же «плашка поверх видео», что и подсказка, только
-   сверху — внизу уже стоит подсказка и метка записи. */
-.vrm-mirror-note {
+/* Пояснение в предпросмотре («так увидит собеседник»): та же «плашка поверх
+   видео», что и подсказка, только сверху — внизу уже стоит подсказка и метка
+   записи. */
+.vrm-stage-note {
   position: absolute;
   top: 12px;
   left: 50%;

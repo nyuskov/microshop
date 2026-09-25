@@ -79,14 +79,40 @@ let chunks: Blob[] = []
 let blob: Blob | null = null
 let durationTimer: number | undefined
 let maxTimer: number | undefined
+/** Отложенный стоп: см. `STOP_GRACE_MS`. */
+let stopGraceTimer: number | undefined
 let previewUrl: string | null = null
 let disposed = false
+
+/**
+ * Как часто кодировщик отдаёт готовые куски во время записи.
+ *
+ * Без этого (`recorder.start()` без аргумента) весь звук копится в буфере до
+ * самого `stop()`, и всё, что не успело закодироваться, теряется. С таймлайном
+ * куски приходят по ходу записи, и терять нечего.
+ */
+const RECORD_TIMESLICE_MS = 250
+
+/**
+ * Пауза перед остановкой кодировщика (миллисекунды).
+ *
+ * Жалоба владельца (25.09.2026): «аудиозапись как будто бы обрывается в конце».
+ * Файл при этом целый (проверено разбором контейнера: размер сегмента, Duration и
+ * последний блок сходятся), но кодировщик Opus держит последние кадры в буфере
+ * ещё 100–150 мс — при мгновенном `stop()` они не попадают в файл, и последний
+ * слог срезается. За эту паузу микрофон успевает отдать буфер, а на конце
+ * остаются те же доли секунды тишины (на слух не слышны; при подготовке звука к
+ * распознаванию тишина по краям всё равно отсекается).
+ */
+const STOP_GRACE_MS = 180
 
 const clearTimers = () => {
   if (durationTimer !== undefined) window.clearInterval(durationTimer)
   if (maxTimer !== undefined) window.clearTimeout(maxTimer)
+  if (stopGraceTimer !== undefined) window.clearTimeout(stopGraceTimer)
   durationTimer = undefined
   maxTimer = undefined
+  stopGraceTimer = undefined
 }
 
 const beginRecording = async () => {
@@ -110,7 +136,7 @@ const beginRecording = async () => {
     recorder.onstop = () => {
       finalize()
     }
-    recorder.start()
+    recorder.start(RECORD_TIMESLICE_MS)
     state.value = 'recording'
     durationMs.value = 0
     durationTimer = window.setInterval(() => {
@@ -151,9 +177,17 @@ const finalize = () => {
 
 const stopRecording = () => {
   if (state.value !== 'recording' || !recorder) return
-  if (recorder.state === 'recording') {
-    recorder.stop()
+  // Цифры таймера замирают сразу: человек нажал «стоп», и они не должны бежать,
+  // пока ждём буфер кодировщика.
+  if (durationTimer !== undefined) {
+    window.clearInterval(durationTimer)
+    durationTimer = undefined
   }
+  if (recorder.state !== 'recording') return
+  stopGraceTimer = window.setTimeout(() => {
+    stopGraceTimer = undefined
+    if (recorder && recorder.state === 'recording') recorder.stop()
+  }, STOP_GRACE_MS)
 }
 
 const cancel = () => {

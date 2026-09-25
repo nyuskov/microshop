@@ -2004,9 +2004,6 @@ export const EN: Record<string, string> = {
   'Включить звук': 'Unmute',
   'Выключить звук': 'Mute',
   'Смотреть «{name}» на весь экран': 'Watch “{name}” full screen',
-  'В записи будет как есть, без зеркала': 'The recording will be as is, without mirroring',
-  'Предпросмотр зеркальный — в записи будет как есть':
-    'The preview is mirrored — the recording will be as is',
   'Запретить писать': 'Block writing',
   'Только звонки': 'Calls only',
   'Скрыть список': 'Hide the list',
