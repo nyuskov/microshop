@@ -18,7 +18,13 @@
 
 import { isNativeApp, nativeBridge } from './nativePush'
 import { t } from '@/i18n'
-import { describeAudioError, loadAudioBuffer, pcmChunks, toPcm16Mono16k } from '@/utils/audioPcm'
+import {
+  describeAudioError,
+  loadAudioBuffer,
+  pcmChunks,
+  toPcm16Mono16k,
+  trimSilencePcm
+} from '@/utils/audioPcm'
 
 /** Сколько байт PCM отдаём нативному слою за один вызов (~6 с записи). */
 export const NATIVE_CHUNK_BYTES = 192 * 1024
@@ -142,7 +148,9 @@ export async function recognizeWithNative(
     // жеста пользователя, остаётся `suspended` и не рендерит граф.
     if (ctx.state === 'suspended') await ctx.resume()
     const buffer = await loadAudioBuffer(ctx, src)
-    const pcm = await toPcm16Mono16k(buffer)
+    // Тишину по краям срезаем и здесь: системный распознаватель ждёт тот же звук,
+    // а на паузах в начале и конце он тоже склонен выдумывать слова.
+    const pcm = trimSilencePcm(await toPcm16Mono16k(buffer))
     if (cancelled) {
       await ctx.close()
       return await finished

@@ -61,7 +61,13 @@ import {
   localSpeechSupported,
   transcribeWithLocalSpeech
 } from '@/utils/localSpeech'
-import { toMono16k, audioLevel, describeAudioError, loadAudioBuffer } from '@/utils/audioPcm'
+import {
+  toMono16k,
+  audioLevel,
+  describeAudioError,
+  loadAudioBuffer,
+  trimSilence
+} from '@/utils/audioPcm'
 import { confirmDialog } from '@/utils/appDialogs'
 import { browserKind, isDesktopChromium } from '@/utils/browserKind'
 
@@ -776,6 +782,10 @@ async function recognizeVoiceLocally(
       finish({ status: 'failed', text: '', error: errorMessage('silent', false) })
       return
     }
+    // Паузы в начале и конце — тоже сор: запись идёт окнами по 30 с, и долгая
+    // тишина «съедает» окно, а модель на ней придумывает фразы. Речь не трогаем,
+    // по краям остаётся запас 160 мс.
+    audio = trimSilence(audio)
 
     stage({ stage: 'download' })
     const pipeline = await ensureLocalSpeech(model, (share) => {

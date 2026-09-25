@@ -231,6 +231,104 @@ function linearResample(buffer: AudioBuffer): Float32Array {
   return output
 }
 
+/**
+ * Сколько миллисекунд берём за одно окно при поиске речи.
+ *
+ * 20 мс — примерно доля слога: короче окно начинает ловить щелчки, длиннее —
+ * «протягивает» тишину внутрь границы.
+ */
+const TRIM_WINDOW_MS = 20
+
+/** Сколько звука оставляем до и после речи: слово начинается с согласной, срез слышен. */
+const TRIM_MARGIN_MS = 160
+
+/** Порог «здесь речь» — доля от самого громкого окна записи. */
+const TRIM_RATIO = 0.05
+
+/** Абсолютный минимум: цифровая тишина в WebM — не ровные нули. */
+const TRIM_MIN_LEVEL = 0.01
+
+/**
+ * Границы речи в записи: индекс первого и последнего «громкого» отсчёта.
+ *
+ * `null` — речи не нашли (тогда запись не трогаем: решение «здесь тишина»
+ * принимает вызывающий код, у него для этого есть свой порог).
+ */
+const speechBounds = (
+  length: number,
+  levelOf: (from: number, to: number) => number
+): { start: number; end: number } | null => {
+  const windowLength = Math.max(1, Math.round((TRIM_WINDOW_MS / 1000) * PCM_SAMPLE_RATE))
+  const margin = Math.round((TRIM_MARGIN_MS / 1000) * PCM_SAMPLE_RATE)
+  const windows = Math.floor(length / windowLength)
+  if (windows < 2) return null
+
+  let loudest = 0
+  const levels = new Float32Array(windows)
+  for (let index = 0; index < windows; index += 1) {
+    const level = levelOf(index * windowLength, (index + 1) * windowLength)
+    levels[index] = level
+    if (level > loudest) loudest = level
+  }
+  const threshold = Math.max(TRIM_MIN_LEVEL, loudest * TRIM_RATIO)
+
+  let first = -1
+  let last = -1
+  for (let index = 0; index < windows; index += 1) {
+    if (levels[index] < threshold) continue
+    if (first < 0) first = index
+    last = index
+  }
+  if (first < 0) return null
+
+  const start = Math.max(0, first * windowLength - margin)
+  const end = Math.min(length, (last + 1) * windowLength + margin)
+  // Резать нечего: речи столько, что границы совпали с краями записи.
+  if (end - start >= length) return null
+  return { start, end }
+}
+
+/** RMS куска моно-звука в шкале −1…1. */
+const rmsOfFloat = (samples: Float32Array, from: number, to: number): number => {
+  let sum = 0
+  for (let index = from; index < to; index += 1) sum += samples[index] * samples[index]
+  const count = Math.max(1, to - from)
+  return Math.sqrt(sum / count)
+}
+
+/**
+ * Обрезает тишину по краям записи (моно 16 кГц).
+ *
+ * Зачем: распознаватель получает запись окнами по 30 секунд, и долгая пауза в
+ * начале или в конце съедает окно и подталкивает модель к «фразам» из воздуха
+ * («продолжение следует», «спасибо за просмотр»). Живьём так и было: тихая
+ * запись с паузой в начале давала текст, которого в ней нет. Речь при этом не
+ * трогаем — оставляем запас 160 мс с обеих сторон, чтобы не срезать согласную.
+ */
+export function trimSilence(samples: Float32Array): Float32Array {
+  const bounds = speechBounds(samples.length, (from, to) => rmsOfFloat(samples, from, to))
+  return bounds ? samples.slice(bounds.start, bounds.end) : samples
+}
+
+/**
+ * То же для PCM 16 бит — этот формат забирает системный распознаватель Android.
+ *
+ * Считаем по значениям, приведённым к −1…1: пороги те же, что для Float32, иначе
+ * у двух путей распознавания были бы разные границы.
+ */
+export function trimSilencePcm(pcm: Int16Array): Int16Array {
+  const bounds = speechBounds(pcm.length, (from, to) => {
+    let sum = 0
+    for (let index = from; index < to; index += 1) {
+      const value = pcm[index] / 32767
+      sum += value * value
+    }
+    const count = Math.max(1, to - from)
+    return Math.sqrt(sum / count)
+  })
+  return bounds ? pcm.slice(bounds.start, bounds.end) : pcm
+}
+
 /** base64 из байтов (без Node-буферов: код исполняется в браузере). */
 export function bytesToBase64(bytes: Uint8Array): string {
   let binary = ''
