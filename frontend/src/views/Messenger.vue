@@ -4479,21 +4479,42 @@ useMobileLayer(() => inviteDialogOpen.value, closeInviteDialog)
 
 /* Модалка удаления чата переехала в MessengerChatOverlays.vue вместе с разметкой. */
 
-/* Примечание «защищено сквозным шифрованием» над строкой ввода (как в Telegram) */
+/* Примечание «защищено сквозным шифрованием» над строкой ввода (как в Telegram).
+   Текст НЕ переносим: на 320 px надпись ломалась на две строки, плашка
+   раздувалась с 28 до 46 px и лента прыгала на открытии чата (замер 25.09.2026).
+   Длинный статус на узком экране усекается многоточием. */
 .chat-e2ee-note {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 6px 14px 4px;
+  /* Отступы симметричные: с 6/4 px содержимое стояло на 1 px ниже центра. */
+  padding: 5px 14px;
   color: var(--ms-muted, #7b8a96);
   font-size: 12px;
   pointer-events: none;
   background: transparent;
 }
 
+.chat-e2ee-note span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .chat-e2ee-note .q-icon {
   color: var(--ms-accent, #2ea25e);
+  flex-shrink: 0;
+}
+
+/* На узком телефоне (320 px) отступы 14 px не давали надписи влезть целиком —
+   не хватало 1 px, и текст уходил в многоточие. 8 px возвращают эти пиксели. */
+@media (max-width: 360px) {
+  .chat-e2ee-note {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
 }
 
 /* Канал: подписчику писать нельзя — вместо композера предложка поста. */

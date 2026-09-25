@@ -31,14 +31,6 @@
            трогают: элемент не пересоздаётся и не мигает. -->
       <div :key="props.chat.id" class="chat-title-row">
         <div class="chat-title">{{ title }}</div>
-        <span
-          v-if="e2ee"
-          class="chat-e2ee-pill"
-          :title="t('Сквозное шифрование включено: сообщения читаете только вы и собеседник')"
-        >
-          <q-icon :name="icon('lock')" size="13px" aria-hidden="true" />
-        </span>
-        <span v-if="statusPill" class="chat-status-pill">{{ statusPill }}</span>
       </div>
       <div :key="props.chat.id" class="chat-subtitle">
         <span
@@ -54,6 +46,23 @@
           <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>
         </template>
         <span v-else class="chat-subtitle-text">{{ subtitle }}</span>
+        <!-- Замок сквозного шифрования — сразу после присутствия, ДО статуса:
+             «в сети 🔒 · Работаю…» (уточнение 25.09.2026). Без фона и рамки,
+             только акцентный значок. -->
+        <span
+          v-if="e2ee"
+          class="chat-e2ee-pill"
+          :title="t('Сквозное шифрование включено: сообщения читаете только вы и собеседник')"
+        >
+          <q-icon :name="icon('lock')" size="11px" aria-hidden="true" />
+        </span>
+        <!-- Ручной статус собеседника — в подписи, последним: в строке имени он
+             сжимал название чата. При обрыве связи подпись занята состоянием
+             сети — статус тогда не показываем. -->
+        <template v-if="statusPill && !connectionText">
+          <span class="chat-subtitle-sep" aria-hidden="true">·</span>
+          <span class="chat-status-pill">{{ statusPill }}</span>
+        </template>
       </div>
     </div>
     <div class="chat-header-actions">
@@ -336,14 +345,24 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   gap: 10px;
   padding: 8px 14px;
   background: var(--ms-surface);
-  border-bottom: 1px solid var(--ms-border);
-  box-shadow: var(--ms-shadow-sm);
+  /* Линия-разделитель — inset-тень, а не border-bottom: бордер входил в
+     border-box, и все значки (flex `align-items: center`) вставали на 0,5 px
+     выше визуального центра шапки — на телефоне это заметно глазом. */
+  box-shadow:
+    inset 0 -1px 0 var(--ms-border),
+    var(--ms-shadow-sm);
   z-index: 2;
 }
 
 .back-btn {
   display: inline-flex;
 }
+
+/* ВАЖНО (25.09.2026): не «поправлять» оптику значков сдвигами вверх. Пробовал
+   поднимать глифы на 1 px / 0,5 px по пиксельному замеру чернил — владелец
+   увидел, что значки встали ВЫШЕ центра кнопок, и попросил опустить. Значки
+   должны стоять ровно по центру круга (как их ставит flex `align-items: center`),
+   без самодельных translateY: замер боксов даёт delta 0 у «назад», звонка и «⋯». */
 
 .icon-btn:hover {
   background: var(--ms-hover);
@@ -410,6 +429,12 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   flex: 1;
   min-width: 0;
   overflow: hidden;
+  /* Имя и подпись — две строки в колонку с зазором 2 px. Без него строки
+     соприкасались и шапка читалась «одним куском» (жалоба 25.09.2026). */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
 }
 
 /* Смена чата: название и подпись въезжают снизу за 0,16 s. Уходящий кадр не
@@ -449,15 +474,19 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   min-width: 0;
 }
 
+/* Ручной статус собеседника — в подписи, после «в сети»: приглушённый текст без
+   плашки (в Telegram статус никак не выделен). Разделитель «·» тише самого
+   статуса и не сжимается, чтобы не превратиться в точку посередине строки. */
+.chat-subtitle-sep {
+  flex-shrink: 0;
+  color: var(--ms-muted-3);
+}
+
 .chat-status-pill {
-  max-width: 170px;
-  font-size: var(--ms-fs-xs);
-  font-weight: 600;
-  color: var(--ms-accent);
-  background: var(--ms-accent-soft);
-  border: 1px solid var(--ms-accent-border);
-  border-radius: var(--ms-radius-sm);
-  padding: 1px 7px;
+  max-width: 200px;
+  font-size: var(--ms-fs-sm);
+  font-weight: 400;
+  color: var(--ms-muted-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -487,18 +516,16 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   text-overflow: ellipsis;
 }
 
-/* Плашка-замок (E2EE) рядом с именем собеседника, как в секретных чатах */
+/* Замок сквозного шифрования — маленький акцентный значок в подписи (рядом с
+   «в сети»). Фона и рамки нет намеренно (просьба 25.09.2026): раньше это была
+   зелёная пилюля 20 px в строке имени, и вместе с ручным статусом она
+   сжимала название чата. */
 .chat-e2ee-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   color: var(--ms-accent, #2ea25e);
-  background: var(--ms-accent-soft, #e3f2e5);
-  border: 1px solid var(--ms-accent-border, rgba(46, 162, 94, 0.35));
-  border-radius: 50%;
-  width: 20px;
-  height: 20px;
   line-height: 1;
 }
 
@@ -607,28 +634,33 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
 /* ---------- Мобильная адаптация ---------- */
 @media (max-width: 480px) {
   .chat-header {
-    padding: 8px 10px;
+    padding: 10px;
     gap: 8px;
   }
   /* На узких экранах имя/статус меньше — чтобы длинный статус-пилюля не
-     прилипал к иконкам справа (звонок/поиск/профиль). */
+     прилипал к иконкам справа (звонок/профиль). */
   .chat-title {
     font-size: 15px;
   }
   .chat-subtitle {
     font-size: 12px;
   }
+  /* Кнопки действий по 38 px (палец) стояли с зазором 2 px — визуально слипались.
+     Даём зазор и отступ от текста; имя от этого теряет всего ~6 px и всё равно
+     обрезается эллипсисом, а не «врастает» в иконки (жалоба 25.09.2026). */
+  .chat-header-actions {
+    gap: 6px;
+    padding-left: 6px;
+  }
   .chat-status-pill {
-    max-width: 40%;
+    max-width: 60%;
     font-size: var(--ms-fs-xs);
-    padding: 1px 6px;
-    border-radius: var(--ms-radius-sm);
   }
 }
 
 @media (max-width: 380px) {
   .chat-header {
-    padding: 6px 8px;
+    padding: 8px;
     gap: 6px;
   }
   /* Кнопки НЕ уменьшаем: на самом узком экране они и так впритык для пальца
@@ -641,8 +673,12 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
     width: 11px;
     height: 11px;
   }
+  .chat-header-actions {
+    gap: 4px;
+    padding-left: 4px;
+  }
   .chat-status-pill {
-    max-width: 34%;
+    max-width: 55%;
     font-size: var(--ms-fs-xs);
   }
 }
