@@ -17,7 +17,10 @@ const silence = (seconds: number): number[] =>
 /** «Речь» — синус 440 Гц: важно лишь то, что уровень выше порога. */
 const speech = (seconds: number): number[] => {
   const length = Math.round(seconds * PCM_SAMPLE_RATE)
-  return Array.from({ length }, (_, index) => Math.sin((2 * Math.PI * 440 * index) / PCM_SAMPLE_RATE) * 0.6)
+  return Array.from(
+    { length },
+    (_, index) => Math.sin((2 * Math.PI * 440 * index) / PCM_SAMPLE_RATE) * 0.6
+  )
 }
 
 describe('обрезка тишины перед распознаванием', () => {

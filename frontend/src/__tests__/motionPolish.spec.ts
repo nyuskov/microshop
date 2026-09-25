@@ -225,13 +225,17 @@ describe('живость: реакции-пилюли и микродвижен�
   it('аватар и кнопки отзываются, но не в режиме «меньше движения»', () => {
     expect(appearance).toContain('animation: ms-avatar-in var(--ms-dur) var(--ms-ease)')
     expect(appearance).toMatch(/@keyframes ms-avatar-in \{/)
-    const reduce = appearance.slice(appearance.lastIndexOf('@media (prefers-reduced-motion: reduce)'))
+    const reduce = appearance.slice(
+      appearance.lastIndexOf('@media (prefers-reduced-motion: reduce)')
+    )
     expect(reduce).toContain('html .messenger-shell .avatar-img')
     expect(reduce).toContain('animation: none')
     // Гасители живут там же, где объявлена анимация: правило слоя
     // `html .messenger-shell …` перебивает scoped-стили компонента.
     expect(row).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]{0,200}\.reaction-count/)
-    expect(actions).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]{0,200}\.msg-actions/)
+    expect(actions).toMatch(
+      /@media \(prefers-reduced-motion: reduce\) \{[\s\S]{0,200}\.msg-actions/
+    )
     expect(list).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]{0,120}\.unread-badge/)
   })
 })
