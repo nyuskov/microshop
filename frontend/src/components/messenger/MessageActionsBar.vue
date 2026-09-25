@@ -439,7 +439,12 @@ defineExpose({ closeFloating, reveal, dismiss })
   padding: 4px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.12s;
+  /* Панель не просто проявляется, а чуть «подъезжает» к пузырю: движение
+     показывает, откуда она выросла (общий язык движения — assets/appearance.css). */
+  transform: translateY(-2px);
+  transition:
+    opacity var(--ms-dur-fast) var(--ms-ease),
+    transform var(--ms-dur-fast) var(--ms-ease);
   z-index: 5;
 }
 
@@ -466,10 +471,26 @@ defineExpose({ closeFloating, reveal, dismiss })
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition:
+    background var(--ms-dur-fast) var(--ms-ease),
+    transform var(--ms-dur-fast) var(--ms-ease);
 }
 
 .quick-emoji:hover {
   background: var(--ms-hover);
+}
+
+/* Под курсором эмодзи подпрыгивает — выбор реакции читается как в Telegram.
+   На тач-устройствах `:hover` «залипает» на последнем касании, поэтому рост
+   включаем только там, где действительно есть указатель. */
+@media (hover: hover) {
+  .quick-emoji:hover {
+    transform: scale(1.24);
+  }
+}
+
+.quick-emoji:active {
+  transform: scale(0.92);
 }
 
 .quick-emoji.active {
@@ -488,6 +509,7 @@ defineExpose({ closeFloating, reveal, dismiss })
 .msg:focus-within .msg-actions {
   opacity: 1;
   pointer-events: auto;
+  transform: none;
 }
 
 /* Панель погашена после выбранной реакции.
@@ -498,6 +520,7 @@ defineExpose({ closeFloating, reveal, dismiss })
 .msg .msg-actions.dismissed {
   opacity: 0;
   pointer-events: none;
+  transform: translateY(-2px);
 }
 
 .msg-actions .round-btn {
@@ -641,6 +664,22 @@ defineExpose({ closeFloating, reveal, dismiss })
 
   .msg .msg-actions.dismissed {
     transition: none;
+  }
+}
+
+/* Режим «меньше движения» (a11y): панель просто проявляется, эмодзи не растут. */
+@media (prefers-reduced-motion: reduce) {
+  .msg-actions {
+    transition: opacity var(--ms-dur-fast) var(--ms-ease);
+    transform: none;
+  }
+
+  .quick-emoji {
+    transition: background var(--ms-dur-fast) var(--ms-ease);
+  }
+
+  .quick-emoji:hover {
+    transform: none;
   }
 }
 </style>

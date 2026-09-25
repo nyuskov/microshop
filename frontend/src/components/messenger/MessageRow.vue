@@ -163,7 +163,7 @@
                 <template v-else>{{ face.initials.charAt(0) }}</template>
               </span>
             </span>
-            <span v-else class="reaction-count">{{ reaction.count }}</span>
+            <span v-else :key="reaction.count" class="reaction-count">{{ reaction.count }}</span>
           </button>
         </TransitionGroup>
 
@@ -1194,29 +1194,43 @@ onBeforeUnmount(() => {
 
 .reaction-chip {
   position: relative;
-  /* Подложка из поверхности пузыря, а не своя краска: чип лежит НА пузыре, и
-     своя заливка на своей же (синей у исходящих) выглядела бы заплаткой. */
-  background: color-mix(in srgb, var(--ms-surface) 82%, transparent);
-  color: var(--ms-text);
+  /* Подложка — оттенок цвета текста пузыря (как у бейджа расшифровки): чип
+     лежит НА пузыре, и своя краска читалась на нём заплаткой. */
+  background: color-mix(in srgb, var(--ms-bubble-text) 10%, transparent);
+  color: var(--ms-bubble-text);
   border: none;
-  border-radius: var(--ms-radius-sm);
-  padding: 4px 9px;
+  border-radius: var(--ms-radius-pill);
+  padding: 3px 9px 3px 7px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
+  transition:
+    background var(--ms-dur-fast) var(--ms-ease),
+    transform var(--ms-dur-fast) var(--ms-ease);
 }
 
 /* «Моя» реакция выделяется полупрозрачным тоном, без рамки: рамка вокруг чипа
    читалась как вторая граница пузыря, а градиент — как чужой элемент. */
 .reaction-chip.mine {
-  background: color-mix(in srgb, var(--ms-accent) 20%, transparent);
+  background: color-mix(in srgb, var(--ms-accent) 26%, transparent);
   color: var(--ms-text-strong);
 }
 
-/* Нажатие отзывается сжатием: без него чип на телефоне не отзывается никак.
-   Пере-ход тут не нужен: сжатие должно быть мгновенным (transition занят
-   анимацией появления/снятия чипа). */
+/* Наведение (только на устройствах с курсором): чип чуть приподнимается —
+   отклик до нажатия, как в Telegram. */
+@media (hover: hover) {
+  .reaction-chip:hover {
+    transform: translateY(-1px);
+    background: color-mix(in srgb, var(--ms-bubble-text) 16%, transparent);
+  }
+
+  .reaction-chip.mine:hover {
+    background: color-mix(in srgb, var(--ms-accent) 34%, transparent);
+  }
+}
+
+/* Нажатие отзывается сжатием: без него чип на телефоне не отзывается никак. */
 .reaction-chip:active {
   transform: scale(0.92);
 }
@@ -1224,6 +1238,9 @@ onBeforeUnmount(() => {
 .reaction-count {
   font-size: var(--ms-fs-xs);
   font-weight: 600;
+  /* Число подпрыгивает при смене: Vue пересоздаёт элемент (ключ по значению
+     счётчика), поэтому анимация играет ровно на изменении, а не на рендере. */
+  animation: ms-count-pop var(--ms-dur-pop) var(--ms-ease-pop);
 }
 
 /* Лица отметивших в чипе: чуть внахлёст, как стопка аватарок в Telegram. */
@@ -1298,6 +1315,16 @@ onBeforeUnmount(() => {
   to {
     opacity: 0;
     transform: scale(1.4);
+  }
+}
+
+/* Режим «меньше движения» (a11y): чип и счётчик остаются на месте — отклик
+   (смена цвета/числа) виден, а «выстрелов» и подпрыгиваний нет. */
+@media (prefers-reduced-motion: reduce) {
+  .reaction-count,
+  .reaction-chip.fresh .reaction-emoji,
+  .reaction-chip.fresh::after {
+    animation: none;
   }
 }
 

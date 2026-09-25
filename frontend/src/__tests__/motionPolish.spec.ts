@@ -184,3 +184,54 @@ describe('собеседник говорит', () => {
     expect(overlay).toContain('@keyframes avatar-speaking {')
   })
 })
+
+describe('живость: реакции-пилюли и микродвижения', () => {
+  const appearance = source('src/assets/appearance.css')
+
+  it('токены «пружинки» объявлены один раз и в общем слое', () => {
+    expect(appearance).toContain('--ms-dur-pop:')
+    expect(appearance).toContain('--ms-ease-pop:')
+    // Перелёт через цель — это и есть «пружинка»: обычная кривая вернула бы
+    // движение к простому затуханию.
+    const ease = appearance.match(/--ms-ease-pop: (cubic-bezier\([^)]*\))/)?.[1] ?? ''
+    expect(ease).toContain('1.56')
+  })
+
+  it('реакции стали пилюлями, число подпрыгивает только при смене', () => {
+    const chip = row.slice(row.indexOf('.reaction-chip {'), row.indexOf('.reaction-faces {'))
+    expect(chip).toContain('border-radius: var(--ms-radius-pill)')
+    // Подложка — оттенок цвета текста пузыря: своя краска читалась заплаткой.
+    expect(chip).toContain('color-mix(in srgb, var(--ms-bubble-text) 10%, transparent)')
+    expect(chip).toContain('color-mix(in srgb, var(--ms-accent) 26%, transparent)')
+    expect(chip).toContain('animation: ms-count-pop var(--ms-dur-pop) var(--ms-ease-pop)')
+    // Рост под курсором — только там, где курсор есть: на тач-устройствах
+    // `:hover` залипает на последнем касании.
+    expect(chip).toContain('@media (hover: hover)')
+    // Ключ по счётчику: без него анимация играла бы на каждом рендере строки.
+    expect(row).toContain(':key="reaction.count"')
+  })
+
+  it('панель действий подъезжает к пузырю, эмодзи растут под курсором', () => {
+    const panel = actions.slice(actions.indexOf('.msg-actions {'), actions.indexOf('.bar-row {'))
+    expect(panel).toContain('transform: translateY(-2px)')
+    expect(panel).toContain('transform var(--ms-dur-fast) var(--ms-ease)')
+    expect(actions).toContain('.msg-actions.dismissed {')
+    expect(actions).toMatch(/\.quick-emoji:hover \{\s*transform: scale\(1\.24\)/)
+    // Погашенная панель возвращается в исходное смещение, иначе следующий показ
+    // начинался бы с «прыжка».
+    expect(actions).toMatch(/\.msg \.msg-actions\.dismissed \{[\s\S]{0,120}translateY\(-2px\)/)
+  })
+
+  it('аватар и кнопки отзываются, но не в режиме «меньше движения»', () => {
+    expect(appearance).toContain('animation: ms-avatar-in var(--ms-dur) var(--ms-ease)')
+    expect(appearance).toMatch(/@keyframes ms-avatar-in \{/)
+    const reduce = appearance.slice(appearance.lastIndexOf('@media (prefers-reduced-motion: reduce)'))
+    expect(reduce).toContain('html .messenger-shell .avatar-img')
+    expect(reduce).toContain('animation: none')
+    // Гасители живут там же, где объявлена анимация: правило слоя
+    // `html .messenger-shell …` перебивает scoped-стили компонента.
+    expect(row).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]{0,200}\.reaction-count/)
+    expect(actions).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]{0,200}\.msg-actions/)
+    expect(list).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]{0,120}\.unread-badge/)
+  })
+})

@@ -535,6 +535,13 @@ watch(
     transform: scale(1);
   }
 }
+
+/* Режим «меньше движения» (a11y): отклик оставляем, подпрыгивание убираем. */
+@media (prefers-reduced-motion: reduce) {
+  .unread-badge {
+    animation: none;
+  }
+}
 /* Список занимает место раздела: фильтры сверху, прокрутка — остаток высоты. */
 .chats-panel {
   flex: 1;

@@ -168,6 +168,10 @@
     --ms-dur: 0.22s;
     --ms-dur-slow: 0.28s;
     --ms-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    /* «Пружинка» для живых мелочей (реакция, счётчик, бейдж): с перелётом
+       через цель — движение читается как отклик, а не как перерисовка. */
+    --ms-dur-pop: 0.34s;
+    --ms-ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
 
     --ms-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
     --ms-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.16);
@@ -637,6 +641,33 @@ html .messenger-shell .send-btn:active {
     transform: scale(0.9);
 }
 
+/* При наведении значки чуть приподнимаются — кнопка «оживает» до нажатия
+   (только там, где наведение вообще есть: на телефоне это правило не нужно). */
+@media (hover: hover) {
+
+    html .messenger-shell .icon-btn:hover,
+    html .messenger-shell .round-btn:hover,
+    html .messenger-shell .send-btn:hover {
+        transform: translateY(-1px);
+    }
+}
+
+@keyframes ms-count-pop {
+    0% {
+        transform: scale(0.6);
+        opacity: 0.3;
+    }
+
+    60% {
+        transform: scale(1.14);
+    }
+
+    100% {
+        transform: none;
+        opacity: 1;
+    }
+}
+
 /* Едва заметное приподнятие строки чата при наведении (hover-устройства). */
 @media (hover: hover) {
     html .messenger-shell .row-item:not(.active):hover {
@@ -682,6 +713,21 @@ html .messenger-shell [role='menuitem']:focus-visible {
     height: 100%;
     object-fit: cover;
     display: block;
+    /* Картинка появляется мягко, а не «включается» рывком, когда ответил
+       сервер: аватар — первый элемент, по которому видно загрузку чата. */
+    animation: ms-avatar-in var(--ms-dur) var(--ms-ease);
+}
+
+@keyframes ms-avatar-in {
+    from {
+        opacity: 0;
+        transform: scale(0.92);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
 }
 
 /* ---------- Скелетоны загрузки списков (чаты, контакты, истории) ---------- */
@@ -746,6 +792,18 @@ html .messenger-shell [role='menuitem']:focus-visible {
     .sk-avatar,
     .sk-line {
         animation: none;
+    }
+
+    /* Всё, что двигается ради отклика (аватар, кнопки), в режиме «меньше
+       движения» стоит на месте: отклик остаётся, перелёты уходят. */
+    html .messenger-shell .avatar-img {
+        animation: none;
+    }
+
+    html .messenger-shell .icon-btn:hover,
+    html .messenger-shell .round-btn:hover,
+    html .messenger-shell .send-btn:hover {
+        transform: none;
     }
 }
 
