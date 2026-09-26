@@ -2,9 +2,9 @@
  * Разметка текста сообщения: обрамление выделенного куска знаками.
  *
  * Знаки давно понимает рендер (`MessageText.vue` разбирает их через
- * `utils/mentions.ts`): `*жирный*`, `_курсив_`, `~~зачёркнутый~~`, `` `код` ``,
- * `||спойлер||`. Но набирать их приходилось руками — панель формата в композере
- * (кнопка «Aa») оборачивает ими выделение.
+ * `utils/mentions.ts`): `*жирный*`, `_курсив_`, `__подчёркнутый__`,
+ * `~~зачёркнутый~~`, `` `код` ``, `||спойлер||`. Но набирать их приходилось
+ * руками — панель формата в композере (кнопка «Aa») оборачивает ими выделение.
  *
  * ГЛАВНОЕ правило — общее с разбором: сразу после открывающего знака и перед
  * закрывающим не должно быть пробела, иначе разметка не распознаётся. Поэтому
@@ -13,12 +13,13 @@
  */
 
 /** Виды разметки, которые умеет панель формата. */
-export type MarkupKind = 'bold' | 'italic' | 'strike' | 'code' | 'spoiler'
+export type MarkupKind = 'bold' | 'italic' | 'underline' | 'strike' | 'code' | 'spoiler'
 
 /** Знаки обрамления — те же, что разбирает `utils/mentions.ts`. */
 export const MARKUP_MARKS: Record<MarkupKind, string> = {
   bold: '*',
   italic: '_',
+  underline: '__',
   strike: '~~',
   code: '`',
   spoiler: '||'
@@ -41,7 +42,8 @@ const clamp = (value: number, max: number): number => Math.max(0, Math.min(value
  *
  * Повторное нажатие той же кнопки снимает разметку: человек выделяет готовый
  * жирный кусок (или сам текст внутри него) и ждёт «выключить», а не «обернуть
- * второй раз».
+ * второй раз». Так же и при курсоре между парой знаков: «набрал и передумал»
+ * не требует удалять звёздочки вручную.
  */
 export function applyMarkup(
   text: string,
@@ -55,6 +57,19 @@ export function applyMarkup(
 
   // Выделения нет — ставим пустую пару знаков и курсор между ними.
   if (from === to) {
+    // Курсор уже стоит между тех же знаков (`**|**`): повторное нажатие снимает
+    // пару, а не ставит вторую — иначе «включил и передумал» чинится руками.
+    if (
+      from >= mark.length &&
+      text.slice(from - mark.length, from) === mark &&
+      text.slice(from, from + mark.length) === mark
+    ) {
+      return {
+        text: text.slice(0, from - mark.length) + text.slice(from + mark.length),
+        start: from - mark.length,
+        end: from - mark.length
+      }
+    }
     const caret = from + mark.length
     return { text: text.slice(0, from) + mark + mark + text.slice(from), start: caret, end: caret }
   }

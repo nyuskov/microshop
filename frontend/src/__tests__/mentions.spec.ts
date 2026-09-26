@@ -64,11 +64,19 @@ describe('оформление текста', () => {
     ])
   })
 
-  it('двойные звёздочки и подчёркивания тоже работают', () => {
+  it('двойные звёздочки — жирный, двойные подчёркивания — подчёркнутый', () => {
     expect(splitMessageText('**важно** и __тоже__')).toEqual([
       { type: 'bold', value: 'важно' },
       { type: 'text', value: ' и ' },
-      { type: 'italic', value: 'тоже' }
+      { type: 'underline', value: 'тоже' }
+    ])
+  })
+
+  it('одинарное и двойное подчёркивание различаются', () => {
+    expect(splitMessageText('_курсив_ и __подчёркнутый__')).toEqual([
+      { type: 'italic', value: 'курсив' },
+      { type: 'text', value: ' и ' },
+      { type: 'underline', value: 'подчёркнутый' }
     ])
   })
 

@@ -144,6 +144,7 @@ export const EN: Record<string, string> = {
   'Форматирование текста': 'Text formatting',
   Жирный: 'Bold',
   Курсив: 'Italic',
+  Подчёркнутый: 'Underline',
   Зачёркнутый: 'Strikethrough',
   Код: 'Code',
   Спойлер: 'Spoiler',

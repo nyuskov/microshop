@@ -16,9 +16,11 @@
         @click.stop.prevent="followMessageLink(part.href)"
         >{{ part.value }}</a
       >
-      <!-- Оформление: *жирный*, _курсив_, `код`, ~~зачёркнутый~~ -->
+      <!-- Оформление: *жирный*, _курсив_, __подчёркнутый__, `код`,
+           ~~зачёркнутый~~, ||спойлер|| -->
       <strong v-else-if="part.type === 'bold'" class="msg-bold">{{ part.value }}</strong>
       <em v-else-if="part.type === 'italic'" class="msg-italic">{{ part.value }}</em>
+      <u v-else-if="part.type === 'underline'" class="msg-underline">{{ part.value }}</u>
       <s v-else-if="part.type === 'strike'" class="msg-strike">{{ part.value }}</s>
       <code v-else-if="part.type === 'code'" class="msg-code">{{ part.value }}</code>
       <!-- Совпадение поиска по сообщениям: видно, ЧТО именно нашлось -->
@@ -158,7 +160,8 @@ const isClamped = computed(() => canCollapse.value && !expanded.value)
   font-weight: 600;
 }
 
-/* Оформление текста (*жирный*, _курсив_, `код`, ~~зачёркнутый~~, ||спойлер||).
+/* Оформление текста (*жирный*, _курсив_, __подчёркнутый__, `код`,
+   ~~зачёркнутый~~, ||спойлер||).
    Цвет берём от пузыря: он бывает и своим (зелёным), и чужим (белым). */
 .msg-bold {
   font-weight: 700;
@@ -166,6 +169,13 @@ const isClamped = computed(() => canCollapse.value && !expanded.value)
 
 .msg-italic {
   font-style: italic;
+}
+
+/* Подчёркнутый текст (`__текст__`): линия чуть ниже букв, как в Telegram, —
+   иначе она слипается с хвостами букв вроде «д» и «у» */
+.msg-underline {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .msg-strike {

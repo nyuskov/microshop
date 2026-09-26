@@ -97,7 +97,8 @@
         <q-icon :name="icon('sentiment_satisfied_alt')" size="20px" />
       </button>
       <!-- Формат текста: обрамляет выделенный кусок знаками разметки
-           (`*жирный*`, `_курсив_`, `~~зачёркнутый~~`, `` `код` ``, `||спойлер||`).
+           (`*жирный*`, `_курсив_`, `__подчёркнутый__`, `~~зачёркнутый~~`,
+           `` `код` ``, `||спойлер||`).
            Кнопка видна только при набранном тексте: без него её место занимает
            микрофон, и лишняя кнопка сузила бы поле ввода на телефоне. -->
       <span v-if="hasText" class="format-wrap">
@@ -1471,6 +1472,7 @@ const formatMenuOpen = ref(false)
 const MARKUP_ITEMS: readonly { kind: MarkupKind; label: string }[] = [
   { kind: 'bold', label: 'Жирный' },
   { kind: 'italic', label: 'Курсив' },
+  { kind: 'underline', label: 'Подчёркнутый' },
   { kind: 'strike', label: 'Зачёркнутый' },
   { kind: 'code', label: 'Код' },
   { kind: 'spoiler', label: 'Спойлер' }

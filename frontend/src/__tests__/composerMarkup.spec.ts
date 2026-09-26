@@ -46,7 +46,19 @@ describe('разметка выделенного текста', () => {
   it('многосимвольные знаки обрамляются целиком', () => {
     expect(applyMarkup('секрет', 0, 6, 'spoiler').text).toBe('||секрет||')
     expect(applyMarkup('нет', 0, 3, 'strike').text).toBe('~~нет~~')
+    expect(applyMarkup('цитата', 0, 6, 'underline').text).toBe('__цитата__')
     expect(MARKUP_MARKS.code).toBe('`')
+    expect(MARKUP_MARKS.underline).toBe('__')
+  })
+
+  it('повторное нажатие при пустой паре снимает её, а не ставит вторую', () => {
+    // «Включил и передумал»: знаки убираются одним нажатием той же кнопки.
+    const empty = applyMarkup('код', 3, 3, 'code')
+    expect(empty.text).toBe('код``')
+
+    const removed = applyMarkup(empty.text, empty.start, empty.start, 'code')
+    expect(removed.text).toBe('код')
+    expect([removed.start, removed.end]).toEqual([3, 3])
   })
 
   it('индексы вне текста (курсор уехал) не ломают правку', () => {
@@ -61,11 +73,11 @@ describe('разметка выделенного текста', () => {
 })
 
 describe('кнопка формата в композере', () => {
-  it('есть кнопка, меню из пяти видов и вызов разметки', () => {
+  it('есть кнопка, меню из шести видов и вызов разметки', () => {
     expect(composer).toContain("t('Форматирование текста')")
     expect(composer).toContain('@click="applyFormat(item.kind)"')
     expect(composer).toContain('applyMarkup(newMessage.value, start, end, kind)')
-    for (const label of ['Жирный', 'Курсив', 'Зачёркнутый', 'Код', 'Спойлер']) {
+    for (const label of ['Жирный', 'Курсив', 'Подчёркнутый', 'Зачёркнутый', 'Код', 'Спойлер']) {
       expect(composer).toContain(`label: '${label}'`)
     }
   })

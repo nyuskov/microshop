@@ -299,7 +299,7 @@
               :editing-message="editingMessage"
               :extras-panel="extrasPanel"
               :voice-rec-open="voiceRecOpen"
-              :mention-members="selectedChat && isGroupChat(selectedChat) ? selectedChat.users : []"
+              :mention-members="mentionMembers"
               :record-mode="recordMode"
               :mic-holding="micHolding"
               :record-mode-hint="recordModeHint"
@@ -1105,6 +1105,20 @@ const mentionLogin = computed<string>(() => {
   if (!chat || chat.is_self) return ''
   if (!chat.is_group && !chat.is_channel) return ''
   return authStore.current_user?.username ?? ''
+})
+
+/**
+ * Кого предлагает подсказка «@» в поле ввода (см. MessageComposer).
+ *
+ * В группе — участников, в личном диалоге — собеседника: вставить его логин
+ * одним нажатием удобно и там (владелец просил). Себя не предлагаем; в канале
+ * и «Сохранённых» список пуст — там подсказывать некого и незачем.
+ */
+const mentionMembers = computed<ChatUser[]>(() => {
+  const chat = selectedChat.value
+  if (!chat || chat.is_channel) return []
+  const uid = currentUserId.value
+  return (chat.users ?? []).filter((member) => member.id !== uid)
 })
 
 /**

@@ -170,6 +170,16 @@ describe('MessageRow: разметка и подсветка текста', () =
     wrapper.unmount()
   })
 
+  it('двойное подчёркивание — подчёркнутый, одинарное — курсив', async () => {
+    const wrapper = mountRow('__важное__ и _тихое_')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('u.msg-underline').text()).toBe('важное')
+    expect(wrapper.find('em.msg-italic').text()).toBe('тихое')
+    expect(wrapper.find('.msg-text').text()).toBe('важное и тихое')
+    wrapper.unmount()
+  })
+
   it('спойлер скрыт до нажатия', async () => {
     const wrapper = mountRow('там ||секрет|| внутри')
     await wrapper.vm.$nextTick()
