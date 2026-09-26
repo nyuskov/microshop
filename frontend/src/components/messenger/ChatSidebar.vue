@@ -148,6 +148,7 @@
               @swipe-pin="onSwipePin"
               @swipe-archive="onSwipeArchive"
               @swipe-mute="onSwipeMute"
+              @swipe-read="onSwipeRead"
             />
           </template>
         </template>
@@ -289,6 +290,8 @@ const emit = defineEmits<{
   (e: 'open-message', chatId: number, messageId: number): void
   (e: 'toggle-pin', chatId: number): void
   (e: 'toggle-mute', chatId: number): void
+  /** Свайп «Отметить прочитанным»: снять счётчик, не открывая чат. */
+  (e: 'mark-read', chatId: number): void
   (e: 'bulk-mute', chatIds: number[], muted: boolean): void
   (e: 'bulk-pin', chatIds: number[], pinned: boolean): void
   (e: 'bulk-archive', chatIds: number[], archived: boolean): void
@@ -623,6 +626,14 @@ const onSwipeArchive = (chatId: number) => emit('bulk-archive', [chatId], !isArc
 
 /** Свайп влево, когда в настройках выбраны «Уведомления» (выкл/вкл по чату). */
 const onSwipeMute = (chatId: number) => emit('toggle-mute', chatId)
+
+/**
+ * Свайп влево, когда в настройках выбрано «Отметить прочитанным».
+ *
+ * Уходит отдельным событием, а не `toggle-mute`: снять счётчик — не то же
+ * самое, что заглушить чат, и решает это родитель (`Messenger`).
+ */
+const onSwipeRead = (chatId: number) => emit('mark-read', chatId)
 
 // ---------- Режим выделения чатов (long-press; как в Telegram) ----------
 // Вход: удержание на чате (~0,5 с). В режиме выделения клик по чату —

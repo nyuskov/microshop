@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import ChatList from '@/components/messenger/ChatList.vue'
 import {
   CHAT_SWIPE_KEY,
+  CHAT_SWIPE_OPTIONS,
   readChatSwipeAction,
   writeChatSwipeAction,
   chatSwipeAction
@@ -15,7 +16,8 @@ import type { Chat } from '@/types'
  * Свайпы по строке чата (телефон): вправо — закрепить/открепить, влево — в архив.
  *
  * Жест повторяет то, что уже есть в меню чата и в панели выделения, но без
- * долгого тапа и двух нажатий. Проверяем главное: порог, направление, что
+ * долгого тапа и двух нажатий. Левый свайп настраивается: архив, уведомления или
+ * «отметить прочитанным». Проверяем главное: порог, направление, что
  * вертикальное листание списка наш жест НЕ запускает и что подсказка называет
  * именно то действие, которое сработает.
  */
@@ -122,6 +124,19 @@ describe('свайп по строке чата', () => {
     writeChatSwipeAction('archive')
   })
 
+  it('влево — отметить прочитанным, если так выбрано в настройках', async () => {
+    writeChatSwipeAction('read')
+    const wrapper = mountList({ unreadChatCount: 3 })
+    swipeRow(wrapper, -80, 0, true)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.row-swipe').text()).toContain('Отметить прочитанным')
+    wrapper.find('.row-item').element.dispatchEvent(touch('touchend', 120, 400))
+    await wrapper.vm.$nextTick()
+    expect(wrapper.emitted('swipe-read')).toEqual([[CHATS[0]!.id]])
+    expect(wrapper.emitted('swipe-archive')).toBeUndefined()
+    writeChatSwipeAction('archive')
+  })
+
   it('подсказка называет действие, которое сработает', async () => {
     const wrapper = mountList({ pinnedChatIds: [CHATS[0]!.id], archivedChatIds: [CHATS[1]!.id] })
     swipeRow(wrapper, 80, 0, true)
@@ -198,6 +213,15 @@ describe('связки в интерфейсе', () => {
     expect(sidebar).toContain(':pinned-chat-ids="pinnedChatIds"')
     expect(sidebar).toContain(':archived-chat-ids="archivedChatIds"')
   })
+
+  it('«отметить прочитанным» уходит отдельным событием, а не как мьют', () => {
+    // Снять счётчик — не то же самое, что заглушить чат: решение принимает
+    // Messenger, поэтому у события своё имя.
+    expect(sidebar).toContain('@swipe-read="onSwipeRead"')
+    expect(sidebar).toContain("const onSwipeRead = (chatId: number) => emit('mark-read', chatId)")
+    const messenger = readFileSync('src/views/Messenger.vue', 'utf8')
+    expect(messenger).toContain('@mark-read="markChatReadQuietly"')
+  })
 })
 
 describe('настройка «что делает левый свайп»', () => {
@@ -217,9 +241,21 @@ describe('настройка «что делает левый свайп»', () 
   })
 
   it('сохранённый выбор применяется сразу', () => {
+    writeChatSwipeAction('read')
+    expect(chatSwipeAction.value).toBe('read')
     writeChatSwipeAction('mute')
     expect(chatSwipeAction.value).toBe('mute')
     writeChatSwipeAction('archive')
     expect(chatSwipeAction.value).toBe('archive')
+  })
+
+  it('в настройках три варианта, и подписи переводятся', () => {
+    expect(CHAT_SWIPE_OPTIONS.map((option) => option.key)).toEqual(['archive', 'mute', 'read'])
+    // Подписи — ключи перевода: константа объявлена при загрузке модуля, и
+    // готовые строки застыли бы на языке, который был тогда.
+    expect(CHAT_SWIPE_OPTIONS.every((option) => option.label && option.hint)).toBe(true)
+    const settings = readFileSync('src/views/AppearanceSettings.vue', 'utf8')
+    expect(settings).toContain('{{ t(opt.label) }}')
+    expect(settings).toContain(':title="t(opt.hint)"')
   })
 })

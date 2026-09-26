@@ -141,6 +141,12 @@ export const EN: Record<string, string> = {
     'Record a voice message. Hold for 2 seconds for a video message',
   'Отправить. Удерживайте или нажмите правой кнопкой — отправить позже':
     'Send. Hold or right-click to send later',
+  'Форматирование текста': 'Text formatting',
+  Жирный: 'Bold',
+  Курсив: 'Italic',
+  Зачёркнутый: 'Strikethrough',
+  Код: 'Code',
+  Спойлер: 'Spoiler',
   'Стикер уходит сразу — как сообщение.': 'A sticker is sent right away, like a message.',
   Добавить: 'Add',
   'Мои паки стикеров': 'My sticker packs',
@@ -170,6 +176,7 @@ export const EN: Record<string, string> = {
   '{kind} — нажмите для звонка, удерживайте 0,5 с для смены типа':
     '{kind} — tap to call, hold for 0.5 s to change the type',
   'Поиск по сообщениям': 'Search in messages',
+  'Упоминания меня': 'My mentions',
   'Звук уведомлений': 'Notification sound',
   'В папку…': 'To folder…',
   'Статистика чата': 'Chat statistics',
@@ -1430,6 +1437,9 @@ export const EN: Record<string, string> = {
   'Чат скрывается из списка, вернуть — из фильтра «Архив»':
     'The chat is hidden from the list; bring it back from the “Archive” filter',
   'Выключает и включает уведомления по этому чату': 'Turns notifications for this chat off and on',
+  'Отметить прочитанным': 'Mark as read',
+  'Снимает счётчик непрочитанных, чат остаётся в списке':
+    'Clears the unread counter, the chat stays in the list',
 
   // --- Наборы стикеров приложения (utils/standardStickers.ts) ---
   Ок: 'OK',

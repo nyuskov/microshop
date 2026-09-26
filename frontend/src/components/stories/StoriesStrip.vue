@@ -85,14 +85,14 @@
       </p>
     </div>
 
-    <!-- Счётчик «+N»: сколько историй НЕ влезло в сжатый ряд. Нужен потому, что
-         в шапке ряд обрезан лимитом (2 кружка рядом с надписью о связи) и по
-         двум кружкам не понять, что за ними есть ещё другие (владелец:
-         «чтобы понятно было, что их не две, а больше»). Лежит ПОВЕРХ полосы у её
-         правого края и ширины НЕ занимает: в потоке он отнимал ~20 px у надписи
-         в середине шапки, и та усекалась (владелец: «только чтобы он
-         пространство не занимал типа чтобы тихие часы больше умещались»).
-         Тап — как по кружку: раскрывает полосу, где лимита нет. -->
+    <!-- Счётчик «+N»: сколько историй НЕ влезло в сжатый ряд. Ряд занимает всю
+         свободную ширину до правых значков (сколько влезло — считает замер в
+         скрипте), и по кружкам без счётчика не понять, что за краем есть ещё
+         люди (владелец: «чтобы понятно было, что их не две, а больше»). Лежит
+         ПОВЕРХ полосы у её правого края и ширины НЕ занимает: в потоке он отнимал
+         ~20 px у надписи в середине шапки, и та усекалась (владелец: «только
+         чтобы он пространство не занимал типа чтобы тихие часы больше
+         умещались»). Тап — как по кружку: раскрывает полосу, где лимита нет. -->
     <button
       v-if="mini && hiddenOthers > 0"
       class="story-more"
@@ -160,7 +160,7 @@
 <script setup lang="ts">
 import { icon } from '@/utils/icons'
 import { t } from '@/i18n'
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, nextTick, ref, watch } from 'vue'
 import { Notify } from 'quasar'
 
 import { mediaUrl } from '@/config'
@@ -170,7 +170,9 @@ import { useHScroll } from '@/composables/useHScroll'
 import { useMobileLayer } from '@/composables/useMobileOverlay'
 import type { StoryGroup } from '@/services/stories'
 import {
+  countVisibleCells,
   firstUnseenStoryId,
+  HEADER_STORIES_MAX,
   headerHiddenStoryGroups,
   headerStoryGroups,
   probeVideoPlayback,
@@ -182,6 +184,14 @@ const emit = defineEmits<{
   (e: 'open-story', storyId: number): void
   /** Нажатие по сжатым историям в шапке — раскрыть полосу под шапкой. */
   (e: 'toggle-expand'): void
+  /**
+   * Сколько историй не влезло в сжатый ряд (0 — влезли все).
+   *
+   * Считает ТОЛЬКО компонент: он знает и ширину коробки, и прямоугольники
+   * кружков. Шапке число нужно для отступа надписи в середине (счётчик «+N»
+   * вынут из потока и заходит в её коробку).
+   */
+  (e: 'hidden-count', count: number): void
 }>()
 
 const props = withDefaults(
@@ -191,10 +201,10 @@ const props = withDefaults(
     /** Полоса историй раскрыта — кружок в шапке подсвечен (для mini). */
     expanded?: boolean
     /**
-     * Сколько кружков показать в СЖАТОМ ряду шапки (считая «Мою историю»).
-     *
-     * Место в шапке делят кружки и надпись о связи, поэтому лимит приходит
-     * снаружи (`utils/stories.headerStoriesLimit`), а 0 — без ограничения.
+     * Предел кружков в сжатом ряду, считая «Мою историю» (см.
+     * `utils/stories.headerStoriesLimit`): с подсказкой в середине шапки — 2, без
+     * неё — потолок разметки. Сколько из них реально влезет, решает замер: ряд
+     * тянется до правых значков, а их ширину знает только раскладка.
      */
     limit?: number
   }>(),
@@ -217,13 +227,43 @@ const stories = useStoriesStore()
 const authStore = useAuthStore()
 
 /**
+ * Сколько кружков ряда видно ЦЕЛИКОМ — по замеру их прямоугольников.
+ *
+ * Ряд тянется до правых значков, а подсказка в середине отдаёт ему ширину
+ * (сжимается первой), поэтому «сколько влезло» знает только раскладка.
+ * Обрезанный у края кружок не считаем — он же подсказывает, что есть ещё.
+ */
+const visibleCells = ref(HEADER_STORIES_MAX)
+
+const measureVisible = () => {
+  const wrap = stripEl.value
+  if (!props.mini || !wrap) return
+  const cells = [...wrap.querySelectorAll('.story-cell')].map((cell) =>
+    cell.getBoundingClientRect()
+  )
+  visibleCells.value = countVisibleCells(cells, wrap.getBoundingClientRect())
+}
+
+/**
+ * Сколько кружков помещаем: не больше предела и не больше того, что влезло.
+ *
+ * Два ограничения вместо одного, потому что они про разное: предел — правило
+ * владельца (с подсказкой в середине ряд короткий), замер — фактическая ширина
+ * экрана (сколько кружков доходит до правых значков).
+ */
+const capacity = computed(() => {
+  const limit = props.limit > 0 ? props.limit : HEADER_STORIES_MAX
+  return Math.max(1, Math.min(limit, visibleCells.value))
+})
+
+/**
  * Истории других, которые рисует сжатый ряд в шапке.
  *
- * С лимитом ряд кончается на третьем или шестом кружке (см.
- * `headerStoryGroups`): остальные видны в раскрытой полосе, где лимита нет.
+ * Остальные не теряются: их показывает раскрытая полоса (там лимита нет) и
+ * счётчик «+N».
  */
 const visibleOthers = computed(() =>
-  props.mini ? headerStoryGroups(stories.others, props.limit) : stories.others
+  props.mini ? headerStoryGroups(stories.others, capacity.value) : stories.others
 )
 
 /**
@@ -231,7 +271,34 @@ const visibleOthers = computed(() =>
  * «+N» рядом с полосой. В раскрытой полосе ограничения нет, поэтому там 0.
  */
 const hiddenOthers = computed(() =>
-  props.mini ? headerHiddenStoryGroups(stories.others, props.limit) : 0
+  props.mini ? headerHiddenStoryGroups(stories.others, capacity.value) : 0
+)
+
+// Шапка держит по этому числу отступ надписи в середине (см. `with-more`).
+watch(hiddenOthers, (count) => emit('hidden-count', count), { immediate: true })
+
+// Замер перерисовываем на монтировании, при смене числа групп и при изменении
+// ширины полосы (её отдаёт шапка: на узком экране меньше, на широком больше).
+let stripObserver: ResizeObserver | null = null
+
+onMounted(() => {
+  void nextTick(measureVisible)
+  const wrap = stripEl.value
+  // В jsdom (тесты) ResizeObserver нет — меряем один раз и по изменениям групп.
+  if (wrap && typeof ResizeObserver !== 'undefined') {
+    stripObserver = new ResizeObserver(() => measureVisible())
+    stripObserver.observe(wrap)
+  }
+})
+
+onBeforeUnmount(() => {
+  stripObserver?.disconnect()
+  stripObserver = null
+})
+
+watch(
+  () => [props.mini, props.expanded, stories.groups.length] as const,
+  () => void nextTick(measureVisible)
 )
 
 /**
@@ -560,7 +627,9 @@ const publish = async () => {
    линия ореола живёт отдельным слоем (::after) и обрезкой не затрагивается. */
 .mini .story-avatar {
   border: none;
-  box-shadow: none;
+  /* Линия по кругу — ВНУТРИ кружка (inset-тень), внешних теней нет: они
+     складывались с линией. См. подробности ниже, у правил ореола. */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ms-muted-3) 45%, transparent);
   border-radius: 50%;
   overflow: hidden;
   clip-path: circle(50%);
@@ -584,22 +653,20 @@ const publish = async () => {
   transform: none;
 }
 
-/* Тонкая светлая линия по кругу — 1 px по краю ячейки (зазор 2 px от картинки).
-   Полупрозрачный серый: плотный --ms-muted-3 выглядел слишком тёмным, а совсем
-   светлый --ms-border сливался с фоном. Итого кружок с линией 34 px. */
-.mini .story-cell::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border: 1px solid color-mix(in srgb, var(--ms-muted-3) 45%, transparent);
-  border-radius: 50%;
-  pointer-events: none;
-}
+/* Линия кружка — внутри него, а не по краю ЯЧЕЙКИ.
+   Раньше линия рисовалась отдельным слоем на ячейке (`::after`, `inset: 0`):
+   ячейка 40 px, кружок 34 px — значит линия шла на 3 px НАРУЖУ от картинки.
+   В плотном ряду (шаг 12 px) её левая дуга выходила из-под соседнего кружка
+   серпом и читалась как подложка-тень позади истории (владелец, 26.09.2026:
+   «тень… она даже без подсказки есть», «подложка затеняет истории»).
+   Внутренняя линия не выходит за кружок и ничего не затеняет; цвет тот же
+   (полупрозрачный серый: плотный `--ms-muted-3` был слишком тёмный, а
+   `--ms-border` сливался с фоном). */
 
-/* Непросмотренное — та же линия акцентом. При нажатии цвет не меняется:
+/* Непросмотренное — та же линия акцентом, толще. При нажатии цвет не меняется:
    ореол постоянный, как на образце. */
-.mini .story-cell:has(.story-avatar.unseen)::after {
-  border-color: var(--ms-accent);
+.mini .story-avatar.unseen {
+  box-shadow: inset 0 0 0 2px var(--ms-accent);
 }
 
 /* Своей истории нет — в кружке «+» (раньше в углу висел маленький значок, а в
@@ -612,9 +679,8 @@ const publish = async () => {
 
 /* Полоса историй раскрыта: кружок в шапке подсвечен — как значок поиска в
    открытом состоянии. Тот же ореол, но толще: состояние читается сразу. */
-.mini.expanded .story-cell::after {
-  border-color: var(--ms-accent);
-  border-width: 2px;
+.mini.expanded .story-avatar {
+  box-shadow: inset 0 0 0 2px var(--ms-accent);
 }
 
 /* Теней-ореолов у аватара в шапке нет: они складывались с линией. */

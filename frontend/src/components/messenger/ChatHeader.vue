@@ -102,6 +102,13 @@
             <q-icon :name="icon('search')" size="19px" />
             <span>{{ t('Поиск по сообщениям') }}</span>
           </button>
+          <!-- Упоминания меня: тот же серверный поиск, но с готовым запросом
+               «@логин» — переход по упоминаниям в группе или канале. Пункта нет
+               в личных диалогах и «Сохранённых»: там упоминать некого. -->
+          <button v-if="mentionLogin" class="ms-dropdown-item" @click="runChatAction('mentions')">
+            <q-icon :name="icon('alternate_email')" size="19px" />
+            <span>{{ t('Упоминания меня') }}</span>
+          </button>
           <!-- Архив: чат уходит в отдельный чип «Архив» в списке, чтобы не мешать
                в «Все». Хранится локально (как пины) — это личная настройка вида. -->
           <button class="ms-dropdown-item" @click="runChatAction('archive')">
@@ -214,6 +221,11 @@ const props = defineProps<{
   hasPinned?: boolean
   /** Скрыта ли шторка закреплённых — нужна кнопка, чтобы вернуть её обратно. */
   pinnedHidden?: boolean
+  /**
+   * Мой логин для перехода по упоминаниям (`@логин` в серверном поиске).
+   * Пусто — чат личный или упоминать в нём некого, и пункта меню нет.
+   */
+  mentionLogin?: string
 }>()
 
 const emit = defineEmits<{
@@ -239,6 +251,8 @@ const emit = defineEmits<{
   (e: 'block-chat'): void
   /** Скрыть или показать шторку закреплённых (пункт меню «⋯»). */
   (e: 'toggle-pinned'): void
+  /** Перейти к упоминаниям меня: поиск с готовым запросом `@логин`. */
+  (e: 'open-mentions'): void
 }>()
 
 /** Личный диалог с собеседником (не группа и не «Сохранённые сообщения»). */
@@ -309,10 +323,20 @@ const toggleChatMenu = () => {
 
 const runChatAction = (
   action:
-    'search' | 'archive' | 'folders' | 'sound' | 'stats' | 'calls' | 'report' | 'block' | 'pinned'
+    | 'search'
+    | 'mentions'
+    | 'archive'
+    | 'folders'
+    | 'sound'
+    | 'stats'
+    | 'calls'
+    | 'report'
+    | 'block'
+    | 'pinned'
 ) => {
   chatMenuOpen.value = false
   if (action === 'search') emit('toggle-search')
+  if (action === 'mentions') emit('open-mentions')
   if (action === 'archive') emit('toggle-archive')
   if (action === 'folders') emit('open-chat-folders')
   if (action === 'sound') emit('open-chat-sound')

@@ -51,6 +51,7 @@
         @open-message="openGlobalMessage"
         @toggle-pin="toggleChatPinned"
         @toggle-mute="toggleChatMuted"
+        @mark-read="markChatReadQuietly"
         @bulk-mute="bulkSetMuted"
         @bulk-pin="bulkSetPinned"
         @bulk-archive="bulkSetArchived"
@@ -166,8 +167,10 @@
             :e2ee="selectedChatE2ee"
             :has-pinned="pinnedRows.length > 0"
             :pinned-hidden="pinnedHidden"
+            :mention-login="mentionLogin"
             @back="goBackToList"
             @toggle-search="toggleInlineSearch"
+            @open-mentions="openMentionsSearch"
             @open-info="openChatInfo"
             @start-call="startCall"
             @toggle-pin="toggleCurrentChatPin"
@@ -1090,6 +1093,33 @@ const selectedChat = computed<Chat | null>(() => {
   if (selectedChatId.value === null) return null
   return chats.value.find((chat) => chat.id === selectedChatId.value) ?? null
 })
+
+/**
+ * Мой логин для перехода по упоминаниям (§ меню чата → «Упоминания меня»).
+ *
+ * Упоминания бывают в группе и канале; в личном диалоге и «Сохранённых» пункта
+ * нет — там упоминать некого, и поиск по `@логин` нашёл бы пустоту.
+ */
+const mentionLogin = computed<string>(() => {
+  const chat = selectedChat.value
+  if (!chat || chat.is_self) return ''
+  if (!chat.is_group && !chat.is_channel) return ''
+  return authStore.current_user?.username ?? ''
+})
+
+/**
+ * Перейти к упоминаниям меня: тот же серверный поиск по истории, но с готовым
+ * запросом `@логин` — дальше стрелками по найденным совпадениям.
+ *
+ * Отдельного механизма перехода не заводим: поиск уже умеет догружать старые
+ * страницы до совпадения и подсвечивать его в ленте.
+ */
+const openMentionsSearch = () => {
+  const login = mentionLogin.value
+  if (!login) return
+  inlineQuery.value = `@${login}`
+  if (!inlineSearchOpen.value) toggleInlineSearch()
+}
 
 // ---------- Правая панель: информация о чате и его медиа ----------
 /**

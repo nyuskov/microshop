@@ -38,6 +38,14 @@
   mask-image: var(--icon-glyph);
 }
 
+/* Упоминания меня: «@» — форма Lucide `at-sign`, нарисована здесь, чтобы не
+ * пересобирать шрифт ради одного глифа. Сетка та же: поле 24, штрих 2. */
+.icon-at-sign {
+  --icon-glyph: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23fff'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Ccircle%20cx='12'%20cy='12'%20r='4'/%3E%3Cpath%20d='M16%208v5a3%203%200%200%200%206%200v-1a10%2010%200%201%200-4%208'/%3E%3C/svg%3E");
+  -webkit-mask-image: var(--icon-glyph);
+  mask-image: var(--icon-glyph);
+}
+
 /* Архив: крышка и короб с прорезью — форма из набора интерфейсных иконок,
  * которой в Lucide нет. Сетка та же: поле 24, штрих 2, фигура в пределах 3…21. */
 .icon-archive {

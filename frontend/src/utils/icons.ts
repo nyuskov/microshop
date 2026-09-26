@@ -92,6 +92,9 @@ export const ICON_MAP: Record<string, string> = {
   sms: 'message-square-text',
   forum: 'messages-square',
   mark_chat_unread: 'mail-open',
+  // Упоминания меня в чате: «@». В Lucide такого глифа нет, нарисован
+  // вручную — см. DRAWN_GLYPHS ниже и assets/icons-drawn.css.
+  alternate_email: 'at-sign',
   mail: 'mail',
   image: 'image',
   photo_camera: 'camera',
@@ -185,7 +188,12 @@ export const ICON_MAP: Record<string, string> = {
  * Добавили рисованный глиф — впишите его сюда И нарисуйте в icons-drawn.css,
  * иначе иконка отрендерится пустотой (страх в тестах это проверяет).
  */
-export const DRAWN_GLYPHS: ReadonlySet<string> = new Set(['round-video', 'archive', 'transcribe'])
+export const DRAWN_GLYPHS: ReadonlySet<string> = new Set([
+  'round-video',
+  'archive',
+  'transcribe',
+  'at-sign'
+])
 
 /** Иконка по умолчанию: если имени нет в мэппинге. */
 const FALLBACK_ICON = 'circle-help'

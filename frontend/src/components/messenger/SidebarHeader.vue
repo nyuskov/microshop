@@ -74,6 +74,7 @@
       mini
       :limit="storiesLimit"
       :expanded="expanded"
+      @hidden-count="hiddenStories = $event"
       @toggle-expand="emit('toggle-stories-expand')"
       @open-story="emit('open-story', $event)"
     />
@@ -176,8 +177,7 @@ import { avatarStyle, initials } from '@/utils/user'
 import StoriesStrip from '@/components/stories/StoriesStrip.vue'
 import ConnectionStatus from '@/components/common/ConnectionStatus.vue'
 import { useConnectionNotice } from '@/composables/useConnectionNotice'
-import { useStoriesStore } from '@/stores/stories'
-import { headerHiddenStoryGroups, headerStoriesLimit } from '@/utils/stories'
+import { headerStoriesLimit } from '@/utils/stories'
 
 export interface SettingsAction {
   key: 'calls' | 'group' | 'channel' | 'blocked'
@@ -222,26 +222,23 @@ const emit = defineEmits<{
 }>()
 
 /**
- * Сколько кружков историй показывать в шапке.
+ * Сколько кружков историй в шапке — решают ДВА правила вместе.
  *
- * Надпись в середине (состояние связи, тихие часы) занимает свободное место
- * между историями и кнопками — тогда ряд кружков короче: 2 вместо 6. Так надпись
- * не наезжает на кружки, а кружки не выдавливают кнопки за край. Само правило —
- * в `utils/stories.headerStoriesLimit`, чтобы оно не разъезжалось с разметкой.
+ * Предел приходит от подсказки в середине (`headerStoriesLimit`): с ней это
+ * жёсткие два кружка (владелец: «там и так при подсказке максимум 2 истории»),
+ * без неё — потолок разметки. А сколько из них реально влезет, решает раскладка:
+ * ряд тянется до правых значков, и полоса сама сообщает сюда число скрытых
+ * (`hidden-count`) — по нему надпись сдвигается вправо ровно настолько, насколько
+ * в её коробку заходит счётчик «+N» (см. `.panel-header-status.with-more`).
+ *
+ * Почему не только число, как было: лимит «2 или 6» не угадывал ширину экрана —
+ * на телефоне ряд обрезался раньше, чем кончалось место, а на широком экране
+ * оставался пустой промежуток.
  */
 const { visible: noticeVisible } = useConnectionNotice()
 const storiesLimit = computed(() => headerStoriesLimit(noticeVisible.value))
-
-/**
- * Виден ли рядом с кружками счётчик «+N» (сколько историй не влезло в лимит).
- *
- * Нужно надписи в середине: счётчик вынут из потока и заходит на несколько
- * пикселей в её коробку (см. `.panel-header-status.with-more`). Число скрытых
- * историй считаем тем же правилом, что и сама полоса (`headerHiddenStoryGroups`),
- * иначе отступ разъехался бы с кружками.
- */
-const stories = useStoriesStore()
-const moreVisible = computed(() => headerHiddenStoryGroups(stories.others, storiesLimit.value) > 0)
+const hiddenStories = ref(0)
+const moreVisible = computed(() => hiddenStories.value > 0)
 
 /** Обёртка меню «⋯» (кнопка + выпадающий список) — по ней считаем «клик мимо». */
 const menuWrapEl = ref<HTMLElement | null>(null)
@@ -322,13 +319,17 @@ onBeforeUnmount(() => {
   margin-left: auto;
 }
 
-/* Место под состояние связи: только ПУСТАЯ часть шапки — между историями и
-   кнопками. Надпись стоит ровно по центру этого промежутка
-   (`justify-content: center`), а соседние значки не сжимаются и не сдвигаются
-   (см. `flex-shrink` ниже): если места не хватает, текст усечётся, а не налезет
-   на значки. */
+/* Место надписи в середине шапки: только ПУСТАЯ часть между историями и
+   кнопками. Надпись здесь УСТУПАЕТ ширину первой (`flex-shrink: 100`): текст
+   усечётся сам, а ряд кружков останется целым. Наоборот не работает — на 320 px
+   полоса сжималась до 40 px (один кружок вместо двух: мерили 26.09.2026), и
+   владелец видел, что подсказка «налезает на истории».
+
+   `flex-grow: 1` — на широком экране надпись растягивается на свободное место и
+   центрируется в своей коробке, как и просил владелец («к центру свободного
+   пространства», `justify-content: center` ниже). */
 .panel-header-status {
-  flex: 1 1 auto;
+  flex: 1 100 auto;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -356,13 +357,15 @@ onBeforeUnmount(() => {
 }
 
 /* Кнопки справа — фиксированного размера: середину отдаёт связи только свободное
-   место, иначе пилюля выдавила бы кнопки за край шапки. Полоса историй, наоборот,
-   может ужаться: на узком экране (320 px) шесть кружков не влезают рядом с
-   кнопками, и вместо того, чтобы выдавливать их из шапки, ряд прокручивается
-   внутри себя (у него уже есть `overflow-x` и затухание у края). */
+   место, иначе пилюля выдавила бы кнопки за край шапки. Полоса историй занимает
+   ВСЁ остальное (`flex: 0 1 auto` — растёт по содержимому, ужимается по месту) и
+   может прокручиваться внутри себя: на широком экране видно столько кружков,
+   сколько влезло до значков, на телефоне — сколько до подсказки в середине.
+   `min-width` — страховка от нуля: хотя бы один кружок в ряду остаётся
+   кликабельным, даже если шапка совсем узкая. */
 .panel-header :deep(.stories-wrap) {
-  flex-shrink: 1;
-  min-width: 0;
+  flex: 0 1 auto;
+  min-width: 40px;
 }
 
 .panel-header-right {

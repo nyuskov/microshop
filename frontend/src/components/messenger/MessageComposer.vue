@@ -96,6 +96,35 @@
       >
         <q-icon :name="icon('sentiment_satisfied_alt')" size="20px" />
       </button>
+      <!-- Формат текста: обрамляет выделенный кусок знаками разметки
+           (`*жирный*`, `_курсив_`, `~~зачёркнутый~~`, `` `код` ``, `||спойлер||`).
+           Кнопка видна только при набранном тексте: без него её место занимает
+           микрофон, и лишняя кнопка сузила бы поле ввода на телефоне. -->
+      <span v-if="hasText" class="format-wrap">
+        <button
+          class="round-btn format-btn"
+          :class="{ active: formatMenuOpen }"
+          :title="t('Форматирование текста')"
+          :aria-label="t('Форматирование текста')"
+          :aria-expanded="formatMenuOpen"
+          @click="formatMenuOpen = !formatMenuOpen"
+        >
+          Aa
+        </button>
+        <q-menu v-model="formatMenuOpen" anchor="top middle" self="bottom middle" no-parent-event>
+          <div class="format-menu">
+            <button
+              v-for="item in MARKUP_ITEMS"
+              :key="item.kind"
+              type="button"
+              class="attach-item"
+              @click="applyFormat(item.kind)"
+            >
+              {{ t(item.label) }}
+            </button>
+          </div>
+        </q-menu>
+      </span>
       <span v-if="!hasText" class="mic-wrap">
         <button
           class="round-btn mic-hold-btn"
@@ -383,6 +412,7 @@ import ErrorNotice from '@/components/common/ErrorNotice.vue'
 import type { ChatUser, Message } from '@/types'
 import { messageSnippet } from '@/utils/media'
 import { applyMention, mentionBeforeCaret } from '@/utils/mentions'
+import { applyMarkup, type MarkupKind } from '@/utils/markup'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import {
   EMOJI_RECENT_KEY,
@@ -1433,6 +1463,40 @@ const pickMention = (member: ChatUser) => {
   })
 }
 
+// ---------- Формат текста (кнопка «Aa») ----------
+/** Меню формата открыто. */
+const formatMenuOpen = ref(false)
+
+/** Что предлагает меню: подписи — ключи перевода (см. `i18n/en.ts`). */
+const MARKUP_ITEMS: readonly { kind: MarkupKind; label: string }[] = [
+  { kind: 'bold', label: 'Жирный' },
+  { kind: 'italic', label: 'Курсив' },
+  { kind: 'strike', label: 'Зачёркнутый' },
+  { kind: 'code', label: 'Код' },
+  { kind: 'spoiler', label: 'Спойлер' }
+]
+
+/**
+ * Обернуть выделение знаками разметки (или снять их) — и вернуть выделение.
+ *
+ * Работает с той же парой индексов, что и подсказка упоминаний, поэтому
+ * восстановление выделения делаем по тем же правилам: сначала новый текст,
+ * потом фокус и `setSelectionRange` в `nextTick`.
+ */
+const applyFormat = (kind: MarkupKind) => {
+  const input = textInputRef.value
+  const start = input?.selectionStart ?? newMessage.value.length
+  const end = input?.selectionEnd ?? start
+  const next = applyMarkup(newMessage.value, start, end, kind)
+  newMessage.value = next.text
+  formatMenuOpen.value = false
+  void nextTick(() => {
+    input?.focus()
+    input?.setSelectionRange(next.start, next.end)
+    autoGrow()
+  })
+}
+
 const onTextInput = () => {
   autoGrow()
   updateMentions()
@@ -1722,6 +1786,28 @@ watch(newMessage, () => {
 .attach-wrap {
   position: relative;
   display: inline-flex;
+}
+
+/* Кнопка формата: буквы вместо значка — глифа «Aa» в наборе иконок нет, а
+   текстом он читается сразу и не требует пересборки шрифта. */
+.format-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.format-btn {
+  font-size: var(--ms-fs-sm);
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Меню формата: знаки разметки для выделенного куска */
+.format-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--ms-space-1);
+  min-width: 190px;
 }
 
 /* Меню вложения: обычный файл или одноразовое медиа */

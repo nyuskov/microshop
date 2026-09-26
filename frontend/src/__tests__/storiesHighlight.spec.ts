@@ -23,8 +23,14 @@ describe('кружок историй в шапке', () => {
   })
 
   it('раскрытая полоса рисует акцентный ореол', () => {
-    expect(strip).toContain('.mini.expanded .story-cell::after')
-    expect(strip).toContain('border-width: 2px')
+    // Ореол живёт ВНУТРЕННЕЙ линией на самом кружке (`inset`-тень). Раньше линия
+    // шла по краю ячейки 40 px (`::after`), и в плотном ряду её дуга выходила
+    // серпом из-под соседнего кружка — читалось как подложка позади истории
+    // (владелец, 26.09.2026: «тень… она даже без подсказки есть»).
+    expect(strip).toContain('.mini.expanded .story-avatar')
+    expect(strip).toContain('box-shadow: inset 0 0 0 2px var(--ms-accent)')
+    // Наружных линий на ячейке не осталось: иначе тень вернётся.
+    expect(strip).not.toContain('.story-cell::after')
   })
 })
 

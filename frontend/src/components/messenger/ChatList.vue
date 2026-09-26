@@ -310,6 +310,8 @@ const emit = defineEmits<{
   (e: 'swipe-archive', chatId: number): void
   /** Свайп влево, когда в настройках выбран вариант «Уведомления». */
   (e: 'swipe-mute', chatId: number): void
+  /** Свайп влево, когда в настройках выбран вариант «Отметить прочитанным». */
+  (e: 'swipe-read', chatId: number): void
 }>()
 
 // ---------- Свайпы по строке (телефон) ----------
@@ -351,6 +353,11 @@ const swipeActionOf = (chatId: number): { icon: string; title: string } => {
       icon: muted ? 'notifications' : 'notifications_off',
       title: muted ? t('Включить уведомления') : t('Выключить уведомления')
     }
+  }
+  // «Прочитано» снимает счётчик, не открывая чат: закрывать шумный чат целиком
+  // ради счётчика — слишком много, а открывать его незачем.
+  if (chatSwipeAction.value === 'read') {
+    return { icon: 'done_all', title: t('Отметить прочитанным') }
   }
   return { icon: 'archive', title: isArchivedOf(chatId) ? t('Из архива') : t('В архив') }
 }
@@ -412,6 +419,7 @@ const onRowTouchEnd = () => {
   if (chatId === null || Math.abs(dx) < SWIPE_ROW_TRIGGER) return
   if (dx > 0) emit('swipe-pin', chatId)
   else if (chatSwipeAction.value === 'mute') emit('swipe-mute', chatId)
+  else if (chatSwipeAction.value === 'read') emit('swipe-read', chatId)
   else emit('swipe-archive', chatId)
 }
 

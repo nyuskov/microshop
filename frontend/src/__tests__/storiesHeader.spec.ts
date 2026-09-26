@@ -2,23 +2,25 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import type { StoryGroup, StoryItem } from '@/services/stories'
 import {
+  countVisibleCells,
   firstStoryToOpen,
   headerHiddenStoryGroups,
   headerStoriesLimit,
   headerStoryGroups,
-  HEADER_STORIES_LIMIT,
-  HEADER_STORIES_LIMIT_WITH_NOTICE
+  HEADER_STORIES_CLIP_TOLERANCE,
+  HEADER_STORIES_LIMIT_WITH_NOTICE,
+  HEADER_STORIES_MAX
 } from '@/utils/stories'
 
 /**
  * Истории в шапке списка чатов.
  *
- * Кружки историй, кнопки и надпись о связи (состояние связи, тихие часы) делят
- * одну строку, поэтому число кружков зависит от того, занята ли середина
- * (владелец: «не больше 2, если сообщение показывается по центру, а если не
- * показывается — не больше 6»). Раскладку jsdom не считает, поэтому сами правила
- * проверяем как чистые функции, а связку с разметкой — чтением исходников (как в
- * `storiesHighlight.spec.ts`).
+ * Кружки, кнопки и подсказка в середине (состояние связи, тихие часы) делят одну
+ * строку. Правило владельца: с подсказкой — не больше двух кружков («там и так
+ * при подсказке максимум 2 истории»), без неё — сколько влезет ДО ПРАВЫХ ЗНАЧКОВ
+ * (раньше стояло жёсткое «не больше 6», и оно не угадывало ширину экрана).
+ * Раскладку jsdom не считает, поэтому правила проверяем как чистые функции, а
+ * связку с разметкой — чтением исходников (как в `storiesHighlight.spec.ts`).
  */
 
 const story = (id: number, viewed = false): StoryItem => ({
@@ -50,42 +52,73 @@ const group = (userId: number, items: StoryItem[], isMine = false): StoryGroup =
 /** Исходники без переводов строк: prettier волен переносить вызовы по-разному. */
 const flat = (source: string): string => source.replace(/\s+/g, ' ')
 
-describe('лимит кружков в шапке', () => {
-  it('с надписью в середине — два кружка, без неё — шесть', () => {
+describe('сколько кружков в шапке', () => {
+  const others = [
+    group(1, [story(10)]),
+    group(2, [story(20)]),
+    group(3, [story(30)]),
+    group(4, [story(40)]),
+    group(5, [story(50)]),
+    group(6, [story(60)]),
+    group(7, [story(70)])
+  ]
+
+  it('с подсказкой в середине — два кружка, без неё — потолок разметки', () => {
     expect(headerStoriesLimit(true)).toBe(HEADER_STORIES_LIMIT_WITH_NOTICE)
-    expect(headerStoriesLimit(false)).toBe(HEADER_STORIES_LIMIT)
     expect(HEADER_STORIES_LIMIT_WITH_NOTICE).toBe(2)
-    expect(HEADER_STORIES_LIMIT).toBe(6)
+    // Без подсказки число не задано числом: сколько влезет, решает замер ширины,
+    // а это только защита разметки от десятков групп.
+    expect(headerStoriesLimit(false)).toBe(HEADER_STORIES_MAX)
+    expect(HEADER_STORIES_MAX).toBe(16)
   })
 
-  it('лимит считается вместе с кружком «Моя история»', () => {
-    const others = [
-      group(1, [story(10)]),
-      group(2, [story(20)]),
-      group(3, [story(30)]),
-      group(4, [story(40)]),
-      group(5, [story(50)]),
-      group(6, [story(60)]),
-      group(7, [story(70)])
-    ]
-
-    // 2 всего = «моя» + 1 чужая: столько влезает рядом с надписью в середине.
+  it('предел считается вместе с кружком «Моя история»', () => {
+    // 2 всего = «моя» + 1 чужая: столько влезает рядом с подсказкой в середине.
     expect(headerStoryGroups(others, 2).map((item) => item.user.id)).toEqual([1])
-    // Без надписи — «моя» + 5 чужих: шесть кружков, больше не показываем.
-    expect(headerStoryGroups(others, 6).map((item) => item.user.id)).toEqual([1, 2, 3, 4, 5])
+    // Потолок — «моя» + 15 чужих (все, что есть).
+    expect(headerStoryGroups(others, HEADER_STORIES_MAX)).toHaveLength(7)
     // Без ограничения (0) ряд не режем: так живёт раскрытая полоса.
     expect(headerStoryGroups(others, 0)).toHaveLength(7)
   })
 
-  it('счётчик «+N» показывает, сколько историй не влезло', () => {
-    const others = [group(1, [story(10)]), group(2, [story(20)]), group(3, [story(30)])]
+  it('замер считает только целиком видимые кружки', () => {
+    const box = { left: 0, right: 100 }
+    expect(
+      countVisibleCells(
+        [
+          { left: 0, right: 40 },
+          { left: 12, right: 52 },
+          { left: 60, right: 100 },
+          // Хвост за краем коробки — это подсказка «есть ещё».
+          { left: 90, right: 130 }
+        ],
+        box
+      )
+    ).toBe(3)
+  })
 
-    // 2 кружка в шапке = «моя» + 1 чужая → на счётчике остальные двое.
-    expect(headerHiddenStoryGroups(others, 2)).toBe(2)
-    // Без надписи в середине видно шесть кружков — все авторы влезли.
-    expect(headerHiddenStoryGroups(others, 6)).toBe(0)
-    // Раскрытая полоса лимита не знает — счётчику считать нечего.
-    expect(headerHiddenStoryGroups(others, 0)).toBe(0)
+  it('срез у края до допуска считается видимым', () => {
+    // У полосы есть внутренние отступы 2 px, и крайний кружок всегда выступает за
+    // коробку ровно на них: без допуска ряд с подсказкой схлопывался до одного
+    // кружка вместо двух.
+    const box = { left: 0, right: 100 }
+    // Срез 2 px (внутренние отступы полосы) — кружок считаем видимым.
+    expect(countVisibleCells([{ left: 62, right: 102 }], box)).toBe(1)
+    // А срез больше допуска — уже «за краем»: не считаем.
+    const tooFar = { left: 70, right: 100 + HEADER_STORIES_CLIP_TOLERANCE + 1 }
+    expect(countVisibleCells([tooFar], box)).toBe(0)
+  })
+
+  it('счётчик «+N» показывает, сколько историй не влезло', () => {
+    const few = [group(1, [story(10)]), group(2, [story(20)]), group(3, [story(30)])]
+
+    // Видно 2 кружка в шапке = «моя» + 1 чужая → на счётчике остальные двое.
+    expect(headerHiddenStoryGroups(few, 2)).toBe(2)
+    // Влезли все четыре (три чужих + «моя») — считать нечего.
+    expect(headerHiddenStoryGroups(few, 4)).toBe(0)
+    // Места нет вовсе — скрыты все чужие (и счётчик не уходит в минус).
+    expect(headerHiddenStoryGroups(few, 1)).toBe(3)
+    expect(headerHiddenStoryGroups(few, 0)).toBe(3)
   })
 })
 
@@ -112,20 +145,25 @@ describe('связка с разметкой', () => {
   const strip = flat(readFileSync('src/components/stories/StoriesStrip.vue', 'utf8'))
   const sidebar = flat(readFileSync('src/components/messenger/ChatSidebar.vue', 'utf8'))
 
-  it('шапка считает лимит по надписи в середине и отдаёт его кружкам', () => {
-    // Правило одно на двоих: по нему же решает, что показывать, сама надпись.
-    expect(header).toContain('useConnectionNotice')
+  it('шапка отдаёт полосе предел и берёт у неё число скрытых', () => {
+    // Предел считает шапка (по подсказке в середине), а сколько влезло по ширине —
+    // замер в самой полосе: она сообщает число скрытых назад (`hidden-count`).
     expect(header).toContain('headerStoriesLimit(noticeVisible.value)')
     expect(header).toContain(':limit="storiesLimit"')
+    expect(header).toContain('@hidden-count="hiddenStories = $event"')
+    // Своей копии правила в шапке быть не должно: иначе число разъедется.
+    expect(header).not.toContain('headerHiddenStoryGroups')
   })
 
-  it('сжатый ряд обрезается по лимиту, а раскрытая полоса — нет', () => {
-    expect(strip).toContain('props.mini ? headerStoryGroups(stories.others, props.limit)')
+  it('сжатый ряд обрезается по пределу и по замеру, а раскрытая полоса — нет', () => {
+    expect(strip).toContain('props.limit > 0 ? props.limit : HEADER_STORIES_MAX')
+    expect(strip).toContain('Math.min(limit, visibleCells.value)')
+    expect(strip).toContain('countVisibleCells(cells, wrap.getBoundingClientRect())')
     expect(strip).toContain('v-for="(group, index) in visibleOthers"')
   })
 
   it('о скрытых историях говорит счётчик «+N» рядом с полосой', () => {
-    expect(strip).toContain('props.mini ? headerHiddenStoryGroups(stories.others, props.limit) : 0')
+    expect(strip).toContain('headerHiddenStoryGroups(stories.others, capacity.value)')
     // Счётчик — только сжатый ряд и только когда есть что считать.
     expect(strip).toContain('v-if="mini && hiddenOthers > 0"')
     expect(strip).toContain('+{{ hiddenOthers }}')
