@@ -88,6 +88,15 @@ describe('пилюля связи в шапке списка чатов', () => 
     expect(en).toContain("'Связь есть': 'Back online'")
     expect(en).toContain("'Тихие часы: уведомления не приходят'")
   })
+
+  it('«Связь есть» — зелёным, как полоса восстановления', () => {
+    // Владелец 27.09.2026: «Back online писать зелёным цветом». Зелёный тот
+    // же (`--ms-accent` = #2ea25e), что у фона полосы `.offline-banner.restored`:
+    // одно состояние не должно выглядеть по-разному в двух местах.
+    expect(status).toMatch(/\.conn-status\.restored\s*\{[^}]*var\(--ms-accent\)/)
+    expect(chatHeader).toMatch(/\.connection-state\.restored\s*\{[^}]*var\(--ms-accent/)
+    expect(banner).toContain('background: #2ea25e')
+  })
 })
 
 describe('связь в открытом чате', () => {

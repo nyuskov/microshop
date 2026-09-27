@@ -41,6 +41,18 @@ describe('упоминания меня: пункт меню и запрос', (
   })
 })
 
+describe('подсказка «@» в поле ввода', () => {
+  it('список участников — только для группы, в личке пусто', () => {
+    // Владелец: «нужно убрать через @ упоминание в личных чатах, я думал эта
+    // функция упоминания из других чатов, а так она не нужна». В личном
+    // диалоге подсказка предлагала ровно собеседника — того, с кем и так
+    // переписываешься, поэтому список (и панель) там больше не открываются.
+    const body = messenger.slice(messenger.indexOf('const mentionMembers'))
+    expect(body).toContain('if (!chat || !isGroupChat(chat) || chat.is_channel) return []')
+    expect(messenger).toContain(':mention-members="mentionMembers"')
+  })
+})
+
 describe('значок «@» для пункта меню', () => {
   it('глифа нет в Lucide — он нарисован вручную, без пересборки шрифта', () => {
     expect(ICON_MAP.alternate_email).toBe('at-sign')

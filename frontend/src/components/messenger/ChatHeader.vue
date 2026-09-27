@@ -97,7 +97,7 @@
         >
           <q-icon :name="icon('more_vert')" size="20px" />
         </button>
-        <div v-if="chatMenuOpen" class="ms-dropdown">
+        <div v-if="chatMenuOpen" class="ms-dropdown ms-pop">
           <button class="ms-dropdown-item" @click="runChatAction('search')">
             <q-icon :name="icon('search')" size="19px" />
             <span>{{ t('Поиск по сообщениям') }}</span>
@@ -528,9 +528,16 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
 }
 
 /* Моя связь вместо присутствия собеседника: про собеседника при обрыве всё
-   равно ничего не узнать. Красная подпись — нет связи, обычная — «Соединение…». */
+   равно ничего не узнать. Красная подпись — нет связи, обычная —
+   «Соединение…», зелёная — «Связь восстановлена» (владелец 27.09.2026:
+   «Back online писать зелёным цветом»; тот же `--ms-accent`, что у пилюли
+   в шапке списка и у полосы `.offline-banner.restored`). */
 .connection-state.offline {
   color: var(--ms-danger);
+}
+
+.connection-state.restored {
+  color: var(--ms-accent, #2ea25e);
 }
 
 .chat-subtitle-text {
@@ -618,10 +625,9 @@ const { callKind, callHolding, callLabel, onCallDown, onCallUp, onCallCancel, on
   top: calc(100% + 8px);
   right: 0;
   min-width: 210px;
-  background: var(--ms-surface);
-  border: 1px solid var(--ms-border);
-  border-radius: var(--ms-radius-lg);
-  box-shadow: var(--ms-shadow-pop);
+  /* Подложка, рамка и тень — общий слой `.ms-pop` (`assets/appearance.css`);
+     здесь только своё — размеры и радиус (у меню он крупнее палитр). */
+  --ms-pop-radius: var(--ms-radius-lg);
   padding: 6px;
   z-index: 130;
   display: flex;

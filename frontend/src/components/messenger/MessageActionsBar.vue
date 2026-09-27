@@ -56,7 +56,7 @@
     </div>
 
     <!-- Остальные действия — в выпадающем меню -->
-    <div v-if="moreOpen" class="more-menu" :class="{ up: popoverUp }" @click.stop>
+    <div v-if="moreOpen" class="more-menu ms-pop" :class="{ up: popoverUp }" @click.stop>
       <button class="more-item" @click="onPin">
         <q-icon :name="icon('push_pin')" size="16px" />
         <span>{{ message.is_pinned ? t('Открепить') : t('Закрепить') }}</span>
@@ -114,7 +114,7 @@
     </div>
 
     <!-- Выбор эмодзи-реакции -->
-    <div v-if="emojiPickerOpen" class="emoji-picker" :class="{ up: popoverUp }" @click.stop>
+    <div v-if="emojiPickerOpen" class="emoji-picker ms-pop" :class="{ up: popoverUp }" @click.stop>
       <button
         v-for="emoji in REACTION_EMOJIS"
         :key="emoji"
@@ -529,13 +529,11 @@ defineExpose({ closeFloating, reveal, dismiss })
   font-size: 1.05rem;
 }
 
-/* Палитра эмодзи — по умолчанию ПОД панелью действий; у нижнего края — над ней */
+/* Палитра эмодзи — по умолчанию ПОД панелью действий; у нижнего края — над ней.
+   Подложка, рамка и тень — из общего слоя `.ms-pop` (`assets/appearance.css`). */
 .emoji-picker {
   position: absolute;
   top: calc(100% + 6px);
-  background: var(--ms-surface);
-  border-radius: 14px;
-  box-shadow: var(--ms-shadow-pop);
   display: grid;
   grid-template-columns: repeat(8, 32px);
   gap: 2px;
@@ -558,13 +556,11 @@ defineExpose({ closeFloating, reveal, dismiss })
   left: auto;
 }
 
-/* Меню «Ещё» — по умолчанию ПОД панелью действий; у нижнего края — над ней */
+/* Меню «Ещё» — по умолчанию ПОД панелью действий; у нижнего края — над ней.
+   Вид поверхности — общий слой `.ms-pop`. */
 .more-menu {
   position: absolute;
   top: calc(100% + 6px);
-  background: var(--ms-surface);
-  border-radius: 12px;
-  box-shadow: var(--ms-shadow-pop);
   display: flex;
   flex-direction: column;
   padding: 4px;

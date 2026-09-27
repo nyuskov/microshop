@@ -135,7 +135,7 @@
         >
           <q-icon :name="icon('more_vert')" size="20px" />
         </button>
-        <div v-if="settingsMenuOpen" class="ms-dropdown">
+        <div v-if="settingsMenuOpen" class="ms-dropdown ms-pop">
           <button
             v-for="action in settingsActions"
             :key="action.key"
@@ -441,10 +441,8 @@ onBeforeUnmount(() => {
   top: calc(100% + 8px);
   right: 0;
   min-width: 200px;
-  background: var(--ms-surface);
-  border: 1px solid var(--ms-border);
-  border-radius: var(--ms-radius-lg);
-  box-shadow: var(--ms-shadow-pop);
+  /* Подложка, рамка и тень — общий слой `.ms-pop` (см. `assets/appearance.css`). */
+  --ms-pop-radius: var(--ms-radius-lg);
   padding: 6px;
   z-index: 120;
   display: flex;

@@ -135,7 +135,7 @@ const tryCreate = async () => {
 <style scoped>
 .ch-create-card {
   width: min(460px, 92vw);
-  border-radius: 16px;
+  border-radius: var(--ms-radius-lg);
   background: var(--ms-surface, #fff);
   color: var(--ms-text, #141d26);
   font-family: var(--ms-font), sans-serif;
@@ -162,7 +162,7 @@ const tryCreate = async () => {
 .ch-input {
   width: 100%;
   border: 1px solid var(--ms-border, #dfe5ea);
-  border-radius: 11px;
+  border-radius: var(--ms-radius-sm);
   background: var(--ms-surface-2, #ffffff);
   color: var(--ms-text, #1c2733);
   padding: 9px 12px;
@@ -186,7 +186,7 @@ const tryCreate = async () => {
   align-items: flex-start;
   padding: 8px 10px;
   border: 1px solid var(--ms-border, #dfe5ea);
-  border-radius: 11px;
+  border-radius: var(--ms-radius-sm);
   cursor: pointer;
 }
 
@@ -207,7 +207,7 @@ const tryCreate = async () => {
   display: flex;
   align-items: center;
   border: 1px solid var(--ms-border, #dfe5ea);
-  border-radius: 11px;
+  border-radius: var(--ms-radius-sm);
   background: var(--ms-surface-2, #ffffff);
   padding-left: 10px;
 }

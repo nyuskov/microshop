@@ -369,7 +369,7 @@ watch(
 <style scoped>
 .chatinfo-card {
   width: min(420px, calc(100vw - 32px));
-  border-radius: 18px;
+  border-radius: var(--ms-radius-lg);
   background: var(--ms-surface, #ffffff);
   color: var(--ms-text, #141d26);
 }
@@ -384,7 +384,7 @@ watch(
   overflow-y: auto;
 }
 
-/* Режим правой панели (≥1280px): карточка растягивается на высоту колонки,
+/* Режим правой панели (1024px и шире, см. `isWide` в Messenger.vue): карточка растягивается на высоту колонки,
    прокручивается только тело — как у модалки, но без «карточных» границ. */
 .chatinfo-card.is-panel {
   width: 100%;
@@ -449,7 +449,7 @@ watch(
   font-size: 13px;
   color: var(--ms-text, #141d26);
   background: var(--ms-surface-2, #f0f2f5);
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   padding: 3px 10px;
 }
 
@@ -482,7 +482,7 @@ watch(
   padding: 0;
   border: none;
   background: var(--ms-surface-2, #f0f2f5);
-  border-radius: 8px;
+  border-radius: var(--ms-radius-sm);
   overflow: hidden;
   aspect-ratio: 1;
   cursor: zoom-in;
@@ -500,7 +500,7 @@ watch(
   align-items: center;
   gap: 10px;
   padding: 7px 6px;
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   color: var(--ms-text, #141d26);
   text-decoration: none;
 }
@@ -566,7 +566,7 @@ watch(
   align-items: center;
   gap: 12px;
   background: var(--ms-surface-2, #f0f2f5);
-  border-radius: 12px;
+  border-radius: var(--ms-radius-md);
   padding: 10px 12px;
 }
 
@@ -596,7 +596,7 @@ watch(
   margin-top: 10px;
   padding: 6px 10px;
   border: 1px solid var(--ms-border, #dfe4e8);
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   background: transparent;
   color: var(--ms-accent, #2a5885);
   font-size: 13px;

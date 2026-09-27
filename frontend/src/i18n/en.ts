@@ -203,6 +203,8 @@ export const EN: Record<string, string> = {
   Вниз: 'Down',
   'Перейти к новым сообщениям': 'Jump to new messages',
   'Прокрутить вниз': 'Scroll down',
+  Вверх: 'Up',
+  'Прокрутить вверх': 'Scroll up',
 
   // --- Строка сообщения (components/messenger/MessageRow.vue) ---
   'Открыть чат с автором': 'Open the chat with the author',

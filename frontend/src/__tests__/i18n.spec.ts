@@ -40,7 +40,9 @@ describe('i18n', () => {
   it('английский включается и переводит известные строки', async () => {
     setLocale('en')
     expect(locale.value).toBe('en')
-    await vi.waitFor(() => expect(catalogLoaded.value).toBe(true))
+    // Каталог английского — ленивый чанк (`import('@/i18n/en')`): под нагрузкой
+    // параллельных тестов секунды не всегда хватает.
+    await vi.waitFor(() => expect(catalogLoaded.value).toBe(true), { timeout: 5000 })
     expect(t('Вход')).toBe('Log in')
     // Строки, которой нет в каталоге, остаётся русской — интерфейс не пустеет.
     expect(t('Такой строки в каталоге нет')).toBe('Такой строки в каталоге нет')
@@ -48,7 +50,7 @@ describe('i18n', () => {
 
   it('подставляет значения в {места}', async () => {
     setLocale('en')
-    await vi.waitFor(() => expect(catalogLoaded.value).toBe(true))
+    await vi.waitFor(() => expect(catalogLoaded.value).toBe(true), { timeout: 5000 })
     expect(t('Код отправлен на {phone}', { phone: '+79001110001' })).toBe(
       'Code sent to +79001110001'
     )

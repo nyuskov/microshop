@@ -14,6 +14,7 @@
       `series-${props.series ?? 'single'}`,
       {
         'msg-highlight': highlighted,
+        'msg-enter': entering,
         selection: selectionMode,
         selected,
         'msg-media': !!file,
@@ -384,6 +385,11 @@ const props = defineProps<{
    * закрывалось»).
    */
   actionsReset?: number
+  /**
+   * Сообщение только что пришло в ленту (ставится лентой по id на пару сотен
+   * миллисекунд) — строка въезжает с лёгким движением и проявляется.
+   */
+  entering?: boolean
 }>()
 
 /** Плашка «Ответ на историю» (null, если это обычное сообщение). */
@@ -895,6 +901,22 @@ onBeforeUnmount(() => {
 .msg.out {
   align-self: flex-end;
   align-items: flex-end;
+}
+
+/* Только что пришедшее сообщение въезжает снизу и проявляется: без движения
+   вставка строки в конце ленты выглядит как мигание. Класс ставит лента
+   (`MessageThread`), когда меняется хвост, — смена чата, догрузка старых
+   страниц и первая отрисовка движения не получают. В режиме «меньше движения»
+   анимацию глушит `a11y.css` (общее правило). */
+.msg.msg-enter {
+  animation: msg-enter 0.28s var(--ms-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+@keyframes msg-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }
 
 .msg.in {

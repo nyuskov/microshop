@@ -95,10 +95,14 @@ describe('SearchResults: режим «Люди»', () => {
     wrapper.unmount()
   })
 
-  it('во время поиска показывает статус', () => {
+  it('во время поиска показывает скелетоны вместо пустого экрана', () => {
     const wrapper = mountResults({ users: [user()], loading: true })
 
-    expect(wrapper.find('.search-status').text()).toBe('Поиск…')
+    // Текст остаётся для скринридера (строка «Поиск…» рядом со скелетонами
+    // смотрелась как пустой экран — владелец 27.09.2026).
+    expect(wrapper.find('.sk-list').exists()).toBe(true)
+    expect(wrapper.find('.sk-row').exists()).toBe(true)
+    expect(wrapper.find('.sk-list').text()).toContain('Поиск…')
     expect(wrapper.find('.row-item').exists()).toBe(false)
     wrapper.unmount()
   })

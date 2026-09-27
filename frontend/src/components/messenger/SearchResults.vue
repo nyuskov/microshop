@@ -30,7 +30,19 @@
       </button>
     </div>
 
-    <div v-if="props.loading" class="search-status">{{ t('Поиск…') }}</div>
+    <!-- Пока идёт запрос — скелетоны того же вида, что у списка чатов и
+         контактов (`assets/appearance.css`, `.sk-*`): строка «Поиск…» на
+         месте списка выглядела как пустой экран (владелец 27.09.2026). -->
+    <div v-if="props.loading" class="sk-list" aria-busy="true">
+      <span class="sr-only">{{ t('Поиск…') }}</span>
+      <div v-for="n in 5" :key="n" class="sk-row">
+        <span class="sk-avatar"></span>
+        <span class="sk-lines">
+          <span class="sk-line" :style="{ width: 36 + ((n * 17) % 38) + '%' }"></span>
+          <span class="sk-line short"></span>
+        </span>
+      </div>
+    </div>
 
     <!-- Люди -->
     <template v-else-if="props.mode === 'people' && props.users.length">

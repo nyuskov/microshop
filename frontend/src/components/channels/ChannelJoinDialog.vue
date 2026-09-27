@@ -134,7 +134,7 @@ watch(
 <style scoped>
 .ch-join-card {
   width: min(420px, 92vw);
-  border-radius: 16px;
+  border-radius: var(--ms-radius-lg);
   background: var(--ms-surface, #fff);
   color: var(--ms-text, #141d26);
   font-family: var(--ms-font), sans-serif;

@@ -110,8 +110,11 @@ const onClick = () => {
   color: var(--ms-muted);
 }
 
+/* Связь вернулась — зелёным (владелец 27.09.2026: «Back online писать зелёным
+   цветом»). Тот же зелёный, что у фона полосы `.offline-banner.restored`
+   (`--ms-accent`): состояние читается одинаково и в шапке, и вне мессенджера. */
 .conn-status.restored {
-  color: var(--ms-text);
+  color: var(--ms-accent);
 }
 
 .conn-text {

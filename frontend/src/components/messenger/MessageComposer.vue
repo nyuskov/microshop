@@ -194,7 +194,7 @@
       </span>
 
       <!-- Подсказка упоминаний: набрали @ — выбираем участника группы -->
-      <div v-if="mentionOpen && mentionMatches.length" class="mention-panel" role="listbox">
+      <div v-if="mentionOpen && mentionMatches.length" class="mention-panel ms-pop" role="listbox">
         <button
           v-for="(member, index) in mentionMatches"
           :key="member.id"
@@ -1859,11 +1859,9 @@ watch(newMessage, () => {
   max-height: 46vh;
   overflow-y: auto;
   z-index: 30;
+  /* Подложка, рамка и тень — общий слой `.ms-pop` (`assets/appearance.css`). */
+  --ms-pop-radius: var(--ms-radius-lg);
   padding: 6px;
-  border-radius: var(--ms-radius-lg);
-  background: var(--ms-surface, #fff);
-  border: 1px solid var(--ms-border, #e2e6ea);
-  box-shadow: var(--ms-shadow-float, 0 6px 20px -8px rgba(15, 23, 42, 0.3));
 }
 
 .mention-item {

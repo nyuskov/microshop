@@ -1009,7 +1009,7 @@ const deleteGroup = async () => {
   overflow-y: auto;
 }
 
-/* Режим правой панели (≥1280px): карточка занимает колонку целиком, прокрутка
+/* Режим правой панели (1024px и шире, см. `isWide` в Messenger.vue): карточка занимает колонку целиком, прокрутка
    внутри тела (см. также ChatInfo.vue — там то же самое). */
 .grp-info-card.is-panel {
   width: 100%;
@@ -1139,7 +1139,7 @@ const deleteGroup = async () => {
 .gi-input {
   width: 100%;
   border: 1px solid var(--ms-border, #dfe5ea);
-  border-radius: 11px;
+  border-radius: var(--ms-radius-sm);
   background: var(--ms-surface-2, #ffffff);
   color: var(--ms-text, #1c2733);
   padding: 9px 11px;
@@ -1222,7 +1222,7 @@ const deleteGroup = async () => {
 .gi-invite-active {
   margin-top: 8px;
   border: 1px solid var(--ms-border, #e2e6ea);
-  border-radius: 12px;
+  border-radius: var(--ms-radius-md);
   padding: 10px;
   background: var(--ms-surface-2, #f6f8fa);
 }
@@ -1269,7 +1269,7 @@ const deleteGroup = async () => {
   border: none;
   background: var(--ms-accent-soft, #e3f2e5);
   color: var(--ms-accent, #2ea25e);
-  border-radius: 9px;
+  border-radius: var(--ms-radius-sm);
   padding: 5px 9px;
   font-size: 12.5px;
   font-weight: 600;
@@ -1284,7 +1284,7 @@ const deleteGroup = async () => {
 .gi-add-panel {
   margin-top: 8px;
   border: 1px solid var(--ms-border, #e2e6ea);
-  border-radius: 12px;
+  border-radius: var(--ms-radius-md);
   padding: 10px;
   background: var(--ms-surface-2, #f6f8fa);
   display: flex;
@@ -1307,7 +1307,7 @@ const deleteGroup = async () => {
   width: 100%;
   border: none;
   background: transparent;
-  border-radius: 9px;
+  border-radius: var(--ms-radius-md);
   padding: 5px 6px;
   cursor: pointer;
   text-align: left;
@@ -1359,7 +1359,7 @@ const deleteGroup = async () => {
 
 .gi-btn {
   border: none;
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   padding: 8px 14px;
   font-size: 13px;
   font-weight: 600;
@@ -1394,7 +1394,7 @@ const deleteGroup = async () => {
   align-items: center;
   gap: 10px;
   padding: 6px 4px;
-  border-radius: 10px;
+  border-radius: var(--ms-radius-md);
 }
 
 .gi-member:hover {
@@ -1427,7 +1427,7 @@ const deleteGroup = async () => {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.3px;
-  border-radius: 8px;
+  border-radius: var(--ms-radius-xs);
   padding: 2px 7px;
   flex-shrink: 0;
 }
@@ -1438,7 +1438,7 @@ const deleteGroup = async () => {
   font-weight: 600;
   color: var(--ms-warn);
   background: var(--ms-warn-bg);
-  border-radius: 8px;
+  border-radius: var(--ms-radius-xs);
   padding: 2px 7px;
   flex-shrink: 0;
 }
@@ -1585,7 +1585,7 @@ const deleteGroup = async () => {
   border: none;
   background: transparent;
   color: var(--ms-danger);
-  border-radius: 10px;
+  border-radius: var(--ms-radius-sm);
   padding: 10px 12px;
   font-size: 14px;
   font-weight: 600;

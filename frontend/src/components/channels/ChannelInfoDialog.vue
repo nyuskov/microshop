@@ -366,7 +366,7 @@ watch(
   max-height: 84vh;
   display: flex;
   flex-direction: column;
-  border-radius: 16px;
+  border-radius: var(--ms-radius-lg);
   background: var(--ms-surface, #fff);
   color: var(--ms-text, #141d26);
   font-family: var(--ms-font), sans-serif;
@@ -410,7 +410,7 @@ watch(
 .ch-tab {
   flex-shrink: 0;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--ms-radius-pill);
   padding: 6px 12px;
   background: transparent;
   color: var(--ms-muted, #71808d);
@@ -465,7 +465,7 @@ watch(
 .ch-input {
   width: 100%;
   border: 1px solid var(--ms-border, #dfe5ea);
-  border-radius: 11px;
+  border-radius: var(--ms-radius-sm);
   background: var(--ms-surface-2, #ffffff);
   color: var(--ms-text, #1c2733);
   padding: 9px 12px;
@@ -489,7 +489,7 @@ watch(
   align-items: flex-start;
   padding: 8px 10px;
   border: 1px solid var(--ms-border, #dfe5ea);
-  border-radius: 11px;
+  border-radius: var(--ms-radius-sm);
   cursor: pointer;
 }
 
@@ -542,7 +542,7 @@ watch(
 
 .ch-suggestion {
   border: 1px solid var(--ms-border, #dfe5ea);
-  border-radius: 11px;
+  border-radius: var(--ms-radius-sm);
   padding: 10px;
 }
 

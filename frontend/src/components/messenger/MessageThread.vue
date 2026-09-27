@@ -62,6 +62,7 @@
               :channel="Boolean(channelPosts)"
               :album="albumOf(item.row.message)"
               :actions-reset="actionsReset"
+              :entering="enterId === item.row.message.id"
               @quote-click="emit('quote-click', item.row.message)"
               @select-start="emit('select-start', item.row.message)"
               @toggle-select="emit('toggle-select', item.row.message)"
@@ -179,6 +180,21 @@
         </div>
       </template>
     </div>
+
+    <!-- Кнопка «вверх»: появляется, когда до начала ленты далеко (в группах и
+         каналах история длинная, а вернуться к первому непрочитанному иначе
+         приходится перетаскиванием на десятки экранов). -->
+    <button
+      v-if="showJumpUp"
+      type="button"
+      class="jump-up"
+      :class="{ stacked: showJumpDown }"
+      :title="t('Вверх')"
+      :aria-label="t('Прокрутить вверх')"
+      @click="onJumpUp"
+    >
+      <q-icon :name="icon('expand_less')" size="22px" aria-hidden="true" />
+    </button>
 
     <!-- Кнопка «вниз»: появляется, когда лента прокручена вверх -->
     <button
@@ -507,11 +523,32 @@ const hasNewBelow = ref(false)
 /** Сколько новых сообщений пришло, пока лента прокручена вверх. */
 const newBelowCount = ref(0)
 
+/**
+ * С какого смещения вниз показываем кнопку «вверх».
+ *
+ * Не на каждый экран: в коротком диалоге «вверх» — лишний элемент поверх
+ * сообщений, а в длинной истории без неё приходится долго тянуть пальцем
+ * (владелец 27.09.2026). ~2 экрана телефона — момент, когда лента явно
+ * «за спиной».
+ */
+const JUMP_UP_MIN_SCROLL = 600
+const showJumpUp = ref(false)
+
+/** Плавно только по явному клику и только если не просили «меньше движения». */
+const scrollBehavior = (): ScrollBehavior => {
+  const reduceMotion =
+    typeof window !== 'undefined' &&
+    !!window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  return reduceMotion ? 'auto' : 'smooth'
+}
+
 const updateScrollState = () => {
   const container = containerRef.value
   if (!container) return
   const distance = container.scrollHeight - container.scrollTop - container.clientHeight
   showJumpDown.value = distance > 320 || hasNewBelow.value
+  showJumpUp.value = container.scrollTop > JUMP_UP_MIN_SCROLL
   if (distance < 60) {
     hasNewBelow.value = false
     newBelowCount.value = 0
@@ -529,16 +566,41 @@ const onJumpDown = () => {
   if (container) {
     // Плавно только по явному клику: программная прокрутка в остальных местах
     // (восстановление позиции при догрузке) должна оставаться мгновенной.
-    const reduceMotion =
-      typeof window !== 'undefined' &&
-      !!window.matchMedia &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
     container.scrollTo({
       top: container.scrollHeight,
-      behavior: reduceMotion ? 'auto' : 'smooth'
+      behavior: scrollBehavior()
     })
   }
   updateScrollState()
+}
+
+/** К началу ленты (самое старое сообщение загруженной истории). */
+const onJumpUp = () => {
+  const container = containerRef.value
+  if (!container) return
+  container.scrollTo({ top: 0, behavior: scrollBehavior() })
+  updateScrollState()
+}
+
+// ---------- Приход нового сообщения ----------
+/**
+ * Id только что пришедшего сообщения — строке даётся лёгкое движение.
+ *
+ * Сравнивать «моя отправка или чужая» не нужно: движение короткое (0,28 с) и
+ * ставится только по ФАКТУ смены хвоста ленты, поэтому история, догрузка старых
+ * страниц и смена чата его не получают.
+ */
+const ENTER_ANIMATION_MS = 320
+const enterId = ref<number | null>(null)
+let enterTimer: ReturnType<typeof globalThis.setTimeout> | undefined
+
+const markEntering = (id: number) => {
+  enterId.value = id
+  if (enterTimer !== undefined) globalThis.clearTimeout(enterTimer)
+  enterTimer = globalThis.setTimeout(() => {
+    enterId.value = null
+    enterTimer = undefined
+  }, ENTER_ANIMATION_MS)
 }
 
 /** Последнее сообщение ленты (по нему понимаем, что пришло новое внизу). */
@@ -552,6 +614,8 @@ const tailMessageId = computed<number | null>(() => {
 
 watch(tailMessageId, (id, prev) => {
   if (id === null || prev === null || id === prev) return
+  // Новое сообщение — движение строке (историю вверх и догрузку не трогаем).
+  markEntering(id)
   // Догрузка старых сообщений хвост не меняет — считаем только появление новых.
   if (!isNearBottom()) {
     hasNewBelow.value = true
@@ -566,6 +630,7 @@ watch(
     hasNewBelow.value = false
     newBelowCount.value = 0
     showJumpDown.value = false
+    showJumpUp.value = false
   }
 )
 
@@ -798,11 +863,12 @@ onBeforeUnmount(() => {
   postObserver?.disconnect()
   postObserver = null
   if (flashTimer !== undefined) globalThis.clearTimeout(flashTimer)
+  if (enterTimer !== undefined) globalThis.clearTimeout(enterTimer)
 })
 </script>
 
 <style scoped>
-/* Обёртка нужна для позиционирования кнопки «вниз» поверх ленты
+/* Обёртка нужна для позиционирования кнопок «вверх»/«вниз» поверх ленты
    (сама лента — скролл-контейнер, absolute внутри неё уехал бы с контентом). */
 .thread-wrap {
   position: relative;
@@ -988,8 +1054,9 @@ onBeforeUnmount(() => {
   border-radius: var(--ms-radius-pill);
 }
 
-/* ---------- Кнопка «вниз» ---------- */
-.jump-down {
+/* ---------- Кнопки «вверх» и «вниз» ---------- */
+.jump-down,
+.jump-up {
   position: absolute;
   right: 16px;
   bottom: 12px;
@@ -1010,7 +1077,13 @@ onBeforeUnmount(() => {
     background 0.12s;
 }
 
-.jump-down:hover {
+/* Видны обе — «вверх» уезжает выше «вниз», иначе кнопки наложились бы. */
+.jump-up.stacked {
+  bottom: 56px;
+}
+
+.jump-down:hover,
+.jump-up:hover {
   background: var(--ms-hover, #f2f4f6);
 }
 
