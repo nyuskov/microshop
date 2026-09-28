@@ -126,71 +126,82 @@
           </div>
         </q-menu>
       </span>
-      <span v-if="!hasText" class="mic-wrap">
-        <button
-          class="round-btn mic-hold-btn"
-          :class="{
-            holding: micHolding,
-            'mode-video': recordMode === 'video'
-          }"
-          :title="
-            recordMode === 'video'
-              ? t('Видеосообщение (нажмите). Удерживайте 2 секунды — голосовое')
-              : t('Голосовое сообщение (нажмите). Удерживайте 2 секунды — видеосообщение')
-          "
-          :aria-label="
-            recordMode === 'video'
-              ? t('Записать видеосообщение. Удерживайте 2 секунды для голосового')
-              : t('Записать голосовое сообщение. Удерживайте 2 секунды для видеосообщения')
-          "
-          @click="emit('mic-click')"
-          @pointerdown="emit('mic-down')"
-          @pointerup="emit('mic-up')"
-          @pointerleave="emit('mic-up')"
-          @pointercancel="emit('mic-cancel')"
-          @contextmenu.prevent
-        >
-          <q-icon :name="icon(recordMode === 'video' ? 'video_message' : 'mic')" size="20px" />
-        </button>
-        <span v-if="recordModeHint" class="record-mode-hint">{{ recordModeHint }}</span>
-      </span>
-      <!-- Обёртка нужна, чтобы меню привязалось к кнопке, а не ко всей строке -->
-      <span v-if="newMessage.trim()" class="send-wrap">
-        <button
-          class="send-btn"
-          :title="t('Отправить. Удерживайте или нажмите правой кнопкой — отправить позже')"
-          :disabled="sending"
-          @click="onSendClick"
-          @pointerdown="startScheduleHold"
-          @pointerup="cancelScheduleHold"
-          @pointerleave="cancelScheduleHold"
-          @pointercancel="cancelScheduleHold"
-          @contextmenu.prevent="openScheduleMenu"
-        >
-          <q-icon :name="icon('send')" size="18px" />
-        </button>
-        <!-- «Отправить позже»: варианты времени считаются от текущей минуты -->
-        <q-menu v-model="scheduleMenuOpen" anchor="top right" self="bottom right" no-parent-event>
-          <div class="attach-menu">
+      <!-- Микрофон и отправка делят одну ячейку: кнопка записи «перетекает» в
+           отправку (как в Telegram), а не подменяется мгновенно. -->
+      <span class="action-slot">
+        <Transition name="action-morph">
+          <span v-if="!hasText" key="mic" class="mic-wrap">
             <button
-              v-for="preset in scheduleOptions"
-              :key="preset.label"
-              type="button"
-              class="attach-item"
-              @click="pickSchedule(preset)"
+              class="round-btn mic-hold-btn"
+              :class="{
+                holding: micHolding,
+                'mode-video': recordMode === 'video'
+              }"
+              :title="
+                recordMode === 'video'
+                  ? t('Видеосообщение (нажмите). Удерживайте 2 секунды — голосовое')
+                  : t('Голосовое сообщение (нажмите). Удерживайте 2 секунды — видеосообщение')
+              "
+              :aria-label="
+                recordMode === 'video'
+                  ? t('Записать видеосообщение. Удерживайте 2 секунды для голосового')
+                  : t('Записать голосовое сообщение. Удерживайте 2 секунды для видеосообщения')
+              "
+              @click="emit('mic-click')"
+              @pointerdown="emit('mic-down')"
+              @pointerup="emit('mic-up')"
+              @pointerleave="emit('mic-up')"
+              @pointercancel="emit('mic-cancel')"
+              @contextmenu.prevent
             >
-              <q-icon :name="icon('schedule')" size="18px" />
-              <span>{{ t(preset.label) }}</span>
+              <q-icon :name="icon(recordMode === 'video' ? 'video_message' : 'mic')" size="20px" />
             </button>
-            <p class="attach-hint">
-              {{
-                t(
-                  'Сообщение уйдёт в назначенное время, даже если приложение закрыто. Текст останется только текстом: вложения отложить нельзя.'
-                )
-              }}
-            </p>
-          </div>
-        </q-menu>
+            <span v-if="recordModeHint" class="record-mode-hint">{{ recordModeHint }}</span>
+          </span>
+          <!-- Обёртка нужна, чтобы меню привязалось к кнопке, а не ко всей строке -->
+          <span v-else key="send" class="send-wrap">
+            <button
+              class="send-btn"
+              :title="t('Отправить. Удерживайте или нажмите правой кнопкой — отправить позже')"
+              :disabled="sending"
+              @click="onSendClick"
+              @pointerdown="startScheduleHold"
+              @pointerup="cancelScheduleHold"
+              @pointerleave="cancelScheduleHold"
+              @pointercancel="cancelScheduleHold"
+              @contextmenu.prevent="openScheduleMenu"
+            >
+              <q-icon :name="icon('send')" size="18px" />
+            </button>
+            <!-- «Отправить позже»: варианты времени считаются от текущей минуты -->
+            <q-menu
+              v-model="scheduleMenuOpen"
+              anchor="top right"
+              self="bottom right"
+              no-parent-event
+            >
+              <div class="attach-menu">
+                <button
+                  v-for="preset in scheduleOptions"
+                  :key="preset.label"
+                  type="button"
+                  class="attach-item"
+                  @click="pickSchedule(preset)"
+                >
+                  <q-icon :name="icon('schedule')" size="18px" />
+                  <span>{{ t(preset.label) }}</span>
+                </button>
+                <p class="attach-hint">
+                  {{
+                    t(
+                      'Сообщение уйдёт в назначенное время, даже если приложение закрыто. Текст останется только текстом: вложения отложить нельзя.'
+                    )
+                  }}
+                </p>
+              </div>
+            </q-menu>
+          </span>
+        </Transition>
       </span>
 
       <!-- Подсказка упоминаний: набрали @ — выбираем участника группы -->
@@ -1727,13 +1738,45 @@ watch(newMessage, () => {
   display: none;
 }
 
+/* Ячейка «микрофон ↔ отправка»: одна кнопка на двоих. Так кнопка записи
+   «перетекает» в отправку на том же месте (как в Telegram), а не подменяется
+   мгновенно. */
+.action-slot {
+  position: relative;
+  display: inline-flex;
+}
+
 /* Кнопка отправки вместе со своим меню «отправить позже» */
 .send-wrap {
   position: relative;
   display: inline-flex;
-  /* Кнопка «выпрыгивает», когда текст появился: раньше она появлялась мгновенно
-     вместе с вводом, и момент «теперь можно отправить» проходил мимо глаза. */
+}
+
+/* Появление отправки (текст набрали) — та же «выпрыгивающая» анимация, что была
+   у обёртки: теперь её держит enter-класс перехода, чтобы не играть дважды. */
+.action-morph-enter-active {
   animation: send-pop 0.18s var(--ms-ease);
+}
+
+/* Уход микрофона: кнопка «сжимается» на месте. Уходящий кадр вынимаем из потока
+   (position: absolute) — иначе на время перехода в строке стояли бы две кнопки и
+   поле ввода прыгало бы влево. */
+.action-morph-leave-active {
+  position: absolute;
+  top: 0;
+  right: 0;
+  animation: mic-morph-out var(--ms-dur-fast) var(--ms-ease) forwards;
+}
+
+@keyframes mic-morph-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.7);
+  }
 }
 
 @keyframes send-pop {

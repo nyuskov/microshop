@@ -15,6 +15,7 @@
 import { computed, nextTick, ref, type ComputedRef, type Ref } from 'vue'
 import { Notify } from 'quasar'
 
+import { playEmojiEffectForText } from '@/composables/useEmojiEffect'
 import { t } from '@/i18n'
 import { sendAttachmentMessage, sendNewMessage, editMessage } from '@/services/chatService'
 import { getErrorMessage, isNetworkError } from '@/services/errors'
@@ -227,6 +228,9 @@ export function useMessageSend(deps: MessageSendDeps): MessageSendApi {
       }
 
       await deliverText(chatId, text, deps.replyTarget()?.id ?? null)
+      // Одиночный эмодзи рассыпается частицами по экрану (как в Telegram).
+      // Только для НОВОГО сообщения: правка уже отправленного эффекта не даёт.
+      playEmojiEffectForText(text)
       deps.composerText.value = ''
       deps.clearDraftFor(chatId)
       deps.stopTyping(chatId)

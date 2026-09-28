@@ -45,6 +45,16 @@
 `cubic-bezier` в компонентах не заводим. `prefers-reduced-motion` гасит анимации
 централизованно (`assets/a11y.css`).
 
+**Чем анимируем.** Только CSS и Web Animations API: библиотек движения (Lottie/Rive,
+сцены `.tgs`/`.riv` на 100–300 КБ) в проекте нет и не будет — бюджет сборки 3 % и
+2 КБ на чанк (`frontend/scripts/check-bundle-size.mjs`). Примеры: полёт реакции
+(`composables/useFlyingEmoji.ts`), «эффект одного эмодзи»
+(`composables/useEmojiEffect.ts`, слой `--ms-z-effect` — выше ленты, ниже окон),
+превращение кнопки «микрофон ↔ отправка» (`.action-slot` в `MessageComposer.vue`).
+`a11y.css` глушит CSS-анимации централизованно, но до WAAPI не достаёт — помощник
+обязан сам проверять `prefers-reduced-motion` и молча выходить (в jsdom это ещё и
+отсутствие `Element.animate`).
+
 Проверка: `node scripts/check-geometry.mjs` — новые литеральные радиусы и тени в
 `<style>` компонентов не проходят (старые записаны в
 `scripts/style-geometry-baseline.json` и вычищаются по одному; 27.09.2026
