@@ -21,6 +21,8 @@
 #   ALERT_SMS        — 1 включает SMS через SMS Aero (по умолчанию выключено)
 #   ALERT_PHONE      — номер для SMS при ALERT_SMS=1
 #   ALERT_MIN_INTERVAL — не чаще одного оповещения в N минут по той же проблеме (180)
+#   ALERT_ON_RECOVERY — 1 включает письмо «прод снова в норме» после устранения
+#                       проблемы (по умолчанию 0: шлём ТОЛЬКО ошибки)
 #   DISK_MIN_FREE_PERCENT — порог свободного места на сервере (10)
 #   BACKUP_MAX_AGE_HOURS  — максимальный возраст последнего дампа (26)
 #   SMTP_* — если заданы локально, берутся они; иначе читаются с прода
@@ -44,6 +46,9 @@ ALERT_EMAIL="${ALERT_EMAIL:-nyuskov@gmail.com}"
 ALERT_SMS="${ALERT_SMS:-0}"
 ALERT_PHONE="${ALERT_PHONE:-+79109744376}"
 ALERT_MIN_INTERVAL="${ALERT_MIN_INTERVAL:-180}"
+# Письмо о восстановлении по умолчанию ВЫКЛючено: мониторинг оповещает только об
+# ошибках. Включается явно — ALERT_ON_RECOVERY=1.
+ALERT_ON_RECOVERY="${ALERT_ON_RECOVERY:-0}"
 DISK_MIN_FREE_PERCENT="${DISK_MIN_FREE_PERCENT:-10}"
 BACKUP_MAX_AGE_HOURS="${BACKUP_MAX_AGE_HOURS:-26}"
 
@@ -248,10 +253,19 @@ fi
 if [[ ${#PROBLEMS[@]} -eq 0 ]]; then
     echo "Всё в норме."
     log "OK: все проверки пройдены"
-    # Если раньше была проблема — сообщаем о восстановлении.
+    # Письмо о восстановлении уходит только если раньше была НАСТОЯЩАЯ проблема
+    # (в состоянии не «ok» и не «test») и только если оно включено
+    # (ALERT_ON_RECOVERY=1). По умолчанию оповещаем только об ошибках.
+    # Состояние в любом случае сбрасываем на «ok»: иначе следующая НОВАЯ проблема
+    # попадёт под дедупликацию и вы о ней не узнаете.
     PREV="$(sed -n '1p' "$STATE_FILE" 2>/dev/null || true)"
-    if [[ -n "$PREV" && "$PREV" != "test" ]]; then
-        notify "recovered" "все проверки снова проходят" "ok"
+    if [[ -n "$PREV" && "$PREV" != "ok" && "$PREV" != "test" ]]; then
+        if [[ "$ALERT_ON_RECOVERY" == "1" ]]; then
+            notify "recovered" "все проверки снова проходят" "ok"
+        elif [[ "$MODE" != "dry" ]]; then
+            printf 'ok\n%s\n' "$(date +%s)" > "$STATE_FILE"
+            log "Восстановление после проблемы: письмо не отправлено (ALERT_ON_RECOVERY=0)"
+        fi
     fi
     exit 0
 fi
