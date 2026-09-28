@@ -1,4 +1,4 @@
-FROM nginx:1.27-alpine
+FROM nginx:1.29-alpine
 
 # Copy the custom dev nginx configuration as the default one for this context
 COPY ./nginx/dev.conf /etc/nginx/conf.d/default.conf
