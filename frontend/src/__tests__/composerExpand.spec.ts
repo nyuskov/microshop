@@ -140,6 +140,19 @@ describe('развёрнутый ввод в композере', () => {
     expect(composer).toContain(':class="{ expanded, multiline }"')
   })
 
+  it('черновик с готовым текстом: авторост и счёт строк идут с первой отрисовки', async () => {
+    // После обновления страницы текст приходит ИСХОДНЫМ значением модели, а watch
+    // на неё не срабатывает — без автороста на монтировании поле оставалось в одну
+    // строку и значок разворота не появлялся (жалоба владельца, 29.09.2026).
+    const wrapper = mountComposer('первая строка\nвторая строка\nтретья строка')
+    await wrapper.vm.$nextTick()
+    // jsdom раскладку не считает (scrollHeight = 0), поэтому про сам расчёт строк
+    // не спросить — проверяем, что авторост запустился: он ставит инлайновую высоту.
+    expect((wrapper.find('textarea').element as HTMLTextAreaElement).style.height).toBe('0px')
+    expect(composer).toContain('onMounted(() => void nextTick(autoGrow))')
+    wrapper.unmount()
+  })
+
   it('панель формата появляется по выделению и встаёт у него', async () => {
     const wrapper = mountComposer('привет мир')
     const area = wrapper.find('textarea')
