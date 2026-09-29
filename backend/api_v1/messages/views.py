@@ -650,3 +650,18 @@ async def delete_message(
         user_id=user.id,
         for_all=for_all,
     )
+
+
+@router.delete("/{chat_id}/history/", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_chat_history(
+    chat_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(db_helper.session_dependency),
+):
+    """Очищает историю чата только у текущего пользователя.
+
+    Сам чат и членство остаются: человек продолжает переписку, пропадает лишь
+    уже написанное. Собеседники видят всё как раньше — механика та же, что у
+    «удалить у меня» (``crud.clear_chat_history``).
+    """
+    await crud.clear_chat_history(session=session, chat_id=chat_id, user_id=user.id)

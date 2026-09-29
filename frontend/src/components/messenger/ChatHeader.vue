@@ -131,6 +131,12 @@
             <q-icon :name="icon('bar_chart')" size="19px" />
             <span>{{ t('Статистика чата') }}</span>
           </button>
+          <!-- Очистка истории: переписка пропадает ТОЛЬКО у меня, чат остаётся
+               (удаление чата целиком — отдельное действие в режиме выделения). -->
+          <button class="ms-dropdown-item danger" @click="runChatAction('clear-history')">
+            <q-icon :name="icon('delete_outline')" size="19px" />
+            <span>{{ t('Очистить историю') }}</span>
+          </button>
           <!-- Показ/скрытие шторки закреплённых: единственное место с этим
                действием — отдельной кнопки в шапке нет, чтобы не дублировать. -->
           <button
@@ -253,6 +259,8 @@ const emit = defineEmits<{
   (e: 'toggle-pinned'): void
   /** Перейти к упоминаниям меня: поиск с готовым запросом `@логин`. */
   (e: 'open-mentions'): void
+  /** Очистить историю чата только у меня (чат и членство остаются). */
+  (e: 'clear-history'): void
 }>()
 
 /** Личный диалог с собеседником (не группа и не «Сохранённые сообщения»). */
@@ -333,6 +341,7 @@ const runChatAction = (
     | 'report'
     | 'block'
     | 'pinned'
+    | 'clear-history'
 ) => {
   chatMenuOpen.value = false
   if (action === 'search') emit('toggle-search')
@@ -345,6 +354,7 @@ const runChatAction = (
   if (action === 'calls') emit('toggle-calls-block')
   if (action === 'report') emit('report-chat')
   if (action === 'block') emit('block-chat')
+  if (action === 'clear-history') emit('clear-history')
 }
 
 // Кнопка звонка: клик = звонок выбранного типа, удержание 0,5 c = смена типа.

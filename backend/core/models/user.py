@@ -79,6 +79,16 @@ class User(IdIntPkMixin, SQLAlchemyBaseUserTable[int], Base):
     last_seen: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Приватность присутствия: не показывать другим «в сети» и «был(а) …».
+    # Настройка односторонняя (как в WhatsApp): чужое человек видит как раньше,
+    # не отдаёт только своё. Скрытое присутствие не уходит ни в ответы API
+    # (чаты, контакты, поиск), ни в события WS (см. core.presence).
+    presence_hidden: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=text("false"),
+        nullable=False,
+    )
     # «Эпоха» access-токенов: access-токены живут 30 минут и в БД не хранятся,
     # поэтому отозвать их напрямую нельзя. Вместо этого номер эпохи вшит в токен
     # (claim ``epoch``), а при «выходе на всех устройствах», смене пароля или

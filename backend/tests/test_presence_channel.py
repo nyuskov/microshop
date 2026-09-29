@@ -107,7 +107,9 @@ def presence(monkeypatch: pytest.MonkeyPatch) -> Presence:
     )
 
     async def fake_user(_session: object, _user_id: int) -> object:
-        return type("U", (), {"id": 7, "last_seen": None})()
+        # Заглушка повторяет модель: у пользователя есть флаг приватности
+        # присутствия (`presence_hidden`), иначе сервер не сможет его прочитать.
+        return type("U", (), {"id": 7, "last_seen": None, "presence_hidden": False})()
 
     async def fake_peers(_session: object, _user_id: int) -> list[int]:
         return [8]
@@ -295,3 +297,22 @@ async def test_active_client_heartbeat_refreshes_last_seen(
     await _run(websocket)
 
     assert presence.touches >= 2
+
+
+async def test_hidden_presence_is_not_broadcast(
+    presence: Presence, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Скрытое присутствие не рассылается: «в сети» о себе человек не отдаёт.
+
+    Настройка односторонняя — чужое присутствие он видит как раньше, поэтому
+    проверяем именно рассылку О СЁМ: список собеседников должен быть пустым.
+    """
+
+    async def hidden_user(_session: object, _user_id: int) -> object:
+        return type("U", (), {"id": 7, "last_seen": None, "presence_hidden": True})()
+
+    monkeypatch.setattr(events_views, "get_user_by_id", hidden_user)
+
+    _last_seen, peers = await events_views._presence_last_seen(7)
+
+    assert peers == []

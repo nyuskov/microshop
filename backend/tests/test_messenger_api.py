@@ -605,6 +605,53 @@ async def test_delete_message_for_me_hides_from_preview_and_search(
     assert [item["id"] for item in found_author] == [hidden["id"]]
 
 
+async def test_clear_chat_history_keeps_chat_but_hides_history(api: _ApiCtx) -> None:
+    """«Очистить историю»: у меня переписки нет, у собеседника всё на месте.
+
+    Отличие от удаления чата: чат и членство остаются, поэтому после очистки
+    человек продолжает переписку и видит новые сообщения.
+    """
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    t1, t2 = await api.token_for(u1), await api.token_for(u2)
+    chat = await api.private_chat(t1, u2.id)
+    old = await api.send(t1, chat["id"], "до очистки")
+
+    cleared = await api.client.delete(
+        f"/api/v1/messages/{chat['id']}/history/", headers=api.auth(t2)
+    )
+    assert cleared.status_code == 204
+
+    # У u2 ленты нет, но чат остался; превью и непрочитанные — пустые.
+    assert await api.list_messages(t2, chat["id"]) == []
+    chats2 = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
+    peer_chat = next(item for item in chats2 if item["id"] == chat["id"])
+    assert peer_chat["last_message"] is None
+    assert peer_chat["unread_count"] == 0
+
+    # У автора всё осталось: очистка — личное дело того, кто её сделал.
+    assert any(m["id"] == old["id"] for m in await api.list_messages(t1, chat["id"]))
+
+    # Новое сообщение после очистки u2 видит — чат не «удалён».
+    fresh = await api.send(t1, chat["id"], "после очистки")
+    assert [m["id"] for m in await api.list_messages(t2, chat["id"])] == [fresh["id"]]
+
+    # Повторная очистка (двойной тап) — не ошибка.
+    again = await api.client.delete(
+        f"/api/v1/messages/{chat['id']}/history/", headers=api.auth(t2)
+    )
+    assert again.status_code == 204
+
+    # Посторонний очистить чужую историю не может: чат есть, но он не участник
+    # (правило то же, что у чтения истории — 403, а не «не найдено»).
+    u3 = await api.make_user()
+    t3 = await api.token_for(u3)
+    stranger = await api.client.delete(
+        f"/api/v1/messages/{chat['id']}/history/", headers=api.auth(t3)
+    )
+    assert stranger.status_code == 403
+
+
 # --- Удаление чата: «для себя» и «для всех» -------------------------------
 
 
@@ -4429,3 +4476,55 @@ async def test_device_key_change_is_detected_and_reported(
     assert fetched.status_code == 200, fetched.text
     assert fetched.json()["public_key"] == "JWK-2"
     assert fetched.json()["changed_at"]
+
+
+async def test_presence_hidden_is_not_shared(api: _ApiCtx) -> None:
+    """«Скрывать присутствие»: чужое видно как раньше, своё не отдаётся никому.
+
+    Присутствие уходит по двум каналам — в ответах API (список чатов, контакты,
+    поиск: поле ``last_seen``) и событиями WS ``presence``. Забыть один из них
+    легко, а выглядит это как сломанная настройка: человек скрыл себя, а время
+    его активности всё равно видно. Здесь проверяем канал API; WS закрыт в
+    ``_presence_last_seen``/``presence_snapshot`` (см. tests/test_presence_channel).
+    """
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    t1, t2 = await api.token_for(u1), await api.token_for(u2)
+    chat = await api.private_chat(t1, u2.id)
+    await api.send(t1, chat["id"], "привет")
+    # `last_seen` обновляется при чтении списка чатов — «засветим» активность u1.
+    await api.client.get("/api/v1/chats/", headers=api.auth(t1))
+
+    def peer_in(chats: list[dict], chat_id: int, user_id: int) -> dict:
+        found = next(item for item in chats if item["id"] == chat_id)
+        return next(user for user in found["users"] if user["id"] == user_id)
+
+    chats = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
+    assert peer_in(chats, chat["id"], u1.id)["last_seen"] is not None
+
+    hidden = await api.client.patch(
+        "/api/v1/jwt/users/me/", json={"presence_hidden": True}, headers=api.auth(t1)
+    )
+    assert hidden.status_code == 200, hidden.text
+    assert hidden.json()["presence_hidden"] is True
+
+    # У u2 присутствия u1 нет ни в чате, ни в контактах…
+    chats = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
+    assert peer_in(chats, chat["id"], u1.id)["last_seen"] is None
+    contacts = (
+        await api.client.get("/api/v1/users/contacts/", headers=api.auth(t2))
+    ).json()
+    assert next(user for user in contacts if user["id"] == u1.id)["last_seen"] is None
+
+    # …а сам u1 видит присутствие u2 как раньше: настройка односторонняя.
+    chats = (await api.client.get("/api/v1/chats/", headers=api.auth(t1))).json()
+    assert peer_in(chats, chat["id"], u2.id)["last_seen"] is not None
+
+    # Выключили — присутствие снова видно: настройка обратима.
+    shown = await api.client.patch(
+        "/api/v1/jwt/users/me/", json={"presence_hidden": False}, headers=api.auth(t1)
+    )
+    assert shown.status_code == 200, shown.text
+    assert shown.json()["presence_hidden"] is False
+    chats = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
+    assert peer_in(chats, chat["id"], u1.id)["last_seen"] is not None

@@ -77,6 +77,30 @@
       </q-card-actions>
     </q-card>
   </q-dialog>
+
+  <!-- Очистка истории (только у меня; чат и членство остаются) -->
+  <q-dialog v-model="showClearHistoryModal">
+    <q-card class="delchat-card">
+      <q-card-section class="row no-wrap items-center delchat-head">
+        <div class="text-subtitle1 text-weight-medium ellipsis">
+          {{ t('Очистить историю чата?') }}
+        </div>
+        <q-space />
+        <q-btn flat round dense icon="close" v-close-popup :aria-label="t('Закрыть')" />
+      </q-card-section>
+      <q-separator />
+      <q-card-section class="delchat-body">
+        <p class="delchat-text">
+          {{ t('Вся переписка исчезнет только у вас. У собеседника она останется.') }}
+        </p>
+      </q-card-section>
+      <q-separator />
+      <q-card-actions align="right" class="delchat-actions">
+        <q-btn flat :label="t('Отмена')" v-close-popup />
+        <q-btn flat color="negative" :label="t('Очистить')" @click="confirmClearHistory" />
+      </q-card-actions>
+    </q-card>
+  </q-dialog>
 </template>
 
 <script setup lang="ts">
@@ -139,6 +163,8 @@ const emit = defineEmits<{
   groupCreated: [chat: Chat]
   /** Подтвердили удаление: кого и только у меня/у всех. */
   deleteConfirmed: [payload: { ids: number[]; forAll: boolean }]
+  /** Подтвердили очистку истории: у кого (чат остаётся). */
+  clearHistoryConfirmed: [chatId: number]
 }>()
 
 // ---------- Модалка «Удалить чат» (для себя / для всех) ----------
@@ -199,7 +225,30 @@ const confirmDelete = () => {
   emit('deleteConfirmed', { ids, forAll })
 }
 
-defineExpose({ openDelete, openBulkDelete })
+// ---------- Модалка «Очистить историю» (только у меня) ----------
+const showClearHistoryModal = ref(false)
+const clearHistoryChatId = ref<number | null>(null)
+
+/**
+ * Открывает подтверждение очистки истории.
+ *
+ * Это НЕ удаление чата: чат и членство остаются, пропадает лишь уже написанное
+ * (и только у меня). Поэтому вопрос отдельный и с другим ответом — «Очистить».
+ */
+const openClearHistory = (chat: Chat) => {
+  clearHistoryChatId.value = chat.id
+  showClearHistoryModal.value = true
+}
+
+/** Подтвердили очистку: наружу уходит только id — запрос делает представление. */
+const confirmClearHistory = () => {
+  const chatId = clearHistoryChatId.value
+  showClearHistoryModal.value = false
+  clearHistoryChatId.value = null
+  if (chatId !== null) emit('clearHistoryConfirmed', chatId)
+}
+
+defineExpose({ openDelete, openBulkDelete, openClearHistory })
 
 // Подтверждение удаления чата — тоже слой: человек может передумать и нажать
 // «назад» вместо «Отмена», и это не должно закрывать сам чат.
@@ -207,6 +256,14 @@ useMobileLayer(
   () => showDeleteChatModal.value,
   () => {
     showDeleteChatModal.value = false
+  }
+)
+
+// Слой у окна очистки истории: та же причина, что у удаления чата.
+useMobileLayer(
+  () => showClearHistoryModal.value,
+  () => {
+    showClearHistoryModal.value = false
   }
 )
 </script>

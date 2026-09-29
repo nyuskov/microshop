@@ -138,6 +138,44 @@ docker run --rm --network host coturn/coturn:4.6 \
 Ожидаемо: `tot_recv_bytes` растёт, в логах coturn — allocation. Успех означает, что
 секрет в `.env` совпадает с тем, что видит coturn, и схема кредов работает.
 
+## Ротация секрета (`TURN_SECRET`)
+
+Делать, если секрет мог утечь (попал в лог, в переписку, в вывод `docker inspect` —
+`docker inspect` печатает `--static-auth-secret` в открытом виде, поэтому его вывод
+надо фильтровать). Процедура занимает минуту и не требует пересборки фронтенда:
+клиент берёт креды у сервера (`GET /api/v1/calls/ice-servers/`), статических
+логина/пароля в бандле нет.
+
+```bash
+# на сервере, в каталоге compose
+C="docker compose -p microshop-test -f docker-compose.prod.yaml"
+NEW=$(openssl rand -hex 32)                     # значение не печатаем
+sed -i "s|^TURN_SECRET=.*|TURN_SECRET=$NEW|" .env
+grep -qE "^TURN_SECRET=[0-9a-f]{64}$" .env && echo "env обновлён"
+
+# coturn читает секрет из команды контейнера — его надо ПЕРЕСОЗДАТЬ (не restart)
+$C up -d --no-deps coturn
+# секрет нужен и серверу: он считает по нему креды для клиента
+SLOT=$(cat ~/.microshop-deploy/active-web-slot)  # сейчас, например, web-green
+$C up -d --no-deps "$SLOT"
+```
+
+Проверка — «Проверкой, что всё живо» выше (UDP, `-t` для TCP, `-S -t -p 5349` для
+TURNS): все три транспорта должны отдавать `Total transmit time`. Ещё быстрая
+сверка без печати секрета — сравнить хеши (у coturn секрет лежит в команде, а не в
+переменных окружения, поэтому `printenv TURN_SECRET` там пуст):
+
+```bash
+E=$(grep '^TURN_SECRET=' .env | cut -d= -f2- | sha256sum | cut -c1-12)
+C=$(docker inspect microshop-test-coturn-1 --format '{{.Config.Cmd}}' \
+  | tr ' ' '\n' | grep -- '--static-auth-secret=' | sed 's/.*=//' | sha256sum | cut -c1-12)
+echo "env=$E coturn=$C"   # хеши должны совпасть
+```
+
+После ротации старые креды (и утёкший секрет) перестают работать сразу: coturn
+проверяет HMAC новым секретом. Пересоздание `web`-слота — это несколько секунд
+недоступности, лучше делать в тихое время.
+
 Через API то же видно так:
 
 ```bash

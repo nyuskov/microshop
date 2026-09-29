@@ -1,5 +1,7 @@
 """Эндпоинты для управления пользователями."""
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +13,7 @@ from core.config import settings
 from core.i18n import t
 from core.media_quota import media_usage
 from core.models import User, db_helper
+from core.presence import scrub_last_seen
 from core.rate_limit import enforce_limit
 from core.security import get_password_hash, verify_password
 from core.upload_guard import validate_image_upload
@@ -49,12 +52,26 @@ def _remove_my_avatar_files(db_user: User) -> None:
     remove_avatar_files(db_user.avatar_url, db_user.avatar_thumb_url)
 
 
+def _search_payloads(rows: list[User]) -> list[dict[str, Any]]:
+    """Список людей для поиска/контактов без скрытого присутствия.
+
+    Присутствие скрывает сам человек (см. `core.presence`): чужие настройки его
+    не касаются. Отдаём словари, а не ORM-объекты: `last_seen` на модели
+    подменять нельзя — SQLAlchemy записал бы NULL в БД.
+    """
+    payloads: list[dict[str, Any]] = []
+    for row in rows:
+        item = schemas.UserSearchResultSchema.model_validate(row).model_dump()
+        payloads.append(scrub_last_seen(item, row))
+    return payloads
+
+
 @router.get("/search/", response_model=list[schemas.UserSearchResultSchema])
 async def search_users(
     q: str = Query(default="", min_length=1, max_length=64),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
-) -> list[User]:
+) -> list[dict[str, Any]]:
     """Ищет пользователей по логину или номеру телефона."""
     query = q.strip()
     if not query:
@@ -66,7 +83,8 @@ async def search_users(
         window_seconds=60,
         detail=t("Слишком много запросов. Попробуйте позже."),
     )
-    return await crud.search_users_by_query(session, query, exclude_user_id=user.id)
+    found = await crud.search_users_by_query(session, query, exclude_user_id=user.id)
+    return _search_payloads(found)
 
 
 @router.get("/by-username/{username}", response_model=schemas.UserLinkPreviewSchema)
@@ -104,9 +122,10 @@ async def get_user_by_link(
 async def get_contacts(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
-) -> list[User]:
+) -> list[dict[str, Any]]:
     """Возвращает всех пользователей, кроме текущего (для вкладки «Контакты»)."""
-    return await crud.get_contacts(session, exclude_user_id=user.id)
+    rows = await crud.get_contacts(session, exclude_user_id=user.id)
+    return _search_payloads(rows)
 
 
 @router.post("/match-by-phone/", response_model=list[schemas.UserSearchResultSchema])
@@ -114,11 +133,12 @@ async def match_users_by_phone(
     payload: schemas.PhoneMatchRequest,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(db_helper.session_dependency),
-) -> list[User]:
+) -> list[dict[str, Any]]:
     """Находит пользователей мессенджера по номерам из телефонной книги."""
-    return await crud.get_users_by_phones(
+    rows = await crud.get_users_by_phones(
         session, payload.phones, exclude_user_id=user.id
     )
+    return _search_payloads(rows)
 
 
 @router.put("/me/avatar/", response_model=schemas.UserAvatarResponse)

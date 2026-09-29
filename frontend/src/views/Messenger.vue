@@ -182,6 +182,7 @@
             @report-chat="openReportForPeer"
             @block-chat="blockSelectedPeer"
             @toggle-pinned="togglePinnedBar"
+            @clear-history="openClearHistory"
           />
 
           <!-- Поиск по сообщениям -->
@@ -225,6 +226,7 @@
             :reminder-at="reminderAtOf"
             :channel-posts="selectedIsChannel"
             :post-meta="channelPostMeta"
+            :cached-hint="restoredFromCache"
             :actions-reset="actionsReset"
             @unread-seen="clearUnreadDivider"
             @post-viewed="onPostViewed"
@@ -557,6 +559,7 @@
     @members-changed="onGroupMembersChanged"
     @group-created="onGroupCreated"
     @delete-confirmed="onDeleteChatConfirmed"
+    @clear-history-confirmed="onClearChatHistory"
   />
 
   <!-- Каналы: создание, подписка по ссылке, комментарии под постом, настройки
@@ -692,6 +695,7 @@ import {
   sendAttachmentMessage,
   sendNewMessage,
   deleteChat,
+  clearChatHistory,
   setChatMuted,
   setChatE2ee,
   fetchGroupInvitePreview,
@@ -747,6 +751,7 @@ import { lastSeenLabel } from '@/utils/format'
 import { buildMessageRows, type MessageRow as ThreadRow } from '@/utils/thread'
 import BrandSpinner from '@/components/common/BrandSpinner.vue'
 import { forgetLocalChat, indexLocalMessages } from '@/utils/localSearchIndex'
+import { forgetThread } from '@/utils/threadCache'
 import { effectiveFile, messageSnippet, optimizeImageFile } from '@/utils/media'
 import type { CallHistoryItem } from '@/utils/callHistory'
 import { fetchChannel, fetchPostsMeta, markPostViewed } from '@/services/channelService'
@@ -2453,6 +2458,7 @@ const loadChats = async () => {
 const {
   messagesLoading,
   noMoreOlder,
+  restoredFromCache,
   scrollToBottom,
   replaceMessageInThread,
   removeMessageFromThread,
@@ -3099,6 +3105,8 @@ const removeDeletedChat = (chat: Chat) => {
   clearDraftFor(chat.id)
   // Переписки больше нет — её текст не должен находиться локальным поиском.
   void forgetLocalChat(chat.id)
+  // И не должен читаться без сети из кэша страниц.
+  void forgetThread(chat.id)
   if (pinnedChatIds.value.includes(chat.id)) toggleChatPinned(chat.id)
   // Чата больше нет — в архиве ему делать нечего (иначе останется мусорный id).
   if (archivedChatIds.value.includes(chat.id)) toggleChatArchived(chat.id)
@@ -3157,6 +3165,36 @@ const onDeleteChatConfirmed = async ({ ids, forAll }: { ids: number[]; forAll: b
     }
   } catch (error) {
     console.error(t('Не удалось удалить чаты:'), getErrorMessage(error))
+  }
+}
+
+/** Пункт «Очистить историю» в меню чата: подтверждение — в оверлеях. */
+const openClearHistory = () => {
+  if (selectedChat.value) chatOverlaysRef.value?.openClearHistory(selectedChat.value)
+}
+
+/**
+ * Подтвердили очистку истории: переписка пропадает ТОЛЬКО у меня.
+ *
+ * Чат и членство остаются, поэтому список чатов только перечитываем — в отличие
+ * от удаления чата, строку из списка НЕ убираем. Если очистили открытый чат,
+ * лента, закреплённые и лайтбокс сбрасываются локально (сервер уже отдаёт пусто).
+ */
+const onClearChatHistory = async (chatId: number) => {
+  try {
+    await clearChatHistory(chatId)
+    // Истории больше нет — и в кэше для чтения без сети её быть не должно.
+    void forgetThread(chatId)
+    if (selectedChatId.value === chatId) {
+      messages.value = []
+      pinnedMessages.value = []
+      highlightedMessageId.value = null
+      closeLightbox()
+    }
+    await loadChats()
+    await loadPinned(chatId)
+  } catch (error) {
+    console.error(t('Не удалось очистить историю:'), getErrorMessage(error))
   }
 }
 

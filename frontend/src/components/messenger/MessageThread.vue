@@ -32,6 +32,12 @@
         </div>
       </div>
       <template v-else>
+        <!-- Лента из кэша: сети не было, показали последнее, что видели
+             (см. `utils/threadCache`). Строка честная: без неё старое выглядело бы как живое. -->
+        <div v-if="cachedHint" class="cache-hint" role="status">
+          <q-icon :name="icon('wifi_off')" size="15px" aria-hidden="true" />
+          <span>{{ t('Нет сети — показаны сохранённые сообщения') }}</span>
+        </div>
         <div v-for="group in dayGroups" :key="group.key" class="day-group">
           <div v-if="group.label" class="day-divider">
             <span>{{ group.label }}</span>
@@ -270,6 +276,8 @@ const props = defineProps<{
   unreadCount?: number
   /** Открыт канал: под постами показываем просмотры и комментарии. */
   channelPosts?: boolean
+  /** Лента показана из кэша: сети не было (см. `utils/threadCache`). */
+  cachedHint?: boolean
   /** Счётчики постов канала по id сообщения. */
   postMeta?: Record<number, ChannelPostCounters>
   /**
@@ -955,6 +963,22 @@ onBeforeUnmount(() => {
    `.empty-state`: пустое состояние вложено в неё. */
 .messages-scroll > .chat-status {
   margin: auto;
+}
+
+/* Подсказка «лента из кэша»: сети не было, показали последнее, что видели.
+   Стоит первой строкой ленты и не перекрывает сообщения. */
+.cache-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: fit-content;
+  margin: 0 auto 10px;
+  padding: 6px 12px;
+  border-radius: var(--ms-radius-md);
+  background: var(--ms-surface-2);
+  color: var(--ms-muted, #71808d);
+  font-size: var(--ms-fs-sm);
 }
 
 /* ---------- Счётчики поста канала (просмотры · комментарии) ---------- */

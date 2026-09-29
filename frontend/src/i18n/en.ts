@@ -181,6 +181,7 @@ export const EN: Record<string, string> = {
   'Звук уведомлений': 'Notification sound',
   'В папку…': 'To folder…',
   'Статистика чата': 'Chat statistics',
+  'Очистить историю': 'Clear history',
   'Показать закреплённые': 'Show pinned',
   'Скрыть закреплённые': 'Hide pinned',
   Пожаловаться: 'Report',
@@ -192,6 +193,7 @@ export const EN: Record<string, string> = {
   // --- Лента сообщений (components/messenger/MessageThread.vue) ---
   'Загрузка сообщений…': 'Loading messages…',
   'Непрочитанные сообщения': 'Unread messages',
+  'Нет сети — показаны сохранённые сообщения': 'No connection — showing saved messages',
   Комментировать: 'Comment',
   'Ждёт сети — отправим, как появится': 'Waiting for connection — will send when it is back',
   'Не отправлено': 'Not sent',
@@ -464,6 +466,9 @@ export const EN: Record<string, string> = {
   'Приватный режим': 'Private mode',
   'Скрывать профиль от посторонних в поиске': 'Hide the profile from strangers in search',
   'Изменение сохраняется сразу.': 'The change is saved instantly.',
+  'Показывать, когда я был(а) в сети': 'Show when I was last online',
+  'Если выключить, ваше присутствие («в сети» / «был(а) …») не увидят другие. Чужое присутствие вы видите как раньше.':
+    'If turned off, others will not see your presence (“online” / “last seen …”). You still see theirs.',
   из: 'of',
   'файл(ов)': 'file(s)',
   'Место почти закончилось: новые файлы не загрузятся — удалите старые сообщения с вложениями.':
@@ -473,8 +478,9 @@ export const EN: Record<string, string> = {
   Обновить: 'Refresh',
   'Не удалось получить данные хранилища.': 'Could not get the storage data.',
   'Кэш приложения на устройстве': 'App cache on this device',
-  '{count} файл(ов) оболочки (страницы, шрифты, иконки). Переписка, черновики и настройки лежат отдельно и очисткой не затрагиваются.':
-    '{count} app shell file(s) (pages, fonts, icons). Your chats, drafts and settings are stored separately and are not touched by the cleanup.',
+  'Сохранённые сообщения для чтения без сети': 'Saved messages for reading offline',
+  '{count} файл(ов) оболочки (страницы, шрифты, иконки) и сохранённые сообщения для чтения без сети. Переписка на сервере, черновики и настройки не затрагиваются.':
+    '{count} app shell file(s) (pages, fonts, icons) and saved messages for reading offline. Your chats on the server, drafts and settings are not touched.',
   'Очищаем…': 'Clearing…',
   'Очистить кэш приложения': 'Clear the app cache',
   'Поиск по зашифрованным чатам': 'Search in encrypted chats',
@@ -647,8 +653,8 @@ export const EN: Record<string, string> = {
   'Не удалось удалить фото': 'Could not delete the photo',
   'Не удалось сохранить профиль': 'Could not save the profile',
   'Не удалось сохранить тихие часы': 'Could not save quiet hours',
-  'Готово: удалено файлов — {count}. Переписка не затронута.':
-    'Done: {count} files deleted. Your chats are not affected.',
+  'Готово: удалено файлов — {files}, сохранённых сообщений — {messages}. Переписка на сервере не тронута.':
+    'Done: {files} files and {messages} saved messages deleted. Your chats on the server are untouched.',
   'Кэш уже пуст.': 'The cache is already empty.',
   'Включено: текст прочитанных сообщений из шифрованных чатов будет запоминаться на этом устройстве':
     'On: the text of read messages from encrypted chats will be remembered on this device',
@@ -2178,6 +2184,12 @@ export const EN: Record<string, string> = {
   'Удалить выбранные чаты ({count})?': 'Delete the selected chats ({count})?',
   'Удалить чат с': 'Delete the chat with',
   'ДД.ММ.ГГГГ': 'DD.MM.YYYY',
+
+  // --- Очистка истории чата (только у себя) ---
+  'Очистить историю чата?': 'Clear the chat history?',
+  'Вся переписка исчезнет только у вас. У собеседника она останется.':
+    'The whole conversation will disappear for you only. Your peer keeps it.',
+  'Не удалось очистить историю:': 'Could not clear the history:',
 
   // --- Действия с сообщениями: удаление и окна со счётчиками ---
   'Удалить сообщения ({count})?': 'Delete the messages ({count})?',

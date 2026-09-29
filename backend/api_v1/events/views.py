@@ -124,6 +124,10 @@ async def _presence_last_seen(user_id: int) -> tuple[datetime | None, list[int]]
             return None, []
         current.last_seen = datetime.now(timezone.utc)
         await session.commit()
+        # Присутствие скрыто — о переходах «в сети/ушёл» не рассказываем никому,
+        # а снимок присутствия отфильтрован отдельно (см. events.service).
+        if current.presence_hidden:
+            return current.last_seen, []
         peers = await presence_peer_ids(session, user_id)
         return current.last_seen, peers
 

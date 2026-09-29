@@ -11,8 +11,10 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api_v1.chats.schemas import ChatUserSchema
 from core.models import Message, User
 from core.models.associations import user_chat_association_table
+from core.presence import scrub_last_seen
 
 
 async def get_call_history(
@@ -65,7 +67,7 @@ async def get_call_history(
         {
             "id": row.id,
             "chat_id": row.chat_id,
-            "peer": peers.get(row.chat_id),
+            "peer": _peer_payload(peers.get(row.chat_id)),
             "call_kind": row.call_kind or "audio",
             "call_state": row.call_state or "completed",
             "call_duration": int(row.call_duration or 0),
@@ -77,6 +79,17 @@ async def get_call_history(
         for row in rows
     ]
     return items, int(total or 0)
+
+
+def _peer_payload(peer: User | None) -> dict | None:
+    """Собеседник для записи о звонке: без присутствия, если он его скрыл.
+
+    История звонков — такой же ответ с людьми, как список чатов, поэтому правило
+    приватности здесь то же (см. `core.presence`).
+    """
+    if peer is None:
+        return None
+    return scrub_last_seen(ChatUserSchema.model_validate(peer).model_dump(), peer)
 
 
 async def _peers_by_chat(

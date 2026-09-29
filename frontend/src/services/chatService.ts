@@ -287,6 +287,16 @@ export const deleteChat = async (chatId: number, forAll = false): Promise<void> 
   })
 }
 
+/**
+ * Очищает историю чата ТОЛЬКО у себя: чат и членство остаются.
+ *
+ * Отличие от `deleteChat`: человек продолжает переписку, исчезает лишь уже
+ * написанное (механика «удалить у меня», см. `message_deletions`).
+ */
+export const clearChatHistory = async (chatId: number): Promise<void> => {
+  await api.delete(`/messages/${chatId}/history/`)
+}
+
 /** Заглушает (`muted=true`) или включает (`muted=false`) уведомления чата. */
 export const setChatMuted = async (chatId: number, muted: boolean): Promise<boolean> => {
   const response = muted

@@ -47,6 +47,8 @@ export interface ApiUser {
   avatar_thumb_url?: string | null
   status?: string | null
   last_seen?: string | null
+  /** Приватность присутствия: человек скрыл «в сети»/«был(а) …» от других. */
+  presence_hidden?: boolean
   /** Профиль приходит целиком при чтении, а в запросах обновления может быть частичным. */
   profile?: Partial<ApiUserProfile> | null
 }

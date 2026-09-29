@@ -191,6 +191,10 @@ class UserWithDetailsSchema(BaseModel):
     avatar_thumb_url: str | None = None
     status: str | None = None
     last_seen: datetime | None = None
+    # Приватность присутствия: человек скрыл «в сети»/«был(а) …» от других.
+    # Отдаётся только в своём профиле (`/jwt/users/me`): другим присутствие
+    # скрытого просто не приходит (см. core.presence).
+    presence_hidden: bool = False
     # Признаки ролей: `is_admin` — разбор жалоб и приглашения (и обход экрана
     # техработ), `is_superuser` — владелец: то же плюс рубильник техработ.
     # Фронт по ним показывает админский раздел; сервер всё равно проверяет
@@ -225,6 +229,8 @@ class UserUpdateWithProfileSchema(BaseModel):
     last_name: str | None = None
     email: EmailStr | None = None
     status: str | None = None
+    # Настройка приватности присутствия (колонка на user, а не на профиле).
+    presence_hidden: bool | None = None
     profile: ProfileUpdateSchema | None = None
 
     _empty_str_to_none = field_validator(

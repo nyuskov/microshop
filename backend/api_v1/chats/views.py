@@ -28,6 +28,7 @@ from core.avatar_store import remove_avatar_files, store_avatar
 from core.config import settings
 from core.i18n import t
 from core.models import Chat, Message, User, db_helper
+from core.presence import scrub_last_seen
 from core.rate_limit import enforce_limit
 from core.upload_guard import validate_image_upload
 
@@ -48,6 +49,16 @@ def _remove_chat_avatar_files(chat: Chat) -> None:
     remove_avatar_files(chat.avatar_url, chat.avatar_thumb_url)
 
 
+def _chat_user_payload(user: User) -> dict:
+    """Участник для ответа API: присутствие скрываем, если человек его скрыл.
+
+    Отдаём словарь, а не объект схемы: `last_seen` на самой модели подменять
+    нельзя — SQLAlchemy счёл бы поле изменённым и записал NULL в БД.
+    """
+    payload = ChatUserSchema.model_validate(user).model_dump()
+    return scrub_last_seen(payload, user)
+
+
 def _serialize_chat(
     chat: Chat,
     last_messages: dict[int, Message],
@@ -60,7 +71,7 @@ def _serialize_chat(
     return {
         "id": chat.id,
         "name": chat.name,
-        "users": [ChatUserSchema.model_validate(u) for u in chat.users],
+        "users": [_chat_user_payload(u) for u in chat.users],
         "last_message": (message_basic_to_dict(last) if last is not None else None),
         "unread_count": unread_counts.get(chat.id, 0),
         "muted": chat.id in muted_ids,
@@ -319,7 +330,7 @@ async def _with_members(session: AsyncSession, chat: Chat, base: dict) -> dict:
     rows.sort(key=lambda item: (rank.get(item[1], 3), item[0].id))
     members: list[ChatMemberSchema] = []
     for member_user, role, muted_until in rows:
-        payload = ChatUserSchema.model_validate(member_user).model_dump()
+        payload = _chat_user_payload(member_user)
         members.append(ChatMemberSchema(**payload, role=role, muted_until=muted_until))
     return {**base, "members": members}
 
@@ -558,7 +569,7 @@ async def get_chat_ban_list(
             id=ban.id,
             user_id=ban.user_id,
             user=(
-                ChatUserSchema.model_validate(ban.user)
+                ChatUserSchema(**_chat_user_payload(ban.user))
                 if ban.user is not None
                 else None
             ),

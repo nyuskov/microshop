@@ -76,7 +76,9 @@ async def presence_snapshot(
     peer_ids = await presence_peer_ids(session, user_id)
     if not peer_ids:
         return []
-    stmt = select(User.id, User.last_seen).where(User.id.in_(peer_ids))
+    stmt = select(User.id, User.last_seen, User.presence_hidden).where(
+        User.id.in_(peer_ids)
+    )
     result = await session.execute(stmt)
     return [
         {
@@ -87,6 +89,8 @@ async def presence_snapshot(
             ),
         }
         for row in result.all()
+        # Скрытое присутствие не отдаём вообще: ни времени, ни статуса «в сети».
+        if not row.presence_hidden
     ]
 
 

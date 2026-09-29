@@ -129,6 +129,7 @@ interface ProfileForm {
   country: string
   notifications_enabled: boolean
   privacy_mode: boolean
+  presence_hidden: boolean
   notification_preview: boolean
   quiet_hours_enabled: boolean
   quiet_hours_start: number
@@ -150,6 +151,7 @@ const profileForm = reactive<ProfileForm>({
   country: '',
   notifications_enabled: true,
   privacy_mode: false,
+  presence_hidden: false,
   notification_preview: true,
   quiet_hours_enabled: false,
   quiet_hours_start: QUIET_DEFAULT_START,
@@ -177,6 +179,7 @@ watch(
     profileForm.country = profile?.country ?? ''
     profileForm.notifications_enabled = profile?.notifications_enabled ?? true
     profileForm.privacy_mode = profile?.privacy_mode ?? false
+    profileForm.presence_hidden = user.presence_hidden ?? false
     profileForm.notification_preview = profile?.notification_preview ?? true
     profileForm.quiet_hours_enabled = profile?.quiet_hours_enabled ?? false
     profileForm.quiet_hours_start = profile?.quiet_hours_start ?? QUIET_DEFAULT_START
@@ -358,7 +361,10 @@ const checkForUpdates = async () => {
   }
 }
 
-/** Приватный режим сохраняется сразу: в разделе нет отдельной кнопки «Сохранить». */
+/**
+ * Настройки приватности сохраняются сразу: в разделе нет отдельной кнопки
+ * «Сохранить» (приватный режим и присутствие — это переключатели).
+ */
 const onPrivacyToggle = async () => {
   await updateProfile()
 }
@@ -598,9 +604,13 @@ const onClearAppCache = async () => {
   try {
     const removed = await clearAppCache()
     await loadDeviceCache()
-    cacheNotice.value = removed
-      ? t('Готово: удалено файлов — {count}. Переписка не затронута.', { count: removed })
-      : t('Кэш уже пуст.')
+    cacheNotice.value =
+      removed.files || removed.messages
+        ? t(
+            'Готово: удалено файлов — {files}, сохранённых сообщений — {messages}. Переписка на сервере не тронута.',
+            { files: removed.files, messages: removed.messages }
+          )
+        : t('Кэш уже пуст.')
   } finally {
     cacheClearing.value = false
   }
@@ -769,7 +779,9 @@ const updateProfile = async () => {
     first_name: profileForm.first_name.trim() || null,
     last_name: profileForm.last_name.trim() || null,
     email: profileForm.email.trim() || null,
-    status: profileForm.status.trim() || null
+    status: profileForm.status.trim() || null,
+    // Присутствие — колонка на user, а не на профиле (как `status`).
+    presence_hidden: profileForm.presence_hidden
   }
 
   const profileData = {
@@ -1388,6 +1400,27 @@ const onNotificationsToggle = async (val: boolean) => {
               @update:model-value="onPrivacyToggle"
             />
           </div>
+          <!-- Присутствие: своё можно скрыть, чужое при этом видно как раньше
+               (настройка односторонняя, как в WhatsApp). Сервер не отдаёт ни
+               «в сети», ни «был(а) …» — и в списках, и в событиях WS. -->
+          <div class="toggle-row">
+            <div class="toggle-text">
+              <span class="toggle-name">{{ t('Показывать, когда я был(а) в сети') }}</span>
+              <span class="toggle-desc">
+                {{
+                  t(
+                    'Если выключить, ваше присутствие («в сети» / «был(а) …») не увидят другие. Чужое присутствие вы видите как раньше.'
+                  )
+                }}
+              </span>
+            </div>
+            <q-toggle
+              v-model="profileForm.presence_hidden"
+              color="primary"
+              keep-color
+              @update:model-value="onPrivacyToggle"
+            />
+          </div>
           <p class="field-hint">{{ t('Изменение сохраняется сразу.') }}</p>
         </section>
 
@@ -1446,10 +1479,16 @@ const onNotificationsToggle = async (val: boolean) => {
               <span class="storage-used">{{ t('Кэш приложения на устройстве') }}</span>
               <span class="storage-files">{{ formatBytes(deviceCache.usage) }}</span>
             </div>
+            <!-- Сохранённые страницы переписки: дают читать чат без сети
+                 (utils/threadCache.ts). Показываем только когда они есть. -->
+            <div v-if="deviceCache.threadMessages" class="storage-line">
+              <span class="storage-used">{{ t('Сохранённые сообщения для чтения без сети') }}</span>
+              <span class="storage-files">{{ deviceCache.threadMessages }}</span>
+            </div>
             <p class="storage-hint">
               {{
                 t(
-                  '{count} файл(ов) оболочки (страницы, шрифты, иконки). Переписка, черновики и настройки лежат отдельно и очисткой не затрагиваются.',
+                  '{count} файл(ов) оболочки (страницы, шрифты, иконки) и сохранённые сообщения для чтения без сети. Переписка на сервере, черновики и настройки не затрагиваются.',
                   { count: deviceCache.entries }
                 )
               }}

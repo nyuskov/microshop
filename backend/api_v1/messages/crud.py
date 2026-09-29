@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy import and_, case, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -861,6 +861,55 @@ async def _hide_for_user(
     )
     # Скрыть дважды (например, два тапа подряд) — не ошибка: строку не дублируем.
     await session.execute(statement.on_conflict_do_nothing())
+
+
+async def clear_chat_history(
+    session: AsyncSession, *, chat_id: int, user_id: int
+) -> int:
+    """Убирает всю историю чата ТОЛЬКО у этого человека («очистить историю»).
+
+    Это не удаление чата: членство и сам чат остаются, человек продолжает
+    переписку — пропадает лишь уже написанное. Механика та же, что у «удалить у
+    меня»: строки в ``message_deletions``. Список чатов, поиск, галерея,
+    закреплённые и счётчик непрочитанных читают её через
+    ``core.message_visibility``, поэтому отдельного условия нигде не нужно.
+
+    Строки ставим ОДНИМ запросом (``INSERT ... SELECT``): цикл по сообщениям в
+    длинном чате — это тысячи обращений к БД.
+
+    Возвращает число скрытых сообщений (для логов и тестов).
+    """
+    await _ensure_chat_member_or_404(session, chat_id=chat_id, user_id=user_id)
+
+    already_hidden = select(MessageDeletion.message_id).where(
+        MessageDeletion.user_id == user_id
+    )
+    statement = (
+        pg_insert(MessageDeletion).from_select(
+            ["message_id", "user_id"],
+            select(Message.id, literal(user_id)).where(
+                Message.chat_id == chat_id,
+                Message.id.not_in(already_hidden),
+            ),
+        )
+        # Повторная очистка (и сообщение, уже скрытое «удалить у меня») — не
+        # ошибка: строку не дублируем.
+        .on_conflict_do_nothing()
+    )
+    result = await session.execute(statement)
+    await session.commit()
+
+    # Своим ДРУГИМ устройствам: у них история тоже должна пропасть. Собеседникам
+    # знать нечего — у них всё осталось на месте.
+    await notify_user(
+        user_id,
+        {
+            "type": "message.changed",
+            "chat_id": chat_id,
+            "kind": "history_cleared",
+        },
+    )
+    return result.rowcount or 0
 
 
 def _resolve_media_file(file_url: str | None) -> Path | None:

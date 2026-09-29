@@ -20,6 +20,7 @@ import { t } from '@/i18n'
 import { fetchMessages } from '@/services/chatService'
 import { getErrorMessage } from '@/services/errors'
 import type { Message } from '@/types'
+import { readThreadPage, saveThreadPage } from '@/utils/threadCache'
 
 /** Сколько сообщений берём за одну страницу. */
 export const MESSAGES_PAGE_SIZE = 80
@@ -47,6 +48,8 @@ export function useThreadPagination(deps: ThreadPaginationDeps) {
   /** История кончилась: выше запрашивать нечего. */
   const noMoreOlder = ref(false)
   const loadingOlder = ref(false)
+  /** Показана сохранённая страница: сети не было (см. `utils/threadCache`). */
+  const restoredFromCache = ref(false)
 
   const scrollToBottom = (): void => {
     deps.thread()?.scrollToBottom()
@@ -66,13 +69,24 @@ export function useThreadPagination(deps: ThreadPaginationDeps) {
     messagesLoading.value = true
     noMoreOlder.value = false
     loadingOlder.value = false
+    restoredFromCache.value = false
     try {
-      deps.messages.value = await deps.decryptPage(
+      const page = await deps.decryptPage(
         chatId,
         await fetchMessages(chatId, { limit: MESSAGES_PAGE_SIZE })
       )
+      deps.messages.value = page
+      // Кэш перезаписываем и пустой страницей: историю могли очистить, и старое
+      // содержимое иначе всплыло бы при чтении без сети.
+      void saveThreadPage(chatId, page)
     } catch (error) {
       console.error(t('Не удалось загрузить сообщения:'), getErrorMessage(error))
+      // Сети нет: показываем то, что устройство уже видело, а не пустую ленту.
+      const cached = await readThreadPage(chatId)
+      if (cached.length > 0) {
+        deps.messages.value = cached
+        restoredFromCache.value = true
+      }
     } finally {
       messagesLoading.value = false
     }
@@ -90,6 +104,9 @@ export function useThreadPagination(deps: ThreadPaginationDeps) {
     const freshIds = new Set(fresh.map((m) => m.id))
     const keptOlder = deps.messages.value.filter((m) => !freshIds.has(m.id))
     deps.messages.value = [...keptOlder, ...fresh].sort((a, b) => a.id - b.id)
+    // Связь есть — лента больше не «из кэша», и свежая страница идёт в кэш.
+    restoredFromCache.value = false
+    void saveThreadPage(chatId, deps.messages.value)
     const hasNew = fresh.some((m) => !previousIds.has(m.id))
     const thread = deps.thread()
     if (hasNew && (!thread || thread.isNearBottom())) {
@@ -140,6 +157,7 @@ export function useThreadPagination(deps: ThreadPaginationDeps) {
     messagesLoading,
     noMoreOlder,
     loadingOlder,
+    restoredFromCache,
     scrollToBottom,
     replaceMessageInThread,
     removeMessageFromThread,
