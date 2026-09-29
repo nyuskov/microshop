@@ -78,4 +78,16 @@ describe('просмотрщик использует общий разбор ж
     // задержкой.
     expect(viewer).toContain("transition: 'none'")
   })
+
+  it('зоны показа не отдают вертикальный жест браузеру', () => {
+    // ГРАБЛЯ (29.09.2026): на телефоне жест не работал вообще — браузер забирал
+    // вертикальный сдвиг себе (прокрутка/«потянуть, чтобы обновить») и присылал
+    // `pointercancel`, а обработчик `onPointerUp` не вызывался. Тот же приём, что
+    // у протяжек в `CallOverlay` и `ImageLightbox`.
+    expect(viewer).toMatch(/\.viewer-stage \{[\s\S]{0,400}touch-action: none/)
+    expect(viewer).toMatch(/\.viewer-head \{[\s\S]{0,400}touch-action: none/)
+    // Внутри просмотрщика есть что прокручивать (список зрителей) — там обычное
+    // поведение должно остаться, иначе лист перестанет скроллиться пальцем.
+    expect(viewer).toMatch(/\.audience-sheet \{[\s\S]{0,400}overflow-y: auto/)
+  })
 })

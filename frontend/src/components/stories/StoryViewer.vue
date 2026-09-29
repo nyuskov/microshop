@@ -813,6 +813,13 @@ watch(flat, (list) => {
   align-items: center;
   gap: 11px;
   padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 8px;
+  /* ГРАБЛЯ (29.09.2026, «жест не работает на телефоне»): без `touch-action: none`
+     браузер забирает вертикальный сдвиг себе (прокрутка страницы и «потянуть,
+     чтобы обновить»), присылает `pointercancel` — и жест до обработчика не
+     доходит. Так же сделано у протяжек в `CallOverlay` и `ImageLightbox`.
+     Ставим только на зоны показа: у списка зрителей и поля ответа своя прокрутка
+     и ввод — они перехватывают жесты сами (`@pointerdown.stop`). */
+  touch-action: none;
 }
 
 .viewer-avatar {
@@ -903,6 +910,10 @@ watch(flat, (list) => {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  /* См. `.viewer-head`: здесь живёт основная площадь жеста (вверх/вниз — выйти из
+     истории, вбок — соседняя). Прокручивать тут нечего, поэтому браузеру жест
+     не отдаём. */
+  touch-action: none;
 }
 
 .viewer-media {
