@@ -498,12 +498,18 @@ const onPointerUp = () => {
 }
 
 const onPointerCancel = () => {
+  // Жест прервал браузер или система (у зон показа стоит `touch-action: none`,
+  // но старые WebView его игнорируют и присылают `pointercancel` вместо
+  // `pointerup`). Если палец уже уехал дальше порога — жест состоялся, иначе на
+  // таких устройствах история не сворачивалась бы вообще.
+  const result = storySwipeResult(dragX.value, dragY.value)
   gestureStartX = 0
   gestureStartY = 0
   gestureAxis = 'none'
   dragY.value = 0
   dragX.value = 0
   resumeAfterHold()
+  if (result === 'close') emit('close')
 }
 
 /* ---------------- Быстрая реакция (тап по центру) ---------------- */

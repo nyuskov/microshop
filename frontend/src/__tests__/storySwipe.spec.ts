@@ -79,6 +79,14 @@ describe('просмотрщик использует общий разбор ж
     expect(viewer).toContain("transition: 'none'")
   })
 
+  it('прерванный браузером жест не теряется', () => {
+    // Старые WebView игнорируют `touch-action` и вместо `pointerup` присылают
+    // `pointercancel`: если палец уже ушёл за порог, история всё равно закрывается.
+    const handler = viewer.slice(viewer.indexOf('const onPointerCancel'))
+    expect(handler).toContain('storySwipeResult(dragX.value, dragY.value)')
+    expect(handler).toContain("if (result === 'close') emit('close')")
+  })
+
   it('зоны показа не отдают вертикальный жест браузеру', () => {
     // ГРАБЛЯ (29.09.2026): на телефоне жест не работал вообще — браузер забирал
     // вертикальный сдвиг себе (прокрутка/«потянуть, чтобы обновить») и присылал
