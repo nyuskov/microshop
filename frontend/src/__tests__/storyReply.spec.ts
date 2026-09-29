@@ -41,9 +41,14 @@ describe('поле ответа в просмотрщике историй', () 
   })
 
   it('жесты показа не мешают набору текста', () => {
-    // Поле гасит всплытие: набор и тапы по кнопке не листают истории.
-    expect(viewer).toContain('@pointerdown.stop')
+    // Набор текста гасит КЛАВИАТУРУ (иначе пробел/стрелки листали бы историю),
+    // но не касания: свайп «свернуть историю» на телефоне начинается как раз от
+    // нижней полосы, и `@pointerdown.stop` на поле/реакциях убивал его целиком
+    // (ГРАБЛЯ 29.09.2026, проверено на dev).
     expect(viewer).toContain('@keydown.stop')
+    const reply = viewer.slice(viewer.indexOf('class="viewer-reply"'))
+    expect(reply.slice(0, 200)).not.toContain('@pointerdown.stop')
+    expect(viewer).toContain('touch-action: none')
   })
 })
 

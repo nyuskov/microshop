@@ -94,8 +94,20 @@ describe('просмотрщик использует общий разбор ж
     // у протяжек в `CallOverlay` и `ImageLightbox`.
     expect(viewer).toMatch(/\.viewer-stage \{[\s\S]{0,400}touch-action: none/)
     expect(viewer).toMatch(/\.viewer-head \{[\s\S]{0,400}touch-action: none/)
+    // ГРАБЛЯ (29.09.2026, вторая): замер на dev показал, что свайп, начатый в
+    // НИЖНЕЙ полосе, браузер обрывал `pointercancel` уже на 25 px пути — палец
+    // на телефоне живёт именно снизу, и «свернуть историю» не работало.
+    expect(viewer).toMatch(/\.viewer-bars \{[\s\S]{0,900}touch-action: none/)
+    expect(viewer).toMatch(/\.viewer-foot \{[\s\S]{0,900}touch-action: none/)
+    expect(viewer).toMatch(/\.viewer-reactions \{[\s\S]{0,900}touch-action: none/)
+    // Зоны жеста ничего не гасят: `pointerdown.stop` на реакциях и поле ответа
+    // не давал жесту стартовать снизу (гасит только лист зрителей — у него своя
+    // прокрутка и свой тап по фону).
+    expect(viewer).not.toContain('class="viewer-reactions" :class="{ expanded }" @pointerdown.stop')
+    expect(viewer).not.toContain('@submit.prevent="sendReply"\n        @pointerdown.stop')
     // Внутри просмотрщика есть что прокручивать (список зрителей) — там обычное
     // поведение должно остаться, иначе лист перестанет скроллиться пальцем.
     expect(viewer).toMatch(/\.audience-sheet \{[\s\S]{0,400}overflow-y: auto/)
+    expect(viewer).toContain('@pointerdown.stop')
   })
 })

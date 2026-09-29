@@ -155,11 +155,22 @@ describe('связка с разметкой', () => {
     expect(header).not.toContain('headerHiddenStoryGroups')
   })
 
-  it('сжатый ряд обрезается по пределу и по замеру, а раскрытая полоса — нет', () => {
+  it('сжатый ряд обрезается по пределу, а раскрытая полоса — нет', () => {
     expect(strip).toContain('props.limit > 0 ? props.limit : HEADER_STORIES_MAX')
-    expect(strip).toContain('Math.min(limit, visibleCells.value)')
-    expect(strip).toContain('countVisibleCells(cells, wrap.getBoundingClientRect())')
+    // Ряд рисуем ПО ПРЕДЕЛУ, а не по замеру: замер считается по нарисованным
+    // кружкам, и связка «рисую по замеру — мерю нарисованное» залипала на одном
+    // кружке (ГРАБЛЯ 29.09.2026: «+1, хотя место есть»).
+    expect(strip).toContain('headerStoryGroups(stories.others, rowLimit.value)')
+    expect(strip).not.toContain('headerStoryGroups(stories.others, capacity.value)')
+    expect(strip).toContain('Math.min(rowLimit.value, visibleCells.value)')
     expect(strip).toContain('v-for="(group, index) in visibleOthers"')
+  })
+
+  it('замер пересчитывается и не залипает на нулевой коробке', () => {
+    // Ноль ширины (закрытый ящик/скрытая панель) не должен объявлять скрытыми
+    // все истории — иначе ряд залипает с «+N» и сам уже не вырастет.
+    expect(strip).toContain('countVisibleCells(cells, box)')
+    expect(strip).toContain('if (box.width <= 0) return')
   })
 
   it('о скрытых историях говорит счётчик «+N» рядом с полосой', () => {

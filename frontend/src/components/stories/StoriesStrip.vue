@@ -238,32 +238,43 @@ const visibleCells = ref(HEADER_STORIES_MAX)
 const measureVisible = () => {
   const wrap = stripEl.value
   if (!props.mini || !wrap) return
+  const box = wrap.getBoundingClientRect()
+  // Полоса скрыта (закрытый ящик/нулевая ширина) — прежнее число честнее нуля:
+  // замер с нулевой коробкой назвал бы скрытыми все истории и ряд залип бы с «+N».
+  if (box.width <= 0) return
   const cells = [...wrap.querySelectorAll('.story-cell')].map((cell) =>
     cell.getBoundingClientRect()
   )
-  visibleCells.value = countVisibleCells(cells, wrap.getBoundingClientRect())
+  visibleCells.value = countVisibleCells(cells, box)
 }
 
+/** Предел ряда: правило владельца (с надписью в середине — короткий, иначе потолок разметки). */
+const rowLimit = computed(() => (props.limit > 0 ? props.limit : HEADER_STORIES_MAX))
+
 /**
- * Сколько кружков помещаем: не больше предела и не больше того, что влезло.
+ * Сколько кружков ВИДНО в коробке полосы — число для счётчика «+N».
  *
- * Два ограничения вместо одного, потому что они про разное: предел — правило
- * владельца (с подсказкой в середине ряд короткий), замер — фактическая ширина
- * экрана (сколько кружков доходит до правых значков).
+ * ГРАБЛЯ (29.09.2026, владелец: «вылезает +1, хотя свободное место есть… они
+ * должны все показываться полностью»): замер сначала решал, СКОЛЬКО кружков
+ * нарисовать (через `capacity`), а сам замер шёл по уже нарисованным. Круг
+ * замыкался: замер бежал сразу после старта, когда лента ещё не пришла и в ряду
+ * стояла только «Моя история», — он возвращал 1, ряд по этому числу обрезался до
+ * одного кружка, и вырасти обратно было уже нечем (мерить нечего). Теперь
+ * рисуем по пределу (`rowLimit`), а замер только называет число за краем: у
+ * полосы своя прокрутка, лишние кружки не теряются.
  */
-const capacity = computed(() => {
-  const limit = props.limit > 0 ? props.limit : HEADER_STORIES_MAX
-  return Math.max(1, Math.min(limit, visibleCells.value))
-})
+const capacity = computed(() => Math.max(1, Math.min(rowLimit.value, visibleCells.value)))
 
 /**
  * Истории других, которые рисует сжатый ряд в шапке.
  *
- * Остальные не теряются: их показывает раскрытая полоса (там лимита нет) и
- * счётчик «+N».
+ * Ряд ограничен ТОЛЬКО пределом: сколько из нарисованных дойдёт до глаз, решает
+ * раскладка (коробка полосы), а не замер — иначе получается тот самый круг
+ * «замер по нарисованному». Лишние кружки уезжают за край коробки: полосу можно
+ * прокрутить, а о них говорит счётчик «+N». Вся раскрытая полоса — без предела.
  */
 const visibleOthers = computed(() =>
-  props.mini ? headerStoryGroups(stories.others, capacity.value) : stories.others
+  props.mini ? headerStoryGroups(stories.others, rowLimit.value) : stories.others
 )
 
 /**

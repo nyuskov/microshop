@@ -134,7 +134,7 @@
     <footer class="viewer-foot">
       <!-- Реакции. На своей истории они только читаются (счётчики), на чужой —
            можно ставить: тап по эмодзи, повторный тап снимает. -->
-      <div v-if="current.isMine" class="viewer-reactions is-own" @pointerdown.stop>
+      <div v-if="current.isMine" class="viewer-reactions is-own">
         <template v-if="storyReactions.length">
           <button
             v-for="item in storyReactions"
@@ -150,7 +150,7 @@
         </template>
         <span v-else class="viewer-reactions-hint">{{ t('Реакций пока нет') }}</span>
       </div>
-      <div v-else class="viewer-reactions" :class="{ expanded }" @pointerdown.stop>
+      <div v-else class="viewer-reactions" :class="{ expanded }">
         <button
           v-for="emoji in visibleKinds"
           :key="emoji"
@@ -180,12 +180,7 @@
 
       <!-- Ответ текстом: уходит автору сообщением в личный чат (как в Instagram).
            На своей истории поля нет — себе не отвечают. -->
-      <form
-        v-if="!current.isMine"
-        class="viewer-reply"
-        @submit.prevent="sendReply"
-        @pointerdown.stop
-      >
+      <form v-if="!current.isMine" class="viewer-reply" @submit.prevent="sendReply">
         <input
           v-model="replyText"
           class="viewer-reply-input"
@@ -892,6 +887,9 @@ watch(flat, (list) => {
   display: flex;
   gap: 5px;
   padding: 2px 14px 10px;
+  /* Зона жеста показа: свайп может начаться и с полосок прогресса (палец
+     ставит туда, когда тянет историю вниз), а браузер сдвиг не получит. */
+  touch-action: none;
 }
 
 .viewer-bar {
@@ -985,6 +983,13 @@ watch(flat, (list) => {
 .viewer-foot {
   padding: 12px 18px calc(20px + env(safe-area-inset-bottom, 0px));
   text-align: center;
+  /* ГРАБЛЯ (29.09.2026, проверено на dev): свайп, начатый в нижней полосе,
+     терялся. Браузер считал вертикальное движение прокруткой, присылал
+     `pointercancel` уже на 25 px пути — и по отпусканию палец больше не двигал
+     историю: она не сворачивалась. Палец на телефоне живёт именно снизу, так
+     что без этой строки жест «свернуть историю» на телефоне не работал.
+     Список зрителей (`.audience-sheet`) — вне полос: у него своя прокрутка. */
+  touch-action: none;
 }
 
 /* ---------- Реакции ---------- */
@@ -995,8 +1000,10 @@ watch(flat, (list) => {
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 8px;
-  /* Панель не должна пачкать жесты показа (пауза/свайп уходят только ей). */
-  touch-action: manipulation;
+  /* Жест показа идёт и сквозь панель реакций: с нижней полосы начинается почти
+     любой свайп, а `manipulation` отдавал вертикальный сдвиг браузеру — он
+     присылал `pointercancel`, и жест до разбора не доходил. */
+  touch-action: none;
 }
 
 .viewer-reactions.is-own {
