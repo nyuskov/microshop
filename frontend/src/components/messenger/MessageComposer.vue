@@ -1,5 +1,17 @@
 <template>
-  <div class="input-area">
+  <div class="input-area" :class="{ expanded }">
+    <!-- В развёрнутом вводе «свернуть» — отдельной кнопкой в самом верху
+         панели: у нижней строки значок стоял рядом с отправкой и мешал ей. -->
+    <div v-if="expanded" class="expand-bar">
+      <button
+        class="icon-btn collapse-btn"
+        :title="t('Свернуть')"
+        :aria-label="t('Свернуть')"
+        @click="collapse()"
+      >
+        <q-icon :name="icon('keyboard_arrow_down')" size="20px" />
+      </button>
+    </div>
     <ErrorNotice
       v-if="sendError"
       :message="sendError"
@@ -75,133 +87,157 @@
         :aria-label="t('Прикрепить файл')"
         @change="onFileSelected"
       />
-      <textarea
-        ref="textInputRef"
-        v-model="newMessage"
-        class="text-input"
-        rows="1"
-        :placeholder="t('Сообщение')"
-        :aria-label="t('Сообщение')"
-        @keydown="onTextKeydown"
-        @input="onTextInput"
-        @click="updateMentions"
-        @paste="onTextPaste"
-      ></textarea>
-      <button
-        class="round-btn extras-toggle"
-        :class="{ active: extrasPanel !== 'none' }"
-        :title="t('Эмодзи и GIF')"
-        :aria-expanded="extrasPanel !== 'none'"
-        @click="emit('toggle-extras')"
-      >
-        <q-icon :name="icon('sentiment_satisfied_alt')" size="20px" />
-      </button>
-      <!-- Формат текста: обрамляет выделенный кусок знаками разметки
+      <!-- Поле со значком разворота: значок живёт внутри поля у правого края,
+           поэтому не отнимает ширину у текста (раньше отдельная кнопка съедала
+           44 px), а в развёрнутом виде оказывается сверху — там, где и должен
+           быть «свернуть» (внизу он перекрывал отправку). -->
+      <span class="editor-slot">
+        <textarea
+          ref="textInputRef"
+          v-model="newMessage"
+          class="text-input"
+          rows="1"
+          :placeholder="t('Сообщение')"
+          :aria-label="t('Сообщение')"
+          @keydown="onTextKeydown"
+          @input="onTextInput"
+          @click="updateMentions"
+          @paste="onTextPaste"
+        ></textarea>
+        <button
+          class="field-toggle"
+          :title="expanded ? t('Свернуть') : t('Развернуть поле ввода')"
+          :aria-label="expanded ? t('Свернуть') : t('Развернуть поле ввода')"
+          :aria-expanded="expanded"
+          @click="toggleExpand()"
+        >
+          <q-icon :name="icon(expanded ? 'keyboard_arrow_down' : 'unfold_more')" size="18px" />
+        </button>
+      </span>
+      <!-- Кнопки справа от поля — одной группой (общая обёртка): в развёрнутом
+           вводе они собираются в тесный ряд под полем, а не разъезжаются по
+           краям экрана. -->
+      <span class="input-tools">
+        <button
+          class="round-btn extras-toggle"
+          :class="{ active: extrasPanel !== 'none' }"
+          :title="t('Эмодзи и GIF')"
+          :aria-expanded="extrasPanel !== 'none'"
+          @click="emit('toggle-extras')"
+        >
+          <q-icon :name="icon('sentiment_satisfied_alt')" size="20px" />
+        </button>
+        <!-- Формат текста: обрамляет выделенный кусок знаками разметки
            (`*жирный*`, `_курсив_`, `__подчёркнутый__`, `~~зачёркнутый~~`,
            `` `код` ``, `||спойлер||`).
-           Кнопка видна только при набранном тексте: без него её место занимает
-           микрофон, и лишняя кнопка сузила бы поле ввода на телефоне. -->
-      <span v-if="hasText" class="format-wrap">
-        <button
-          class="round-btn format-btn"
-          :class="{ active: formatMenuOpen }"
-          :title="t('Форматирование текста')"
-          :aria-label="t('Форматирование текста')"
-          :aria-expanded="formatMenuOpen"
-          @click="formatMenuOpen = !formatMenuOpen"
-        >
-          Aa
-        </button>
-        <q-menu v-model="formatMenuOpen" anchor="top middle" self="bottom middle" no-parent-event>
-          <div class="format-menu">
-            <button
-              v-for="item in MARKUP_ITEMS"
-              :key="item.kind"
-              type="button"
-              class="attach-item"
-              @click="applyFormat(item.kind)"
-            >
-              {{ t(item.label) }}
-            </button>
-          </div>
-        </q-menu>
-      </span>
-      <!-- Микрофон и отправка делят одну ячейку: кнопка записи «перетекает» в
+           На телефоне в обычной строке кнопки нет (теснила поле ввода) — она
+           появляется только в развёрнутом вводе; на компьютере видна при
+           набранном тексте, как и раньше. -->
+        <span v-if="hasText" class="format-wrap">
+          <button
+            class="round-btn format-btn"
+            :class="{ active: formatMenuOpen }"
+            :title="t('Форматирование текста')"
+            :aria-label="t('Форматирование текста')"
+            :aria-expanded="formatMenuOpen"
+            @click="formatMenuOpen = !formatMenuOpen"
+          >
+            Aa
+          </button>
+          <q-menu v-model="formatMenuOpen" anchor="top middle" self="bottom middle" no-parent-event>
+            <div class="format-menu">
+              <button
+                v-for="item in MARKUP_ITEMS"
+                :key="item.kind"
+                type="button"
+                class="attach-item"
+                @click="applyFormat(item.kind)"
+              >
+                {{ t(item.label) }}
+              </button>
+            </div>
+          </q-menu>
+        </span>
+        <!-- Микрофон и отправка делят одну ячейку: кнопка записи «перетекает» в
            отправку (как в Telegram), а не подменяется мгновенно. -->
-      <span class="action-slot">
-        <Transition name="action-morph">
-          <span v-if="!hasText" key="mic" class="mic-wrap">
-            <button
-              class="round-btn mic-hold-btn"
-              :class="{
-                holding: micHolding,
-                'mode-video': recordMode === 'video'
-              }"
-              :title="
-                recordMode === 'video'
-                  ? t('Видеосообщение (нажмите). Удерживайте 2 секунды — голосовое')
-                  : t('Голосовое сообщение (нажмите). Удерживайте 2 секунды — видеосообщение')
-              "
-              :aria-label="
-                recordMode === 'video'
-                  ? t('Записать видеосообщение. Удерживайте 2 секунды для голосового')
-                  : t('Записать голосовое сообщение. Удерживайте 2 секунды для видеосообщения')
-              "
-              @click="emit('mic-click')"
-              @pointerdown="emit('mic-down')"
-              @pointerup="emit('mic-up')"
-              @pointerleave="emit('mic-up')"
-              @pointercancel="emit('mic-cancel')"
-              @contextmenu.prevent
-            >
-              <q-icon :name="icon(recordMode === 'video' ? 'video_message' : 'mic')" size="20px" />
-            </button>
-            <span v-if="recordModeHint" class="record-mode-hint">{{ recordModeHint }}</span>
-          </span>
-          <!-- Обёртка нужна, чтобы меню привязалось к кнопке, а не ко всей строке -->
-          <span v-else key="send" class="send-wrap">
-            <button
-              class="send-btn"
-              :title="t('Отправить. Удерживайте или нажмите правой кнопкой — отправить позже')"
-              :disabled="sending"
-              @click="onSendClick"
-              @pointerdown="startScheduleHold"
-              @pointerup="cancelScheduleHold"
-              @pointerleave="cancelScheduleHold"
-              @pointercancel="cancelScheduleHold"
-              @contextmenu.prevent="openScheduleMenu"
-            >
-              <q-icon :name="icon('send')" size="18px" />
-            </button>
-            <!-- «Отправить позже»: варианты времени считаются от текущей минуты -->
-            <q-menu
-              v-model="scheduleMenuOpen"
-              anchor="top right"
-              self="bottom right"
-              no-parent-event
-            >
-              <div class="attach-menu">
-                <button
-                  v-for="preset in scheduleOptions"
-                  :key="preset.label"
-                  type="button"
-                  class="attach-item"
-                  @click="pickSchedule(preset)"
-                >
-                  <q-icon :name="icon('schedule')" size="18px" />
-                  <span>{{ t(preset.label) }}</span>
-                </button>
-                <p class="attach-hint">
-                  {{
-                    t(
-                      'Сообщение уйдёт в назначенное время, даже если приложение закрыто. Текст останется только текстом: вложения отложить нельзя.'
-                    )
-                  }}
-                </p>
-              </div>
-            </q-menu>
-          </span>
-        </Transition>
+        <span class="action-slot">
+          <Transition name="action-morph">
+            <span v-if="!hasText" key="mic" class="mic-wrap">
+              <button
+                class="round-btn mic-hold-btn"
+                :class="{
+                  holding: micHolding,
+                  'mode-video': recordMode === 'video'
+                }"
+                :title="
+                  recordMode === 'video'
+                    ? t('Видеосообщение (нажмите). Удерживайте 2 секунды — голосовое')
+                    : t('Голосовое сообщение (нажмите). Удерживайте 2 секунды — видеосообщение')
+                "
+                :aria-label="
+                  recordMode === 'video'
+                    ? t('Записать видеосообщение. Удерживайте 2 секунды для голосового')
+                    : t('Записать голосовое сообщение. Удерживайте 2 секунды для видеосообщения')
+                "
+                @click="emit('mic-click')"
+                @pointerdown="emit('mic-down')"
+                @pointerup="emit('mic-up')"
+                @pointerleave="emit('mic-up')"
+                @pointercancel="emit('mic-cancel')"
+                @contextmenu.prevent
+              >
+                <q-icon
+                  :name="icon(recordMode === 'video' ? 'video_message' : 'mic')"
+                  size="20px"
+                />
+              </button>
+              <span v-if="recordModeHint" class="record-mode-hint">{{ recordModeHint }}</span>
+            </span>
+            <!-- Обёртка нужна, чтобы меню привязалось к кнопке, а не ко всей строке -->
+            <span v-else key="send" class="send-wrap">
+              <button
+                class="send-btn"
+                :title="t('Отправить. Удерживайте или нажмите правой кнопкой — отправить позже')"
+                :disabled="sending"
+                @click="onSendClick"
+                @pointerdown="startScheduleHold"
+                @pointerup="cancelScheduleHold"
+                @pointerleave="cancelScheduleHold"
+                @pointercancel="cancelScheduleHold"
+                @contextmenu.prevent="openScheduleMenu"
+              >
+                <q-icon :name="icon('send')" size="18px" />
+              </button>
+              <!-- «Отправить позже»: варианты времени считаются от текущей минуты -->
+              <q-menu
+                v-model="scheduleMenuOpen"
+                anchor="top right"
+                self="bottom right"
+                no-parent-event
+              >
+                <div class="attach-menu">
+                  <button
+                    v-for="preset in scheduleOptions"
+                    :key="preset.label"
+                    type="button"
+                    class="attach-item"
+                    @click="pickSchedule(preset)"
+                  >
+                    <q-icon :name="icon('schedule')" size="18px" />
+                    <span>{{ t(preset.label) }}</span>
+                  </button>
+                  <p class="attach-hint">
+                    {{
+                      t(
+                        'Сообщение уйдёт в назначенное время, даже если приложение закрыто. Текст останется только текстом: вложения отложить нельзя.'
+                      )
+                    }}
+                  </p>
+                </div>
+              </q-menu>
+            </span>
+          </Transition>
+        </span>
       </span>
 
       <!-- Подсказка упоминаний: набрали @ — выбираем участника группы -->
@@ -1475,6 +1511,39 @@ const pickMention = (member: ChatUser) => {
   })
 }
 
+// ---------- Развёрнутый ввод на весь экран (телефон) ----------
+/**
+ * Поле ввода развёрнуто на весь экран.
+ *
+ * Зачем: на телефоне строка ввода узкая, и форматирование («Aa») в ней теснило
+ * поле. Теперь дополнительные кнопки живут только в развёрнутом режиме —
+ * панелью сверху, а в обычной строке их нет (как в Телеграме). На компьютере
+ * строка остаётся прежней: места там хватает.
+ */
+const expanded = ref(false)
+
+/** Развернуть: фокус возвращаем в поле, иначе клавиатура закроется на нажатии. */
+const expand = () => {
+  expanded.value = true
+  void nextTick(() => {
+    const el = textInputRef.value
+    if (el) el.style.height = ''
+    el?.focus({ preventScroll: true })
+  })
+}
+
+/** Свернуть и вернуть полю обычную высоту (авторост). */
+const collapse = () => {
+  expanded.value = false
+  void nextTick(autoGrow)
+}
+
+/** Кнопка в строке — переключатель: развернуть / свернуть. */
+const toggleExpand = () => {
+  if (expanded.value) collapse()
+  else expand()
+}
+
 // ---------- Формат текста (кнопка «Aa») ----------
 /** Меню формата открыто. */
 const formatMenuOpen = ref(false)
@@ -1520,6 +1589,17 @@ watch(
   () => [props.chatId, props.editingMessage?.id] as const,
   () => {
     mentionOpen.value = false
+    // Чат сменился — развёрнутый ввод закрываем: в новом чате он бы остался
+    // висеть вместо ленты, а текст в поле уже другой.
+    expanded.value = false
+  }
+)
+
+// Началась запись голосового/кружка — раскладка развёрнутого ввода не нужна.
+watch(
+  () => props.voiceRecOpen,
+  (open) => {
+    if (open) expanded.value = false
   }
 )
 
@@ -1543,6 +1623,12 @@ defineExpose({ focusInput })
 const autoGrow = () => {
   const el = textInputRef.value
   if (!el) return
+  // В развёрнутом режиме высоту задаёт раскладка (поле занимает экран):
+  // инлайновая высота от автороста его бы только сжала.
+  if (expanded.value) {
+    el.style.height = ''
+    return
+  }
   el.style.height = 'auto'
   el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT)}px`
 }
@@ -1551,6 +1637,13 @@ const autoGrow = () => {
 watch(newMessage, () => {
   void nextTick(autoGrow)
 })
+
+// Развёрнутый ввод — слой общего стека: на телефоне «назад» сворачивает поле,
+// а не выходит из приложения (как и любая другая панель поверх экрана).
+useMobileLayer(
+  () => expanded.value,
+  () => collapse()
+)
 </script>
 
 <style scoped>
@@ -1744,6 +1837,11 @@ watch(newMessage, () => {
 .action-slot {
   position: relative;
   display: inline-flex;
+  /* Отправка — единственная ЗАЛИТАЯ кнопка: её видимая граница — сам круг, а не
+     глиф, поэтому в просвете она оставляет меньше пустоты, чем соседи-значки
+     (замер по пикселам: 12 px против 22). Добавляем ей зазор слева, чтобы
+     просветы стали одинаковыми. */
+  margin-left: 6px;
 }
 
 /* Кнопка отправки вместе со своим меню «отправить позже» */
@@ -1790,12 +1888,14 @@ watch(newMessage, () => {
   }
 }
 
+/* Отправка — тот же габарит, что у соседних круглых кнопок (32 px), иначе её
+   значок стоит дальше от смайла и ряд выглядит неровным. */
 .send-btn {
   background: var(--ms-accent);
   color: var(--ms-on-accent);
   border: none;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
@@ -1814,12 +1914,13 @@ watch(newMessage, () => {
   background: var(--ms-accent-strong);
 }
 
-/* Телефон: отправка — главное действие, 36 px для неё мало (соседние кнопки
-   в общем слое до 600 px — 38 px, у скрепки и микрофона те же габариты). */
+/* Телефон: у всех кнопок строки один габарит — 38 px, как в общем слое.
+   Отправку 40 px делали «главнее», но тогда её значок стоял дальше от соседей
+   и ряд был неровным (просьба владельца: выровнять по расстоянию). */
 @media (max-width: 600px) {
   .send-btn {
-    width: 40px;
-    height: 40px;
+    width: 38px;
+    height: 38px;
   }
 }
 
@@ -1833,11 +1934,32 @@ watch(newMessage, () => {
   display: inline-flex;
 }
 
+/* Поле со значком разворота внутри: значок позиционируется от этой обёртки.
+   Обёртка одна на поле, поэтому ширина текста не меняется от кнопок. */
+.editor-slot {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Кнопки справа от поля — одной обёрткой: в развёрнутом вводе они собираются в
+   тесный ряд под полем, а не разъезжаются по краям экрана. Отступы те же, что
+   были у строки, поэтому обычный вид не меняется. */
+.input-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* Кнопка формата: буквы вместо значка — глифа «Aa» в наборе иконок нет, а
    текстом он читается сразу и не требует пересборки шрифта. */
 .format-wrap {
   position: relative;
   display: inline-flex;
+  /* Текст «Aa» у́же соседних значков: компенсируем по 2 px с боков, иначе глазу
+     видно больше пустоты вокруг него (замер по пикселам). */
+  margin: 0 -2px;
 }
 
 .format-btn {
@@ -2236,8 +2358,152 @@ watch(newMessage, () => {
     gap: 6px;
     padding: 4px 6px;
   }
+  /* Внутри группы зазор был такой же, как у строки: на узком экране он тоже 6. */
+  .input-tools {
+    gap: 6px;
+  }
   /* Размер кнопок здесь НЕ уменьшаем: 30 px для пальца мало (общий телефонный
      размер — 38 px в appearance.css), а зазор 2 px превращал промах в нажатие
      по соседней кнопке. */
+}
+
+/* ---------- Развёрнутый ввод (телефон) ---------- */
+
+/* Значок разворота — только на телефоне: в вебе строка остаётся как была.
+   Живёт внутри поля у правого края (позиционируется от `.editor-slot`),
+   поэтому не отнимает у текста отдельную кнопку. Габарит и значок — как у
+   соседних кнопок: у двойной стрелки чернила вдвое у́же, и зазор до смайла
+   выглядел вдвое больше остальных. */
+.field-toggle {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--ms-icon-2);
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  /* Значки в строке — с ОДИНАКОВЫМ зазором 2 px и одного габарита: разные
+     размеры кнопок и зазоры (6/8 px) читались как «не ровно» и «далеко». */
+  .input-row,
+  .input-tools {
+    gap: 2px;
+  }
+
+  /* Отправка — тот же круг 38 px, что у соседей (см. выше): при 40 px её значок
+     стоял дальше от смайла. */
+
+  .field-toggle {
+    display: inline-flex;
+    /* Зазор до смайла — как у остальных значков: у шеврона чернила вдвое у́же
+       (10 px против 19), поэтому его сдвигаем вправо на 4 px — иначе глазу
+       видно, что от значка разворота до смайла больше, чем до отправки. */
+    right: -4px;
+  }
+
+  /* Прижимаем значки плотнее (замер по пикселам: было 22 px просвета — стало
+     18). Сдвиги разные, потому что «чернила» у кнопок разной ширины: у текста
+     «Aa» — 14 px, у залитой отправки — весь круг (38 px), у значков — 17–19 px.
+     Полю от этого достаётся лишние ~5 px, а просветы остаются одинаковыми. */
+  .extras-toggle {
+    margin-left: -5px;
+  }
+
+  .format-wrap {
+    margin-left: -6px;
+    margin-right: 0;
+  }
+
+  .action-slot {
+    margin-left: 4px;
+  }
+
+  /* Место под значок в поле: текст под него не заезжает. */
+  .text-input {
+    padding-right: 40px;
+  }
+
+  /* «Aa» из обычной строки убираем: на телефоне кнопка теснила поле ввода, а
+     её место — в развёрнутом вводе (см. ниже). */
+  .format-wrap {
+    display: none;
+  }
+
+  /* Наоборот: в развёрнутом вводе «Aa» показываем — как и было в строке. */
+  .input-area.expanded .format-wrap {
+    display: inline-flex;
+  }
+}
+
+/* Развёрнутое поле накрывает панель чата (шапку и ленту): `inset: 0` считается
+   от `.chat-panel` — она уже `position: relative`. Слой ВЫШЕ ленты и её кнопки
+   «вниз» (`.jump-down`, z-index 5): та висела ровно поверх отправки. */
+.input-area.expanded {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Развёрнутый ввод: поле занимает всю панель, кнопки уходят вниз и собираются
+   в тесную группу у правого края (раньше разъезжались по краям экрана —
+   скрепка слева, отправка справа, а между ними пустота). */
+.input-area.expanded .input-row {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  grid-template-rows: minmax(0, 1fr) auto;
+  /* По горизонтали — тот же ровный зазор 2 px, что и в обычной строке; по
+     вертикали больше, иначе поле липнет к кнопкам. */
+  column-gap: 2px;
+  row-gap: 6px;
+  align-items: end;
+  border-radius: var(--ms-radius-lg);
+  padding: 8px 10px;
+}
+
+.input-area.expanded .editor-slot {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  /* Строка сетки выравнивает по низу (кнопки), полю же нужна вся высота. */
+  align-self: stretch;
+}
+
+.input-area.expanded .text-input {
+  max-height: none;
+}
+
+/* Верхняя строка развёрнутого ввода: «свернуть» в самом верху панели, подальше
+   от кнопки отправки. */
+.expand-bar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* В развёрнутом виде значок в поле не нужен — «свернуть» уже есть сверху. */
+.input-area.expanded .field-toggle {
+  display: none;
+}
+
+.input-area.expanded .attach-wrap {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.input-area.expanded .input-tools {
+  grid-column: 3;
+  grid-row: 2;
 }
 </style>

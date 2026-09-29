@@ -142,6 +142,7 @@ export const EN: Record<string, string> = {
   'Отправить. Удерживайте или нажмите правой кнопкой — отправить позже':
     'Send. Hold or right-click to send later',
   'Форматирование текста': 'Text formatting',
+  'Развернуть поле ввода': 'Expand the input field',
   Жирный: 'Bold',
   Курсив: 'Italic',
   Подчёркнутый: 'Underline',
