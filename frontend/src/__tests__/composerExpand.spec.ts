@@ -138,14 +138,18 @@ describe('развёрнутый ввод в композере', () => {
     // подобраны замером по пикселам: просветы 17–18 px во всех парах.
     expect(flat).toContain('.extras-toggle { margin-left: -5px; }')
     expect(flat).toContain('.format-wrap { margin-left: -6px; margin-right: 0; }')
-    expect(flat).toContain('.action-slot { margin-left: 4px; }')
+    // У микрофона и у залитой отправки видимая граница разная, поэтому сдвиг
+    // стоит на обёртках: иначе в одном из двух состояний просвет больше.
+    expect(flat).toContain('.mic-wrap { margin-left: -8px; }')
+    expect(flat).toContain('.send-wrap { margin-left: 4px; }')
     // В вебе компенсация мягче: кнопки мельче, зазор строки 8 px.
     expect(flat).toContain(
       '.format-wrap { position: relative; display: inline-flex; margin: 0 -2px; }'
     )
     expect(flat).toContain(
-      '.action-slot { position: relative; display: inline-flex; margin-left: 6px; }'
+      '.send-wrap { position: relative; display: inline-flex; margin-left: 6px; }'
     )
+    expect(flat).toContain('.mic-wrap { margin-left: -2px; }')
   })
 
   it('«Aa» осталась кнопкой с меню разметки, как была', () => {
