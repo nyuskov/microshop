@@ -65,6 +65,17 @@ class EventsConnectionManager:
         """Есть ли вообще открытый канал (даже если приложение свёрнуто)."""
         return user_id in self._connections
 
+    def connection_stats(self) -> tuple[int, int]:
+        """Сколько людей на связи и сколько всего сокетов (для метрик).
+
+        Читаем БЕЗ блокировки: число нужно только для оценки нагрузки, а
+        точность до одного соединения роли не играет — блокировка здесь
+        задерживала бы подключения ради красивой цифры.
+        """
+        return len(self._connections), sum(
+            len(sockets) for sockets in self._connections.values()
+        )
+
     def is_present(self, user_id: int) -> bool:
         """Смотрит ли человек в приложение прямо сейчас.
 

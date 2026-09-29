@@ -19,7 +19,7 @@ from api_v1.auth.utils import (
 from api_v1.events.bridge import start_bridge, stop_bridge
 from api_v1.health.views import router as health_router
 from api_v1.media.views import router as media_router
-from core import maintenance
+from core import maintenance, metrics
 from core.config import settings
 from core.i18n import set_locale_from_client
 
@@ -87,12 +87,28 @@ async def request_locale(request: Request, call_next):
 
 @app.middleware("http")
 async def add_request_id_and_log_slow(request: Request, call_next):
-    """Проставляет X-Request-ID в ответ и логирует медленные запросы (>1 c)."""
+    """Проставляет X-Request-ID, логирует медленные запросы и считает метрики.
+
+    Счётчики (см. `core/metrics.py`) нужны для Prometheus: без них деградацию
+    видно только по жалобам. Здесь же самое дешёвое место для замера — запрос
+    уже обёрнут ради времени и заголовка.
+    """
     request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
     start = time.perf_counter()
     response = await call_next(request)
-    elapsed_ms = (time.perf_counter() - start) * 1000
+    elapsed = time.perf_counter() - start
+    elapsed_ms = elapsed * 1000
     response.headers["X-Request-ID"] = request_id
+    # Маршрут знает только роутер, и он появляется в scope ПОСЛЕ обработки
+    # запроса: до `call_next` здесь был бы None, и все пути сходились бы в
+    # одну серию «unmatched».
+    route = request.scope.get("route")
+    metrics.observe_request(
+        request.method,
+        getattr(route, "path", None),
+        response.status_code,
+        elapsed,
+    )
     if elapsed_ms > 1000:
         logger.warning(
             "Slow request: %s %s (%.0f ms) id=%s",
@@ -118,6 +134,9 @@ MAINTENANCE_EXEMPT_PREFIXES = (
     f"{settings.api_v1_prefix}/health",
     f"{settings.api_v1_prefix}/system/maintenance",
     f"{settings.api_v1_prefix}/system/ping",
+    # Метрики: во время работ сервис как раз интереснее всего — по ним видно, что
+    # происходит, а токен и так закрывает доступ посторонним.
+    f"{settings.api_v1_prefix}/system/metrics",
     f"{settings.api_v1_prefix}/auth/",
     f"{settings.api_v1_prefix}/jwt/",
 )

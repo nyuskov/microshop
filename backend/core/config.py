@@ -338,6 +338,12 @@ class Settings(BaseSettings):
     # Время жизни push-сообщения (формат duration: "3600s").
     rustore_push_ttl: str = "3600s"
 
+    # --- Метрики для Prometheus ---
+    # Секрет доступа к `GET /api/v1/system/metrics/`: без него эндпоинта как
+    # будто нет (404). Прометеус снимает метрики со своего же сервера
+    # (localhost), поэтому наружу доступ можно не открывать вовсе.
+    metrics_token: str | None = Field(default=None, validation_alias="METRICS_TOKEN")
+
 
 settings = Settings()
 

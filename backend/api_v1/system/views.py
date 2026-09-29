@@ -18,14 +18,18 @@ IP-лимит: 30-секундный опрос с запасом укладыв
 from __future__ import annotations
 
 import logging
+import secrets
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api_v1.auth.utils import get_current_superuser, request_from_admin
-from core import maintenance
+from api_v1.calls.manager import call_manager
+from api_v1.events.manager import events_manager
+from core import maintenance, metrics
+from core.config import settings
 from core.i18n import t
 from core.models import User, db_helper
 from core.rate_limit import client_ip, enforce_limit
@@ -161,3 +165,63 @@ async def set_maintenance(
         owner.id,
     )
     return _to_response(state)
+
+
+@router.get("/metrics/")
+async def prometheus_metrics(request: Request) -> Response:
+    """Метрики для Prometheus (текстовый exposition-формат 0.0.4).
+
+    Доступ закрыт токеном ``METRICS_TOKEN``: метрики рассказывают про нагрузку и
+    внутреннее устройство сервиса, публично их отдавать нельзя. Пока токен не
+    задан, эндпоинта как будто нет (404) — включение метрик ничего не ломает по
+    умолчанию. Сравниваем через ``compare_digest``: по времени ответа нельзя
+    подобрать токен посимвольно.
+
+    Токен принимаем и заголовком ``X-Metrics-Token``, и параметром ``token`` —
+    так проще и в ``curl``, и в конфиге Prometheus (``params``).
+
+    Работать эндпоинт должен и во время техработ (см. ``MAINTENANCE_EXEMPT_PREFIXES``
+    в ``main.py``): именно тогда по метрикам и видно, что происходит.
+    """
+    token = settings.metrics_token
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=t("Не найдено")
+        )
+    given = (
+        request.headers.get("X-Metrics-Token")
+        or request.query_params.get("token")
+        or ""
+    )
+    if not secrets.compare_digest(given, token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=t("Неверный токен метрик"),
+        )
+
+    # Гауги, которые знает только API-слой: живые сокеты и пул соединений БД.
+    for kind, manager in (("events", events_manager), ("calls", call_manager)):
+        users, sockets = manager.connection_stats()
+        metrics.gauge("pismo_ws_users", {"kind": kind}, users)
+        metrics.gauge("pismo_ws_sockets", {"kind": kind}, sockets)
+    pool = db_helper.engine.pool
+    # У разных движков пул разный (QueuePool, NullPool, StaticPool), а в типах
+    # SQLAlchemy размер и занятость не обещаны — читаем защитно и молча
+    # пропускаем, если пул их не умеет.
+    checked_out = getattr(pool, "checkedout", None)
+    pool_size = getattr(pool, "size", None)
+    if callable(checked_out) and callable(pool_size):
+        try:
+            busy = int(checked_out())
+            total = int(pool_size())
+            metrics.gauge("pismo_db_pool_connections", {"state": "checked_out"}, busy)
+            metrics.gauge(
+                "pismo_db_pool_connections", {"state": "free"}, max(0, total - busy)
+            )
+        except (AttributeError, NotImplementedError, TypeError):
+            pass
+
+    return Response(
+        content=metrics.render(),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )

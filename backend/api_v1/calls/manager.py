@@ -66,6 +66,16 @@ class CallConnectionManager:
     def is_online(self, user_id: int) -> bool:
         return bool(self._connections.get(user_id))
 
+    def connection_stats(self) -> tuple[int, int]:
+        """Сколько людей на связи и сколько всего сокетов (для метрик).
+
+        Без блокировки: значение — только оценка нагрузки (см. то же в
+        `events.manager`).
+        """
+        return len(self._connections), sum(
+            len(sockets) for sockets in self._connections.values()
+        )
+
     async def disconnect(self, user_id: int, websocket: WebSocket) -> None:
         await self._forget(user_id, [websocket])
 

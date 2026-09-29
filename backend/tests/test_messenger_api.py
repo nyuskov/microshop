@@ -4528,3 +4528,39 @@ async def test_presence_hidden_is_not_shared(api: _ApiCtx) -> None:
     assert shown.json()["presence_hidden"] is False
     chats = (await api.client.get("/api/v1/chats/", headers=api.auth(t2))).json()
     assert peer_in(chats, chat["id"], u1.id)["last_seen"] is not None
+
+
+async def test_metrics_endpoint_is_closed_without_token(
+    api: _ApiCtx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Метрики: без токена эндпоинта будто нет, с чужим токеном — 401.
+
+    Метрики рассказывают про нагрузку и внутреннее устройство сервиса, поэтому
+    наружу их не отдаём. Проверяем и заголовок, и параметр: вторым удобно
+    настраивать Prometheus.
+    """
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "metrics_token", None)
+    assert (await api.client.get("/api/v1/system/metrics/")).status_code == 404
+
+    monkeypatch.setattr(settings, "metrics_token", "metrics-secret")
+    assert (await api.client.get("/api/v1/system/metrics/")).status_code == 401
+    # Заголовок — только ASCII, поэтому «не тот» токен пишем латиницей.
+    assert (
+        await api.client.get(
+            "/api/v1/system/metrics/", headers={"X-Metrics-Token": "wrong-token"}
+        )
+    ).status_code == 401
+
+    ok = await api.client.get(
+        "/api/v1/system/metrics/", headers={"X-Metrics-Token": "metrics-secret"}
+    )
+    assert ok.status_code == 200, ok.text
+    assert "pismo_http_requests_total" in ok.text
+    assert "pismo_process_uptime_seconds" in ok.text
+
+    by_query = await api.client.get(
+        "/api/v1/system/metrics/", params={"token": "metrics-secret"}
+    )
+    assert by_query.status_code == 200
