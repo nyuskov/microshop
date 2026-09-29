@@ -52,6 +52,10 @@
   content: '\E049 ';
 }
 
+.icon-arrow-up::before {
+  content: '\E04A ';
+}
+
 .icon-badge-check::before {
   content: '\E241 ';
 }

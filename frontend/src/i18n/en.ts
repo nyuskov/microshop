@@ -147,6 +147,7 @@ export const EN: Record<string, string> = {
   Курсив: 'Italic',
   Подчёркнутый: 'Underline',
   Зачёркнутый: 'Strikethrough',
+  Цитата: 'Quote',
   Код: 'Code',
   Спойлер: 'Spoiler',
   'Стикер уходит сразу — как сообщение.': 'A sticker is sent right away, like a message.',

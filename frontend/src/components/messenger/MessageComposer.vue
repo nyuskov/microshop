@@ -1,5 +1,5 @@
 <template>
-  <div class="input-area" :class="{ expanded }">
+  <div class="input-area" :class="{ expanded, multiline }">
     <!-- В развёрнутом вводе «свернуть» — отдельной кнопкой в самом верху
          панели: у нижней строки значок стоял рядом с отправкой и мешал ей. -->
     <div v-if="expanded" class="expand-bar">
@@ -9,7 +9,7 @@
         :aria-label="t('Свернуть')"
         @click="collapse()"
       >
-        <q-icon :name="icon('keyboard_arrow_down')" size="20px" />
+        <q-icon :name="icon('arrow_downward')" size="20px" />
       </button>
     </div>
     <ErrorNotice
@@ -102,6 +102,11 @@
           @keydown="onTextKeydown"
           @input="onTextInput"
           @click="updateMentions"
+          @select="syncSelectionMenu"
+          @pointerup="syncSelectionMenu"
+          @keyup="syncSelectionMenu"
+          @scroll.passive="syncSelectionMenu"
+          @blur="closeSelectionMenu"
           @paste="onTextPaste"
         ></textarea>
         <button
@@ -111,8 +116,36 @@
           :aria-expanded="expanded"
           @click="toggleExpand()"
         >
-          <q-icon :name="icon(expanded ? 'keyboard_arrow_down' : 'unfold_more')" size="18px" />
+          <!-- Стрелки, а не шевроны: значок должен читаться как «поле растёт вверх»
+               на весь экран и «убирается вниз» в строку (владелец, 29.09.2026). -->
+          <q-icon :name="icon(expanded ? 'arrow_downward' : 'arrow_upward')" size="18px" />
         </button>
+        <!-- Формат по выделению: в обычной строке кнопки «Aa» нет, поэтому
+             знаки разметки предлагаются над полем, как только в нём что-то
+             выделили. Клик ловим на `mousedown`, иначе поле теряет фокус и
+             выделение пропадает до того, как правка применится (тот же приём,
+             что у подсказки упоминаний). -->
+        <div
+          v-if="selectionMenuOpen"
+          ref="selectionMenuEl"
+          class="selection-menu ms-pop"
+          :style="selectionMenuStyle"
+          role="toolbar"
+          :aria-label="t('Форматирование текста')"
+        >
+          <button
+            v-for="item in MARKUP_ITEMS"
+            :key="item.kind"
+            type="button"
+            class="selection-item markup-item"
+            :class="`kind-${item.kind}`"
+            :title="t(item.label)"
+            :aria-label="t(item.label)"
+            @mousedown.prevent="applyFormat(item.kind)"
+          >
+            {{ t(item.label) }}
+          </button>
+        </div>
       </span>
       <!-- Кнопки справа от поля — одной группой (общая обёртка): в развёрнутом
            вводе они собираются в тесный ряд под полем, а не разъезжаются по
@@ -129,11 +162,11 @@
         </button>
         <!-- Формат текста: обрамляет выделенный кусок знаками разметки
            (`*жирный*`, `_курсив_`, `__подчёркнутый__`, `~~зачёркнутый~~`,
-           `` `код` ``, `||спойлер||`).
-           На телефоне в обычной строке кнопки нет (теснила поле ввода) — она
-           появляется только в развёрнутом вводе; на компьютере видна при
-           набранном тексте, как и раньше. -->
-        <span v-if="hasText" class="format-wrap">
+           `` `код` ``, `||спойлер||`), а «Цитата» ставит `> ` в начале строк.
+           В обычной строке кнопки «Aa» нет ни на телефоне, ни на компьютере:
+           там формат предлагает панель по выделению (`.selection-menu`). Сама
+           кнопка живёт только в развёрнутом вводе, где для неё есть место. -->
+        <span v-if="expanded" class="format-wrap">
           <button
             class="round-btn format-btn"
             :class="{ active: formatMenuOpen }"
@@ -150,7 +183,8 @@
                 v-for="item in MARKUP_ITEMS"
                 :key="item.kind"
                 type="button"
-                class="attach-item"
+                class="attach-item markup-item"
+                :class="`kind-${item.kind}`"
                 @click="applyFormat(item.kind)"
               >
                 {{ t(item.label) }}
@@ -461,6 +495,7 @@ import type { ChatUser, Message } from '@/types'
 import { messageSnippet } from '@/utils/media'
 import { applyMention, mentionBeforeCaret } from '@/utils/mentions'
 import { applyMarkup, type MarkupKind } from '@/utils/markup'
+import { caretBox, menuAnchor, type CaretBox } from '@/utils/selectionMenu'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import {
   EMOJI_RECENT_KEY,
@@ -1517,8 +1552,8 @@ const pickMention = (member: ChatUser) => {
  *
  * Зачем: на телефоне строка ввода узкая, и форматирование («Aa») в ней теснило
  * поле. Теперь дополнительные кнопки живут только в развёрнутом режиме —
- * панелью сверху, а в обычной строке их нет (как в Телеграме). На компьютере
- * строка остаётся прежней: места там хватает.
+ * панелью сверху, а в обычной строке их нет (как в Телеграме): формат там
+ * предлагает панель по выделению (`.selection-menu`).
  */
 const expanded = ref(false)
 
@@ -1544,8 +1579,8 @@ const toggleExpand = () => {
   else expand()
 }
 
-// ---------- Формат текста (кнопка «Aa») ----------
-/** Меню формата открыто. */
+// ---------- Формат текста (кнопка «Aa» в развёрнутом вводе) ----------
+/** Меню формата открыто (кнопка «Aa»). */
 const formatMenuOpen = ref(false)
 
 /** Что предлагает меню: подписи — ключи перевода (см. `i18n/en.ts`). */
@@ -1554,6 +1589,8 @@ const MARKUP_ITEMS: readonly { kind: MarkupKind; label: string }[] = [
   { kind: 'italic', label: 'Курсив' },
   { kind: 'underline', label: 'Подчёркнутый' },
   { kind: 'strike', label: 'Зачёркнутый' },
+  // Цитата — не обрамление, а знак `> ` в начале каждой строки (см. applyQuote).
+  { kind: 'quote', label: 'Цитата' },
   { kind: 'code', label: 'Код' },
   { kind: 'spoiler', label: 'Спойлер' }
 ]
@@ -1572,12 +1609,121 @@ const applyFormat = (kind: MarkupKind) => {
   const next = applyMarkup(newMessage.value, start, end, kind)
   newMessage.value = next.text
   formatMenuOpen.value = false
+  /* Правка сама ставит выделение заново (`setSelectionRange`): без глушения
+     панель формата тут же открылась бы снова и закрывала поле. */
+  suppressSelectionMenu = true
   void nextTick(() => {
     input?.focus()
     input?.setSelectionRange(next.start, next.end)
+    closeSelectionMenu()
     autoGrow()
+    globalThis.setTimeout(() => {
+      suppressSelectionMenu = false
+    }, 0)
   })
 }
+
+// ---------- Формат по выделению (обычная строка) ----------
+/**
+ * Панель формата над полем по выделению.
+ *
+ * Кнопки «Aa» в обычной строке нет (теснила поле ввода), но сам формат нужен —
+ * поэтому знаки разметки предлагаются там, где они и применяются: как только в
+ * поле что-то выделили (владелец, 29.09.2026).
+ */
+const selectionMenuOpen = ref(false)
+
+/** Выделение меняет сам код (`applyFormat`) — панель тогда не переоткрываем. */
+let suppressSelectionMenu = false
+
+/** Сама панель: нужна, чтобы измерить её габарит перед постановкой. */
+const selectionMenuEl = ref<HTMLElement | null>(null)
+
+/** Координаты панели — считает `placeSelectionMenu` по положению выделения. */
+const selectionMenuStyle = ref<Record<string, string> | undefined>(undefined)
+
+/** Где в поле выделение (координаты от левого верхнего угла поля). */
+const selectionBox = ref<CaretBox | null>(null)
+
+/** Отступ панели от строки выделения. */
+const SELECTION_MENU_GAP = 8
+
+/**
+ * Поставить панель рядом с выделением.
+ *
+ * Ширину и высоту панели берём у неё самой: подписи разной длины, и на узком
+ * экране она переносится на вторую строку. Поэтому сначала отрисовка, потом
+ * замер и только потом координаты (`nextTick`).
+ */
+const placeSelectionMenu = () => {
+  const el = textInputRef.value
+  const box = selectionBox.value
+  if (!el || !box) {
+    selectionMenuStyle.value = undefined
+    return
+  }
+  const panel = {
+    width: selectionMenuEl.value?.offsetWidth ?? 0,
+    height: selectionMenuEl.value?.offsetHeight ?? 0
+  }
+  const anchor = menuAnchor(
+    box,
+    panel,
+    // Высота поля — из замера, а верх — от верха ОКНА: панель всплывает над
+    // лентой, и место над ней считаем до края экрана, а не до поля.
+    // В развёрнутом вводе поле занимает панель целиком — там места над полем нет
+    // вовсе, поэтому верхом считаем сам верх поля.
+    {
+      width: el.clientWidth,
+      top: expanded.value ? 0 : el.getBoundingClientRect().top
+    },
+    SELECTION_MENU_GAP
+  )
+  selectionMenuStyle.value = {
+    left: `${anchor.left}px`,
+    top: `${anchor.top}px`,
+    transform: anchor.above
+      ? `translate(-50%, calc(-100% - ${SELECTION_MENU_GAP}px))`
+      : `translate(-50%, ${SELECTION_MENU_GAP}px)`
+  }
+}
+/**
+ * Показать/спрятать панель по текущему выделению.
+ *
+ * Зовут её события поля (`select`, `pointerup`, `keyup`) и `selectionchange`
+ * документа: на телефоне выделение тянут за «ушки», и события самого поля при
+ * этом не приходят.
+ */
+const syncSelectionMenu = () => {
+  const el = textInputRef.value
+  if (!el || suppressSelectionMenu || document.activeElement !== el) {
+    selectionMenuOpen.value = false
+    selectionBox.value = null
+    selectionMenuStyle.value = undefined
+    return
+  }
+  const start = el.selectionStart ?? 0
+  const end = el.selectionEnd ?? 0
+  const open = end > start
+  selectionMenuOpen.value = open
+  if (!open) {
+    selectionBox.value = null
+    selectionMenuStyle.value = undefined
+    return
+  }
+  selectionBox.value = caretBox(el, start)
+  void nextTick(placeSelectionMenu)
+}
+
+/** Спрятать панель: поле потеряло фокус, текст изменился и т. п. */
+const closeSelectionMenu = () => {
+  selectionMenuOpen.value = false
+  selectionBox.value = null
+  selectionMenuStyle.value = undefined
+}
+
+onMounted(() => document.addEventListener('selectionchange', syncSelectionMenu))
+onBeforeUnmount(() => document.removeEventListener('selectionchange', syncSelectionMenu))
 
 const onTextInput = () => {
   autoGrow()
@@ -1608,6 +1754,25 @@ const textInputRef = ref<HTMLTextAreaElement | null>(null)
 /** Максимальная высота поля ввода (пикселей) — примерно 6 строк. */
 const TEXTAREA_MAX_HEIGHT = 140
 
+/** С какой строки показываем значок разворота (одно-двухстрочное поле не растёт). */
+const MULTILINE_MIN_LINES = 3
+
+/**
+ * Текст занимает три строки и больше: только тогда в строке нужен значок
+ * разворота, а полю — место под него справа (`.multiline` в CSS).
+ */
+const multiline = ref(false)
+
+/** Сколько строк занимает текст в поле — по высоте содержимого, а не по переносам. */
+const countLines = (el: HTMLTextAreaElement): number => {
+  const style = getComputedStyle(el)
+  const lineHeight = Number.parseFloat(style.lineHeight)
+  const padding =
+    Number.parseFloat(style.paddingTop || '0') + Number.parseFloat(style.paddingBottom || '0')
+  if (!Number.isFinite(lineHeight) || lineHeight <= 0) return 1
+  return Math.max(1, Math.round((el.scrollHeight - padding) / lineHeight))
+}
+
 /**
  * Поставить курсор в поле ввода.
  *
@@ -1631,10 +1796,15 @@ const autoGrow = () => {
   }
   el.style.height = 'auto'
   el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT)}px`
+  // Значок разворота — только когда текста на три строки (иначе он закрывал
+  // строку, а разворачивать в ней было нечего).
+  multiline.value = countLines(el) >= MULTILINE_MIN_LINES
 }
 
 // Сброс высоты при очистке/подстановке текста (например, после отправки).
 watch(newMessage, () => {
+  // Текст изменился — прежнее выделение устарело, панель формата прячем.
+  closeSelectionMenu()
   void nextTick(autoGrow)
 })
 
@@ -1980,6 +2150,90 @@ useMobileLayer(
   gap: 2px;
   padding: var(--ms-space-1);
   min-width: 190px;
+}
+
+/* Панель формата по выделению (обычная строка): кнопки «Aa» там нет, поэтому
+   знаки разметки предлагаются рядом с выделением — координаты (`left`/`top`)
+   считает `placeSelectionMenu` по замеру каретки. По центру поля её ставить
+   нельзя: в вебе поле во всю ширину, и панель улетала в центр мессенджера,
+   далеко от выделенного текста (владелец, 29.09.2026).
+   Подложка/рамка/тень — общий слой `.ms-pop` (`assets/appearance.css`). */
+.selection-menu {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+  max-width: min(280px, calc(100vw - 28px));
+  padding: 4px;
+  --ms-pop-radius: var(--ms-radius-md);
+}
+
+.selection-item {
+  padding: 7px 9px;
+  border: none;
+  border-radius: var(--ms-radius-sm);
+  background: transparent;
+  color: var(--ms-text-strong);
+  font: inherit;
+  font-size: var(--ms-fs-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.selection-item:hover {
+  background: var(--ms-hover);
+  color: var(--ms-accent);
+}
+
+/* Подпись пункта — тем же видом, какой получит текст: выбирать «Зачёркнутый»,
+   примеряя, что это значит, не нужно (владелец, 29.09.2026). Класс общий для
+   обоих меню: «Aa» в развёрнутом вводе и панель по выделению. */
+.markup-item.kind-bold {
+  font-weight: 700;
+}
+
+.markup-item.kind-italic {
+  font-style: italic;
+}
+
+.markup-item.kind-underline {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markup-item.kind-strike {
+  text-decoration: line-through;
+}
+
+.markup-item.kind-code {
+  font-family: var(--ms-font-mono);
+  font-size: 0.92em;
+  background: var(--ms-mark-bg);
+  border-radius: var(--ms-radius-xs);
+}
+
+/* Цитата — с полосой слева: ровно то, что появится в сообщении. */
+.markup-item.kind-quote {
+  border-left: 3px solid var(--ms-accent);
+  border-radius: 0;
+  padding-left: 8px;
+}
+
+/* Спойлер закрыт, пока на него не навели: так он читается как результат.
+   На тач-устройствах наведения нет — там подпись видна сразу, иначе пункт
+   меню остался бы загадкой. */
+@media (hover: hover) {
+  .markup-item.kind-spoiler {
+    filter: blur(3.5px);
+    user-select: none;
+  }
+
+  .markup-item.kind-spoiler:hover {
+    filter: none;
+  }
 }
 
 /* Меню вложения: обычный файл или одноразовое медиа */
@@ -2374,7 +2628,9 @@ useMobileLayer(
 
 /* ---------- Развёрнутый ввод (телефон) ---------- */
 
-/* Значок разворота — только на телефоне: в вебе строка остаётся как была.
+/* Значок разворота — только на телефоне и только у текста на три строки и
+   больше (`.multiline`, см. `autoGrow`): в вебе строка остаётся как была, а на
+   низком поле значок закрывал текст, хотя разворачивать там нечего.
    Живёт внутри поля у правого края (позиционируется от `.editor-slot`),
    поэтому не отнимает у текста отдельную кнопку. Габарит и значок — как у
    соседних кнопок: у двойной стрелки чернила вдвое у́же, и зазор до смайла
@@ -2408,8 +2664,14 @@ useMobileLayer(
   /* Отправка — тот же круг 38 px, что у соседей (см. выше): при 40 px её значок
      стоял дальше от смайла. */
 
-  .field-toggle {
+  /* Значок разворота — только у текста на три строки и больше: на низком поле
+     он закрывал текст, а разворачивать там было нечего (`.multiline` считает
+     `autoGrow`). */
+  .input-area.multiline .field-toggle {
     display: inline-flex;
+  }
+
+  .field-toggle {
     /* Зазор до смайла — как у остальных значков: у шеврона чернила вдвое у́же
        (10 px против 19), поэтому его сдвигаем вправо на 4 px — иначе глазу
        видно, что от значка разворота до смайла больше, чем до отправки. */
@@ -2428,7 +2690,6 @@ useMobileLayer(
     margin-left: -6px;
     margin-right: 0;
   }
-
   .mic-wrap {
     margin-left: -8px;
   }
@@ -2437,26 +2698,16 @@ useMobileLayer(
     margin-left: 4px;
   }
 
-  /* Место под значок в поле: текст под него не заезжает. */
-  .text-input {
+  /* Место под значок в поле: текст под него не заезжает (значок появляется
+     только у многострочного текста — см. `.multiline`). */
+  .input-area.multiline .text-input {
     padding-right: 40px;
-  }
-
-  /* «Aa» из обычной строки убираем: на телефоне кнопка теснила поле ввода, а
-     её место — в развёрнутом вводе (см. ниже). */
-  .format-wrap {
-    display: none;
-  }
-
-  /* Наоборот: в развёрнутом вводе «Aa» показываем — как и было в строке. */
-  .input-area.expanded .format-wrap {
-    display: inline-flex;
   }
 }
 
 /* Развёрнутое поле накрывает панель чата (шапку и ленту): `inset: 0` считается
    от `.chat-panel` — она уже `position: relative`. Слой ВЫШЕ ленты и её кнопки
-   «вниз» (`.jump-down`, z-index 5): та висела ровно поверх отправки. */
+   «вниз» (`.jump-btn`, z-index 5): та висела ровно поверх отправки. */
 .input-area.expanded {
   position: absolute;
   inset: 0;

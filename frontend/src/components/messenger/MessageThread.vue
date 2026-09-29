@@ -187,32 +187,27 @@
       </template>
     </div>
 
-    <!-- Кнопка «вверх»: появляется, когда до начала ленты далеко (в группах и
-         каналах история длинная, а вернуться к первому непрочитанному иначе
-         приходится перетаскиванием на десятки экранов). -->
+    <!-- ОДНА кнопка прокрутки (владелец, 29.09.2026): пока ниже далёкий конец
+         или есть новые — «вниз», а у самого низа она же становится «вверх»
+         (вернуться к началу). Двух значков рядом быть не должно, а смена —
+         аккуратным поворотом: значок один и тот же, «вниз» на 180° и есть «вверх». -->
     <button
-      v-if="showJumpUp"
+      v-if="jumpDir"
       type="button"
-      class="jump-up"
-      :class="{ stacked: showJumpDown }"
-      :title="t('Вверх')"
-      :aria-label="t('Прокрутить вверх')"
-      @click="onJumpUp"
+      class="jump-btn"
+      :class="{ 'has-new': jumpDir === 'down' && hasNewBelow }"
+      :title="jumpTitle"
+      :aria-label="jumpAriaLabel"
+      @click="jumpDir === 'up' ? onJumpUp() : onJumpDown()"
     >
-      <q-icon :name="icon('expand_less')" size="22px" aria-hidden="true" />
-    </button>
-
-    <!-- Кнопка «вниз»: появляется, когда лента прокручена вверх -->
-    <button
-      v-if="showJumpDown"
-      type="button"
-      class="jump-down"
-      :class="{ 'has-new': hasNewBelow }"
-      :title="hasNewBelow ? t('Новые сообщения') : t('Вниз')"
-      :aria-label="hasNewBelow ? t('Перейти к новым сообщениям') : t('Прокрутить вниз')"
-      @click="onJumpDown"
-    >
-      <q-icon v-if="!newBelowCount" :name="icon('arrow_downward')" size="20px" aria-hidden="true" />
+      <q-icon
+        v-if="jumpDir === 'up' || !newBelowCount"
+        class="jump-icon"
+        :class="{ flipped: jumpDir === 'up' }"
+        :name="icon('arrow_downward')"
+        size="20px"
+        aria-hidden="true"
+      />
       <span v-else class="jump-count">{{ newBelowCount > 99 ? '99+' : newBelowCount }}</span>
     </button>
   </div>
@@ -525,14 +520,24 @@ const unreadDividerId = computed<number | null>(() => {
   return ids[index]
 })
 
-// ---------- Кнопка «вниз» и новые сообщения ниже ----------
-const showJumpDown = ref(false)
+// ---------- Кнопка прокрутки ленты и новые сообщения ниже ----------
 const hasNewBelow = ref(false)
 /** Сколько новых сообщений пришло, пока лента прокручена вверх. */
 const newBelowCount = ref(0)
 
 /**
- * С какого смещения вниз показываем кнопку «вверх».
+ * Куда ведёт кнопка: `down` — к новым, `up` — к началу, `null` — кнопки нет.
+ *
+ * Кнопка ОДНА на оба направления (владелец, 29.09.2026: «пусть меняется на вверх,
+ * когда доходит до низа, а не две иконки рядом»).
+ */
+const jumpDir = ref<'up' | 'down' | null>(null)
+
+/** С какого смещения от низа держим кнопку «вниз» (примерно треть экрана). */
+const JUMP_DOWN_MIN_DISTANCE = 320
+
+/**
+ * С какого смещения вниз показываем «вверх».
  *
  * Не на каждый экран: в коротком диалоге «вверх» — лишний элемент поверх
  * сообщений, а в длинной истории без неё приходится долго тянуть пальцем
@@ -540,7 +545,17 @@ const newBelowCount = ref(0)
  * «за спиной».
  */
 const JUMP_UP_MIN_SCROLL = 600
-const showJumpUp = ref(false)
+
+/** Подпись кнопки: у «вверх» она всегда одна, у «вниз» зависит от новых. */
+const jumpTitle = computed(() => {
+  if (jumpDir.value === 'up') return t('Вверх')
+  return hasNewBelow.value ? t('Новые сообщения') : t('Вниз')
+})
+
+const jumpAriaLabel = computed(() => {
+  if (jumpDir.value === 'up') return t('Прокрутить вверх')
+  return hasNewBelow.value ? t('Перейти к новым сообщениям') : t('Прокрутить вниз')
+})
 
 /** Плавно только по явному клику и только если не просили «меньше движения». */
 const scrollBehavior = (): ScrollBehavior => {
@@ -555,8 +570,14 @@ const updateScrollState = () => {
   const container = containerRef.value
   if (!container) return
   const distance = container.scrollHeight - container.scrollTop - container.clientHeight
-  showJumpDown.value = distance > 320 || hasNewBelow.value
-  showJumpUp.value = container.scrollTop > JUMP_UP_MIN_SCROLL
+  // Одна кнопка на оба направления: сначала «вниз» (ниже далёкий конец или новые),
+  // а у самого низа она становится «вверх» — вернуться к началу ленты.
+  jumpDir.value =
+    distance > JUMP_DOWN_MIN_DISTANCE || hasNewBelow.value
+      ? 'down'
+      : container.scrollTop > JUMP_UP_MIN_SCROLL
+        ? 'up'
+        : null
   if (distance < 60) {
     hasNewBelow.value = false
     newBelowCount.value = 0
@@ -637,8 +658,7 @@ watch(
   () => {
     hasNewBelow.value = false
     newBelowCount.value = 0
-    showJumpDown.value = false
-    showJumpUp.value = false
+    jumpDir.value = null
   }
 )
 
@@ -1078,9 +1098,10 @@ onBeforeUnmount(() => {
   border-radius: var(--ms-radius-pill);
 }
 
-/* ---------- Кнопки «вверх» и «вниз» ---------- */
-.jump-down,
-.jump-up {
+/* ---------- Кнопка прокрутки ленты ---------- */
+/* Одна на оба направления: «вниз» (к новым) и «вверх» (к началу) — меняется
+   только поворотом стрелки, поэтому и анимация одна: transform. */
+.jump-btn {
   position: absolute;
   right: 16px;
   bottom: 12px;
@@ -1097,24 +1118,30 @@ onBeforeUnmount(() => {
   cursor: pointer;
   z-index: 5;
   transition:
-    transform 0.12s,
-    background 0.12s;
+    transform var(--ms-dur-fast) var(--ms-ease),
+    background var(--ms-dur-fast) var(--ms-ease),
+    border-color var(--ms-dur-fast) var(--ms-ease),
+    color var(--ms-dur-fast) var(--ms-ease);
 }
 
-/* Видны обе — «вверх» уезжает выше «вниз», иначе кнопки наложились бы. */
-.jump-up.stacked {
-  bottom: 56px;
-}
-
-.jump-down:hover,
-.jump-up:hover {
+.jump-btn:hover {
   background: var(--ms-hover, #f2f4f6);
 }
 
-.jump-down.has-new {
+.jump-btn.has-new {
   color: var(--ms-on-accent, #fff);
   background: var(--ms-accent, #2ea25e);
   border-color: transparent;
+}
+
+/* Смена направления — поворотом того же значка: «вниз» на 180° и есть «вверх»,
+   поэтому значок не подменяется (нет «мигания» двух разных глифов). */
+.jump-icon {
+  transition: transform var(--ms-dur-slow) var(--ms-ease);
+}
+
+.jump-icon.flipped {
+  transform: rotate(180deg);
 }
 
 /* Группа одного дня: разделитель «липнет» только в её пределах, поэтому даты

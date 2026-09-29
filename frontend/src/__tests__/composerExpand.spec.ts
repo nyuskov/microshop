@@ -111,18 +111,63 @@ describe('развёрнутый ввод в композере', () => {
     wrapper.unmount()
   })
 
-  it('значок разворота и «Aa» — только на телефоне', () => {
-    // Обычная строка телефона — без «Aa» (кнопка теснила поле ввода).
-    expect(flat).toContain('.format-wrap { display: none; }')
-    expect(flat).toContain('.input-area.expanded .format-wrap { display: inline-flex; }')
-    // Значок разворота наоборот телефонный, одного габарита с круглыми кнопками
-    // (разные размеры дают неровный ряд) и живёт в поле у правого края.
+  it('значок разворота — телефонный и только у многострочного текста', () => {
+    // Значок одного габарита с круглыми кнопками (разные размеры дают неровный
+    // ряд) и живёт в поле у правого края.
     expect(flat).toContain('.field-toggle { display: none; position: absolute; right: 0;')
     expect(flat).toContain('width: 38px; height: 38px; padding: 0;')
     expect(flat).toContain('@media (max-width: 600px) { .input-row, .input-tools { gap: 2px; }')
-    expect(flat).toContain('.field-toggle { display: inline-flex; right: -4px; }')
-    // Место под значок в поле: текст под него не заезжает.
-    expect(flat).toContain('.text-input { padding-right: 40px; }')
+    expect(flat).toContain('.field-toggle { right: -4px; }')
+    // Показываем только с ТРЕТЬЕЙ набранной строки: на низком поле значок
+    // закрывал текст, а разворачивать там было нечего.
+    expect(flat).toContain('.input-area.multiline .field-toggle { display: inline-flex; }')
+    // Место под значок в поле: текст под него не заезжает — и тоже только тогда.
+    expect(flat).toContain('.input-area.multiline .text-input { padding-right: 40px; }')
+  })
+
+  it('«Aa» в обычной строке нет, в развёрнутом вводе — есть', () => {
+    // Кнопка отрисована только в развёрнутом вводе: в строке формат предлагает
+    // панель по выделению, и «Aa» там только сужала поле.
+    expect(composer).toContain('<span v-if="expanded" class="format-wrap">')
+    // Правил «спрятать/показать» в CSS больше нет: кнопки просто нет в разметке.
+    expect(flat).not.toContain('.format-wrap { display: none; }')
+    expect(flat).not.toContain('.input-area.expanded .format-wrap { display: inline-flex; }')
+  })
+
+  it('три строки — порог появления значка разворота', () => {
+    expect(composer).toContain('const MULTILINE_MIN_LINES = 3')
+    expect(composer).toContain('multiline.value = countLines(el) >= MULTILINE_MIN_LINES')
+    expect(composer).toContain(':class="{ expanded, multiline }"')
+  })
+
+  it('панель формата появляется по выделению и встаёт у него', async () => {
+    const wrapper = mountComposer('привет мир')
+    const area = wrapper.find('textarea')
+    expect(wrapper.find('.selection-menu').exists()).toBe(false)
+
+    const el = area.element as HTMLTextAreaElement
+    el.focus()
+    el.setSelectionRange(0, 6)
+    await area.trigger('select')
+    await wrapper.vm.$nextTick()
+
+    const panel = wrapper.find('.selection-menu')
+    expect(panel.exists()).toBe(true)
+    // Координаты считает `placeSelectionMenu` по замеру каретки: панель встаёт у
+    // выделения, а не по центру поля (в вебе центр поля = центр мессенджера).
+    const style = (panel.element as HTMLElement).style
+    expect(style.left).toBe('0px')
+    expect(style.top).toBe('0px')
+    expect(composer).toContain('menuAnchor(')
+    expect(composer).toContain('caretBox(el, start)')
+
+    // Пункт меню применяет разметку к выделению: клик ловим на `mousedown`,
+    // иначе поле теряет выделение до правки.
+    await panel.find('.selection-item').trigger('mousedown')
+    expect(wrapper.emitted('update:newMessage')?.at(-1)).toEqual(['*привет* мир'])
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.selection-menu').exists()).toBe(false)
+    wrapper.unmount()
   })
 
   it('на телефоне у всех кнопок строки один габарит', () => {
@@ -152,9 +197,9 @@ describe('развёрнутый ввод в композере', () => {
     expect(flat).toContain('.mic-wrap { margin-left: -2px; }')
   })
 
-  it('«Aa» осталась кнопкой с меню разметки, как была', () => {
+  it('«Aa» осталась кнопкой с меню разметки', () => {
     expect(composer).toContain('class="round-btn format-btn"')
-    expect(composer).toContain('<span v-if="hasText" class="format-wrap">')
+    expect(composer).toContain('<span v-if="expanded" class="format-wrap">')
     expect(composer).toContain('v-model="formatMenuOpen"')
     expect(composer).toContain('@click="applyFormat(item.kind)"')
   })
@@ -179,14 +224,15 @@ describe('развёрнутый ввод в композере', () => {
     expect(flat).toContain('.input-area.expanded .input-tools { grid-column: 3; grid-row: 2; }')
   })
 
-  it('развёрнутый ввод выше ленты: её кнопка «вниз» не перекрывает отправку', () => {
-    // `.jump-down` в ленте — z-index 5; ниже него кнопка «вниз» вставала ровно
+  it('развёрнутый ввод выше ленты: её кнопка прокрутки не перекрывает отправку', () => {
+    // `.jump-btn` в ленте — z-index 5; ниже него кнопка вставала ровно
     // на отправку (замер в приложении).
     expect(flat).toContain('.input-area.expanded { position: absolute; inset: 0; z-index: 6;')
   })
 
   it('развёрнутый значок показывает «свернуть»', () => {
-    expect(composer).toMatch(/icon\(expanded\s*\?\s*'keyboard_arrow_down'\s*:\s*'unfold_more'\)/)
+    // Стрелки, а не шевроны: «поле растёт вверх» / «убирается вниз».
+    expect(composer).toMatch(/icon\(expanded\s*\?\s*'arrow_downward'\s*:\s*'arrow_upward'\)/)
     // Значок в поле в развёрнутом виде скрыт (сверху есть «свернуть»), а верхняя
     // строка прижата к правому краю.
     expect(flat).toContain('.input-area.expanded .field-toggle { display: none; }')

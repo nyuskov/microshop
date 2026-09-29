@@ -20,6 +20,9 @@ export const ICON_MAP: Record<string, string> = {
   arrow_drop_down: 'chevron-down',
   arrow_drop_up: 'chevron-up',
   arrow_forward: 'arrow-right',
+  // Стрелка разворота поля ввода в композере: шевроны (`expand_less`,
+  // `unfold_more`) владелец прочитал как «свернуть/развернуть вниз».
+  arrow_upward: 'arrow-up',
   chevron_left: 'chevron-left',
   chevron_right: 'chevron-right',
   expand_less: 'chevron-up',

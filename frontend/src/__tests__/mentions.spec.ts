@@ -107,6 +107,30 @@ describe('оформление текста', () => {
       { type: 'bold', value: 'важное' }
     ])
   })
+
+  it('строки с «>» в начале — цитата, пробел после знака не текст', () => {
+    expect(splitMessageText('> цитата\n> вторая строка')).toEqual([
+      { type: 'quote', value: 'цитата\nвторая строка' }
+    ])
+    // `>` без пробела — тот же знак.
+    expect(splitMessageText('>цитата')).toEqual([{ type: 'quote', value: 'цитата' }])
+  })
+
+  it('вокруг цитаты переносы остаются: цитата не склеивается с текстом', () => {
+    // Переносы нужны превью и поиску; при отрисовке их снимает `MessageText`.
+    expect(splitMessageText('до\n> цитата\nпосле')).toEqual([
+      { type: 'text', value: 'до' },
+      { type: 'quote', value: '\nцитата\n' },
+      { type: 'text', value: 'после' }
+    ])
+  })
+
+  it('пустая строка цитату прерывает — две цитаты не склеиваются', () => {
+    expect(splitMessageText('> одна\n\n> другая')).toEqual([
+      { type: 'quote', value: 'одна\n' },
+      { type: 'quote', value: '\nдругая' }
+    ])
+  })
 })
 
 describe('plainMessageText', () => {
@@ -120,6 +144,10 @@ describe('plainMessageText', () => {
     expect(plainMessageText('@ivan вот https://pismo.space/a*b')).toBe(
       '@ivan вот https://pismo.space/a*b'
     )
+  })
+
+  it('знак цитаты не показываем, а строки не склеиваем', () => {
+    expect(plainMessageText('> цитата\nвторая')).toBe('цитата\nвторая')
   })
 })
 

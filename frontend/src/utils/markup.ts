@@ -3,20 +3,30 @@
  *
  * Знаки давно понимает рендер (`MessageText.vue` разбирает их через
  * `utils/mentions.ts`): `*жирный*`, `_курсив_`, `__подчёркнутый__`,
- * `~~зачёркнутый~~`, `` `код` ``, `||спойлер||`. Но набирать их приходилось
- * руками — панель формата в композере (кнопка «Aa») оборачивает ими выделение.
+ * `~~зачёркнутый~~`, `` `код` ``, `||спойлер||`, а с 29.09.2026 — и цитата
+ * (`> ` в начале строки). Но набирать их приходилось руками — панель формата в
+ * композере (кнопка «Aa» и панель по выделению) оборачивает ими выделение.
  *
  * ГЛАВНОЕ правило — общее с разбором: сразу после открывающего знака и перед
  * закрывающим не должно быть пробела, иначе разметка не распознаётся. Поэтому
  * пробелы по краям выделения остаются СНАРУЖИ обрамления: `* текст *` не
- * жирный, а `*текст*` — жирный.
+ * жирный, а `*текст*` — жирный. У цитаты правило своё: знак стоит в НАЧАЛЕ
+ * каждой строки, а не вокруг текста.
  */
 
 /** Виды разметки, которые умеет панель формата. */
-export type MarkupKind = 'bold' | 'italic' | 'underline' | 'strike' | 'code' | 'spoiler'
+export type MarkupKind =
+  | 'bold'
+  | 'italic'
+  | 'underline'
+  | 'strike'
+  | 'code'
+  | 'spoiler'
+  /** Цитата — построчная: `> ` в начале строки (не обрамление). */
+  | 'quote'
 
 /** Знаки обрамления — те же, что разбирает `utils/mentions.ts`. */
-export const MARKUP_MARKS: Record<MarkupKind, string> = {
+export const MARKUP_MARKS: Record<Exclude<MarkupKind, 'quote'>, string> = {
   bold: '*',
   italic: '_',
   underline: '__',
@@ -51,6 +61,8 @@ export function applyMarkup(
   end: number,
   kind: MarkupKind
 ): MarkupEdit {
+  // Цитата — не обрамление: у неё свой знак в начале КАЖДОЙ строки.
+  if (kind === 'quote') return applyQuote(text, start, end)
   const mark = MARKUP_MARKS[kind]
   const from = clamp(Math.min(start, end), text.length)
   const to = clamp(Math.max(start, end), text.length)
@@ -113,5 +125,46 @@ export function applyMarkup(
     text: text.slice(0, left) + mark + inner + mark + text.slice(right),
     start: left + mark.length,
     end: right + mark.length
+  }
+}
+
+/** Знак цитаты — как в Telegram: `> ` в начале строки. */
+export const QUOTE_MARK = '> '
+
+/** Строка начинается знаком цитаты (`>` с пробелом или без). */
+const QUOTE_LINE_RE = /^>[ \t]?/
+
+/**
+ * Включить или снять цитату у строк, попавших в выделение.
+ *
+ * Цитата — построчная разметка, а не обрамление: знак `> ` встаёт в начало
+ * каждой строки (так её понимает и рендер, `utils/mentions.ts`). Выделение
+ * расширяем до границ строк: цитируется строка целиком. Повторное нажатие
+ * снимает знак со всех строк — как «выключить» у остальных видов. Пустые строки
+ * знака не получают: так пустая строка разрывает цитату, и две цитаты подряд не
+ * склеиваются в одну (как в Telegram).
+ */
+export function applyQuote(text: string, start: number, end: number): MarkupEdit {
+  const from = clamp(Math.min(start, end), text.length)
+  const to = clamp(Math.max(start, end), text.length)
+  const lineStart = text.lastIndexOf('\n', from - 1) + 1
+  // Выделение кончается ровно на переносе — следующая строка в цитату не входит.
+  const edge = to > from && text[to - 1] === '\n' ? to - 1 : to
+  const breakAt = text.indexOf('\n', edge)
+  const lineEnd = breakAt === -1 ? text.length : breakAt
+
+  const lines = text.slice(lineStart, lineEnd).split('\n')
+  const quoted = lines.every((line) => line === '' || QUOTE_LINE_RE.test(line))
+  const next = lines
+    .map((line) => {
+      if (quoted) return line.replace(QUOTE_LINE_RE, '')
+      return line === '' ? line : QUOTE_MARK + line
+    })
+    .join('\n')
+
+  return {
+    text: text.slice(0, lineStart) + next + text.slice(lineEnd),
+    start: lineStart,
+    end: lineStart + next.length
   }
 }

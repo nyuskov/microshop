@@ -23,6 +23,8 @@
       <u v-else-if="part.type === 'underline'" class="msg-underline">{{ part.value }}</u>
       <s v-else-if="part.type === 'strike'" class="msg-strike">{{ part.value }}</s>
       <code v-else-if="part.type === 'code'" class="msg-code">{{ part.value }}</code>
+      <!-- Цитата: строки, начинающиеся с `>`, — блок с полосой слева (как в Телеграме) -->
+      <span v-else-if="part.type === 'quote'" class="msg-quote">{{ part.value }}</span>
       <!-- Совпадение поиска по сообщениям: видно, ЧТО именно нашлось -->
       <mark v-else-if="part.type === 'search'" class="msg-search-hit">{{ part.value }}</mark>
       <!-- Спойлер скрыт, пока по нему не нажмут -->
@@ -63,7 +65,7 @@ import { computed, ref } from 'vue'
 import { t } from '@/i18n'
 import { followLink } from '@/composables/useExternalLinkGuard'
 import { type EmojiLayout } from '@/utils/emoji'
-import { highlightQuery, splitMessageText } from '@/utils/mentions'
+import { highlightQuery, splitMessageText, type MessageTextPart } from '@/utils/mentions'
 
 const props = defineProps<{
   /** Текст сообщения (без учёта вложений). */
@@ -77,8 +79,16 @@ const props = defineProps<{
 /** С какого размера текст сворачиваем (примерно 12 строк). */
 const LONG_TEXT_LIMIT = 600
 
+/**
+ * Переносы вокруг цитаты разбор оставляет в её фрагменте: они нужны превью чата
+ * и поиску, иначе цитата склеилась бы с текстом рядом. В разметке они лишние —
+ * границы блока рисует сам `.msg-quote`, а перенос дал бы пустую строку.
+ */
+const trimQuotes = (parts: MessageTextPart[]): MessageTextPart[] =>
+  parts.map((part) => (part.type === 'quote' ? { ...part, value: part.value.trim() } : part))
+
 const textParts = computed(() =>
-  highlightQuery(splitMessageText(props.text), props.searchQuery ?? '')
+  highlightQuery(trimQuotes(splitMessageText(props.text)), props.searchQuery ?? '')
 )
 
 /** Спойлеры, которые пользователь уже раскрыл нажатием (по индексу фрагмента). */
@@ -188,6 +198,22 @@ const isClamped = computed(() => canCollapse.value && !expanded.value)
   background: var(--ms-mark-bg);
   border-radius: var(--ms-radius-xs);
   padding: 0 4px;
+}
+
+/* Цитата (строки с `>` в начале): блок с полосой слева, как в Telegram.
+   Полоса — акцент, текст — приглушённый (цитата это «чужое», а не речь автора).
+   Цвет текста НЕ фиксируем, а приглушаем прозрачностью: цвет пузыря выбирает
+   пользователь (светлые пресеты вплоть до сиреневого), и подобрать один тон под
+   все нечем — а приглушённый цвет пузыря читается на любом из них.
+   Внутри строки переносы уже есть (`white-space: pre-wrap` у `.msg-text`),
+   поэтому дополнительных переносов не ставим. */
+.msg-quote {
+  display: block;
+  margin: 4px 0;
+  padding: 2px 0 2px 10px;
+  border-left: 3px solid var(--ms-accent);
+  color: inherit;
+  opacity: 0.82;
 }
 
 /* Совпадение поиска по сообщениям. Фон — предупреждающая подложка (пара

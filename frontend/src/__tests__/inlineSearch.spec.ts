@@ -61,8 +61,10 @@ describe('подсветка совпадений в ленте', () => {
   it('запрос доходит до строки сообщения', () => {
     expect(messenger).toMatch(/:search-query="inlineSearchOpen \? inlineQuery\.trim\(\) : ''"/)
     expect(thread).toMatch(/:search-query="searchQuery"/)
+    // Разбор текста один: `trimQuotes` снимает служебные переносы цитаты, которые
+    // разбор оставил для превью и поиска (см. `MessageText.vue`).
     expect(text).toMatch(
-      /highlightQuery\(splitMessageText\(props\.text\), props\.searchQuery \?\? ''\)/
+      /highlightQuery\(\s*trimQuotes\(splitMessageText\(props\.text\)\),\s*props\.searchQuery \?\? ''\s*\)/
     )
   })
 

@@ -15,16 +15,34 @@ const thread = source('src/components/messenger/MessageThread.vue')
 const row = source('src/components/messenger/MessageRow.vue')
 const en = source('src/i18n/en.ts')
 
-describe('кнопка «вверх» в ленте', () => {
-  it('появляется только когда до начала ленты далеко', () => {
+describe('кнопка прокрутки ленты', () => {
+  it('одна кнопка на оба направления: «вниз» — к новым, «вверх» — у самого низа', () => {
     expect(thread).toContain('const JUMP_UP_MIN_SCROLL')
-    expect(thread).toContain('showJumpUp.value = container.scrollTop > JUMP_UP_MIN_SCROLL')
-    expect(thread).toContain('v-if="showJumpUp"')
+    expect(thread).toContain('distance > JUMP_DOWN_MIN_DISTANCE || hasNewBelow.value')
+    expect(thread).toMatch(
+      /['"]down['"]\s*:\s*container\.scrollTop > JUMP_UP_MIN_SCROLL\s*\?\s*'up'/
+    )
+    expect(thread).toContain('v-if="jumpDir"')
   })
 
-  it('видны обе кнопки — «вверх» уезжает выше «вниз»', () => {
-    expect(thread).toContain(':class="{ stacked: showJumpDown }"')
-    expect(thread).toMatch(/\.jump-up\.stacked\s*\{\s*bottom:\s*56px;/)
+  it('кнопка одна: двух значков рядом нет', () => {
+    // Владелец (29.09.2026): «пусть меняется на вверх, когда доходит до низа,
+    // а не две иконки рядом».
+    expect(thread).not.toContain('jump-up')
+    expect(thread).not.toContain('stacked')
+    expect(thread).not.toContain('showJumpUp')
+    expect(thread).not.toContain('showJumpDown')
+  })
+
+  it('значок один и разворачивается на 180°, а не подменяется', () => {
+    // Шеврон (`expand_less`) убран: «вверх» — тот же `arrow_downward`, повёрнутый
+    // на 180°. Подмена глифа давала бы «мигание» двух разных форм.
+    expect(thread).toContain("icon('arrow_downward')")
+    expect(thread).not.toContain("icon('expand_less')")
+    expect(thread).toMatch(/\.jump-icon\.flipped\s*\{\s*transform:\s*rotate\(180deg\);/)
+    expect(thread).toMatch(
+      /\.jump-icon\s*\{\s*transition:\s*transform var\(--ms-dur-slow\) var\(--ms-ease\);/
+    )
   })
 
   it('к началу ленты ведёт плавно, но уважает «меньше движения»', () => {

@@ -24,6 +24,8 @@ export type MessageTextPartType =
   | 'code'
   | 'strike'
   | 'spoiler'
+  /** Цитата: строки, начинающиеся с `>` (одна или несколько подряд). */
+  | 'quote'
   /** Найденное поиском совпадение — подсвечивается в ленте (см. MessageRow). */
   | 'search'
 
@@ -120,8 +122,78 @@ export function splitFormatting(text: string): MessageTextPart[] {
   return buildParts(text, marks)
 }
 
-/** Разбирает текст сообщения на обычные фрагменты, оформление, упоминания и ссылки. */
+/** Строка сообщения начинается знаком цитаты (`>` с пробелом или без). */
+const QUOTE_LINE_RE = /^>[ \t]?/
+
+/**
+ * Разбирает текст сообщения на обычные фрагменты, оформление, упоминания, ссылки
+ * и цитаты.
+ *
+ * Цитата — построчная разметка (`>` в начале строки), поэтому сначала текст
+ * режется на строки: подряд идущие цитируемые строки собираются в один фрагмент
+ * `quote` (пробел после `>` — часть знака, а не текста). Внутри цитаты разметку не
+ * разбираем: вложенность не поддерживается по той же причине, что и у остального
+ * оформления. Пустая строка цитату прерывает — так две цитаты подряд не склеиваются.
+ */
 export function splitMessageText(text: string): MessageTextPart[] {
+  const parts: MessageTextPart[] = []
+  const lines = text.split('\n')
+  let plain: string[] = []
+  let quote: string[] = []
+  /** Перенос перед цитатой (текст выше) и после неё (текст ниже). */
+  let quoteLead = false
+  let quoteTrail = false
+
+  const flushPlain = () => {
+    if (!plain.length) return
+    parts.push(...splitInline(plain.join('\n')))
+    plain = []
+  }
+  /**
+   * Цитата забирает переносы вокруг себя.
+   *
+   * В тексте они нужны — иначе в превью чата и в поиске цитата склеилась бы с
+   * текстом рядом. А при отрисовке эти переносы лишние: границы блока рисует сам
+   * `.msg-quote`, поэтому там их снимает `MessageText`.
+   */
+  const flushQuote = () => {
+    if (!quote.length) return
+    parts.push({
+      type: 'quote',
+      value: (quoteLead ? '\n' : '') + quote.join('\n') + (quoteTrail ? '\n' : '')
+    })
+    quote = []
+    quoteLead = false
+    quoteTrail = false
+  }
+
+  lines.forEach((line, index) => {
+    if (QUOTE_LINE_RE.test(line)) {
+      if (!quote.length) {
+        flushPlain()
+        // Перенос ПЕРЕД цитатой — её: текст выше уже отдан обычным куском.
+        quoteLead = index > 0
+      }
+      quote.push(line.replace(QUOTE_LINE_RE, ''))
+      return
+    }
+    // Первая нецитируемая строка после блока — перенос после цитаты.
+    if (quote.length) {
+      quoteTrail = true
+      flushQuote()
+    }
+    plain.push(line)
+  })
+  flushPlain()
+  flushQuote()
+  return parts
+}
+
+/**
+ * Обычный текст: упоминания, ссылки и оформление — всё, кроме цитаты (она выше,
+ * потому что построчная).
+ */
+function splitInline(text: string): MessageTextPart[] {
   const marks: Mark[] = []
 
   for (const match of text.matchAll(MENTION_RE)) {
@@ -168,11 +240,11 @@ export function plainMessageText(text: string): string {
  * Подсвечивает найденный поиском запрос: режет обычный текст на «до / совпадение /
  * после» (тип `search`), остальные фрагменты оставляет как есть.
  *
- * Почему только обычный текст: внутри ссылки, упоминания, кода или спойлера
- * подсветка либо ломает вид фрагмента, либо мешает его смыслу (ссылку нельзя
- * перекрашивать в «найдено» — непонятно, что она кликабельная). Регистр не важен;
- * запрос трактуем как строку, а не как регулярку — иначе `(` в поиске ломал бы
- * разбор сообщения.
+ * Почему только обычный текст: внутри ссылки, упоминания, кода, спойлера или
+ * цитаты подсветка либо ломает вид фрагмента, либо мешает его смыслу (ссылку
+ * нельзя перекрашивать в «найдено» — непонятно, что она кликабельная). Регистр не
+ * важен; запрос трактуем как строку, а не как регулярку — иначе `(` в поиске ломал
+ * бы разбор сообщения.
  */
 export function highlightQuery(parts: MessageTextPart[], query: string): MessageTextPart[] {
   const needle = query.trim().toLowerCase()
