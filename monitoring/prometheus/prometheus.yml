@@ -3,11 +3,13 @@
 # Файл монтируется в контейнер (`./monitoring/prometheus:/etc/prometheus:ro`),
 # правка применяется перезапуском сервиса — см. docs/monitoring.md.
 #
+# Вместо токена здесь стоит подстановка `__METRICS_TOKEN__`: Prometheus НЕ умеет
+# разворачивать переменные окружения в конфиге, поэтому токен подставляет
+# entrypoint контейнера (см. команду сервиса в docker-compose.prod.yaml).
+#
 # Скребём через nginx (`frontend`), а не слот web-blue/web-green напрямую: nginx
 # проксирует `/api/` на АКТИВНЫЙ слот, поэтому переключение слота при деплое цель
-# не меняет, а «мёртвых» целей в выдаче нет. Доступ закрыт токеном приложения
-# (`METRICS_TOKEN`) — поэтому в контейнер передаётся переменная и включён
-# `--config.expand-env=true`.
+# не меняет, а «мёртвых» целей в выдаче нет.
 global:
   scrape_interval: 15s
   scrape_timeout: 10s
@@ -17,7 +19,7 @@ scrape_configs:
     scheme: https
     metrics_path: /api/v1/system/metrics/
     params:
-      token: ["${METRICS_TOKEN}"]
+      token: ["__METRICS_TOKEN__"]
     # Внутри сети сертификат выписан на pismo.space, а обращаемся по имени
     # контейнера — сверять имя бессмысленно, канал всё равно локальный.
     tls_config:

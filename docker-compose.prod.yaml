@@ -321,14 +321,18 @@ services:
     mem_limit: 256m
     cpus: 0.5
     image: prom/prometheus:v3.15.0
+    # Prometheus НЕ разворачивает переменные в конфиге, а токен метрик в нём нужен:
+    # подставляем его сами и запускаем уже готовый файл. Секрет в командной строке
+    # процесса при этом НЕ оказывается (он только в окружении контейнера).
+    entrypoint: ["/bin/sh", "-c"]
     command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
-      # Храним месяц: за это время видно недельные привычки и медленные утечки.
-      - --storage.tsdb.retention.time=30d
-      # В конфиге сбора есть ${METRICS_TOKEN} — без этого флага он остался бы
-      # строкой и цель всегда была бы «недоступна».
-      - --config.expand-env=true
+      - |
+        set -e
+        sed "s|__METRICS_TOKEN__|$${METRICS_TOKEN}|" /etc/prometheus/prometheus.yml > /tmp/prometheus.yml
+        exec /bin/prometheus \
+          --config.file=/tmp/prometheus.yml \
+          --storage.tsdb.path=/prometheus \
+          --storage.tsdb.retention.time=30d
     environment:
       METRICS_TOKEN: ${METRICS_TOKEN:-}
     volumes:
