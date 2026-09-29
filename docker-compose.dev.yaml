@@ -20,6 +20,9 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required (see .env.example)}
       - REGISTRATION_ENABLED=${REGISTRATION_ENABLED:-true}
       - RABBITMQ_URL=amqp://${RABBITMQ_USER:?RABBITMQ_USER is required (see .env.example)}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (see .env.example)}@rabbitmq:5672/
+      # Метрики для Prometheus: секрет доступа к /api/v1/system/metrics/
+      # (пусто — эндпоинта как будто нет, 404).
+      - METRICS_TOKEN=${METRICS_TOKEN:-}
       # Шифрование данных «в покое» (тексты сообщений): ключ 32 байта (hex/base64).
       # Пусто — выключено (данные пишутся и читаются как раньше).
       - AT_REST_KEY=${AT_REST_KEY:-}

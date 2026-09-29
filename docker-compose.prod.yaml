@@ -44,6 +44,10 @@ x-web-slot: &web-slot
     TURN_SECRET: ${TURN_SECRET:-}
     TURN_REALM: ${TURN_REALM:-pismo.space}
     TURN_TTL_SECONDS: ${TURN_TTL_SECONDS:-3600}
+    # Метрики для Prometheus: секрет доступа к `GET /api/v1/system/metrics/`.
+    # Пусто — эндпоинта как будто нет (404). Снимает метрики Prometheus с того
+    # же сервера, наружу порт открывать не нужно (см. docs/monitoring.md).
+    METRICS_TOKEN: ${METRICS_TOKEN:-}
     WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
     WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
     WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-mailto:nyuskov@gmail.com}
