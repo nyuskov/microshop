@@ -9,7 +9,7 @@
         :aria-label="t('Свернуть')"
         @click="collapse()"
       >
-        <q-icon :name="icon('arrow_downward')" size="20px" />
+        <q-icon :name="icon('keyboard_arrow_down')" size="20px" />
       </button>
     </div>
     <ErrorNotice
@@ -116,9 +116,9 @@
           :aria-expanded="expanded"
           @click="toggleExpand()"
         >
-          <!-- Стрелки, а не шевроны: значок должен читаться как «поле растёт вверх»
-               на весь экран и «убирается вниз» в строку (владелец, 29.09.2026). -->
-          <q-icon :name="icon(expanded ? 'arrow_downward' : 'arrow_upward')" size="18px" />
+          <!-- Шеврон остаётся только у «Свернуть»: это привычная «галочка вниз»,
+               а стрелкой владелец просил показать именно РАЗВОРОТ поля (29.09.2026). -->
+          <q-icon :name="icon(expanded ? 'keyboard_arrow_down' : 'arrow_upward')" size="18px" />
         </button>
         <!-- Формат по выделению: в обычной строке кнопки «Aa» нет, поэтому
              знаки разметки предлагаются над полем, как только в нём что-то

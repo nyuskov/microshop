@@ -231,8 +231,10 @@ describe('развёрнутый ввод в композере', () => {
   })
 
   it('развёрнутый значок показывает «свернуть»', () => {
-    // Стрелки, а не шевроны: «поле растёт вверх» / «убирается вниз».
-    expect(composer).toMatch(/icon\(expanded\s*\?\s*'arrow_downward'\s*:\s*'arrow_upward'\)/)
+    // Стрелка — только у разворота поля вверх; у «Свернуть» остаётся привычный
+    // шеврон (владелец: «Свернуть — там шеврон должен быть»).
+    expect(composer).toMatch(/icon\(expanded\s*\?\s*'keyboard_arrow_down'\s*:\s*'arrow_upward'\)/)
+    expect(composer).toContain("icon('keyboard_arrow_down')")
     // Значок в поле в развёрнутом виде скрыт (сверху есть «свернуть»), а верхняя
     // строка прижата к правому краю.
     expect(flat).toContain('.input-area.expanded .field-toggle { display: none; }')
