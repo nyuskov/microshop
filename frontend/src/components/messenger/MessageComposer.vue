@@ -497,7 +497,13 @@ import type { ChatUser, Message } from '@/types'
 import { messageSnippet } from '@/utils/media'
 import { applyMention, mentionBeforeCaret } from '@/utils/mentions'
 import { applyMarkup, type MarkupKind } from '@/utils/markup'
-import { caretBox, menuAnchor, type CaretBox } from '@/utils/selectionMenu'
+import {
+  caretBox,
+  menuAnchor,
+  SYSTEM_SELECTION_BAR_HEIGHT,
+  type CaretBox,
+  type MenuSide
+} from '@/utils/selectionMenu'
 import { avatarStyle, avatarUrlOf, displayName, initials } from '@/utils/user'
 import {
   EMOJI_RECENT_KEY,
@@ -1651,6 +1657,20 @@ const selectionBox = ref<CaretBox | null>(null)
 const SELECTION_MENU_GAP = 8
 
 /**
+ * Как сдвинуть панель от точки привязки — по стороне, которую выбрал `menuAnchor`.
+ *
+ * `above-field` — выше поля ровно на запас под системную панель выделения: на
+ * телефоне она всплывает над текстом и иначе закрывала бы нашу (владелец, 29.09.2026).
+ */
+const selectionMenuTransform = (side: MenuSide, gap: number): string => {
+  if (side === 'below-selection') return `translate(-50%, ${gap}px)`
+  if (side === 'above-field') {
+    return `translate(-50%, calc(-100% - ${gap + SYSTEM_SELECTION_BAR_HEIGHT}px))`
+  }
+  return `translate(-50%, calc(-100% - ${gap}px))`
+}
+
+/**
  * Поставить панель рядом с выделением.
  *
  * Ширину и высоту панели берём у неё самой: подписи разной длины, и на узком
@@ -1671,22 +1691,24 @@ const placeSelectionMenu = () => {
   const anchor = menuAnchor(
     box,
     panel,
-    // Высота поля — из замера, а верх — от верха ОКНА: панель всплывает над
-    // лентой, и место над ней считаем до края экрана, а не до поля.
+    // Ширина и высота поля — из замера, а верх — от верха ОКНА: панель всплывает
+    // над лентой, и место над ней считаем до края экрана, а не до поля.
     // В развёрнутом вводе поле занимает панель целиком — там места над полем нет
     // вовсе, поэтому верхом считаем сам верх поля.
     {
       width: el.clientWidth,
-      top: expanded.value ? 0 : el.getBoundingClientRect().top
+      top: expanded.value ? 0 : el.getBoundingClientRect().top,
+      height: el.clientHeight
     },
-    SELECTION_MENU_GAP
+    SELECTION_MENU_GAP,
+    // Тач: над выделением висит системная панель («Копировать») — расчёт уводит
+    // нашу под строку выделения или выше поля (см. `menuAnchor`).
+    isTouchPrimary()
   )
   selectionMenuStyle.value = {
     left: `${anchor.left}px`,
     top: `${anchor.top}px`,
-    transform: anchor.above
-      ? `translate(-50%, calc(-100% - ${SELECTION_MENU_GAP}px))`
-      : `translate(-50%, ${SELECTION_MENU_GAP}px)`
+    transform: selectionMenuTransform(anchor.side, SELECTION_MENU_GAP)
   }
 }
 /**
