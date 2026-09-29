@@ -1,0 +1,16 @@
+# Источник данных Grafana: локальный Prometheus (соседний контейнер сети стека).
+#
+# Провизhioning: файл монтируется в `/etc/grafana/provisioning/datasources`,
+# поэтому после пересоздания контейнера источник и дашборды появляются сами —
+# настраивать руками в интерфейсе каждый раз не нужно.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      # Шаг сбора: подсказываем Grafana, что чаще 15 с данные не приходят.
+      timeInterval: 15s

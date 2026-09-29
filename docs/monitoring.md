@@ -107,17 +107,35 @@ curl -s -H "X-Metrics-Token: $METRICS_TOKEN" \
   https://pismo.space/api/v1/system/metrics/ | head -20
 ```
 
-Сбор — обычным Prometheus на том же сервере (наружу порт не открываем):
+Сбор и графики уже стоят в прод-стеке (сервисы `prometheus` и `grafana` в
+`docker-compose.prod.yaml`) — настраивать ничего не нужно, см. следующий раздел.
 
-```yaml
-scrape_configs:
-  - job_name: pismo
-    metrics_path: /api/v1/system/metrics/
-    params:
-      token: [ "<METRICS_TOKEN>" ]
-    static_configs:
-      - targets: ["127.0.0.1:8080"]   # nginx на хосте, снаружи ничего не нужно
-```
+## Графики: Prometheus + Grafana в стеке прода
+
+| Что | Где | Как открыть |
+| --- | --- | --- |
+| Grafana, дашборд «Pismo · обзор» | порт **3000**, только `127.0.0.1` сервера | `ssh -L 3000:127.0.0.1:3000 -i ~/.ssh/id_rsa1 user1@176.108.249.9` → http://localhost:3000 |
+| Prometheus (цели, ad-hoc запросы) | порт **9090**, тоже только `127.0.0.1` | тот же туннель с `-L 9090:127.0.0.1:9090` |
+
+- **Логин** в Grafana — `admin`, пароль лежит в прод `.env`
+  (`grep '^GRAFANA_ADMIN_PASSWORD=' ~/microshop/.env`). Наружу порты не открыты
+  намеренно: слушают только localhost, доступ — SSH-туннель с твоего компьютера.
+- **Что собирается**: `monitoring/prometheus/prometheus.yml` — цель одна,
+  `frontend:443` (nginx внутри сети). Поэтому переключение слота `web-blue` /
+  `web-green` при деплое цель не меняет, и вечно «мёртвых» целей в выдаче нет.
+- **Дашборд и источник данных** описаны в репозитории
+  (`monitoring/grafana/provisioning/`, `monitoring/grafana/dashboards/pismo.json`) и
+  подхватываются при старте: после пересоздания контейнера ничего не теряется.
+  Панели: запросы в секунду по классам кода, доля 5xx, медиана и p95 времени ответа,
+  топ маршрутов, сокеты и пул БД, «съеденное» время по маршрутам, доступность цели.
+- **Правка дашборда**: удобнее в интерфейсе (сохраняется в том `grafana_data`); чтобы
+  закрепить в репозитории — выгрузить JSON и заменить файл
+  `monitoring/grafana/dashboards/pismo.json`.
+- **Хранение метрик** — 30 дней (`--storage.tsdb.retention.time=30d`) в томе
+  `prometheus_data`, лимиты как у остальных сервисов (256 МБ Prometheus, 384 МБ Grafana).
+- Переменная `METRICS_TOKEN` передаётся и в контейнер Prometheus, а в его команде
+  стоит `--config.expand-env=true`: без этого `${METRICS_TOKEN}` в конфиге остался бы
+  строкой и цель всегда была бы «недоступна».
 
 Чего пока НЕТ (сознательно, первый шаг): глубины очереди Celery и задержки задач
 (нужен доступ к management API RabbitMQ), счётчиков отправленных push (они живут в

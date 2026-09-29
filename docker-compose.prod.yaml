@@ -308,6 +308,63 @@ services:
       - turn_certs:/turn-certs
     entrypoint: "/bin/sh -c 'publish_certs() { mkdir -p /turn-certs; cp -fL /etc/letsencrypt/live/pismo.space/fullchain.pem /etc/letsencrypt/live/pismo.space/privkey.pem /turn-certs/ 2>/dev/null || true; chown root:65534 /turn-certs /turn-certs/*.pem 2>/dev/null || true; chmod 0750 /turn-certs 2>/dev/null || true; chmod 0640 /turn-certs/*.pem 2>/dev/null || true; }; publish_certs; trap exit TERM; while :; do certbot renew; publish_certs; sleep 12h & wait $${!}; done'"
 
+  # Метрики и графики: Prometheus снимает `/api/v1/system/metrics/` через nginx
+  # (он проксирует /api/ на АКТИВНЫЙ слот web, поэтому переключение слота при
+  # деплое цель не меняет), Grafana рисует дашборды.
+  #
+  # Оба слушают ТОЛЬКО localhost сервера: наружу порты не открываем, смотреть —
+  # через SSH-туннель (см. docs/monitoring.md). Пароль Grafana — в .env
+  # (GRAFANA_ADMIN_PASSWORD), при первом запуске он ставится командой
+  # `grafana cli admin reset-admin-password`.
+  prometheus:
+    logging: *default-logging
+    mem_limit: 256m
+    cpus: 0.5
+    image: prom/prometheus:v3.15.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # Храним месяц: за это время видно недельные привычки и медленные утечки.
+      - --storage.tsdb.retention.time=30d
+      # В конфиге сбора есть ${METRICS_TOKEN} — без этого флага он остался бы
+      # строкой и цель всегда была бы «недоступна».
+      - --config.expand-env=true
+    environment:
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+    volumes:
+      - prometheus_data:/prometheus
+      - ./monitoring/prometheus:/etc/prometheus:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+    restart: unless-stopped
+    networks:
+      - server_network
+
+  grafana:
+    logging: *default-logging
+    mem_limit: 384m
+    cpus: 0.5
+    image: grafana/grafana:13.2.3
+    environment:
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Телеметрия наружу не нужна: у нас свои метрики и своё обещание про
+      # передачу данных за границу (см. docs/rkn-notification.md).
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      # Источник данных и дашборд — из репозитория: после пересоздания контейнера
+      # всё появляется само, руками в интерфейсе настраивать не нужно.
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+    networks:
+      - server_network
+
   # TURN-сервер для WebRTC-звонков за «симметричным» NAT (мобильные операторы).
   # Creds — временные (TURN REST API): общий секрет TURN_SECRET в .env, статического
   # логина/пароля больше нет (TURN_USERNAME/TURN_PASSWORD устарели, их можно убрать).
@@ -355,3 +412,7 @@ volumes:
   certbot_var:
   # Копия сертификатов для coturn (читаемая пользователем nobody) — см. certbot.
   turn_certs:
+  # Метрики Prometheus и состояние Grafana (дашборды правятся в интерфейсе,
+  # но восстанавливаются из monitoring/ при пересоздании).
+  prometheus_data:
+  grafana_data:

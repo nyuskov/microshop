@@ -1,0 +1,153 @@
+{
+  "uid": "pismo-overview",
+  "title": "Pismo · обзор",
+  "tags": ["pismo"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "1m",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Запросы в секунду",
+      "description": "Суммарный поток с разбивкой по классу ответа. Счётчики живут в памяти процесса, а слотов web два — переключение слота при деплое обнуляет счётчик, поэтому смотрим rate(), а не абсолютные значения.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "stacking": { "mode": "normal" }, "fillOpacity": 12, "lineWidth": 1 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (rate(pismo_http_requests_total[5m]))",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Доля ошибок 5xx",
+      "description": "Отношение ответов 5xx ко всем запросам за 5 минут. Больше 1 % — стоит смотреть логи web и очередь Celery.",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum(rate(pismo_http_requests_total{status=\"5xx\"}[5m])) / clamp_min(sum(rate(pismo_http_requests_total[5m])), 0.0001)",
+          "legendFormat": "5xx"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Доступность цели",
+      "description": "1 — Prometheus успешно снимает метрики через nginx. 0 — приложение не отвечает или токен метрик перестал подходить.",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "нет" }, "1": { "text": "есть" } } }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [{ "refId": "A", "expr": "up{job=\"pismo-app\"}", "legendFormat": "цель" }]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Время ответа API",
+      "description": "Медиана и 95-й перцентиль по гистограмме приложения (корзины 5 мс … 10 с).",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1000 * histogram_quantile(0.5, sum by (le) (rate(pismo_http_request_seconds_bucket[5m])))",
+          "legendFormat": "медиана"
+        },
+        {
+          "refId": "B",
+          "expr": "1000 * histogram_quantile(0.95, sum by (le) (rate(pismo_http_request_seconds_bucket[5m])))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Самое частое: маршруты",
+      "description": "Топ-8 маршрутов по частоте. Маршрут — ШАБЛОН (/api/v1/messages/{chat_id}/), поэтому сканеры не раздувают кардинальность.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 0 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(8, sum by (route) (rate(pismo_http_requests_total[5m])))",
+          "legendFormat": "{{route}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Соединения и пул БД",
+      "description": "Живые WebSocket-соединения (события и звонки) и занятость пула соединений с БД.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 0 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "pismo_ws_sockets", "legendFormat": "сокеты ({{kind}})" },
+        { "refId": "B", "expr": "pismo_ws_users", "legendFormat": "люди ({{kind}})" },
+        {
+          "refId": "C",
+          "expr": "pismo_db_pool_connections",
+          "legendFormat": "пул БД: {{state}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Медленные запросы (по маршрутам)",
+      "description": "Доля времени, которую «съедает» каждый маршрут: суммарное время ответа в секунду. Помогает найти дорогую ручку без чтения логов.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 0 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(8, sum by (route) (rate(pismo_http_request_seconds_sum[5m])))",
+          "legendFormat": "{{route}}"
+        }
+      ]
+    }
+  ]
+}

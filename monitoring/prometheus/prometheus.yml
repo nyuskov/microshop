@@ -1,0 +1,34 @@
+# Сбор метрик приложения (Prometheus).
+#
+# Файл монтируется в контейнер (`./monitoring/prometheus:/etc/prometheus:ro`),
+# правка применяется перезапуском сервиса — см. docs/monitoring.md.
+#
+# Скребём через nginx (`frontend`), а не слот web-blue/web-green напрямую: nginx
+# проксирует `/api/` на АКТИВНЫЙ слот, поэтому переключение слота при деплое цель
+# не меняет, а «мёртвых» целей в выдаче нет. Доступ закрыт токеном приложения
+# (`METRICS_TOKEN`) — поэтому в контейнер передаётся переменная и включён
+# `--config.expand-env=true`.
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+
+scrape_configs:
+  - job_name: pismo-app
+    scheme: https
+    metrics_path: /api/v1/system/metrics/
+    params:
+      token: ["${METRICS_TOKEN}"]
+    # Внутри сети сертификат выписан на pismo.space, а обращаемся по имени
+    # контейнера — сверять имя бессмысленно, канал всё равно локальный.
+    tls_config:
+      insecure_skip_verify: true
+    static_configs:
+      - targets: ["frontend:443"]
+        labels:
+          instance: pismo
+
+  # Prometheus сам себя тоже собирает: видно, не отстаёт ли сбор (scrape_duration,
+  # tsdb) — иначе «тишина» на графиках выглядит как затишье в приложении.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

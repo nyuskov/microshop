@@ -1,0 +1,15 @@
+# Провизhioning дашбордов: всё, что лежит в /var/lib/grafana/dashboards, Grafana
+# подхватывает сама (и обновляет раз в минуту, если файл изменился). Так дашборд
+# живёт в репозитории и не теряется при пересоздании контейнера.
+apiVersion: 1
+
+providers:
+  - name: pismo
+    orgId: 1
+    folder: Pismo
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 60
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
