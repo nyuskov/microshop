@@ -209,7 +209,24 @@ jobs:
             # Детерминированный деплой: сервер всегда становится точной копией origin/main.
             # (git pull падал на локальных правках docker-compose.prod.yaml / Dockerfile /
             #  nginx-prod/default.conf — reset --hard исключает такие сбои.)
-            git fetch origin
+            #
+            # Повтор для `git fetch`: доступ к GitHub с этого сервера флапает
+            # (проверено 29.09.2026 — 1 успешная попытка из 5 при ВЕРНОМ ключе:
+            # удачные отвечают «Hi nyuskov/microshop!», неудачные обрываются сразу
+            # после обмена ключами, и ssh печатает вводящее в заблуждение
+            # «Permission denied (publickey)»). Без повтора деплой падал на ровном
+            # месте. Если не прошло ни разу — выходим с ошибкой, а не откатываемся
+            # на устаревший origin/main.
+            fetched=0
+            for attempt in 1 2 3 4 5; do
+              if git fetch origin; then fetched=1; break; fi
+              echo "git fetch не прошёл (попытка $attempt) — повторяю через 5 с"
+              sleep 5
+            done
+            if [ "$fetched" -ne 1 ]; then
+              echo "GitHub недоступен с сервера — деплой отменён"
+              exit 1
+            fi
             git reset --hard origin/main
             # Сам деплой живёт в скрипте репозитория: он обновляет только
             # изменившиеся сервисы, следит за health и не пересоздаёт nginx при
