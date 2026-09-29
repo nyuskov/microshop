@@ -133,9 +133,13 @@ curl -s -H "X-Metrics-Token: $METRICS_TOKEN" \
   `monitoring/grafana/dashboards/pismo.json`.
 - **Хранение метрик** — 30 дней (`--storage.tsdb.retention.time=30d`) в томе
   `prometheus_data`, лимиты как у остальных сервисов (256 МБ Prometheus, 384 МБ Grafana).
-- Переменная `METRICS_TOKEN` передаётся и в контейнер Prometheus, а в его команде
-  стоит `--config.expand-env=true`: без этого `${METRICS_TOKEN}` в конфиге остался бы
-  строкой и цель всегда была бы «недоступна».
+- Переменная `METRICS_TOKEN` передаётся и в контейнер Prometheus, а сам контейнер
+  подставляет её в конфиг при старте: в `prometheus.yml` стоит плейсхолдер
+  `__METRICS_TOKEN__`, `entrypoint` делает `sed` в копию конфига (`/tmp/prometheus.yml`)
+  и запускает её. Так секрет не попадает в командную строку процесса (`ps`), а в
+  экспозиции метрик остаётся только `Authorization`.
+  ГРАБЛЯ: флага `--config.expand-env` у Prometheus НЕТ (он принадлежит
+  Alertmanager) — с ним контейнер падает в цикле перезапусков с «unknown long flag».
 
 Чего пока НЕТ (сознательно, первый шаг): глубины очереди Celery и задержки задач
 (нужен доступ к management API RabbitMQ), счётчиков отправленных push (они живут в

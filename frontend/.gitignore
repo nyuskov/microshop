@@ -17,6 +17,10 @@ coverage
 /cypress/videos/
 /cypress/screenshots/
 
+# Смоук-сценарии Playwright (frontend/e2e): следы прогона не коммитим.
+/e2e/test-results/
+/e2e/playwright-report/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

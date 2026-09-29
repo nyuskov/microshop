@@ -43,7 +43,7 @@ def _author_query(phone: str | None):
     return select(User).where(User.is_superuser.is_(True)).order_by(User.id)
 
 
-async def _post(*, channel_id: int, text: str, phone: str | None) -> int:
+async def publish_post(*, channel_id: int, text: str, phone: str | None) -> int:
     """Публикует текст в канал и возвращает id сообщения."""
     async with db_helper.session_factory() as session:
         chat = await session.get(Chat, channel_id)
@@ -106,7 +106,7 @@ def main() -> None:
     if not text:
         raise SystemExit("Пустой текст поста — публиковать нечего")
     message_id = asyncio.run(
-        _post(channel_id=args.channel_id, text=text, phone=args.phone)
+        publish_post(channel_id=args.channel_id, text=text, phone=args.phone)
     )
     print(f"Опубликовано: пост #{message_id} в канале id={args.channel_id}")
 

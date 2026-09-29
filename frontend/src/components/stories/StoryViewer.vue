@@ -298,6 +298,7 @@ import {
   flattenStories,
   formatStoryAge,
   isVideoStory,
+  storySwipeResult,
   nextStory,
   previousStory,
   quickReactions,
@@ -331,16 +332,13 @@ const { container: trapContainer } = useFocusTrap(() => currentId.value > 0)
 const progress = ref(0)
 /** Пауза по удержанию: как в мессенджерах — держишь палец, история стоит. */
 const paused = ref(false)
-/** Сдвиги при перетаскивании: вниз — закрыть, вбок — соседняя история. */
+/** Сдвиги при перетаскивании: вниз или вверх — выйти, вбок — соседняя история. */
 const dragY = ref(0)
 const dragX = ref(0)
 let gestureStartX = 0
 let gestureStartY = 0
 let gestureAxis: 'none' | 'x' | 'y' = 'none'
 
-/** Порог срабатывания жестов. */
-const SWIPE_CLOSE_DISTANCE = 90
-const SWIPE_STEP_DISTANCE = 55
 let timer: ReturnType<typeof setTimeout> | undefined
 let raf: number | undefined
 let startedAt = 0
@@ -481,20 +479,22 @@ const onPointerMove = (event: PointerEvent) => {
 }
 
 const onPointerUp = () => {
-  const dy = dragY.value
-  const dx = dragX.value
+  // Разбор жеста живёт в `utils/stories.ts` (`storySwipeResult`): вверх и вниз —
+  // выйти из истории, вбок — соседняя. Пороги же общие, поэтому просмотрщик и
+  // его тесты не разъезжаются.
+  const result = storySwipeResult(dragX.value, dragY.value)
   gestureStartX = 0
   gestureStartY = 0
   gestureAxis = 'none'
   dragY.value = 0
   dragX.value = 0
   resumeAfterHold()
-  if (dy > SWIPE_CLOSE_DISTANCE) {
+  if (result === 'close') {
     emit('close')
     return
   }
-  if (dx < -SWIPE_STEP_DISTANCE) next()
-  else if (dx > SWIPE_STEP_DISTANCE) previous()
+  if (result === 'next') next()
+  else if (result === 'previous') previous()
 }
 
 const onPointerCancel = () => {
@@ -800,6 +800,12 @@ watch(flat, (list) => {
   flex-direction: column;
   background: #05070a;
   color: #f2f5f8;
+  /* Возврат после НЕДОСТАТОЧНОГО жеста: палец отпустили раньше порога — история
+     плавно встаёт на место, а не прыгает (во время самого перетаскивания
+     переход выключен инлайновым `transition: none` из `viewerStyle`). */
+  transition:
+    transform 0.18s ease,
+    opacity 0.18s ease;
 }
 
 .viewer-head {

@@ -7,6 +7,15 @@ import globals from 'globals'
 export default [
   // Сгенерированный файл типов (src/types/generated.ts) не линтуем.
   { ignores: ['src/types/generated.ts'] },
+  // Смоук-сценарии Playwright (`e2e/`) не линтуем: они не входят ни в один
+  // tsconfig проекта, а `@playwright/test` намеренно не в зависимостях (иначе
+  // пакет тянулся бы в сборку образа и в CI). Запуск — вручную, см. e2e/README.md.
+  { ignores: ['e2e/**'] },
+  // Собранная статика и сертификаты: `eslint .` (это делает `pnpm lint`) лез в
+  // `dist/assets/*.js` — минифицированные бандлы на мегабайты, и линт висел
+  // минутами на 100% CPU. ГРАБЛЯ (29.09.2026): гейт проекта линтит только `src`
+  // (`make check-frontend`), а руками запущенный `eslint .` уходил в dist.
+  { ignores: ['dist/**', 'certs_from_backend/**'] },
   js.configs.recommended,
   ...vueTs(),
   vuePrettier,
