@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  androidBrowser,
   browserLabel,
   deviceReport,
   isEmbeddedBrowser,
@@ -57,10 +58,51 @@ describe('признаки встроенного браузера', () => {
     expect(browserLabel()).toBe('Встроенный браузер (не Chrome)')
 
     stubUa('Mozilla/5.0 (Linux; Android 13) Chrome/140.0')
-    expect(browserLabel()).toBe('Браузер на Android')
+    expect(browserLabel()).toBe('Chrome на Android')
 
     stubUa('Mozilla/5.0 (X11; Linux x86_64) Chrome/140.0')
     expect(browserLabel()).toBe('Обычный браузер')
+  })
+
+  it('различает браузеры Android: у них разные возможности', () => {
+    // Владелец: «на Redmi A3 не появляется как приложение установить» — у Xiaomi,
+    // в отличие от Chrome, пункта установки нет, и раздел должен это знать.
+    const ua = (s: string) => s
+    expect(
+      androidBrowser(
+        ua(
+          'Mozilla/5.0 (Linux; Android 14; Redmi A3) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36'
+        )
+      )
+    ).toBe('chrome')
+    expect(
+      androidBrowser(
+        ua(
+          'Mozilla/5.0 (Linux; U; Android 14; ru-ru; Redmi A3 Build/UP1A) AppleWebKit/537.36 Version/4.0 Chrome/119.0.6045.66 Mobile Safari/537.36 XiaoMi/MiuiBrowser/18.1.3'
+        )
+      )
+    ).toBe('miui')
+    expect(
+      androidBrowser(
+        ua('Mozilla/5.0 (Linux; Android 14) SamsungBrowser/27.0 Chrome/125.0 Mobile Safari/537.36')
+      )
+    ).toBe('samsung')
+    expect(
+      androidBrowser(
+        ua(
+          'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/126.0 YaBrowser/24.7 Mobile Safari/537.36'
+        )
+      )
+    ).toBe('yandex')
+    expect(
+      androidBrowser(ua('Mozilla/5.0 (Android 14; Mobile; rv:128.0) Gecko/128.0 Firefox/128.0'))
+    ).toBe('firefox')
+    expect(androidBrowser(ua('Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36'))).toBe('other')
+
+    stubUa(
+      'Mozilla/5.0 (Linux; U; Android 14; ru-ru; Redmi A3) AppleWebKit/537.36 Chrome/119.0 XiaoMi/MiuiBrowser/18.1.3'
+    )
+    expect(browserLabel()).toBe('Mi Browser на Android')
   })
 })
 
@@ -94,6 +136,27 @@ describe('отчёт по устройству', () => {
     expect(item?.state).toBe('partial')
     expect(item?.text).toContain('нельзя')
     expect(item?.hint).toContain('Chrome')
+  })
+
+  it('в Chrome на Android называет пункт меню, а не путь RuStore', () => {
+    stubUa(
+      'Mozilla/5.0 (Linux; Android 14; Redmi A3) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36'
+    )
+    const item = deviceReport().find((row) => row.key === 'install')
+    expect(item?.text).toContain('Chrome')
+    expect(item?.hint).toContain('Установить приложение')
+    expect(item?.hint).not.toContain('RuStore')
+  })
+
+  it('на Xiaomi (Mi Browser) не обещает пункт, которого нет', () => {
+    stubUa(
+      'Mozilla/5.0 (Linux; U; Android 14; ru-ru; Redmi A3) AppleWebKit/537.36 Chrome/119.0 XiaoMi/MiuiBrowser/18.1.3'
+    )
+    const item = deviceReport().find((row) => row.key === 'install')
+    expect(item?.text).toContain('может не показать')
+    expect(item?.hint).toContain('Chrome')
+    // На телефоне без Chrome (китайские прошивки) остаётся RuStore-приложение.
+    expect(item?.hint).toContain('RuStore')
   })
 
   it('в установленном приложении установка уже не требуется', () => {

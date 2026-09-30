@@ -43,12 +43,56 @@ export const isEmbeddedBrowser = (agent?: string): boolean => {
   return /Electron|Code\/|;\s*wv\)|WebView|FBAN|FBAV|Instagram/i.test(ua)
 }
 
+/**
+ * Какой именно браузер на Android.
+ *
+ * Нужен там, где браузеры РАЗЛИЧАЮТСЯ возможностями: установить приложение умеет
+ * только Chrome, а Xiaomi (Redmi/POCO), Samsung, Яндекс и Huawei ставят лишь
+ * ярлык либо ничего. Владелец: «на устройстве Redmi A3 не появляется как
+ * приложение установить» — без этой проверки раздел советовал бы искать пункт
+ * «Установить приложение» там, где его не бывает.
+ */
+export type AndroidBrowser =
+  'chrome' | 'samsung' | 'miui' | 'huawei' | 'yandex' | 'opera' | 'uc' | 'firefox' | 'other'
+
+export const androidBrowser = (agent?: string): AndroidBrowser => {
+  const ua = agent ?? (typeof navigator === 'undefined' ? '' : navigator.userAgent)
+  // Свой бренд проверяем РАНЬШЕ `Chrome/`: у Xiaomi, Samsung и Яндекса рядом стоит
+  // и Chrome — потому что внутри у них Chromium, но установка работает иначе.
+  if (/MiuiBrowser|XiaoMi/i.test(ua)) return 'miui'
+  if (/SamsungBrowser/i.test(ua)) return 'samsung'
+  if (/HuaweiBrowser|Huawei/i.test(ua)) return 'huawei'
+  if (/YaBrowser/i.test(ua)) return 'yandex'
+  if (/OPR\/|Opera Mini|Opera Mobi/i.test(ua)) return 'opera'
+  if (/UCBrowser|UCWEB/i.test(ua)) return 'uc'
+  if (/Firefox|FxiOS/i.test(ua)) return 'firefox'
+  if (/Chrome\/|CriOS/i.test(ua)) return 'chrome'
+  return 'other'
+}
+
+/** Названия браузеров — это ИМЕНА: переводятся они только транслитерацией. */
+const ANDROID_BROWSER_NAMES: Record<AndroidBrowser, string> = {
+  chrome: 'Chrome',
+  samsung: 'Samsung Internet',
+  miui: 'Mi Browser',
+  huawei: 'Huawei Browser',
+  yandex: 'Яндекс.Браузер',
+  opera: 'Opera',
+  uc: 'UC Browser',
+  firefox: 'Firefox',
+  other: ''
+}
+
 /** Короткая строка про среду — идёт шапкой отчёта. */
 export const browserLabel = (): string => {
   if (typeof navigator === 'undefined') return t('Неизвестное окружение')
   if (isEmbeddedBrowser()) return t('Встроенный браузер (не Chrome)')
-  if (/Android/i.test(navigator.userAgent)) return t('Браузер на Android')
-  if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) return t('Браузер на iPhone или iPad')
+  const ua = navigator.userAgent
+  if (/Android/i.test(ua)) {
+    const name = ANDROID_BROWSER_NAMES[androidBrowser(ua)]
+    return name ? t('{browser} на Android', { browser: name }) : t('Браузер на Android')
+  }
+  if (/iPhone|iPad|iPod/i.test(ua)) return t('Браузер на iPhone или iPad')
   return t('Обычный браузер')
 }
 
@@ -248,13 +292,38 @@ const install = (): DeviceSupportItem => {
       )
     }
   }
+  if (/Android/i.test(ua)) {
+    const browser = androidBrowser(ua)
+    if (browser === 'chrome') {
+      return {
+        key: 'install',
+        title: t('Установка приложения'),
+        state: 'partial',
+        text: t('Приложение ставится из Chrome'),
+        hint: t(
+          'Chrome: меню «⋮» → «Установить приложение». Если пункта нет — приложение уже установлено'
+        )
+      }
+    }
+    // Xiaomi (Redmi/POCO), Samsung, Huawei, Яндекс и прочие: установки приложения
+    // у них нет или она даёт только ярлык. Не обещаем пункт, которого не бывает.
+    return {
+      key: 'install',
+      title: t('Установка приложения'),
+      state: 'partial',
+      text: t('Этот браузер может не показать установку приложения'),
+      hint: t(
+        'Установка есть в Chrome: меню «⋮» → «Установить приложение». Если Chrome на телефоне нет — поставьте приложение Pismo из RuStore'
+      )
+    }
+  }
   return {
     key: 'install',
     title: t('Установка приложения'),
     state: 'partial',
     text: t('Приложение можно поставить на главный экран'),
     hint: t(
-      'Chrome: меню «⋮» → «Установить приложение». Если пункта нет — приложение уже установлено или ссылка открыта во встроенном браузере'
+      'Chrome: значок установки в адресной строке; Safari на компьютере: «Файл» → «Добавить в Dock». Если пункта нет — приложение уже установлено'
     )
   }
 }

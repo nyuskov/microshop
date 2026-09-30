@@ -339,8 +339,16 @@ export const EN: Record<string, string> = {
   'Safari: кнопка «Поделиться» → «На экран "Домой"». В Chrome и других браузерах на iPhone такой возможности нет — это правило iOS, а не приложения':
     'Safari: tap “Share” → “Add to Home Screen”. Chrome and other iPhone browsers have no such option — that is an iOS rule, not an app limitation',
   'Приложение можно поставить на главный экран': 'The app can be added to the home screen',
-  'Chrome: меню «⋮» → «Установить приложение». Если пункта нет — приложение уже установлено или ссылка открыта во встроенном браузере':
-    'Chrome: menu “⋮” → “Install app”. If the item is missing, the app is already installed or the link is open in an embedded browser',
+  '{browser} на Android': '{browser} on Android',
+  'Приложение ставится из Chrome': 'The app is installed from Chrome',
+  'Chrome: меню «⋮» → «Установить приложение». Если пункта нет — приложение уже установлено':
+    'Chrome: menu “⋮” → “Install app”. If the item is missing, the app is already installed',
+  'Этот браузер может не показать установку приложения':
+    'This browser may not offer app installation',
+  'Установка есть в Chrome: меню «⋮» → «Установить приложение». Если Chrome на телефоне нет — поставьте приложение Pismo из RuStore':
+    'Installation is available in Chrome: menu “⋮” → “Install app”. If the phone has no Chrome, install the Pismo app from RuStore',
+  'Chrome: значок установки в адресной строке; Safari на компьютере: «Файл» → «Добавить в Dock». Если пункта нет — приложение уже установлено':
+    'Chrome: the install icon in the address bar; Safari on a computer: “File” → “Add to Dock”. If the item is missing, the app is already installed',
   'По http браузер не выдаёт разрешение на уведомления':
     'Over http the browser does not grant notification permission',
   'Уведомления запрещены в настройках браузера':
