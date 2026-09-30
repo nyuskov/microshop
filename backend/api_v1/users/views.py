@@ -11,6 +11,7 @@ from api_v1.users import crud, deletion, schemas
 from core.avatar_store import remove_avatar_files, store_avatar
 from core.config import settings
 from core.i18n import t
+from core.image_convert import HEIC_EXTS, heic_to_jpeg, looks_like_heic
 from core.media_quota import media_usage
 from core.models import User, db_helper
 from core.presence import scrub_last_seen
@@ -157,7 +158,9 @@ async def upload_my_avatar(
         detail=t("Слишком много запросов. Попробуйте позже."),
     )
     ext = ext.lower().lstrip(".")
-    if ext not in ALLOWED_AVATAR_EXTS:
+    # HEIC (фото с телефона) принимаем наравне с JPEG: ниже он перекодируется в
+    # JPEG, иначе аватар с Samsung не поставить вовсе (браузеры HEIC не показывают).
+    if ext not in (ALLOWED_AVATAR_EXTS | HEIC_EXTS):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=t("Недопустимый формат файла"),
@@ -174,6 +177,12 @@ async def upload_my_avatar(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=t("Файл слишком большой (максимум {mb} МБ)", mb=MAX_AVATAR_MB),
         )
+
+    # Фото с телефона в HEIC перекодируем в JPEG: браузеры HEIC не показывают, а
+    # хранить и раздавать нечитаемую картинку незачем (`core/image_convert.py`).
+    if looks_like_heic(content):
+        content = heic_to_jpeg(content)
+        ext = "jpg"
 
     validate_image_upload(f"avatar.{ext}", content)
 

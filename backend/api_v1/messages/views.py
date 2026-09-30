@@ -23,6 +23,7 @@ from api_v1.messages.schemas import (
 from core.celery_app import get_task
 from core.config import settings
 from core.i18n import t
+from core.image_convert import heic_to_jpeg, jpeg_name, looks_like_heic
 from core.media_quota import enforce_media_quota, media_usage
 from core.media_store import VIEW_ONCE_PREFIX, store_media
 from core.models import MessageReminder, ScheduledMessage, User, db_helper
@@ -221,6 +222,13 @@ async def create_attachment_message(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=t("Пустой файл"),
         )
+    # HEIC (фото с Samsung/iPhone) перекодируем в JPEG ДО проверки размера: мерить
+    # надо то, что реально уедет в хранилище, а браузеры HEIC не показывают
+    # (`core/image_convert.py`). Зашифрованное вложение — шифротекст, его не трогаем.
+    if not encrypted and looks_like_heic(content):
+        content = heic_to_jpeg(content)
+        filename = jpeg_name(filename)
+        mime = "image/jpeg"
     if len(content) > MAX_UPLOAD_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,

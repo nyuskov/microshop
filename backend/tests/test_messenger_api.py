@@ -45,6 +45,17 @@ def _png(size: int = 64) -> bytes:
     return buffer.getvalue()
 
 
+def _heic(size: int = 320) -> bytes:
+    """Фото в HEIC — так снимает Samsung и iPhone по умолчанию."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("RGB", (size, size), (200, 30, 30)).save(buffer, format="HEIF")
+    return buffer.getvalue()
+
+
 class _ApiCtx:
     """Контекст API-теста: клиент, фабрика сессий и хелперы."""
 
@@ -4564,3 +4575,33 @@ async def test_metrics_endpoint_is_closed_without_token(
         "/api/v1/system/metrics/", params={"token": "metrics-secret"}
     )
     assert by_query.status_code == 200
+
+
+async def test_heic_photo_from_samsung_becomes_jpeg(api: _ApiCtx) -> None:
+    """Фото Samsung (HEIC) в чате: сервер перекодирует его в JPEG.
+
+    Владелец (30.09.2026): файлы в HEIC не принимались («Недопустимый тип файла»),
+    а браузеры их всё равно не показывают, кроме Safari, — поэтому такой снимок и
+    отправлять было незачем. Теперь он превращается в JPEG и в хранилище лежит
+    файл, который проигрывается и рисуется везде.
+    """
+    u1 = await api.make_user()
+    u2 = await api.make_user()
+    token = await api.token_for(u1)
+    chat = await api.private_chat(token, u2.id)
+
+    uploaded = await api.client.post(
+        "/api/v1/messages/attachment/",
+        params={
+            "chat_id": chat["id"],
+            "filename": "20260930_1201.heic",
+            "mime": "image/heic",
+        },
+        content=_heic(),
+        headers={**api.auth(token), "Content-Type": "application/octet-stream"},
+    )
+
+    assert uploaded.status_code == 200, uploaded.text
+    body = uploaded.json()
+    assert body["media_url"].endswith(".jpg")
+    assert body["mime_type"] == "image/jpeg"

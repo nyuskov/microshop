@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api_v1.auth.utils import get_current_user
 from core.config import settings
 from core.i18n import t
+from core.image_convert import heic_to_jpeg, jpeg_name, looks_like_heic
 from core.media_quota import enforce_media_quota
 from core.media_store import store_media
 from core.models import User, db_helper
@@ -87,6 +88,13 @@ async def create_story(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=t("Пустой файл"),
         )
+    # HEIC (фото с Samsung/iPhone) перекодируем в JPEG ДО проверки размера:
+    # хранить и мерить надо то, что реально ляжет в хранилище, а браузеры HEIC не
+    # показывают (`core/image_convert.py`).
+    if looks_like_heic(content):
+        content = heic_to_jpeg(content)
+        filename = jpeg_name(filename)
+        mime = "image/jpeg"
     if len(content) > MAX_UPLOAD_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,

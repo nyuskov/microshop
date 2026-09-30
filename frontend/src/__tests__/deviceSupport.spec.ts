@@ -65,15 +65,45 @@ describe('признаки встроенного браузера', () => {
 })
 
 describe('отчёт по устройству', () => {
-  it('всегда отвечает по шести возможностям и в одном порядке', () => {
+  it('всегда отвечает по семи возможностям и в одном порядке', () => {
     expect(deviceReport().map((item) => item.key)).toEqual([
       'calls',
       'push',
+      'install',
       'screen',
       'speech',
       'translate',
       'playback'
     ])
+  })
+
+  it('на iPhone называет единственный путь: Safari и «Поделиться»', () => {
+    // Владелец: «в некоторых мобильных нельзя установить как приложение» —
+    // на iPhone кнопки установки нет вовсе, есть только Safari и «На экран \"Домой\"».
+    stubUa('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Version/18.0 Safari/605.1.15')
+    const item = deviceReport().find((row) => row.key === 'install')
+    expect(item?.state).toBe('partial')
+    expect(item?.text).toContain('Safari')
+    expect(item?.hint).toContain('Поделиться')
+    expect(item?.hint).toContain('Домой')
+  })
+
+  it('во встроенном браузере предлагает открыть обычный', () => {
+    stubUa('Mozilla/5.0 (Linux; Android 13; wv) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile')
+    const item = deviceReport().find((row) => row.key === 'install')
+    expect(item?.state).toBe('partial')
+    expect(item?.text).toContain('нельзя')
+    expect(item?.hint).toContain('Chrome')
+  })
+
+  it('в установленном приложении установка уже не требуется', () => {
+    vi.stubGlobal('window', {
+      ...globalThis.window,
+      matchMedia: (query: string) => ({ matches: query.includes('standalone') })
+    })
+    const item = deviceReport().find((row) => row.key === 'install')
+    expect(item?.state).toBe('ok')
+    expect(item?.hint).toBe('')
   })
 
   it('модель на устройстве: расшифровка есть, но модель скачается один раз', () => {

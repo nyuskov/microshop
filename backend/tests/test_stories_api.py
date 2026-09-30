@@ -29,6 +29,17 @@ PNG_BYTES = bytes.fromhex(
 )
 
 
+def _heic_bytes(size: int = 320) -> bytes:
+    """Настоящий HEIC — так снимает Samsung и iPhone."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("RGB", (size, size), (200, 30, 30)).save(buffer, format="HEIF")
+    return buffer.getvalue()
+
+
 class _ApiCtx:
     """Контекст теста: клиент, фабрика сессий и хелперы."""
 
@@ -693,3 +704,25 @@ async def test_stories_rate_limits(api: _ApiCtx) -> None:
     )
     assert blocked_view.status_code == 429
     rate_limiter.reset()
+
+
+@pytest.mark.asyncio
+async def test_heic_story_from_samsung_is_stored_as_jpeg(api: _ApiCtx) -> None:
+    """История с фото Samsung (HEIC) публикуется и ложится на диск JPEG.
+
+    Владелец (30.09.2026): «истории в формате heic не выкладываются, это изображение
+    с Samsung». Раньше такой файл отбивался как «Недопустимый тип файла», а без
+    перекодирования был бы бесполезен: HEIC не показывает ни один браузер, кроме
+    Safari.
+    """
+    author = await api.make_user()
+    token = await api.token_for(author)
+
+    response = await api.publish(
+        token, name="IMG_20260930_1201.heic", mime="image/heic", content=_heic_bytes()
+    )
+
+    assert response.status_code == 201, response.text
+    story = response.json()
+    assert story["media_url"].endswith(".jpg")
+    assert story["mime_type"] == "image/jpeg"

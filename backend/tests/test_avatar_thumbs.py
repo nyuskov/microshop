@@ -376,3 +376,34 @@ async def test_group_avatar_has_thumb_and_is_removed(api: _ApiCtx) -> None:
     assert response.json()["avatar_url"] is None
     assert response.json()["avatar_thumb_url"] is None
     assert not original.exists() and not thumb.exists()
+
+
+@needs_db
+async def test_heic_avatar_from_samsung_is_converted(api: _ApiCtx) -> None:
+    """Аватар из галереи Samsung (HEIC) принимается и хранится как JPEG.
+
+    Тот же случай, что и с историями (30.09.2026): расширения `heic` не было в
+    белом списке, поэтому фото с телефона отбивалось как «Недопустимый формат
+    файла». Браузеры HEIC не показывают — значит, доводим до JPEG на сервере.
+    """
+    user = await api.make_user()
+    token = await api.token_for(user)
+
+    buffer = BytesIO()
+    Image.new("RGB", (600, 600), (200, 30, 30)).save(buffer, format="HEIF")
+
+    response = await api.client.put(
+        "/api/v1/users/me/avatar/",
+        params={"ext": "heic"},
+        content=buffer.getvalue(),
+        headers={**api.auth(token), "Content-Type": "application/octet-stream"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    original = avatar_store.AVATAR_DIR / body["avatar_url"].rsplit("/", 1)[-1]
+    assert original.is_file()
+    # На диске — JPEG: иначе аватар не покажет ни один браузер, кроме Safari.
+    with Image.open(original) as image:
+        assert image.format == "JPEG"
+    assert body["avatar_thumb_url"]

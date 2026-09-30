@@ -327,6 +327,20 @@ export const EN: Record<string, string> = {
     'Push notifications do not arrive in an embedded browser: open the app in regular Chrome and add it to the home screen',
   'Установите приложение на главный экран (Chrome: «Установить приложение») — тогда push будут приходить':
     'Install the app to the home screen (Chrome: “Install app”) — then push notifications will arrive',
+  'Установка приложения': 'Installing the app',
+  'Открыто как приложение, а не как вкладка браузера': 'Opened as an app, not as a browser tab',
+  'Во встроенном браузере приложение установить нельзя':
+    'The app cannot be installed from an embedded browser',
+  'Откройте адрес в Safari: кнопка «Поделиться» → «На экран "Домой"». В других браузерах на iPhone добавления на экран нет':
+    'Open the address in Safari: tap “Share” → “Add to Home Screen”. Other iPhone browsers have no add-to-home-screen option',
+  'Откройте адрес в обычном Chrome: меню «⋮» → «Установить приложение» (или «Добавить на главный экран»)':
+    'Open the address in regular Chrome: menu “⋮” → “Install app” (or “Add to Home screen”)',
+  'На iPhone установка есть только в Safari': 'On iPhone the app can only be installed from Safari',
+  'Safari: кнопка «Поделиться» → «На экран "Домой"». В Chrome и других браузерах на iPhone такой возможности нет — это правило iOS, а не приложения':
+    'Safari: tap “Share” → “Add to Home Screen”. Chrome and other iPhone browsers have no such option — that is an iOS rule, not an app limitation',
+  'Приложение можно поставить на главный экран': 'The app can be added to the home screen',
+  'Chrome: меню «⋮» → «Установить приложение». Если пункта нет — приложение уже установлено или ссылка открыта во встроенном браузере':
+    'Chrome: menu “⋮” → “Install app”. If the item is missing, the app is already installed or the link is open in an embedded browser',
   'По http браузер не выдаёт разрешение на уведомления':
     'Over http the browser does not grant notification permission',
   'Уведомления запрещены в настройках браузера':

@@ -24,6 +24,9 @@ celery = "^5.5.0"
 aio-pika = "^9.5.0"
 pywebpush = "^2.5.0"
 pillow = "^12.3.0"
+# HEIC/HEIF → JPEG: Samsung и iPhone снимают в HEIC, а браузеры его не показывают
+# (`core/image_convert.py`). Колесо musllinux есть — в alpine-образе не собирается.
+pillow-heif = "^1.8.0"
 
 
 [tool.poetry.group.dev.dependencies]

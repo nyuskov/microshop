@@ -22,7 +22,7 @@ export type DeviceSupportState = 'ok' | 'partial' | 'no'
 
 export interface DeviceSupportItem {
   /** Устойчивый ключ для тестов и разметки. */
-  key: 'calls' | 'screen' | 'push' | 'speech' | 'translate' | 'playback'
+  key: 'calls' | 'screen' | 'push' | 'install' | 'speech' | 'translate' | 'playback'
   title: string
   state: DeviceSupportState
   /** Что это значит на этом устройстве — одной фразой. */
@@ -55,6 +55,23 @@ export const browserLabel = (): string => {
 /** Есть ли защищённое соединение: без него нет ни звонков, ни push, ни микрофона. */
 export const secureContext = (): boolean =>
   typeof window === 'undefined' ? true : window.isSecureContext !== false
+
+/**
+ * Открыто как УСТАНОВЛЕННОЕ приложение, а не как вкладка браузера.
+ *
+ * Два способа: `display-mode: standalone` (Android, десктоп) и собственный флаг
+ * Safari (`navigator.standalone`) — в старых версиях iOS медиазапрос не отвечает.
+ */
+export const isInstalledApp = (): boolean => {
+  if (typeof window === 'undefined') return false
+  const standalone =
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(display-mode: standalone)').matches
+  const iosStandalone =
+    typeof navigator !== 'undefined' &&
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  return standalone || iosStandalone
+}
 
 /** Читает ли это устройство формат, в котором приложение записывает голосовые. */
 export const voicePlaybackSupport = (): boolean => {
@@ -185,6 +202,63 @@ const push = (): DeviceSupportItem => {
   }
 }
 
+/**
+ * Как поставить приложение на это устройство.
+ *
+ * Владелец: «в некоторых мобильных нельзя установить как приложение» — на iPhone
+ * кнопки установки нет вообще (только «Поделиться» → «На экран "Домой"», и только
+ * в Safari), а во встроенном браузере мессенджера установка недоступна. Раздел
+ * обязан называть путь, иначе подсказка бесполезна.
+ */
+const install = (): DeviceSupportItem => {
+  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent
+  const ios = /iPhone|iPad|iPod/i.test(ua)
+  if (isInstalledApp()) {
+    return {
+      key: 'install',
+      title: t('Установка приложения'),
+      state: 'ok',
+      text: t('Открыто как приложение, а не как вкладка браузера'),
+      hint: ''
+    }
+  }
+  if (isEmbeddedBrowser()) {
+    return {
+      key: 'install',
+      title: t('Установка приложения'),
+      state: 'partial',
+      text: t('Во встроенном браузере приложение установить нельзя'),
+      hint: ios
+        ? t(
+            'Откройте адрес в Safari: кнопка «Поделиться» → «На экран "Домой"». В других браузерах на iPhone добавления на экран нет'
+          )
+        : t(
+            'Откройте адрес в обычном Chrome: меню «⋮» → «Установить приложение» (или «Добавить на главный экран»)'
+          )
+    }
+  }
+  if (ios) {
+    return {
+      key: 'install',
+      title: t('Установка приложения'),
+      state: 'partial',
+      text: t('На iPhone установка есть только в Safari'),
+      hint: t(
+        'Safari: кнопка «Поделиться» → «На экран "Домой"». В Chrome и других браузерах на iPhone такой возможности нет — это правило iOS, а не приложения'
+      )
+    }
+  }
+  return {
+    key: 'install',
+    title: t('Установка приложения'),
+    state: 'partial',
+    text: t('Приложение можно поставить на главный экран'),
+    hint: t(
+      'Chrome: меню «⋮» → «Установить приложение». Если пункта нет — приложение уже установлено или ссылка открыта во встроенном браузере'
+    )
+  }
+}
+
 const speech = (): DeviceSupportItem => {
   const kind = speechEngineKind()
   if (kind === 'system') {
@@ -293,6 +367,7 @@ const playback = (): DeviceSupportItem => {
 export const deviceReport = (): DeviceSupportItem[] => [
   calls(),
   push(),
+  install(),
   screen(),
   speech(),
   translate(),

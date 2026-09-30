@@ -292,6 +292,9 @@ EN: dict[str, str] = {
     "Содержимое файла не похоже на изображение": (
         "The file content does not look like an image"
     ),
+    "Не удалось прочитать фото HEIC — выберите другое": (
+        "Could not read the HEIC photo — try another one"
+    ),
     "Стикер не может быть одноразовым": "A sticker cannot be view-once",
     "Стикер — это PNG, WebP или GIF": "A sticker is a PNG, WebP or GIF image",
     "Стикер — это картинка": "A sticker is an image",
