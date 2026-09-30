@@ -102,7 +102,7 @@ async def collect_used_media_names(session: AsyncSession) -> set[str]:
     user_avatars |= names_from_urls([row[1] for row in user_rows])
     used |= user_avatars
     # Иконки уведомлений лежат рядом с аватарами и выводятся из их имён
-    # (`user_5_ab_n192.png`), в БД их адреса нет: без этой строки очистка удаляла
+    # (`user_5_ab_n256r50.png`), в БД их адреса нет: без этой строки очистка удаляла
     # бы их как «сироты», и генерация повторялась бы при каждом push.
     used |= {push_icon_stored_name(name) for name in user_avatars}
 

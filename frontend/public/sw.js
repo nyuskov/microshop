@@ -18,7 +18,7 @@
  */
 
 const CACHE_PREFIX = 'pismo-v'
-const CACHE_VERSION = 31
+const CACHE_VERSION = 32
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION
 /**
  * Ритм вибрации уведомления о звонке (~1,9 с: три толчка с короткими паузами).
@@ -281,9 +281,12 @@ async function handlePush(event) {
   const title = payload.title || 'Pismo'
   const options = {
     body: payload.body || '',
-    // Крупная иконка — аватар отправителя (приходит путём), иначе иконка Pismo.
-    icon: absoluteUrl(payload.icon || '/icons/icon-192.png'),
-    badge: absoluteUrl(payload.badge || '/icons/badge-96.png'),
+    // Крупная иконка — аватар отправителя (приходит путём), иначе «плитка» с
+    // логотипом Pismo: он крупнее иконки приложения — в уведомлении виден.
+    icon: absoluteUrl(payload.icon || '/icons/push-logo-256.png'),
+    // Мелкий значок (строка состояния и шапка уведомления): мотив в файле
+    // крупный, иначе значок выглядит мельче, чем в других мессенджерах.
+    badge: absoluteUrl(payload.badge || '/icons/badge-128.png'),
     data,
     // `payload.tag` приходит от сервера для уведомлений об истории (у них нет
     // ни чата, ни звонка): одна история — один тег, уведомления не копятся.
@@ -581,8 +584,8 @@ self.addEventListener('notificationclick', (event) => {
                 body: result.frozen
                   ? 'Все устройства вышли, вход закрыт. Разморозить можно кодом из письма.'
                   : 'Все устройства вышли из аккаунта.',
-                icon: absoluteUrl('/icons/icon-192.png'),
-                badge: absoluteUrl('/icons/badge-96.png'),
+                icon: absoluteUrl('/icons/push-logo-256.png'),
+                badge: absoluteUrl('/icons/badge-128.png'),
                 tag: 'pismo-security'
               }
             )

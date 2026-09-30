@@ -5,9 +5,9 @@
 каждую строку, поэтому для списков отдаём отдельную миниатюру: она меньше
 оригинала в десятки раз, а на экране неотличима.
 
-Вторая копия — «иконка уведомления»: та же картинка чуть меньше и с прозрачными
-полями. Размер крупной картинки в push-уведомлении задаёт система, поэтому
-уменьшить аватар можно только полями (см. ``make_push_icon``).
+Вторая копия — «иконка уведомления»: та же картинка, обрезанная квадратом и
+уменьшенная до доли плитки уведомления. Размер крупной картинки задаёт система,
+поэтому подогнать аватар можно только полями (см. ``make_push_icon``).
 
 Pillow может не открыть файл (битый или необычный формат) — это не повод ломать
 загрузку: копий просто не будет, а клиент покажет оригинал (см.
@@ -22,7 +22,7 @@ from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from core.media_crypto import read_file, write_file
 
@@ -35,10 +35,15 @@ AVATAR_THUMB_SIZE = 128
 #: Качество JPEG для миниатюры: на глаз не отличить, вес в разы меньше.
 AVATAR_THUMB_QUALITY = 85
 #: Сторона иконки уведомления. Система показывает её крупной картинкой в
-#: уведомлении (Android — плитка ~64dp), поэтому 192px хватает с запасом на 3x.
-PUSH_ICON_SIZE = 192
+#: уведомлении (Android — плитка ~64dp), поэтому 256px хватает с запасом на 4x.
+#: Размер входит в имя файла (`…_n256r50.png`): поменяли — получили новое имя, а
+#: значит и свежую картинку вместо старой, закешированной устройством.
+PUSH_ICON_SIZE = 256
 #: Какую долю иконки занимает сам аватар; остальное — прозрачные поля.
-PUSH_ICON_INNER_RATIO = 0.7
+#: Долю владелец просил уменьшать трижды (0.7 → 0.6 → 0.5): в уведомлении аватар
+#: отправителя не должен занимать плитку, даже большую её часть. Доля входит в имя
+#: файла (см. ``push_icon_stored_name``) — иначе смена вида не дошла бы до устройств.
+PUSH_ICON_INNER_RATIO = 0.5
 
 
 def make_avatar_thumb(content: bytes) -> tuple[bytes, str] | None:
@@ -77,16 +82,21 @@ def thumb_stored_name(stored_name: str, extension: str) -> str:
 
 
 def make_push_icon(content: bytes) -> bytes | None:
-    """Делает «иконку уведомления»: аватар чуть меньше, с прозрачными полями.
+    """Делает «иконку уведомления»: крупный аватар в плитке уведомления.
 
-    Зачем поля: размер крупной картинки в уведомлении задаёт система, изменить
-    его со стороны приложения нельзя (в Web Push нет ни размера, ни «мелкого»
-    варианта картинки). Единственный способ показать аватар компактнее — оставить
-    вокруг него прозрачную рамку: на экране видно сам кружок, а не картинку во
-    всю плитку.
+    Размер крупной картинки в уведомлении задаёт система, изменить его со стороны
+    приложения нельзя (в Web Push нет ни размера, ни «мелкого» варианта картинки).
+    Поэтому готовим квадрат ``PUSH_ICON_SIZE`` и кладём аватар на часть плитки
+    (``PUSH_ICON_INNER_RATIO``): во всю плитку он выглядел слишком большим, а на
+    половине — так, как просил владелец. «Наш значок маленький» — это не про
+    аватар, а про логотип: его плитка отдельная (`/icons/push-logo-256.png`).
 
-    Возвращает PNG (прозрачность — суть приёма) или ``None``, если файл не
-    читается как изображение.
+    Неквадратный аватар обрезается по центру (``ImageOps.fit`` — «cover»), мелкий
+    растягивается до того же места: иначе по краям оставались бы полосы, и иконка
+    снова выглядела бы мелкой.
+
+    Возвращает PNG (прозрачность — суть приёма — и нужна исходникам с альфой) или
+    ``None``, если файл не читается как изображение.
     """
     try:
         with Image.open(BytesIO(content)) as source:
@@ -96,19 +106,27 @@ def make_push_icon(content: bytes) -> bytes | None:
         return None
 
     inner = max(1, round(PUSH_ICON_SIZE * PUSH_ICON_INNER_RATIO))
-    image.thumbnail((inner, inner))
-    canvas = Image.new("RGBA", (PUSH_ICON_SIZE, PUSH_ICON_SIZE), (0, 0, 0, 0))
-    canvas.paste(
-        image,
-        ((PUSH_ICON_SIZE - image.width) // 2, (PUSH_ICON_SIZE - image.height) // 2),
+    image = ImageOps.fit(
+        image, (inner, inner), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5)
     )
+    if inner == PUSH_ICON_SIZE:
+        canvas = image
+    else:
+        offset = (PUSH_ICON_SIZE - inner) // 2
+        canvas = Image.new("RGBA", (PUSH_ICON_SIZE, PUSH_ICON_SIZE), (0, 0, 0, 0))
+        canvas.paste(image, (offset, offset))
     buffer = BytesIO()
     canvas.save(buffer, "PNG", optimize=True)
     return buffer.getvalue()
 
 
 def push_icon_stored_name(stored_name: str) -> str:
-    """Имя иконки уведомления: `user_5_ab.png` → `user_5_ab_n192.png`.
+    """Имя иконки уведомления: `user_5_ab.png` → `user_5_ab_n256r50.png`.
+
+    В имени и сторона плитки (`n256`), и доля аватара (`r50` — половина плитки):
+    картинку отдаёт nginx с `max-age` в 30 дней, поэтому смена вида обязана менять
+    имя — иначе устройство показывало бы старую иконку до истечения срока (на это
+    уже наступали: доля менялась 0.7 → 0.6 → 0.5).
 
     Принимает и имя миниатюры (`user_5_ab_t128.jpg`): её суффикс снимаем, иначе
     от одного аватара получались бы разные имена иконки.
@@ -117,7 +135,8 @@ def push_icon_stored_name(stored_name: str) -> str:
     thumb_suffix = f"_t{AVATAR_THUMB_SIZE}"
     if stem.endswith(thumb_suffix):
         stem = stem[: -len(thumb_suffix)]
-    return f"{stem}_n{PUSH_ICON_SIZE}.png"
+    ratio = round(PUSH_ICON_INNER_RATIO * 100)
+    return f"{stem}_n{PUSH_ICON_SIZE}r{ratio}.png"
 
 
 def push_icon_url(*urls: str | None) -> str | None:

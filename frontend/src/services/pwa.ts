@@ -278,8 +278,10 @@ export async function showIncomingCallRing(opts: {
     const reg = await navigator.serviceWorker.ready
     const options = {
       body: opts.body,
-      icon: '/icons/icon-192.png',
-      badge: '/icons/badge-96.png',
+      // Крупная картинка — «плитка» с логотипом: она крупнее иконки приложения,
+      // а мелкий значок — badge с крупным мотивом (см. scripts/gen_pismo_icons.py).
+      icon: '/icons/push-logo-256.png',
+      badge: '/icons/badge-128.png',
       tag: 'call-' + opts.callId,
       requireInteraction: true,
       renotify: true,

@@ -134,8 +134,8 @@ async def test_collect_used_names_covers_all_rows(session) -> None:
         "preview_1.jpg",
     } <= used
     # Иконки уведомлений выводятся из имён аватаров и в БД не хранятся.
-    assert "u1_full_n192.png" in used
-    assert "chat_1_group_n192.png" in used
+    assert "u1_full_n256r50.png" in used
+    assert "chat_1_group_n256r50.png" in used
 
 
 def test_cleanup_task_and_script_share_one_collector() -> None:

@@ -43,10 +43,10 @@ def test_push_icon_falls_back_to_app_icon() -> None:
 
 
 def test_push_icon_prefers_smaller_notification_icon(tmp_path, monkeypatch) -> None:
-    """Есть иконка уведомления — берём её: аватар показывается компактнее.
+    """Есть иконка уведомления — берём её: аватар показывается крупно, но в плитке.
 
-    Размер крупной картинки в уведомлении задаёт система, поэтому «уменьшить»
-    можно только прозрачными полями вокруг аватара (см. `make_push_icon`).
+    Размер крупной картинки в уведомлении задаёт система, поэтому «подогнать»
+    аватар под плитку можно только полями вокруг него (см. `make_push_icon`).
     """
     monkeypatch.setattr(avatar_store, "AVATAR_DIR", tmp_path)
     image = Image.new("RGB", (64, 64), (200, 40, 40))
@@ -61,7 +61,7 @@ def test_push_icon_prefers_smaller_notification_icon(tmp_path, monkeypatch) -> N
         avatar_thumb_url="/media/avatars/user_7_ab12cd_t128.jpg",
     )
 
-    assert notifications._push_icon(user) == "/media/avatars/user_7_ab12cd_n192.png"
+    assert notifications._push_icon(user) == "/media/avatars/user_7_ab12cd_n256r50.png"
 
 
 def test_call_push_repeat_has_no_topic() -> None:

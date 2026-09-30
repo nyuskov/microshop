@@ -6,6 +6,13 @@
 Badge — монохромный белый силуэт плашки с хвостиком (Android сам рисует
 badge белым, поэтому клапан вырезан «в прозрачность»).
 
+Кроме иконок приложения скрипт делает две картинки для push-уведомлений:
+`badge-128.png` — мелкий значок (мотив крупнее, чем в иконке: система рисует его
+в 24dp, и поля делали значок мельче, чем у Telegram) и `push-logo-256.png` —
+логотип для большой картинки уведомления (включается, когда у отправителя нет
+аватара). Плитка логотипа занимает ровно столько же места, сколько аватар
+отправителя, — в ленте уведомлений они должны быть одного размера.
+
 Скрипт не требует зависимостей: PNG собирается вручную (zlib + фильтр 0),
 сглаживание — суперсэмплинг 4× и box-фильтр.
 
@@ -25,6 +32,30 @@ SUPERSAMPLE = 4
 BRAND_TOP = (123, 114, 255)
 BRAND_BOTTOM = (58, 50, 201)
 WHITE = (255, 255, 255, 255)
+
+# --------------------------- Картинки для push ---------------------------
+
+#: Сторона badge (мелкий значок уведомления): система рисует его в 24dp, 128px
+#: — с запасом на дисплеи 5x. Размер стоит в имени файла: поменяли картинку —
+#: получили новый адрес, а значит и свежий значок вместо закешированного.
+BADGE_SIZE = 128
+#: Насколько крупнее мотив badge (в иконке приложения — 1.0). Система рисует
+#: значок в 24dp, и поля «съедали» размер: на 1.0 силуэт занимал 61 % плитки и в
+#: шторке выглядел мельче, чем у Telegram. 1.5 — 90 % плитки; больше нельзя:
+#: мотив шире, чем выше, поэтому на 1.6 хвостик «плашки» упирается в край.
+BADGE_CONTENT_SCALE = 1.5
+#: Мотив «логотипа для уведомления» ВНУТРИ его плитки. В плитке уведомления
+#: логотип должен быть крупным (как знак приложения в Telegram), а в иконке
+#: приложения те же пропорции смотрелись бы тесно — там своя, «спокойная» доля 1.0.
+NOTIFICATION_LOGO_SCALE = 1.35
+#: Какую долю плитки уведомления занимает САМА плитка логотипа. Держим её равной
+#: доле аватара отправителя (`PUSH_ICON_INNER_RATIO` в
+#: backend/core/avatar_store.py): в одной ленте уведомлений логотип и аватар
+#: должны быть одного размера, иначе один выпирает из ряда.
+NOTIFICATION_LOGO_INNER_RATIO = 0.5
+#: Сдвиг мотива вверх — в долях полувысоты плашки. Хвостик тянет рисунок вниз,
+#: и без сдвига крупный мотив прижимался бы к нижнему краю плитки.
+NOTIFICATION_LOGO_CENTER_SHIFT = 0.21
 
 
 # --------------------------- PNG (RGBA8) ---------------------------
@@ -66,25 +97,34 @@ class Canvas:
         self.stride = size * 4
         self.buf = bytearray(size * self.stride)  # прозрачный по умолчанию
 
-    def _put(
-        self, x: int, y: int, r: int, g: int, b: int, a: int = 255
-    ) -> None:
+    def _put(self, x: int, y: int, r: int, g: int, b: int, a: int = 255) -> None:
         offset = y * self.stride + x * 4
         self.buf[offset] = r
         self.buf[offset + 1] = g
         self.buf[offset + 2] = b
         self.buf[offset + 3] = a
 
-    def gradient(self, top=BRAND_TOP, bottom=BRAND_BOTTOM) -> None:
-        """Вертикальный градиент во всю иконку (непрозрачно)."""
-        size = self.size
-        for y in range(size):
-            t = y / (size - 1) if size > 1 else 0.0
-            color = tuple(
-                round(top[i] + (bottom[i] - top[i]) * t) for i in range(3)
-            )
-            row = bytes((color[0], color[1], color[2], 255)) * size
-            self.buf[y * self.stride : (y + 1) * self.stride] = row
+    def gradient(self, top=BRAND_TOP, bottom=BRAND_BOTTOM, box=None) -> None:
+        """Вертикальный градиент: во всю иконку или в её часть (``box``).
+
+        ``box`` — (x, y, сторона) квадрата внутри холста: у логотипа для уведомления
+        плитка занимает лишь часть холста, но градиент в ней должен выглядеть так же,
+        как в иконке приложения, — поэтому его считаем по высоте САМОЙ плитки.
+        """
+        x0, y0, side = box if box is not None else (0.0, 0.0, float(self.size))
+        x_start = max(0, int(x0 + 0.5))
+        x_end = min(self.size - 1, int(x0 + side - 0.5))
+        if x_end < x_start:
+            return
+        width = x_end - x_start + 1
+        y_start = max(0, int(y0 + 0.5))
+        y_end = min(self.size - 1, int(y0 + side - 0.5))
+        for y in range(y_start, y_end + 1):
+            t = (y - y0) / (side - 1) if side > 1 else 0.0
+            color = tuple(round(top[i] + (bottom[i] - top[i]) * t) for i in range(3))
+            row = bytes((color[0], color[1], color[2], 255)) * width
+            offset = y * self.stride + x_start * 4
+            self.buf[offset : offset + len(row)] = row
 
     def _span(self, y: int, x_start: float, x_end: float, color) -> None:
         """Закрашивает горизонтальный отрезок строки (color — функция или кортеж)."""
@@ -188,13 +228,24 @@ class Canvas:
 # --------------------------- Мотив иконки ---------------------------
 
 
-def _geometry(size: int, content_scale: float) -> dict:
-    """Геометрия «конверт + пузырь» для холста заданного размера."""
+def _geometry(
+    size: int, content_scale: float, center_shift: float = 0.0, origin=(0.0, 0.0)
+) -> dict:
+    """Геометрия «конверт + пузырь» для холста заданного размера.
+
+    ``center_shift`` — сдвиг мотива вверх в долях полувысоты плашки: нужен там,
+    где рисуется только мотив (плашка + хвостик без фона), чтобы крупный рисунок
+    не оказался прижатым к низу плитки.
+
+    ``origin`` — куда сместить мотив, если он рисуется не во весь холст, а в его
+    часть (логотип для уведомления занимает половину плитки).
+    """
     s = float(size)
     c = content_scale
     half_w = s * 0.30 * c
     half_h = s * 0.23 * c
-    cx, cy = s / 2, s * 0.5
+    ox, oy = origin
+    cx, cy = ox + s / 2, oy + s * 0.5 - half_h * center_shift
     x0, x1 = cx - half_w, cx + half_w
     y0, y1 = cy - half_h, cy + half_h
     return {
@@ -215,27 +266,77 @@ def _geometry(size: int, content_scale: float) -> dict:
     }
 
 
-def draw_icon(size: int, content_scale: float) -> bytes:
+def _flap_painter(gradient_top: float, gradient_height: float):
+    """Цвет «клапана»: цвет фона в этой строке (клапан «вырезан» по фону).
+
+    Считаем по градиенту ТОЙ плитки, внутри которой рисуется мотив: у иконки это
+    весь холст, у логотипа для уведомления — только его плитка.
+    """
+
+    def color(y: int) -> tuple:
+        t = (y - gradient_top) / (gradient_height - 1) if gradient_height > 1 else 0.0
+        t = 0.0 if t < 0 else (1.0 if t > 1 else t)
+        return tuple(
+            round(BRAND_TOP[i] + (BRAND_BOTTOM[i] - BRAND_TOP[i]) * t) for i in range(3)
+        )
+
+    return color
+
+
+def _draw_motif(canvas: Canvas, geo: dict, flap_color=None) -> None:
+    """Рисует мотив: белая «плашка» с хвостиком и «клапан» конверта.
+
+    ``flap_color`` — функция цвета клапана (цвет фона в строке); при ``None``
+    клапан вырезается в прозрачность — так устроен монохромный значок.
+    """
+    canvas.rounded_rect(geo["box"], geo["radius"], WHITE)
+    canvas.triangle(geo["tail"], WHITE)
+    left, apex, right = geo["flap"]
+    width = geo["flap_width"]
+    if flap_color is None:
+        canvas.segment(left, apex, width, WHITE, erase=True)
+        canvas.segment(apex, right, width, WHITE, erase=True)
+        return
+    canvas.segment(left, apex, width, flap_color)
+    canvas.segment(apex, right, width, flap_color)
+
+
+def draw_icon(size: int, content_scale: float, center_shift: float = 0.0) -> bytes:
     """Цветная иконка: градиент + белая «плашка» с хвостиком и клапаном."""
     supersampled = size * SUPERSAMPLE
     canvas = Canvas(supersampled)
     canvas.gradient()
 
-    geo = _geometry(supersampled, content_scale)
+    geo = _geometry(supersampled, content_scale, center_shift)
+    _draw_motif(canvas, geo, _flap_painter(0.0, float(supersampled)))
 
-    def flap_color(y: int) -> tuple:
-        t = y / (supersampled - 1)
-        return tuple(
-            round(BRAND_TOP[i] + (BRAND_BOTTOM[i] - BRAND_TOP[i]) * t)
-            for i in range(3)
-        )
+    out_size, pixels = canvas.downsample(SUPERSAMPLE)
+    return png_bytes(out_size, out_size, pixels)
 
-    canvas.rounded_rect(geo["box"], geo["radius"], WHITE)
-    canvas.triangle(geo["tail"], WHITE)
-    # Клапан конверта — «вырезан» по фону (цвет градиента в этой строке).
-    left, apex, right = geo["flap"]
-    canvas.segment(left, apex, geo["flap_width"], flap_color)
-    canvas.segment(apex, right, geo["flap_width"], flap_color)
+
+def draw_notification_logo(size: int) -> bytes:
+    """Логотип для большой картинки уведомления — плиткой размером как аватар.
+
+    Аватар отправителя занимает половину плитки уведомления и окружён
+    прозрачностью (см. `make_push_icon` в backend/core/avatar_store.py). Логотип
+    должен быть ТАКОГО ЖЕ размера: раньше сюда шла иконка приложения во всю плитку,
+    и в ленте уведомлений логотип выпирал среди аватаров. Поэтому плитка логотипа
+    (градиент с крупной плашкой) рисуется в ``NOTIFICATION_LOGO_INNER_RATIO``
+    холста, а вокруг — прозрачность, как у иконки аватара.
+    """
+    supersampled = size * SUPERSAMPLE
+    canvas = Canvas(supersampled)
+    plate = round(supersampled * NOTIFICATION_LOGO_INNER_RATIO)
+    origin = (supersampled - plate) / 2.0
+    canvas.gradient(box=(origin, origin, float(plate)))
+
+    geo = _geometry(
+        plate,
+        NOTIFICATION_LOGO_SCALE,
+        NOTIFICATION_LOGO_CENTER_SHIFT,
+        (origin, origin),
+    )
+    _draw_motif(canvas, geo, _flap_painter(origin, float(plate)))
 
     out_size, pixels = canvas.downsample(SUPERSAMPLE)
     return png_bytes(out_size, out_size, pixels)
@@ -245,12 +346,8 @@ def draw_badge(size: int) -> bytes:
     """Badge: белый силуэт плашки с хвостиком, клапан — «прозрачный»."""
     supersampled = size * SUPERSAMPLE
     canvas = Canvas(supersampled)
-    geo = _geometry(supersampled, 1.0)
-    canvas.rounded_rect(geo["box"], geo["radius"], WHITE)
-    canvas.triangle(geo["tail"], WHITE)
-    left, apex, right = geo["flap"]
-    canvas.segment(left, apex, geo["flap_width"], WHITE, erase=True)
-    canvas.segment(apex, right, geo["flap_width"], WHITE, erase=True)
+    geo = _geometry(supersampled, BADGE_CONTENT_SCALE, NOTIFICATION_LOGO_CENTER_SHIFT)
+    _draw_motif(canvas, geo)
 
     out_size, pixels = canvas.downsample(SUPERSAMPLE)
     return png_bytes(out_size, out_size, pixels)
@@ -281,7 +378,12 @@ def main() -> None:
         "apple-touch-icon-180.png": draw_icon(180, 1.0),
         # maskable: контент в «безопасной зоне» (Android обрезает края).
         "icon-maskable-512.png": draw_icon(512, 0.78),
-        "badge-96.png": draw_badge(96),
+        # Мелкий значок уведомления: мотив крупнее — система рисует его в 24dp.
+        f"badge-{BADGE_SIZE}.png": draw_badge(BADGE_SIZE),
+        # Плитка с логотипом для большой картинки уведомления (когда у отправителя
+        # нет аватара): размер плитки — как у аватара, своё имя файла — заодно
+        # сброс кеша у устройств.
+        "push-logo-256.png": draw_notification_logo(256),
     }
     for name, data in files.items():
         with open(os.path.join(OUT, name), "wb") as handle:

@@ -24,6 +24,7 @@ from PIL import Image
 from core import avatar_store
 from core.avatar_store import (
     AVATAR_THUMB_SIZE,
+    PUSH_ICON_INNER_RATIO,
     PUSH_ICON_SIZE,
     make_avatar_thumb,
     make_push_icon,
@@ -120,7 +121,7 @@ def test_remove_avatar_files_ignores_foreign_paths(tmp_path, monkeypatch) -> Non
     assert (tmp_path.parent / "other").exists() is False
 
 
-# --- Иконка уведомления (уменьшенный аватар с прозрачными полями) ---------
+# --- Иконка уведомления (аватар почти во всю плитку) ----------------------
 
 
 def _png_bytes(size: int = 64, color: tuple[int, int, int] = (10, 200, 90)) -> bytes:
@@ -130,27 +131,47 @@ def _png_bytes(size: int = 64, color: tuple[int, int, int] = (10, 200, 90)) -> b
     return buffer.getvalue()
 
 
-def test_push_icon_smaller_with_transparent_margins() -> None:
-    """Аватар уменьшен и окружён прозрачными полями — иначе он крупный в пуше."""
+def _inner_box() -> tuple[int, int, int, int]:
+    """Место аватара внутри иконки — считается из `PUSH_ICON_INNER_RATIO`."""
+    inner = round(PUSH_ICON_SIZE * PUSH_ICON_INNER_RATIO)
+    offset = (PUSH_ICON_SIZE - inner) // 2
+    return (offset, offset, offset + inner, offset + inner)
+
+
+def test_push_icon_bigger_than_before_but_not_edge_to_edge() -> None:
+    """Аватар крупный (заметно больше прежних 70 %), но плитку не распирает."""
     icon = make_push_icon(_jpeg_bytes())
     assert icon is not None
     with Image.open(BytesIO(icon)) as image:
         assert image.mode == "RGBA"
         assert image.size == (PUSH_ICON_SIZE, PUSH_ICON_SIZE)
-        # Угол пустой (поле), а середина — сам аватар.
+        # Угол — поле, весь аватар лежит в рамке `_inner_box()`.
         assert image.getpixel((0, 0))[3] == 0
-        center = PUSH_ICON_SIZE // 2
-        assert image.getpixel((center, center))[3] > 0
+        assert image.getbbox() == _inner_box()
+    # Аватар меньше прежних 70 % плитки (владелец просил уменьшать дважды), но
+    # заметный: на пятой части плитки его уже не разглядеть.
+    assert 0.4 <= PUSH_ICON_INNER_RATIO < 0.7
 
 
-def test_push_icon_does_not_upscale_small_avatar() -> None:
-    """Мелкий аватар не растягиваем: увеличение дало бы мыло."""
+def test_push_icon_upscales_small_avatar_to_the_same_box() -> None:
+    """Мелкий аватар растягиваем до того же места: иначе он снова мелкий."""
     icon = make_push_icon(_png_bytes(64))
     assert icon is not None
     with Image.open(BytesIO(icon)) as image:
-        box = image.getbbox()
-        assert box is not None
-        assert (box[2] - box[0], box[3] - box[1]) == (64, 64)
+        assert image.getbbox() == _inner_box()
+
+
+def test_push_icon_crops_wide_avatar_to_square() -> None:
+    """Широкий аватар обрезаем по центру: прозрачных полос по краям быть не должно."""
+    with Image.new("RGB", (400, 200), (10, 200, 90)) as wide:
+        buffer = BytesIO()
+        wide.save(buffer, "PNG")
+
+    icon = make_push_icon(buffer.getvalue())
+
+    assert icon is not None
+    with Image.open(BytesIO(icon)) as image:
+        assert image.getbbox() == _inner_box()
 
 
 def test_push_icon_rejects_non_image() -> None:
@@ -158,9 +179,9 @@ def test_push_icon_rejects_non_image() -> None:
 
 
 def test_push_icon_stored_name_ignores_thumb_suffix() -> None:
-    assert push_icon_stored_name("user_5_ab12.png") == "user_5_ab12_n192.png"
+    assert push_icon_stored_name("user_5_ab12.png") == "user_5_ab12_n256r50.png"
     # Имя миниатюры даёт ту же иконку: иначе от одного аватара было бы две.
-    assert push_icon_stored_name("user_5_ab12_t128.jpg") == "user_5_ab12_n192.png"
+    assert push_icon_stored_name("user_5_ab12_t128.jpg") == "user_5_ab12_n256r50.png"
 
 
 def test_push_icon_url_generates_for_existing_avatar(tmp_path, monkeypatch) -> None:
@@ -170,8 +191,8 @@ def test_push_icon_url_generates_for_existing_avatar(tmp_path, monkeypatch) -> N
 
     url = push_icon_url("/media/avatars/user_9_ff.jpg")
 
-    assert url == "/media/avatars/user_9_ff_n192.png"
-    assert (tmp_path / "user_9_ff_n192.png").is_file()
+    assert url == "/media/avatars/user_9_ff_n256r50.png"
+    assert (tmp_path / "user_9_ff_n256r50.png").is_file()
 
 
 def test_push_icon_url_generates_from_thumb_when_original_is_gone(
@@ -184,7 +205,7 @@ def test_push_icon_url_generates_from_thumb_when_original_is_gone(
         "/media/avatars/user_9_ff.jpg", "/media/avatars/user_9_ff_t128.jpg"
     )
 
-    assert url == "/media/avatars/user_9_ff_n192.png"
+    assert url == "/media/avatars/user_9_ff_n256r50.png"
 
 
 def test_push_icon_url_none_without_files(tmp_path, monkeypatch) -> None:
@@ -205,11 +226,11 @@ def test_store_avatar_writes_push_icon(tmp_path, monkeypatch) -> None:
 def test_remove_avatar_files_removes_push_icon(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(avatar_store, "AVATAR_DIR", tmp_path)
     (tmp_path / "user_1_x.jpg").write_bytes(b"x")
-    (tmp_path / "user_1_x_n192.png").write_bytes(b"x")
+    (tmp_path / "user_1_x_n256r50.png").write_bytes(b"x")
 
     remove_avatar_files("/media/avatars/user_1_x.jpg")
 
-    assert not (tmp_path / "user_1_x_n192.png").exists()
+    assert not (tmp_path / "user_1_x_n256r50.png").exists()
 
 
 # --- API: загрузка и удаление -------------------------------------------
