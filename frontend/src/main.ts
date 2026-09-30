@@ -40,6 +40,7 @@ import './assets/a11y.css'
 // Import the new theme store
 import { useThemeStore } from './stores/theme'
 import { installAvatarFallback } from './utils/avatarFallback'
+import { watchInstallPrompt } from './services/installPrompt'
 import { migrateLegacyStorage } from './utils/storage'
 import { reportFatalError } from './utils/fatalError'
 
@@ -59,6 +60,11 @@ window.addEventListener('error', (event) => {
 // Битые миниатюры аватаров (файла нет, а ссылка в БД осталась) подменяем на
 // оригинал — иначе человек видит пустое место вместо аватара.
 installAvatarFallback()
+
+// Установку приложения Chrome предлагает событием `beforeinstallprompt`, и оно
+// приходит ОДИН раз за загрузку страницы. Слушателя вешаем здесь, а не в разделе
+// «Устройство» (он ленивый и загрузился бы позже события) — см. installPrompt.ts.
+watchInstallPrompt()
 
 app.use(createPinia())
 app.use(router)

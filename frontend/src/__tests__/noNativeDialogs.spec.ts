@@ -41,12 +41,23 @@ function codeLines(source: string): string[] {
 }
 
 describe('штатные окна браузера', () => {
+  /**
+   * Штатные окна — это функции на `window`. Вызов МЕТОДА с таким именем у своего
+   * объекта окном не является: у события установки приложения есть свой
+   * `event.prompt()` (`services/installPrompt.ts`), и он рисует системное окно
+   * установки, а не `window.prompt`. Поэтому свою форму ищем только там, где
+   * перед именем нет точки, и отдельно — явные `window.alert/confirm/prompt`.
+   */
+  const CALL = '(alert|confirm|prompt)\\s*\\('
+  const BARE_CALL = new RegExp(`(?<![.\\w$])${CALL}`)
+  const WINDOW_CALL = new RegExp(`\\b(window|globalThis|self)\\s*\\.\\s*${CALL}`)
+
   it('нигде не вызываются alert/confirm/prompt', () => {
     const offenders: string[] = []
     for (const file of sourceFiles(SRC)) {
       if (SKIP_FILES.has(file)) continue
       for (const line of codeLines(readFileSync(file, 'utf8'))) {
-        if (/\b(window\.)?(alert|confirm|prompt)\s*\(/.test(line)) {
+        if (BARE_CALL.test(line) || WINDOW_CALL.test(line)) {
           offenders.push(`${path.relative(SRC, file)}: ${line.trim()}`)
         }
       }

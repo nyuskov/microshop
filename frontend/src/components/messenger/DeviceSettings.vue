@@ -33,6 +33,23 @@
         )
       }}
     </p>
+
+    <!-- Кнопка установки живёт отдельно от отчёта: её видно, только пока браузер сам
+         сообщает о готовности поставить приложение (`services/installPrompt.ts`).
+         В остальных случаях путь называет пункт «Установка приложения» выше. -->
+    <div v-if="canInstall" class="device-install">
+      <p class="device-install-text">
+        {{ t('Браузер готов поставить приложение — нажмите кнопку.') }}
+      </p>
+      <q-btn
+        unelevated
+        no-caps
+        color="primary"
+        :label="t('Установить приложение')"
+        :loading="installing"
+        @click="installApp"
+      />
+    </div>
   </div>
 </template>
 
@@ -47,10 +64,11 @@
  * Проверки дешёвые и без сети (`utils/browserSupport.ts`): состояние моделей
  * намеренно не выясняем — скачивание требует нажатия, а не фоновой пробы.
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 import { icon } from '@/utils/icons'
 import { locale, t } from '@/i18n'
+import { canInstall, promptInstall } from '@/services/installPrompt'
 import {
   browserLabel,
   deviceReport,
@@ -83,6 +101,16 @@ const stateLabel = (state: DeviceSupportState): string => {
   if (state === 'partial') return t('с оговоркой')
   return t('недоступно')
 }
+/** Установка по кнопке: системное окно показывает браузер, мы только зовём его. */
+const installing = ref(false)
+const installApp = async () => {
+  installing.value = true
+  try {
+    await promptInstall()
+  } finally {
+    installing.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -103,6 +131,19 @@ const stateLabel = (state: DeviceSupportState): string => {
 
 .device-note {
   font-size: var(--ms-fs-xs);
+}
+
+.device-install {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.device-install-text {
+  margin: 0;
+  font-size: var(--ms-fs-sm);
+  color: var(--ms-muted, #71808d);
 }
 
 .device-where strong {

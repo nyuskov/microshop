@@ -339,10 +339,13 @@ export const EN: Record<string, string> = {
   'Safari: кнопка «Поделиться» → «На экран "Домой"». В Chrome и других браузерах на iPhone такой возможности нет — это правило iOS, а не приложения':
     'Safari: tap “Share” → “Add to Home Screen”. Chrome and other iPhone browsers have no such option — that is an iOS rule, not an app limitation',
   'Приложение можно поставить на главный экран': 'The app can be added to the home screen',
+  'Браузер готов поставить приложение — нажмите кнопку.':
+    'The browser can install the app — press the button.',
+  'Установить приложение': 'Install app',
   '{browser} на Android': '{browser} on Android',
   'Приложение ставится из Chrome': 'The app is installed from Chrome',
-  'Chrome: меню «⋮» → «Установить приложение». Если пункта нет — приложение уже установлено':
-    'Chrome: menu “⋮” → “Install app”. If the item is missing, the app is already installed',
+  'В Chrome: меню «⋮» → «Установить приложение» или кнопка в разделе ниже. Если пункта нет — приложение уже установлено либо у телефона нет сервисов Google: тогда поставьте приложение Pismo из RuStore':
+    'In Chrome: menu “⋮” → “Install app”, or the button in the section below. If the item is missing, the app is already installed or the phone has no Google services: then install the Pismo app from RuStore',
   'Этот браузер может не показать установку приложения':
     'This browser may not offer app installation',
   'Установка есть в Chrome: меню «⋮» → «Установить приложение». Если Chrome на телефоне нет — поставьте приложение Pismo из RuStore':

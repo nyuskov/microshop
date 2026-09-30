@@ -138,14 +138,18 @@ describe('отчёт по устройству', () => {
     expect(item?.hint).toContain('Chrome')
   })
 
-  it('в Chrome на Android называет пункт меню, а не путь RuStore', () => {
+  it('в Chrome на Android называет и пункт меню, и нашу кнопку', () => {
     stubUa(
       'Mozilla/5.0 (Linux; Android 14; Redmi A3) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36'
     )
     const item = deviceReport().find((row) => row.key === 'install')
     expect(item?.text).toContain('Chrome')
     expect(item?.hint).toContain('Установить приложение')
-    expect(item?.hint).not.toContain('RuStore')
+    // Кнопку рисует сам раздел, когда браузер сообщил о готовности — о ней надо
+    // сказать в тексте, иначе человек её не заметит.
+    expect(item?.hint).toContain('кнопка в разделе')
+    // А если пункта нет вовсе (нет сервисов Google) — остаётся RuStore-приложение.
+    expect(item?.hint).toContain('RuStore')
   })
 
   it('на Xiaomi (Mi Browser) не обещает пункт, которого нет', () => {
