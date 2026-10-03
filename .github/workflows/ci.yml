@@ -116,7 +116,7 @@ jobs:
           node-version: '22'
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
         with:
           # Версия — как в frontend/package.json (`packageManager: pnpm@12.3.4`).
           # Здесь стояла 9, а lockfile и pnpm-workspace.yaml (`allowBuilds`) — от
