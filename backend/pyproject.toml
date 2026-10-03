@@ -8,7 +8,7 @@ authors = ["Your Name <you@example.com>"]
 python = "^3.13"
 fastapi = "^0.115.6"
 uvicorn = {extras = ["standard"], version = "^0.32.1"}
-sqlalchemy = {extras = ["asyncio"], version = "^2.0.36"}
+sqlalchemy = {extras = ["asyncio"], version = "^2.0.54"}
 asyncpg = "^0.30.0"
 alembic = "^1.16.5"
 # Удаляем fastapi-users, passlib, bcrypt
