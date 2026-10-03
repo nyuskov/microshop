@@ -32,13 +32,23 @@ function runAudit() {
 }
 
 const raw = runAudit()
-let advisories = {}
-try {
-  advisories = JSON.parse(raw).advisories ?? {}
-} catch {
-  console.error('Не удалось разобрать вывод `pnpm audit --json`')
+// pnpm может дописать что-то в stdout до JSON — берём сам объект.
+const jsonStart = raw.indexOf('{')
+const jsonEnd = raw.lastIndexOf('}')
+if (jsonStart === -1 || jsonEnd === -1) {
+  console.error('`pnpm audit --json` не вернул JSON:')
+  console.error(raw.slice(0, 500))
   process.exit(2)
 }
+const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1))
+// Ошибку pnpm (нерабочий lockfile, неверная версия pnpm) нельзя показывать как
+// «уязвимостей нет»: проверка обязана падать громко.
+if (parsed.error || (!parsed.advisories && !parsed.metadata)) {
+  console.error('`pnpm audit` завершился ошибкой:')
+  console.error(parsed.error ? `${parsed.error.code}: ${parsed.error.message}` : raw.slice(0, 500))
+  process.exit(2)
+}
+const advisories = parsed.advisories ?? {}
 
 /** Ключ «пакет|номер предупреждения» → критичность (для базы). */
 const found = {}

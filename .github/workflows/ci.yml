@@ -118,7 +118,12 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@v5
         with:
-          version: 9
+          # Версия — как в frontend/package.json (`packageManager: pnpm@12.3.4`).
+          # Здесь стояла 9, а lockfile и pnpm-workspace.yaml (`allowBuilds`) — от
+          # pnpm 12: pnpm 9 не читает такой lockfile, пересобирает его сам (версии
+          # пакетов в CI перестают совпадать с зафиксированными) и падает на
+          # `pnpm audit` («packages field missing or empty»).
+          version: 12.3.4
           run_install: false
 
       - name: Configure pnpm safety
