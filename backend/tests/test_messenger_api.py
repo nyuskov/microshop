@@ -4465,5 +4465,6 @@ async def test_heic_photo_from_samsung_becomes_jpeg(api: _ApiCtx) -> None:
 
     assert uploaded.status_code == 200, uploaded.text
     body = uploaded.json()
-    assert body["media_url"].endswith(".jpg")
-    assert body["mime_type"] == "image/jpeg"
+    assert body["file"]["url"].endswith(".jpg")
+    assert body["file"]["name"].endswith(".jpg")
+    assert body["file"]["mime"] == "image/jpeg"
