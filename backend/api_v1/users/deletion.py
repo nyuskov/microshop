@@ -50,7 +50,7 @@ def _remove_file(path: Path) -> None:
     """Удаляет файл с диска (best-effort: файла может уже не быть)."""
     try:
         path.unlink(missing_ok=True)
-    except OSError as exc:  # noqa: BLE001 - удаление данных не должно падать
+    except OSError as exc:  # удаление данных не должно падать
         logger.warning("Не удалось удалить файл %s: %s", path, exc)
 
 

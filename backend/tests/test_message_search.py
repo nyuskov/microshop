@@ -77,9 +77,7 @@ async def test_search_scoped_to_chat_and_membership(session) -> None:
     assert exc.value.status_code == 403
 
 
-async def test_search_finds_encrypted_text(
-    session, monkeypatch
-) -> None:  # noqa: ANN001
+async def test_search_finds_encrypted_text(session, monkeypatch) -> None:
     """Поиск работает, когда тексты зашифрованы, и в базе их не видно.
 
     Это главная проверка фичи: шифрование не должно «убить» поиск по сообщениям.

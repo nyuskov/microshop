@@ -80,7 +80,7 @@ def send(token: str, message: dict[str, Any]) -> str:
         payload = ""
         try:
             payload = exc.read().decode("utf-8", "replace")
-        except Exception:  # noqa: BLE001 - тело ответа не критично
+        except Exception:  # тело ответа не критично
             payload = ""
         if exc.code in (401, 403):
             logger.warning(

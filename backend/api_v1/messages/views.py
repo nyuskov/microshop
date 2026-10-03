@@ -355,7 +355,7 @@ async def send_gif_message(
             reply_to_id=payload.reply_to_id,
             caption=payload.caption.strip(),
         )
-    except Exception:  # noqa: BLE001 - очередь (RabbitMQ) может быть недоступна
+    except Exception:  # очередь (RabbitMQ) может быть недоступна
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=t("Сервис обработки GIF временно недоступен. Попробуйте позже."),

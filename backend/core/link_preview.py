@@ -190,7 +190,7 @@ def host_is_public(host: str) -> bool:
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Отключает авто-переходы: их мы делаем сами, проверяя каждый новый адрес."""
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: N802
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
 
 
@@ -331,7 +331,7 @@ def parse_preview(body: bytes, page_url: str) -> LinkPreviewData:
     parser = _MetaParser()
     try:
         parser.feed(_decode_html(body))
-    except Exception:  # noqa: BLE001 - битый HTML не должен ронять запрос
+    except Exception:  # битый HTML не должен ронять запрос
         pass
 
     def pick(*keys: str) -> str | None:

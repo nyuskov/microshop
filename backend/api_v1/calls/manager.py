@@ -152,7 +152,7 @@ class CallConnectionManager:
         try:
             await websocket.send_json(payload)
             return True
-        except Exception:  # noqa: BLE001 - соединение могло разорваться
+        except Exception:  # соединение могло разорваться
             logger.warning("Не удалось отправить сообщение через WebSocket")
             return False
 

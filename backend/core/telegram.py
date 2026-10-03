@@ -49,7 +49,7 @@ def _post_json(
         detail = ""
         try:
             detail = exc.read().decode("utf-8", "replace")
-        except Exception:  # noqa: BLE001 — тело может быть недоступно
+        except Exception:  # тело может быть недоступно
             pass
         raise TelegramApiError(f"HTTP {exc.code}: {detail}".strip()) from exc
     except (URLError, OSError, json.JSONDecodeError) as exc:

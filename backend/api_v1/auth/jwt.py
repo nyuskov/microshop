@@ -51,7 +51,7 @@ class UserRead(BaseUser):
 
 
 class UserUpdate(BaseUserUpdate):
-    email: Optional[str] = Field(default=None)  # type: ignore[assignment]
+    email: Optional[str] = Field(default=None)
 
 
 async def get_user_manager(

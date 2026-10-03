@@ -98,7 +98,7 @@ async def log_security_event(
         )
         if commit:
             await session.commit()
-    except Exception:  # noqa: BLE001 - журнал не должен ломать вход/смену пароля
+    except Exception:  # журнал не должен ломать вход/смену пароля
         logger.exception("Не удалось записать событие безопасности %s", event)
 
 

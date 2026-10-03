@@ -169,7 +169,7 @@ async def current_state() -> MaintenanceState:
     try:
         async with db_helper.session_factory() as session:
             state = await read_state(session)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         # Не кэшируем: как только БД вернётся, режим прочитается сразу.
         logger.warning("Не удалось прочитать режим технических работ: %s", exc)
         return MaintenanceState()

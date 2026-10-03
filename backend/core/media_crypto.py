@@ -259,7 +259,7 @@ def _decrypt_chunk(
     for key in keys:
         try:
             return AESGCM(key).decrypt(_chunk_nonce(base_nonce, index), blob, None)
-        except Exception as exc:  # noqa: BLE001 - пробуем следующий ключ
+        except Exception as exc:  # пробуем следующий ключ
             last_error = exc
     raise last_error if last_error is not None else MediaKeyMissing("Нет ключа")
 

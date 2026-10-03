@@ -6,7 +6,7 @@
 прочитать файл (E2EE), а настройки паков эмодзи ездят между устройствами через
 ``GET/PUT /users/me/emoji/``.
 
-Запускаются только при заданном TEST_DATABASE_URL (см. tests/test_messenger_api).
+Запускаются только при заданном TEST_DATABASE_URL (см. tests/api_support.py).
 """
 
 from __future__ import annotations
@@ -16,11 +16,11 @@ import os
 import pytest
 
 from core.models import User
+from tests.api_support import _ApiCtx  # noqa: E402
+from tests.api_support import api as api_fixture  # noqa: E402
 from tests.test_chat_media import PNG
-from tests.test_messenger_api import _ApiCtx  # noqa: E402
-from tests.test_messenger_api import api as api_fixture  # noqa: E402
 
-#: Фикстура API-теста живёт в test_messenger_api — импортируем, чтобы не
+#: Фикстура API-теста живёт в tests/api_support.py — импортируем, чтобы не
 #: дублировать настройку httpx/БД.
 api = api_fixture
 

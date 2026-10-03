@@ -13,6 +13,14 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
 
+  # Python-зависимости бэкенда (pyproject.toml + poetry.lock). Без этого блока
+  # FastAPI/SQLAlchemy/Celery и остальные библиотеки обновлялись только руками.
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
   - package-ecosystem: docker
     directory: /backend
     schedule:

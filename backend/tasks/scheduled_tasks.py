@@ -77,7 +77,7 @@ async def _drain_reminders() -> dict[str, int]:
         try:
             get_task("tasks.notifications.send_reminder_push").delay(**item)
             queued += 1
-        except Exception:  # noqa: BLE001 - очередь (RabbitMQ) может быть недоступна
+        except Exception:  # очередь (RabbitMQ) может быть недоступна
             logger.warning(
                 "Напоминание (id=%s, чат=%s) не поставлено в очередь",
                 item.get("reminder_id"),

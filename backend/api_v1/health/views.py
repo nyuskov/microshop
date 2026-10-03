@@ -41,7 +41,7 @@ async def health_ready(response: Response) -> dict[str, str]:
         async with db_helper.session_factory() as session:
             await session.execute(text("SELECT 1"))
         return {"status": "ok", "database": "ok"}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("Readiness check failed: %s", exc)
         response.status_code = 503
         return {"status": "error", "database": "unreachable"}

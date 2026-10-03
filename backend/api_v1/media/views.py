@@ -135,11 +135,30 @@ def _parse_range(value: str, total: int) -> tuple[int, int] | None:
     return start, min(end, total - 1)
 
 
-@router.api_route("/{name:path}", methods=["GET", "HEAD"])
+@router.get("/{name:path}", operation_id="serve_media")
 async def serve_media(
     request: Request,
     name: str,
     session: AsyncSession = Depends(db_helper.session_dependency),
+) -> Response:
+    """Отдаёт файл из media целиком или запрошенный диапазон байт (GET)."""
+    return await _serve_media(request, name, session)
+
+
+@router.head("/{name:path}", operation_id="serve_media_head")
+async def serve_media_head(
+    request: Request,
+    name: str,
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> Response:
+    """HEAD: те же заголовки без тела; просмотр одноразового файла не тратит."""
+    return await _serve_media(request, name, session)
+
+
+async def _serve_media(
+    request: Request,
+    name: str,
+    session: AsyncSession,
 ) -> Response:
     """Отдаёт файл из media целиком или запрошенный диапазон байт.
 

@@ -74,7 +74,7 @@ def _seen_update(update_id: int) -> bool:
 )
 def telegram_poll_updates(self) -> None:
     """Один «тик» поллинга апдейтов бота (вызывается celery beat)."""
-    # noqa: PLW0603 - состояние поллинга держим в памяти процесса
+    # состояние поллинга держим в памяти процесса
     global _LAST_UPDATE_ID, _NEXT_POLL_AT, _POLL_FAILURES
     if not settings.telegram_bot_token:
         return
@@ -116,7 +116,7 @@ def telegram_poll_updates(self) -> None:
         except telegram.TelegramApiError as exc:
             logger.warning("Не удалось ответить ботом (%s)", exc)
             continue
-        except Exception:  # noqa: BLE001 - не роняем поллинг из-за одной команды
+        except Exception:  # не роняем поллинг из-за одной команды
             logger.exception("Ошибка обработки /start (chat=%s)", chat_id)
             continue
         if reply:

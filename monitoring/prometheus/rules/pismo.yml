@@ -1,0 +1,93 @@
+# Правила алертов Prometheus для Pismo.
+#
+# Метрики свои (без внешних сервисов), их отдаёт `core/metrics.py` и эндпоинт
+# `/api/v1/system/metrics/`; собирает Prometheus через nginx (см.
+# monitoring/prometheus/prometheus.yml). Счётчики живут в памяти процесса, а
+# слотов `web` два (blue/green), поэтому при деплое значения обнуляются —
+# PromQL здесь построен на `rate`, который сбросы переживает.
+#
+# Доставка: Alertmanager (сервис `alertmanager` в docker-compose.prod.yaml)
+# шлёт письмо по SMTP — те же переменные, что у scripts/monitoring/check_prod.sh.
+# Пока SMTP не задан, алерты видны в интерфейсе Prometheus (/alerts), но письма
+# не уходят.
+groups:
+  - name: pismo-availability
+    rules:
+      - alert: PismoApiDown
+        # Цель не скрейпится: API не отвечает, роутер не собрался или упал
+        # контейнер. Тот же сигнал, что проверяет cron-скрипт, но без задержки
+        # в 15 минут.
+        expr: up{job="pismo-app"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pismo: API недоступен (метрики не собираются)"
+          description: >-
+            Prometheus не может собрать метрики с https://pismo.space/api/v1/system/metrics/
+            уже 5 минут. Проверьте контейнеры слота web и nginx.
+
+      - alert: PismoPrometheusDown
+        expr: up{job="prometheus"} == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pismo: сам Prometheus не отвечает"
+          description: "Молчание графиков может означать, что упал сборщик, а не сервис."
+
+  - name: pismo-requests
+    rules:
+      - alert: PismoHighErrorRate
+        # Доля 5xx среди всех запросов. 5% — заметная деградация: часть людей
+        # не может открыть чат, даже если процесс жив.
+        expr: |
+          (
+            sum(rate(pismo_http_requests_total{status="5xx"}[5m]))
+            /
+            sum(rate(pismo_http_requests_total[5m]))
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pismo: больше 5% запросов отвечают ошибкой 5xx"
+          description: >-
+            За последние 10 минут доля ответов 5xx выше 5%. Смотрите логи слота
+            web и /api/v1/health/ready (там виден статус БД).
+
+      - alert: PismoSlowRequests
+        # p95 по всем маршрутам. Порог 1 c: обычный ответ — единицы-десятки
+        # миллисекунд, «болит» — от половины секунды (см. BUCKETS в metrics.py).
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(pismo_http_request_seconds_bucket[5m]))
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pismo: 95-й процентиль времени ответа выше 1 с"
+          description: >-
+            Медленные ответы держатся 10 минут. Частые причины: занятый пул БД,
+            тяжёлый поиск, проблемы с диском.
+
+      - alert: PismoDbPoolSaturated
+        # Пул соединений занят почти полностью: дальше запросы начнут ждать
+        # соединение и время ответа вырастет лавинообразно.
+        expr: |
+          pismo_db_pool_connections{state="checked_out"}
+          /
+          (
+            pismo_db_pool_connections{state="checked_out"}
+            + pismo_db_pool_connections{state="free"}
+          ) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pismo: пул соединений с БД занят более чем на 90%"
+          description: >-
+            Почти все соединения из пула заняты 10 минут. Проверьте долгие
+            запросы и медленные транзакции (pg_stat_activity).

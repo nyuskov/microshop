@@ -19,7 +19,7 @@ NODE_BIN ?= ./node_modules/.bin
 # вычистить (грабля: тесты один раз уже стирали dev-данные).
 TEST_DB_URL ?= postgresql+asyncpg://postgres:test@localhost:55432/microshop_test
 
-.PHONY: check check-backend check-frontend test-backend dead-css invite invites invite-revoke admin
+.PHONY: check check-backend check-frontend test-backend api-schema dead-css invite invites invite-revoke admin
 
 check: check-backend check-frontend
 
@@ -27,7 +27,11 @@ check-backend:
 	cd backend && $(PY) -m isort --check-only .
 	cd backend && $(PY) -m black --check .
 	cd backend && $(PY) -m flake8 . --exclude=.mypy_cache,__pycache__
-	cd backend && $(PY) -m mypy --cache-dir=/tmp/mypy_ci main.py core api_v1
+	cd backend && $(PY) -m mypy --cache-dir=/tmp/mypy_ci main.py core api_v1 tasks
+	@# Известные уязвимости зависимостей: падаем только на новых (нужна сеть).
+	cd backend && $(PY) scripts/check_dependency_audit.py
+	@# Контракт API: снимок схемы должен совпадать с кодом (иначе фронт отстал).
+	cd backend && $(PY) scripts/check_openapi_snapshot.py
 
 check-frontend:
 	cd $(FE) && $(NODE_BIN)/vue-tsc --noEmit -p tsconfig.app.json
@@ -37,7 +41,10 @@ check-frontend:
 	cd $(FE) && node scripts/check-style-duplicates.mjs
 	cd $(FE) && node scripts/check-geometry.mjs
 	cd $(FE) && node scripts/check-i18n.mjs
-	cd $(FE) && $(NODE_BIN)/vitest run
+	cd $(FE) && node scripts/check-a11y.mjs
+	@# Известные уязвимости зависимостей фронтенда (нужна сеть).
+	cd $(FE) && node scripts/check-audit.mjs
+	cd $(FE) && $(NODE_BIN)/vitest run --coverage
 	@# Сборка и бюджет веса: это тоже шаги CI. Без них проверка проходила, а сборка
 	@# падала на «бюджет размера бандла превышен» — новый импорт незаметно
 	@# прибавляет килобайты, а локально это нигде не видно. Собираем во временный
@@ -54,6 +61,9 @@ test-backend:
 	@for i in $$(seq 1 30); do docker exec pismo-test-db pg_isready -U postgres -q && break; sleep 1; done
 	cd backend && DATABASE_URL=$(TEST_DB_URL) TEST_DATABASE_URL=$(TEST_DB_URL) \
 		$(PY) -m alembic upgrade head
+	@# Правка модели без миграции: alembic сверяет метаданные моделей со схемой БД,
+	@# известный autogenerate-шум отсекает baseline (backend/alembic-drift-baseline.txt).
+	cd backend && DATABASE_URL=$(TEST_DB_URL) $(PY) scripts/check_migration_drift.py
 	@# Локально pywebpush может быть не установлен (в CI он есть): тогда честно
 	@# пропускаем только тесты push и говорим об этом, а не падаем на сборе.
 	@cd backend && if $(PY) -c 'import pywebpush' 2>/dev/null; then extra=""; \
@@ -62,8 +72,15 @@ test-backend:
 			echo "!!! pywebpush не установлен — тесты push пропущены (в CI идут)"; \
 		fi; \
 		DATABASE_URL=$(TEST_DB_URL) TEST_DATABASE_URL=$(TEST_DB_URL) \
-		$(PY) -m pytest -q $$extra
+		$(PY) -m pytest -q --cov --cov-report=term-missing:skip-covered $$extra
 	@docker stop pismo-test-db >/dev/null 2>&1 || true
+
+# Контракт API изменился осознанно: обновляем снимок схемы (его проверяет CI),
+# затем типы фронтенда, чтобы клиент видел новые поля.
+#   make api-schema
+#   cd frontend && pnpm typegen    # ← из ../backend/openapi.json, без сервера
+api-schema:
+	cd backend && $(PY) scripts/check_openapi_snapshot.py --update
 
 # Инструмент, а не проверка: бывают ложные срабатывания (классы собираются из
 # строк), поэтому печатает кандидатов и ничего не роняет. Подробности — в шапке

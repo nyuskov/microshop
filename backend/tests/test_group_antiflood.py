@@ -14,9 +14,9 @@ import os
 
 import pytest
 
+from tests.api_support import _ApiCtx  # noqa: E402
+from tests.api_support import api as api_fixture  # noqa: E402
 from tests.test_group_invites import _create_invite, _group, _join
-from tests.test_messenger_api import _ApiCtx  # noqa: E402
-from tests.test_messenger_api import api as api_fixture  # noqa: E402
 
 api = api_fixture
 

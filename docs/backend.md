@@ -720,6 +720,8 @@ poetry run flake8 . --exclude=.mypy_cache,__pycache__
 poetry run isort .
 poetry run black .
 poetry run mypy main.py core api_v1 tasks
+poetry run python scripts/check_dependency_audit.py   # уязвимости (нужна сеть)
+poetry run python scripts/check_openapi_snapshot.py   # контракт API не разошёлся со снимком
 ```
 
 Замечания:
@@ -728,5 +730,7 @@ poetry run mypy main.py core api_v1 tasks
 - `mypy` лучше запускать с `--cache-dir=/tmp/<xxx>`, чтобы не плодить `root`-овые `.mypy_cache` в репозитории.
 - `api_v1/users/schemas.py` **исключён из Black** (`tool.black.exclude`) — форматируйте вручную.
 - В alembic-версиях допустимы строки длиннее 88 (per-file-ignore E501).
-- Тесты: `poetry run pytest -q` (unit-тесты идут всегда; БД/API-интеграция — только при заданном `TEST_DATABASE_URL`, см. `backend/tests/`; для HTTP-тестов нужен `httpx` из dev-зависимостей). mypy по тестам не гоняется (`main.py core api_v1`).
+- Тесты: `poetry run pytest -q` (unit-тесты идут всегда; БД/API-интеграция — только при заданном `TEST_DATABASE_URL`, см. `backend/tests/`; для HTTP-тестов нужен `httpx` из dev-зависимостей). mypy по тестам не гоняется (`main.py core api_v1 tasks`).
+- Строгость mypy задаётся в `[tool.mypy]` (`backend/pyproject.toml`): включены `check_untyped_defs`, `warn_unused_ignores`, `warn_redundant_casts`, `no_implicit_optional`, `strict_equality`. Следующие шаги (`warn_return_any`, `disallow_untyped_defs`) включаются по мере правок — сначала флаг, потом замечания.
+- Контракт API хранится снимком `backend/openapi.json` (схема `app.openapi()`, ключи отсортированы — файл детерминирован). Страж `scripts/check_openapi_snapshot.py` падает, если код и снимок разошлись. После осознанной правки эндпоинтов: `make api-schema`, затем `cd frontend && pnpm typegen` (типы генерируются из снимка, живой сервер не нужен).
 

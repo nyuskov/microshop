@@ -157,7 +157,7 @@ async def _publish_body(body: dict[str, Any]) -> None:
     try:
         await asyncio.wait_for(_publish_once(message), PUBLISH_TIMEOUT_SECONDS)
         return
-    except Exception as exc:  # noqa: BLE001 - возможно, канал умер: переподключаемся
+    except Exception as exc:  # возможно, канал умер: переподключаемся
         logger.warning("Realtime bridge: публикация не удалась (%s)", exc)
         await _reset_bridge_exchange()
     try:
@@ -190,7 +190,7 @@ async def _reset_bridge_exchange() -> None:
     if channel is not None and not channel.is_closed:
         try:
             await channel.close()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
 
@@ -259,7 +259,7 @@ async def _publish_delivery_ack(event_id: str, ack_origin: str) -> None:
                 "origin": process_origin(),
             }
         )
-    except Exception:  # noqa: BLE001 - без ack событие просто придержат
+    except Exception:  # без ack событие просто придержат
         logger.exception("Realtime bridge: не удалось отправить подтверждение")
 
 
@@ -292,7 +292,7 @@ class RealtimeBridgeConsumer:
         while not self._stop:
             try:
                 connection = await aio_pika.connect_robust(settings.rabbitmq_url)
-            except Exception:  # noqa: BLE001 - брокер может быть ещё не готов
+            except Exception:  # брокер может быть ещё не готов
                 if not self._stop:
                     logger.warning(
                         "Realtime bridge: брокер недоступен, повтор через %s c",
@@ -307,12 +307,12 @@ class RealtimeBridgeConsumer:
             except asyncio.CancelledError:
                 await connection.close()
                 raise
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning("Realtime bridge: разрыв соединения (%s)", exc)
             finally:
                 try:
                     await connection.close()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
                 self._connection = None
             if not self._stop:
@@ -362,11 +362,11 @@ class RealtimeBridgeConsumer:
             # Подтверждаем приём до раздачи: если раздача упадёт, сообщение уже
             # обработано (ack), повторная доставка не нужна.
             await message.ack()
-        except Exception:  # noqa: BLE001 - не валим потребитель из-за битого сообщения
+        except Exception:  # не валим потребитель из-за битого сообщения
             logger.exception("Realtime bridge: ошибка чтения события")
             try:
                 await message.reject(requeue=False)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
             return
 
@@ -393,7 +393,7 @@ class RealtimeBridgeConsumer:
         delivered = False
         try:
             delivered = bool(await self._on_event(recipient_ids, payload))
-        except Exception:  # noqa: BLE001 - ошибка раздачи в сокеты не критична
+        except Exception:  # ошибка раздачи в сокеты не критична
             logger.exception("Realtime bridge: ошибка раздачи события в сокеты")
 
         if delivered and ack_requested and event_id and origin:
@@ -412,5 +412,5 @@ class RealtimeBridgeConsumer:
         if self._connection is not None:
             try:
                 await self._connection.close()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass

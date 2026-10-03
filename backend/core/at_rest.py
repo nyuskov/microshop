@@ -202,7 +202,7 @@ def decrypt_text(value: str | None) -> str | None:
     for key in ordered:
         try:
             return AESGCM(key).decrypt(nonce, ciphertext, None).decode("utf-8")
-        except Exception:  # noqa: BLE001 - пробуем следующий ключ
+        except Exception:  # пробуем следующий ключ
             continue
     logger.warning("Не удалось расшифровать значение — отдаём как есть")
     return value

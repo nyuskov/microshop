@@ -36,7 +36,7 @@ async def dispatch_realtime(recipient_ids: list[int], payload: dict[str, Any]) -
         return delivered
     try:
         await publish_realtime_event(payload, recipient_ids)
-    except Exception:  # noqa: BLE001 - без моста событие дойдёт хотя бы своим
+    except Exception:  # без моста событие дойдёт хотя бы своим
         logger.exception("Не удалось опубликовать событие в мост")
     return delivered
 
@@ -165,7 +165,7 @@ def _maybe_enqueue_message_push(
         get_task("tasks.notifications.send_message_push").delay(
             recipients, chat_id, message_id, sender_id
         )
-    except Exception:  # noqa: BLE001 - push не должен ронять отправку сообщения
+    except Exception:  # push не должен ронять отправку сообщения
         logger.exception("Не удалось поставить задачу push-уведомления")
 
 

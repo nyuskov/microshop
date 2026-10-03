@@ -15,10 +15,10 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from tasks import media_tasks
-from tests.test_messenger_api import _ApiCtx  # noqa: E402
-from tests.test_messenger_api import api as api_fixture  # noqa: E402
+from tests.api_support import _ApiCtx  # noqa: E402
+from tests.api_support import api as api_fixture  # noqa: E402
 
-#: Фикстура API-теста живёт в test_messenger_api — импортируем, чтобы не
+#: Фикстура API-теста живёт в tests/api_support.py — импортируем, чтобы не
 #: дублировать настройку httpx/БД.
 api = api_fixture
 

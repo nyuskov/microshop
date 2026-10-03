@@ -100,9 +100,7 @@ async def world(session: AsyncSession) -> SimpleNamespace:
     return SimpleNamespace(owner=owner, peer=peer, chat=chat, message=message)
 
 
-async def _ensure_row(
-    session: AsyncSession, target, world: SimpleNamespace
-) -> None:  # noqa: ANN001
+async def _ensure_row(session: AsyncSession, target, world: SimpleNamespace) -> None:
     """Создаёт строку, которую проверяет тест (у части целей она уже есть).
 
     Значение пишем именно здесь, а не только в фикстуре: иначе оно уходило бы в
@@ -227,7 +225,7 @@ async def _ensure_row(
     await session.commit()
 
 
-async def _raw_value(session: AsyncSession, target) -> str | None:  # noqa: ANN001
+async def _raw_value(session: AsyncSession, target) -> str | None:
     """Значение колонки сырым SQL — именно так видно, что лежит в БД.
 
     Через модель значение пришло бы уже расшифрованным (тип `EncryptedText`).
@@ -241,7 +239,7 @@ async def _raw_value(session: AsyncSession, target) -> str | None:  # noqa: ANN0
     return result.scalar()
 
 
-async def _orm_value(session: AsyncSession, target):  # noqa: ANN001
+async def _orm_value(session: AsyncSession, target):
     """Значение, которое видит код (после расшифровки)."""
     session.expire_all()
     order_by = [getattr(target.model, name) for name in target.pk]
@@ -301,8 +299,8 @@ def test_select_targets_by_table_and_column() -> None:
 async def test_new_rows_are_encrypted(
     session: AsyncSession,
     world: SimpleNamespace,
-    target,  # noqa: ANN001
-    with_key,  # noqa: ANN001 - фикстура
+    target,
+    with_key,  # фикстура
 ) -> None:
     """Новая запись уходит на диск зашифрованной, а читается как обычный текст."""
     await _ensure_row(session, target, world)
@@ -318,8 +316,8 @@ async def test_new_rows_are_encrypted(
 async def test_without_key_rows_stay_readable(
     session: AsyncSession,
     world: SimpleNamespace,
-    target,  # noqa: ANN001
-    without_key,  # noqa: ANN001 - фикстура
+    target,
+    without_key,  # фикстура
 ) -> None:
     """Без ключа всё работает как раньше: в БД открытый текст, читается он же."""
     await _ensure_row(session, target, world)
@@ -332,7 +330,7 @@ async def test_without_key_rows_stay_readable(
 
 
 async def test_backfill_encrypts_legacy_rows_for_every_target(
-    plain_env,  # noqa: ANN001 - ключ выключен ещё до создания данных
+    plain_env,  # ключ выключен ещё до создания данных
     session: AsyncSession,
     world: SimpleNamespace,
     monkeypatch: pytest.MonkeyPatch,
@@ -359,7 +357,7 @@ async def test_backfill_encrypts_legacy_rows_for_every_target(
 
 
 async def test_backfill_does_not_touch_empty_values(
-    session: AsyncSession, world: SimpleNamespace, with_key  # noqa: ANN001
+    session: AsyncSession, world: SimpleNamespace, with_key
 ) -> None:
     """Пустые строки и NULL не считаются работой (иначе вечный «остаток»)."""
     session.add(ModerationAction(action="message_hidden", note=""))
@@ -375,7 +373,7 @@ async def test_backfill_does_not_touch_empty_values(
 
 
 async def test_rotate_rewrites_history_to_the_new_key(
-    plain_env,  # noqa: ANN001 - ключ выключен до создания данных
+    plain_env,  # ключ выключен до создания данных
     session: AsyncSession,
     world: SimpleNamespace,
     monkeypatch: pytest.MonkeyPatch,
@@ -416,7 +414,7 @@ async def test_rotate_rewrites_history_to_the_new_key(
 
 
 async def test_rotate_skips_rows_with_unknown_key(
-    plain_env,  # noqa: ANN001
+    plain_env,
     session: AsyncSession,
     world: SimpleNamespace,
     monkeypatch: pytest.MonkeyPatch,

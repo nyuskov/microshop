@@ -49,7 +49,7 @@ def test_broken_key_disables_encryption(monkeypatch: pytest.MonkeyPatch) -> None
     assert at_rest.encrypt_text("привет") == "привет"
 
 
-def test_round_trip(with_key) -> None:  # noqa: ANN001 - фикстура
+def test_round_trip(with_key) -> None:  # фикстура
     """Текст читается обратно, а в «базе» лежит не он."""
     encrypted = at_rest.encrypt_text("секретное сообщение")
     assert encrypted is not None
@@ -58,7 +58,7 @@ def test_round_trip(with_key) -> None:  # noqa: ANN001 - фикстура
     assert at_rest.decrypt_text(encrypted) == "секретное сообщение"
 
 
-def test_ciphertext_differs_each_time(with_key) -> None:  # noqa: ANN001
+def test_ciphertext_differs_each_time(with_key) -> None:
     """Одинаковые тексты дают разные шифротексты (свой nonce на значение)."""
     first = at_rest.encrypt_text("привет")
     second = at_rest.encrypt_text("привет")
@@ -66,20 +66,20 @@ def test_ciphertext_differs_each_time(with_key) -> None:  # noqa: ANN001
     assert at_rest.decrypt_text(first) == at_rest.decrypt_text(second) == "привет"
 
 
-def test_plain_values_pass_through(with_key) -> None:  # noqa: ANN001
+def test_plain_values_pass_through(with_key) -> None:
     """Незашифрованное (старые записи) читаем как есть и не шифруем дважды."""
     assert at_rest.decrypt_text("обычный текст") == "обычный текст"
     encrypted = at_rest.encrypt_text("текст")
     assert at_rest.encrypt_text(encrypted) == encrypted
 
 
-def test_none_is_kept(with_key) -> None:  # noqa: ANN001
+def test_none_is_kept(with_key) -> None:
     """Пустое значение (сообщение-вложение) остаётся None."""
     assert at_rest.encrypt_text(None) is None
     assert at_rest.decrypt_text(None) is None
 
 
-def test_disabled_encryption_is_transparent(without_key) -> None:  # noqa: ANN001
+def test_disabled_encryption_is_transparent(without_key) -> None:
     """Без ключа ничего не меняется: пишем и читаем открытый текст."""
     assert at_rest.is_enabled() is False
     assert at_rest.encrypt_text("привет") == "привет"
@@ -87,7 +87,7 @@ def test_disabled_encryption_is_transparent(without_key) -> None:  # noqa: ANN00
 
 
 def test_encrypted_value_without_key_is_returned_as_is(
-    with_key,  # noqa: ANN001 - сначала шифруем с ключом
+    with_key,  # сначала шифруем с ключом
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Ключ потеряли: показываем шифротекст, но данные не роняем и не удаляем."""
@@ -96,7 +96,7 @@ def test_encrypted_value_without_key_is_returned_as_is(
     assert at_rest.decrypt_text(encrypted) == encrypted
 
 
-def test_broken_ciphertext_does_not_raise(with_key) -> None:  # noqa: ANN001
+def test_broken_ciphertext_does_not_raise(with_key) -> None:
     """Испорченное значение (обрезали, подменили) не роняет чтение истории."""
     garbage = [
         f"{at_rest.PREFIX_V1}не-base64",
@@ -108,7 +108,7 @@ def test_broken_ciphertext_does_not_raise(with_key) -> None:  # noqa: ANN001
         assert at_rest.decrypt_text(value) == value
 
 
-def test_wrong_key_does_not_crash(with_key) -> None:  # noqa: ANN001
+def test_wrong_key_does_not_crash(with_key) -> None:
     """Другим ключом расшифровать нельзя — и это не должно падать."""
     encrypted = at_rest.encrypt_text("важное") or ""
     other = AESGCM.generate_key(bit_length=256).hex()
@@ -128,7 +128,7 @@ def _encrypt_with(key_hex: str, value: str, monkeypatch: pytest.MonkeyPatch) -> 
     return at_rest.encrypt_text(value) or ""
 
 
-def test_new_values_carry_key_id(with_key) -> None:  # noqa: ANN001
+def test_new_values_carry_key_id(with_key) -> None:
     """В новом формате есть номер ключа — по нему выбираем ключ при чтении."""
     value = at_rest.encrypt_text("привет") or ""
 
@@ -173,7 +173,7 @@ def test_several_previous_keys_are_supported(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_previous_entry_that_never_was_a_key_is_skipped(
-    with_key, monkeypatch: pytest.MonkeyPatch  # noqa: ANN001
+    with_key, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Мусор в списке прошлых ключей не ломает чтение (и текущий не дублируем)."""
     monkeypatch.setattr(settings, "at_rest_key_previous", f"не-ключ, {KEY_HEX}, ")
@@ -197,7 +197,7 @@ def test_v1_values_readable_without_key_id(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_value_with_unknown_key_id_is_not_readable(
-    with_key, monkeypatch: pytest.MonkeyPatch  # noqa: ANN001
+    with_key, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Чужой номер ключа: пробуем остальные ключи, но не выдумываем данные."""
     stranger = at_rest.PREFIX_V2 + "ffffffff:" + base64.b64encode(bytes(40)).decode()

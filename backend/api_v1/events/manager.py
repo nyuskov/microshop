@@ -143,7 +143,7 @@ class EventsConnectionManager:
             try:
                 await websocket.send_json(payload)
                 delivered = True
-            except Exception:  # noqa: BLE001 - соединение могло разорваться
+            except Exception:  # соединение могло разорваться
                 logger.debug("Не удалось доставить событие пользователю %s", user_id)
         return delivered
 

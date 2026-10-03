@@ -37,6 +37,8 @@ mypy = "^1.11.1"
 pytest = "^9.1.1"
 pytest-asyncio = "^1.4.0"
 httpx = ">=0.27"
+pytest-cov = "^7.1.0"
+pip-audit = "^2.10.1"
 
 [build-system]
 requires = ["poetry-core"]
@@ -66,9 +68,48 @@ exclude = '''
 profile = "black"
 multi_line_output = 3
 
+[tool.mypy]
+# Постепенное ужесточение. Здесь — только флаги, на которых текущий код уже
+# чист (проверяется в CI командой из .github/workflows/ci.yml). Следующий шаг —
+# warn_return_any (13 замечаний) и disallow_untyped_defs (75 замечаний в 20
+# файлах); включать их можно по мере правок. См. docs/checks.md.
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+# pywebpush поставляется без стабов и маркера py.typed, а тянет за собой
+# http-ece/py-vapid: свои аннотации к чужой библиотеке не пишем.
+module = "pywebpush"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 # async-тесты (pytest-asyncio) запускаются автоматически.
 asyncio_mode = "auto"
 testpaths = ["tests"]
 # Чтобы импортировались пакеты api_v1/core из корня backend.
 pythonpath = ["."]
+
+[tool.coverage.run]
+# Покрытие считаем по коду приложения; тесты и скрипты — нет.
+# ВАЖНО: `main` — именно имя модуля, а не `main.py`. Путь с расширением coverage
+# пытается импортировать как модуль и подтягивает приложение (main → api_v1 →
+# core…), из-за чего модули загружаются ВТОРОЙ раз и тесты, которые подменяют
+# настройки в `core.avatar_store` и подобных, начинают писать не туда (проверено:
+# падали 7 тестов аватаров). ГРАБЛЯ: ошибка видна только под `--cov`.
+source = ["core", "api_v1", "tasks", "main"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+# Порог-храповик: не даём покрытию падать. Текущее значение (03.10.2026) — 70%,
+# порог чуть ниже, чтобы случайные колебания не роняли CI. Поднимать по мере роста.
+fail_under = 68
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "pragma: no cover",
+]

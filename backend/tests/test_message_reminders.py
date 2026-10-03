@@ -19,8 +19,8 @@ from sqlalchemy import select
 from api_v1.messages import crud as messages_crud
 from core.models import Chat, Message, MessageReminder, User
 from tasks.notifications import reminder_body, reminder_chat_label
-from tests.test_messenger_api import _ApiCtx  # noqa: E402
-from tests.test_messenger_api import api as api_fixture  # noqa: E402
+from tests.api_support import _ApiCtx  # noqa: E402
+from tests.api_support import api as api_fixture  # noqa: E402
 
 api = api_fixture
 

@@ -92,7 +92,7 @@ async def main() -> None:
         ).scalar_one()
 
         # Группу создаём один раз: по названию её и искать.
-        from core.models import Chat, user_chat_association_table  # noqa: PLC0415
+        from core.models import Chat, user_chat_association_table
 
         chat_id = (
             await session.execute(

@@ -28,24 +28,31 @@ docker-образов. Если интерпретатор не в `PATH`: `PY=/
 | Проверка | Что ловит | Файл |
 | --- | --- | --- |
 | `black --check`, `isort --check-only`, `flake8` | формат и стиль бэкенда | `pyproject.toml` |
-| `mypy main.py core api_v1` | типы бэкенда (тесты не проверяются) | `pyproject.toml` |
-| `pytest` | тесты (в CI — с настоящей PostgreSQL) | `backend/tests/` |
+| `mypy main.py core api_v1 tasks` | типы бэкенда (тесты не проверяются; строгость — в `[tool.mypy]`) | `pyproject.toml` |
+| `pytest --cov` | тесты (в CI — с настоящей PostgreSQL) и покрытие; порог-храповик — `[tool.coverage.report] fail_under` | `backend/pyproject.toml` |
+| `scripts/check_migration_drift.py` | правку модели (`core/models`) без миграции: сверяет метаданные со схемой БД, известный autogenerate-шум отсекает база | `backend/alembic-drift-baseline.txt` |
+| `scripts/check_openapi_snapshot.py` | расхождение схемы API со снимком `backend/openapi.json` (контракт изменили — фронтенд об этом не узнает) | `backend/openapi.json` |
+| `scripts/check_dependency_audit.py` (pip-audit) | новые известные уязвимости Python-зависимостей; известные — в базе | `backend/pip-audit-baseline.json` |
+| `check-audit.mjs` (pnpm audit) | новые известные уязвимости зависимостей фронтенда (почти все — dev-инструменты); известные — в базе | `frontend/scripts/audit-baseline.json` |
 | `vue-tsc --noEmit -p tsconfig.app.json` | типы фронтенда | `frontend/tsconfig.app.json` |
 | `eslint --no-cache src` | линт фронтенда | `frontend/eslint.config.js` |
+| `vitest run --coverage` | фронтенд-тесты и покрытие; пороги-храповики — в конфиге | `frontend/vitest.config.ts` |
 | `check-tokens.mjs` | новые **литеральные цвета** в `<style>` компонентов | `frontend/scripts/style-tokens-baseline.json` |
 | `check-contrast.mjs` | контраст токенов WCAG AA (светлая, тёмная, AMOLED) и строже — в наборах повышенной контрастности (`data-contrast='high'`: текст 7:1, иконки 4.5:1) | `frontend/src/assets/appearance.css` |
 | `check-style-duplicates.mjs` | правила слоя `html .messenger-shell`, которые молча перебивают компоненты | `frontend/scripts/style-duplicates-baseline.json` |
 | `check-geometry.mjs` | новые **литеральные радиусы и тени** в `<style>` компонентов (смысл — шкала `--ms-radius-*`, см. `docs/design-system.md`) | `frontend/scripts/style-geometry-baseline.json` |
 | `check-i18n.mjs` | `t('...')` из кода без перевода (в английском молча осталась бы русская строка) и повторённые ключи каталога; заодно показывает остаток перевода — **строковые литералы** вне `t()` (комментарии, CSS и данные-ключи не считаются, исключения перечислены в скрипте с причиной) | `frontend/src/i18n/en.ts` |
 | `check-bundle-size.mjs` | бюджет gzip по `dist/assets` (после сборки) | `frontend/scripts/bundle-size-baseline.json` |
+| `check-a11y.mjs` | новые нарушения доступности (`label`↔поле, клавиатурная активация, подписи к медиа); известный долг 03.10.2026 — 117 нарушений в базе | `frontend/scripts/a11y-baseline.json` |
 | `gitleaks` | секреты в диффе | `.github/workflows/ci.yml` |
+| `shellcheck -x --severity=warning` | ошибки и предупреждения в bash-скриптах: деплой, бэкапы, мониторинг | `.shellcheckrc` |
+| `node scripts/check-docs-links.mjs` | битые локальные ссылки в README и `docs/*.md` (правки markdown гоняет `docs.yml`, правки кода — `ci.yml`) | `scripts/check-docs-links.mjs` |
 | `smoke_prod.sh` | прод отвечает после деплоя | `scripts/ci/smoke_prod.sh` |
 
 ## Только вручную (в CI не годятся)
 
 | Инструмент | Что делает | Почему не в CI |
 | --- | --- | --- |
-| `node scripts/check-docs-links.mjs` | битые локальные ссылки в README и `docs/*.md` | markdown их не валидирует; после переезда документов ссылки гниют тихо |
 | `frontend/e2e/` (Playwright: `pnpm exec playwright test -c e2e/playwright.config.ts`) | «живое» приложение: экран входа, список чатов и переписка, меню «⋯» с очисткой истории, тумблер приватности присутствия | ходит по НАСТОЯЩЕМУ стенду, а не по сборке; `@playwright/test` намеренно не в зависимостях проекта (иначе тянулся бы в образ), запуск — руками, см. `frontend/e2e/README.md` |
 | `node scripts/check-dead-css.mjs` | ищет классы из `<style>`, которых нет ни в разметке, ни в скриптах | есть ложные срабатывания: класс собирается из строки (`error-screen--${tone}`), смотреть глазами |
 | `frontend/scripts/build_icons.py` + `fetch_icons.py` | собирают урезанный шрифт иконок и `src/assets/icons.css` | качают исходники Lucide, нужен venv с fonttools/brotli |
@@ -102,8 +109,28 @@ node scripts/check-tokens.mjs --update-baseline
 node scripts/check-style-duplicates.mjs --update-baseline
 node scripts/check-geometry.mjs --update-baseline
 node scripts/check-bundle-size.mjs --update-baseline     # база снимается с собранного dist
+node scripts/check-a11y.mjs --update-baseline            # доступность (eslint-плагин a11y)
+node scripts/check-audit.mjs --update-baseline           # уязвимости зависимостей (pnpm audit; нужна сеть)
 ```
 
 Полезные флаги: `check-style-duplicates.mjs --list` (показать правила по группам),
 `--prune` (удалить из `appearance.css` правила-дубликаты), `check-dead-css.mjs <путь>`
 (проверить один каталог или файл).
+
+Отдельная база — у стража миграций (бэкенд). Если расхождение метаданных модели со
+схемой БД осознанное (autogenerate не умеет описать ручной индекс, комментарий
+колонки и т.п.), зафиксируйте его:
+
+```bash
+cd backend
+python scripts/check_migration_drift.py --update-baseline   # БД должна быть на последней ревизии
+python scripts/check_dependency_audit.py --update-baseline  # уязвимости зависимостей (нужна сеть)
+```
+
+Снимок схемы API — не «база нарушений», а сам контракт: после осознанной правки
+эндпоинтов обновите его и типы фронтенда (иначе CI скажет, что схема разошлась).
+
+```bash
+make api-schema                  # backend/openapi.json из текущего кода
+cd frontend && pnpm typegen      # src/types/generated.ts из снимка, без сервера
+```

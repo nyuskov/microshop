@@ -103,5 +103,5 @@ async def _presence_heartbeat_loop() -> None:
             continue
         try:
             await publish_realtime_event({"type": EVENT_PRESENCE_HEARTBEAT}, present)
-        except Exception:  # noqa: BLE001 - пульс не должен ронять приложение
+        except Exception:  # пульс не должен ронять приложение
             logger.debug("Не удалось опубликовать пульс присутствия")

@@ -235,10 +235,10 @@ def test_remove_avatar_files_removes_push_icon(tmp_path, monkeypatch) -> None:
 
 # --- API: загрузка и удаление -------------------------------------------
 
-# Фикстура API-теста (httpx поверх приложения) живёт в test_messenger_api —
+# Фикстура API-теста (httpx поверх приложения) живёт в tests/api_support.py —
 # импортируем её сюда, чтобы не дублировать ~60 строк настройки окружения.
-from tests.test_messenger_api import _ApiCtx  # noqa: E402
-from tests.test_messenger_api import api as api_fixture  # noqa: E402,F401
+from tests.api_support import _ApiCtx  # noqa: E402
+from tests.api_support import api as api_fixture  # noqa: E402,F401
 
 #: Без БД запускаем только юнит-тесты (они работают с файлами в tmp_path).
 needs_db = pytest.mark.skipif(
@@ -249,7 +249,7 @@ needs_db = pytest.mark.skipif(
 
 @pytest_asyncio.fixture
 async def api(api_fixture: _ApiCtx) -> _ApiCtx:  # noqa: F811
-    """Тот же контекст API-тестов, что и в test_messenger_api."""
+    """Тот же контекст API-тестов, что и в других модулях (см. tests/api_support.py)."""
     return api_fixture
 
 

@@ -119,7 +119,7 @@ def download_gif_message(
     except ValueError as exc:
         # Пользователю уйдёт «тихое» отсутствие сообщения; логируем лишь причину.
         logger.warning("GIF-задача отклонена (chat=%s): %s", chat_id, exc)
-    except Exception:  # noqa: BLE001 - защита воркера от падения
+    except Exception:  # защита воркера от падения
         logger.exception("GIF-задача упала (chat=%s, url=%s)", chat_id, url)
 
 

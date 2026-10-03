@@ -72,6 +72,14 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/microshop_test
         run: poetry run alembic upgrade head
 
+      # Правка модели без миграции ловится здесь: alembic сравнивает метаданные
+      # `core/models` со схемой БД, а известный autogenerate-шум отсекает
+      # baseline-файл (`backend/alembic-drift-baseline.txt`). См. docs/checks.md.
+      - name: Migration drift (модель без миграции)
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: poetry run python scripts/check_migration_drift.py
+
       - name: Lint (black, isort, flake8)
         run: |
           poetry run black --check .
@@ -79,10 +87,22 @@ jobs:
           poetry run flake8 . --exclude=.mypy_cache,__pycache__
 
       - name: Type check (mypy)
-        run: poetry run mypy --cache-dir=/tmp/mypy_ci main.py core api_v1
+        run: poetry run mypy --cache-dir=/tmp/mypy_ci main.py core api_v1 tasks
 
+      # Известные уязвимости зависимостей: база — backend/pip-audit-baseline.json,
+      # падаем только на новых (нужен доступ в сеть — в CI он есть).
+      - name: Аудит зависимостей (pip-audit)
+        run: poetry run python scripts/check_dependency_audit.py
+
+      # Контракт API: схема изменилась — снимок backend/openapi.json и типы
+      # фронтенда должны обновиться вместе с ней (см. docs/checks.md).
+      - name: Контракт API (снимок схемы)
+        run: poetry run python scripts/check_openapi_snapshot.py
+
+      # Покрытие считает pytest-cov, порог — `fail_under` в backend/pyproject.toml
+      # (храповик: падение покрытия валит сборку).
       - name: Tests (pytest, с БД из сервиса)
-        run: poetry run pytest -q
+        run: poetry run pytest -q --cov --cov-report=term-missing:skip-covered
 
   frontend:
     name: Frontend (type-check + lint + unit)
@@ -145,8 +165,20 @@ jobs:
       - name: Переводы (ключи есть в каталоге)
         run: node frontend/scripts/check-i18n.mjs
 
-      - name: Unit tests (vitest)
-        run: pnpm --prefix frontend exec vitest run
+      # Доступность: правила eslint-plugin-vuejs-accessibility. Известный долг —
+      # в scripts/a11y-baseline.json, падаем только на новых нарушениях.
+      - name: Доступность (новые нарушения a11y)
+        run: node frontend/scripts/check-a11y.mjs
+
+      # Известные уязвимости зависимостей фронтенда: база —
+      # frontend/scripts/audit-baseline.json, падаем только на новых.
+      - name: Аудит зависимостей (pnpm audit)
+        run: node frontend/scripts/check-audit.mjs
+
+      # Покрытие и пороги — в frontend/vitest.config.ts (храповик: падение ниже
+      # порога валит сборку).
+      - name: Unit tests (vitest, покрытие)
+        run: pnpm --prefix frontend exec vitest run --coverage
 
       - name: Production build (vite)
         env:
@@ -189,11 +221,40 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Проверки того, что не относится к коду приложения: скрипты деплоя/бэкапов и
+  # ссылки в документации. Раньше и то и другое проверялось только глазами
+  # (см. docs/checks.md).
+  repo:
+    name: Repo (shellcheck + docs links)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Фиксируем версию: в ubuntu-latest приезжает другая, а набор замечаний у
+      # shellcheck меняется от версии к версии — проверка должна быть стабильной.
+      - name: Install shellcheck
+        run: |
+          curl -fsSL -o /tmp/shellcheck.tar.xz \
+            https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz
+          tar -xJf /tmp/shellcheck.tar.xz -C /tmp
+
+      # -x — подключать sourced-файлы; --severity=warning — заметки (SC1091,
+      # SC2029, SC2317) не блокируют выпуск; SC2010 отключён в .shellcheckrc
+      # (имена бэкапов формируем сами, пробелов в них не бывает).
+      - name: Shellcheck (bash-скрипты)
+        run: /tmp/shellcheck-v0.10.0/shellcheck -x --severity=warning $(git ls-files '*.sh')
+
+      # Тот же шаг есть в docs.yml (он срабатывает на правки markdown, которые
+      # ci.yml пропускает): здесь он ловит ссылку на переименованный/удалённый
+      # файл в коммите без изменений в markdown.
+      - name: Docs links (битые локальные ссылки)
+        run: node scripts/check-docs-links.mjs
+
   # АВТОМАТИЧЕСКИЙ ДЕПЛОЙ ПОСЛЕ УСПЕШНЫХ ТЕСТОВ
   deploy:
     name: Deploy to Cloud.ru VM
     runs-on: ubuntu-latest
-    needs: [backend, frontend, secrets]
+    needs: [backend, frontend, secrets, repo]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
 
     steps:

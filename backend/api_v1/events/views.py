@@ -93,7 +93,7 @@ async def _handle_client_event(user_id: int, data: Any) -> None:
     if event_type not in ("typing", "typing-stop"):
         return
     try:
-        chat_id = int(data["chat_id"])  # type: ignore[arg-type]
+        chat_id = int(data["chat_id"])
     except (KeyError, TypeError, ValueError):
         return
 
@@ -150,7 +150,7 @@ async def _report_presence(user_id: int, *, online: bool, reason: str = "") -> N
             f" ({reason})" if reason else "",
         )
         await _broadcast_presence(peers, user_id, online=online, last_seen=last_seen)
-    except Exception:  # noqa: BLE001 - статус присутствия некритичен
+    except Exception:  # статус присутствия некритичен
         logger.exception("Не удалось отправить presence для %s", user_id)
 
 
@@ -170,7 +170,7 @@ async def websocket_events(websocket: WebSocket) -> None:
             snapshot = await presence_snapshot(session, user.id)
         if snapshot:
             await websocket.send_json({"type": "presence.snapshot", "users": snapshot})
-    except Exception:  # noqa: BLE001 - снимок некритичен для соединения
+    except Exception:  # снимок некритичен для соединения
         logger.exception("Не удалось отправить снимок присутствия для %s", user.id)
 
     # Подключение НЕ значит «в сети»: приложение могло переподключиться в фоне

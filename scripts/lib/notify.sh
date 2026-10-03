@@ -29,7 +29,6 @@ SMTP_PASSWORD=""
 SMTP_FROM=""
 SMTP_STARTTLS="true"
 SMTP_SSL="false"
-SMTP_SETTINGS_TMP=""
 
 load_smtp_settings() {
     local source="" key value
@@ -52,7 +51,6 @@ load_smtp_settings() {
             rm -f "$tmp"
             return 0
         fi
-        SMTP_SETTINGS_TMP="$tmp"
     fi
 
     for key in SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASSWORD SMTP_FROM SMTP_STARTTLS SMTP_SSL; do

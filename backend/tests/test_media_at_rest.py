@@ -84,7 +84,7 @@ def _jpeg_bytes(size: int = 40) -> bytes:
 
 
 def test_file_on_disk_has_no_plaintext(
-    tmp_path: Path, with_key, small_chunks  # noqa: ANN001 - фикстуры
+    tmp_path: Path, with_key, small_chunks  # фикстуры
 ) -> None:
     """На диске лежит контейнер, а не исходные байты."""
     path = tmp_path / "photo.png"
@@ -100,7 +100,7 @@ def test_file_on_disk_has_no_plaintext(
 
 @pytest.mark.parametrize("size", [0, 1, 7, 8, 9, 16, 17, 24])
 def test_round_trip_at_chunk_boundaries(
-    tmp_path: Path, with_key, small_chunks, size: int  # noqa: ANN001
+    tmp_path: Path, with_key, small_chunks, size: int
 ) -> None:
     """Содержимое любой длины (в том числе кратной куску) читается обратно."""
     data = bytes(range(size))
@@ -108,7 +108,7 @@ def test_round_trip_at_chunk_boundaries(
     assert media_crypto.decrypt_bytes(encrypted) == data
 
 
-def test_chunk_layout_is_predictable(with_key, small_chunks) -> None:  # noqa: ANN001
+def test_chunk_layout_is_predictable(with_key, small_chunks) -> None:
     """Куски лежат подряд и одного размера — на этом стоит расчёт Range."""
     data = bytes(20)  # 8 + 8 + 4 открытых байт → 3 куска
     encrypted = media_crypto.encrypt_bytes(data)
@@ -118,9 +118,7 @@ def test_chunk_layout_is_predictable(with_key, small_chunks) -> None:  # noqa: A
     assert media_crypto.chunk_count(0) == 0
 
 
-def test_without_key_encryption_is_transparent(
-    tmp_path: Path, without_key
-) -> None:  # noqa: ANN001
+def test_without_key_encryption_is_transparent(tmp_path: Path, without_key) -> None:
     """Без ключа пишем и читаем как раньше: фичу можно включать в любой момент."""
     path = tmp_path / "file.bin"
     media_crypto.write_file(path, b"plain")
@@ -130,17 +128,13 @@ def test_without_key_encryption_is_transparent(
     assert media_crypto.read_file(path) == b"plain"
 
 
-def test_already_encrypted_is_not_encrypted_twice(
-    with_key, small_chunks
-) -> None:  # noqa: ANN001
+def test_already_encrypted_is_not_encrypted_twice(with_key, small_chunks) -> None:
     """Повторная обработка (скрипт перешифровки) не портит контейнер."""
     encrypted = media_crypto.encrypt_bytes(b"data")
     assert media_crypto.encrypt_bytes(encrypted) == encrypted
 
 
-def test_wrong_key_does_not_silently_return_garbage(
-    with_key, monkeypatch
-) -> None:  # noqa: ANN001
+def test_wrong_key_does_not_silently_return_garbage(with_key, monkeypatch) -> None:
     """Чужим ключом содержимое не читается — это ошибка, а не «почти верные» байты."""
     encrypted = media_crypto.encrypt_bytes(b"secret")
     monkeypatch.setattr(settings, "at_rest_key", OTHER_KEY_HEX)
@@ -150,7 +144,7 @@ def test_wrong_key_does_not_silently_return_garbage(
 
 def test_encrypted_file_without_key_reports_problem(
     tmp_path: Path, with_key, monkeypatch
-) -> None:  # noqa: ANN001
+) -> None:
     """Ключ потерян — понятная ошибка вместо мусора в ответе."""
     path = tmp_path / "file.bin"
     media_crypto.write_file(path, b"secret")
@@ -166,7 +160,7 @@ def test_encrypted_file_without_key_reports_problem(
     [(0, 5), (3, 9), (7, 8), (8, 16), (0, 20), (19, 20), (0, 0)],
 )
 def test_iter_plaintext_returns_exact_slice(
-    tmp_path: Path, with_key, small_chunks, start: int, end: int  # noqa: ANN001
+    tmp_path: Path, with_key, small_chunks, start: int, end: int
 ) -> None:
     """Диапазон отдаётся ровно тот, что просили (на этом стоит перемотка)."""
     data = bytes(range(20))
@@ -177,7 +171,7 @@ def test_iter_plaintext_returns_exact_slice(
 
 
 def test_iter_plaintext_clamps_range_past_end(
-    tmp_path: Path, with_key, small_chunks  # noqa: ANN001
+    tmp_path: Path, with_key, small_chunks
 ) -> None:
     """Запрос «до конца файла» не читает то, чего нет."""
     path = tmp_path / "video.mp4"
@@ -186,9 +180,7 @@ def test_iter_plaintext_clamps_range_past_end(
     assert b"".join(media_crypto.iter_plaintext(path, 3, 1000)) == b"def"
 
 
-def test_iter_plaintext_reads_unencrypted_file(
-    tmp_path: Path, without_key
-) -> None:  # noqa: ANN001
+def test_iter_plaintext_reads_unencrypted_file(tmp_path: Path, without_key) -> None:
     """Старые (до включения ключа) файлы отдаются как есть."""
     path = tmp_path / "old.png"
     path.write_bytes(b"old-bytes")
@@ -197,9 +189,7 @@ def test_iter_plaintext_reads_unencrypted_file(
     assert b"".join(media_crypto.iter_plaintext(path, 4, 9)) == b"bytes"
 
 
-def test_plaintext_size_of_broken_container(
-    tmp_path: Path, with_key
-) -> None:  # noqa: ANN001
+def test_plaintext_size_of_broken_container(tmp_path: Path, with_key) -> None:
     """Обрезанный заголовок — явная ошибка, а не «размер 0»."""
     path = tmp_path / "broken.bin"
     path.write_bytes(media_crypto.MAGIC)
@@ -211,9 +201,7 @@ def test_plaintext_size_of_broken_container(
 # --- Ротация ключа файлов -----------------------------------------------
 
 
-def test_header_carries_current_key_id(
-    tmp_path: Path, with_key
-) -> None:  # noqa: ANN001
+def test_header_carries_current_key_id(tmp_path: Path, with_key) -> None:
     """В заголовке записан номер текущего ключа — по нему выбираем ключ."""
     path = tmp_path / "photo.png"
     media_crypto.write_file(path, b"data")
@@ -315,7 +303,7 @@ def _container_v1(data: bytes, key: bytes) -> bytes:
 
 
 def test_store_media_writes_encrypted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, with_key  # noqa: ANN001
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, with_key
 ) -> None:
     """Вложения пишутся на диск зашифрованными."""
     monkeypatch.setattr(media_store, "MEDIA_DIR", tmp_path)
@@ -328,7 +316,7 @@ def test_store_media_writes_encrypted(
 
 
 def test_store_avatar_encrypts_original_and_thumb(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, with_key  # noqa: ANN001
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, with_key
 ) -> None:
     """Аватар и миниатюра тоже шифруются (иначе текст «утекает» картинкой)."""
     monkeypatch.setattr(avatar_store, "AVATAR_DIR", tmp_path)
@@ -348,9 +336,7 @@ def test_store_avatar_encrypts_original_and_thumb(
 # --- Перешифровка истории ------------------------------------------------
 
 
-def test_backfill_encrypts_files_and_is_idempotent(
-    tmp_path: Path, with_key  # noqa: ANN001
-) -> None:
+def test_backfill_encrypts_files_and_is_idempotent(tmp_path: Path, with_key) -> None:
     """Скрипт шифрует и файлы вложений, и аватары; повторный запуск — пустой."""
     (tmp_path / "a.png").write_bytes(b"AAAA")
     (tmp_path / "avatars").mkdir()
@@ -369,7 +355,7 @@ def test_backfill_encrypts_files_and_is_idempotent(
 
 
 def test_backfill_keeps_original_when_write_fails(
-    tmp_path: Path, with_key, monkeypatch: pytest.MonkeyPatch  # noqa: ANN001
+    tmp_path: Path, with_key, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Сбой записи не портит файл: он читается и снова попадёт в очередь."""
     path = tmp_path / "busy.png"
@@ -391,7 +377,7 @@ def test_backfill_keeps_original_when_write_fails(
 
 
 async def test_serves_encrypted_file_with_headers(
-    client: AsyncClient, media_root: Path, with_key, small_chunks  # noqa: ANN001
+    client: AsyncClient, media_root: Path, with_key, small_chunks
 ) -> None:
     """Файл отдаётся целиком, с длиной, типом и поддержкой Range."""
     data = b"\x89PNG-secret-body"
@@ -408,7 +394,7 @@ async def test_serves_encrypted_file_with_headers(
 
 
 async def test_range_request_returns_part(
-    client: AsyncClient, media_root: Path, with_key, small_chunks  # noqa: ANN001
+    client: AsyncClient, media_root: Path, with_key, small_chunks
 ) -> None:
     """206 с ровно запрошенным куском — иначе видео не перематывается."""
     data = bytes(range(20))
@@ -423,7 +409,7 @@ async def test_range_request_returns_part(
 
 
 async def test_suffix_range_returns_tail(
-    client: AsyncClient, media_root: Path, with_key, small_chunks  # noqa: ANN001
+    client: AsyncClient, media_root: Path, with_key, small_chunks
 ) -> None:
     """Запрос «последние N байт» тоже работает (докачка файла)."""
     data = b"0123456789"
@@ -436,7 +422,7 @@ async def test_suffix_range_returns_tail(
 
 
 async def test_unsatisfiable_range_is_416(
-    client: AsyncClient, media_root: Path, with_key  # noqa: ANN001
+    client: AsyncClient, media_root: Path, with_key
 ) -> None:
     """Диапазон за пределами файла — 416 с указанием полного размера."""
     media_crypto.write_file(media_root / "clip.mp4", b"0123")
@@ -448,7 +434,7 @@ async def test_unsatisfiable_range_is_416(
 
 
 async def test_multi_range_falls_back_to_full_file(
-    client: AsyncClient, media_root: Path, with_key  # noqa: ANN001
+    client: AsyncClient, media_root: Path, with_key
 ) -> None:
     """Несколько диапазонов не поддерживаем — отдаём файл целиком (как разрешено)."""
     media_crypto.write_file(media_root / "clip.mp4", b"0123456789")
@@ -460,7 +446,7 @@ async def test_multi_range_falls_back_to_full_file(
 
 
 async def test_head_request_has_no_body(
-    client: AsyncClient, media_root: Path, with_key  # noqa: ANN001
+    client: AsyncClient, media_root: Path, with_key
 ) -> None:
     """HEAD отдаёт заголовки без содержимого (проверка размера и типа)."""
     media_crypto.write_file(media_root / "clip.mp4", b"0123456789")
@@ -473,7 +459,7 @@ async def test_head_request_has_no_body(
 
 
 async def test_conditional_request_returns_304(
-    client: AsyncClient, media_root: Path, with_key  # noqa: ANN001
+    client: AsyncClient, media_root: Path, with_key
 ) -> None:
     """Свежий файл у клиента — 304: не расшифровываем и не гоняем байты зря."""
     media_crypto.write_file(media_root / "pic.png", b"0123456789")
@@ -488,7 +474,7 @@ async def test_conditional_request_returns_304(
 
 
 async def test_if_range_mismatch_serves_full_file(
-    client: AsyncClient, media_root: Path, with_key  # noqa: ANN001
+    client: AsyncClient, media_root: Path, with_key
 ) -> None:
     """Если файл изменился, диапазон не применяем: клиент получит файл целиком."""
     media_crypto.write_file(media_root / "clip.mp4", b"0123456789")
@@ -503,7 +489,7 @@ async def test_if_range_mismatch_serves_full_file(
 
 
 async def test_legacy_plain_file_is_served(
-    client: AsyncClient, media_root: Path, with_key  # noqa: ANN001
+    client: AsyncClient, media_root: Path, with_key
 ) -> None:
     """Файлы, загруженные до включения ключа, отдаются как есть."""
     (media_root / "avatars" / "old.png").write_bytes(b"old-avatar")
@@ -515,7 +501,7 @@ async def test_legacy_plain_file_is_served(
 
 
 async def test_encrypted_file_without_key_is_503(
-    client: AsyncClient, media_root: Path, with_key, monkeypatch  # noqa: ANN001
+    client: AsyncClient, media_root: Path, with_key, monkeypatch
 ) -> None:
     """Без ключа честнее сказать «недоступно», чем отдать шифротекст."""
     media_crypto.write_file(media_root / "pic.png", b"secret")
@@ -527,7 +513,7 @@ async def test_encrypted_file_without_key_is_503(
 
 
 async def test_corrupted_container_is_error(
-    client: AsyncClient, media_root: Path, with_key  # noqa: ANN001
+    client: AsyncClient, media_root: Path, with_key
 ) -> None:
     """Битый файл — 500, а не «пустая картинка» с кодом 200."""
     (media_root / "broken.png").write_bytes(media_crypto.MAGIC + b"\x00")
@@ -560,7 +546,7 @@ async def test_path_traversal_is_blocked(
 
 @pytest.mark.parametrize("extension", ["html", "svg"])
 async def test_dangerous_types_are_not_served_as_document(
-    client: AsyncClient, media_root: Path, with_key, extension: str  # noqa: ANN001
+    client: AsyncClient, media_root: Path, with_key, extension: str
 ) -> None:
     """Под «активным» расширением файл отдаём потоком байт (защита от XSS)."""
     media_crypto.write_file(media_root / f"file.{extension}", b"<html>")
@@ -572,7 +558,7 @@ async def test_dangerous_types_are_not_served_as_document(
 
 
 async def test_unknown_extension_is_octet_stream(
-    client: AsyncClient, media_root: Path, with_key  # noqa: ANN001
+    client: AsyncClient, media_root: Path, with_key
 ) -> None:
     """Неизвестное расширение — тоже поток байт."""
     media_crypto.write_file(media_root / "file.zzz", b"data")
@@ -583,7 +569,7 @@ async def test_unknown_extension_is_octet_stream(
 
 
 async def test_range_response_matches_plaintext_when_chunks_are_real(
-    client: AsyncClient, media_root: Path, with_key, monkeypatch  # noqa: ANN001
+    client: AsyncClient, media_root: Path, with_key, monkeypatch
 ) -> None:
     """На «настоящем» размере куска (1 МиБ) диапазон через границу читается верно."""
     monkeypatch.setattr(media_crypto, "CHUNK_BYTES", 1024)
@@ -602,7 +588,7 @@ def test_is_encrypted_file_tolerates_missing_file(tmp_path: Path) -> None:
     assert media_crypto.is_encrypted_file(tmp_path / "gone.bin") is False
 
 
-def test_key_missing_error_is_clear(with_key, monkeypatch) -> None:  # noqa: ANN001
+def test_key_missing_error_is_clear(with_key, monkeypatch) -> None:
     """В сообщении об ошибке видно, что именно не задано (для дежурного)."""
     monkeypatch.setattr(settings, "at_rest_key", None)
     assert at_rest.is_enabled() is False

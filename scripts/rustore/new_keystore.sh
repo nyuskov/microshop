@@ -15,7 +15,6 @@ ANDROID_DIR="${ROOT}/android"
 KEYSTORE_DIR="${ANDROID_DIR}/keystore"
 KEYSTORE_FILE="${KEYSTORE_DIR}/pismo-release.jks"
 KEY_ALIAS="${KEY_ALIAS:-pismo}"
-IMAGE="${PISMO_ANDROID_IMAGE:-pismo-android-build}"
 
 if [ -f "${KEYSTORE_FILE}" ]; then
     echo "Ключ уже существует: ${KEYSTORE_FILE}"

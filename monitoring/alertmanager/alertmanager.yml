@@ -1,0 +1,41 @@
+# Конфигурация Alertmanager: доставка алертов Prometheus письмом по SMTP.
+#
+# В файле НЕТ секретов: значения вида __NAME__ подставляет entrypoint контейнера
+# из переменных окружения (Alertmanager не умеет разворачивать env в своём
+# конфиге — см. команду сервиса `alertmanager` в docker-compose.prod.yaml).
+#
+# SMTP берём из тех же переменных, что scripts/monitoring/check_prod.sh, поэтому
+# достаточно настроить почту один раз (docs/email-smtp.md, переменные SMTP_*).
+# Если SMTP не задан, контейнер всё равно запускается, но письма не уходят, а
+# алерты остаются видны в интерфейсе Prometheus (/alerts).
+#
+# Проверить конфиг без запуска:
+#   docker run --rm -v "$PWD/monitoring/alertmanager:/cfg:ro" \
+#     --entrypoint /bin/amtool prom/alertmanager:v0.28.1 check-config /cfg/alertmanager.yml
+
+global:
+  # Сколько ждать, прежде чем считать инцидент закрытым (для send_resolved).
+  resolve_timeout: 5m
+  smtp_require_tls: __SMTP_STARTTLS__
+
+route:
+  receiver: email
+  group_by: [alertname]
+  # Первое письмо — почти сразу (мелкие всплески успевают схлопнуться в одно).
+  group_wait: 30s
+  group_interval: 5m
+  # Повтор про неисправленный инцидент — раз в 4 часа, как ALERT_MIN_INTERVAL у
+  # cron-скрипта: почта не должна превращаться в поток.
+  repeat_interval: 4h
+
+receivers:
+  - name: email
+    email_configs:
+      - to: "__ALERT_EMAIL__"
+        from: "__SMTP_FROM__"
+        smarthost: "__SMTP_HOST__:__SMTP_PORT__"
+        auth_username: "__SMTP_USER__"
+        auth_password: "__SMTP_PASSWORD__"
+        # Письмо «алерт закрылся» шлём: без него непонятно, само прошло или
+        # кто-то починил.
+        send_resolved: true

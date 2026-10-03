@@ -45,7 +45,7 @@ def _get_json(url: str, credentials: str) -> dict[str, Any]:
         detail = ""
         try:
             detail = exc.read().decode("utf-8", "replace")
-        except Exception:  # noqa: BLE001 - тело может быть недоступно
+        except Exception:  # тело может быть недоступно
             pass
         raise SmsAeroError(f"HTTP {exc.code}: {detail}".strip()) from exc
     except (URLError, OSError, json.JSONDecodeError) as exc:

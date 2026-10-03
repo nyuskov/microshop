@@ -290,7 +290,7 @@ async def _group_chat_member_ids(chat_id: int) -> set[int] | None:
                 )
             )
             return set(rows.scalars().all())
-    except Exception:  # noqa: BLE001 - проверка чата не роняет сигналинг
+    except Exception:  # проверка чата не роняет сигналинг
         logger.exception("Не удалось проверить участников группового чата")
         return None
 
@@ -427,7 +427,7 @@ async def _persist_call_record(meta: dict[str, Any], state: str, duration: int) 
                 # после разговора не нужен, человек о звонке уже знает.
                 push=False,
             )
-    except Exception:  # noqa: BLE001 - история звонка не роняет сигналинг
+    except Exception:  # история звонка не роняет сигналинг
         logger.exception("Не удалось записать отметку о звонке")
 
 
@@ -731,7 +731,7 @@ async def _deliver_signal(user_id: int, envelope: dict[str, Any]) -> bool:
         return True
     try:
         event_id = await publish_realtime_event(envelope, [user_id], ack_requested=True)
-    except Exception:  # noqa: BLE001 - без моста остаётся хотя бы локальная доставка
+    except Exception:  # без моста остаётся хотя бы локальная доставка
         logger.exception("Не удалось отправить сигнал звонка через мост")
         return False
     return await wait_for_delivery(event_id)
@@ -751,7 +751,7 @@ async def _deliver_to_devices(
     await call_manager.send_to_other_devices(user_id, envelope, exclude=exclude)
     try:
         await publish_realtime_event(envelope, [user_id])
-    except Exception:  # noqa: BLE001 - остальные устройства получат хотя бы локально
+    except Exception:  # остальные устройства получат хотя бы локально
         logger.exception("Не удалось разослать сигнал звонка по другим устройствам")
 
 
@@ -768,7 +768,7 @@ async def _is_call_blocked(from_user_id: int, to_user_id: int) -> bool:
             return await moderation_crud.is_call_blocked_between(
                 session, user_id=to_user_id, other_id=from_user_id
             )
-    except Exception:  # noqa: BLE001 - блокировки не роняют сигналинг
+    except Exception:  # блокировки не роняют сигналинг
         logger.exception("Не удалось проверить блокировки для звонка")
         return False
 
@@ -1052,7 +1052,7 @@ def _notify_call_finished(
         get_task("tasks.notifications.send_call_cancelled_push").delay(
             user_id, str(call_id), reason
         )
-    except Exception:  # noqa: BLE001 - push не должен ронять сигналинг
+    except Exception:  # push не должен ронять сигналинг
         logger.exception("Не удалось поставить задачу закрытия уведомления о звонке")
 
 
@@ -1100,7 +1100,7 @@ async def _enqueue_call_push_when_ringing(
                 attempt,
                 CALL_PUSH_ATTEMPTS,
             )
-    except Exception:  # noqa: BLE001 - push не должен ронять сигналинг
+    except Exception:  # push не должен ронять сигналинг
         logger.exception("Не удалось поставить задачу push о входящем звонке")
 
 

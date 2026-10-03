@@ -116,6 +116,7 @@ curl -s -H "X-Metrics-Token: $METRICS_TOKEN" \
 | --- | --- | --- |
 | Grafana, дашборд «Pismo · обзор» | порт **3000**, только `127.0.0.1` сервера | `ssh -L 3000:127.0.0.1:3000 -i ~/.ssh/id_rsa1 user1@176.108.249.9` → http://localhost:3000 |
 | Prometheus (цели, ad-hoc запросы) | порт **9090**, тоже только `127.0.0.1` | тот же туннель с `-L 9090:127.0.0.1:9090` |
+| Alertmanager (активные алерты, «молчание») | порт **9093**, тоже только `127.0.0.1` | тот же туннель с `-L 9093:127.0.0.1:9093` |
 
 - **Логин** в Grafana — `admin`, пароль лежит в прод `.env`
   (`grep '^GRAFANA_ADMIN_PASSWORD=' ~/microshop/.env`). Наружу порты не открыты
@@ -144,6 +145,53 @@ curl -s -H "X-Metrics-Token: $METRICS_TOKEN" \
 Чего пока НЕТ (сознательно, первый шаг): глубины очереди Celery и задержки задач
 (нужен доступ к management API RabbitMQ), счётчиков отправленных push (они живут в
 процессе воркера, а метрики снимаются с `web`) и трейсинга.
+
+## Алерты: Prometheus + Alertmanager
+
+Раньше метрики только рисовались на графиках: заметить проблему можно было, лишь
+зайдя в Grafana, а о падении узнавал локальный cron (`check_prod.sh`, раз в 15
+минут). Теперь у метрик есть пороги и доставка — независимо от того, включён ли
+компьютер с cron.
+
+- **Правила**: `monitoring/prometheus/rules/pismo.yml`, подключены через
+  `rule_files` в `prometheus.yml`. Пять правил: API не скрейпится (`PismoApiDown`),
+  сам Prometheus молчит, доля 5xx > 5%, p95 времени ответа > 1 c, пул БД занят
+  > 90%. Активные алерты видны в Prometheus на `/alerts`.
+- **Доставка**: сервис `alertmanager` (порт 9093, только localhost) шлёт письмо
+  по SMTP — теми же переменными, что `scripts/monitoring/check_prod.sh`
+  (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`/`SMTP_FROM`, адрес
+  получателя `ALERT_EMAIL`, по умолчанию `nyuskov@gmail.com`). Письмо «алерт
+  закрылся» тоже отправляется.
+- **Секретов в конфиге нет**: `monitoring/alertmanager/alertmanager.yml` — шаблон
+  с плейсхолдерами `__SMTP_*__`, их подставляет entrypoint контейнера (как
+  `__METRICS_TOKEN__` у Prometheus). Пароль со спецсимволами (`&`, `|`, `\`)
+  обрабатывается: значения экранируются перед `sed`.
+- Если SMTP не задан, контейнер поднимается и работает, но письма не уходят —
+  алерты остаются видны в интерфейсе Prometheus. Это тот же принцип, что у
+  cron-скрипта: «НЕТ КАНАЛА ОПОВЕЩЕНИЙ» — повод настроить почту, а не паника.
+
+Проверить конфиги перед правкой (обе команды безопасны, ничего не запускают):
+
+```bash
+docker run --rm -v "$PWD/monitoring/prometheus:/etc/prometheus:ro" \
+  --entrypoint /bin/promtool prom/prometheus:v3.15.0 check config /etc/prometheus/prometheus.yml
+docker run --rm -v "$PWD/monitoring/alertmanager:/cfg:ro" \
+  --entrypoint /bin/amtool prom/alertmanager:v0.28.1 check-config /cfg/alertmanager.yml
+```
+
+**Как применить правку конфига** — важно: деплой из CI запускает только `db`,
+`rabbitmq`, `coturn`, `certbot`, слоты `web` и `frontend` (см.
+`scripts/ci/deploy_remote.sh`), сервисы мониторинга он не пересоздаёт. После
+изменения `prometheus.yml`, правил или `alertmanager.yml` подними их на сервере
+руками:
+
+```bash
+cd ~/microshop
+docker compose -p microshop-test -f docker-compose.prod.yaml up -d --no-build prometheus alertmanager
+```
+
+Первого запуска Alertmanager тоже касается: сервис новый, поэтому на проде его
+нужно создать этой командой один раз.
 
 ## Чего мониторинг не покрывает
 

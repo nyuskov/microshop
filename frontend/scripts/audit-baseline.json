@@ -1,0 +1,12 @@
+{
+  "@vitest/mocker|1193684": "moderate",
+  "brace-expansion|1240101": "moderate",
+  "brace-expansion|1240103": "moderate",
+  "brace-expansion|1240105": "high",
+  "brace-expansion|1240107": "high",
+  "brace-expansion|1240109": "high",
+  "brace-expansion|1240111": "high",
+  "braces|1240992": "high",
+  "js-yaml|1193727": "high",
+  "vitest|1193683": "moderate"
+}

@@ -25,14 +25,10 @@ class EncryptedText(TypeDecorator):
     impl = Text
     cache_ok = True
 
-    def process_bind_param(
-        self, value: str | None, dialect
-    ) -> str | None:  # noqa: ANN001
+    def process_bind_param(self, value: str | None, dialect) -> str | None:
         """Перед записью в БД — зашифровать."""
         return at_rest.encrypt_text(value)
 
-    def process_result_value(
-        self, value: str | None, dialect
-    ) -> str | None:  # noqa: ANN001
+    def process_result_value(self, value: str | None, dialect) -> str | None:
         """После чтения из БД — расшифровать (открытое отдаём как есть)."""
         return at_rest.decrypt_text(value)

@@ -105,7 +105,7 @@ def enqueue_security_email(to: str, subject: str, body: str) -> None:
     try:
         task = get_task("tasks.notifications.send_email")
         task.delay(subject, to, body)
-    except Exception:  # noqa: BLE001 - брокер может быть недоступен (dev без docker)
+    except Exception:  # брокер может быть недоступен (dev без docker)
         logger.warning(
             "RabbitMQ недоступен: уведомление для %s не поставлено в очередь",
             mailer.mask_email(to),
@@ -135,7 +135,7 @@ def enqueue_security_push(
     try:
         task = get_task("tasks.notifications.send_security_push")
         task.delay(user_id, title, body, panic_token)
-    except Exception:  # noqa: BLE001 - брокер может быть недоступен (dev без docker)
+    except Exception:  # брокер может быть недоступен (dev без docker)
         logger.warning(
             "RabbitMQ недоступен: push о безопасности для %s не поставлен в очередь",
             user_id,

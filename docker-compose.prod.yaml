@@ -344,6 +344,49 @@ services:
     networks:
       - server_network
 
+  # Alertmanager: доставка алертов Prometheus письмом по SMTP. Секретов в
+  # конфиге нет — значения подставляет entrypoint (Alertmanager не разворачивает
+  # env в конфиге). Переменные те же, что у scripts/monitoring/check_prod.sh,
+  # поэтому почту достаточно настроить один раз (docs/email-smtp.md).
+  alertmanager:
+    logging: *default-logging
+    mem_limit: 128m
+    cpus: 0.25
+    image: prom/alertmanager:v0.28.1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        # Спецсимволы sed (& | \) в пароле экранируем: иначе замена ломается.
+        esc() { printf '%s' "$1" | sed 's/[\\&|]/\\&/g'; }
+        sed -e "s|__ALERT_EMAIL__|$(esc "$${ALERT_EMAIL}")|g" \
+            -e "s|__SMTP_FROM__|$(esc "$${SMTP_FROM}")|g" \
+            -e "s|__SMTP_HOST__|$(esc "$${SMTP_HOST}")|g" \
+            -e "s|__SMTP_PORT__|$(esc "$${SMTP_PORT}")|g" \
+            -e "s|__SMTP_USER__|$(esc "$${SMTP_USER}")|g" \
+            -e "s|__SMTP_PASSWORD__|$(esc "$${SMTP_PASSWORD}")|g" \
+            -e "s|__SMTP_STARTTLS__|$(esc "$${SMTP_STARTTLS}")|g" \
+            /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml
+        exec /bin/alertmanager \
+          --config.file=/tmp/alertmanager.yml \
+          --storage.path=/alertmanager
+    environment:
+      ALERT_EMAIL: ${ALERT_EMAIL:-nyuskov@gmail.com}
+      SMTP_FROM: ${SMTP_FROM:-pismo@localhost}
+      SMTP_HOST: ${SMTP_HOST:-localhost}
+      SMTP_PORT: ${SMTP_PORT:-25}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+    volumes:
+      - alertmanager_data:/alertmanager
+      - ./monitoring/alertmanager:/etc/alertmanager:ro
+    ports:
+      - "127.0.0.1:9093:9093"
+    restart: unless-stopped
+    networks:
+      - server_network
+
   grafana:
     logging: *default-logging
     mem_limit: 384m
@@ -420,3 +463,6 @@ volumes:
   # но восстанавливаются из monitoring/ при пересоздании).
   prometheus_data:
   grafana_data:
+  # Состояние Alertmanager: какие алерты уже отправлены (чтобы не дублировать
+  # письма при перезапуске контейнера).
+  alertmanager_data:

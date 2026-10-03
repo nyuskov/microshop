@@ -194,9 +194,7 @@ def _pending_sql(target: Target, *, with_columns: bool, rotate: bool) -> str:
     return f"SELECT count(*) FROM {table} {where}"
 
 
-async def count_pending(  # noqa: ANN001
-    session, target: Target, *, rotate: bool = False
-) -> int:
+async def count_pending(session, target: Target, *, rotate: bool = False) -> int:
     """Сколько записей в колонке ещё требует работы."""
     result = await session.execute(
         sql_text(_pending_sql(target, with_columns=False, rotate=rotate)),
@@ -205,7 +203,7 @@ async def count_pending(  # noqa: ANN001
     return int(result.scalar() or 0)
 
 
-async def encrypt_batch(  # noqa: ANN001
+async def encrypt_batch(
     session, target: Target, batch: int, *, rotate: bool = False
 ) -> tuple[int, int]:
     """Обрабатывает одну порцию записей.

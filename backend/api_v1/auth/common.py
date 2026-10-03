@@ -121,7 +121,7 @@ def enqueue_sms_otp(phone_number: str, otp_code: str) -> None:
     try:
         task = get_task("tasks.otp_tasks.send_sms_otp")
         task.delay(phone_number, otp_code)
-    except Exception:  # noqa: BLE001 - брокер может быть недоступен (dev без docker)
+    except Exception:  # брокер может быть недоступен (dev без docker)
         logger.warning(
             "RabbitMQ недоступен: задача SMS не поставлена в очередь "
             "(код отправки см. выше)"
@@ -148,7 +148,7 @@ def enqueue_email_code(email: str, code: str, subject: str, body: str) -> None:
     try:
         task = get_task("tasks.otp_tasks.send_email_code")
         task.delay(email, code, subject, body)
-    except Exception:  # noqa: BLE001 - брокер может быть недоступен (dev без docker)
+    except Exception:  # брокер может быть недоступен (dev без docker)
         logger.warning(
             "RabbitMQ недоступен: письмо с кодом не поставлено в очередь "
             "(код отправки см. выше)"

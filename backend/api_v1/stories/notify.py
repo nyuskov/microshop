@@ -41,14 +41,14 @@ async def notify_reaction(*, story: Story, reactor: User, emoji: str) -> None:
     }
     try:
         await dispatch_realtime([story.user_id], payload)
-    except Exception:  # noqa: BLE001 - сокет не должен ронять саму реакцию
+    except Exception:  # сокет не должен ронять саму реакцию
         logger.exception(
             "Не удалось отправить событие о реакции на историю %s", story.id
         )
 
     try:
         get_task(REACTION_PUSH_TASK).delay(story.user_id, reactor.id, emoji, story.id)
-    except Exception:  # noqa: BLE001 - брокер может быть недоступен (dev без docker)
+    except Exception:  # брокер может быть недоступен (dev без docker)
         logger.warning(
             "RabbitMQ недоступен: push о реакции на историю %s не поставлен", story.id
         )

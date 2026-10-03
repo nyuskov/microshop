@@ -17,8 +17,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlalchemy import text
 
-from tests.test_messenger_api import _ApiCtx  # noqa: E402
-from tests.test_messenger_api import api as api_fixture  # noqa: E402
+from tests.api_support import _ApiCtx  # noqa: E402
+from tests.api_support import api as api_fixture  # noqa: E402
 
 api = api_fixture
 

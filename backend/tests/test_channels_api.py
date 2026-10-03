@@ -16,9 +16,9 @@ import os
 
 import pytest
 
-# Фикстура `api` и её контекст живут в тестах мессенджера: у них уже поднят
+# Фикстура `api` и её контекст живут в общей обвязке API-тестов: там уже поднят
 # ASGI-клиент, подмена сессий и очистка таблиц между тестами.
-from test_messenger_api import _ApiCtx, api  # noqa: F401
+from tests.api_support import _ApiCtx, api  # noqa: F401
 
 pytestmark = pytest.mark.skipif(
     os.getenv("TEST_DATABASE_URL") is None,

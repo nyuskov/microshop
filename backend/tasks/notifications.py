@@ -522,7 +522,7 @@ async def _send_message_push_async(
                         sub.endpoint[-24:],
                         exc,
                     )
-            except Exception as exc:  # noqa: BLE001 - сеть/таймауты не роняют задачу
+            except Exception as exc:  # сеть/таймауты не роняют задачу
                 logger.warning("push error (endpoint …%s): %s", sub.endpoint[-24:], exc)
 
         if stale_ids:
@@ -666,7 +666,7 @@ async def _web_push_to_subscriptions(
                 logger.warning(
                     "push не доставлен (endpoint …%s): %s", sub.endpoint[-24:], exc
                 )
-        except Exception as exc:  # noqa: BLE001 - сеть/таймауты не роняют задачу
+        except Exception as exc:  # сеть/таймауты не роняют задачу
             logger.warning("push error (endpoint …%s): %s", sub.endpoint[-24:], exc)
 
     if stale_ids:
@@ -1204,7 +1204,7 @@ async def _send_call_push_async(
                         sub.endpoint[-24:],
                         exc,
                     )
-            except Exception as exc:  # noqa: BLE001 - сеть/таймауты не роняют задачу
+            except Exception as exc:  # сеть/таймауты не роняют задачу
                 logger.warning(
                     "call-push error (endpoint …%s): %s",
                     sub.endpoint[-24:],

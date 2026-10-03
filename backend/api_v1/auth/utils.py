@@ -317,7 +317,7 @@ async def admin_viewer_of(request: Request) -> str:
     try:
         async with db_helper.session_factory() as session:
             user = await get_user_by_id(session, int(subject))
-    except Exception as exc:  # noqa: BLE001 - проверка не должна ронять запрос
+    except Exception as exc:  # проверка не должна ронять запрос
         logger.warning("Не удалось проверить администратора по токену: %s", exc)
         return VIEWER_USER
     if user is None or not user.is_active:
