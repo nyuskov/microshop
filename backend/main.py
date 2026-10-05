@@ -137,6 +137,9 @@ MAINTENANCE_EXEMPT_PREFIXES = (
     # Метрики: во время работ сервис как раз интереснее всего — по ним видно, что
     # происходит, а токен и так закрывает доступ посторонним.
     f"{settings.api_v1_prefix}/system/metrics",
+    # Отчёты о падении приложения должны доезжать всегда: экран ошибки бывает и
+    # во время работ (и в самом экране техработ тоже).
+    f"{settings.api_v1_prefix}/system/client-error",
     f"{settings.api_v1_prefix}/auth/",
     f"{settings.api_v1_prefix}/jwt/",
 )

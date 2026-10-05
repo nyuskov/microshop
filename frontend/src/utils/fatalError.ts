@@ -3,12 +3,14 @@
  *
  * Задача — не «упасть молча»: если рендер/обработчик упал и приложение не может
  * продолжать, показываем экран с перезагрузкой (см.
- * `components/common/FatalErrorScreen.vue`). Ошибки запросов сюда НЕ попадают:
+ * `components/common/FatalErrorScreen.vue`) и отправляем отчёт на свой сервер
+ * (`services/clientErrorReport.ts`). Ошибки запросов сюда НЕ попадают:
  * их разбирает интерфейс (плашка «нет сети», повтор, понятные тексты).
  */
 
 import { ref } from 'vue'
 
+import { sendClientError } from '@/services/clientErrorReport'
 import { t } from '@/i18n'
 
 /** Текст последней фатальной ошибки (пусто — всё в порядке). */
@@ -28,12 +30,16 @@ const MAX_SHOWS = 3
  */
 export const reportFatalError = (error: unknown): void => {
   const message = error instanceof Error ? error.message : String(error ?? '')
+  const stack = error instanceof Error ? (error.stack ?? null) : null
   if (shown >= MAX_SHOWS) {
     console.warn(t('FatalError: сообщение не показано (лимит показов)'), message)
     return
   }
   shown += 1
   fatalError.value = message || t('Неизвестная ошибка')
+  // Отчёт на свой сервер: без него редкую ошибку с чужого телефона разобрать
+  // нечем — в логах сервера её нет. Лимит показов ограничивает и отправки.
+  void sendClientError(fatalError.value, stack)
 }
 
 /** Скрывает экран ошибки (пользователь решил продолжить работу). */

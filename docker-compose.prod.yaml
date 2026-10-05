@@ -78,6 +78,9 @@ x-web-slot: &web-slot
     SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Pismo}
     SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
     SMTP_SSL: ${SMTP_SSL:-false}
+    # Куда писать служебные письма (отчёты о падении приложения, см.
+    # POST /api/v1/system/client-error/): тот же адрес, что у alertmanager.
+    ALERT_EMAIL: ${ALERT_EMAIL:-nyuskov@gmail.com}
   depends_on:
     migrate:
       condition: service_completed_successfully
@@ -188,6 +191,8 @@ services:
       SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Pismo}
       SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
       SMTP_SSL: ${SMTP_SSL:-false}
+      # Отчёты о падении приложения отправляет воркер — адрес нужен и ему.
+      ALERT_EMAIL: ${ALERT_EMAIL:-nyuskov@gmail.com}
       # Web Push (PWA) — отправка в воркере; VAPID-ключи.
       # TURN (релей звонков): адреса и общий секрет для временных кредов.
       TURN_URLS: ${TURN_URLS:-}

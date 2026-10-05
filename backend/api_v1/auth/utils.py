@@ -25,6 +25,13 @@ oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=f"{settings.api_v1_prefix}/auth/token/",
 )
 
+#: Тот же bearer-токен, но БЕЗ токена в заголовке — не ошибка. Нужен там, где
+#: данные полезны и неавторизованному клиенту (отчёт о падении приложения).
+optional_oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl=f"{settings.api_v1_prefix}/auth/token/",
+    auto_error=False,
+)
+
 # Как часто обновлять last_seen в БД при активности пользователя
 # (настраивается через env, см. Settings.last_seen_update_seconds).
 LAST_SEEN_UPDATE_SECONDS = settings.last_seen_update_seconds
@@ -225,6 +232,26 @@ async def get_current_user(
     # read-only запрос писал бы в БД. Присутствие обновляется точечно там, где
     # это дёшево (см. touch_last_seen в GET /chats/).
     return user
+
+
+async def get_optional_user(
+    token: Annotated[str | None, Depends(optional_oauth2_scheme)],
+    session: AsyncSession = Depends(db_helper.session_dependency),
+) -> User | None:
+    """Текущий пользователь, если запрос авторизован (иначе ``None``).
+
+    Нужен там, где данные полезны и неавторизованному клиенту: отчёт о падении
+    приложения (`POST /system/client-error/`) принимаем и без токена — иначе
+    ошибка на экране входа осталась бы невидимой. Логику проверки токена не
+    дублируем — зовём ``get_current_user`` и глотаем отказ: «не авторизован»
+    здесь не ошибка, а просто отсутствие того, кто упал.
+    """
+    if not token:
+        return None
+    try:
+        return await get_current_user(token=token, session=session)
+    except HTTPException:
+        return None
 
 
 async def get_current_superuser(

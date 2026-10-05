@@ -1544,6 +1544,46 @@
         "title": "ChatUserSchema",
         "type": "object"
       },
+      "ClientErrorRequest": {
+        "description": "Отчёт приложения о необработанной ошибке (экран «500»).",
+        "properties": {
+          "build": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Build",
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "page": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Page",
+            "type": "string"
+          },
+          "stack": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stack"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "ClientErrorRequest",
+        "type": "object"
+      },
       "CommentCreate": {
         "properties": {
           "text": {
@@ -13854,6 +13894,46 @@
         "summary": "View Story",
         "tags": [
           "Истории"
+        ]
+      }
+    },
+    "/api/v1/system/client-error/": {
+      "post": {
+        "description": "Принимает отчёт о необработанной ошибке на устройстве пользователя.\n\nЗачем свой эндпоинт, а не Sentry: внешний сервис — это передача данных за\nграницу, поэтому в проекте и метрики свои (см. `docs/rkn-notification.md`).\nНужен ровно один факт — «что упало, в какой сборке, на какой странице»:\nтекст идёт в лог (`web`, ищите «Ошибка на клиенте»), счётчик — в метрику для\nалерта, письмо — владельцу (то же, что у писем о безопасности).\n\nВход не обязателен: падать может и экран входа, а токен к этому моменту\nможет быть уже потерян. Если токен есть — в отчёте будет id человека.",
+        "operationId": "report_client_error_api_v1_system_client_error__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientErrorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Отчёт приложения о падении (свой «Sentry»)",
+        "tags": [
+          "Служебное"
         ]
       }
     },

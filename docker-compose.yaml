@@ -51,6 +51,8 @@ services:
       - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Pismo}
       - SMTP_STARTTLS=${SMTP_STARTTLS:-true}
       - SMTP_SSL=${SMTP_SSL:-false}
+      # Куда писать служебные письма (отчёты о падении приложения).
+      - ALERT_EMAIL=${ALERT_EMAIL:-nyuskov@gmail.com}
       # Шифрование данных «в покое» (тексты сообщений): ключ 32 байта (hex/base64).
       # Пусто — выключено (данные пишутся и читаются как раньше).
       - AT_REST_KEY=${AT_REST_KEY:-}
@@ -118,6 +120,8 @@ services:
       - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Pismo}
       - SMTP_STARTTLS=${SMTP_STARTTLS:-true}
       - SMTP_SSL=${SMTP_SSL:-false}
+      # Отчёты о падении приложения отправляет воркер — адрес нужен и ему.
+      - ALERT_EMAIL=${ALERT_EMAIL:-nyuskov@gmail.com}
       - TELEGRAM_GATEWAY_TOKEN=${TELEGRAM_GATEWAY_TOKEN:-}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}

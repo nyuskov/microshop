@@ -110,6 +110,12 @@ class Settings(BaseSettings):
     # STARTTLS для порта 587 (обычно) или неявный TLS для 465 (тогда smtp_ssl).
     smtp_starttls: bool = Field(default=True, validation_alias="SMTP_STARTTLS")
     smtp_ssl: bool = Field(default=False, validation_alias="SMTP_SSL")
+    # Куда пишут служебные письма: отчёт о падении приложения
+    # (`POST /system/client-error/`). Адрес тот же, что у alertmanager и
+    # cron-скриптов мониторинга, — настраивается один раз.
+    alert_email: str = Field(
+        default="nyuskov@gmail.com", validation_alias="ALERT_EMAIL"
+    )
     # Лимиты канала: код стоит денег/репутации, а эндпоинты публичные.
     auth_email_resend_cooldown_seconds: int = 60
     auth_email_per_address_per_hour: int = 5

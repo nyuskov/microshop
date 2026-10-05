@@ -68,6 +68,35 @@ _gauges: dict[tuple[str, tuple[tuple[str, str], ...]], float] = {}
 #: Порядок вывода гаугов (чтобы выдача была стабильной и читаемой глазами).
 _gauge_order: list[tuple[str, tuple[tuple[str, str], ...]]] = []
 
+#: Что писать в HELP для доменных счётчиков (их увеличивает вызывающая сторона).
+#: Список закрытый: метрика без описания в выдачу не попадёт, а кардинальность
+#: остаётся под нашим контролем (подписи задаём мы, а не клиент).
+_COUNTER_HELP = {
+    "pismo_client_errors_total": (
+        "Отчёты о падении приложения, присланные клиентами (экран «500»)"
+    ),
+}
+
+#: Доменные счётчики: (метрика, подпись) → значение.
+_counters: dict[tuple[str, tuple[tuple[str, str], ...]], int] = defaultdict(int)
+#: Порядок вывода доменных счётчиков.
+_counter_order: list[tuple[str, tuple[tuple[str, str], ...]]] = []
+
+
+def count(name: str, labels: dict[str, str] | None = None, value: int = 1) -> None:
+    """Увеличивает доменный счётчик — то, что не является HTTP-запросом.
+
+    Пример: отчёты о падении приложения (``pismo_client_errors_total``). Запрос
+    клиента учитывается отдельно, в ``pismo_http_requests_total``, поэтому здесь
+    считается именно СОБЫТИЕ, а не факт обращения к эндпоинту.
+    """
+    if name not in _COUNTER_HELP:
+        return
+    key = (name, tuple(sorted((labels or {}).items())))
+    if key not in _counters:
+        _counter_order.append(key)
+    _counters[key] += value
+
 
 def _label(value: str) -> str:
     """Экранирует значение подписи по правилам exposition-формата."""
@@ -144,6 +173,19 @@ def render() -> str:
         request_rows,
     )
 
+    # Доменные счётчики (см. `count`). HELP и TYPE — по одному разу на метрику,
+    # дальше только серии: иначе экспозиция нарушает формат при нескольких подписях.
+    described: set[str] = set()
+    for counter_key in _counter_order:
+        counter_name, counter_labels = counter_key
+        if counter_name not in described:
+            described.add(counter_name)
+            lines.append(f"# HELP {counter_name} {_COUNTER_HELP[counter_name]}")
+            lines.append(f"# TYPE {counter_name} counter")
+        label_text = ",".join(f'{k}="{_label(v)}"' for k, v in counter_labels)
+        braces = f"{{{label_text}}}" if label_text else ""
+        lines.append(f"{counter_name}{braces} {_counters[counter_key]}")
+
     lines += [
         "# HELP pismo_http_request_seconds Время обработки HTTP-запросов",
         "# TYPE pismo_http_request_seconds histogram",
@@ -197,6 +239,8 @@ def reset_for_tests() -> None:
     _known_routes.clear()
     _gauges.clear()
     _gauge_order.clear()
+    _counters.clear()
+    _counter_order.clear()
 
 
 def snapshot() -> dict[str, Any]:
@@ -211,6 +255,7 @@ def snapshot() -> dict[str, Any]:
 __all__ = (
     "BUCKETS",
     "MAX_SERIES",
+    "count",
     "gauge",
     "observe_request",
     "render",

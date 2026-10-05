@@ -19,16 +19,22 @@ from __future__ import annotations
 
 import logging
 import secrets
+import time
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api_v1.auth.utils import get_current_superuser, request_from_admin
+from api_v1.auth.utils import (
+    get_current_superuser,
+    get_optional_user,
+    request_from_admin,
+)
 from api_v1.calls.manager import call_manager
 from api_v1.events.manager import events_manager
 from core import maintenance, metrics
+from core.celery_app import get_task
 from core.config import settings
 from core.i18n import t
 from core.models import User, db_helper
@@ -96,6 +102,113 @@ async def ping() -> PingResponse:
     ошибка сети (или таймаут) означает, что интернета по-прежнему нет.
     """
     return PingResponse(server_time=datetime.now(timezone.utc))
+
+
+# --- Отчёты о падении приложения (свой «Sentry») -----------------------------
+
+#: Сколько символов текста ошибки принимаем: хватает на «Cannot read properties
+#: of undefined (reading 'x')» вместе с контекстом.
+ERROR_MESSAGE_MAX_LENGTH = 1000
+#: Стек обрезаем: интересна верхушка (где упало), хвост — это фреймворк.
+ERROR_STACK_MAX_LENGTH = 2000
+#: Страница, на которой упало (только путь, без query).
+ERROR_PAGE_MAX_LENGTH = 200
+#: Сборка клиента: «commit дата» из `__BUILD_INFO__` (см. vite.config.ts).
+ERROR_BUILD_MAX_LENGTH = 80
+#: Лимит отчётов с одного клиента в минуту: больше приложение и не пришлёт
+#: (см. MAX_SHOWS в frontend/src/utils/fatalError.ts), а эндпоинт публичный.
+CLIENT_ERROR_LIMIT_PER_MINUTE = 10
+#: Не чаще одного письма в это время: одно и то же падение может прийти с
+#: нескольких устройств, а письмо должно остаться сигналом, а не потоком.
+#: Пропущенные отчёты всё равно есть в логе и в счётчике метрик.
+CLIENT_ERROR_MAIL_INTERVAL_SECONDS = 300
+
+#: Когда последний раз ставили письмо об ошибке клиента (monotonic, на процесс).
+_last_error_mail_at = 0.0
+
+
+class ClientErrorRequest(BaseModel):
+    """Отчёт приложения о необработанной ошибке (экран «500»)."""
+
+    message: str = Field(min_length=1, max_length=ERROR_MESSAGE_MAX_LENGTH)
+    stack: str | None = Field(default=None, max_length=ERROR_STACK_MAX_LENGTH)
+    page: str = Field(default="", max_length=ERROR_PAGE_MAX_LENGTH)
+    build: str = Field(default="", max_length=ERROR_BUILD_MAX_LENGTH)
+
+
+def _mail_client_error(payload: ClientErrorRequest, who: str) -> None:
+    """Ставит владельцу письмо с текстом ошибки (отправляет воркер).
+
+    Письмо — единственный способ узнать текст ошибки, не заходя на сервер по ssh,
+    поэтому в нём есть и сборка, и страница, и стек. Транспорт тот же, что у писем
+    о безопасности (`tasks.notifications.send_email`), — SMTP настраивается один раз.
+    """
+    global _last_error_mail_at
+    now = time.monotonic()
+    if now - _last_error_mail_at < CLIENT_ERROR_MAIL_INTERVAL_SECONDS:
+        return
+    _last_error_mail_at = now
+    body = "\n".join(
+        [
+            f"Приложение упало на устройстве пользователя ({who}).",
+            f"Сборка: {payload.build or 'неизвестна'}",
+            f"Страница: {payload.page or 'неизвестна'}",
+            "",
+            payload.message,
+            "",
+            payload.stack or "(стек не пришёл)",
+        ]
+    )
+    try:
+        get_task("tasks.notifications.send_email").delay(
+            "Pismo: приложение упало у пользователя",
+            settings.alert_email,
+            body,
+        )
+    except Exception:  # очередь недоступна — отчёт и так в логе и в метрике
+        logger.warning("Письмо об ошибке клиента не поставлено в очередь")
+
+
+@router.post(
+    "/client-error/",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Отчёт приложения о падении (свой «Sentry»)",
+)
+async def report_client_error(
+    payload: ClientErrorRequest,
+    request: Request,
+    user: User | None = Depends(get_optional_user),
+) -> Response:
+    """Принимает отчёт о необработанной ошибке на устройстве пользователя.
+
+    Зачем свой эндпоинт, а не Sentry: внешний сервис — это передача данных за
+    границу, поэтому в проекте и метрики свои (см. `docs/rkn-notification.md`).
+    Нужен ровно один факт — «что упало, в какой сборке, на какой странице»:
+    текст идёт в лог (`web`, ищите «Ошибка на клиенте»), счётчик — в метрику для
+    алерта, письмо — владельцу (то же, что у писем о безопасности).
+
+    Вход не обязателен: падать может и экран входа, а токен к этому моменту
+    может быть уже потерян. Если токен есть — в отчёте будет id человека.
+    """
+    await enforce_limit(
+        scope="system:client-error",
+        value=str(user.id) if user is not None else client_ip(request),
+        limit=CLIENT_ERROR_LIMIT_PER_MINUTE,
+        window_seconds=60,
+        detail=t("Слишком много отчётов об ошибках."),
+    )
+    who = f"user={user.id}" if user is not None else f"ip={client_ip(request)}"
+    logger.warning(
+        "Ошибка на клиенте (%s, сборка %s, страница %s): %s%s",
+        who,
+        payload.build or "неизвестна",
+        payload.page or "неизвестна",
+        payload.message,
+        f"\n{payload.stack}" if payload.stack else "",
+    )
+    metrics.count("pismo_client_errors_total", {"kind": "fatal"})
+    _mail_client_error(payload, who)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(
