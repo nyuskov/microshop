@@ -1,0 +1,24 @@
+# Контекст сборки frontend (docker-compose.yaml → context: ./frontend).
+#
+# Без этого файла в контекст уезжает хостовый node_modules. Он ломает
+# `COPY . .` в Dockerfile.dev: в образе после `pnpm install` на месте
+# зависимостей лежат ССЫЛКИ, а на хосте — настоящие каталоги (часть пакетов
+# ставилась вручную), и BuildKit падает с
+#   cannot copy to non-directory: /app/node_modules/<пакет>
+# (12.09–05.10.2026: так упал `entry.sh` на eslint-plugin-vuejs-accessibility).
+# Заодно контекст худеет с ~7 МБ.
+#
+# ВАЖНО: .env НЕ исключаем — его читает vite при прод-сборке
+# (Dockerfile.prod / Dockerfile.dist), так же как public/, nginx-prod/,
+# copy-static.sh и certs_from_backend/.
+
+node_modules
+dist
+.vite
+coverage
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.DS_Store
+e2e/test-results
+e2e/playwright-report

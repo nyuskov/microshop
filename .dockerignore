@@ -97,3 +97,10 @@ db_dump/
 .env
 .env.*
 !.env.example
+
+# Хостовые артефакты фронтенда: в контексте бэкенда (web/worker/beat собираются
+# с context: .) они не нужны и весят десятки мегабайт. Сборка самого фронтенда
+# идёт с context: ./frontend и своими путями не пересекается — их закрывает
+# frontend/.dockerignore.
+frontend/node_modules/
+frontend/dist/
