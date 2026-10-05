@@ -123,8 +123,14 @@ CLIENT_ERROR_LIMIT_PER_MINUTE = 10
 #: Пропущенные отчёты всё равно есть в логе и в счётчике метрик.
 CLIENT_ERROR_MAIL_INTERVAL_SECONDS = 300
 
-#: Когда последний раз ставили письмо об ошибке клиента (monotonic, на процесс).
-_last_error_mail_at = 0.0
+#: Когда последний раз ставили письмо об ошибке клиента (monotonic; ``None`` —
+#: ещё не ставили).
+#:
+#: Именно ``None``, а не ``0.0``: monotonic отсчитывается от загрузки машины, и на
+#: только что поднятом сервере «now − 0» может оказаться меньше паузы — первый
+#: отчёт молча не отправил бы письмо. Поймано в CI (тест падал на раннере, где
+#: uptime меньше паузы), локально не воспроизводилось.
+_last_error_mail_at: float | None = None
 
 
 class ClientErrorRequest(BaseModel):
@@ -145,7 +151,11 @@ def _mail_client_error(payload: ClientErrorRequest, who: str) -> None:
     """
     global _last_error_mail_at
     now = time.monotonic()
-    if now - _last_error_mail_at < CLIENT_ERROR_MAIL_INTERVAL_SECONDS:
+    recently = (
+        _last_error_mail_at is not None
+        and now - _last_error_mail_at < CLIENT_ERROR_MAIL_INTERVAL_SECONDS
+    )
+    if recently:
         return
     _last_error_mail_at = now
     body = "\n".join(

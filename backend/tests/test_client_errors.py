@@ -49,7 +49,8 @@ def mailed(monkeypatch: pytest.MonkeyPatch) -> _FakeTask:
     """Подменяет задачу письма и снимает паузу между письмами (её-то и проверяем)."""
     task = _FakeTask()
     monkeypatch.setattr(system_views, "get_task", lambda _name: task)
-    monkeypatch.setattr(system_views, "_last_error_mail_at", 0.0)
+    # ``None`` = «ещё не отправляли» (см. `_last_error_mail_at` в views.py).
+    monkeypatch.setattr(system_views, "_last_error_mail_at", None)
     return task
 
 
@@ -106,6 +107,23 @@ async def test_authorized_report_carries_user_id(
 
     assert response.status_code == 204
     assert f"user={user.id}" in caplog.text
+
+
+async def test_first_report_mails_even_on_fresh_host(
+    api: _ApiCtx, mailed: _FakeTask, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """На только что поднятой машине monotonic мал — первое письмо всё равно уходит.
+
+    Так было в CI: раннер загрузился минуту назад, «now − 0» оказывался меньше
+    паузы, и первый отчёт молча не отправлял письмо (локально uptime большой,
+    поэтому не воспроизводилось).
+    """
+    monkeypatch.setattr(system_views.time, "monotonic", lambda: 12.0)
+
+    response = await api.client.post(PATH, json={"message": "boom"})
+
+    assert response.status_code == 204
+    assert len(mailed.calls) == 1
 
 
 async def test_repeated_reports_do_not_flood_mail(
