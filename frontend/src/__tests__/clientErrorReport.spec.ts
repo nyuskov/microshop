@@ -47,7 +47,9 @@ describe('sendClientError', () => {
     expect(body.message).toBe('boom')
     expect(body.stack).toContain('TypeError')
     expect(body.page).toBe('/')
-    expect(body.build).toMatch(/^\s*\d{4}-\d{2}-\d{2}$/)
+    // Сборка — «commit дата» из `__BUILD_INFO__`: в CI commit есть (GITHUB_SHA),
+    // локально он пуст, поэтому проверяем форму, а не значение.
+    expect(body.build).toMatch(/^[0-9a-f]{0,7} \d{4}-\d{2}-\d{2}$/)
   })
 
   it('не отправляет query-строку адреса', async () => {
