@@ -16,11 +16,10 @@ import os
 
 import pytest
 
-from tests.api_support import _ApiCtx  # noqa: E402
-from tests.api_support import api as api_fixture  # noqa: E402
-
 from api_v1.system import views as system_views
 from core import metrics
+from tests.api_support import _ApiCtx  # noqa: E402
+from tests.api_support import api as api_fixture  # noqa: E402
 
 #: Фикстура API-теста живёт в `tests/api_support.py` — импортируем, чтобы не
 #: дублировать настройку httpx/БД.
