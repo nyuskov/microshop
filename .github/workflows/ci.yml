@@ -53,7 +53,7 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -113,7 +113,7 @@ jobs:
     name: Frontend (type-check + lint + unit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Set up Node
         uses: actions/setup-node@v5
@@ -214,7 +214,7 @@ jobs:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -236,7 +236,7 @@ jobs:
     name: Repo (shellcheck + docs links)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Фиксируем версию: в ubuntu-latest приезжает другая, а набор замечаний у
       # shellcheck меняется от версии к версии — проверка должна быть стабильной.
@@ -321,7 +321,7 @@ jobs:
     if: github.repository == 'nyuskov/microshop' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Smoke test (https://pismo.space)
         run: ./scripts/ci/smoke_prod.sh
