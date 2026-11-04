@@ -101,3 +101,31 @@ node scripts/check-docs-links.mjs
   репозиторий).
 - При первом внешнем PR — прогнать `make check` и убедиться, что gitleaks не
   пропускает секреты из форка (push protection уже включён).
+
+## 5. Кто может писать в публичный репозиторий
+
+Публичный репозиторий — это **чтение, форки, issues и pull request'ы**, а не
+право записи. Пушить могут только владелец и приглашённые с ролью **Write**:
+чужие пользователи присылают изменения **из своего форка** через PR, а
+собственных прав в вашем репозитории у них нет.
+
+Проверить и закрыть:
+
+- **Settings → Collaborators and teams**: в личном репозитории — только
+  владелец; никому не выдать Write без необходимости.
+- **Settings → Rulesets** (или Branches) для `main`: изменения только через PR,
+  1 approve, обязательные проверки CI, запрет force-push и удаления,
+  «Do not allow bypassing the above settings».
+- **Settings → Actions → General**: Workflow permissions = **Read repository
+  contents**; «Send write tokens to workflows from pull requests» и «Send
+  secrets to workflows from pull requests» — **выключены**; для PR из форков —
+  требовать approve у outside collaborators.
+- **Settings → Deploy keys**, GitHub Apps и Authorized OAuth Apps — убрать всё
+  лишнее; отдельно проверить PAT'ы аккаунта.
+- Включить **2FA** на аккаунте владельца — это единственная учётка с записью.
+
+В workflows нельзя использовать `pull_request_target` с checkout кода из PR:
+такой запуск получает секреты и write-токен. Сейчас в проекте нет ни
+`pull_request_target`, ни `workflow_run`; deploy запускается только на push в
+`main` этого репозитория (`github.repository == 'nyuskov/microshop'`), а
+self-hosted раннеров нет.
