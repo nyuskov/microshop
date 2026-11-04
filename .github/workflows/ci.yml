@@ -1,5 +1,10 @@
 name: CI/CD
 
+# Минимальные права токена: публичному репозиторию больше не нужно, а деплой
+# ходит по SSH, а не через GITHUB_TOKEN.
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main, master, dev]
@@ -216,12 +221,10 @@ jobs:
       # Версии actions держим на Node 24: раннер GitHub отключил Node 20, и
       # старые мажоры (checkout@v4, gitleaks-action@v2) сыпали предупреждениями.
       #
-      # Скан не блокирует деплой: он смотрит историю коммитов, и ложное
-      # срабатывание не должно останавливать выпуск (исключения — в
-      # `.gitleaks.toml`, конфиг подхватывается сам). Результат виден в
-      # аннотациях к запуску.
+      # Проверка блокирующая: в публичном репозитории секрет в истории — это
+      # уже утечка. Исключения (только точечные, с объяснением) — в
+      # `.gitleaks.toml`, конфиг подхватывается сам.
       - name: Gitleaks
-        continue-on-error: true
         uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -260,7 +263,9 @@ jobs:
     name: Deploy to Cloud.ru VM
     runs-on: ubuntu-latest
     needs: [backend, frontend, secrets, repo]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    # В форках деплой не запускаем: секретов там всё равно нет, а логи и
+    # неудачные прогоны только мешают.
+    if: github.repository == 'nyuskov/microshop' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
 
     steps:
       - name: Deploy via SSH to Cloud.ru VM
@@ -313,7 +318,7 @@ jobs:
     name: Smoke test прод-API
     runs-on: ubuntu-latest
     needs: [deploy]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: github.repository == 'nyuskov/microshop' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
 
     steps:
       - uses: actions/checkout@v5

@@ -29,6 +29,7 @@
 | [checks.md](checks.md) | свои проверки: что делают, когда запускаются, как обновить базу |
 | [feed-performance.md](feed-performance.md) | замеры ленты сообщений и решение по виртуализации |
 | [refactoring.md](refactoring.md) | план улучшений по коду и структуре репозитория |
+| [public-release.md](public-release.md) | публикация репозитория в open source: что обезличено и что проверить |
 
 ## Планы и предложения
 

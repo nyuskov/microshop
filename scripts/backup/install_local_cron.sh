@@ -45,13 +45,31 @@ fi
 # Каталог проекта может содержать пробелы/кириллицу — экранируем для crontab.
 ESCAPED_SCRIPT="$(printf '%s' "$SCRIPT" | sed "s/'/'\\\\''/g")"
 ESCAPED_CATCHUP="$(printf '%s' "$CATCHUP_SCRIPT" | sed "s/'/'\\\\''/g")"
+# Адрес прода и ключ в репозитории не хранятся: cron получает их переменными.
+# Экспортируйте их перед запуском — они попадут во все строки задач.
+cron_env_prefix() {
+    local var value escaped out=""
+    for var in PROD_SSH PROD_KEY PROD_DIR PROD_PROJECT; do
+        value="${!var:-}"
+        [[ -n "$value" ]] || continue
+        escaped="$(printf '%s' "$value" | sed "s/'/'\\\\''/g")"
+        out+="$var='$escaped' "
+    done
+    printf '%s' "$out"
+}
+ENV_PREFIX="$(cron_env_prefix)"
+if [[ -z "${PROD_SSH:-}" ]]; then
+    echo "!!! PROD_SSH не задан — задачи установятся, но бэкап не сможет подключиться." >&2
+    echo "    Экспортируйте PROD_SSH=user@host (и PROD_KEY=... при необходимости) и повторите." >&2
+fi
+
 # ВАЖНО: маркер идёт В КОНЦЕ строки. Спереди команды он превращал всю строку в
 # комментарий — cron исправно «выполнял» его, и бэкап не делался вовсе.
-CRON_LINE="$CRON_SCHEDULE '$ESCAPED_SCRIPT' $MARKER"
+CRON_LINE="$CRON_SCHEDULE ${ENV_PREFIX}'$ESCAPED_SCRIPT' $MARKER"
 # `@reboot` — догоняющий запуск: если копия старше STALE_HOURS (20 ч), снимаем её
 # сразу после включения; свежая — ничего не делаем (см. backup_if_stale.sh).
-CATCHUP_LINE="@reboot '$ESCAPED_CATCHUP' $CATCHUP_MARKER"
-CATCHUP_DAY_LINE="$CATCHUP_DAY_SCHEDULE '$ESCAPED_CATCHUP' $CATCHUP_DAY_MARKER"
+CATCHUP_LINE="@reboot ${ENV_PREFIX}'$ESCAPED_CATCHUP' $CATCHUP_MARKER"
+CATCHUP_DAY_LINE="$CATCHUP_DAY_SCHEDULE ${ENV_PREFIX}'$ESCAPED_CATCHUP' $CATCHUP_DAY_MARKER"
 
 CURRENT="$(crontab -l 2>/dev/null || true)"
 # Один фильтр на оба маркера: второй содержит первый как префикс.

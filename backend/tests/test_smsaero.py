@@ -49,13 +49,13 @@ def test_send_sms_uses_documented_request(
 
     monkeypatch.setattr(smsaero, "_get_json", fake_get_json)
 
-    message_id = smsaero.send_sms("+79109744376", "Код: 000000")
+    message_id = smsaero.send_sms("+79991234567", "Код: 000000")
 
     assert message_id == "123"
     parsed = urlparse(captured["url"])
     assert parsed.path == "/v2/sms/send"
     query = parse_qs(parsed.query)
-    assert query["number"] == ["79109744376"]
+    assert query["number"] == ["79991234567"]
     assert query["text"] == ["Код: 000000"]
     # Пустая настройка не означает «без подписи»: API требует sign всегда.
     assert query["sign"] == [smsaero._FREE_SIGN]
@@ -77,7 +77,7 @@ def test_send_sms_uses_configured_sign(
 
     monkeypatch.setattr(smsaero, "_get_json", fake_get_json)
 
-    smsaero.send_sms("+79109744376", "text")
+    smsaero.send_sms("+79991234567", "text")
 
     assert parse_qs(urlparse(captured["url"]).query)["sign"] == ["Pismo"]
 
@@ -95,14 +95,14 @@ def test_send_telegram_code_uses_cascade(
     monkeypatch.setattr(smsaero, "_get_json", fake_get_json)
 
     request_id = smsaero.send_telegram_code(
-        "+79109744376", "000123", "Pismo: код 000123"
+        "+79991234567", "000123", "Pismo: код 000123"
     )
 
     assert request_id == "42"
     parsed = urlparse(captured["url"])
     assert parsed.path == "/v2/telegram/send"
     query = parse_qs(parsed.query)
-    assert query["number"] == ["79109744376"]
+    assert query["number"] == ["79991234567"]
     assert query["code"] == ["000123"]
     # Без text/sign шлюз не сможет отправить SMS, если Telegram недоставим.
     assert query["text"] == ["Pismo: код 000123"]
@@ -118,7 +118,7 @@ def test_send_telegram_code_requires_digits(
     )
 
     with pytest.raises(smsaero.SmsAeroError):
-        smsaero.send_telegram_code("+79109744376", "12", "text")
+        smsaero.send_telegram_code("+79991234567", "12", "text")
 
 
 def test_send_sms_requires_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -127,7 +127,7 @@ def test_send_sms_requires_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "sms_aero_api_key", None)
 
     with pytest.raises(smsaero.SmsAeroError):
-        smsaero.send_sms("+79109744376", "text")
+        smsaero.send_sms("+79991234567", "text")
 
 
 def test_send_sms_reports_api_failure(
@@ -141,7 +141,7 @@ def test_send_sms_reports_api_failure(
     )
 
     with pytest.raises(smsaero.SmsAeroError):
-        smsaero.send_sms("+79109744376", "text")
+        smsaero.send_sms("+79991234567", "text")
 
 
 def test_send_sms_warns_when_message_goes_to_moderation(
@@ -164,7 +164,7 @@ def test_send_sms_warns_when_message_goes_to_moderation(
     )
 
     with caplog.at_level("WARNING", logger="core.smsaero"):
-        message_id = smsaero.send_sms("+79109744376", "text")
+        message_id = smsaero.send_sms("+79991234567", "text")
 
     assert message_id == "7"
     assert "модерацию" in caplog.text

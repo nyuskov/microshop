@@ -1,8 +1,9 @@
 [tool.poetry]
 name = "backend"
 version = "0.1.0"
-description = ""
-authors = ["Your Name <you@example.com>"]
+description = "Pismo — мессенджер: FastAPI-бэкенд"
+authors = ["Pismo contributors"]
+license = "AGPL-3.0-or-later"
 
 [tool.poetry.dependencies]
 python = "^3.13"

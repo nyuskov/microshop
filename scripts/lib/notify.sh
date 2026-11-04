@@ -61,9 +61,25 @@ load_smtp_settings() {
 
 smtp_configured() { [[ -n "$SMTP_HOST" && -n "$SMTP_FROM" ]]; }
 
+# --- Пауза оповещений -------------------------------------------------------
+# Временно выключить письма, не трогая cron и сами проверки:
+#   touch <корень репозитория>/.alerts-paused   # пауза
+#   rm <корень репозитория>/.alerts-paused      # снова включить
+# либо разово переменной окружения: ALERTS_PAUSED=1 ./scripts/...
+# Проверки продолжают выполняться и писать в лог — молчит только почта.
+alerts_paused() {
+    [[ "${ALERTS_PAUSED:-0}" == "1" ]] && return 0
+    [[ -f "${ALERTS_PAUSE_FILE:-${ROOT:-.}/.alerts-paused}" ]]
+}
+
 # smtp_send <кому> <тема> <текст>; 0 — письмо отправлено.
 smtp_send() {
     local to="$1" subject="$2" text="$3"
+    if alerts_paused; then
+        printf 'ОПОВЕЩЕНИЯ ПРИОСТАНОВЛЕНЫ (.alerts-paused): письмо «%s» не отправлено\n' \
+            "$subject" >&2
+        return 2
+    fi
     smtp_configured || return 1
 
     python3 - "$SMTP_HOST" "$SMTP_PORT" "$SMTP_USER" "$SMTP_PASSWORD" \

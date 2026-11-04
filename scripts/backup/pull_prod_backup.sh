@@ -21,8 +21,8 @@
 #
 # Переменные окружения:
 #   BACKUP_DIR        — куда складывать (по умолчанию ~/Документы/pismo_backup)
-#   PROD_SSH          — user@host (по умолчанию user1@176.108.249.9)
-#   PROD_KEY          — путь к приватному ключу (по умолчанию ~/.ssh/id_rsa1)
+#   PROD_SSH          — user@host (обязательно для бэкапа; в репозитории значения нет)
+#   PROD_KEY          — путь к приватному ключу (по умолчанию ~/.ssh/id_ed25519)
 #   PROD_DIR          — каталог проекта на сервере (по умолчанию ~/microshop)
 #   PROD_PROJECT      — имя compose-проекта (по умолчанию microshop-test)
 #   PROD_COMPOSE_FILE — файл compose (по умолчанию docker-compose.prod.yaml)
@@ -42,8 +42,9 @@ set -uo pipefail
 export PATH="$PATH:/usr/local/bin:/usr/bin:/bin"
 
 BACKUP_DIR="${BACKUP_DIR:-$HOME/Документы/pismo_backup}"
-PROD_SSH="${PROD_SSH:-user1@176.108.249.9}"
-PROD_KEY="${PROD_KEY:-$HOME/.ssh/id_rsa1}"
+# Адрес прода в репозиторий не пишем: он задаётся окружением (cron/шелл).
+PROD_SSH="${PROD_SSH:-}"
+PROD_KEY="${PROD_KEY:-$HOME/.ssh/id_ed25519}"
 PROD_DIR="${PROD_DIR:-~/microshop}"
 PROD_PROJECT="${PROD_PROJECT:-microshop-test}"
 PROD_COMPOSE_FILE="${PROD_COMPOSE_FILE:-docker-compose.prod.yaml}"
@@ -80,6 +81,11 @@ for arg in "$@"; do
             ;;
     esac
 done
+
+if [[ -z "$PROD_SSH" && "$PRUNE_ONLY" != "1" ]]; then
+    echo "!!! Не задан PROD_SSH — укажите user@host (например, PROD_SSH=user@server)" >&2
+    exit 2
+fi
 
 STAMP="$(date +%Y%m%d_%H%M%S)"
 DB_DIR="$BACKUP_DIR/db"

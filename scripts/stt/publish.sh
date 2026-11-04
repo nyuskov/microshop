@@ -14,17 +14,21 @@
 #
 # Использование:
 #   scripts/stt/publish.sh [user@хост]
-#   PISMO_STT_KEY=~/.ssh/id_rsa1 scripts/stt/publish.sh user1@176.108.249.9
+#   PISMO_STT_KEY=~/.ssh/id_ed25519 scripts/stt/publish.sh user@prod.example.com
 #
 # Переменные: PISMO_STT_HOST, PISMO_STT_DIR, PISMO_STT_KEY, PISMO_STT_MODELS,
 # ASSETS_DIR (готовый каталог сборки вместо новой сборки).
 
 set -eu
 
-HOST="${1:-${PISMO_STT_HOST:-user1@176.108.249.9}}"
-DIR="${PISMO_STT_DIR:-/home/user1/pismo-stt}"
+HOST="${1:-${PISMO_STT_HOST:-}}"
+DIR="${PISMO_STT_DIR:-/srv/pismo-stt}"
+if [ -z "$HOST" ]; then
+  echo "!!! Укажите хост: scripts/stt/publish.sh user@host или PISMO_STT_HOST=..." >&2
+  exit 2
+fi
 MODELS="${PISMO_STT_MODELS:-Xenova/whisper-tiny Xenova/whisper-base}"
-KEY="${PISMO_STT_KEY:-$HOME/.ssh/id_rsa1}"
+KEY="${PISMO_STT_KEY:-$HOME/.ssh/id_ed25519}"
 
 # Ключ может быть и не нужен (ssh-agent, ~/.ssh/config) — тогда просто не передаём.
 ssh_() { if [ -f "$KEY" ]; then ssh -i "$KEY" "$@"; else ssh "$@"; fi; }

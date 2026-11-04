@@ -32,7 +32,7 @@ services:
       # Web Push (PWA): VAPID-ключи; пока пусто — push выключен.
       - WEB_PUSH_VAPID_PUBLIC_KEY=${WEB_PUSH_VAPID_PUBLIC_KEY:-}
       - WEB_PUSH_VAPID_PRIVATE_KEY=${WEB_PUSH_VAPID_PRIVATE_KEY:-}
-      - WEB_PUSH_VAPID_SUBJECT=${WEB_PUSH_VAPID_SUBJECT:-mailto:nyuskov@gmail.com}
+      - WEB_PUSH_VAPID_SUBJECT=${WEB_PUSH_VAPID_SUBJECT:-mailto:alerts@example.com}
       # RuStore Push (Android-приложение): ID проекта и сервисный токен.
       - RUSTORE_PUSH_PROJECT_ID=${RUSTORE_PUSH_PROJECT_ID:-}
       - RUSTORE_PUSH_SERVICE_TOKEN=${RUSTORE_PUSH_SERVICE_TOKEN:-}
@@ -128,7 +128,7 @@ services:
       # Web Push (PWA): отправка в воркере; VAPID-ключи.
       - WEB_PUSH_VAPID_PUBLIC_KEY=${WEB_PUSH_VAPID_PUBLIC_KEY:-}
       - WEB_PUSH_VAPID_PRIVATE_KEY=${WEB_PUSH_VAPID_PRIVATE_KEY:-}
-      - WEB_PUSH_VAPID_SUBJECT=${WEB_PUSH_VAPID_SUBJECT:-mailto:nyuskov@gmail.com}
+      - WEB_PUSH_VAPID_SUBJECT=${WEB_PUSH_VAPID_SUBJECT:-mailto:alerts@example.com}
       # RuStore Push (Android-приложение): ID проекта и сервисный токен.
       - RUSTORE_PUSH_PROJECT_ID=${RUSTORE_PUSH_PROJECT_ID:-}
       - RUSTORE_PUSH_SERVICE_TOKEN=${RUSTORE_PUSH_SERVICE_TOKEN:-}

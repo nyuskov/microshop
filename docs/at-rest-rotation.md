@@ -37,7 +37,7 @@ AT_REST_KEY_PREVIOUS=<СТАРЫЙ ключ>
    оба сервиса; `.env` сам в контейнер не попадает, строки в compose уже есть):
 
 ```bash
-ssh user1@176.108.249.9 "cd ~/microshop && docker compose -p microshop-test \
+ssh user@prod.example.com "cd ~/microshop && docker compose -p microshop-test \
   -f docker-compose.prod.yaml up -d --no-deps $(sh scripts/lib/web_slot.sh) worker"
 ```
 

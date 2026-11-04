@@ -28,7 +28,26 @@ command -v crontab >/dev/null 2>&1 || {
 
 chmod +x "$SCRIPT"
 ESCAPED_SCRIPT="$(printf '%s' "$SCRIPT" | sed "s/'/'\\\\''/g")"
-CRON_LINE="$CRON_SCHEDULE '$ESCAPED_SCRIPT' >/dev/null 2>&1 $MARKER"
+
+# Адрес прода, ключ и адрес оповещений в репозитории не хранятся: cron получает
+# их переменными. Экспортируйте их перед запуском — они попадут в строку задачи.
+cron_env_prefix() {
+    local var value escaped out=""
+    for var in PROD_SSH PROD_KEY PROD_DIR PROD_PROJECT ALERT_EMAIL ALERT_PHONE; do
+        value="${!var:-}"
+        [[ -n "$value" ]] || continue
+        escaped="$(printf '%s' "$value" | sed "s/'/'\\\\''/g")"
+        out+="$var='$escaped' "
+    done
+    printf '%s' "$out"
+}
+ENV_PREFIX="$(cron_env_prefix)"
+if [[ -z "${PROD_SSH:-}" ]]; then
+    echo "!!! PROD_SSH не задан — задача установится, но проверка не сможет подключиться." >&2
+    echo "    Экспортируйте PROD_SSH=user@host (и PROD_KEY=... при необходимости) и повторите." >&2
+fi
+
+CRON_LINE="$CRON_SCHEDULE ${ENV_PREFIX}'$ESCAPED_SCRIPT' >/dev/null 2>&1 $MARKER"
 
 CURRENT="$(crontab -l 2>/dev/null || true)"
 FILTERED="$(printf '%s\n' "$CURRENT" | grep -v -F "$MARKER" | sed '/^[[:space:]]*$/d' || true)"

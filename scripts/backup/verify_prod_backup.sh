@@ -33,12 +33,12 @@ export PATH="$PATH:/usr/local/bin:/usr/bin:/bin"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/Документы/pismo_backup}"
 LOG_FILE="$BACKUP_DIR/logs/verify.log"
-PROD_SSH="${PROD_SSH:-user1@176.108.249.9}"
-PROD_KEY="${PROD_KEY:-$HOME/.ssh/id_rsa1}"
+PROD_SSH="${PROD_SSH:-}"
+PROD_KEY="${PROD_KEY:-$HOME/.ssh/id_ed25519}"
 PROD_DIR="${PROD_DIR:-~/microshop}"
 PROD_PROJECT="${PROD_PROJECT:-microshop-test}"
 PROD_COMPOSE_FILE="${PROD_COMPOSE_FILE:-docker-compose.prod.yaml}"
-ALERT_EMAIL="${ALERT_EMAIL:-nyuskov@gmail.com}"
+ALERT_EMAIL="${ALERT_EMAIL:-alerts@example.com}"
 VERIFY_DB="microshop_verify"
 
 MODE="check"
@@ -47,6 +47,11 @@ case "${1:-}" in
     --dry-run) MODE="dry" ;;
     --no-alert) ALERT=0 ;;
 esac
+
+if [[ -z "$PROD_SSH" ]]; then
+    echo "!!! Не задан PROD_SSH — укажите user@host (например, PROD_SSH=user@server)" >&2
+    exit 2
+fi
 
 mkdir -p "$BACKUP_DIR/logs"
 SSH_OPTS=(-i "$PROD_KEY" -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new)
@@ -187,6 +192,14 @@ $(printf '%s\n' "${PROBLEMS[@]}")
 
 if [[ "$ALERT" != "1" ]]; then
     echo "(--no-alert) оповещение не отправлялось"
+    exit 1
+fi
+
+# Временная пауза оповещений (см. docs/monitoring.md): проверка завершилась
+# провалом, но письма нет — статус по-прежнему 1, лог пишется как обычно.
+if alerts_paused; then
+    log "ПАУЗА ОПОВЕЩЕНИЙ: письмо о провале проверки бэкапа не отправлено"
+    echo "Оповещения приостановлены (.alerts-paused) — письмо не отправлено."
     exit 1
 fi
 

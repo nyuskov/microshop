@@ -50,7 +50,7 @@ x-web-slot: &web-slot
     METRICS_TOKEN: ${METRICS_TOKEN:-}
     WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
     WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
-    WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-mailto:nyuskov@gmail.com}
+    WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-mailto:alerts@example.com}
     # RuStore Push (Android-приложение): ID проекта и сервисный токен.
     RUSTORE_PUSH_PROJECT_ID: ${RUSTORE_PUSH_PROJECT_ID:-}
     RUSTORE_PUSH_SERVICE_TOKEN: ${RUSTORE_PUSH_SERVICE_TOKEN:-}
@@ -80,7 +80,7 @@ x-web-slot: &web-slot
     SMTP_SSL: ${SMTP_SSL:-false}
     # Куда писать служебные письма (отчёты о падении приложения, см.
     # POST /api/v1/system/client-error/): тот же адрес, что у alertmanager.
-    ALERT_EMAIL: ${ALERT_EMAIL:-nyuskov@gmail.com}
+    ALERT_EMAIL: ${ALERT_EMAIL:-alerts@example.com}
   depends_on:
     migrate:
       condition: service_completed_successfully
@@ -192,7 +192,7 @@ services:
       SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
       SMTP_SSL: ${SMTP_SSL:-false}
       # Отчёты о падении приложения отправляет воркер — адрес нужен и ему.
-      ALERT_EMAIL: ${ALERT_EMAIL:-nyuskov@gmail.com}
+      ALERT_EMAIL: ${ALERT_EMAIL:-alerts@example.com}
       # Web Push (PWA) — отправка в воркере; VAPID-ключи.
       # TURN (релей звонков): адреса и общий секрет для временных кредов.
       TURN_URLS: ${TURN_URLS:-}
@@ -201,7 +201,7 @@ services:
       TURN_TTL_SECONDS: ${TURN_TTL_SECONDS:-3600}
       WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
       WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
-      WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-mailto:nyuskov@gmail.com}
+      WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-mailto:alerts@example.com}
       # RuStore Push (Android-приложение): ID проекта и сервисный токен.
       RUSTORE_PUSH_PROJECT_ID: ${RUSTORE_PUSH_PROJECT_ID:-}
       RUSTORE_PUSH_SERVICE_TOKEN: ${RUSTORE_PUSH_SERVICE_TOKEN:-}
@@ -270,7 +270,7 @@ services:
       # что не собираются вместе с интерфейсом и обновляются редко. Внутри тома
       # они оказывались бы каждый раз при пересборке статики, а так обновление
       # — это одна команда scp (см. docs/on-device-transcription.md).
-      - ${PISMO_STT_DIR:-/home/user1/pismo-stt}:/usr/share/nginx/html/stt:ro
+      - ${PISMO_STT_DIR:-/home/user/pismo-stt}:/usr/share/nginx/html/stt:ro
       # Конфиг монтируем из репозитория: правки применяются `nginx -s reload`
       # (без пересоздания контейнера и без простоя). Монтируется именно каталог:
       # при монтировании одного файла git заменяет его новым inode, и контейнер
@@ -376,7 +376,7 @@ services:
           --config.file=/tmp/alertmanager.yml \
           --storage.path=/alertmanager
     environment:
-      ALERT_EMAIL: ${ALERT_EMAIL:-nyuskov@gmail.com}
+      ALERT_EMAIL: ${ALERT_EMAIL:-alerts@example.com}
       SMTP_FROM: ${SMTP_FROM:-pismo@localhost}
       SMTP_HOST: ${SMTP_HOST:-localhost}
       SMTP_PORT: ${SMTP_PORT:-25}
@@ -446,7 +446,8 @@ services:
       - --cert=/turn-certs/fullchain.pem
       - --pkey=/turn-certs/privkey.pem
       - --no-dtls
-      - --external-ip=176.108.249.9
+      # Публичный IP сервера: в репозитории его нет, задаётся в .env.
+      - --external-ip=${TURN_EXTERNAL_IP:?TURN_EXTERNAL_IP is required}
     volumes:
       - turn_certs:/turn-certs:ro
 

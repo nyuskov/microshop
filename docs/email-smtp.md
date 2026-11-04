@@ -60,7 +60,7 @@ curl -s https://pismo.space/api/v1/auth/channels/
 («Почтовая заглушка (dev)»), а ошибки SMTP видны как «SMTP недоступен»:
 
 ```bash
-ssh -i ~/.ssh/id_rsa1 user1@176.108.249.9 "cd ~/microshop && docker compose -p microshop-test \
+ssh -i ~/.ssh/id_ed25519 user@prod.example.com "cd ~/microshop && docker compose -p microshop-test \
   -f docker-compose.prod.yaml logs --tail=50 worker"
 ```
 
@@ -70,7 +70,7 @@ ssh -i ~/.ssh/id_rsa1 user1@176.108.249.9 "cd ~/microshop && docker compose -p m
 
 - часть писем будет уходить в спам, особенно незнакомым получателям;
 - у личных аккаунтов есть суточные лимиты отправки;
-- адрес отправителя будет `nyuskov@gmail.com`, а не `pismo.space`.
+- адрес отправителя будет `alerts@example.com`, а не `pismo.space`.
 
 Для боевого режима лучше домен + транзакционный провайдер (свой `SPF`/`DKIM` для
 `pismo.space` и адрес вида `no-reply@pismo.space`): например Brevo/Resend/Mailgun/

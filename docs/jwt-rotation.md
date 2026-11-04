@@ -33,7 +33,7 @@ JWT_SECRET_KEY_PREVIOUS=<СТАРЫЙ секрет>
 3. Применить (перезапуск web/worker/beat — пересборка не нужна):
 
 ```bash
-ssh user1@176.108.249.9 "cd ~/microshop && docker compose -p microshop-test \
+ssh user@prod.example.com "cd ~/microshop && docker compose -p microshop-test \
   -f docker-compose.prod.yaml up -d --no-deps $(sh scripts/lib/web_slot.sh) worker beat"
 ```
 

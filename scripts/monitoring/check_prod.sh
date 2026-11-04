@@ -17,7 +17,7 @@
 #
 # Переменные окружения:
 #   SITE_URL         — https://pismo.space
-#   ALERT_EMAIL      — куда писать оповещения (nyuskov@gmail.com)
+#   ALERT_EMAIL      — куда писать оповещения (alerts@example.com)
 #   ALERT_SMS        — 1 включает SMS через SMS Aero (по умолчанию выключено)
 #   ALERT_PHONE      — номер для SMS при ALERT_SMS=1
 #   ALERT_MIN_INTERVAL — не чаще одного оповещения в N минут по той же проблеме (180)
@@ -32,8 +32,8 @@ export PATH="$PATH:/usr/local/bin:/usr/bin:/bin"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SITE_URL="${SITE_URL:-https://pismo.space}"
-PROD_SSH="${PROD_SSH:-user1@176.108.249.9}"
-PROD_KEY="${PROD_KEY:-$HOME/.ssh/id_rsa1}"
+PROD_SSH="${PROD_SSH:-}"
+PROD_KEY="${PROD_KEY:-$HOME/.ssh/id_ed25519}"
 PROD_DIR="${PROD_DIR:-~/microshop}"
 PROD_PROJECT="${PROD_PROJECT:-microshop-test}"
 PROD_COMPOSE_FILE="${PROD_COMPOSE_FILE:-docker-compose.prod.yaml}"
@@ -42,9 +42,9 @@ STATE_DIR="${STATE_DIR:-$BACKUP_DIR/logs}"
 LOG_FILE="$STATE_DIR/monitor.log"
 STATE_FILE="$STATE_DIR/monitor.state"
 
-ALERT_EMAIL="${ALERT_EMAIL:-nyuskov@gmail.com}"
+ALERT_EMAIL="${ALERT_EMAIL:-alerts@example.com}"
 ALERT_SMS="${ALERT_SMS:-0}"
-ALERT_PHONE="${ALERT_PHONE:-+79109744376}"
+ALERT_PHONE="${ALERT_PHONE:-+79991234567}"
 ALERT_MIN_INTERVAL="${ALERT_MIN_INTERVAL:-180}"
 # Письмо о восстановлении по умолчанию ВЫКЛючено: мониторинг оповещает только об
 # ошибках. Включается явно — ALERT_ON_RECOVERY=1.
@@ -57,6 +57,12 @@ case "${1:-}" in
     --dry-run) MODE="dry" ;;
     --test-alert) MODE="test" ;;
 esac
+
+# Адрес прода в репозиторий не пишем: он задаётся окружением (cron/шелл).
+if [[ -z "$PROD_SSH" ]]; then
+    echo "!!! Не задан PROD_SSH — укажите user@host (например, PROD_SSH=user@server)" >&2
+    exit 2
+fi
 
 mkdir -p "$STATE_DIR"
 SSH_OPTS=(-i "$PROD_KEY" -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new)
@@ -107,6 +113,16 @@ smtp_alert() {
 notify() {
     local status="$1" message="$2" fingerprint="$3"
     local now last_hash last_ts
+
+    # Временная пауза оповещений (файл .alerts-paused или ALERTS_PAUSED=1):
+    # проверка выполняется и пишется в лог, но письмо и SMS не уходят. Состояние
+    # дедупликации при этом НЕ обновляем — после снятия паузы текущая проблема
+    # придёт сразу, а не через ALERT_MIN_INTERVAL.
+    if alerts_paused; then
+        log "ПАУЗА ОПОВЕЩЕНИЙ ($status): $message — письмо/SMS не отправлены"
+        return 0
+    fi
+
     now="$(date +%s)"
     last_hash="$(sed -n '1p' "$STATE_FILE" 2>/dev/null || true)"
     last_ts="$(sed -n '2p' "$STATE_FILE" 2>/dev/null || echo 0)"

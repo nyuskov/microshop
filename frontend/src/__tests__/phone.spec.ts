@@ -12,10 +12,10 @@ import {
 
 describe('formatPhoneForBackend / isValidPhoneNumber', () => {
   it('нормализует номер в +7XXXXXXXXXX и валидирует 11 цифр с 7', () => {
-    expect(formatPhoneForBackend('+7 (910) 974-43-76')).toBe('+79109744376')
-    expect(formatPhoneForBackend('  +7 910 974-43-76 ')).toBe('+79109744376')
+    expect(formatPhoneForBackend('+7 (999) 123-45-67')).toBe('+79991234567')
+    expect(formatPhoneForBackend('  +7 910 974-43-76 ')).toBe('+79991234567')
     expect(formatPhoneForBackend('')).toBe('')
-    expect(isValidPhoneNumber('+7 (910) 974-43-76')).toBe(true)
+    expect(isValidPhoneNumber('+7 (999) 123-45-67')).toBe(true)
     expect(isValidPhoneNumber('+7 (910) 974-43-7')).toBe(false)
     expect(isValidPhoneNumber('+1 (910) 974-43-76')).toBe(false)
   })
@@ -23,14 +23,14 @@ describe('formatPhoneForBackend / isValidPhoneNumber', () => {
 
 describe('prettyPhone / maskPhoneLocal / localPhoneDigits', () => {
   it('prettyPhone красиво форматирует полный номер', () => {
-    expect(prettyPhone('+79109744376')).toBe('+7 (910) 974-43-76')
+    expect(prettyPhone('+79991234567')).toBe('+7 (999) 123-45-67')
   })
 
   it('localPhoneDigits понимает локальный ввод, ввод с кодом и E.164', () => {
     expect(localPhoneDigits('9215552233')).toBe('9215552233')
-    expect(localPhoneDigits('79109744376')).toBe('9109744376')
-    expect(localPhoneDigits('+79109744376')).toBe('9109744376')
-    expect(localPhoneDigits('89109744376')).toBe('9109744376')
+    expect(localPhoneDigits('79991234567')).toBe('9991234567')
+    expect(localPhoneDigits('+79991234567')).toBe('9991234567')
+    expect(localPhoneDigits('89991234567')).toBe('9991234567')
   })
 
   it('maskPhoneLocal строит прогрессивную маску +7 (XXX) XXX-XX-XX', () => {

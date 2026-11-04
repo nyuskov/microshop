@@ -53,14 +53,14 @@ def test_sequential_characters_rejected() -> None:
 
 def test_phone_number_inside_password_rejected() -> None:
     """Свой номер в пароле — первое, что подберёт любой, кто знает номер."""
-    problem = password_problem("korova79109744376", phone_number="+7 (910) 974-43-76")
+    problem = password_problem("korova79991234567", phone_number="+7 (999) 123-45-67")
 
     assert problem is not None
     assert "телефона" in problem
 
 
 def test_email_and_username_inside_password_rejected() -> None:
-    assert password_problem("nyuskov-super-pass", email="nyuskov@gmail.com") is not None
+    assert password_problem("nyuskov-super-pass", email="alerts@example.com") is not None
     # Логин ищем без учёта регистра, поэтому «pismoSpace» внутри пароля — отказ.
     assert password_problem("vesna-pismosPace-42", username="pismoSpace") is not None
 

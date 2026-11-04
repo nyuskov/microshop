@@ -57,6 +57,12 @@ cover/
 *.mo
 *.pot
 
+# Временный выключатель оповещений (touch .alerts-paused, см. docs/monitoring.md)
+.alerts-paused
+
+# Dev-секрет JWT: генерируется при первом запуске без .env (backend/core/config.py)
+backend/.dev-jwt-secret
+
 # Django stuff:
 *.log
 local_settings.py

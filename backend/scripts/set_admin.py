@@ -15,17 +15,17 @@ ORM (значит расшифровка работает), сверяет им�
 
 Запуск (нужна боевая БД, обычно внутри контейнера web на сервере):
     # посмотреть контакты владельца — имя, id, роль
-    poetry run python -m scripts.set_admin --owner-phone +79109744376 --list
+    poetry run python -m scripts.set_admin --owner-phone +79991234567 --list
 
     # выдать админов нескольким контактам по имени
-    poetry run python -m scripts.set_admin --owner-phone +79109744376 \\
+    poetry run python -m scripts.set_admin --owner-phone +79991234567 \\
         --name Мама --name Вася --name Слава
 
     # выдать напрямую по номеру телефона (и сделать владельцем)
     poetry run python -m scripts.set_admin --phone +79991234567 --owner
 
     # только показать, что будет сделано
-    poetry run python -m scripts.set_admin --owner-phone +79109744376 \\
+    poetry run python -m scripts.set_admin --owner-phone +79991234567 \\
         --name Мама --dry-run
 
     # снять права (у владельца — флагом --owner)

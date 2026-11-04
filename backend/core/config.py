@@ -1,5 +1,6 @@
 import logging
 import os
+import secrets
 from pathlib import Path
 
 from pydantic import Field
@@ -9,11 +10,30 @@ logger = logging.getLogger("pismo.config")
 
 BASE_DIR = Path(__file__).parent.parent
 
-# ВНИМАНИЕ (безопасность): значение ниже — ТОЛЬКО запасной dev-вариант для запуска
-# без окружения. Никогда не используйте его на реальном сервере. При docker-запуске
-# секрет обязательно приходит из корневого .env (переменная JWT_SECRET_KEY); если он
-# не задан — в лог пишется предупреждение (см. конец файла).
-_DEV_JWT_SECRET_KEY = "0b7a392c19cb1a102061ec65bb016b50cd506c2257739c6348df9e8d373bc405"
+
+# ВНИМАНИЕ (безопасность): это ТОЛЬКО запасной dev-вариант для запуска без
+# окружения. В репозитории значения нет — оно генерируется при первом запуске и
+# лежит в backend/.dev-jwt-secret (в .gitignore), поэтому зная исходники
+# подделать токены нельзя, а сессии переживают перезапуск с --reload.
+# При docker-запуске секрет приходит из .env (JWT_SECRET_KEY) и обязателен.
+def _dev_jwt_secret() -> str:
+    path = BASE_DIR / ".dev-jwt-secret"
+    try:
+        value = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        value = ""
+    if len(value) >= 32:
+        return value
+    value = secrets.token_hex(32)
+    try:
+        path.write_text(value + "\n", encoding="utf-8")
+        os.chmod(path, 0o600)
+    except OSError:  # read-only файловая система (например, контейнер)
+        pass
+    return value
+
+
+_DEV_JWT_SECRET_KEY = _dev_jwt_secret()
 
 
 class AuthJWT(BaseSettings):
@@ -114,7 +134,7 @@ class Settings(BaseSettings):
     # (`POST /system/client-error/`). Адрес тот же, что у alertmanager и
     # cron-скриптов мониторинга, — настраивается один раз.
     alert_email: str = Field(
-        default="nyuskov@gmail.com", validation_alias="ALERT_EMAIL"
+        default="alerts@example.com", validation_alias="ALERT_EMAIL"
     )
     # Лимиты канала: код стоит денег/репутации, а эндпоинты публичные.
     auth_email_resend_cooldown_seconds: int = 60
@@ -322,7 +342,7 @@ class Settings(BaseSettings):
     )
     # Контакт для push-сервиса (mailto:).
     web_push_vapid_subject: str = Field(
-        default="mailto:nyuskov@gmail.com",
+        default="mailto:alerts@example.com",
         validation_alias="WEB_PUSH_VAPID_SUBJECT",
     )
 

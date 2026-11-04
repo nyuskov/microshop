@@ -80,9 +80,35 @@ SMS можно включить принудительно (`ALERT_SMS=1`, но�
 > только по переходу «отпечаток проблемы → `ok`»; после сброса на `ok` письма
 > больше не отправляются, поэтому «снова в норме» не может сыпаться каждые 15 минут.
 
+## Пауза оповещений (временно)
+
+Письма можно выключить, не трогая cron и сами проверки:
+
+```bash
+touch .alerts-paused      # пауза: письма и SMS не уходят
+rm .alerts-paused         # снова включить
+```
+
+Флаг читает `scripts/lib/notify.sh` (общая отправка) и вызывающие его скрипты —
+`scripts/monitoring/check_prod.sh` и `scripts/backup/verify_prod_backup.sh`.
+Проверки при этом **продолжают работать** и писать в `logs/monitor.log` /
+`logs/verify.log`, молчит только почтовый (и SMS-) канал. Состояние дедупликации
+во время паузы не обновляется: после её снятия текущая проблема придёт сразу,
+а не через `ALERT_MIN_INTERVAL`. Разово для ручного прогона: `ALERTS_PAUSED=1`.
+Файл в `.gitignore`, в коммит не попадёт.
+
+Чего пауза **не** касается:
+
+- **Alertmanager** (алерты Prometheus) — он шлёт письма сам, из контейнера.
+  Пока не нужен: `docker compose -p microshop-test -f docker-compose.prod.yaml stop alertmanager`
+  (алерты остаются видны в Prometheus `/alerts`), вернуть — `... start alertmanager`.
+- **Письмо приложения об ошибке клиента** (`POST /api/v1/system/client-error/`) —
+  его отправляет воркер по `ALERT_EMAIL`.
+
 ## Установка
 
 ```bash
+export PROD_SSH='user@host' PROD_KEY="$HOME/.ssh/id_ed25519"   # адреса прода в репо нет
 ./scripts/monitoring/install_local_cron.sh              # каждые 15 минут
 CRON_SCHEDULE='*/5 * * * *' ./scripts/monitoring/install_local_cron.sh
 
@@ -102,7 +128,7 @@ crontab -l | grep -v '# pismo-monitor' | crontab -       # удалить
 
 Проверено 10.09.2026: обычный прогон «всё в норме», недоступный сайт детектируется
 (тест с `SITE_URL=http://127.0.0.1:9`), тестовое письмо доставлено на
-`nyuskov@gmail.com`, письмо с прод-сервера через приложение (`core.mailer`) тоже
+`alerts@example.com`, письмо с прод-сервера через приложение (`core.mailer`) тоже
 уходит — то есть цепочка «проблема → письмо» рабочая.
 
 ## Метрики для Prometheus (свои, без внешних сервисов)
@@ -148,7 +174,7 @@ curl -s -H "X-Metrics-Token: $METRICS_TOKEN" \
 
 | Что | Где | Как открыть |
 | --- | --- | --- |
-| Grafana, дашборд «Pismo · обзор» | порт **3000**, только `127.0.0.1` сервера | `ssh -L 3000:127.0.0.1:3000 -i ~/.ssh/id_rsa1 user1@176.108.249.9` → http://localhost:3000 |
+| Grafana, дашборд «Pismo · обзор» | порт **3000**, только `127.0.0.1` сервера | `ssh -L 3000:127.0.0.1:3000 -i ~/.ssh/id_ed25519 user@prod.example.com` → http://localhost:3000 |
 | Prometheus (цели, ad-hoc запросы) | порт **9090**, тоже только `127.0.0.1` | тот же туннель с `-L 9090:127.0.0.1:9090` |
 | Alertmanager (активные алерты, «молчание») | порт **9093**, тоже только `127.0.0.1` | тот же туннель с `-L 9093:127.0.0.1:9093` |
 
@@ -194,7 +220,7 @@ curl -s -H "X-Metrics-Token: $METRICS_TOKEN" \
 - **Доставка**: сервис `alertmanager` (порт 9093, только localhost) шлёт письмо
   по SMTP — теми же переменными, что `scripts/monitoring/check_prod.sh`
   (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`/`SMTP_FROM`, адрес
-  получателя `ALERT_EMAIL`, по умолчанию `nyuskov@gmail.com`). Письмо «алерт
+  получателя `ALERT_EMAIL`, по умолчанию `alerts@example.com`). Письмо «алерт
   закрылся» тоже отправляется.
 - **Секретов в конфиге нет**: `monitoring/alertmanager/alertmanager.yml` — шаблон
   с плейсхолдерами `__SMTP_*__`, их подставляет entrypoint контейнера (как

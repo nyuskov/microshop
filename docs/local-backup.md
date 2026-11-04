@@ -53,6 +53,7 @@ pismo_backup/
 ## Установка по крону
 
 ```bash
+export PROD_SSH='user@host' PROD_KEY="$HOME/.ssh/id_ed25519"   # адреса прода в репо нет
 ./scripts/backup/install_local_cron.sh              # ежедневно в 04:15 + догоняющий при включении и в 12:00
 CRON_SCHEDULE='0 */6 * * *' ./scripts/backup/install_local_cron.sh   # каждые 6 часов
 ```
@@ -88,7 +89,7 @@ CRON_SCHEDULE='0 */6 * * *' ./scripts/backup/install_local_cron.sh   # кажд�
 crontab -l | grep -v '# pismo-prod-backup' | crontab -
 ```
 
-Ключ `~/.ssh/id_rsa1` не защищён паролем, поэтому cron работает без ssh-агента —
+Ключ `~/.ssh/id_ed25519` не защищён паролем, поэтому cron работает без ssh-агента —
 это проверено (`env -u SSH_AUTH_SOCK ssh …`).
 
 ## Ручной запуск
@@ -152,21 +153,21 @@ docker compose -f docker-compose.yaml exec -T db psql -U postgres -d backup_chec
 
 ```bash
 # 1) на сервере остановить web/worker, чтобы никто не писал в БД
-ssh user1@176.108.249.9 "cd ~/microshop && docker compose -p microshop-test \
+ssh user@prod.example.com "cd ~/microshop && docker compose -p microshop-test \
   -f docker-compose.prod.yaml stop $(sh scripts/lib/web_slot.sh) worker beat"
 
 # 2) залить дамп в БД (перезапись): DROP SCHEMA + восстановление
-gunzip -c db/microshop_….sql.gz | ssh user1@176.108.249.9 \
+gunzip -c db/microshop_….sql.gz | ssh user@prod.example.com \
   "cd ~/microshop && docker compose -p microshop-test -f docker-compose.prod.yaml \
    exec -T db psql -U postgres -d microshop -v ON_ERROR_STOP=1"
 
 # 3) media: распаковать в volume media_data
-gunzip -c media/media_….tar.gz | ssh user1@176.108.249.9 \
+gunzip -c media/media_….tar.gz | ssh user@prod.example.com \
   "cd ~/microshop && docker compose -p microshop-test -f docker-compose.prod.yaml \
    exec -T $(sh scripts/lib/web_slot.sh) tar xzf - -C /app/media"
 
 # 4) поднять сервисы обратно
-ssh user1@176.108.249.9 "cd ~/microshop && docker compose -p microshop-test \
+ssh user@prod.example.com "cd ~/microshop && docker compose -p microshop-test \
   -f docker-compose.prod.yaml up -d"
 ```
 

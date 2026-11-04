@@ -21,8 +21,8 @@
 set -uo pipefail
 export PATH="$PATH:/usr/local/bin:/usr/bin:/bin"
 
-PROD_SSH="${PROD_SSH:-user1@176.108.249.9}"
-PROD_KEY="${PROD_KEY:-$HOME/.ssh/id_rsa1}"
+PROD_SSH="${PROD_SSH:-}"
+PROD_KEY="${PROD_KEY:-$HOME/.ssh/id_ed25519}"
 PROD_DIR="${PROD_DIR:-~/microshop}"
 PROD_PROJECT="${PROD_PROJECT:-microshop-test}"
 PROD_COMPOSE_FILE="${PROD_COMPOSE_FILE:-docker-compose.prod.yaml}"
@@ -51,8 +51,8 @@ SMTP_HOST="${SMTP_HOST:-smtp.gmail.com}"
 read -rp "SMTP_PORT [587, для SSL используйте 465]: " SMTP_PORT
 SMTP_PORT="${SMTP_PORT:-587}"
 
-read -rp "SMTP_USER (логин, обычно полный адрес) [nyuskov@gmail.com]: " SMTP_USER
-SMTP_USER="${SMTP_USER:-nyuskov@gmail.com}"
+read -rp "SMTP_USER (логин, обычно полный адрес): " SMTP_USER
+[[ -n "$SMTP_USER" ]] || die "не задан SMTP_USER"
 
 read -rsp "SMTP_PASSWORD (пароль приложения, ввод скрыт): " SMTP_PASSWORD
 echo

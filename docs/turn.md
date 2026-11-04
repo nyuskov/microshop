@@ -52,7 +52,7 @@ TCP по определению.
 
 ```bash
 # Адреса TURN. Один или несколько через запятую (несколько — одним списком отдаём).
-TURN_URLS=turn:176.108.249.9:3478?transport=udp,turn:176.108.249.9:3478?transport=tcp
+TURN_URLS=turn:prod.example.com:3478?transport=udp,turn:prod.example.com:3478?transport=tcp
 # Общий секрет для временных кредов. Сгенерировать: openssl rand -hex 32
 TURN_SECRET=<секрет>
 TURN_REALM=pismo.space
@@ -84,7 +84,9 @@ TURN_TTL_SECONDS=3600
       - --no-cli
       - --no-tls
       - --no-dtls
-      - --external-ip=176.108.249.9
+      # Публичный IP сервера; задаётся в .env как TURN_EXTERNAL_IP (в репозитории
+      # значения нет), подставляется compose-переменной.
+      - --external-ip=${TURN_EXTERNAL_IP:?TURN_EXTERNAL_IP is required}
 ```
 
 Наружу должны быть открыты: **3478/udp**, **3478/tcp** и релейный диапазон
@@ -109,7 +111,7 @@ TLS. Плата — нагрузка и трафик на наш сервер, �
 
    (сертификаты уже проброшены в контейнер: `certbot_etc:/etc/letsencrypt:ro`)
 3. Добавить адреса в `.env` — клиент подхватит их сам:
-   `TURN_URLS=turn:176.108.249.9:3478?transport=udp,turn:176.108.249.9:3478?transport=tcp,turns:176.108.249.9:5349?transport=tcp`
+   `TURN_URLS=turn:prod.example.com:3478?transport=udp,turn:prod.example.com:3478?transport=tcp,turns:prod.example.com:5349?transport=tcp`
 4. Проверить, что порт реально доступен снаружи, — иначе клиенты будут получать
    недостижимого кандидата и терять время на его проверку (в панели «Диагностика
    звонка» такой кандидат виден как недоступный маршрут).
@@ -132,7 +134,7 @@ echo "username=$USER_ID credential=$CRED"
 ```bash
 docker run --rm --network host coturn/coturn:4.6 \
   turnutils_uclient -u "$USER_ID" -w "$CRED" -e <внешний_ip_этого_хоста> -y \
-  -n 1 -m 1 -z 200 -h -v turn:176.108.249.9:3478
+  -n 1 -m 1 -z 200 -h -v turn:prod.example.com:3478
 ```
 
 Ожидаемо: `tot_recv_bytes` растёт, в логах coturn — allocation. Успех означает, что

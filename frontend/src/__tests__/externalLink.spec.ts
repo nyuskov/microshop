@@ -41,7 +41,7 @@ describe('isExternalLink', () => {
 
   it('почта и телефон — внешние (открывают другое приложение)', () => {
     expect(isExternalLink('mailto:help@pismo.space')).toBe(true)
-    expect(isExternalLink('tel:+79109744376')).toBe(true)
+    expect(isExternalLink('tel:+79991234567')).toBe(true)
   })
 
   it('мусор внешним не считается', () => {

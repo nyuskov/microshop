@@ -19,8 +19,8 @@ describe('passwordProblem', () => {
   })
 
   it('запрещает пароль с номером телефона', () => {
-    const problem = passwordProblem('vesna-79109744376', {
-      phoneNumber: '+7 (910) 974-43-76'
+    const problem = passwordProblem('vesna-79991234567', {
+      phoneNumber: '+7 (999) 123-45-67'
     })
     expect(problem).toContain('телефона')
   })
